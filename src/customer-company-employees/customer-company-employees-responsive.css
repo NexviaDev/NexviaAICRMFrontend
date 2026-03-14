@@ -1,0 +1,314 @@
+/**
+ * 연락처 리스트 - 스마트폰 등 작은 화면 반응형
+ * customer-company-employees.js 전용, 별도 파일로 분리
+ */
+@media (max-width: 768px) {
+  .customer-company-employees-page.page {
+    min-height: 100%;
+  }
+
+  .customer-company-employees-page .page-header {
+    height: auto;
+    min-height: 3.5rem;
+    padding: 0.5rem 1rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .customer-company-employees-page .header-search {
+    flex: 1 1 100%;
+    min-width: 0;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  .customer-company-employees-page .header-search-form {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .customer-company-employees-page .header-search-form input {
+    font-size: 0.8125rem;
+  }
+
+  .customer-company-employees-page .cce-status-filter {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 0.8rem;
+    padding: 0.4rem 0.6rem;
+  }
+
+  .customer-company-employees-page .cce-status-hint {
+    flex: 1 1 100%;
+    font-size: 0.65rem;
+  }
+
+  .customer-company-employees-page .header-actions {
+    margin-left: 0;
+    gap: 0.35rem;
+  }
+
+  .customer-company-employees-page .page-content {
+    padding: 1rem;
+  }
+
+  .customer-company-employees-page .customer-company-employees-top {
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .customer-company-employees-page .customer-company-employees-top h2 {
+    font-size: 1.25rem;
+  }
+
+  .customer-company-employees-page .page-desc {
+    font-size: 0.8125rem;
+  }
+
+  .customer-company-employees-page .customer-company-employees-actions {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .customer-company-employees-page .customer-company-employees-actions .btn-primary,
+  .customer-company-employees-page .customer-company-employees-actions .btn-outline {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+  }
+
+  /* 선택 액션 바 */
+  .customer-company-employees-page .cce-action-bar {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0.5rem 1rem;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .customer-company-employees-page .cce-action-bar-count {
+    font-size: 0.8rem;
+  }
+
+  .customer-company-employees-page .cce-action-bar-hint {
+    display: block;
+    margin-left: 0;
+    margin-top: 0.2rem;
+  }
+
+  .customer-company-employees-page .cce-action-bar-btns {
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  .customer-company-employees-page .cce-action-bar-google {
+    flex: 1;
+    min-width: 0;
+    justify-content: center;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.75rem;
+  }
+
+  .customer-company-employees-page .cce-google-result {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.78rem;
+    flex-wrap: wrap;
+  }
+
+  .customer-company-employees-page .cce-google-result-dismiss {
+    margin-left: 0;
+    flex: 0 0 auto;
+  }
+
+  .customer-company-employees-page .panel {
+    margin-bottom: 1rem;
+    border-radius: 0.5rem;
+    background: transparent;
+    border: none;
+  }
+
+  /* 모바일: customerForMobile.html 스타일 카드만 표시, 테이블 숨김 */
+  .customer-company-employees-page .page-content {
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
+
+  .customer-company-employees-page .table-wrap {
+    display: none;
+  }
+
+  .customer-company-employees-page .cce-mobile-cards-wrap {
+    display: block;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .customer-company-employees-page .cce-mobile-cards-message {
+    text-align: center;
+    padding: 1.5rem 1rem;
+    color: var(--text-muted, #64748b);
+    font-size: 0.875rem;
+  }
+
+  .customer-company-employees-page .cce-mobile-cards-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  /* 카드 = customerForMobile.html Contact Card 구조 */
+  .customer-company-employees-page .cce-mobile-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 1rem;
+    background: var(--card, #fff);
+    border: none;
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .customer-company-employees-page .cce-mobile-card:active {
+    background: var(--bg-light, #f8fafc);
+  }
+
+  .customer-company-employees-page .cce-mobile-card-avatar {
+    flex-shrink: 0;
+  }
+
+  .customer-company-employees-page .cce-mobile-card-avatar .avatar-img {
+    width: 3rem;
+    height: 3rem;
+    border-radius: 50%;
+  }
+
+  .customer-company-employees-page .cce-mobile-card-body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .customer-company-employees-page .cce-mobile-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .customer-company-employees-page .cce-mobile-card-name {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text, #1e293b);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .customer-company-employees-page .cce-mobile-card-status {
+    flex-shrink: 0;
+    font-size: 0.625rem;
+    font-weight: 700;
+    padding: 0.2rem 0.5rem;
+    border-radius: 9999px;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+
+  .customer-company-employees-page .cce-mobile-card-company {
+    margin: 0.25rem 0 0;
+    font-size: 0.875rem;
+    color: var(--text-muted, #64748b);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .customer-company-employees-page .cce-mobile-card-details {
+    margin-top: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .customer-company-employees-page .cce-mobile-card-email {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.75rem;
+    color: var(--text-muted, #64748b);
+  }
+
+  .customer-company-employees-page .cce-mobile-card-email .material-symbols-outlined {
+    font-size: 0.875rem;
+    flex-shrink: 0;
+  }
+
+  .customer-company-employees-page .cce-mobile-card-email span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .customer-company-employees-page .cce-mobile-card-meta {
+    margin: 0;
+    font-size: 0.6875rem;
+    color: var(--text-muted, #94a3b8);
+    font-style: italic;
+  }
+
+  .customer-company-employees-page .cce-mobile-card-more {
+    flex-shrink: 0;
+    padding: 0.25rem;
+    border: none;
+    background: none;
+    color: var(--text-muted, #94a3b8);
+    cursor: pointer;
+    border-radius: 0.25rem;
+  }
+
+  .customer-company-employees-page .cce-mobile-card-more .material-symbols-outlined {
+    font-size: 1.25rem;
+  }
+
+  .customer-company-employees-page .pagination-bar {
+    padding: 0.75rem 1rem;
+    gap: 0.75rem;
+  }
+
+  .customer-company-employees-page .pagination-info {
+    font-size: 0.8125rem;
+    text-align: center;
+  }
+
+  .customer-company-employees-page .customer-company-employees-detail-loading-overlay {
+    padding: 1rem;
+  }
+}
+
+/* 데스크톱에서는 모바일 카드 목록 숨김 */
+@media (min-width: 769px) {
+  .customer-company-employees-page .cce-mobile-cards-wrap {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .customer-company-employees-page .customer-company-employees-actions {
+    width: 100%;
+  }
+
+  .customer-company-employees-page .customer-company-employees-actions .btn-primary,
+  .customer-company-employees-page .customer-company-employees-actions .btn-outline {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .customer-company-employees-page .cce-action-bar-google span:not(.cce-action-google-icon) {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

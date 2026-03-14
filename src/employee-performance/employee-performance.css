@@ -1,0 +1,154 @@
+.perf-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.perf-card .metric-icon {
+  margin-bottom: 0.5rem;
+}
+
+.perf-card .metric-icon.blue { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
+.perf-card .metric-icon.amber { background: rgba(245, 158, 11, 0.15); color: #d97706; }
+.perf-card .metric-icon.indigo { background: rgba(99, 102, 241, 0.15); color: #6366f1; }
+
+.metric-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.metric-badge.up {
+  background: var(--pastel-mint);
+  color: var(--success);
+  padding: 0.2rem 0.5rem;
+  border-radius: 9999px;
+}
+
+.perf-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+@media (max-width: 1024px) {
+  .perf-grid { grid-template-columns: 1fr; }
+}
+
+.sales-chart .panel-head { margin-bottom: 0; }
+
+.sales-bars {
+  padding: 1.5rem;
+  height: 16rem;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-around;
+  gap: 1rem;
+}
+
+.sales-bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sales-bar-wrap {
+  width: 100%;
+  height: 12rem;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4px;
+}
+
+.sales-bar {
+  width: 1.5rem;
+  border-radius: 4px 4px 0 0;
+  min-height: 4px;
+  transition: height 0.3s;
+}
+
+.sales-bar.target { background: rgba(91, 124, 153, 0.25); }
+.sales-bar.actual { background: var(--primary); }
+
+.sales-bar-col p {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.chart-legend {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  padding: 1rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.chart-legend .dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 2px;
+  margin-right: 0.35rem;
+  vertical-align: middle;
+}
+
+.chart-legend .dot.target { background: rgba(91, 124, 153, 0.25); }
+.chart-legend .dot.actual { background: var(--primary); }
+
+.task-panel h4 {
+  margin: 0 0 1.5rem;
+  padding: 0 1.5rem;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.task-bars {
+  padding: 0 1.5rem;
+}
+
+.task-bar-item {
+  margin-bottom: 1.5rem;
+}
+
+.task-bar-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.875rem;
+  margin-bottom: 0.35rem;
+}
+
+.task-bar-label span:last-child { color: var(--text-muted); }
+
+.task-bar-wrap {
+  height: 8px;
+  background: var(--bg-light);
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.task-bar-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 9999px;
+  transition: width 0.3s;
+}
+
+.btn-outline.full {
+  width: 100%;
+  margin-top: 1.5rem;
+  padding: 0.6rem;
+}
+
+.status-active { background: var(--pastel-mint); color: var(--success); }
+.status-busy { background: #fef3c7; color: var(--warning); }
+
+.quota-pct { font-size: 0.75rem; font-weight: 600; margin-right: 0.5rem; }
+.small { font-size: 0.75rem; }

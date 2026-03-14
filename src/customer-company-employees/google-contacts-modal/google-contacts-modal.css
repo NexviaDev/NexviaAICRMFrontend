@@ -1,0 +1,363 @@
+.gcontacts-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+  padding: 1rem;
+  animation: gcontactsOverlayIn 0.18s ease-out;
+}
+
+@keyframes gcontactsOverlayIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.gcontacts-modal {
+  background: var(--card-bg, #fff);
+  border-radius: 1rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+  width: 100%;
+  max-width: 480px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: gcontactsSlideIn 0.22s ease-out;
+}
+
+.gcontacts-modal.bulk {
+  max-width: 600px;
+  max-height: 85vh;
+}
+
+@keyframes gcontactsSlideIn {
+  from { transform: translateY(16px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.gcontacts-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--card-border, #e0e0e0);
+}
+
+.gcontacts-modal-header h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text, #333);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.gcontacts-modal-header h3 .material-symbols-outlined {
+  font-size: 1.25rem;
+  color: var(--primary, #5c6bc0);
+}
+
+.gcontacts-modal-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted, #999);
+  padding: 0.25rem;
+  border-radius: 0.375rem;
+  transition: background 0.15s;
+}
+
+.gcontacts-modal-close:hover {
+  background: var(--bg-light, #f5f5f5);
+}
+
+/* 검색 */
+.gcontacts-modal-search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--card-border, #e0e0e0);
+  position: relative;
+}
+
+.gcontacts-search-icon {
+  font-size: 1.15rem;
+  color: var(--text-muted, #999);
+}
+
+.gcontacts-modal-search input {
+  flex: 1;
+  border: 1px solid var(--card-border, #e0e0e0);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  background: var(--bg-light, #fafafa);
+  color: var(--text, #333);
+  min-width: 0;
+}
+
+.gcontacts-modal-search input:focus {
+  outline: none;
+  border-color: var(--primary, #5c6bc0);
+}
+
+.gcontacts-search-btn {
+  flex-shrink: 0;
+  padding: 0.5rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: var(--primary, #5c6bc0);
+  color: #fff;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.gcontacts-search-btn:hover {
+  opacity: 0.9;
+}
+
+/* 대량 선택 바 */
+.gcontacts-bulk-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1.25rem;
+  background: var(--primary-pastel, #e8eaf6);
+  border-bottom: 1px solid var(--card-border, #e0e0e0);
+  gap: 0.75rem;
+  user-select: none;
+}
+
+.gcontacts-select-all {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text, #333);
+}
+
+.gcontacts-select-all input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--primary, #5c6bc0);
+  cursor: pointer;
+}
+
+.gcontacts-bulk-info {
+  font-size: 0.78rem;
+  color: var(--text-muted, #666);
+}
+
+.gcontacts-bulk-info strong {
+  color: var(--primary, #5c6bc0);
+  font-weight: 700;
+}
+
+.gcontacts-shift-hint {
+  font-size: 0.72rem;
+  color: var(--text-muted, #aaa);
+}
+
+/* 바디 */
+.gcontacts-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem 0;
+}
+
+.gcontacts-modal-status {
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-muted, #999);
+  font-size: 0.85rem;
+}
+
+.gcontacts-modal-error {
+  padding: 1rem 1.25rem;
+  color: var(--danger, #ef4444);
+  font-size: 0.85rem;
+  background: rgba(239, 68, 68, 0.06);
+}
+
+/* 연락처 아이템 */
+.gcontacts-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 1.25rem;
+  cursor: pointer;
+  transition: background 0.15s;
+  border-bottom: 1px solid var(--card-border, #f0f0f0);
+  user-select: none;
+}
+
+.gcontacts-item:last-child {
+  border-bottom: none;
+}
+
+.gcontacts-item:hover {
+  background: var(--primary-pastel, #e8eaf6);
+}
+
+.gcontacts-item.checked {
+  background: rgba(92, 107, 192, 0.1);
+}
+
+.gcontacts-item.checked:hover {
+  background: rgba(92, 107, 192, 0.16);
+}
+
+.gcontacts-item-checkbox {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--primary, #5c6bc0);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.gcontacts-item-avatar {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 50%;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary, #5c6bc0);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.gcontacts-item-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.gcontacts-item-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.gcontacts-item-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text, #333);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gcontacts-item-detail {
+  font-size: 0.75rem;
+  color: var(--text-muted, #999);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.gcontacts-item-arrow {
+  font-size: 1.1rem;
+  color: var(--text-muted, #ccc);
+  flex-shrink: 0;
+}
+
+/* 더 보기 */
+.gcontacts-load-more {
+  display: block;
+  width: calc(100% - 2.5rem);
+  margin: 0.5rem 1.25rem;
+  padding: 0.5rem;
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--primary, #5c6bc0);
+  background: var(--primary-pastel, #e8eaf6);
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.gcontacts-load-more:hover {
+  background: #d1d5f0;
+}
+
+/* 하단 푸터 (대량 모드) */
+.gcontacts-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid var(--card-border, #e0e0e0);
+  background: var(--bg-light, #fafafa);
+}
+
+.gcontacts-footer-count {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--primary, #5c6bc0);
+}
+
+.gcontacts-footer-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.gcontacts-footer-btn {
+  padding: 0.5rem 1rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.gcontacts-footer-btn.cancel {
+  background: var(--bg-light, #f0f0f0);
+  color: var(--text-muted, #666);
+}
+
+.gcontacts-footer-btn.cancel:hover {
+  background: #e0e0e0;
+}
+
+.gcontacts-footer-btn.confirm {
+  background: var(--primary, #5c6bc0);
+  color: #fff;
+}
+
+.gcontacts-footer-btn.confirm:hover {
+  opacity: 0.9;
+}
+
+.gcontacts-footer-btn.confirm:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+@media (max-width: 480px) {
+  .gcontacts-modal {
+    max-width: 100%;
+    max-height: 90vh;
+    border-radius: 0.75rem;
+  }
+  .gcontacts-modal.bulk {
+    max-width: 100%;
+  }
+}

@@ -1,0 +1,111 @@
+.day-events-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.38);
+  backdrop-filter: blur(4px);
+}
+
+.day-events-modal {
+  width: 100%;
+  max-width: 24rem;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 1rem;
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.18);
+  overflow: hidden;
+}
+
+.day-events-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.1rem 0.85rem;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.day-events-modal-eyebrow {
+  margin: 0 0 0.2rem 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.day-events-modal-header h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--text);
+}
+
+.day-events-modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.day-events-modal-close:hover {
+  background: var(--bg-light);
+  color: var(--text);
+}
+
+.day-events-modal-body {
+  padding: 1rem 1.1rem 1.1rem;
+  max-height: min(70vh, 34rem);
+  overflow: auto;
+}
+
+.day-events-modal-empty {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.day-events-modal-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.day-events-modal-item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid rgba(30, 30, 30, 0.12);
+  border-radius: 0.8rem;
+  background: #fff;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.day-events-modal-item:hover {
+  filter: brightness(0.98);
+}
+
+.day-events-modal-item-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.day-events-modal-item-meta {
+  font-size: 0.78rem;
+  opacity: 0.85;
+}

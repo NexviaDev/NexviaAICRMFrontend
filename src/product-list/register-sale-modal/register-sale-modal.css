@@ -1,0 +1,718 @@
+.register-sale-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(29, 40, 58, 0.4);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  animation: registerSaleOverlayIn 0.2s ease-out;
+}
+
+@keyframes registerSaleOverlayIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.register-sale-modal {
+  background: #fff;
+  border-radius: 0.75rem;
+  width: 100%;
+  max-width: 52rem;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--card-border);
+  animation: registerSaleModalIn 0.2s ease-out;
+}
+
+@keyframes registerSaleModalIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.register-sale-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.register-sale-header h3 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.register-sale-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 0.35rem;
+  border-radius: 0.5rem;
+  transition: background 0.2s, color 0.2s;
+}
+
+.register-sale-close:hover {
+  background: var(--bg-light);
+  color: var(--text);
+}
+
+.register-sale-form {
+  padding: 1rem 1.25rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.register-sale-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.register-sale-field label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.register-sale-field label em {
+  color: var(--danger);
+  font-style: normal;
+}
+
+.register-sale-input,
+.register-sale-select,
+.register-sale-textarea {
+  font-size: 0.9375rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: #fff;
+  color: var(--text);
+}
+
+.register-sale-input:focus,
+.register-sale-select:focus,
+.register-sale-textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(92, 107, 192, 0.15);
+}
+
+.register-sale-textarea {
+  resize: vertical;
+  min-height: 2.5rem;
+}
+
+.register-sale-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.register-sale-display {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.9375rem;
+  color: var(--text-muted);
+  padding: 0.5rem 0.6rem;
+  background: #fff;
+  border-radius: 0.5rem;
+  border: 1px solid var(--card-border);
+}
+
+.register-sale-search-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.register-sale-search-btn:hover {
+  border-color: var(--text-muted);
+  color: var(--text);
+}
+
+.register-sale-custom-product-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.register-sale-custom-product-row .register-sale-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.register-sale-confirm-product-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.2s, color 0.2s, background 0.2s;
+}
+
+.register-sale-confirm-product-btn:hover {
+  border-color: var(--text);
+  color: var(--text);
+  background: var(--bg-light, rgba(0, 0, 0, 0.03));
+}
+
+.register-sale-confirm-product-btn .material-symbols-outlined {
+  font-size: 1.25rem;
+}
+
+.register-sale-mode-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 0.35rem;
+}
+
+.register-sale-mode-tabs button {
+  flex: 1;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: #fff;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.register-sale-mode-tabs button.active {
+  color: var(--primary);
+  background: #fff;
+  border-color: var(--primary);
+}
+
+.register-sale-row {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.register-sale-row .register-sale-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.register-sale-currency { flex: 0 0 6rem; }
+
+.register-sale-summary {
+  padding: 0.75rem;
+  background: #fff;
+  border-radius: 0.5rem;
+  border: 1px solid var(--card-border);
+  font-size: 0.875rem;
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.register-sale-summary strong {
+  color: var(--primary);
+  margin-top: 0.25rem;
+}
+
+.register-sale-docs {
+  padding: 0.75rem 0;
+  border-top: 1px dashed var(--card-border);
+}
+
+.register-sale-docs-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 0.5rem;
+  background: var(--primary-pastel, rgba(99, 102, 241, 0.06));
+  border: 1px solid rgba(99, 102, 241, 0.12);
+}
+
+.register-sale-docs-head-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.register-sale-docs-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.register-sale-docs-label::before {
+  content: '';
+  display: inline-block;
+  width: 0.2rem;
+  height: 1rem;
+  border-radius: 2px;
+  background: var(--primary);
+  opacity: 0.8;
+}
+
+.register-sale-docs-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin: 0;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.register-sale-docs-require-confirm {
+  margin: 0 0 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  padding: 0.5rem 0.65rem;
+  background: var(--bg-light, rgba(0, 0, 0, 0.04));
+  border-radius: 0.5rem;
+  border-left: 3px solid var(--primary);
+}
+
+.register-sale-docs-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.5rem;
+  background: var(--primary);
+  color: #fff;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.2s, filter 0.2s;
+}
+
+.register-sale-docs-add-btn:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.register-sale-docs-add-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.register-sale-docs-add-btn .material-symbols-outlined {
+  font-size: 1.25rem;
+}
+
+.register-sale-docs-embed-wrap {
+  position: relative;
+  margin-bottom: 0.5rem;
+  border-radius: 0.5rem;
+  overflow: auto;
+  border: 1px solid var(--card-border);
+  background: var(--bg-light, #f5f5f5);
+  min-height: 160px;
+  max-height: 320px;
+}
+
+.register-sale-docs-embed-wrap.register-sale-docs-dropzone-active {
+  border-color: var(--primary);
+  background: var(--primary-pastel, rgba(99, 102, 241, 0.08));
+}
+
+.register-sale-docs-embed {
+  display: block;
+  width: 100%;
+  min-height: 280px;
+  height: 320px;
+  border: 0;
+}
+
+/* 드래그가 모달 안에 있을 때만 iframe 클릭 막아서, 영역 전체에서 드롭 인식 */
+.register-sale-docs-embed-wrap.register-sale-docs-drag-in-modal .register-sale-docs-embed {
+  pointer-events: none;
+}
+
+.register-sale-docs-embed-wrap .register-sale-docs-embed-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--primary);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.register-sale-docs-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.register-sale-docs-count {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.register-sale-docs-drive-link,
+.register-sale-docs-drive-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.5rem;
+  color: var(--primary);
+  background: var(--primary-pastel, rgba(99, 102, 241, 0.1));
+  transition: background 0.2s, color 0.2s;
+}
+
+.register-sale-docs-drive-link:hover {
+  background: var(--primary);
+  color: #fff;
+}
+
+.register-sale-docs-drive-link .material-symbols-outlined,
+.register-sale-docs-drive-icon .material-symbols-outlined {
+  font-size: 1.25rem;
+}
+
+.register-sale-docs-drive-icon {
+  color: var(--text-muted);
+  background: var(--bg-light, #f0f0f0);
+  cursor: default;
+}
+
+.register-sale-docs-list {
+  margin: 0 0 0.5rem;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.register-sale-docs-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  background: var(--bg-light, #f5f6f8);
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.register-sale-docs-link {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--primary);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.register-sale-docs-link:hover {
+  text-decoration: underline;
+}
+
+.register-sale-docs-remove {
+  flex-shrink: 0;
+  padding: 0.2rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  border-radius: 0.35rem;
+}
+
+.register-sale-docs-remove:hover {
+  background: rgba(0,0,0,0.06);
+  color: var(--text);
+}
+
+.register-sale-docs-dropzone {
+  padding: 1rem 1.25rem;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  background: var(--bg-light, #f5f5f5);
+  border: 2px dashed var(--card-border);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: border-color 0.2s, background 0.2s, color 0.2s;
+}
+
+.register-sale-docs-dropzone:hover:not(.register-sale-docs-dropzone-disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-pastel, rgba(99, 102, 241, 0.08));
+}
+
+.register-sale-docs-dropzone-active {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-pastel, rgba(99, 102, 241, 0.12));
+}
+
+.register-sale-docs-dropzone-disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.register-sale-docs-dropzone-icon {
+  font-size: 1.5rem;
+}
+
+.register-sale-docs-error {
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--danger, #c53030);
+}
+
+/* Drive picker modal */
+.register-sale-drive-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1001;
+  background: rgba(29, 40, 58, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.register-sale-drive-modal {
+  background: #fff;
+  border-radius: 0.75rem;
+  width: 100%;
+  max-width: 24rem;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--card-border);
+}
+
+.register-sale-drive-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.register-sale-drive-header h4 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.register-sale-drive-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 0.35rem;
+  border-radius: 0.5rem;
+}
+
+.register-sale-drive-close:hover {
+  background: var(--bg-light);
+  color: var(--text);
+}
+
+.register-sale-drive-body {
+  padding: 1rem;
+  overflow-y: auto;
+  min-height: 8rem;
+}
+
+.register-sale-drive-breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.8125rem;
+}
+
+.register-sale-drive-breadcrumb-sep {
+  color: var(--text-muted);
+  margin: 0 0.15rem;
+}
+
+.register-sale-drive-breadcrumb-item {
+  background: none;
+  border: none;
+  padding: 0.25rem 0.4rem;
+  cursor: pointer;
+  color: var(--primary);
+  border-radius: 0.35rem;
+  font-size: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.register-sale-drive-breadcrumb-item:hover {
+  background: var(--bg-light);
+  color: var(--text);
+}
+
+.register-sale-drive-error {
+  margin: 0 0 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--danger);
+}
+
+.register-sale-drive-loading,
+.register-sale-drive-empty {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.register-sale-drive-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.register-sale-drive-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  text-align: left;
+  font-size: 0.875rem;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.register-sale-drive-item:hover {
+  background: var(--bg-light);
+  border-color: var(--card-border);
+}
+
+.register-sale-drive-item-folder .register-sale-drive-item-name {
+  font-weight: 500;
+}
+
+.register-sale-drive-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.register-sale-error {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--danger);
+}
+
+.register-sale-body {
+  padding: 1rem 1.25rem 1.25rem;
+}
+.register-sale-loading {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.register-sale-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding-top: 0.5rem;
+  margin-top: 0.25rem;
+  border-top: 1px solid var(--card-border);
+}
+
+.register-sale-cancel {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.register-sale-cancel:hover {
+  background: var(--bg-light);
+  color: var(--text);
+}
+
+.register-sale-submit {
+  padding: 0.5rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--primary);
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.register-sale-submit:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.register-sale-submit:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}

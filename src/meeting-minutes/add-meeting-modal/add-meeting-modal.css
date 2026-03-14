@@ -1,0 +1,772 @@
+/* Meeting Add.html 스타일 반영: 헤더, 2열 그리드, 카드, 액션/참석자 UI */
+
+/* ── 수정 시 오른쪽 슬라이드 패널 (product-detail-modal 스타일) ── */
+.add-meeting-edit-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(29, 40, 58, 0.4);
+  backdrop-filter: blur(4px);
+  z-index: 50;
+  animation: addMeetingEditOverlayIn 0.2s ease-out;
+  cursor: pointer;
+}
+
+@keyframes addMeetingEditOverlayIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.add-meeting-edit-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  max-width: 52rem;
+  background: var(--background-light, #f6f7f7);
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
+  border-left: 1px solid var(--card-border);
+  z-index: 51;
+  overflow: hidden;
+  animation: addMeetingEditPanelIn 0.25s ease-out;
+}
+
+@keyframes addMeetingEditPanelIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.add-meeting-edit-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* 수정 패널 헤더 (product-detail-header와 동일) */
+.add-meeting-edit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--card-border);
+  background: var(--card);
+  flex-shrink: 0;
+}
+
+.add-meeting-edit-header-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.add-meeting-edit-header-title h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.add-meeting-edit-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.add-meeting-edit-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 0.5rem;
+  transition: background 0.2s, color 0.2s;
+}
+
+.add-meeting-edit-icon-btn:hover {
+  background: var(--bg-light);
+  color: var(--text);
+}
+
+.add-meeting-edit-icon-btn .material-symbols-outlined {
+  font-size: 1.25rem;
+}
+
+/* 수정 패널 하단 (product-detail-edit-footer와 동일) */
+.add-meeting-edit-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--card-border);
+  flex-shrink: 0;
+}
+
+.add-meeting-edit-cancel {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.add-meeting-edit-cancel:hover {
+  background: var(--bg-light);
+}
+
+.add-meeting-edit-save {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--primary);
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.add-meeting-edit-save:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.add-meeting-edit-save:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.add-meeting-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  animation: addMeetingOverlayIn 0.2s ease-out;
+}
+
+@keyframes addMeetingOverlayIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.add-meeting-modal {
+  width: 100%;
+  max-width: 56rem;
+  max-height: 95vh;
+  background: var(--background-light, #f6f7f7);
+  border-radius: 0.75rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--card-border);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  animation: addMeetingModalIn 0.2s ease-out;
+}
+
+@keyframes addMeetingModalIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* ── 상단 바 (Meeting Add header) ── */
+.add-meeting-modal-topbar {
+  height: 4rem;
+  padding: 0 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--card);
+  border-bottom: 1px solid var(--card-border);
+  flex-shrink: 0;
+}
+
+.add-meeting-modal-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.add-meeting-modal-topbar-icon {
+  font-size: 1.5rem;
+  color: var(--primary);
+}
+
+.add-meeting-modal-topbar-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.add-meeting-modal-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.add-meeting-modal-btn-cancel {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.add-meeting-modal-btn-cancel:hover {
+  background: var(--bg-light);
+  color: var(--text);
+}
+
+.add-meeting-modal-btn-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--primary);
+  border: none;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.add-meeting-modal-btn-save:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.add-meeting-modal-btn-save:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.add-meeting-modal-btn-save .material-symbols-outlined {
+  font-size: 1.125rem;
+}
+
+/* ── 폼 본문 ── */
+.add-meeting-modal-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.add-meeting-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 2rem;
+  padding-bottom: 1rem;
+}
+
+.add-meeting-modal-error {
+  margin: 0 0 1.5rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  color: var(--danger);
+  background: var(--pastel-peach);
+  border-radius: 0.5rem;
+}
+
+/* ── 히어로 (Meeting Minutes + 설명) ── */
+.add-meeting-modal-hero {
+  margin-bottom: 2rem;
+}
+
+.add-meeting-modal-hero-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.875rem;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: var(--primary);
+}
+
+.add-meeting-modal-hero-desc {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: var(--text-muted);
+}
+
+/* ── 2열 그리드 (lg: 3칸 중 왼쪽 2 / 오른쪽 1) ── */
+.add-meeting-modal-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+
+@media (min-width: 1024px) {
+  .add-meeting-modal-grid {
+    grid-template-columns: 2fr 1fr;
+    gap: 2rem;
+  }
+}
+
+.add-meeting-modal-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.add-meeting-modal-side {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* ── 카드 (Meeting Add: bg-white rounded-xl border shadow-sm) ── */
+.add-meeting-card {
+  background: var(--card);
+  padding: 1.5rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--card-border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.add-meeting-card-title {
+  margin: 0 0 1rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.add-meeting-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.add-meeting-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.add-meeting-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.add-meeting-input {
+  width: 100%;
+  padding: 0.625rem 1rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--text);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.add-meeting-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(91, 124, 153, 0.2);
+}
+
+.add-meeting-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.add-meeting-input-wrap-icon {
+  position: relative;
+  display: block;
+}
+
+.add-meeting-input-wrap-icon .add-meeting-input-icon {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 1.125rem;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.add-meeting-input-wrap-icon .add-meeting-input {
+  padding-left: 2.5rem;
+}
+
+/* ── Content 카드 (Agenda + Discussion + Action Items) ── */
+.add-meeting-card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.add-meeting-content-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.add-meeting-content-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.add-meeting-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--primary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.add-meeting-link-btn:hover {
+  opacity: 0.85;
+  text-decoration: underline;
+}
+
+.add-meeting-link-btn .material-symbols-outlined {
+  font-size: 1rem;
+}
+
+.add-meeting-format-btns {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.add-meeting-format-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 0.375rem;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.add-meeting-format-btn:hover {
+  background: var(--bg-light);
+  color: var(--text);
+}
+
+.add-meeting-format-btn .material-symbols-outlined {
+  font-size: 1.25rem;
+}
+
+/* textarea 감싸기 (Meeting Add: min-h, border, rounded, bg-slate-50) ── */
+.add-meeting-textarea-wrap {
+  min-height: 6rem;
+  padding: 1rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--bg-light);
+}
+
+.add-meeting-textarea-agenda {
+  min-height: 6.25rem;
+}
+
+.add-meeting-textarea-discussion {
+  min-height: 12rem;
+}
+
+.add-meeting-textarea-inner {
+  width: 100%;
+  min-height: 5rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 0.875rem;
+  color: var(--text);
+  resize: none;
+  outline: none;
+}
+
+.add-meeting-textarea-discussion .add-meeting-textarea-inner {
+  min-height: 10rem;
+}
+
+/* ── Action Items (카드 형태 행 + Add Action Item 점선 버튼) ── */
+.add-meeting-action-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.add-meeting-action-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.add-meeting-action-check {
+  width: 1.125rem;
+  height: 1.125rem;
+  accent-color: var(--primary);
+  flex-shrink: 0;
+}
+
+.add-meeting-action-input {
+  flex: 1;
+  min-width: 8rem;
+  padding: 0.25rem 0;
+  border: none;
+  background: transparent;
+  font-size: 0.875rem;
+  color: var(--text);
+  outline: none;
+}
+
+.add-meeting-action-input::placeholder {
+  color: var(--text-muted);
+}
+
+.add-meeting-action-due-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.add-meeting-action-due-icon {
+  font-size: 1.125rem;
+  color: var(--text-muted);
+}
+
+.add-meeting-action-due-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.add-meeting-action-date {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.375rem;
+  background: var(--card);
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.add-meeting-add-action-btn {
+  width: 100%;
+  padding: 0.625rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: transparent;
+  border: 2px dashed var(--card-border);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.add-meeting-add-action-btn:hover {
+  background: var(--bg-light);
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.add-meeting-add-action-btn .material-symbols-outlined {
+  font-size: 1.125rem;
+}
+
+.add-meeting-remove-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 0.375rem;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+  flex-shrink: 0;
+}
+
+.add-meeting-remove-btn:hover {
+  background: var(--pastel-peach);
+  color: var(--danger);
+}
+
+.add-meeting-remove-btn .material-symbols-outlined {
+  font-size: 1.25rem;
+}
+
+/* ── Attendees (아바타 원 + 이름/역할 + Manage Attendees) ── */
+.add-meeting-attendee-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.add-meeting-attendee-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.add-meeting-attendee-avatar {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9999px;
+  background: var(--pastel-sky);
+  color: var(--primary);
+  font-size: 0.625rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.add-meeting-attendee-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.add-meeting-attendee-name-input,
+.add-meeting-attendee-role-input {
+  width: 100%;
+  padding: 0.125rem 0;
+  border: none;
+  background: transparent;
+  font-size: 0.875rem;
+  color: var(--text);
+  outline: none;
+}
+
+.add-meeting-attendee-name-input {
+  font-weight: 500;
+}
+
+.add-meeting-attendee-role-input {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.add-meeting-attendee-role-input::placeholder,
+.add-meeting-attendee-name-input::placeholder {
+  color: var(--text-muted);
+}
+
+.add-meeting-manage-attendees-btn {
+  width: 100%;
+  padding: 0.5rem 1rem;
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--bg-light);
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.add-meeting-manage-attendees-btn:hover {
+  background: var(--card-border);
+  color: var(--text);
+}
+
+.add-meeting-manage-attendees-btn .material-symbols-outlined {
+  font-size: 1rem;
+}
+
+.add-meeting-status-card .add-meeting-input {
+  margin-top: 0.25rem;
+}
+
+/* ── 하단 바 (Discard + Finish & Send Summary) ── */
+.add-meeting-modal-bottom-bar {
+  margin-top: 2rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--card-border);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+.add-meeting-modal-btn-discard {
+  padding: 0.625rem 1.5rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--bg-light);
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.add-meeting-modal-btn-discard:hover {
+  background: var(--card-border);
+}
+
+.add-meeting-modal-btn-finish {
+  padding: 0.625rem 2rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #fff;
+  background: var(--primary);
+  border: none;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 14px rgba(29, 43, 58, 0.25);
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.add-meeting-modal-btn-finish:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.add-meeting-modal-btn-finish:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}

@@ -1,0 +1,271 @@
+/* ========== Overlay ========== */
+.opp-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+/* ========== Modal ========== */
+.opp-modal {
+  background: var(--card);
+  border-radius: 14px;
+  width: 100%;
+  max-width: 520px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+}
+
+.opp-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.opp-modal-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.opp-modal-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 2px;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.opp-modal-close:hover {
+  background: var(--bg-light);
+}
+
+.opp-modal-close .material-symbols-outlined {
+  font-size: 1.2rem;
+}
+
+/* ========== Loading ========== */
+.opp-modal-loading {
+  padding: 40px 22px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+/* ========== Form ========== */
+.opp-modal-form {
+  padding: 18px 22px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.opp-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.opp-label > span {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.opp-label > span em {
+  color: var(--danger);
+  font-style: normal;
+}
+
+.opp-input,
+.opp-select,
+.opp-textarea {
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 0.88rem;
+  background: var(--bg-light);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.2s;
+  font-family: inherit;
+}
+
+.opp-input:focus,
+.opp-select:focus,
+.opp-textarea:focus {
+  border-color: var(--primary);
+}
+
+.opp-textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.opp-row {
+  display: flex;
+  gap: 12px;
+}
+
+.opp-half {
+  flex: 1;
+}
+
+.opp-currency {
+  flex: 0 0 110px;
+}
+
+.opp-company-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: var(--bg-light);
+  min-height: 40px;
+}
+
+.opp-company-display {
+  flex: 1;
+  font-size: 0.88rem;
+  color: var(--text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.opp-company-search-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #fff;
+  background: var(--primary);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  flex-shrink: 0;
+}
+
+.opp-company-search-btn:hover {
+  opacity: 0.9;
+}
+
+.opp-company-search-btn .material-symbols-outlined {
+  font-size: 1rem;
+}
+
+/* ========== Error ========== */
+.opp-error {
+  margin: 0;
+  padding: 8px 12px;
+  background: rgba(220, 38, 38, 0.08);
+  color: var(--danger);
+  border-radius: 8px;
+  font-size: 0.82rem;
+}
+
+/* ========== Actions ========== */
+.opp-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--card-border);
+  margin-top: 4px;
+}
+
+.opp-modal-actions-right {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.opp-delete-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.opp-delete-btn:hover {
+  background: rgba(220, 38, 38, 0.06);
+}
+
+.opp-delete-btn .material-symbols-outlined {
+  font-size: 0.95rem;
+}
+
+.opp-cancel-btn {
+  background: none;
+  border: 1px solid var(--card-border);
+  color: var(--text-muted);
+  padding: 7px 16px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.opp-cancel-btn:hover {
+  background: var(--bg-light);
+}
+
+.opp-save-btn {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  padding: 7px 20px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.opp-save-btn:hover {
+  opacity: 0.85;
+}
+
+.opp-save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ========== Responsive ========== */
+@media (max-width: 540px) {
+  .opp-modal {
+    max-width: 100%;
+  }
+
+  .opp-row {
+    flex-direction: column;
+  }
+
+  .opp-currency {
+    flex: 1;
+  }
+}

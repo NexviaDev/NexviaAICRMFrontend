@@ -1,0 +1,6 @@
+# Netlify 설정: SPA 클라이언트 라우팅 지원
+# /login, /login?token=... 등 모든 경로를 index.html로 전달해 404 방지
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

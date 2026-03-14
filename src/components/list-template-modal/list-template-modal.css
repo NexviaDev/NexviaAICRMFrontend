@@ -1,0 +1,107 @@
+.list-template-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.list-template-modal {
+  background: var(--card, #fff);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  width: 90%;
+  max-width: 420px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.list-template-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--card-border, #e0e0e0);
+}
+
+.list-template-modal-header h3 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text, #333);
+}
+
+.list-template-modal-close {
+  background: none;
+  border: none;
+  padding: 0.25rem;
+  color: var(--text-muted, #666);
+  cursor: pointer;
+  border-radius: 0.5rem;
+}
+
+.list-template-modal-close:hover {
+  color: var(--text, #333);
+  background: var(--bg-light, #f5f5f5);
+}
+
+.list-template-modal-body {
+  padding: 1rem 1.25rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.list-template-modal-hint {
+  margin: 0 0 1rem;
+  font-size: 0.8125rem;
+  color: var(--text-muted, #666);
+}
+
+.list-template-modal-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.list-template-modal-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--bg-light, #f0f0f0);
+  gap: 0.75rem;
+}
+
+.list-template-modal-item:last-child {
+  border-bottom: none;
+}
+
+.list-template-modal-item-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  flex: 1;
+  font-size: 0.9375rem;
+}
+
+.list-template-modal-item-label input {
+  accent-color: var(--primary, #5c6bc0);
+  cursor: pointer;
+}
+
+.list-template-modal-item-actions {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.list-template-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 1rem 1.25rem;
+  border-top: 1px solid var(--card-border, #e0e0e0);
+}

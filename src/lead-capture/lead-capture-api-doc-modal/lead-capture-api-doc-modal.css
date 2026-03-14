@@ -1,0 +1,163 @@
+.lead-capture-api-doc-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1002;
+  padding: 1.5rem;
+}
+
+.lead-capture-api-doc-box {
+  background: var(--card);
+  border-radius: 0.75rem;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+  width: 100%;
+  max-width: 42rem;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.lead-capture-api-doc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--card-border);
+  flex-shrink: 0;
+}
+
+.lead-capture-api-doc-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.lead-capture-api-doc-title .material-symbols-outlined {
+  color: var(--primary);
+}
+
+.lead-capture-api-doc-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.lead-capture-api-doc-inline {
+  max-width: none;
+  box-shadow: none;
+}
+
+.lead-capture-api-doc-close {
+  display: inline-flex;
+  padding: 0.35rem;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  border-radius: 0.35rem;
+  cursor: pointer;
+}
+
+.lead-capture-api-doc-close:hover {
+  background: var(--bg-light);
+  color: var(--text);
+}
+
+.lead-capture-api-doc-body {
+  padding: 1.5rem;
+  overflow-y: auto;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.lead-capture-api-doc-body h4 {
+  margin: 1.25rem 0 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.lead-capture-api-doc-body h4:first-child {
+  margin-top: 0;
+}
+
+.lead-capture-api-doc-body p {
+  margin: 0 0 0.75rem;
+  color: var(--text);
+}
+
+.lead-capture-api-doc-body ul {
+  margin: 0 0 0.75rem;
+  padding-left: 1.25rem;
+}
+
+.lead-capture-api-doc-body li {
+  margin-bottom: 0.25rem;
+}
+
+.lead-capture-api-doc-body code,
+.lead-capture-api-doc-code {
+  font-family: ui-monospace, 'SF Mono', Monaco, monospace;
+  font-size: 0.8125rem;
+  background: var(--bg-light);
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.35rem;
+  color: var(--text);
+  border: 1px solid var(--card-border);
+}
+
+.lead-capture-api-doc-pre {
+  margin: 0.5rem 0 1rem;
+  padding: 1rem;
+  background: var(--bg-light);
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  white-space: pre;
+  color: var(--text);
+}
+
+.lead-capture-api-doc-pre code {
+  padding: 0;
+  background: none;
+  border: none;
+}
+
+.lead-capture-api-doc-note {
+  margin: 0.75rem 0;
+  padding: 0.75rem 1rem;
+  background: rgba(99, 102, 241, 0.08);
+  border-left: 4px solid var(--primary);
+  border-radius: 0 0.35rem 0.35rem 0;
+  font-size: 0.8125rem;
+}
+
+.lead-capture-api-doc-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0 1rem;
+  font-size: 0.8125rem;
+}
+
+.lead-capture-api-doc-body th,
+.lead-capture-api-doc-body td {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.lead-capture-api-doc-body th {
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-light);
+}
