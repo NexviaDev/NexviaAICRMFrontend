@@ -1,0 +1,83 @@
+/* 수신된 리드 전체보기 모달 */
+.lead-capture-leads-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1002;
+  padding: 1.5rem;
+}
+
+.lead-capture-leads-modal-box {
+  background: var(--card);
+  border-radius: 0.75rem;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+  width: 100%;
+  max-width: 56rem;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.lead-capture-leads-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--card-border);
+  flex-shrink: 0;
+}
+
+.lead-capture-leads-modal-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.lead-capture-leads-modal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.lead-capture-leads-modal-save-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--primary);
+  background: #fff;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.lead-capture-leads-modal-save-btn:hover:not(:disabled) {
+  background: #f5f5f5;
+}
+
+.lead-capture-leads-modal-save-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.lead-capture-leads-modal-save-btn .material-symbols-outlined {
+  font-size: 1.125rem;
+}
+
+.lead-capture-leads-modal-body {
+  padding: 1rem;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.lead-capture-leads-modal-body .lead-capture-table {
+  width: 100%;
+}

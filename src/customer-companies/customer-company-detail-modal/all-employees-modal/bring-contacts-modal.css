@@ -1,0 +1,276 @@
+.bring-contacts-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(29, 40, 58, 0.5);
+  backdrop-filter: blur(4px);
+  z-index: 54;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+}
+
+.bring-contacts-modal {
+  width: 100%;
+  max-width: 32rem;
+  max-height: 85vh;
+  background: var(--card);
+  border-radius: 0.75rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--card-border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.bring-contacts-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--card-border);
+  flex-shrink: 0;
+}
+
+.bring-contacts-modal-header h3 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.bring-contacts-modal-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.bring-contacts-modal-close:hover {
+  background: var(--bg-light);
+  color: var(--text);
+}
+
+.bring-contacts-modal-desc {
+  margin: 0;
+  padding: 0.75rem 1.25rem;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.bring-contacts-modal-desc strong {
+  color: var(--primary);
+}
+
+.bring-contacts-modal-search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 1.25rem 0.75rem;
+  flex-shrink: 0;
+}
+
+.bring-contacts-search-icon {
+  font-size: 1.25rem;
+  color: var(--text-muted);
+}
+
+.bring-contacts-modal-search-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.bring-contacts-modal-search-btn {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--primary);
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.bring-contacts-modal-hint {
+  margin: 0 1.25rem 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.bring-contacts-modal-hint kbd {
+  display: inline-block;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.7rem;
+  font-family: inherit;
+  background: var(--bg-light);
+  border: 1px solid var(--card-border);
+  border-radius: 0.25rem;
+  box-shadow: 0 1px 0 var(--card-border);
+}
+
+.bring-contacts-modal-error {
+  margin: 0 1.25rem 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--danger, #c62828);
+  flex-shrink: 0;
+}
+
+.bring-contacts-modal-list-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 0 1.25rem;
+}
+
+.bring-contacts-modal-list-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  border-bottom: 1px solid var(--card-border);
+  flex-shrink: 0;
+}
+
+.bring-contacts-check-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  padding: 0.25rem;
+}
+
+.bring-contacts-check-wrap input[type="checkbox"] {
+  width: 1.125rem;
+  height: 1.125rem;
+  cursor: pointer;
+  accent-color: var(--primary);
+}
+
+.bring-contacts-header-name {
+  flex: 0 0 5rem;
+}
+
+.bring-contacts-header-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.bring-contacts-modal-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem 0;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.bring-contacts-modal-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--card-border);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.bring-contacts-modal-item:hover {
+  background: var(--bg-light);
+}
+
+.bring-contacts-modal-item-selected {
+  background: var(--pastel-sky, rgba(33, 150, 243, 0.12));
+}
+
+.bring-contacts-modal-item-selected:hover {
+  background: var(--pastel-sky);
+}
+
+.bring-contacts-modal-item:last-child {
+  border-bottom: none;
+}
+
+.bring-contacts-item-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.bring-contacts-item-name {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.bring-contacts-item-meta {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bring-contacts-modal-empty {
+  margin: 1.5rem 0;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.bring-contacts-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-top: 1px solid var(--card-border);
+  flex-shrink: 0;
+}
+
+.bring-contacts-modal-selected {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.bring-contacts-modal-confirm {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--primary);
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.bring-contacts-modal-confirm:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.bring-contacts-modal-confirm:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

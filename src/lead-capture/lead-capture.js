@@ -1,0 +1,974 @@
+import { useState, useEffect, useCallback } from 'react';
+import { API_BASE, BACKEND_BASE_URL } from '@/config';
+import LeadCaptureFormModal from './lead-capture-form-modal/lead-capture-form-modal';
+import LeadCaptureApiDocModal from './lead-capture-api-doc-modal/lead-capture-api-doc-modal';
+import LeadCaptureLeadsModal from './lead-capture-leads-modal/lead-capture-leads-modal';
+import CustomFieldsManageModal from '../shared/custom-fields-manage-modal/custom-fields-manage-modal';
+import './lead-capture.css';
+
+function getAuthHeader() {
+  const token = localStorage.getItem('crm_token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function copyToClipboard(text) {
+  if (!text) return false;
+  try {
+    navigator.clipboard.writeText(text);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+const DEFAULT_FIELDS = [
+  { icon: 'person', label: '이름', meta: '필수 · 문자열', type: 'text', required: true },
+  { icon: 'phone', label: '연락처', meta: '필수 · 숫자', type: 'number', required: true },
+  { icon: 'mail', label: '이메일', meta: '필수 아님 · 문자열', type: 'text', required: false },
+  { icon: 'business', label: '회사명', meta: '필수 아님 · 문자열', type: 'text', required: false },
+  { icon: 'location_on', label: '회사 주소', meta: '필수 아님 · 문자열', type: 'text', required: false },
+  { icon: 'badge', label: '명함', meta: '필수 아님 · 회사 사진파일', type: 'file', required: false }
+];
+
+function typeToMeta(type, required) {
+  const typeLabels = { text: '텍스트', number: '숫자', date: '날짜', select: '드롭다운', multiselect: '다중 선택', checkbox: '체크박스' };
+  const req = required ? '필수' : '선택';
+  return `${typeLabels[type] || type} • ${req}`;
+}
+
+/** 로컬(localhost) 웹훅 URL이면 프로덕션 백엔드 주소로 바꿔서 표시·복사용으로 사용 */
+function webhookUrlForDisplay(url, productionBase) {
+  if (!url || !productionBase) return url || '';
+  try {
+    const u = new URL(url);
+    if (u.hostname === 'localhost' || u.hostname === '127.0.0.1') {
+      const base = productionBase.replace(/\/$/, '');
+      return base + u.pathname + u.search;
+    }
+    return url;
+  } catch (_) {
+    return url;
+  }
+}
+
+function formatLastActivity(date) {
+  if (!date) return '—';
+  const d = new Date(date);
+  const now = new Date();
+  const diffMs = now - d;
+  const diffM = Math.floor(diffMs / 60000);
+  const diffH = Math.floor(diffMs / 3600000);
+  const diffD = Math.floor(diffMs / 86400000);
+  if (diffM < 1) return '방금 전';
+  if (diffM < 60) return `${diffM}분 전`;
+  if (diffH < 24) return `${diffH}시간 전`;
+  if (diffD < 7) return `${diffD}일 전`;
+  return d.toLocaleDateString('ko-KR');
+}
+
+function formatReceivedAt(date) {
+  if (!date) return '—';
+  const d = new Date(date);
+  return d.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function customFieldsSummary(customFields) {
+  if (!customFields || typeof customFields !== 'object') return '—';
+  const entries = Object.entries(customFields).filter(([, v]) => v !== undefined && v !== null && v !== '');
+  if (entries.length === 0) return '—';
+  return entries.map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join(' · ');
+}
+
+/** data URL 또는 이미지 URL을 Blob으로 변환 (명함 업로드용) */
+async function imageUrlToBlob(url) {
+  if (!url || typeof url !== 'string') return null;
+  if (url.startsWith('data:image')) {
+    const res = await fetch(url);
+    return await res.blob();
+  }
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    const res = await fetch(url, { mode: 'cors' });
+    if (!res.ok) return null;
+    return await res.blob();
+  }
+  return null;
+}
+
+/** 연락처 숫자만 있을 때 하이픈 포맷 (한국 형식) */
+function formatPhoneForSave(value) {
+  if (value == null || value === '') return '';
+  const digits = String(value).replace(/\D/g, '');
+  if (digits.length === 0) return '';
+  if (digits.length === 11 && digits.startsWith('010')) return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
+  if (digits.length === 10 && digits.startsWith('02')) return `${digits.slice(0, 2)}-${digits.slice(2, 6)}-${digits.slice(6)}`;
+  if (digits.length === 9 && digits.startsWith('2')) return `02-${digits.slice(1, 4)}-${digits.slice(4)}`;
+  if (digits.length === 10 && digits.startsWith('01')) return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`;
+  if (digits.length >= 9 && digits.length <= 11) return digits.replace(/(\d{2,3})(\d{3,4})(\d{4})/, '$1-$2-$3');
+  return digits;
+}
+
+export default function LeadCapture() {
+  const [items, setItems] = useState([]);
+  const [activeCount, setActiveCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingForm, setEditingForm] = useState(null);
+
+  const [settings, setSettings] = useState({ apiKeyPrefix: null, webhookUrl: null });
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+  const [newApiKey, setNewApiKey] = useState('');
+  const [copyFeedback, setCopyFeedback] = useState({ apiKey: false, webhook: false, newKey: false, formId: null, embedCode: false });
+  const [apiKeyCopyHint, setApiKeyCopyHint] = useState(false);
+  const [customFields, setCustomFields] = useState([]);
+  const [showCustomFieldsModal, setShowCustomFieldsModal] = useState(false);
+  const [removingFieldId, setRemovingFieldId] = useState(null);
+  const [selectedFormId, setSelectedFormId] = useState(null);
+  const [selectedForm, setSelectedForm] = useState(null);
+  const [channelLeads, setChannelLeads] = useState([]);
+  const [channelLeadsLoading, setChannelLeadsLoading] = useState(false);
+  const [showLeadsModal, setShowLeadsModal] = useState(false);
+  const [leadImagePreview, setLeadImagePreview] = useState(null);
+  const [selectedLeadIds, setSelectedLeadIds] = useState([]);
+  const [lastClickedLeadIndex, setLastClickedLeadIndex] = useState(null);
+  const [savingContacts, setSavingContacts] = useState(false);
+  const [saveContactsFeedback, setSaveContactsFeedback] = useState(null);
+
+  const fetchSettings = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/lead-capture-forms/settings`, { headers: getAuthHeader(), credentials: 'include' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) setSettings({ apiKeyPrefix: data.apiKeyPrefix ?? null, webhookUrl: data.webhookUrl ?? null });
+    } catch (_) {}
+    finally { setSettingsLoading(false); }
+  }, []);
+
+  /** 초기 로드: 목록+설정 한 번에 조회 (슬립 모드 시 왕복 1회로 체감 속도 개선) */
+  const fetchBootstrap = useCallback(async () => {
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE}/lead-capture-forms/bootstrap`, { headers: getAuthHeader(), credentials: 'include' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || '데이터를 불러올 수 없습니다.');
+      setItems(data.items || []);
+      setActiveCount(data.activeCount ?? 0);
+      setSettings({
+        apiKeyPrefix: data.settings?.apiKeyPrefix ?? null,
+        webhookUrl: data.settings?.webhookUrl ?? null
+      });
+    } catch (err) {
+      setError(err.message || '초기 데이터 조회 실패');
+      setItems([]);
+      setActiveCount(0);
+    } finally {
+      setLoading(false);
+      setSettingsLoading(false);
+    }
+  }, []);
+
+  const fetchCustomFields = useCallback(async (formId) => {
+    if (!formId) { setCustomFields([]); return; }
+    try {
+      const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=leadCapture&leadCaptureFormId=${encodeURIComponent(formId)}`, { headers: getAuthHeader(), credentials: 'include' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(data.items)) setCustomFields(data.items);
+      else setCustomFields([]);
+    } catch (_) { setCustomFields([]); }
+  }, []);
+
+  const fetchSelectedForm = useCallback(async (id) => {
+    if (!id) { setSelectedForm(null); return; }
+    try {
+      const res = await fetch(`${API_BASE}/lead-capture-forms/${id}`, { headers: getAuthHeader(), credentials: 'include' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data._id) setSelectedForm(data);
+      else setSelectedForm(null);
+    } catch (_) { setSelectedForm(null); }
+  }, []);
+
+  const fetchChannelLeads = useCallback(async (formId) => {
+    if (!formId) { setChannelLeads([]); return; }
+    setChannelLeadsLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/lead-capture-forms/${formId}/leads`, { headers: getAuthHeader(), credentials: 'include' });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(data.items)) setChannelLeads(data.items);
+      else setChannelLeads([]);
+    } catch (_) { setChannelLeads([]); }
+    finally { setChannelLeadsLoading(false); }
+  }, []);
+
+  const fetchList = useCallback(async () => {
+    try {
+      setError('');
+      const res = await fetch(`${API_BASE}/lead-capture-forms`, { headers: getAuthHeader(), credentials: 'include' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || '목록을 불러올 수 없습니다.');
+      setItems(data.items || []);
+      setActiveCount(data.activeCount ?? 0);
+    } catch (err) {
+      setError(err.message || '목록 조회 실패');
+      setItems([]);
+      setActiveCount(0);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchBootstrap();
+  }, [fetchBootstrap]);
+
+  useEffect(() => {
+    if (selectedFormId) {
+      fetchSelectedForm(selectedFormId);
+      fetchCustomFields(selectedFormId);
+      fetchChannelLeads(selectedFormId);
+    } else {
+      setSelectedForm(null);
+      setCustomFields([]);
+      setChannelLeads([]);
+    }
+  }, [selectedFormId, fetchSelectedForm, fetchCustomFields, fetchChannelLeads]);
+
+  useEffect(() => {
+    if (!showLeadsModal) return;
+    const onKey = (e) => { if (e.key === 'Escape') setShowLeadsModal(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showLeadsModal]);
+
+  useEffect(() => {
+    if (!leadImagePreview) return;
+    const onKey = (e) => { if (e.key === 'Escape') setLeadImagePreview(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [leadImagePreview]);
+
+  useEffect(() => {
+    setSelectedLeadIds([]);
+    setLastClickedLeadIndex(null);
+  }, [selectedFormId]);
+
+  const handleLeadCheckboxChange = useCallback((leadId, index, shiftKey) => {
+    const sid = String(leadId);
+    setSelectedLeadIds((prev) => {
+      const ids = channelLeads.map((l) => String(l._id));
+      const next = new Set(prev.map(String));
+      if (shiftKey && lastClickedLeadIndex != null) {
+        const from = Math.min(lastClickedLeadIndex, index);
+        const to = Math.max(lastClickedLeadIndex, index);
+        for (let i = from; i <= to; i++) if (ids[i]) next.add(ids[i]);
+      } else {
+        if (next.has(sid)) next.delete(sid);
+        else next.add(sid);
+      }
+      return Array.from(next);
+    });
+    setLastClickedLeadIndex(index);
+  }, [channelLeads, lastClickedLeadIndex]);
+
+  const handleSelectAllLeads = useCallback((checked) => {
+    if (checked) setSelectedLeadIds(channelLeads.map((l) => String(l._id)));
+    else setSelectedLeadIds([]);
+    setLastClickedLeadIndex(null);
+  }, [channelLeads]);
+
+  const handleSaveSelectedAsContacts = useCallback(async () => {
+    const ids = selectedLeadIds.map(String);
+    if (!ids.length) return;
+    const toSave = channelLeads.filter((l) => ids.includes(String(l._id)));
+    if (!toSave.length) return;
+    setSavingContacts(true);
+    setSaveContactsFeedback(null);
+    let success = 0;
+    let fail = 0;
+    for (const lead of toSave) {
+      try {
+        const cf = lead.customFields || {};
+        const phone = formatPhoneForSave(cf.phone ?? lead.phone ?? '');
+        const payload = {
+          name: (lead.name && String(lead.name).trim()) || '',
+          email: (lead.email && String(lead.email).trim()) || '',
+          phone,
+          companyName: (cf.company && String(cf.company).trim()) || '',
+          address: (cf.address && String(cf.address).trim()) || '',
+          status: 'Lead',
+          isIndividual: true
+        };
+        const res = await fetch(`${API_BASE}/customer-company-employees`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+          credentials: 'include',
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) {
+          const created = await res.json().catch(() => ({}));
+          const businessCard = cf.business_card;
+          const isImageUrl = typeof businessCard === 'string' && (businessCard.startsWith('data:image') || businessCard.startsWith('http'));
+          if (created._id && isImageUrl) {
+            try {
+              const blob = await imageUrlToBlob(businessCard);
+              if (blob) {
+                const formData = new FormData();
+                formData.append('image', blob, 'card.jpg');
+                const uploadRes = await fetch(`${API_BASE}/customer-company-employees/${created._id}/business-card`, {
+                  method: 'POST',
+                  headers: getAuthHeader(),
+                  credentials: 'include',
+                  body: formData
+                });
+                if (!uploadRes.ok) { /* 명함만 실패해도 연락처는 성공 */ }
+              }
+            } catch (_) { /* 명함 업로드 실패 시 무시 */ }
+          }
+          success++;
+        } else {
+          fail++;
+        }
+      } catch (_) {
+        fail++;
+      }
+    }
+    setSavingContacts(false);
+    setSaveContactsFeedback({ success, fail, total: toSave.length });
+    setSelectedLeadIds([]);
+    setLastClickedLeadIndex(null);
+    if (success > 0) setTimeout(() => setSaveContactsFeedback(null), 3000);
+  }, [selectedLeadIds, channelLeads]);
+
+  async function handleRegenerateApiKey() {
+    try {
+      const res = await fetch(`${API_BASE}/lead-capture-forms/regenerate-api-key`, {
+        method: 'POST',
+        headers: getAuthHeader(),
+        credentials: 'include'
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'API 키 발급에 실패했습니다.');
+      setNewApiKey(data.apiKey || '');
+      setShowApiKeyModal(true);
+      fetchSettings();
+    } catch (err) {
+      setError(err.message || 'API 키 재발급 실패');
+    }
+  }
+
+  async function handleCopyApiKey() {
+    if (!settings.apiKeyPrefix) return;
+    try {
+      const res = await fetch(`${API_BASE}/lead-capture-forms/reveal-api-key`, { headers: getAuthHeader(), credentials: 'include' });
+      const data = await res.json().catch(() => ({}));
+      const fullKey = res.ok && data.apiKey ? data.apiKey : null;
+      if (fullKey && copyToClipboard(fullKey)) {
+        setCopyFeedback((f) => ({ ...f, apiKey: true }));
+        setTimeout(() => setCopyFeedback((f) => ({ ...f, apiKey: false })), 1500);
+      } else {
+        setApiKeyCopyHint(true);
+        setTimeout(() => setApiKeyCopyHint(false), 4000);
+      }
+    } catch (_) {
+      setApiKeyCopyHint(true);
+      setTimeout(() => setApiKeyCopyHint(false), 4000);
+    }
+  }
+
+  function handleCopyWebhook() {
+    const url = selectedForm?.webhookUrl ?? settings.webhookUrl;
+    const text = webhookUrlForDisplay(url, BACKEND_BASE_URL) || url || '';
+    if (copyToClipboard(text)) {
+      setCopyFeedback((f) => ({ ...f, webhook: true }));
+      setTimeout(() => setCopyFeedback((f) => ({ ...f, webhook: false })), 1500);
+    }
+  }
+
+  function handleCopyNewApiKey() {
+    if (copyToClipboard(newApiKey)) {
+      setCopyFeedback((f) => ({ ...f, newKey: true }));
+      setTimeout(() => setCopyFeedback((f) => ({ ...f, newKey: false })), 1500);
+    }
+  }
+
+  function getEmbedSnippet() {
+    const rawUrl = selectedForm?.webhookUrl || '';
+    const formId = selectedForm?._id || '';
+    const fields = customFields || [];
+    if (!rawUrl) return '';
+    const url = (() => {
+      try {
+        const path = new URL(rawUrl).pathname || '';
+        if (!path) return rawUrl;
+        const base = (BACKEND_BASE_URL || '').replace(/\/$/, '');
+        return base ? base + path : rawUrl;
+      } catch (_) {
+        return rawUrl;
+      }
+    })();
+    const customKeysJson = JSON.stringify(fields.map((d) => d.key));
+    const customInputs = fields
+      .map((d) => {
+        const placeholder = (d.label || d.key || '').replace(/"/g, '&quot;');
+        const required = d.required ? ' required' : '';
+        const type = d.type === 'number' ? 'number' : d.type === 'date' ? 'date' : 'text';
+        return `  <input type="${type}" name="custom_${d.key}" placeholder="${placeholder}"${required} />`;
+      })
+      .join('\n');
+    return `<!-- 리드 캡처 임베드: 기본 필드 + 현재 빌더에 등록된 커스텀 필드 포함. YOUR_API_KEY를 실제 API 키로 바꾸세요. -->
+<form id="lead-capture-form" style="display:flex;flex-direction:column;gap:0.5rem;max-width:320px;">
+  <input type="text" name="name" placeholder="이름" required />
+  <input type="number" name="phone" placeholder="연락처" />
+  <input type="email" name="email" placeholder="이메일" required />
+  <input type="text" name="company" placeholder="회사명" />
+  <input type="text" name="address" placeholder="회사 주소" />
+  <input type="file" name="business_card" accept="image/*,.pdf" aria-label="명함" />
+${customInputs}
+  <button type="submit">제출</button>
+</form>
+<script>
+(function() {
+  var form = document.getElementById('lead-capture-form');
+  if (!form) return;
+  var customKeys = ${customKeysJson};
+  form.addEventListener('submit', function(e) {
+    e.preventDefault();
+    var fd = new FormData(form);
+    var customFieldsObj = {};
+    ['phone', 'company', 'address'].forEach(function(k) {
+      var v = fd.get(k);
+      if (v !== null && v !== undefined && v !== '') customFieldsObj[k] = v;
+    });
+    var fileInput = form.querySelector('input[name="business_card"]');
+    if (fileInput && fileInput.files && fileInput.files[0]) {
+      var reader = new FileReader();
+      reader.onload = function() {
+        customFieldsObj.business_card = reader.result;
+        sendBody(customFieldsObj);
+      };
+      reader.readAsDataURL(fileInput.files[0]);
+    } else {
+      sendBody(customFieldsObj);
+    }
+    function sendBody(extra) {
+      customKeys.forEach(function(k) {
+        var v = fd.get('custom_' + k);
+        if (v !== null && v !== undefined && v !== '') extra[k] = v;
+      });
+      var body = { name: fd.get('name'), email: fd.get('email'), formId: '${formId}', customFields: extra };
+      fetch('${url}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer YOUR_API_KEY' },
+        body: JSON.stringify(body)
+      }).then(function(r) { return r.ok ? alert('등록되었습니다.') : r.json(); })
+        .then(function(d) { if (d && d.error) alert(d.error); })
+        .catch(function() { alert('전송에 실패했습니다.'); });
+    }
+  });
+})();
+</script>`;
+  }
+
+  function handleCopyEmbedCode() {
+    const snippet = getEmbedSnippet();
+    if (!snippet || !copyToClipboard(snippet)) return;
+    setCopyFeedback((f) => ({ ...f, embedCode: true }));
+    setTimeout(() => setCopyFeedback((f) => ({ ...f, embedCode: false })), 1500);
+  }
+
+  function handleCopyFormId(row) {
+    const id = row._id || '';
+    if (copyToClipboard(id)) {
+      setCopyFeedback((f) => ({ ...f, formId: row._id }));
+      setTimeout(() => setCopyFeedback((f) => ({ ...f, formId: null })), 2000);
+    }
+  }
+
+  async function handleRemoveCustomField(def) {
+    if (!window.confirm(`"${def.label}" 필드를 제거할까요?`)) return;
+    setRemovingFieldId(def._id);
+    try {
+      const res = await fetch(`${API_BASE}/custom-field-definitions/${def._id}`, {
+        method: 'DELETE',
+        headers: getAuthHeader(),
+        credentials: 'include'
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '제거에 실패했습니다.');
+      }
+      fetchCustomFields(selectedFormId);
+    } catch (err) {
+      setError(err.message || '필드 제거 실패');
+    } finally {
+      setRemovingFieldId(null);
+    }
+  }
+
+  function openCreate() {
+    setEditingForm(null);
+    setModalOpen(true);
+  }
+
+  function openEdit(form) {
+    setEditingForm(form);
+    setModalOpen(true);
+  }
+
+  async function handleDelete(form) {
+    if (!window.confirm(`"${form.name}" 캡처 폼을 삭제할까요?`)) return;
+    try {
+      const res = await fetch(`${API_BASE}/lead-capture-forms/${form._id}`, {
+        method: 'DELETE',
+        headers: getAuthHeader(),
+        credentials: 'include'
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '삭제에 실패했습니다.');
+      }
+      if (selectedFormId === form._id) {
+        setSelectedFormId(null);
+        setSelectedForm(null);
+      }
+      fetchList();
+    } catch (err) {
+      setError(err.message || '삭제 실패');
+    }
+  }
+
+  function handleSaved(created) {
+    fetchList();
+    if (created && created._id) {
+      setSelectedFormId(created._id);
+      if (created.webhookUrl != null) setSelectedForm(created);
+      else fetchSelectedForm(created._id);
+    }
+  }
+
+  return (
+    <div className="page lead-capture-page">
+      <header className="page-header lead-capture-header">
+        <div className="lead-capture-header-text">
+          <h1 className="page-title">리드 캡처</h1>
+          <p className="lead-capture-subtitle">폼 및 API 연동을 설정하여 유입 리드를 수집합니다. (현재 로그인한 회사 기준)</p>
+        </div>
+        <button type="button" className="lead-capture-create-btn" onClick={openCreate}>
+          <span className="material-symbols-outlined">add</span>
+          새 캡처 폼 만들기
+        </button>
+      </header>
+
+      <div className="page-content lead-capture-content">
+        {error && (
+          <div className="lead-capture-error-banner">
+            {error}
+            <button type="button" onClick={() => setError('')} aria-label="닫기">
+              <span className="material-symbols-outlined">close</span>
+            </button>
+          </div>
+        )}
+
+        <section className="lead-capture-card lead-capture-table-card">
+          <div className="lead-capture-card-head">
+            <h2 className="lead-capture-card-title">캡처 채널</h2>
+            <span className="lead-capture-card-meta">활성 폼 {activeCount}개</span>
+          </div>
+          <p className="lead-capture-channel-hint">
+            사이트·캠페인마다 폼을 하나씩 만든 뒤, 행을 클릭하면 해당 채널을 선택합니다. 폼 ID·웹훅 URL은 선택한 채널의 외부 연동·API 문서에서 확인할 수 있습니다.
+          </p>
+          <div className="lead-capture-table-wrap">
+            {loading ? (
+              <p className="lead-capture-loading">불러오는 중…</p>
+            ) : (
+              <table className="lead-capture-table">
+                <thead>
+                  <tr>
+                    <th>폼 이름</th>
+                    <th>상태</th>
+                    <th>소스</th>
+                    <th>총 리드</th>
+                    <th>최근 활동</th>
+                    <th className="lead-capture-th-action">삭제</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {items.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="lead-capture-empty-cell">
+                        등록된 캡처 폼이 없습니다. 새 캡처 폼 만들기를 눌러 추가하세요.
+                      </td>
+                    </tr>
+                  ) : (
+                    items.map((row) => (
+                      <tr
+                        key={row._id}
+                        className={selectedFormId === row._id ? 'lead-capture-table-row-selected' : ''}
+                        onClick={() => setSelectedFormId(row._id)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedFormId(row._id); } }}
+                      >
+                        <td className="lead-capture-cell-name">{row.name}</td>
+                        <td>
+                          <span className={`lead-capture-status-badge ${row.status === 'active' ? 'active' : 'inactive'}`}>
+                            <span className="lead-capture-status-dot" />
+                            {row.status === 'active' ? '활성' : '비활성'}
+                          </span>
+                        </td>
+                        <td className="lead-capture-cell-source">{row.source || '—'}</td>
+                        <td className="lead-capture-cell-count">{(row.totalLeads ?? 0).toLocaleString()}</td>
+                        <td className="lead-capture-cell-activity">{formatLastActivity(row.lastActivityAt)}</td>
+                        <td className="lead-capture-cell-action">
+                          <button
+                            type="button"
+                            className="lead-capture-delete-btn"
+                            aria-label="삭제"
+                            onClick={(e) => { e.stopPropagation(); handleDelete(row); }}
+                          >
+                            <span className="material-symbols-outlined">delete</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </section>
+
+        {!selectedFormId ? (
+          <section className="lead-capture-card lead-capture-placeholder-card">
+            <p className="lead-capture-placeholder-text">캡처 채널을 선택하면 해당 채널의 리드 캡처 빌더, 외부 연동(API 키·웹훅 URL), API 문서가 여기에 표시됩니다.</p>
+          </section>
+        ) : (
+        <>
+        <div className="lead-capture-grid">
+          <section className="lead-capture-main">
+            <div className="lead-capture-card">
+              <div className="lead-capture-card-head lead-capture-builder-head">
+                <div>
+                  <h2 className="lead-capture-card-title">리드 캡처 빌더</h2>
+                  <p className="lead-capture-card-desc">이 채널 전용 수집 필드를 설정합니다.</p>
+                </div>
+                <button type="button" className="lead-capture-outline-btn lead-capture-add-field-btn" onClick={() => setShowCustomFieldsModal(true)}>
+                  <span className="material-symbols-outlined">add</span>
+                  커스텀 필드 추가
+                </button>
+              </div>
+              <div className="lead-capture-fields-grid">
+                {DEFAULT_FIELDS.map((field, idx) => (
+                  <div key={`default-${idx}`} className="lead-capture-field-card">
+                    <div className="lead-capture-field-icon-wrap">
+                      <span className="material-symbols-outlined">{field.icon}</span>
+                    </div>
+                    <div className="lead-capture-field-info">
+                      <h3 className="lead-capture-field-label">{field.label}</h3>
+                      <p className="lead-capture-field-meta">{field.meta}</p>
+                    </div>
+                    <span className="material-symbols-outlined lead-capture-drag-icon">drag_indicator</span>
+                  </div>
+                ))}
+                {customFields.map((def) => (
+                  <div key={def._id} className="lead-capture-field-card lead-capture-field-card-custom">
+                    <div className="lead-capture-field-icon-wrap">
+                      <span className="material-symbols-outlined">tune</span>
+                    </div>
+                    <div className="lead-capture-field-info">
+                      <h3 className="lead-capture-field-label">{def.label}</h3>
+                      <p className="lead-capture-field-meta">{typeToMeta(def.type, def.required)}</p>
+                    </div>
+                    <span className="material-symbols-outlined lead-capture-drag-icon">drag_indicator</span>
+                    <button
+                      type="button"
+                      className="lead-capture-field-remove-btn"
+                      onClick={() => handleRemoveCustomField(def)}
+                      disabled={removingFieldId === def._id}
+                      aria-label={`${def.label} 제거`}
+                      title={removingFieldId === def._id ? '제거 중…' : '제거하기'}
+                    >
+                      <span className="material-symbols-outlined">{removingFieldId === def._id ? 'hourglass_empty' : 'delete'}</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="lead-capture-cta-card">
+              <div className="lead-capture-cta-bg-icon">
+                <span className="material-symbols-outlined">integration_instructions</span>
+              </div>
+              <div className="lead-capture-cta-text">
+                <h3 className="lead-capture-cta-title">커스텀 폼 UI를 만들까요?</h3>
+                <p className="lead-capture-cta-desc">아래 API 문서의 웹훅 URL과 formId는 이 채널에 맞게 자동 입력됩니다. 리드 캡처 빌더에 추가한 커스텀 필드도 임베드 코드에 포함되어 복사됩니다.</p>
+              </div>
+              <button
+                type="button"
+                className="lead-capture-cta-btn"
+                onClick={handleCopyEmbedCode}
+                disabled={!selectedForm?.webhookUrl}
+              >
+                <span className="material-symbols-outlined">{copyFeedback.embedCode ? 'check' : 'code'}</span>
+                {copyFeedback.embedCode ? '임베드 코드 복사됨' : '임베드 코드 복사'}
+              </button>
+            </div>
+          </section>
+
+          <aside className="lead-capture-sidebar">
+            <div className="lead-capture-card">
+              <h2 className="lead-capture-card-title">외부 연동</h2>
+              <div className="lead-capture-integration">
+                <label className="lead-capture-label">
+                  API 키
+                  <span className="lead-capture-label-action" onClick={handleRegenerateApiKey} role="button" tabIndex={0}>재발급</span>
+                </label>
+                <div className="lead-capture-input-wrap">
+                  <input
+                    type="password"
+                    className="lead-capture-input"
+                    readOnly
+                    value={settingsLoading ? '불러오는 중…' : (settings.apiKeyPrefix ? settings.apiKeyPrefix + '••••••••••••••••' : '미발급 (재발급 클릭)')}
+                  />
+                  <button type="button" className="lead-capture-copy-btn" aria-label="API 키 접두사 복사" onClick={handleCopyApiKey} disabled={!settings.apiKeyPrefix}>
+                    <span className="material-symbols-outlined">{copyFeedback.apiKey ? 'check' : 'content_copy'}</span>
+                  </button>
+                </div>
+                {apiKeyCopyHint && (
+                  <p className="lead-capture-hint lead-capture-hint-emphasis">전체 키를 복사하려면 재발급을 한 번 해주세요. (재발급 후에는 복사 시 전체 키가 복사됩니다)</p>
+                )}
+                <p className="lead-capture-hint">랜딩·설문에서 요청 시 이 키로 인증합니다.</p>
+                <label className="lead-capture-label">웹훅 URL (이 채널 전용)</label>
+                <div className="lead-capture-input-wrap">
+                  <input
+                    type="text"
+                    className="lead-capture-input"
+                    readOnly
+                    value={selectedForm?.webhookUrl != null
+                      ? (webhookUrlForDisplay(selectedForm.webhookUrl, BACKEND_BASE_URL) || selectedForm.webhookUrl)
+                      : (settingsLoading ? '…' : (webhookUrlForDisplay(settings.webhookUrl, BACKEND_BASE_URL) || settings.webhookUrl || '—'))}
+                  />
+                  <button type="button" className="lead-capture-copy-btn" aria-label="복사" onClick={handleCopyWebhook} disabled={!(selectedForm?.webhookUrl ?? settings.webhookUrl)}>
+                    <span className="material-symbols-outlined">{copyFeedback.webhook ? 'check' : 'content_copy'}</span>
+                  </button>
+                </div>
+                <p className="lead-capture-hint">백엔드: {BACKEND_BASE_URL}</p>
+                <p className="lead-capture-hint">Typeform, Facebook 리드 등 서드파티에 이 URL을 설정하세요.</p>
+                <button type="button" className="lead-capture-test-btn">연동 테스트</button>
+              </div>
+            </div>
+            <div className="lead-capture-card">
+              <h2 className="lead-capture-card-title">퀵 스탯</h2>
+              <div className="lead-capture-stats">
+                <div className="lead-capture-stat-row">
+                  <span className="lead-capture-stat-label">캡처율</span>
+                  <span className="lead-capture-stat-value">24.2%</span>
+                </div>
+                <div className="lead-capture-stat-row">
+                  <span className="lead-capture-stat-label">주요 소스</span>
+                  <span className="lead-capture-stat-value">Direct (45%)</span>
+                </div>
+                <div className="lead-capture-stat-row">
+                  <span className="lead-capture-stat-label">무효 리드</span>
+                  <span className="lead-capture-stat-value">12 (0.4%)</span>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
+
+        {selectedForm && (
+          <section className="lead-capture-card lead-capture-api-doc-inline-wrap">
+            <LeadCaptureApiDocModal
+              inline
+              backendBaseUrl={BACKEND_BASE_URL}
+              webhookUrl={selectedForm.webhookUrl}
+              formId={selectedForm._id}
+              customFields={customFields}
+            />
+          </section>
+        )}
+
+        <section className="lead-capture-card lead-capture-leads-card">
+          <div className="lead-capture-card-head lead-capture-builder-head">
+            <div>
+              <h2 className="lead-capture-card-title">수신된 리드</h2>
+            </div>
+            <div className="lead-capture-leads-actions">
+              {selectedLeadIds.length > 0 && (
+                <button
+                  type="button"
+                  className="lead-capture-outline-btn lead-capture-save-contacts-btn"
+                  onClick={handleSaveSelectedAsContacts}
+                  disabled={savingContacts}
+                >
+                  {savingContacts ? '저장 중…' : '연락처 저장'}
+                </button>
+              )}
+              <button
+                type="button"
+                className="lead-capture-outline-btn lead-capture-fullview-btn"
+                onClick={() => setShowLeadsModal(true)}
+                disabled={channelLeadsLoading || channelLeads.length === 0}
+              >
+                전체보기
+                <span className="material-symbols-outlined">arrow_forward</span>
+              </button>
+            </div>
+          </div>
+          {saveContactsFeedback && (
+            <p className="lead-capture-save-feedback">
+              연락처 저장: {saveContactsFeedback.success}건 성공{saveContactsFeedback.fail > 0 ? `, ${saveContactsFeedback.fail}건 실패` : ''}
+            </p>
+          )}
+          <div className="lead-capture-leads-wrap">
+            {channelLeadsLoading ? (
+              <p className="lead-capture-loading">불러오는 중…</p>
+            ) : (
+              <table className="lead-capture-table lead-capture-leads-table">
+                <thead>
+                  <tr>
+                    <th className="lead-capture-th-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={channelLeads.length > 0 && selectedLeadIds.length === channelLeads.length && channelLeads.every((l) => selectedLeadIds.includes(String(l._id)))}
+                        onChange={(e) => handleSelectAllLeads(e.target.checked)}
+                        aria-label="전체 선택"
+                      />
+                    </th>
+                    <th>회사명</th>
+                    <th>이름</th>
+                    <th>연락처</th>
+                    <th>이메일</th>
+                    <th>명함</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {channelLeads.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="lead-capture-empty-cell">
+                        이 채널로 수신된 리드가 없습니다. 웹훅으로 제출되면 여기에 표시됩니다.
+                      </td>
+                    </tr>
+                  ) : (
+                    channelLeads.slice(0, 5).map((lead, idx) => {
+                      const cf = lead.customFields || {};
+                      const businessCard = cf.business_card;
+                      const isImageUrl = typeof businessCard === 'string' && (businessCard.startsWith('data:image') || businessCard.startsWith('http'));
+                      const isSelected = selectedLeadIds.includes(String(lead._id));
+                      return (
+                        <tr key={lead._id}>
+                          <td className="lead-capture-td-checkbox">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleLeadCheckboxChange(lead._id, idx, false)}
+                              onClick={(e) => {
+                                if (e.shiftKey) {
+                                  e.preventDefault();
+                                  handleLeadCheckboxChange(lead._id, idx, true);
+                                }
+                              }}
+                              aria-label={`${lead.name || '리드'} 선택`}
+                            />
+                          </td>
+                          <td>{cf.company || '—'}</td>
+                          <td className="lead-capture-cell-name">{lead.name}</td>
+                          <td>{cf.phone || '—'}</td>
+                          <td>{lead.email}</td>
+                          <td>
+                            {businessCard ? (
+                              isImageUrl ? (
+                                <button type="button" className="lead-capture-view-image-btn" onClick={() => setLeadImagePreview(businessCard)} aria-label="보기">
+                                  <span className="material-symbols-outlined">visibility</span>
+                                </button>
+                              ) : (
+                                <span className="lead-capture-cell-custom">첨부됨</span>
+                              )
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            )}
+          </div>
+          {!channelLeadsLoading && channelLeads.length > 5 && (
+            <p className="lead-capture-leads-more">최근 5건만 표시됩니다. 전체보기에서 나머지 리스트를 확인하세요.</p>
+          )}
+        </section>
+        </>
+        )}
+      </div>
+
+      {modalOpen && (
+        <LeadCaptureFormModal
+          form={editingForm}
+          onClose={() => { setModalOpen(false); setEditingForm(null); }}
+          onSaved={handleSaved}
+        />
+      )}
+
+      {showApiKeyModal && (
+        <div className="lead-capture-api-key-modal-overlay" role="dialog" aria-modal="true">
+          <div className="lead-capture-api-key-modal-box" onClick={(e) => e.stopPropagation()}>
+            <div className="lead-capture-api-key-modal-header">
+              <h3 className="lead-capture-api-key-modal-title">API 키가 발급되었습니다</h3>
+              <button type="button" className="lead-capture-form-modal-close" onClick={() => { setShowApiKeyModal(false); setNewApiKey(''); }} aria-label="닫기">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <p className="lead-capture-api-key-modal-hint">아래 키를 복사해 두세요. 이 창을 닫으면 다시 볼 수 없습니다.</p>
+            <div className="lead-capture-api-key-modal-input-wrap">
+              <input type="text" className="lead-capture-api-key-modal-input" readOnly value={newApiKey} />
+              <button type="button" className="lead-capture-api-key-modal-copy" onClick={handleCopyNewApiKey}>
+                {copyFeedback.newKey ? '복사됨' : '복사'}
+              </button>
+            </div>
+            <div className="lead-capture-api-key-modal-actions">
+              <button type="button" className="lead-capture-form-modal-btn lead-capture-form-modal-btn-save" onClick={() => { setShowApiKeyModal(false); setNewApiKey(''); }}>
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCustomFieldsModal && selectedFormId && (
+        <CustomFieldsManageModal
+          entityType="leadCapture"
+          leadCaptureFormId={selectedFormId}
+          onClose={() => setShowCustomFieldsModal(false)}
+          onFieldAdded={() => fetchCustomFields(selectedFormId)}
+          apiBase={API_BASE}
+          getAuthHeader={getAuthHeader}
+        />
+      )}
+
+      {leadImagePreview && (
+        <div className="lead-capture-image-preview-overlay" role="dialog" aria-modal="true" aria-label="명함 이미지" onClick={() => setLeadImagePreview(null)}>
+          <button type="button" className="lead-capture-image-preview-close" onClick={() => setLeadImagePreview(null)} aria-label="닫기">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+          <img src={leadImagePreview} alt="명함" className="lead-capture-image-preview-img" onClick={(e) => e.stopPropagation()} />
+        </div>
+      )}
+
+      <LeadCaptureLeadsModal
+        open={showLeadsModal}
+        onClose={() => setShowLeadsModal(false)}
+        channelLeads={channelLeads}
+        selectedLeadIds={selectedLeadIds}
+        onLeadCheckboxChange={handleLeadCheckboxChange}
+        onSelectAllLeads={handleSelectAllLeads}
+        onPreviewImage={setLeadImagePreview}
+        onSaveContacts={handleSaveSelectedAsContacts}
+        savingContacts={savingContacts}
+      />
+
+      
+    </div>
+  );
+}

@@ -1,0 +1,21 @@
+User에서 몇가지 개발을 해볼까 합니다.
+
+01. 유저 안에 스키마를 개발하려합니다.
+
+02. 템플릿이라는 스키마를 개발할 예정입니다.
+
+03. customer-company-employees.js , customer-companies.js product-list.js에서 나오는 리스트를 각각 커스터마이징 하길 원합니다!
+
+04. 별도의 작업이 없으면 현재 값을 그대로 사용하게끔 합니다.
+
+05. 드래그앤 드롭으로 움직여서 열의 순서를 바꾸면 User의 스키마에 해당 순서가 적용이되고 그에 맞게 열들의 값도 바뀌게 합니다.
+
+06. 나중에 다시 로그인 하여 확인하였을때 똑같이 나타나게 합니다.
+
+07. 우측 상단 chat_bubble 오른쪽에 톱니바퀴 모양아이콘을 클릭하여 customer-company-employees.js , customer-companies.js product-list.js에 있는 각각의 필드를 보이게 하거나 숨기게하기도 하게끔 부탁합니다.
+
+08.  customer-company-employees.js , customer-companies.js product-list.js 모두 검색에 모든 필드가 다 검색되게끔 해주세요
+
+
+
+

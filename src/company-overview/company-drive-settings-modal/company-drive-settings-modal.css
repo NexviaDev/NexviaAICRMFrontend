@@ -1,0 +1,140 @@
+.company-drive-settings-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(29, 40, 58, 0.4);
+  backdrop-filter: blur(4px);
+  z-index: 100;
+  animation: companyDriveSettingsOverlayIn 0.2s ease-out;
+}
+
+@keyframes companyDriveSettingsOverlayIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.company-drive-settings-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 101;
+  width: 100%;
+  max-width: 28rem;
+  background: var(--card);
+  border-radius: 0.75rem;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--card-border);
+  animation: companyDriveSettingsModalIn 0.2s ease-out;
+}
+
+@keyframes companyDriveSettingsModalIn {
+  from { opacity: 0; transform: translate(-50%, -48%); }
+  to { opacity: 1; transform: translate(-50%, -50%); }
+}
+
+.company-drive-settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.company-drive-settings-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.company-drive-settings-title .material-symbols-outlined {
+  font-size: 1.25rem;
+  color: var(--primary);
+}
+
+.company-drive-settings-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  border-radius: 0.5rem;
+}
+
+.company-drive-settings-close:hover {
+  background: var(--bg-light);
+  color: var(--text);
+}
+
+.company-drive-settings-body {
+  padding: 1.25rem 1.25rem 1.5rem;
+}
+
+.company-drive-settings-hint {
+  margin: 0 0 1rem;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.company-drive-settings-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.company-drive-settings-input {
+  flex: 1;
+  min-width: 12rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9375rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: #fff;
+  color: var(--text);
+}
+
+.company-drive-settings-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.company-drive-settings-save {
+  padding: 0.5rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--primary);
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.company-drive-settings-save:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.company-drive-settings-save:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.company-drive-settings-error {
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--danger, #c53030);
+}
+
+.company-drive-settings-success {
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--success, #2d7a3e);
+}

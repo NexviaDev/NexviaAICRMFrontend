@@ -1,0 +1,487 @@
+.add-contact-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  animation: addContactOverlayIn 0.2s ease-out;
+}
+
+@keyframes addContactOverlayIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.add-contact-modal {
+  width: 100%;
+  max-width: 32rem;
+  max-height: 90vh;
+  background: var(--card);
+  border-radius: 0.75rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--card-border);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  animation: addContactModalIn 0.2s ease-out;
+}
+
+.add-contact-modal-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+@keyframes addContactModalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.add-contact-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.add-contact-modal-header h3 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.add-contact-modal-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  border-radius: 0.375rem;
+  transition: color 0.2s, background 0.2s;
+}
+
+.add-contact-modal-close:hover {
+  color: var(--text);
+  background: var(--bg-light);
+}
+
+.add-contact-modal-body {
+  padding: 1.5rem;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.add-contact-google-import {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.65rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text, #333);
+  background: var(--bg-light, #f8f9fa);
+  border: 1px dashed var(--card-border, #ddd);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.add-contact-google-import:hover {
+  background: #e8eaf6;
+  border-color: var(--primary, #5c6bc0);
+}
+
+.add-contact-google-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  object-fit: contain;
+}
+
+/* 대량 등록 진행 */
+.add-contact-bulk-progress {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 0.85rem;
+  margin-bottom: 1rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--primary, #5c6bc0);
+  background: var(--primary-pastel, #e8eaf6);
+  border-radius: 0.5rem;
+}
+
+.add-contact-bulk-spinner {
+  font-size: 1.1rem;
+  animation: bulkSpin 1s linear infinite;
+}
+
+@keyframes bulkSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* 대량 등록 결과 */
+.add-contact-bulk-result {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.85rem;
+  margin-bottom: 1rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--success, #22c55e);
+  background: rgba(34, 197, 94, 0.08);
+  border-radius: 0.5rem;
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.add-contact-bulk-result.has-fail {
+  color: var(--warning, #f59e0b);
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.2);
+}
+
+.add-contact-bulk-result .material-symbols-outlined {
+  font-size: 1.1rem;
+}
+
+.add-contact-bulk-result strong {
+  font-weight: 700;
+}
+
+.add-contact-bulk-dismiss {
+  margin-left: auto;
+  background: none;
+  border: none;
+  font-size: 1.1rem;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+  padding: 0 0.25rem;
+  line-height: 1;
+}
+
+.add-contact-bulk-dismiss:hover {
+  opacity: 1;
+}
+
+.add-contact-modal-error {
+  margin: 0 0 1rem;
+  padding: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--danger);
+  background: var(--pastel-peach);
+  border-radius: 0.375rem;
+}
+
+.add-contact-modal-field {
+  margin-bottom: 1rem;
+}
+
+.add-contact-modal-field:last-of-type {
+  margin-bottom: 0;
+}
+
+.add-contact-modal-field label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 0.375rem;
+}
+
+.add-contact-modal-field input:not([type="checkbox"]),
+.add-contact-modal-field select,
+.add-contact-modal-field textarea {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--text);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.add-contact-modal-field input[type="checkbox"] {
+  width: auto;
+}
+
+.add-contact-modal-field input:focus,
+.add-contact-modal-field select:focus,
+.add-contact-modal-field textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(91, 124, 153, 0.2);
+}
+
+.add-contact-modal-field select {
+  cursor: pointer;
+}
+
+.add-contact-modal-field textarea {
+  resize: vertical;
+  min-height: 4rem;
+}
+
+.add-contact-modal-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 400;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.add-contact-modal-checkbox input {
+  width: auto;
+  margin: 0;
+  cursor: pointer;
+}
+
+.add-contact-modal-field input::placeholder,
+.add-contact-modal-field textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.add-contact-company-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.add-contact-company-wrap input,
+.add-contact-company-display {
+  flex: 1;
+  min-width: 0;
+  font-size: 1rem;
+  color: var(--text);
+}
+.add-contact-company-display {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+.add-contact-company-search {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--primary);
+  border: none;
+  border-radius: 0.5rem;
+  transition: opacity 0.2s;
+}
+
+.add-contact-company-search:hover {
+  opacity: 0.9;
+}
+
+.add-contact-company-search .material-symbols-outlined {
+  font-size: 1.125rem;
+}
+
+.add-contact-company-search:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.add-contact-company-field {
+  position: relative;
+}
+
+.add-contact-modal-field-error {
+  margin: 0.25rem 0 0;
+  font-size: 0.75rem;
+  color: var(--danger);
+}
+
+.add-contact-company-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 0.25rem;
+  max-height: 12rem;
+  overflow-y: auto;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+  list-style: none;
+  padding: 0;
+  margin-bottom: 0;
+}
+
+.add-contact-company-dropdown-empty {
+  padding: 0.75rem 1rem;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.add-contact-company-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--card-border);
+  transition: background 0.15s;
+}
+
+.add-contact-company-dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.add-contact-company-dropdown-item:hover {
+  background: var(--bg-light);
+}
+
+.add-contact-company-dropdown-item .material-symbols-outlined {
+  font-size: 1.125rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.add-contact-company-dropdown-item-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.add-contact-company-dropdown-item-name {
+  font-weight: 500;
+  color: var(--text);
+}
+
+.add-contact-company-dropdown-item-sub {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.add-contact-modal-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 480px) {
+  .add-contact-modal-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.add-contact-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--card-border);
+  flex-shrink: 0;
+  background: var(--card);
+}
+
+.add-contact-modal-extra {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--primary);
+  background: var(--pastel-sky);
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.add-contact-modal-extra:hover {
+  opacity: 0.9;
+}
+
+.add-contact-modal-extra .material-symbols-outlined {
+  font-size: 1.125rem;
+}
+
+.add-contact-modal-footer-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.add-contact-modal-cancel {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  border-radius: 0.5rem;
+  transition: background 0.2s;
+}
+
+.add-contact-modal-cancel:hover {
+  background: var(--bg-light);
+}
+
+.add-contact-modal-save {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #fff;
+  background: var(--primary);
+  border: none;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: opacity 0.2s;
+}
+
+.add-contact-modal-save:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.add-contact-modal-save:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}

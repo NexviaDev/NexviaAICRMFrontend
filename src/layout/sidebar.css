@@ -1,0 +1,307 @@
+.sidebar {
+  width: 16rem;
+  min-height: 100vh;
+  background: #1a365d;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.sidebar-header {
+  padding: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.sidebar-logo {
+  width: 2.5rem;
+  height: 2.5rem;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-logo .material-symbols-outlined {
+  font-size: 1.5rem;
+}
+
+.sidebar-brand {
+  overflow: hidden;
+}
+
+.sidebar-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.sidebar-subtitle {
+  margin: 0.15rem 0 0;
+  font-size: 0.7rem;
+  opacity: 0.8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.sidebar-nav {
+  flex: 1;
+  padding: 0 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  overflow-y: auto;
+}
+
+.sidebar-nav-item {
+  display: flex;
+  align-items: stretch;
+  border-radius: 0.5rem;
+  transition: background 0.15s;
+}
+
+.sidebar-nav-item-drag-over {
+  background: rgba(255, 255, 255, 0.08);
+  outline: 1px dashed rgba(255, 255, 255, 0.3);
+  outline-offset: -1px;
+}
+
+.sidebar-nav-item-dragging .sidebar-link {
+  opacity: 0.6;
+}
+
+.sidebar-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.25rem;
+  cursor: grab;
+  color: rgba(255, 255, 255, 0.4);
+  flex-shrink: 0;
+}
+
+.sidebar-drag-handle:active {
+  cursor: grabbing;
+}
+
+.sidebar-drag-handle:hover {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.sidebar-drag-handle .material-symbols-outlined {
+  font-size: 1rem;
+}
+
+.sidebar-nav-item .sidebar-link {
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.5rem;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: background 0.2s, color 0.2s;
+  text-decoration: none;
+}
+
+.sidebar-link:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.sidebar-link.active {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.sidebar-link .material-symbols-outlined {
+  font-size: 1.25rem;
+}
+
+.sidebar-order-saving {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.sidebar-footer {
+  padding: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+}
+
+.sidebar-user-clickable {
+  text-decoration: none;
+  color: inherit;
+  transition: background 0.2s;
+}
+
+.sidebar-user-clickable:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-avatar {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: var(--pastel-sky);
+}
+
+.sidebar-user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar-user-name {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-user-role {
+  margin: 0.1rem 0 0;
+  font-size: 0.7rem;
+  opacity: 0.85;
+}
+
+.sidebar-logout {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 0.5rem;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.sidebar-logout:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.sidebar-logout .material-symbols-outlined {
+  font-size: 1.2rem;
+}
+
+/* 드로어 닫기 버튼 (드로어 열릴 때만 표시) */
+.sidebar-drawer-close {
+  display: none;
+  margin-left: auto;
+  padding: 0.35rem;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: 0.5rem;
+  color: #fff;
+  cursor: pointer;
+}
+
+.sidebar-drawer-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.sidebar-drawer-close .material-symbols-outlined {
+  font-size: 1.25rem;
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 16rem;
+    height: 100vh;
+    z-index: 1001;
+    transform: translateX(100%);
+    transition: transform 0.25s ease-out;
+    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.15);
+  }
+
+  .sidebar.sidebar-drawer-open {
+    transform: translateX(0);
+  }
+
+  .sidebar.sidebar-drawer-open .sidebar-drawer-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* 기본: 작은 화면에서 아이콘만 (드로어 닫혀 있을 때는 보이지 않음) */
+  .sidebar:not(.sidebar-drawer-open) {
+    pointer-events: none;
+    visibility: hidden;
+  }
+
+  .sidebar-brand,
+  .sidebar-link span:not(.material-symbols-outlined),
+  .sidebar-user-info,
+  .sidebar-logout span:last-child {
+    display: none;
+  }
+
+  .sidebar-logout {
+    justify-content: center;
+  }
+
+  .sidebar-drag-handle {
+    padding: 0 0.15rem;
+  }
+
+  .sidebar-nav-item .sidebar-link {
+    justify-content: center;
+    padding: 0.75rem;
+  }
+
+  /* 드로어 열렸을 때: 글자 포함 전체 메뉴 표시 */
+  .sidebar.sidebar-drawer-open {
+    pointer-events: auto;
+    visibility: visible;
+  }
+
+  .sidebar.sidebar-drawer-open .sidebar-brand,
+  .sidebar.sidebar-drawer-open .sidebar-link span:not(.material-symbols-outlined),
+  .sidebar.sidebar-drawer-open .sidebar-user-info,
+  .sidebar.sidebar-drawer-open .sidebar-logout span:last-child {
+    display: block;
+  }
+
+  .sidebar.sidebar-drawer-open .sidebar-user-info {
+    display: block;
+  }
+
+  .sidebar.sidebar-drawer-open .sidebar-logout {
+    justify-content: center;
+  }
+
+  .sidebar.sidebar-drawer-open .sidebar-nav-item .sidebar-link {
+    justify-content: flex-start;
+    padding: 0.6rem 0.75rem;
+  }
+}

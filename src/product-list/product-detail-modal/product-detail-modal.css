@@ -1,0 +1,402 @@
+.product-detail-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(29, 40, 58, 0.4);
+  backdrop-filter: blur(4px);
+  z-index: 50;
+  animation: productDetailOverlayIn 0.2s ease-out;
+}
+
+@keyframes productDetailOverlayIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.product-detail-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  max-width: 36rem;
+  background: var(--card);
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
+  border-left: 1px solid var(--card-border);
+  z-index: 51;
+  overflow: hidden;
+  animation: productDetailPanelIn 0.25s ease-out;
+}
+
+@keyframes productDetailPanelIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.product-detail-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.product-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--card-border);
+  background: var(--card);
+  flex-shrink: 0;
+}
+
+.product-detail-header-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.product-detail-header-title h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.product-detail-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.product-detail-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 0.5rem;
+  transition: background 0.2s, color 0.2s;
+}
+
+.product-detail-icon-btn:hover {
+  background: var(--bg-light);
+  color: var(--text);
+}
+
+.product-detail-icon-btn .material-symbols-outlined {
+  font-size: 1.25rem;
+}
+
+.product-detail-delete-btn:hover {
+  color: var(--danger) !important;
+  background: rgba(239, 68, 68, 0.08) !important;
+}
+
+/* 삭제 확인 배너 - contact-detail-modal과 동일한 디자인 */
+.product-detail-delete-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.85rem 1.25rem;
+  background: rgba(239, 68, 68, 0.06);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.15);
+}
+
+.product-detail-delete-confirm > .material-symbols-outlined {
+  font-size: 1.25rem;
+  color: var(--danger, #ef4444);
+}
+
+.product-detail-delete-confirm p {
+  flex: 1;
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text, #333);
+  line-height: 1.45;
+  min-width: 10rem;
+}
+
+.product-detail-delete-confirm-btns {
+  display: flex;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
+.product-detail-confirm-cancel,
+.product-detail-confirm-delete {
+  padding: 0.35rem 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.product-detail-confirm-cancel {
+  background: var(--bg-light, #f0f0f0);
+  color: var(--text-muted, #666);
+}
+
+.product-detail-confirm-delete {
+  background: var(--danger, #ef4444);
+  color: #fff;
+}
+
+.product-detail-confirm-delete:hover {
+  opacity: 0.9;
+}
+
+.product-detail-confirm-cancel:disabled,
+.product-detail-confirm-delete:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.product-detail-body {
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  flex: 1;
+}
+
+.product-detail-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1.25rem;
+  background: var(--bg-light);
+  border-radius: 0.75rem;
+  border: 1px solid var(--card-border);
+  margin-bottom: 1.5rem;
+}
+
+.product-detail-icon-wrap {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 0.75rem;
+  background: var(--pastel-sky);
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.product-detail-icon-wrap .material-symbols-outlined {
+  font-size: 1.5rem;
+}
+
+.product-detail-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.product-detail-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.product-detail-name {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.product-detail-status-badge {
+  display: inline-block;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 9999px;
+}
+
+.product-detail-status-badge.status-active {
+  background: var(--pastel-mint);
+  color: var(--success);
+}
+
+.product-detail-status-badge.status-eol {
+  background: var(--bg-light);
+  color: var(--text-muted);
+}
+
+.product-detail-status-badge.status-draft {
+  background: var(--pastel-lavender);
+  color: var(--primary);
+}
+
+.product-detail-uid {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.product-detail-section {
+  margin-bottom: 1.5rem;
+}
+
+.product-detail-section-title {
+  margin: 0 0 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.product-detail-dl {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.product-detail-dl-row {
+  display: flex;
+  align-items: baseline;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--card-border);
+  gap: 1rem;
+}
+
+.product-detail-dl-row:last-child {
+  border-bottom: none;
+}
+
+.product-detail-dl-row dt {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  flex: 0 0 6rem;
+}
+
+.product-detail-dl-row dd {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+/* ── 수정 폼 (오른쪽에서 슬라이드) ── */
+.product-detail-edit-form {
+  padding-top: 0.25rem;
+}
+
+.product-detail-edit-form-slide {
+  animation: productDetailEditSlideIn 0.28s ease-out;
+}
+
+@keyframes productDetailEditSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.product-detail-edit-error {
+  margin: 0 0 1rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--danger);
+  background: var(--pastel-peach);
+  border-radius: 0.375rem;
+}
+
+.product-detail-edit-field {
+  margin-bottom: 1rem;
+}
+
+.product-detail-edit-field label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 0.35rem;
+}
+
+.product-detail-edit-field label .required {
+  color: var(--danger);
+}
+
+.product-detail-edit-field input,
+.product-detail-edit-field select {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--text);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.product-detail-edit-field input:focus,
+.product-detail-edit-field select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(91, 124, 153, 0.2);
+}
+
+.product-detail-edit-row {
+  display: flex;
+  gap: 1rem;
+}
+
+.product-detail-edit-row .product-detail-edit-field {
+  flex: 1;
+}
+
+.product-detail-edit-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--card-border);
+}
+
+.product-detail-edit-cancel {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.product-detail-edit-cancel:hover {
+  background: var(--bg-light);
+}
+
+.product-detail-edit-save {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--primary);
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.product-detail-edit-save:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.product-detail-edit-save:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}

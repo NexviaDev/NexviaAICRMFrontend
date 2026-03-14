@@ -1,0 +1,48 @@
+/* Nexvia CRM - 파스텔 톤, 반응형 */
+:root {
+  --primary: #5b7c99;
+  --primary-dark: #3d5a73;
+  --bg-light: #f0f4f8;
+  --bg-dark: #1a2332;
+  --card: #ffffff;
+  --card-border: #e2e8f0;
+  --text: #334155;
+  --text-muted: #64748b;
+  --pastel-mint: #c5e8d6;
+  --pastel-lavender: #d4d4f0;
+  --pastel-peach: #f8e0d8;
+  --pastel-sky: #c8e4f5;
+  --success: #2d9d78;
+  --warning: #d97706;
+  --danger: #dc2626;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg-light);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+input, select, textarea {
+  font-family: inherit;
+}
