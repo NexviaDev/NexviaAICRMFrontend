@@ -10,11 +10,25 @@
   flex-direction: column;
   overflow: hidden;
   background: var(--bg-light);
+  margin-left: 16rem;
+  min-width: 0;
 }
 
 .app-main-content {
   flex: 1;
   overflow-y: auto;
+  min-height: 0;
+}
+
+/* 세일즈 현황: 전체창 높이 고정, 메인 영역 스크롤 없음 */
+.app-main-content--fullheight {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-main-content--fullheight > * {
+  flex: 1;
   min-height: 0;
 }
 
@@ -55,6 +69,10 @@
 }
 
 @media (max-width: 768px) {
+  .app-main {
+    margin-left: 0;
+  }
+
   .app-main-header {
     display: flex;
     justify-content: flex-end;

@@ -101,6 +101,10 @@ export default function RegisterSaleModal({
   const [contactName, setContactName] = useState(contactMode ? (initialContact?.name || '') : '');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [saleDate, setSaleDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
   const [documentRefs, setDocumentRefs] = useState([]);
   const [showCompanySearch, setShowCompanySearch] = useState(false);
   const [showContactSearch, setShowContactSearch] = useState(false);
@@ -192,6 +196,12 @@ export default function RegisterSaleModal({
         setDiscountValue(data.discountValue != null ? String(data.discountValue) : '');
         setTitle(data.title || '');
         setDescription(data.description || '');
+        if (data.saleDate || data.createdAt) {
+          const d = new Date(data.saleDate || data.createdAt);
+          if (!Number.isNaN(d.getTime())) {
+            setSaleDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`);
+          }
+        }
         setDocumentRefs(Array.isArray(data.documentRefs)
           ? data.documentRefs.map((url) => (typeof url === 'string' ? { url, name: '파일' } : { url: url?.url, name: url?.name || '파일' }))
           : []);
@@ -500,7 +510,8 @@ export default function RegisterSaleModal({
         value: finalValue,
         description: description.trim(),
         documentRefs: docRefsList,
-        driveFolderLink: linkToSave
+        driveFolderLink: linkToSave,
+        saleDate: saleDate ? `${saleDate}T12:00:00.000Z` : undefined
       };
       const url = isEditMode ? `${API_BASE}/sales-opportunities/${saleId}` : `${API_BASE}/sales-opportunities`;
       const method = isEditMode ? 'PATCH' : 'POST';
@@ -755,6 +766,17 @@ export default function RegisterSaleModal({
             />
           </div>
 
+          {/* 판매(수주) 일자 - 수정 가능 */}
+          <div className="register-sale-field">
+            <label>판매(수주) 일자</label>
+            <input
+              type="date"
+              className="register-sale-input"
+              value={saleDate}
+              onChange={(e) => setSaleDate(e.target.value)}
+            />
+          </div>
+
           {/* 설명 */}
           <div className="register-sale-field">
             <label>설명</label>
@@ -883,7 +905,9 @@ export default function RegisterSaleModal({
       {showProductSearch && (
         <ProductSearchModal
           onClose={() => setShowProductSearch(false)}
-          onSelect={(product) => {
+          onSelect={(products) => {
+            const product = Array.isArray(products) ? products[0] : products;
+            if (!product) return;
             setProductId(product._id);
             setProductName(product.name || '');
             setUnitPrice(product.price != null ? String(product.price) : '');

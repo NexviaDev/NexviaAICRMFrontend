@@ -17,6 +17,13 @@ function formatValue(value, currency) {
   return `${sym}${Number(value).toLocaleString()}`;
 }
 
+function formatDate(dateVal) {
+  if (!dateVal) return '—';
+  const d = new Date(dateVal);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+}
+
 /**
  * 제품 판매 현황 전체 보기 모달 (고객사 세부 / 연락처 세부 공용)
  * - items: 세일즈 기회 목록
@@ -25,7 +32,7 @@ function formatValue(value, currency) {
  * - onSelectItem: 행 클릭 시 해당 판매 기회 수정용 콜백 (RegisterSaleModal 수정 모드 열기 등)
  */
 export default function ProductSalesModal({ companyName, companyId, items, driveFolderLink, onClose, onAddSale, onSelectItem }) {
-  const list = items || [];
+  const list = (items || []).filter((row) => row.stage === 'Won');
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
@@ -84,6 +91,7 @@ export default function ProductSalesModal({ companyName, companyId, items, drive
                       <th>제품</th>
                       <th>제목</th>
                       <th>단계</th>
+                      <th>날짜</th>
                       <th>금액</th>
                       <th>담당자</th>
                     </tr>
@@ -110,6 +118,9 @@ export default function ProductSalesModal({ companyName, companyId, items, drive
                           <span className="product-sales-modal-stage-badge">
                             {STAGE_LABELS[row.stage] || row.stage}
                           </span>
+                        </td>
+                        <td className="product-sales-modal-cell-date">
+                          {formatDate(row.saleDate || row.createdAt)}
                         </td>
                         <td className="product-sales-modal-cell-value">
                           {formatValue(row.value, row.currency)}

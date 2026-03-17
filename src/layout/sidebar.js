@@ -1,6 +1,6 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { NavLink, useNavigate, Link } from 'react-router-dom';
-import { getSavedSidebarOrder, patchSidebarOrder } from '@/lib/list-templates';
+import { getSavedSidebarOrder, patchSidebarOrder, setSavedSidebarOrderLocally } from '@/lib/list-templates';
 import './sidebar.css';
 
 /** 메뉴 항목 정의 (추가 시 여기만 수정하면 되고, 저장된 순서와 병합됨). 아이콘은 중복 없이 구분되도록 지정. */
@@ -16,6 +16,7 @@ const MENU_ITEMS = [
   { to: '/email', icon: 'mail', label: '이메일' },
   { to: '/map', icon: 'map', label: '지도' },
   { to: '/todo-list', icon: 'check_box', label: '할 일' },
+  { to: '/chat', icon: 'chat', label: 'Chat' },
   { to: '/sales-pipeline', icon: 'view_kanban', label: '세일즈 현황' },
   { to: '/lead-capture', icon: 'ads_click', label: '리드 캡처' },
   { to: '/reports/sales', icon: 'bar_chart', label: '리포트' },
@@ -40,6 +41,17 @@ export default function Sidebar({ drawerOpen, onCloseDrawer }) {
   const [draggingTo, setDraggingTo] = useState(null);
   const [dragOverTo, setDragOverTo] = useState(null);
   const [savingOrder, setSavingOrder] = useState(false);
+  const draggedToRef = useRef(null);
+  const orderedItemsRef = useRef(orderedItems);
+
+  orderedItemsRef.current = orderedItems;
+
+  useEffect(() => {
+    const order = getSavedSidebarOrder();
+    if (order && order.length > 0) {
+      setOrderedItems(applyOrder(MENU_ITEMS, order));
+    }
+  }, []);
 
   const user = useMemo(() => {
     try {
@@ -52,6 +64,7 @@ export default function Sidebar({ drawerOpen, onCloseDrawer }) {
 
   const handleDragStart = useCallback((e, itemTo) => {
     e.stopPropagation();
+    draggedToRef.current = itemTo;
     setDraggingTo(itemTo);
     e.dataTransfer.setData('text/plain', itemTo);
     e.dataTransfer.effectAllowed = 'move';
@@ -59,6 +72,7 @@ export default function Sidebar({ drawerOpen, onCloseDrawer }) {
   }, []);
 
   const handleDragEnd = useCallback(() => {
+    draggedToRef.current = null;
     setDraggingTo(null);
     setDragOverTo(null);
   }, []);
@@ -76,15 +90,19 @@ export default function Sidebar({ drawerOpen, onCloseDrawer }) {
     if (!e.currentTarget.contains(e.relatedTarget)) setDragOverTo(null);
   }, []);
 
-  const handleNavDrop = useCallback((e) => {
+  const handleNavDrop = useCallback((e, explicitDropTargetTo) => {
     e.preventDefault();
     e.stopPropagation();
-    setDragOverTo(null);
     const row = e.target.closest?.('.sidebar-nav-item');
-    const dropTargetTo = row?.getAttribute?.('data-to');
-    const draggedTo = e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('application/x-sidebar-to');
+    const dropTargetTo =
+      explicitDropTargetTo ?? row?.getAttribute?.('data-to') ?? dragOverTo;
+    setDragOverTo(null);
+    const draggedTo =
+      draggedToRef.current ||
+      e.dataTransfer.getData('text/plain') ||
+      e.dataTransfer.getData('application/x-sidebar-to');
     if (!draggedTo || !dropTargetTo || draggedTo === dropTargetTo) return;
-    const current = orderedItems.map((i) => i.to);
+    const current = orderedItemsRef.current.map((i) => i.to);
     const fromIdx = current.indexOf(draggedTo);
     const toIdx = current.indexOf(dropTargetTo);
     if (fromIdx === -1 || toIdx === -1) return;
@@ -93,9 +111,10 @@ export default function Sidebar({ drawerOpen, onCloseDrawer }) {
     next.splice(toIdx, 0, draggedTo);
     const reordered = applyOrder(MENU_ITEMS, next);
     setOrderedItems(reordered);
+    setSavedSidebarOrderLocally(next);
     setSavingOrder(true);
     patchSidebarOrder(next).catch(() => {}).finally(() => setSavingOrder(false));
-  }, [orderedItems]);
+  }, [dragOverTo]);
 
   return (
     <aside className={`sidebar ${drawerOpen ? 'sidebar-drawer-open' : ''}`}>
@@ -129,6 +148,13 @@ export default function Sidebar({ drawerOpen, onCloseDrawer }) {
             key={item.to}
             data-to={item.to}
             className={`sidebar-nav-item ${draggingTo === item.to ? 'sidebar-nav-item-dragging' : ''} ${dragOverTo === item.to ? 'sidebar-nav-item-drag-over' : ''}`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              e.dataTransfer.dropEffect = 'move';
+              if (item.to !== draggingTo) setDragOverTo(item.to);
+            }}
+            onDrop={(e) => handleNavDrop(e, item.to)}
           >
             <span
               className="sidebar-drag-handle"

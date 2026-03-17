@@ -27,6 +27,13 @@ function getAuthHeader() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+/** 위치 API 옵션: 지하철·이동 시 정확도·실시간 반영용 (고정밀 + 캐시 미사용) */
+const GEOLOCATION_OPTIONS = {
+  enableHighAccuracy: true,  // GPS 우선 사용 → 실내/지하철에서도 가능한 한 정확도 향상
+  maximumAge: 0,             // 캐시 사용 안 함 → 미세한 실시간 이동 반영
+  timeout: 20000             // 첫 위치 대기 20초 (지하철/실내에서는 응답이 느릴 수 있음)
+};
+
 /** Google Maps 스크립트 비동기 로드 (loading=async + callback 권장 방식) */
 function loadGoogleMaps(onLoad) {
   if (!GOOGLE_MAPS_API_KEY) {
@@ -81,6 +88,8 @@ export default function Map() {
   const autocompleteRef = useRef(null);
   const markersRef = useRef([]);
   const myLocationMarkerRef = useRef(null);
+  const lastDisplayedPositionRef = useRef(null); // 부드러운 이동용: 마지막으로 그린 위치
+  const locationAnimationFrameRef = useRef(null); // 진행 중인 위치 애니메이션 취소용
   const searchPlaceMarkerRef = useRef(null);
   const markerLabelsRef = useRef([]); // 마커별 말주머니(업체명) InfoWindow 목록
   const initialViewAppliedRef = useRef(false); // 초기 뷰(내 위치/고객사)는 한 번만 적용 → 검색 후 화면이 덮어쓰이지 않도록
@@ -89,6 +98,8 @@ export default function Map() {
   const [searchPlaceLoading, setSearchPlaceLoading] = useState(false);
   const [showSearchPlaceMarker, setShowSearchPlaceMarker] = useState(false); // 구글 검색 장소 뱃지 표시 (검색 시 자동 켜짐)
   const [grayscaleMode, setGrayscaleMode] = useState(false); // 지도 흑백 모드
+  const [headingFollowOn, setHeadingFollowOn] = useState(false); // 기기 방향에 맞춰 지도 회전 (북이 항상 위가 아님)
+  const orientationHandlerRef = useRef(null);
 
   const fetchCompanies = useCallback(async () => {
     setLoading(true);
@@ -125,7 +136,8 @@ export default function Map() {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
       (pos) => setMyLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => {}
+      () => {},
+      GEOLOCATION_OPTIONS
     );
   }, []);
 
@@ -134,7 +146,8 @@ export default function Map() {
     if (!mapReady || !navigator.geolocation || myLocation) return;
     navigator.geolocation.getCurrentPosition(
       (pos) => setMyLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => {}
+      () => {},
+      GEOLOCATION_OPTIONS
     );
   }, [mapReady, myLocation]);
 
@@ -150,7 +163,8 @@ export default function Map() {
     if (watchIdRef.current != null) return;
     const watchId = navigator.geolocation.watchPosition(
       (pos) => setMyLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => alert('위치를 가져올 수 없습니다.')
+      () => alert('위치를 가져올 수 없습니다.'),
+      GEOLOCATION_OPTIONS
     );
     watchIdRef.current = watchId;
     setLiveLocationOn(true);
@@ -175,8 +189,64 @@ export default function Map() {
     startLiveLocation();
   }, [mapReady, liveLocationOn, startLiveLocation]);
 
+  // 기기 방향(나침반)에 맞춰 지도 회전 — 핸드폰에서 보는 방향이 위쪽
+  useEffect(() => {
+    if (!headingFollowOn || !mapInstanceRef.current) return;
+
+    const setMapHeading = (degrees) => {
+      const map = mapInstanceRef.current;
+      if (!map || typeof map.setHeading !== 'function') return;
+      let h = Number(degrees);
+      if (Number.isNaN(h)) return;
+      while (h < 0) h += 360;
+      while (h >= 360) h -= 360;
+      map.setHeading(h);
+    };
+
+    const onOrientation = (e) => {
+      const raw = e.webkitCompassHeading != null ? e.webkitCompassHeading : e.alpha;
+      if (raw == null || typeof raw !== 'number') return;
+      let h = raw;
+      while (h < 0) h += 360;
+      while (h >= 360) h -= 360;
+      setMapHeading(h);
+    };
+
+    orientationHandlerRef.current = onOrientation;
+    window.addEventListener('deviceorientation', onOrientation, { passive: true });
+
+    return () => {
+      window.removeEventListener('deviceorientation', onOrientation);
+      orientationHandlerRef.current = null;
+      if (mapInstanceRef.current && typeof mapInstanceRef.current.setHeading === 'function') {
+        mapInstanceRef.current.setHeading(0);
+      }
+    };
+  }, [headingFollowOn]);
+
+  const toggleHeadingFollow = useCallback(async () => {
+    if (headingFollowOn) {
+      setHeadingFollowOn(false);
+      return;
+    }
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      try {
+        const permission = await DeviceOrientationEvent.requestPermission();
+        if (permission !== 'granted') {
+          alert('방향 센서 사용이 허용되지 않았습니다. 설정에서 권한을 켜 주세요.');
+          return;
+        }
+      } catch (err) {
+        alert('방향 센서 권한을 요청할 수 없습니다. ' + (err.message || ''));
+        return;
+      }
+    }
+    setHeadingFollowOn(true);
+  }, [headingFollowOn]);
+
   useEffect(() => {
     return () => {
+      if (locationAnimationFrameRef.current != null) cancelAnimationFrame(locationAnimationFrameRef.current);
       if (watchIdRef.current != null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
       }
@@ -394,21 +464,45 @@ export default function Map() {
     };
   }, [mapReady, searchPlace, showSearchPlaceMarker]);
 
+  // 내 위치 마커 생성/갱신 — 갱신 시 부드럽게 이동 (카카오맵·티맵처럼 실시간 미세 이동 느낌)
   useEffect(() => {
     if (!mapReady || !mapInstanceRef.current || !window.google) return;
     if (!myLocation) {
+      lastDisplayedPositionRef.current = null;
+      if (locationAnimationFrameRef.current != null) cancelAnimationFrame(locationAnimationFrameRef.current);
       if (myLocationMarkerRef.current) {
         myLocationMarkerRef.current.setMap(null);
         myLocationMarkerRef.current = null;
       }
       return;
     }
-    if (myLocationMarkerRef.current) {
-      myLocationMarkerRef.current.setPosition({ lat: myLocation.lat, lng: myLocation.lng });
+    const target = { lat: myLocation.lat, lng: myLocation.lng };
+    const marker = myLocationMarkerRef.current;
+    if (marker) {
+      const from = lastDisplayedPositionRef.current ?? (() => {
+        const p = marker.getPosition();
+        return p ? { lat: p.lat(), lng: p.lng() } : target;
+      })();
+      lastDisplayedPositionRef.current = target;
+      if (locationAnimationFrameRef.current != null) cancelAnimationFrame(locationAnimationFrameRef.current);
+      const DURATION_MS = 450;
+      const start = performance.now();
+      const easeOutCubic = (t) => 1 - (1 - t) ** 3;
+      const tick = () => {
+        const elapsed = performance.now() - start;
+        const t = Math.min(1, elapsed / DURATION_MS);
+        const k = easeOutCubic(t);
+        const lat = from.lat + (target.lat - from.lat) * k;
+        const lng = from.lng + (target.lng - from.lng) * k;
+        if (myLocationMarkerRef.current) myLocationMarkerRef.current.setPosition({ lat, lng });
+        if (t < 1) locationAnimationFrameRef.current = requestAnimationFrame(tick);
+      };
+      locationAnimationFrameRef.current = requestAnimationFrame(tick);
       return;
     }
-    const marker = new window.google.maps.Marker({
-      position: { lat: myLocation.lat, lng: myLocation.lng },
+    lastDisplayedPositionRef.current = target;
+    const newMarker = new window.google.maps.Marker({
+      position: target,
       map: mapInstanceRef.current,
       title: '내 위치',
       icon: {
@@ -421,8 +515,8 @@ export default function Map() {
       },
       zIndex: 100
     });
-    myLocationMarkerRef.current = marker;
-    mapInstanceRef.current.panTo({ lat: myLocation.lat, lng: myLocation.lng });
+    myLocationMarkerRef.current = newMarker;
+    mapInstanceRef.current.panTo(target);
     mapInstanceRef.current.setZoom(15); // 내 위치 주변으로 확대 (약 2~3km)
   }, [mapReady, myLocation]);
 
@@ -481,7 +575,8 @@ export default function Map() {
           mapInstanceRef.current.setZoom(15); // 내 위치 주변으로 확대
         }
       },
-      () => alert('위치를 가져올 수 없습니다.')
+      () => alert('위치를 가져올 수 없습니다.'),
+      GEOLOCATION_OPTIONS
     );
   };
 
@@ -548,6 +643,15 @@ export default function Map() {
                 title={grayscaleMode ? '지도 컬러 모드로 전환' : '지도 흑백 모드로 전환'}
               >
                 <span className="material-symbols-outlined">tonality</span>
+              </button>
+              <button
+                type="button"
+                className={`map-ctrl-btn map-ctrl-btn-circle ${headingFollowOn ? 'active' : ''}`}
+                onClick={toggleHeadingFollow}
+                aria-label={headingFollowOn ? '방향 따라 회전 끄기 (북쪽 위)' : '방향 따라 회전 켜기'}
+                title={headingFollowOn ? '방향 따라 회전 끄기 (북쪽이 항상 위)' : '방향 따라 회전 켜기 (보는 방향이 위, 핸드폰 권장)'}
+              >
+                <span className="material-symbols-outlined">explore</span>
               </button>
             </div>
           </div>

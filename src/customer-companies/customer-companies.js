@@ -17,6 +17,21 @@ const MODAL_PARAM = 'modal';
 const MODAL_ADD_COMPANY = 'add-company';
 const MODAL_DETAIL = 'detail';
 const DETAIL_ID_PARAM = 'id';
+const PAGE_SIZE = 20;
+
+/** 페이지네이션에 표시할 번호 목록 (현재 페이지 주변 + 첫/끝, 생략은 '...') */
+function getPageNumbers(current, total) {
+  if (total <= 0) return [];
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages = new Set([1, total, current, current - 1, current + 1].filter((p) => p >= 1 && p <= total));
+  const sorted = [...pages].sort((a, b) => a - b);
+  const result = [];
+  for (let i = 0; i < sorted.length; i++) {
+    if (i > 0 && sorted[i] - sorted[i - 1] > 1) result.push('...');
+    result.push(sorted[i]);
+  }
+  return result;
+}
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -33,11 +48,23 @@ function formatBusinessNumber(num) {
 
 const LIST_ID = LIST_IDS.CUSTOMER_COMPANIES;
 
-function cellValue(row, key) {
+const CUSTOM_FIELDS_PREFIX = 'customFields.';
+/** @param {Record<string, string>} [assigneeIdToName] - userId → 이름 (목록 담당자 셀 표시용) */
+function cellValue(row, key, assigneeIdToName = {}) {
   if (key === 'name') return row.name || '—';
   if (key === 'representativeName') return row.representativeName || '—';
   if (key === 'businessNumber') return formatBusinessNumber(row.businessNumber);
   if (key === 'address') return row.address || '—';
+  if (key === 'assigneeUserIds') {
+    const ids = Array.isArray(row.assigneeUserIds) ? row.assigneeUserIds : [];
+    const names = ids.map((id) => assigneeIdToName[String(id)] || String(id)).filter(Boolean);
+    return names.length ? names.join(', ') : '—';
+  }
+  if (key.startsWith(CUSTOM_FIELDS_PREFIX)) {
+    const fieldKey = key.slice(CUSTOM_FIELDS_PREFIX.length);
+    const v = row.customFields?.[fieldKey];
+    return v !== undefined && v !== null && v !== '' ? String(v) : '—';
+  }
   return '—';
 }
 
@@ -46,13 +73,32 @@ export default function CustomerCompanies() {
   const [items, setItems] = useState([]);
   const [searchInput, setSearchInput] = useState('');
   const [searchApplied, setSearchApplied] = useState('');
+  const [assigneeMeOnly, setAssigneeMeOnly] = useState(() => getSavedTemplate(LIST_ID)?.assigneeMeOnly === true);
   const [loading, setLoading] = useState(true);
+  const [customFieldColumns, setCustomFieldColumns] = useState([]);
   const [template, setTemplate] = useState(() => getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID)));
   const [dragOverKey, setDragOverKey] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sort, setSort] = useState({ key: null, dir: 'asc' });
+  const [companyEmployees, setCompanyEmployees] = useState([]); // 사내 직원 (담당자 이름 표시용)
+  const SORT_COLUMN_OPTIONS = [
+    { key: 'name', label: '고객사명' },
+    { key: 'representativeName', label: '대표자' },
+    { key: 'businessNumber', label: '사업자 번호' },
+    { key: 'address', label: '주소' },
+    { key: 'assigneeUserIds', label: '담당자' }
+  ];
   const sortKey = sort.key;
+  const assigneeIdToName = useMemo(() => {
+    const map = {};
+    (companyEmployees || []).forEach((e) => {
+      const id = e.id != null ? String(e.id) : (e._id ? String(e._id) : null);
+      if (id) map[id] = e.name || e.email || id;
+    });
+    return map;
+  }, [companyEmployees]);
   const sortDir = sort.dir;
+  const [page, setPage] = useState(1);
   /** URL로 연 상세 모달용: 목록에 없을 때 id로 따로 조회한 회사 (새로고침 시 items 비어 있을 수 있음) */
   const [detailCompanyById, setDetailCompanyById] = useState(null);
   const [loadingDetailCompany, setLoadingDetailCompany] = useState(false);
@@ -64,6 +110,17 @@ export default function CustomerCompanies() {
     ? items.find((c) => c._id === detailId) || null
     : null;
   const selectedCompany = selectedCompanyFromList || detailCompanyById;
+
+  /** 사내 직원 목록 (담당자 열 이름 표시용) */
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE}/companies/overview`, { headers: getAuthHeader() })
+      .then((r) => r.json().catch(() => ({})))
+      .then((data) => {
+        if (!cancelled && Array.isArray(data?.employees)) setCompanyEmployees(data.employees);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   /** URL에 id가 있는데 목록에서 못 찾았을 때(로딩 중·직접 링크) id로 회사 한 건 조회 */
   useEffect(() => {
@@ -88,9 +145,10 @@ export default function CustomerCompanies() {
   const fetchList = useCallback(async () => {
     setLoading(true);
     try {
-      const url = searchApplied
-        ? `${API_BASE}/customer-companies?search=${encodeURIComponent(searchApplied)}&limit=500`
-        : `${API_BASE}/customer-companies?limit=500`;
+      const params = new URLSearchParams({ limit: '500' });
+      if (searchApplied) params.set('search', searchApplied);
+      if (assigneeMeOnly) params.set('assigneeMe', '1');
+      const url = `${API_BASE}/customer-companies?${params.toString()}`;
       const res = await fetch(url, { headers: getAuthHeader() });
       if (res.ok) {
         const data = await res.json();
@@ -103,9 +161,26 @@ export default function CustomerCompanies() {
     } finally {
       setLoading(false);
     }
-  }, [searchApplied]);
+  }, [searchApplied, assigneeMeOnly]);
 
   useEffect(() => { fetchList(); }, [fetchList]);
+  useEffect(() => { setPage(1); }, [items.length, searchApplied, assigneeMeOnly]);
+
+  /** 새 고객사 추가 시 정의된 커스텀 필드를 리스트 템플릿에 반영 */
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE}/custom-field-definitions?entityType=customerCompany`, { headers: getAuthHeader() })
+      .then((r) => r.json().catch(() => ({})))
+      .then((data) => {
+        if (cancelled) return;
+        const items = Array.isArray(data?.items) ? data.items : [];
+        const extra = items.map((d) => ({ key: `${CUSTOM_FIELDS_PREFIX}${d.key}`, label: d.label || d.key || '' }));
+        setCustomFieldColumns(extra);
+        setTemplate((prev) => getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), extra));
+      })
+      .catch(() => { if (!cancelled) setCustomFieldColumns([]); });
+    return () => { cancelled = true; };
+  }, []);
 
   const openAddModal = () => setSearchParams({ [MODAL_PARAM]: MODAL_ADD_COMPANY });
   const closeAddModal = () => {
@@ -131,15 +206,30 @@ export default function CustomerCompanies() {
     setSearchApplied(searchInput.trim());
   };
 
+  const handleToggleFavorite = async (rowId, nextValue) => {
+    if (!rowId) return;
+    try {
+      const res = await fetch(`${API_BASE}/customer-companies/${rowId}/favorite`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+        body: JSON.stringify({ isFavorite: nextValue })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+      setItems((prev) => prev.map((row) => (row._id === rowId ? { ...row, isFavorite: !!data.isFavorite } : row)));
+      setDetailCompanyById((prev) => (prev?._id === rowId ? { ...prev, isFavorite: !!data.isFavorite } : prev));
+      fetchList();
+    } catch (_) {}
+  };
+
   const saveTemplate = useCallback(async (payload) => {
     try {
       const data = await patchListTemplate(LIST_ID, payload);
-      const next = getEffectiveTemplate(LIST_ID, data.listTemplates?.[LIST_ID] || payload);
-      setTemplate(next);
+      setTemplate(getEffectiveTemplate(LIST_ID, data.listTemplates?.[LIST_ID] || payload, customFieldColumns));
     } catch (err) {
       alert(err.message || '저장에 실패했습니다.');
     }
-  }, []);
+  }, [customFieldColumns]);
 
   const handleHeaderDragStart = (e, key) => {
     e.dataTransfer.setData('text/plain', key);
@@ -172,13 +262,25 @@ export default function CustomerCompanies() {
     if (key === 'representativeName') return (row.representativeName || '').toLowerCase();
     if (key === 'businessNumber') return String(row.businessNumber || '').replace(/\D/g, '');
     if (key === 'address') return (row.address || '').toLowerCase();
+    if (key === 'assigneeUserIds') {
+      const ids = Array.isArray(row.assigneeUserIds) ? row.assigneeUserIds : [];
+      const names = ids.map((id) => assigneeIdToName[String(id)] || '').filter(Boolean);
+      return names.join(' ').toLowerCase();
+    }
+    if (key.startsWith(CUSTOM_FIELDS_PREFIX)) {
+      const fieldKey = key.slice(CUSTOM_FIELDS_PREFIX.length);
+      const v = row.customFields?.[fieldKey];
+      return (v !== undefined && v !== null ? String(v) : '').toLowerCase();
+    }
     return '';
-  }, []);
+  }, [assigneeIdToName]);
 
   const sortedItems = useMemo(() => {
-    if (!sortKey) return items;
     const dir = sortDir === 'asc' ? 1 : -1;
     return [...items].sort((a, b) => {
+      const favDiff = Number(!!b.isFavorite) - Number(!!a.isFavorite);
+      if (favDiff !== 0) return favDiff;
+      if (!sortKey || sortKey === '_favorite') return 0;
       const va = getSortValue(a, sortKey);
       const vb = getSortValue(b, sortKey);
       if (va < vb) return -1 * dir;
@@ -187,7 +289,14 @@ export default function CustomerCompanies() {
     });
   }, [items, sortKey, sortDir, getSortValue]);
 
+  const totalPages = Math.max(1, Math.ceil(sortedItems.length / PAGE_SIZE));
+  const currentPageItems = useMemo(() => {
+    const start = (page - 1) * PAGE_SIZE;
+    return sortedItems.slice(start, start + PAGE_SIZE);
+  }, [sortedItems, page]);
+
   const handleSortColumn = useCallback((key) => {
+    if (key === '_favorite') return;
     setSort((prev) => {
       if (prev.key === key) {
         return { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
@@ -206,17 +315,28 @@ export default function CustomerCompanies() {
           <form id="customer-companies-search-form" onSubmit={runSearch} className="header-search-form">
             <input
               type="text"
-              placeholder="고객사명, 대표자, 사업자번호, 주소 검색..."
+              placeholder="모든 필드 검색 (고객사명, 대표자, 주소, 메모, 커스텀 필드 등)..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               aria-label="고객사 검색"
             />
           </form>
+          <select
+            className="cc-sort-column-select"
+            value={sortKey || ''}
+            onChange={(e) => setSort((prev) => ({ ...prev, key: e.target.value || null }))}
+            aria-label="정렬 기준"
+          >
+            <option value="">전체 보기</option>
+            {SORT_COLUMN_OPTIONS.map((o) => (
+              <option key={o.key} value={o.key}>{o.label}</option>
+            ))}
+          </select>
         </div>
         <div className="header-actions">
           <button type="button" className="icon-btn" aria-label="알림"><span className="material-symbols-outlined">notifications</span></button>
           <button type="button" className="icon-btn" aria-label="채팅"><span className="material-symbols-outlined">chat_bubble</span></button>
-          <button type="button" className="icon-btn" aria-label="리스트 열 설정" onClick={() => setSettingsOpen(true)} title="리스트 열 설정">
+          <button type="button" className="icon-btn" aria-label="리스트 열 설정" onClick={() => { setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), customFieldColumns)); setSettingsOpen(true); }} title="리스트 열 설정">
             <span className="material-symbols-outlined">settings</span>
           </button>
         </div>
@@ -225,9 +345,28 @@ export default function CustomerCompanies() {
         <div className="customer-companies-top">
           <div>
             <h2>고객사 리스트</h2>
-            <p className="page-desc">총 {items.length}개 고객사를 관리 중입니다</p>
+            <p className="page-desc">
+              총 {items.length}개 고객사{totalPages > 1 ? ` (${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, sortedItems.length)}건 표시)` : ''}를 관리 중입니다
+            </p>
           </div>
           <div className="customer-companies-actions">
+            <button
+              type="button"
+              className={`icon-btn cc-assignee-filter-btn ${assigneeMeOnly ? 'active' : ''}`}
+              onClick={() => {
+                const next = !assigneeMeOnly;
+                setAssigneeMeOnly(next);
+                patchListTemplate(LIST_ID, { assigneeMeOnly: next }).catch((err) => {
+                  alert(err?.message || '저장에 실패했습니다.');
+                  setAssigneeMeOnly(assigneeMeOnly);
+                });
+              }}
+              title={assigneeMeOnly ? '전체 고객사 보기' : '내 담당 업체 보기'}
+              aria-label={assigneeMeOnly ? '전체 고객사 보기' : '내 담당 업체 보기'}
+            >
+              <span className="material-symbols-outlined">person_pin_circle</span>
+              <span className="cc-filter-label">내 담당 업체 보기</span>
+            </button>
             <button type="button" className="btn-outline"><span className="material-symbols-outlined">file_download</span> 내보내기</button>
             <button type="button" className="btn-primary" onClick={openAddModal}><span className="material-symbols-outlined">add</span> 고객사 추가</button>
           </div>
@@ -237,11 +376,11 @@ export default function CustomerCompanies() {
           <div className="customer-companies-mobile-cards-wrap">
             {loading ? (
               <p className="customer-companies-mobile-cards-message">불러오는 중...</p>
-            ) : sortedItems.length === 0 ? (
+            ) : currentPageItems.length === 0 ? (
               <p className="customer-companies-mobile-cards-message">등록된 고객사가 없습니다.</p>
             ) : (
               <div className="customer-companies-mobile-cards-list">
-                {sortedItems.map((row) => (
+                {currentPageItems.map((row) => (
                   <div
                     key={row._id}
                     className="customer-companies-mobile-card"
@@ -254,7 +393,21 @@ export default function CustomerCompanies() {
                       <div className="avatar-img company-avatar"><span className="material-symbols-outlined" aria-hidden>business</span></div>
                     </div>
                     <div className="customer-companies-mobile-card-body">
-                      <h3 className="customer-companies-mobile-card-name">{row.name || '—'}</h3>
+                      <div className="customer-companies-mobile-card-head">
+                        <h3 className="customer-companies-mobile-card-name">{row.name || '—'}</h3>
+                        <button
+                          type="button"
+                          className={`cc-favorite-btn cc-mobile-favorite-btn ${row.isFavorite ? 'is-active' : ''}`}
+                          aria-label={row.isFavorite ? '즐겨찾기 해제' : '즐겨찾기 등록'}
+                          title={row.isFavorite ? '즐겨찾기 해제' : '즐겨찾기 등록'}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleFavorite(row._id, !row.isFavorite);
+                          }}
+                        >
+                          <span className="material-symbols-outlined" aria-hidden>star</span>
+                        </button>
+                      </div>
                       <p className="customer-companies-mobile-card-sub">{row.representativeName || '—'}</p>
                       <div className="customer-companies-mobile-card-details">
                         <p className="customer-companies-mobile-card-meta">사업자번호 {formatBusinessNumber(row.businessNumber)}</p>
@@ -268,28 +421,37 @@ export default function CustomerCompanies() {
           </div>
           <div className="table-wrap">
             <table className="data-table">
+              <colgroup>
+                {displayColumns.map((col) => (
+                  <col key={col.key} style={col.key === '_favorite' ? { width: '3.25rem' } : undefined} />
+                ))}
+              </colgroup>
               <thead>
                 <tr>
                   {displayColumns.map((col) => (
                     <th
                       key={col.key}
-                      className={`${dragOverKey === col.key ? 'list-template-drag-over' : ''} list-template-th-sortable`}
+                      className={`${col.key === '_favorite' ? 'cc-th-favorite' : ''} ${dragOverKey === col.key ? 'list-template-drag-over' : ''} ${col.key !== '_favorite' ? 'list-template-th-sortable' : ''}`}
                       draggable
                       onDragStart={(e) => handleHeaderDragStart(e, col.key)}
                       onDragOver={(e) => handleHeaderDragOver(e, col.key)}
                       onDragLeave={handleHeaderDragLeave}
                       onDrop={(e) => handleHeaderDrop(e, col.key)}
-                      onClick={() => handleSortColumn(col.key)}
+                      onClick={col.key !== '_favorite' ? () => handleSortColumn(col.key) : undefined}
                     >
-                      <span className="list-template-th-content">
-                        <span className="material-symbols-outlined list-template-drag-handle" aria-hidden>drag_indicator</span>
-                        {col.label}
-                        {sortKey === col.key && (
-                          <span className="list-template-sort-icon material-symbols-outlined" aria-hidden>
-                            {sortDir === 'asc' ? 'arrow_upward' : 'arrow_downward'}
-                          </span>
-                        )}
-                      </span>
+                      {col.key === '_favorite' ? (
+                        <span className="cc-th-favorite-icon material-symbols-outlined" aria-hidden>star</span>
+                      ) : (
+                        <span className="list-template-th-content">
+                          <span className="material-symbols-outlined list-template-drag-handle" aria-hidden>drag_indicator</span>
+                          {col.label}
+                          {sortKey === col.key && (
+                            <span className="list-template-sort-icon material-symbols-outlined" aria-hidden>
+                              {sortDir === 'asc' ? 'arrow_upward' : 'arrow_downward'}
+                            </span>
+                          )}
+                        </span>
+                      )}
                     </th>
                   ))}
                 </tr>
@@ -297,20 +459,38 @@ export default function CustomerCompanies() {
               <tbody>
                 {loading ? (
                   <tr><td colSpan={colSpan} className="text-center">불러오는 중...</td></tr>
-                ) : sortedItems.length === 0 ? (
+                ) : currentPageItems.length === 0 ? (
                   <tr><td colSpan={colSpan} className="text-center">등록된 고객사가 없습니다.</td></tr>
                 ) : (
-                  sortedItems.map((row) => (
+                  currentPageItems.map((row) => (
                     <tr key={row._id} className="customer-companies-row-clickable" onClick={() => openDetailModal(row)}>
                       {displayColumns.map((col) => (
-                        <td key={col.key} data-label={col.label} className={col.key === 'name' ? '' : 'text-muted'}>
-                          {col.key === 'name' ? (
+                        <td
+                          key={col.key}
+                          data-label={col.key === '_favorite' ? '' : col.label}
+                          className={col.key === '_favorite' ? 'cc-td-favorite' : col.key === 'name' ? '' : 'text-muted'}
+                          onClick={col.key === '_favorite' ? (e) => e.stopPropagation() : undefined}
+                        >
+                          {col.key === '_favorite' ? (
+                            <button
+                              type="button"
+                              className={`cc-favorite-btn ${row.isFavorite ? 'is-active' : ''}`}
+                              aria-label={row.isFavorite ? '즐겨찾기 해제' : '즐겨찾기 등록'}
+                              title={row.isFavorite ? '즐겨찾기 해제' : '즐겨찾기 등록'}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleFavorite(row._id, !row.isFavorite);
+                              }}
+                            >
+                              <span className="material-symbols-outlined" aria-hidden>star</span>
+                            </button>
+                          ) : col.key === 'name' ? (
                             <div className="cell-user">
                               <div className="avatar-img company-avatar"><span className="material-symbols-outlined">business</span></div>
-                              <span className="font-semibold">{cellValue(row, col.key)}</span>
+                              <span className="font-semibold">{cellValue(row, col.key, assigneeIdToName)}</span>
                             </div>
                           ) : (
-                            cellValue(row, col.key)
+                            cellValue(row, col.key, assigneeIdToName)
                           )}
                         </td>
                       ))}
@@ -320,6 +500,35 @@ export default function CustomerCompanies() {
               </tbody>
             </table>
           </div>
+          {totalPages > 1 && (
+            <div className="pagination-bar">
+              <p className="pagination-info">
+                <strong>{sortedItems.length}</strong>개 중 <strong>{(page - 1) * PAGE_SIZE + 1}</strong>–<strong>{Math.min(page * PAGE_SIZE, sortedItems.length)}</strong>건 표시
+              </p>
+              <div className="pagination-btns">
+                <button type="button" className="pagination-btn" aria-label="첫 페이지" disabled={page <= 1} onClick={() => setPage(1)}><span className="material-symbols-outlined">first_page</span></button>
+                <button type="button" className="pagination-btn" aria-label="이전 페이지" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}><span className="material-symbols-outlined">chevron_left</span></button>
+                {getPageNumbers(page, totalPages).map((n, i) =>
+                  n === '...' ? (
+                    <span key={`ellipsis-${i}`} className="pagination-ellipsis" aria-hidden>…</span>
+                  ) : (
+                    <button
+                      key={n}
+                      type="button"
+                      className={`pagination-btn pagination-btn-num ${page === n ? 'active' : ''}`}
+                      aria-label={`${n}페이지`}
+                      aria-current={page === n ? 'page' : undefined}
+                      onClick={() => setPage(n)}
+                    >
+                      {n}
+                    </button>
+                  )
+                )}
+                <button type="button" className="pagination-btn" aria-label="다음 페이지" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}><span className="material-symbols-outlined">chevron_right</span></button>
+                <button type="button" className="pagination-btn" aria-label="마지막 페이지" disabled={page >= totalPages} onClick={() => setPage(totalPages)}><span className="material-symbols-outlined">last_page</span></button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
       {settingsOpen && (
@@ -355,10 +564,14 @@ export default function CustomerCompanies() {
           company={selectedCompany}
           onClose={closeDetailModal}
           onUpdated={(updatedCompany) => {
-            if (updatedCompany?._id) {
-              setItems((prev) => prev.map((c) => (c._id === updatedCompany._id ? updatedCompany : c)));
-              setDetailCompanyById((prev) => (prev?._id === updatedCompany._id ? updatedCompany : prev));
+            const id = updatedCompany?._id != null ? String(updatedCompany._id) : null;
+            if (id) {
+              setItems((prev) => prev.map((c) =>
+                String(c._id) === id ? { ...c, ...updatedCompany } : c
+              ));
+              setDetailCompanyById((prev) => (prev && String(prev._id) === id ? { ...prev, ...updatedCompany } : prev));
             }
+            fetchList();
           }}
           onDeleted={() => {
             fetchList();

@@ -20,6 +20,20 @@ const MODAL_DETAIL = 'detail';
 const DETAIL_ID_PARAM = 'id';
 const LIMIT = 10;
 
+/** 페이지네이션에 표시할 번호 목록 (현재 페이지 주변 + 첫/끝, 생략은 '...') */
+function getPageNumbers(current, total) {
+  if (total <= 0) return [];
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages = new Set([1, total, current, current - 1, current + 1].filter((p) => p >= 1 && p <= total));
+  const sorted = [...pages].sort((a, b) => a - b);
+  const result = [];
+  for (let i = 0; i < sorted.length; i++) {
+    if (i > 0 && sorted[i] - sorted[i - 1] > 1) result.push('...');
+    result.push(sorted[i]);
+  }
+  return result;
+}
+
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -29,25 +43,45 @@ const statusClass = { Active: 'status-active', Pending: 'status-pending', Lead: 
 const statusLabel = { Active: '활성', Pending: '대기', Lead: '리드', Inactive: '비활성' };
 const statusHint = { Lead: '잠재 고객', Active: '거래 진행 중', Pending: '회신 대기', Inactive: '관리 종료' };
 const STATUS_OPTIONS = ['', 'Lead', 'Active', 'Pending', 'Inactive'];
+const CUSTOM_FIELDS_PREFIX = 'customFields.';
 
 export default function CustomerCompanyEmployees() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [items, setItems] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, limit: LIMIT, total: 0, totalPages: 0 });
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [assigneeMeOnly, setAssigneeMeOnly] = useState(() => getSavedTemplate(LIST_ID)?.assigneeMeOnly === true);
   const [loading, setLoading] = useState(true);
 
   const [selected, setSelected] = useState(new Set());
   const lastClickedIdx = useRef(null);
   const [googleSaving, setGoogleSaving] = useState(false);
   const [googleResult, setGoogleResult] = useState(null);
+  const [customFieldColumns, setCustomFieldColumns] = useState([]);
   const [template, setTemplate] = useState(() => getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID)));
   const [dragOverKey, setDragOverKey] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sort, setSort] = useState({ key: null, dir: 'asc' });
   const sortKey = sort.key;
   const sortDir = sort.dir;
+  const [companyEmployees, setCompanyEmployees] = useState([]);
+  const SORT_COLUMN_OPTIONS = [
+    { key: 'company', label: '회사' },
+    { key: 'name', label: '이름' },
+    { key: 'email', label: '이메일' },
+    { key: 'phone', label: '전화' },
+    { key: 'status', label: '상태' },
+    { key: 'assigneeUserIds', label: '담당자' },
+    { key: 'lastSupportedAt', label: '최근 지원 일자' }
+  ];
+  const assigneeIdToName = useMemo(() => {
+    const map = {};
+    (companyEmployees || []).forEach((e) => {
+      const id = e.id != null ? String(e.id) : (e._id ? String(e._id) : null);
+      if (id) map[id] = e.name || e.email || id;
+    });
+    return map;
+  }, [companyEmployees]);
   /** URL로 연 상세 모달용: 목록에 없을 때 id로 따로 조회한 연락처 (새로고침·다른 페이지일 수 있음) */
   const [detailContactById, setDetailContactById] = useState(null);
   const [loadingDetailContact, setLoadingDetailContact] = useState(false);
@@ -57,6 +91,17 @@ export default function CustomerCompanyEmployees() {
   const isDetailOpen = searchParams.get(MODAL_PARAM) === MODAL_DETAIL && detailId;
   const selectedContactFromList = isDetailOpen ? items.find((c) => c._id === detailId) || null : null;
   const selectedContact = selectedContactFromList || detailContactById;
+
+  /** 사내 직원 목록 (담당자 열 이름 표시용) */
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE}/companies/overview`, { headers: getAuthHeader() })
+      .then((r) => r.json().catch(() => ({})))
+      .then((data) => {
+        if (!cancelled && Array.isArray(data?.employees)) setCompanyEmployees(data.employees);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   /** URL에 id가 있는데 목록에서 못 찾았을 때(로딩 중·다른 페이지·직접 링크) id로 연락처 한 건 조회 */
   useEffect(() => {
@@ -102,8 +147,9 @@ export default function CustomerCompanyEmployees() {
     try {
       const params = new URLSearchParams({ page, limit: LIMIT });
       if (search.trim()) params.set('search', search.trim());
-      const st = overrideStatus !== undefined ? overrideStatus : statusFilter;
+      const st = overrideStatus !== undefined ? overrideStatus : '';
       if (st) params.set('status', st);
+      if (assigneeMeOnly) params.set('assigneeMe', '1');
       const res = await fetch(`${API_BASE}/customer-company-employees?${params}`, { headers: getAuthHeader() });
       if (res.ok) {
         const data = await res.json();
@@ -119,14 +165,30 @@ export default function CustomerCompanyEmployees() {
     } finally {
       setLoading(false);
     }
-  }, [search, statusFilter]);
+  }, [search, assigneeMeOnly]);
 
-  useEffect(() => { fetchContacts(pagination.page); }, [pagination.page]);
+  useEffect(() => { fetchContacts(pagination.page); }, [pagination.page, fetchContacts]);
 
   useEffect(() => {
     setSelected(new Set());
     lastClickedIdx.current = null;
   }, [items]);
+
+  /** 새 연락처 추가 시 정의된 커스텀 필드를 리스트 템플릿에 반영 */
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE}/custom-field-definitions?entityType=contact`, { headers: getAuthHeader() })
+      .then((r) => r.json().catch(() => ({})))
+      .then((data) => {
+        if (cancelled) return;
+        const defs = Array.isArray(data?.items) ? data.items : [];
+        const extra = defs.map((d) => ({ key: `${CUSTOM_FIELDS_PREFIX}${d.key}`, label: d.label || d.key || '' }));
+        setCustomFieldColumns(extra);
+        setTemplate((prev) => getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), extra));
+      })
+      .catch(() => { if (!cancelled) setCustomFieldColumns([]); });
+    return () => { cancelled = true; };
+  }, []);
 
   const onSearch = (e) => {
     e?.preventDefault();
@@ -134,10 +196,24 @@ export default function CustomerCompanyEmployees() {
     fetchContacts(1);
   };
 
-  const onStatusFilterChange = (val) => {
-    setStatusFilter(val);
-    setPagination((p) => ({ ...p, page: 1 }));
-    fetchContacts(1, val);
+  const handleToggleFavorite = async (rowId, nextValue) => {
+    if (!rowId) return;
+    try {
+      const res = await fetch(`${API_BASE}/customer-company-employees/${rowId}/favorite`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+        body: JSON.stringify({ isFavorite: nextValue })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+      setItems((prev) => prev.map((row) => (
+        row._id === rowId ? { ...row, isFavorite: !!data.isFavorite } : row
+      )));
+      setDetailContactById((prev) => (
+        prev?._id === rowId ? { ...prev, isFavorite: !!data.isFavorite } : prev
+      ));
+      fetchContacts(pagination.page);
+    } catch (_) {}
   };
 
   const handleCheckboxClick = (idx, e) => {
@@ -226,12 +302,11 @@ export default function CustomerCompanyEmployees() {
   const saveTemplate = useCallback(async (payload) => {
     try {
       const data = await patchListTemplate(LIST_ID, payload);
-      const next = getEffectiveTemplate(LIST_ID, data.listTemplates?.[LIST_ID] || payload);
-      setTemplate(next);
+      setTemplate(getEffectiveTemplate(LIST_ID, data.listTemplates?.[LIST_ID] || payload, customFieldColumns));
     } catch (err) {
       alert(err.message || '저장에 실패했습니다.');
     }
-  }, []);
+  }, [customFieldColumns]);
 
   const handleHeaderDragStart = (e, key) => {
     e.dataTransfer.setData('text/plain', key);
@@ -265,24 +340,37 @@ export default function CustomerCompanyEmployees() {
     if (key === 'email') return (row.email || '').toLowerCase();
     if (key === 'phone') return (row.phone || '').toLowerCase();
     if (key === 'status') return (row.status || '').toLowerCase();
+    if (key === 'assigneeUserIds') {
+      const ids = Array.isArray(row.assigneeUserIds) ? row.assigneeUserIds : [];
+      const names = ids.map((id) => assigneeIdToName[String(id)] || '').filter(Boolean);
+      return names.join(' ').toLowerCase();
+    }
     if (key === 'lastSupportedAt') return new Date(row.lastSupportedAt || 0).getTime();
+    if (key.startsWith(CUSTOM_FIELDS_PREFIX)) {
+      const fieldKey = key.slice(CUSTOM_FIELDS_PREFIX.length);
+      const v = row.customFields?.[fieldKey];
+      return (v !== undefined && v !== null ? String(v) : '').toLowerCase();
+    }
     return '';
-  }, []);
+  }, [assigneeIdToName]);
 
   const sortedItems = useMemo(() => {
-    if (!sortKey || sortKey === '_check') return items;
-    const dir = sortDir === 'asc' ? 1 : -1;
-    return [...items].sort((a, b) => {
+    const base = [...items].sort((a, b) => {
+      const favDiff = Number(!!b.isFavorite) - Number(!!a.isFavorite);
+      if (favDiff !== 0) return favDiff;
+      if (!sortKey || sortKey === '_check' || sortKey === '_favorite') return 0;
+      const dir = sortDir === 'asc' ? 1 : -1;
       const va = getSortValue(a, sortKey);
       const vb = getSortValue(b, sortKey);
       if (va < vb) return -1 * dir;
       if (va > vb) return 1 * dir;
       return 0;
     });
+    return base;
   }, [items, sortKey, sortDir, getSortValue]);
 
   const handleSortColumn = useCallback((key) => {
-    if (key === '_check') return;
+    if (key === '_check' || key === '_favorite') return;
     setSort((prev) => {
       if (prev.key === key) {
         return { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
@@ -299,23 +387,24 @@ export default function CustomerCompanyEmployees() {
             <span className="material-symbols-outlined">search</span>
           </button>
           <form id="customer-company-employees-search-form" onSubmit={onSearch}>
-            <input type="text" placeholder="이름, 회사, 이메일, 전화, 주소 검색..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            <input type="text" placeholder="모든 필드 검색 (이름, 회사, 이메일, 전화, 직책, 메모, 커스텀 필드 등)..." value={search} onChange={(e) => setSearch(e.target.value)} />
           </form>
           <select
-            className="cce-status-filter"
-            value={statusFilter}
-            onChange={(e) => onStatusFilterChange(e.target.value)}
+            className="cce-sort-column-select"
+            value={sortKey || ''}
+            onChange={(e) => setSort((prev) => ({ ...prev, key: e.target.value || null }))}
+            aria-label="정렬 기준"
           >
-            {STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>{s ? statusLabel[s] : '전체 상태'}</option>
+            <option value="">전체 보기</option>
+            {SORT_COLUMN_OPTIONS.map((o) => (
+              <option key={o.key} value={o.key}>{o.label}</option>
             ))}
           </select>
-          {statusFilter && <span className="cce-status-hint">{statusHint[statusFilter]}</span>}
         </div>
         <div className="header-actions">
           <button type="button" className="icon-btn" aria-label="알림"><span className="material-symbols-outlined">notifications</span></button>
           <button type="button" className="icon-btn" aria-label="채팅"><span className="material-symbols-outlined">chat_bubble</span></button>
-          <button type="button" className="icon-btn" aria-label="리스트 열 설정" onClick={() => setSettingsOpen(true)} title="리스트 열 설정">
+          <button type="button" className="icon-btn" aria-label="리스트 열 설정" onClick={() => { setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), customFieldColumns)); setSettingsOpen(true); }} title="리스트 열 설정">
             <span className="material-symbols-outlined">settings</span>
           </button>
         </div>
@@ -327,6 +416,23 @@ export default function CustomerCompanyEmployees() {
             <p className="page-desc">총 {pagination.total || 0}건의 연락처를 관리 중입니다</p>
           </div>
           <div className="customer-company-employees-actions">
+            <button
+              type="button"
+              className={`icon-btn cce-assignee-filter-btn ${assigneeMeOnly ? 'active' : ''}`}
+              onClick={() => {
+                const next = !assigneeMeOnly;
+                setAssigneeMeOnly(next);
+                patchListTemplate(LIST_ID, { assigneeMeOnly: next }).catch((err) => {
+                  alert(err?.message || '저장에 실패했습니다.');
+                  setAssigneeMeOnly(assigneeMeOnly);
+                });
+              }}
+              title={assigneeMeOnly ? '전체 연락처 보기' : '내 담당 직원 보기'}
+              aria-label={assigneeMeOnly ? '전체 연락처 보기' : '내 담당 직원 보기'}
+            >
+              <span className="material-symbols-outlined">person_pin_circle</span>
+              <span className="cce-filter-label">내 담당 직원 보기</span>
+            </button>
             <button type="button" className="btn-outline"><span className="material-symbols-outlined">file_download</span> 내보내기</button>
             <button type="button" className="btn-primary" onClick={openAddModal}><span className="material-symbols-outlined">add</span> 새 연락처 추가</button>
           </div>
@@ -383,7 +489,7 @@ export default function CustomerCompanyEmployees() {
               <p className="cce-mobile-cards-message">등록된 연락처가 없습니다.</p>
             ) : (
               <div className="cce-mobile-cards-list">
-                {sortedItems.map((row) => (
+                {sortedItems.map((row, idx) => (
                   <div
                     key={row._id}
                     className="cce-mobile-card"
@@ -396,11 +502,35 @@ export default function CustomerCompanyEmployees() {
                       <div className="avatar-img" aria-hidden />
                     </div>
                     <div className="cce-mobile-card-body">
+                      <div className="cce-mobile-card-controls">
+                        <input
+                          type="checkbox"
+                          className="cce-row-checkbox cce-mobile-card-checkbox"
+                          checked={selected.has(row._id)}
+                          aria-label={`${row.name || '연락처'} 선택`}
+                          onChange={() => {}}
+                          onClick={(e) => handleCheckboxClick(idx, e)}
+                        />
+                        <button
+                          type="button"
+                          className={`cce-favorite-btn cce-mobile-favorite-btn ${row.isFavorite ? 'is-active' : ''}`}
+                          aria-label={row.isFavorite ? '즐겨찾기 해제' : '즐겨찾기 등록'}
+                          title={row.isFavorite ? '즐겨찾기 해제' : '즐겨찾기 등록'}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleFavorite(row._id, !row.isFavorite);
+                          }}
+                        >
+                          <span className="material-symbols-outlined" aria-hidden>star</span>
+                        </button>
+                      </div>
                       <div className="cce-mobile-card-head">
                         <h3 className="cce-mobile-card-name">{row.name || '—'}</h3>
-                        <span className={`cce-mobile-card-status status-badge ${statusClass[row.status] || ''}`}>
-                          {statusLabel[row.status] || row.status || '—'}
-                        </span>
+                        <div className="cce-mobile-card-head-actions">
+                          <span className={`cce-mobile-card-status status-badge ${statusClass[row.status] || ''}`}>
+                            {statusLabel[row.status] || row.status || '—'}
+                          </span>
+                        </div>
                       </div>
                       <p className="cce-mobile-card-company">{row.company || '—'}</p>
                       <div className="cce-mobile-card-details">
@@ -420,18 +550,32 @@ export default function CustomerCompanyEmployees() {
           </div>
           <div className="table-wrap">
             <table className="data-table">
+              <colgroup>
+                {displayColumns.map((col) => (
+                  <col
+                    key={col.key}
+                    style={
+                      col.key === '_check'
+                        ? { width: '2.75rem' }
+                        : col.key === '_favorite'
+                          ? { width: '3.25rem' }
+                          : undefined
+                    }
+                  />
+                ))}
+              </colgroup>
               <thead>
                 <tr>
                   {displayColumns.map((col) => (
                     <th
                       key={col.key}
-                      className={`${col.key === '_check' ? 'cce-th-check' : ''} ${col.key === 'status' ? 'cce-td-status' : ''} ${dragOverKey === col.key ? 'list-template-drag-over' : ''} ${col.key !== '_check' ? 'list-template-th-sortable' : ''}`}
+                      className={`${col.key === '_check' ? 'cce-th-check' : ''} ${col.key === '_favorite' ? 'cce-th-favorite' : ''} ${col.key === 'status' ? 'cce-td-status' : ''} ${dragOverKey === col.key ? 'list-template-drag-over' : ''} ${col.key !== '_check' && col.key !== '_favorite' ? 'list-template-th-sortable' : ''}`}
                       draggable
                       onDragStart={(e) => handleHeaderDragStart(e, col.key)}
                       onDragOver={(e) => handleHeaderDragOver(e, col.key)}
                       onDragLeave={handleHeaderDragLeave}
                       onDrop={(e) => handleHeaderDrop(e, col.key)}
-                      onClick={col.key !== '_check' ? () => handleSortColumn(col.key) : undefined}
+                      onClick={col.key !== '_check' && col.key !== '_favorite' ? () => handleSortColumn(col.key) : undefined}
                     >
                       {col.key === '_check' ? (
                         <input
@@ -440,6 +584,8 @@ export default function CustomerCompanyEmployees() {
                           checked={allChecked}
                           onChange={handleSelectAll}
                         />
+                      ) : col.key === '_favorite' ? (
+                        <span className="cce-th-favorite-icon material-symbols-outlined" aria-hidden>star</span>
                       ) : (
                         <span className="list-template-th-content">
                           <span className="material-symbols-outlined list-template-drag-handle" aria-hidden>drag_indicator</span>
@@ -472,9 +618,9 @@ export default function CustomerCompanyEmployees() {
                         {displayColumns.map((col) => (
                           <td
                             key={col.key}
-                            data-label={col.key === '_check' ? '' : col.label}
-                            className={col.key === '_check' ? 'cce-td-check' : col.key === 'status' ? 'cce-td-status' : col.key !== 'name' ? 'text-muted' : ''}
-                            onClick={col.key === '_check' ? (e) => e.stopPropagation() : undefined}
+                            data-label={col.key === '_check' || col.key === '_favorite' ? '' : col.label}
+                            className={col.key === '_check' ? 'cce-td-check' : col.key === '_favorite' ? 'cce-td-favorite' : col.key === 'status' ? 'cce-td-status' : col.key !== 'name' ? 'text-muted' : ''}
+                            onClick={col.key === '_check' || col.key === '_favorite' ? (e) => e.stopPropagation() : undefined}
                           >
                             {col.key === '_check' && (
                               <input
@@ -484,6 +630,22 @@ export default function CustomerCompanyEmployees() {
                                 onChange={() => {}}
                                 onClick={(e) => handleCheckboxClick(idx, e)}
                               />
+                            )}
+                            {col.key === '_favorite' && (
+                              <button
+                                type="button"
+                                className={`cce-favorite-btn ${row.isFavorite ? 'is-active' : ''}`}
+                                aria-label={row.isFavorite ? '즐겨찾기 해제' : '즐겨찾기 등록'}
+                                title={row.isFavorite ? '즐겨찾기 해제' : '즐겨찾기 등록'}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleFavorite(row._id, !row.isFavorite);
+                                }}
+                              >
+                                <span className="material-symbols-outlined" aria-hidden>
+                                  {row.isFavorite ? 'star' : 'star'}
+                                </span>
+                              </button>
                             )}
                             {col.key === 'company' && (() => {
                               const hasConfirmedCompany = row.customerCompanyId && String(row.customerCompanyId.businessNumber || '').trim();
@@ -505,7 +667,17 @@ export default function CustomerCompanyEmployees() {
                             {col.key === 'status' && (
                               <span className={`status-badge ${statusClass[row.status] || ''}`}>{statusLabel[row.status] || row.status || '—'}</span>
                             )}
+                            {col.key === 'assigneeUserIds' && (() => {
+                              const ids = Array.isArray(row.assigneeUserIds) ? row.assigneeUserIds : [];
+                              const names = ids.map((id) => assigneeIdToName[String(id)] || id).filter(Boolean);
+                              return names.length ? names.join(', ') : '—';
+                            })()}
                             {col.key === 'lastSupportedAt' && (row.lastSupportedAt ? formatDate(row.lastSupportedAt) : '—')}
+                            {col.key.startsWith(CUSTOM_FIELDS_PREFIX) && (() => {
+                              const fieldKey = col.key.slice(CUSTOM_FIELDS_PREFIX.length);
+                              const v = row.customFields?.[fieldKey];
+                              return v !== undefined && v !== null && v !== '' ? String(v) : '—';
+                            })()}
                           </td>
                         ))}
                       </tr>
@@ -520,9 +692,26 @@ export default function CustomerCompanyEmployees() {
               <strong>{pagination.total}</strong>건 중 <strong>{items.length ? (pagination.page - 1) * pagination.limit + 1 : 0}</strong>–<strong>{(pagination.page - 1) * pagination.limit + items.length}</strong>건 표시
             </p>
             <div className="pagination-btns">
-              <button type="button" className="pagination-btn" disabled={pagination.page <= 1} onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}><span className="material-symbols-outlined">chevron_left</span></button>
-              <span className="pagination-current">{pagination.page} / {pagination.totalPages || 1}</span>
-              <button type="button" className="pagination-btn" disabled={pagination.page >= (pagination.totalPages || 1)} onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}><span className="material-symbols-outlined">chevron_right</span></button>
+              <button type="button" className="pagination-btn" aria-label="첫 페이지" disabled={pagination.page <= 1} onClick={() => setPagination((p) => ({ ...p, page: 1 }))}><span className="material-symbols-outlined">first_page</span></button>
+              <button type="button" className="pagination-btn" aria-label="이전 페이지" disabled={pagination.page <= 1} onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}><span className="material-symbols-outlined">chevron_left</span></button>
+              {getPageNumbers(pagination.page, pagination.totalPages || 1).map((n, i) =>
+                n === '...' ? (
+                  <span key={`ellipsis-${i}`} className="pagination-ellipsis" aria-hidden>…</span>
+                ) : (
+                  <button
+                    key={n}
+                    type="button"
+                    className={`pagination-btn pagination-btn-num ${pagination.page === n ? 'active' : ''}`}
+                    aria-label={`${n}페이지`}
+                    aria-current={pagination.page === n ? 'page' : undefined}
+                    onClick={() => setPagination((p) => ({ ...p, page: n }))}
+                  >
+                    {n}
+                  </button>
+                )
+              )}
+              <button type="button" className="pagination-btn" aria-label="다음 페이지" disabled={pagination.page >= (pagination.totalPages || 1)} onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}><span className="material-symbols-outlined">chevron_right</span></button>
+              <button type="button" className="pagination-btn" aria-label="마지막 페이지" disabled={pagination.page >= (pagination.totalPages || 1)} onClick={() => setPagination((p) => ({ ...p, page: pagination.totalPages || 1 }))}><span className="material-symbols-outlined">last_page</span></button>
             </div>
           </div>
         </div>
@@ -560,9 +749,12 @@ export default function CustomerCompanyEmployees() {
           contact={selectedContact}
           onClose={closeDetailModal}
           onUpdated={(updatedContact) => {
-            if (updatedContact?._id) {
-              setItems((prev) => prev.map((c) => (c._id === updatedContact._id ? updatedContact : c)));
-              setDetailContactById((prev) => (prev?._id === updatedContact._id ? updatedContact : prev));
+            const id = updatedContact?._id != null ? String(updatedContact._id) : null;
+            if (id) {
+              setItems((prev) => prev.map((c) =>
+                String(c._id) === id ? { ...c, ...updatedContact } : c
+              ));
+              setDetailContactById((prev) => (prev && String(prev._id) === id ? { ...prev, ...updatedContact } : prev));
             }
             fetchContacts(pagination.page);
           }}

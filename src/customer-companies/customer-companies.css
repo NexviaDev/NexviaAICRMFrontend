@@ -17,10 +17,11 @@
 
 .header-search {
   flex: 1;
-  max-width: 28rem;
+  max-width: 32rem;
   position: relative;
   display: flex;
   align-items: center;
+  gap: 0.5rem;
 }
 
 /* customer-company-employees와 동일: 돋보기 아이콘 위치 */
@@ -70,6 +71,51 @@
   border-radius: 0.5rem;
   background: var(--bg-light);
   font-size: 0.875rem;
+}
+
+.cc-sort-column-select {
+  flex-shrink: 0;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--text);
+  min-width: 7rem;
+}
+
+.customer-companies-actions .cc-assignee-filter-btn {
+  background: #fff;
+  border: 1px solid var(--card-border, #e0e0e0);
+  color: var(--text, #333);
+}
+
+.customer-companies-actions .cc-assignee-filter-btn:hover {
+  background: #f8f9fa;
+  border-color: var(--card-border, #e0e0e0);
+}
+
+.customer-companies-actions .cc-assignee-filter-btn.active {
+  background: #fff;
+  border-color: var(--primary, #5c6bc0);
+  color: var(--primary);
+}
+
+.customer-companies-actions .cc-filter-label {
+  display: none;
+}
+
+@media (min-width: 640px) {
+  .customer-companies-actions .cc-assignee-filter-btn {
+    width: auto;
+    padding: 0.5rem 0.75rem;
+    gap: 0.35rem;
+  }
+  .customer-companies-actions .cc-filter-label {
+    display: inline;
+    font-size: 0.8125rem;
+  }
 }
 
 .header-actions {
@@ -223,6 +269,7 @@
 
 .customer-companies-actions {
   display: flex;
+  align-items: center;
   gap: 0.75rem;
 }
 
@@ -258,6 +305,67 @@
   cursor: pointer;
 }
 
+/* 페이지네이션 (연락처와 동일) */
+.pagination-bar {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--card-border);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: center;
+}
+@media (min-width: 640px) {
+  .pagination-bar {
+    flex-direction: row;
+    justify-content: space-between;
+  }
+}
+.pagination-info {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+.pagination-btns {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.pagination-btn {
+  min-width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--card-border);
+  background: var(--card);
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text);
+  transition: background 0.2s;
+}
+.pagination-btn:hover:not(:disabled) {
+  background: var(--bg-light);
+}
+.pagination-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.pagination-btn.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.pagination-btn-num {
+  min-width: 2rem;
+}
+.pagination-ellipsis {
+  padding: 0 0.25rem;
+  color: var(--text-muted);
+}
+
 /* 리스트 열 드래그 재정렬 */
 .list-template-th-content {
   display: inline-flex;
@@ -275,6 +383,50 @@
 .data-table th.list-template-drag-over {
   background: var(--primary-pastel, #e8eaf6);
 }
+
+/* 고객사 즐겨찾기 열 */
+.customer-companies-page .data-table th.cc-th-favorite,
+.customer-companies-page .data-table td.cc-td-favorite {
+  width: 3.25rem;
+  text-align: center !important;
+  vertical-align: middle;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+.cc-th-favorite-icon {
+  color: #d9dce8;
+  font-size: 1.15rem;
+  display: block;
+  width: 100%;
+  text-align: center;
+}
+.cc-favorite-btn {
+  width: 2rem;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #d8dbe8;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+  margin: 0 auto;
+}
+.cc-favorite-btn:hover {
+  background: rgba(255, 214, 102, 0.14);
+  color: #f1c84a;
+  transform: scale(1.04);
+}
+.cc-favorite-btn.is-active {
+  color: #f4c542;
+}
+.cc-favorite-btn .material-symbols-outlined {
+  font-size: 1.3rem;
+  font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+}
+
 .list-template-th-sortable {
   cursor: pointer;
   user-select: none;

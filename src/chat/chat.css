@@ -1,0 +1,1565 @@
+/* Google Chat - Chat.html 샘플 디자인 동일 적용, 파스텔 톤 */
+:root {
+  --gc-primary: #1d283a;
+  --gc-bg: #f6f7f7;
+  --gc-panel: #fff;
+  --gc-border: #e2e8f0;
+  --gc-slate-200: #e2e8f0;
+  --gc-slate-400: #94a3b8;
+  --gc-slate-500: #64748b;
+  --gc-slate-50: #f8fafc;
+  --gc-slate-100: #f1f5f9;
+  --gc-slate-700: #334155;
+  --gc-muted: #94a3b8;
+  --gc-text: #334155;
+  --gc-text-dark: #1e293b;
+  --gc-accent: #a8c5e0;
+  --gc-accent-soft: #e8f0f8;
+  --gc-primary-5: rgba(29, 40, 58, 0.05);
+  --gc-primary-10: rgba(29, 40, 58, 0.1);
+  --gc-error-bg: #fee2e2;
+  --gc-error-text: #b91c1c;
+  /* NewChatModal 파스텔 포인트 */
+  --nc-pastel-mint: #d4ede8;
+  --nc-pastel-lavender: #e8e4f3;
+  --nc-pastel-peach: #fce8e0;
+  --nc-pastel-sky: #dbeafe;
+  --nc-pastel-rose: #fce7f3;
+  --nc-shadow-soft: 0 8px 30px rgba(29, 40, 58, 0.08);
+  --nc-radius: 12px;
+  --nc-radius-sm: 8px;
+}
+
+.google-chat-page {
+  display: flex;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+  background: var(--gc-bg);
+  font-family: Inter, system-ui, sans-serif;
+}
+
+/* 에러/힌트는 상단 고정 */
+.google-chat-error {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  margin: 0.5rem 1rem;
+  background: var(--gc-error-bg);
+  color: var(--gc-error-text);
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.google-chat-hint {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  margin: 0 1rem 0.5rem;
+  background: var(--gc-accent-soft);
+  color: var(--gc-text);
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.google-chat-hint .material-symbols-outlined {
+  font-size: 1rem;
+  color: var(--gc-primary);
+  flex-shrink: 0;
+}
+
+/* 좌측: 채팅 목록 패널 (Chat.html w-80) */
+.google-chat-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.google-chat-spaces {
+  width: 20rem;
+  flex-shrink: 0;
+  background: var(--gc-panel);
+  border-right: 1px solid var(--gc-border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.google-chat-spaces-header {
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--gc-border);
+}
+
+.google-chat-spaces-title {
+  margin: 0 0 1rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--gc-text-dark);
+}
+
+.google-chat-new-chat-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--gc-primary);
+  border: none;
+  border-radius: 0.75rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.google-chat-new-chat-btn:hover {
+  background: rgba(29, 40, 58, 0.9);
+}
+
+.google-chat-new-chat-btn .material-symbols-outlined {
+  font-size: 1.25rem;
+}
+
+.google-chat-search-input {
+  width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--gc-border);
+  border-radius: 0.5rem;
+  background: var(--gc-panel);
+  color: var(--gc-text);
+}
+
+.google-chat-search-input::placeholder {
+  color: var(--gc-slate-400);
+}
+
+.google-chat-search-input:focus {
+  outline: none;
+  border-color: var(--gc-primary);
+}
+
+.google-chat-space-list-wrap {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem;
+}
+
+.google-chat-space-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.google-chat-space-list li {
+  margin: 0;
+}
+
+.google-chat-space-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.75rem;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+  border-radius: 0.75rem;
+  border-left: 4px solid transparent;
+}
+
+.google-chat-space-item:hover {
+  background: var(--gc-slate-50);
+}
+
+.google-chat-space-item.selected {
+  background: var(--gc-primary-5);
+  border-left-color: var(--gc-primary);
+}
+
+.google-chat-space-avatar {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 9999px;
+  background: var(--gc-slate-200);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--gc-slate-500);
+}
+
+.google-chat-space-item.selected .google-chat-space-avatar {
+  background: var(--gc-primary-10);
+  color: var(--gc-primary);
+}
+
+.google-chat-space-avatar.groups {
+  border-radius: 0.75rem;
+  background: var(--gc-primary-10);
+  color: var(--gc-primary);
+}
+
+.google-chat-space-avatar .material-symbols-outlined {
+  font-size: 1.5rem;
+}
+
+.google-chat-space-item-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.google-chat-space-item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.google-chat-space-name {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--gc-text-dark);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.google-chat-space-time {
+  font-size: 10px;
+  color: var(--gc-slate-500);
+  flex-shrink: 0;
+}
+
+.google-chat-space-preview {
+  font-size: 0.75rem;
+  color: var(--gc-slate-500);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 0.125rem;
+}
+
+.google-chat-space-item.selected .google-chat-space-preview {
+  color: var(--gc-primary);
+  font-weight: 500;
+}
+
+.google-chat-loading,
+.google-chat-empty {
+  margin: 0;
+  padding: 1rem;
+  font-size: 0.875rem;
+  color: var(--gc-muted);
+}
+
+/* 우측: 채팅 영역 */
+.google-chat-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--gc-panel);
+  overflow: hidden;
+}
+
+.google-chat-placeholder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  color: var(--gc-muted);
+}
+
+.google-chat-placeholder .material-symbols-outlined {
+  font-size: 4rem;
+  opacity: 0.5;
+}
+
+.google-chat-placeholder p {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+/* 채팅 헤더 (Chat.html h-16) */
+.google-chat-main-header {
+  height: 4rem;
+  padding: 0 1.5rem;
+  border-bottom: 1px solid var(--gc-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+
+.google-chat-main-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.google-chat-main-header-avatar {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 9999px;
+  background: var(--gc-slate-200);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--gc-slate-500);
+}
+
+.google-chat-main-header-avatar .material-symbols-outlined {
+  font-size: 1.25rem;
+}
+
+.google-chat-main-header-title-wrap {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.google-chat-main-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--gc-text-dark);
+  line-height: 1.2;
+}
+
+.google-chat-main-title-edit {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--gc-text-dark);
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--gc-primary);
+  border-radius: 0.375rem;
+  background: var(--gc-panel);
+  min-width: 8rem;
+}
+
+.google-chat-main-title-edit:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(29, 40, 58, 0.2);
+}
+
+.google-chat-header-rename-btn {
+  padding: 0.25rem;
+  color: var(--gc-slate-500);
+  background: none;
+  border: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.google-chat-header-rename-btn:hover {
+  background: var(--gc-slate-50);
+  color: var(--gc-primary);
+}
+
+.google-chat-header-rename-btn .material-symbols-outlined {
+  font-size: 1rem;
+}
+
+.google-chat-main-subtitle {
+  font-size: 0.75rem;
+  color: var(--gc-slate-500);
+  margin-top: 0.125rem;
+  width: 100%;
+}
+
+.google-chat-main-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.google-chat-header-action-btn {
+  padding: 0.5rem;
+  color: var(--gc-slate-500);
+  background: none;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.google-chat-header-action-btn:hover {
+  background: var(--gc-slate-50);
+  color: var(--gc-text);
+}
+
+.google-chat-header-action-btn .material-symbols-outlined {
+  font-size: 1.25rem;
+}
+
+.google-chat-leave-btn {
+  color: var(--gc-slate-500);
+}
+
+.google-chat-leave-btn:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.1);
+  color: #b91c1c;
+}
+
+.google-chat-leave-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* 메시지 영역 (Chat.html bg-slate-50/50, p-6 space-y-6) */
+.google-chat-messages-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1.5rem;
+  background: rgba(248, 250, 252, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.google-chat-date-pill {
+  display: flex;
+  justify-content: center;
+}
+
+.google-chat-date-pill span {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gc-slate-400);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  background: var(--gc-panel);
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  border: 1px solid var(--gc-border);
+}
+
+.google-chat-messages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* 수신 메시지: 왼쪽 정렬, 아바타 + 말풍선 (rounded-tl-none) */
+.google-chat-message {
+  display: flex;
+  gap: 0.75rem;
+  max-width: 80%;
+  align-items: flex-start;
+}
+
+.google-chat-message-avatar {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9999px;
+  background: var(--gc-slate-200);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 0.25rem;
+  color: var(--gc-slate-500);
+}
+
+.google-chat-message-avatar .material-symbols-outlined {
+  font-size: 1rem;
+}
+
+.google-chat-message-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.google-chat-message-bubble {
+  background: var(--gc-panel);
+  padding: 1rem;
+  border-radius: 1rem;
+  border-top-left-radius: 0;
+  border: 1px solid var(--gc-border);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.google-chat-message-bubble .google-chat-message-text {
+  font-size: 0.875rem;
+  color: var(--gc-text-dark);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.google-chat-message-sender-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.25rem;
+}
+
+.google-chat-message-sender {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--gc-primary);
+}
+
+.google-chat-register-name-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.6875rem;
+  color: var(--gc-primary);
+  background: transparent;
+  border: 1px solid var(--gc-accent);
+  border-radius: 0.375rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.google-chat-register-name-btn:hover {
+  background: var(--gc-accent-soft);
+}
+
+.google-chat-register-name-btn .material-symbols-outlined {
+  font-size: 0.875rem;
+}
+
+.google-chat-edit-contact-btn {
+  border-color: var(--gc-muted);
+  color: var(--gc-muted);
+}
+
+.google-chat-edit-contact-btn:hover {
+  color: var(--gc-text);
+  border-color: var(--gc-slate-500);
+}
+
+.google-chat-message-time {
+  font-size: 10px;
+  color: var(--gc-slate-500);
+  margin-left: 0.25rem;
+}
+
+/* 발신 메시지: 오른쪽 정렬, 말풍선만 (rounded-tr-none), primary */
+.google-chat-message-mine {
+  flex-direction: row-reverse;
+  margin-left: auto;
+  max-width: 80%;
+}
+
+.google-chat-message-mine .google-chat-message-body {
+  align-items: flex-end;
+}
+
+.google-chat-message-mine .google-chat-message-bubble {
+  background: var(--gc-primary);
+  border-color: var(--gc-primary);
+  border-radius: 1rem;
+  border-top-right-radius: 0;
+}
+
+.google-chat-message-mine .google-chat-message-bubble .google-chat-message-text {
+  color: #fff;
+}
+
+.google-chat-message-mine .google-chat-message-sender {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.google-chat-message-mine .google-chat-message-time-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-right: 0.25rem;
+}
+
+.google-chat-message-mine .google-chat-message-time {
+  margin-left: 0;
+  margin-right: 0;
+  color: var(--gc-slate-500);
+}
+
+.google-chat-message-mine .google-chat-message-done {
+  color: var(--gc-primary);
+  font-size: 14px;
+}
+
+.google-chat-messages-empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--gc-muted);
+  font-size: 0.875rem;
+}
+
+/* 입력 영역 (Chat.html footer: rounded-2xl, add/image/attach, textarea, send) */
+.google-chat-send-form {
+  flex-shrink: 0;
+  padding: 1rem;
+  background: var(--gc-panel);
+  border-top: 1px solid var(--gc-border);
+}
+
+.google-chat-send-inner {
+  max-width: 56rem;
+  margin: 0 auto;
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  background: var(--gc-slate-50);
+  padding: 0.5rem;
+  border-radius: 1rem;
+  border: 1px solid var(--gc-border);
+}
+
+.google-chat-send-actions-left {
+  display: flex;
+  align-items: center;
+}
+
+.google-chat-send-actions-left button {
+  padding: 0.5rem;
+  color: var(--gc-slate-500);
+  background: none;
+  border: none;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.google-chat-send-actions-left button:hover {
+  color: var(--gc-primary);
+}
+
+.google-chat-send-actions-left .material-symbols-outlined {
+  font-size: 1.25rem;
+}
+
+.google-chat-send-input-wrap {
+  flex: 1;
+  padding: 0 0.5rem;
+  min-width: 0;
+}
+
+.google-chat-send-input {
+  width: 100%;
+  padding: 0.5rem 0;
+  font-size: 0.875rem;
+  border: none;
+  background: transparent;
+  color: var(--gc-text);
+  resize: none;
+  max-height: 8rem;
+  font-family: inherit;
+}
+
+.google-chat-send-input:focus {
+  outline: none;
+}
+
+.google-chat-send-input::placeholder {
+  color: var(--gc-slate-400);
+}
+
+.google-chat-send-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.google-chat-send-actions-right button[type="button"] {
+  padding: 0.5rem;
+  color: var(--gc-slate-500);
+  background: none;
+  border: none;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.google-chat-send-actions-right button[type="button"]:hover {
+  color: var(--gc-primary);
+}
+
+.google-chat-send-submit {
+  width: 2.5rem;
+  height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--gc-primary);
+  color: #fff;
+  border: none;
+  border-radius: 0.75rem;
+  cursor: pointer;
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+
+.google-chat-send-submit:hover:not(:disabled) {
+  transform: scale(1.05);
+}
+
+.google-chat-send-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.google-chat-send-submit .material-symbols-outlined {
+  font-size: 1.25rem;
+}
+
+.google-chat-send-hint {
+  text-align: center;
+  margin-top: 0.5rem;
+  font-size: 10px;
+  color: var(--gc-slate-400);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+/* 연락처 등록 모달 / 공통 모달 */
+.google-chat-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(29, 40, 58, 0.28);
+  backdrop-filter: blur(8px);
+  animation: gc-overlay-in 0.2s ease-out;
+}
+
+@keyframes gc-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.google-chat-modal {
+  width: 100%;
+  max-width: 22rem;
+  background: var(--gc-panel);
+  border-radius: var(--nc-radius);
+  box-shadow: var(--nc-shadow-soft), 0 0 0 1px rgba(255, 255, 255, 0.8) inset;
+  border: 1px solid var(--gc-border);
+  overflow: hidden;
+  animation: gc-modal-in 0.25s ease-out;
+}
+
+@keyframes gc-modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.google-chat-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--gc-border);
+  background: linear-gradient(180deg, var(--gc-slate-50) 0%, var(--gc-panel) 100%);
+}
+
+.google-chat-modal-header h3 {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: var(--gc-text-dark);
+  letter-spacing: -0.01em;
+}
+
+.google-chat-modal-close {
+  padding: 0.35rem;
+  border: none;
+  background: none;
+  color: var(--gc-muted);
+  border-radius: var(--nc-radius-sm);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.google-chat-modal-close:hover {
+  color: var(--gc-text);
+  background: var(--gc-slate-50);
+}
+
+.google-chat-modal-form {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.google-chat-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.google-chat-modal-field label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--gc-text);
+}
+
+.google-chat-modal-field input,
+.google-chat-modal-field textarea {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--gc-border);
+  border-radius: 0.5rem;
+  background: #fff;
+  color: var(--gc-text);
+}
+
+.google-chat-modal-field input:focus,
+.google-chat-modal-field textarea:focus {
+  outline: none;
+  border-color: var(--gc-primary);
+  box-shadow: 0 0 0 2px rgba(29, 40, 58, 0.12);
+}
+
+.google-chat-modal-field textarea {
+  resize: vertical;
+  min-height: 2.5rem;
+}
+
+.google-chat-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding-top: 0.25rem;
+}
+
+.google-chat-btn-cancel {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--gc-muted);
+  background: transparent;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.google-chat-btn-cancel:hover {
+  background: var(--gc-accent-soft);
+  color: var(--gc-text);
+}
+
+.google-chat-send-btn {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--gc-primary);
+  border: none;
+  border-radius: var(--nc-radius-sm);
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.google-chat-send-btn:hover:not(:disabled) {
+  background: #252f42;
+  color: #fff;
+}
+
+.google-chat-btn-secondary {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--gc-primary);
+  background: var(--gc-accent-soft);
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.google-chat-btn-secondary:hover:not(:disabled) {
+  background: var(--gc-accent);
+  color: var(--gc-primary);
+}
+
+.google-chat-btn-secondary:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* ========== NewChatModal - New Chat.html / New Chat.png 샘플 디자인 ========== */
+.new-chat-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(4px);
+}
+
+.new-chat-modal {
+  width: 100%;
+  max-width: 42rem;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--gc-panel);
+  border-radius: 0.75rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+/* Header - New Chat.html */
+.new-chat-header {
+  padding: 2rem 2rem 1rem;
+  flex-shrink: 0;
+}
+
+.new-chat-header-inner {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
+}
+
+.new-chat-title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--gc-text-dark);
+}
+
+.new-chat-subtitle {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  color: var(--gc-slate-500);
+}
+
+.new-chat-close {
+  padding: 0.25rem;
+  border: none;
+  background: none;
+  color: var(--gc-slate-400);
+  cursor: pointer;
+  border-radius: 0.375rem;
+  transition: color 0.15s, background 0.15s;
+}
+
+.new-chat-close:hover {
+  color: var(--gc-slate-600);
+  background: var(--gc-slate-50);
+}
+
+.new-chat-close .material-symbols-outlined {
+  font-size: 1.5rem;
+}
+
+/* Search Bar - 아이콘 왼쪽 */
+.new-chat-search-bar-wrap {
+  position: relative;
+}
+
+.new-chat-search-icon {
+  position: absolute;
+  left: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 1.25rem;
+  color: var(--gc-slate-400);
+  pointer-events: none;
+  transition: color 0.2s;
+}
+
+.new-chat-search-bar-wrap:focus-within .new-chat-search-icon {
+  color: var(--gc-primary);
+}
+
+.new-chat-search-input {
+  display: block;
+  width: 100%;
+  padding: 0.75rem 1rem 0.75rem 2.75rem;
+  font-size: 0.9375rem;
+  color: var(--gc-text);
+  background: var(--gc-slate-50);
+  border: none;
+  border-radius: 0.5rem;
+  outline: none;
+  transition: box-shadow 0.2s, background 0.2s;
+}
+
+.new-chat-search-input::placeholder {
+  color: var(--gc-slate-500);
+}
+
+.new-chat-search-input:focus {
+  background: var(--gc-panel);
+  box-shadow: 0 0 0 2px rgba(29, 40, 58, 0.2);
+}
+
+/* Content scroll area */
+.new-chat-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem 2rem 1.5rem;
+}
+
+/* 선택된 목록 칩 */
+.new-chat-selected-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  min-height: 1.5rem;
+}
+
+.new-chat-selected-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.5rem 0.3rem 0.65rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--gc-text);
+  background: var(--gc-slate-100);
+  border-radius: 9999px;
+  max-width: 100%;
+}
+
+.new-chat-selected-chip-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.new-chat-selected-remove {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.1rem;
+  margin: 0;
+  border: none;
+  background: none;
+  color: var(--gc-slate-500);
+  cursor: pointer;
+  border-radius: 50%;
+  transition: color 0.15s, background 0.15s;
+}
+
+.new-chat-selected-remove:hover {
+  color: var(--gc-text);
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.new-chat-selected-remove .material-symbols-outlined {
+  font-size: 0.875rem;
+}
+
+/* Suggested Contacts section */
+.new-chat-section {
+  margin-bottom: 2rem;
+}
+
+.new-chat-section-title {
+  margin: 0 0 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--gc-slate-400);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.new-chat-suggested-loading,
+.new-chat-suggested-empty {
+  margin: 0;
+  padding: 1rem;
+  font-size: 0.875rem;
+  color: var(--gc-slate-500);
+}
+
+.new-chat-suggested-ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.new-chat-suggested-li {
+  margin: 0;
+}
+
+.new-chat-suggested-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s;
+  border: 1px solid transparent;
+}
+
+.new-chat-suggested-row:hover {
+  background: var(--gc-slate-50);
+}
+
+.new-chat-suggested-checkbox {
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--gc-primary);
+  cursor: pointer;
+}
+
+.new-chat-suggested-avatar {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  background: var(--gc-slate-200);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--gc-slate-600);
+  flex-shrink: 0;
+}
+
+.new-chat-suggested-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.new-chat-suggested-name {
+  margin: 0;
+  font-weight: 500;
+  font-size: 0.9375rem;
+  color: var(--gc-text-dark);
+}
+
+.new-chat-suggested-email {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  color: var(--gc-slate-500);
+}
+
+.new-chat-suggested-chat-icon {
+  font-size: 1.25rem;
+  color: var(--gc-slate-300);
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+
+.new-chat-suggested-row:hover .new-chat-suggested-chat-icon {
+  color: var(--gc-primary);
+}
+
+/* Divider - Or Add New Contact */
+.new-chat-divider {
+  display: flex;
+  align-items: center;
+  margin: 2rem 0;
+  gap: 1rem;
+}
+
+.new-chat-divider::before,
+.new-chat-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--gc-border);
+}
+
+.new-chat-divider-text {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--gc-slate-400);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* Manual entry form - 2x2 grid */
+.new-chat-form {
+  margin-bottom: 0;
+}
+
+.new-chat-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.new-chat-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.new-chat-form-field label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--gc-text);
+}
+
+.new-chat-form-field input {
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--gc-text);
+  background: var(--gc-panel);
+  border: 1px solid var(--gc-border);
+  border-radius: 0.5rem;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.new-chat-form-field input::placeholder {
+  color: var(--gc-slate-400);
+}
+
+.new-chat-form-field input:focus {
+  border-color: var(--gc-primary);
+  box-shadow: 0 0 0 2px rgba(29, 40, 58, 0.2);
+}
+
+.new-chat-add-btn {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--gc-primary);
+  background: var(--gc-accent-soft);
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.new-chat-add-btn:hover {
+  background: var(--gc-accent);
+  color: var(--gc-primary);
+}
+
+/* Footer - New Chat.html */
+.new-chat-footer {
+  padding: 1.5rem 2rem;
+  background: var(--gc-slate-50);
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+  border-top: 1px solid var(--gc-border);
+}
+
+.new-chat-btn-cancel {
+  padding: 0.625rem 1.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--gc-slate-700);
+  background: transparent;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.new-chat-btn-cancel:hover {
+  background: var(--gc-slate-200);
+  color: var(--gc-text);
+}
+
+.new-chat-btn-start {
+  padding: 0.625rem 2rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--gc-primary);
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  box-shadow: 0 10px 15px -3px rgba(29, 40, 58, 0.2);
+  transition: background 0.15s, opacity 0.15s, transform 0.1s;
+}
+
+.new-chat-btn-start:hover:not(:disabled) {
+  background: #252f42;
+  transform: translateY(-1px);
+}
+
+.new-chat-btn-start:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* AddMemberModal: 참여자 명단 */
+.google-chat-modal.add-member-modal {
+  max-width: 24rem;
+}
+
+.add-member-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--gc-text);
+}
+
+.add-member-list-wrap {
+  max-height: 12rem;
+  overflow-y: auto;
+  border: 1px solid var(--gc-border);
+  border-radius: 0.5rem;
+  background: var(--gc-slate-50, #f8fafc);
+  padding: 0.25rem;
+}
+
+.add-member-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.add-member-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--gc-text);
+  border-radius: 0.375rem;
+}
+
+.add-member-item:hover {
+  background: var(--gc-accent-soft);
+}
+
+.add-member-item-icon {
+  font-size: 1.125rem;
+  color: var(--gc-slate-500);
+}
+
+.add-member-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.add-member-empty {
+  margin: 0;
+  padding: 1rem;
+  font-size: 0.875rem;
+  color: var(--gc-muted);
+  text-align: center;
+}
+
+.add-member-invite-success {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--gc-primary);
+  background: var(--gc-accent-soft);
+  border-radius: 0.5rem;
+}
+
+.add-member-hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--gc-slate-500);
+  line-height: 1.4;
+}
+
+/* AddMemberModal 1:1 모드: 구글/사내 검색 + 직접 입력 */
+.google-chat-modal.add-member-modal-1to1 {
+  max-width: 28rem;
+}
+
+.add-member-1to1-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.add-member-1to1-section {
+  border: 1px solid var(--gc-border);
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: var(--gc-slate-50, #f8fafc);
+}
+
+.add-member-1to1-section-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--gc-text);
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.add-member-1to1-section-title .material-symbols-outlined {
+  font-size: 1rem;
+  color: var(--gc-slate-500);
+}
+
+.add-member-1to1-search-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.add-member-1to1-input {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--gc-border);
+  border-radius: 0.5rem;
+  background: var(--gc-panel);
+  color: var(--gc-text);
+}
+
+.add-member-1to1-list-wrap {
+  max-height: 10rem;
+  overflow-y: auto;
+}
+
+.add-member-1to1-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.add-member-1to1-item {
+  margin: 0;
+}
+
+.add-member-1to1-item-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  color: var(--gc-text);
+}
+
+.add-member-1to1-item-btn:hover:not(:disabled) {
+  background: var(--gc-accent-soft);
+}
+
+.add-member-1to1-item-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.add-member-1to1-item-btn .material-symbols-outlined {
+  font-size: 1.125rem;
+  color: var(--gc-slate-500);
+  flex-shrink: 0;
+}
+
+.add-member-1to1-item-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.add-member-1to1-item-email {
+  font-size: 0.75rem;
+  color: var(--gc-slate-500);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 12rem;
+}
+
+.add-member-1to1-direct-form .google-chat-modal-field {
+  margin-bottom: 0.75rem;
+}
+
+.add-member-1to1-direct-form .google-chat-modal-actions {
+  padding-top: 0.5rem;
+}
+
+@media (max-width: 768px) {
+  .google-chat-spaces {
+    width: 100%;
+    max-height: 12rem;
+    border-right: none;
+    border-bottom: 1px solid var(--gc-border);
+  }
+
+  .google-chat-body {
+    flex-direction: column;
+  }
+
+  .google-chat-space-list-wrap {
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .google-chat-space-list {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    padding-bottom: 0.5rem;
+  }
+
+  .google-chat-space-item {
+    flex-shrink: 0;
+    min-width: 12rem;
+  }
+
+  .google-chat-message,
+  .google-chat-message-mine {
+    max-width: 95%;
+  }
+}

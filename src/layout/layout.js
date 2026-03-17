@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from './sidebar';
 import './layout.css';
 
 export default function Layout() {
   const [sidebarDrawerOpen, setSidebarDrawerOpen] = useState(false);
+  const location = useLocation();
+  const isSalesPipeline = location.pathname === '/sales-pipeline';
 
   return (
     <div className={`app-layout ${sidebarDrawerOpen ? 'sidebar-drawer-open' : ''}`}>
@@ -31,7 +33,7 @@ export default function Layout() {
             <span className="material-symbols-outlined">menu</span>
           </button>
         </header>
-        <div className="app-main-content">
+        <div className={`app-main-content ${isSalesPipeline ? 'app-main-content--fullheight' : ''}`}>
           <Outlet />
         </div>
       </main>

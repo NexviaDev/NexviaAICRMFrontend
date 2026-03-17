@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import CustomFieldsDisplay from '../../shared/custom-fields-display';
 import CustomFieldsSection from '../../shared/custom-fields-section';
 import ProductSalesModal from '../../shared/product-sales-modal/product-sales-modal';
 import RegisterSaleModal from '../../product-list/register-sale-modal/register-sale-modal';
+import AddContactModal from '../add-customer-company-employees-modal/add-customer-company-employees-modal';
 import './customer-company-employees-detail-modal.css';
 
 import { API_BASE } from '@/config';
@@ -70,6 +71,36 @@ function toDatetimeLocalValue(date) {
   return `${y}-${m}-${day}T${h}:${min}`;
 }
 
+/** Drive 폴더명용: 사용 불가 문자 치환 후, 너무 길면 잘라서 반환 (기본 이름 80자, 연락처 40자) */
+function sanitizeFolderNamePart(s, maxLen = 80) {
+  const t = String(s ?? '')
+    .replace(/[/\\*?:<>"|]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return t.length > maxLen ? t.slice(0, maxLen) : t;
+}
+
+const DRIVE_FOLDER_MIME = 'application/vnd.google-apps.folder';
+
+function getDriveFolderIdFromLink(url) {
+  if (!url || typeof url !== 'string') return null;
+  const s = url.trim();
+  const m = s.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : null;
+}
+
+function fileToBase64(file) {
+  return file.arrayBuffer().then((buf) => {
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    const chunk = 8192;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+    }
+    return btoa(binary);
+  });
+}
+
 export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   const [journalText, setJournalText] = useState('');
   const [journalDateTime, setJournalDateTime] = useState(() => toDatetimeLocalValue(new Date()));
@@ -77,6 +108,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [savingNote, setSavingNote] = useState(false);
   const [error, setError] = useState('');
+  const [summaryNotice, setSummaryNotice] = useState(null);
 
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({});
@@ -95,6 +127,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   const [cardDeleting, setCardDeleting] = useState(false);
   const [cardError, setCardError] = useState('');
   const cardInputRef = useRef(null);
+  const cardSubmittingRef = useRef(false);
   const [displayedContact, setDisplayedContact] = useState(contact);
   const [showCardImageModal, setShowCardImageModal] = useState(false);
   const [googleSaving, setGoogleSaving] = useState(false);
@@ -104,6 +137,23 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   const [selectedSaleForEdit, setSelectedSaleForEdit] = useState(null);
   const [productSalesList, setProductSalesList] = useState([]);
   const [loadingProductSales, setLoadingProductSales] = useState(true);
+  const [driveFolderLink, setDriveFolderLink] = useState('');
+  const [driveFolderId, setDriveFolderId] = useState(null);
+  const [driveUploading, setDriveUploading] = useState(false);
+  const [driveError, setDriveError] = useState('');
+  const [docsDropActive, setDocsDropActive] = useState(false);
+  const [dragInModal, setDragInModal] = useState(false);
+  const [driveEmbedKey, setDriveEmbedKey] = useState(0);
+  const [driveCurrentFolderId, setDriveCurrentFolderId] = useState(null);
+  const [driveBreadcrumb, setDriveBreadcrumb] = useState([]);
+  const [driveFilesList, setDriveFilesList] = useState([]);
+  const [loadingDriveFiles, setLoadingDriveFiles] = useState(false);
+  const driveFileInputRef = useRef(null);
+
+  /** 고객사 없을 때 폴더명: [이름]_[연락처] (긴 이름은 80자, 연락처 40자로 자름) */
+  const driveFolderName = contact
+    ? `${sanitizeFolderNamePart(contact.companyName || contact.name || '이름없음', 80)}_${sanitizeFolderNamePart(contact.phone || contact.email || '미등록', 40)}`
+    : '';
 
   useEffect(() => {
     let cancelled = false;
@@ -145,15 +195,27 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   }, [onClose, editing, showDeleteConfirm, showCardImageModal, showProductSalesModal, showRegisterSaleModal]);
 
   useEffect(() => {
-    setDisplayedContact(contact);
+    setDisplayedContact((prev) => ({ ...(prev || {}), ...(contact || {}) }));
   }, [contact]);
 
-  if (!contact) return null;
-  const contactToShow = displayedContact || contact;
-
-  const status = contact.status || 'Lead';
+  const contactToShow = displayedContact || contact || {};
+  const businessCardDisplayUrl = contactToShow.businessCardDriveUrl || contactToShow.businessCardImageUrl;
+  const status = contactToShow.status || 'Lead';
   const displayStatus = statusLabel[status] || status;
-  const contactId = contact._id;
+  const contactId = contact?._id;
+
+  const fetchContactDetail = useCallback(async () => {
+    if (!contactId) return null;
+    try {
+      const res = await fetch(`${API_BASE}/customer-company-employees/${contactId}`, { headers: getAuthHeader() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?._id) return null;
+      setDisplayedContact((prev) => ({ ...(prev || {}), ...data }));
+      return data;
+    } catch (_) {
+      return null;
+    }
+  }, [contactId]);
 
   const fetchHistory = async () => {
     if (!contactId) return;
@@ -175,8 +237,24 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   }, [contactId]);
 
   useEffect(() => {
+    fetchContactDetail();
+  }, [fetchContactDetail]);
+
+  useEffect(() => {
+    if (!contactId) return undefined;
+    if (!['queued', 'processing'].includes(contactToShow?.summaryStatus)) return undefined;
+    const timer = window.setInterval(() => {
+      fetchContactDetail();
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [contactId, contactToShow?.summaryStatus, fetchContactDetail]);
+
+  useEffect(() => {
     setJournalDateTime(toDatetimeLocalValue(new Date()));
+    setSummaryNotice(null);
   }, [contactId]);
+
+  if (!contact) return null;
 
   const companyIdForSales = contactToShow?.customerCompanyId?._id ?? contactToShow?.customerCompanyId ?? null;
   const companyNameForSales = contactToShow?.customerCompanyId?.name ?? contactToShow?.companyName ?? '';
@@ -213,23 +291,182 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
     fetchProductSales();
   }, [contactId, companyIdForSales]);
 
+  /* Drive 탭: 등록폴더(company-drive-settings) 아래 [이름]_[연락처] 폴더 ensure 후 표시 (기존 값 미사용) */
+  useEffect(() => {
+    if (!contact || !driveFolderName) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const rootRes = await fetch(`${API_BASE}/custom-field-definitions/drive-root`, { headers: getAuthHeader() });
+        const rootJson = await rootRes.json().catch(() => ({}));
+        const driveRootUrl = (rootJson.driveRootUrl != null && String(rootJson.driveRootUrl).trim()) ? String(rootJson.driveRootUrl).trim() : '';
+        if (cancelled || !driveRootUrl) return;
+        const registeredFolderId = getDriveFolderIdFromLink(driveRootUrl);
+        if (!registeredFolderId) return;
+        const r = await fetch(`${API_BASE}/drive/folders/ensure`, {
+          method: 'POST',
+          headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ folderName: driveFolderName, parentFolderId: registeredFolderId })
+        });
+        const data = await r.json().catch(() => ({}));
+        if (cancelled) return;
+        if (r.ok && data.id) {
+          setDriveFolderId(data.id);
+          setDriveFolderLink(data.webViewLink || `https://drive.google.com/drive/folders/${data.id}`);
+        }
+      } catch (_) {}
+    })();
+    return () => { cancelled = true; };
+  }, [contact, driveFolderName]);
+
+  useEffect(() => {
+    if (driveFolderId && driveFolderName) {
+      setDriveCurrentFolderId(driveFolderId);
+      setDriveBreadcrumb([{ id: driveFolderId, name: driveFolderName }]);
+    } else {
+      setDriveCurrentFolderId(null);
+      setDriveBreadcrumb([]);
+      setDriveFilesList([]);
+    }
+  }, [driveFolderId, driveFolderName]);
+
+  const fetchDriveFiles = useCallback(async () => {
+    if (!driveCurrentFolderId) {
+      setDriveFilesList([]);
+      return;
+    }
+    setLoadingDriveFiles(true);
+    try {
+      const res = await fetch(`${API_BASE}/drive/files?folderId=${encodeURIComponent(driveCurrentFolderId)}&pageSize=100`, {
+        headers: getAuthHeader()
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(data.files)) {
+        setDriveFilesList(data.files);
+      } else {
+        setDriveFilesList([]);
+      }
+    } catch (_) {
+      setDriveFilesList([]);
+    } finally {
+      setLoadingDriveFiles(false);
+    }
+  }, [driveCurrentFolderId]);
+
+  useEffect(() => {
+    fetchDriveFiles();
+  }, [fetchDriveFiles]);
+
+  const handleDirectFileUpload = useCallback(
+    async (files) => {
+      const filesArray = Array.from(files || []);
+      if (!filesArray.length) return;
+      setDriveUploading(true);
+      setDriveError('');
+      try {
+        let parentId = driveCurrentFolderId || driveFolderId;
+        if (!parentId) {
+          const rootRes = await fetch(`${API_BASE}/custom-field-definitions/drive-root`, { headers: getAuthHeader() });
+          const rootJson = await rootRes.json().catch(() => ({}));
+          const driveRootUrl = (rootJson.driveRootUrl != null && String(rootJson.driveRootUrl).trim()) ? String(rootJson.driveRootUrl).trim() : '';
+          if (!driveRootUrl) {
+            setDriveError('회사 공유 드라이브 경로를 먼저 설정해 주세요. (회사 개요 → 전체 공유 드라이브 주소)');
+            setDriveUploading(false);
+            return;
+          }
+          const registeredFolderId = getDriveFolderIdFromLink(driveRootUrl);
+          if (!registeredFolderId) {
+            setDriveError('드라이브 경로 형식이 올바르지 않습니다.');
+            setDriveUploading(false);
+            return;
+          }
+          const r = await fetch(`${API_BASE}/drive/folders/ensure`, {
+            method: 'POST',
+            headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ folderName: driveFolderName, parentFolderId: registeredFolderId })
+          });
+          const data = await r.json().catch(() => ({}));
+          if (!r.ok) {
+            setDriveError(data.error || '폴더를 준비할 수 없습니다.');
+            setDriveUploading(false);
+            return;
+          }
+          parentId = data.id;
+          setDriveFolderId(parentId);
+          setDriveFolderLink(data.webViewLink || `https://drive.google.com/drive/folders/${parentId}`);
+        }
+        const uploadOne = async (file) => {
+          const contentBase64 = await fileToBase64(file);
+          if (!contentBase64) {
+            setDriveError((e) => (e ? e : `"${file.name}" 변환 실패`));
+            return;
+          }
+          const up = await fetch(`${API_BASE}/drive/upload`, {
+            method: 'POST',
+            headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              name: file.name,
+              mimeType: file.type || 'application/octet-stream',
+              contentBase64,
+              parentFolderId: parentId
+            })
+          });
+          const upData = await up.json().catch(() => ({}));
+          if (!up.ok) setDriveError((e) => (e ? e : (upData.error || '업로드 실패')));
+        };
+        await Promise.all(filesArray.map((file) => uploadOne(file)));
+        fetchDriveFiles();
+      } catch (_) {
+        setDriveError('Drive에 연결할 수 없습니다.');
+      } finally {
+        setDriveUploading(false);
+        setDriveEmbedKey((k) => k + 1);
+      }
+    },
+    [driveFolderName, driveFolderId, driveCurrentFolderId, fetchDriveFiles, contactId]
+  );
+
   const handleSaveNote = async () => {
     const content = journalText.trim();
     if (!content) return;
     setError('');
+    setSummaryNotice(null);
     setSavingNote(true);
     try {
       const createdAt = journalDateTime ? new Date(journalDateTime).toISOString() : undefined;
+      const requestBody = JSON.stringify({ content, ...(createdAt && !Number.isNaN(new Date(journalDateTime).getTime()) ? { createdAt } : {}) });
       const res = await fetch(`${API_BASE}/customer-company-employees/${contactId}/history`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ content, ...(createdAt && !Number.isNaN(new Date(journalDateTime).getTime()) ? { createdAt } : {}) })
+        ...(requestBody.length <= 60 * 1024 ? { keepalive: true } : {}),
+        body: requestBody
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setJournalText('');
         setJournalDateTime(toDatetimeLocalValue(new Date()));
+        if (data.summaryQueued) {
+          setDisplayedContact((prev) => ({
+            ...(prev || {}),
+            summaryStatus: 'queued',
+            summaryError: '',
+            summaryQueuedForHistoryAt: data.summaryQueuedForHistoryAt || createdAt || new Date().toISOString()
+          }));
+          setSummaryNotice({
+            type: 'info',
+            text: '최신 업무 기록을 기준으로 Gemini 요약을 요청했습니다. 모달을 닫아도 서버에서 계속 처리됩니다.'
+          });
+        } else if (data.summarySkippedReason === 'older_than_latest_history') {
+          setSummaryNotice({
+            type: 'muted',
+            text: '등록한 업무 기록 일시가 기존 최신 업무 기록보다 과거라서, 이번 기록은 요약 갱신 대상에서 제외되었습니다.'
+          });
+        }
         fetchHistory();
+        fetchContactDetail();
       } else {
         setError(data.error || '저장에 실패했습니다.');
       }
@@ -247,45 +484,146 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
         method: 'DELETE',
         headers: getAuthHeader()
       });
-      if (res.ok) fetchHistory();
+      if (res.ok) {
+        fetchHistory();
+        fetchContactDetail();
+      }
     } catch (_) {}
   };
 
+  const summaryStatusText = {
+    idle: '요약 대기',
+    queued: 'Gemini 요약 대기 중...',
+    processing: 'Gemini 요약 생성 중...',
+    completed: '최신 요약',
+    error: '요약 실패'
+  };
+
+  /**
+   * 명함 등록 (02~04)
+   * 02. company-drive-settings 등록폴더로 먼저 이동
+   * 03. customerCompanyId 있음 → 등록폴더 아래 [회사명]_[사업자번호] 폴더(있으면 사용) → 'business card' 생성 후 등록
+   * 04. customerCompanyId null → 등록폴더 아래 [이름]_[연락처] 폴더(있으면 사용, 없으면 생성) → 'business card'에 등록
+   */
   const handleCardFileChange = async (e) => {
     const file = e.target?.files?.[0];
     e.target.value = '';
     if (!file || !contactId) return;
+    if (cardSubmittingRef.current) return;
     if (!file.type.startsWith('image/')) {
       setCardError('이미지 파일만 업로드할 수 있습니다.');
       return;
     }
     setCardError('');
+    cardSubmittingRef.current = true;
     setCardUploading(true);
     try {
-      const formData = new FormData();
-      formData.append('image', file);
-      const res = await fetch(`${API_BASE}/customer-company-employees/${contactId}/business-card`, {
-        method: 'POST',
-        headers: getAuthHeader(),
-        body: formData
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.businessCardImageUrl !== undefined) {
-        const next = { ...contact, businessCardImageUrl: data.businessCardImageUrl };
-        setDisplayedContact(next);
-        onUpdated?.(next);
+      // 02. 등록폴더(company-drive-settings) 먼저 조회
+      const rootRes = await fetch(`${API_BASE}/custom-field-definitions/drive-root`, { headers: getAuthHeader() });
+      const rootJson = await rootRes.json().catch(() => ({}));
+      const driveRootUrl = (rootJson.driveRootUrl != null && String(rootJson.driveRootUrl).trim()) ? String(rootJson.driveRootUrl).trim() : '';
+      if (!driveRootUrl) {
+        setCardError('회사 공유 드라이브 경로를 먼저 설정해 주세요. (회사 개요 → 전체 공유 드라이브 주소)');
+        return;
+      }
+      const registeredFolderId = getDriveFolderIdFromLink(driveRootUrl);
+      if (!registeredFolderId) {
+        setCardError('드라이브 경로 형식이 올바르지 않습니다.');
+        return;
+      }
+
+      let targetFolderId;
+      const cc = contact.customerCompanyId;
+      const hasCustomerCompany = cc && (typeof cc.name === 'string' && cc.name.trim()) || (typeof cc?.companyName === 'string' && cc.companyName.trim());
+
+      if (hasCustomerCompany) {
+        // 03. customerCompanyId 있음(DB에서 조회된 고객사) → [회사명]_[사업자번호] 기존 폴더 접근 후 'business card'에 등록
+        const ccName = typeof cc.name === 'string' ? cc.name : (cc.companyName || '미소속');
+        const ccBn = cc.businessNumber != null ? String(cc.businessNumber).replace(/\D/g, '') : '';
+        const companyFolderName = `${sanitizeFolderNamePart(ccName, 80)}_${sanitizeFolderNamePart(ccBn || '미등록', 20)}`;
+        const ensureCompany = await fetch(`${API_BASE}/drive/folders/ensure`, {
+          method: 'POST',
+          headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ folderName: companyFolderName, parentFolderId: registeredFolderId })
+        });
+        const companyData = await ensureCompany.json().catch(() => ({}));
+        if (!ensureCompany.ok || !companyData.id) {
+          setCardError(companyData.error || '고객사 폴더를 준비할 수 없습니다.');
+          return;
+        }
+        targetFolderId = companyData.id;
       } else {
-        setCardError(data.error || '명함 사진 업로드에 실패했습니다.');
+        // 04. customerCompanyId null → [이름]_[연락처] 있으면 사용, 없으면 생성 후 'business card'에 등록
+        const ensurePerson = await fetch(`${API_BASE}/drive/folders/ensure`, {
+          method: 'POST',
+          headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ folderName: driveFolderName, parentFolderId: registeredFolderId })
+        });
+        const personData = await ensurePerson.json().catch(() => ({}));
+        if (!ensurePerson.ok || !personData.id) {
+          setCardError(personData.error || '폴더를 준비할 수 없습니다.');
+          return;
+        }
+        targetFolderId = personData.id;
+      }
+
+      const infoRes = await fetch(`${API_BASE}/drive/folders/ensure`, {
+        method: 'POST',
+        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ folderName: 'business card', parentFolderId: targetFolderId })
+      });
+      const infoData = await infoRes.json().catch(() => ({}));
+      if (!infoRes.ok || !infoData.id) {
+        setCardError(infoData.error || 'business card 폴더를 준비할 수 없습니다.');
+        return;
+      }
+      const contentBase64 = await fileToBase64(file);
+      if (!contentBase64) {
+        setCardError('파일 변환에 실패했습니다.');
+        return;
+      }
+      const uploadRes = await fetch(`${API_BASE}/drive/upload`, {
+        method: 'POST',
+        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          name: file.name,
+          mimeType: file.type || 'image/jpeg',
+          contentBase64,
+          parentFolderId: infoData.id
+        })
+      });
+      const uploadData = await uploadRes.json().catch(() => ({}));
+      if (!uploadRes.ok || !uploadData.webViewLink) {
+        setCardError(uploadData.error || 'Drive 업로드에 실패했습니다.');
+        return;
+      }
+      const patchRes = await fetch(`${API_BASE}/customer-company-employees/${contactId}`, {
+        method: 'PATCH',
+        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ businessCardDriveUrl: uploadData.webViewLink })
+      });
+      const patched = await patchRes.json().catch(() => ({}));
+      if (patchRes.ok && patched._id) {
+        setDisplayedContact({ ...contact, businessCardDriveUrl: uploadData.webViewLink });
+        onUpdated?.({ ...contact, businessCardDriveUrl: uploadData.webViewLink });
+      } else {
+        setCardError(patched.error || '명함 URL 저장에 실패했습니다.');
       }
     } catch (_) {
       setCardError('서버에 연결할 수 없습니다.');
     } finally {
       setCardUploading(false);
+      cardSubmittingRef.current = false;
     }
   };
 
   const handleCardDelete = async () => {
-    if (!contactId || !contact.businessCardImageUrl) return;
+    const hasCard = contact.businessCardDriveUrl || contact.businessCardImageUrl;
+    if (!contactId || !hasCard) return;
     if (!window.confirm('명함 사진을 삭제할까요?')) return;
     setCardError('');
     setCardDeleting(true);
@@ -296,7 +634,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        const next = { ...contact, businessCardImageUrl: '', businessCardPublicId: '' };
+        const next = { ...contact, businessCardImageUrl: '', businessCardPublicId: '', businessCardDriveUrl: '' };
         setDisplayedContact(next);
         onUpdated?.(next);
       } else {
@@ -344,25 +682,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
     }
   };
 
-  const startEdit = () => {
-    setEditForm({
-      name: contact.name || '',
-      email: contact.email || '',
-      phone: contact.phone || '',
-      position: contact.position || '',
-      address: contact.address || '',
-      birthDate: contact.birthDate || '',
-      memo: contact.memo || '',
-      company: contact.company || '',
-      companyName: contact.companyName || '',
-      customerCompanyId: contact.customerCompanyId || '',
-      status: contact.status || 'Lead',
-      isIndividual: contact.isIndividual || false,
-      customFields: contact.customFields ? { ...contact.customFields } : {}
-    });
-    setEditError('');
-    setEditing(true);
-  };
+  const startEdit = () => setEditing(true);
 
   const cancelEdit = () => {
     setEditing(false);
@@ -494,8 +814,22 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
 
   return (
     <>
+      {editing && (
+        <AddContactModal
+          contact={contact}
+          onClose={() => setEditing(false)}
+          onUpdated={(updated) => {
+            onUpdated?.(updated);
+            setEditing(false);
+          }}
+        />
+      )}
       <div className="contact-detail-overlay" aria-hidden="true" />
-      <div className="contact-detail-panel">
+      <div
+        className="contact-detail-panel"
+        onDragEnter={(e) => { e.preventDefault(); setDragInModal(true); }}
+        onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDragInModal(false); }}
+      >
         <div className="contact-detail-inner">
           <header className="contact-detail-header">
             <div className="contact-detail-header-title">
@@ -556,135 +890,24 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
           )}
 
           <div className="contact-detail-body">
-            {editing ? (
-              /* ── 수정 모드 ── */
-              <div className="contact-detail-edit-form">
-                {editError && <p className="contact-detail-edit-error">{editError}</p>}
-
-                <div className="contact-detail-edit-field">
-                  <label>이름</label>
-                  <input name="name" type="text" value={editForm.name} onChange={handleEditChange} placeholder="예: 홍길동" />
-                </div>
-
-                <div className="contact-detail-edit-field contact-detail-edit-company-field" ref={companyWrapRef}>
-                  <label>고객사</label>
-                  <div className="contact-detail-edit-company-wrap">
-                    <input
-                      name="company"
-                      type="text"
-                      value={editForm.company}
-                      onChange={handleEditChange}
-                      placeholder={editForm.isIndividual ? '개인 선택 시 미등록' : '고객사명 입력 후 검색'}
-                      disabled={editForm.isIndividual}
-                    />
-                    <button type="button" className="contact-detail-edit-company-search" onClick={handleCompanySearch} disabled={loadingCompanySearch || editForm.isIndividual}>
-                      <span className="material-symbols-outlined">search</span>
-                      <span>{loadingCompanySearch ? '검색 중...' : '검색'}</span>
-                    </button>
-                  </div>
-                  <label className="contact-detail-edit-checkbox">
-                    <input type="checkbox" checked={editForm.isIndividual} onChange={handleIndividualChange} />
-                    <span>개인 (고객사 없이 연락처만 등록)</span>
-                  </label>
-                  {companyDropdownOpen && !editForm.isIndividual && (
-                    <ul className="contact-detail-edit-company-dropdown">
-                      {companyList.length === 0 ? (
-                        <li className="contact-detail-edit-dropdown-empty">검색 조건에 맞는 고객사가 없습니다.</li>
-                      ) : (
-                        companyList.map((c) => (
-                          <li key={c._id} className="contact-detail-edit-dropdown-item" onMouseDown={() => handleCompanySelect(c)}>
-                            <span className="material-symbols-outlined">business</span>
-                            <div className="contact-detail-edit-dropdown-item-content">
-                              <span className="contact-detail-edit-dropdown-item-name">{c.name}</span>
-                              {(c.representativeName || c.businessNumber) && (
-                                <span className="contact-detail-edit-dropdown-item-sub">
-                                  {[c.representativeName, c.businessNumber].filter(Boolean).join(' · ')}
-                                </span>
-                              )}
-                            </div>
-                          </li>
-                        ))
-                      )}
-                    </ul>
-                  )}
-                </div>
-
-                <div className="contact-detail-edit-row">
-                  <div className="contact-detail-edit-field">
-                    <label>이메일</label>
-                    <input name="email" type="email" value={editForm.email} onChange={handleEditChange} placeholder="example@company.com" />
-                  </div>
-                  <div className="contact-detail-edit-field">
-                    <label>전화번호</label>
-                    <input name="phone" type="tel" inputMode="numeric" value={editForm.phone} onChange={handleEditChange} placeholder="010-0000-0000" maxLength={13} />
-                  </div>
-                </div>
-
-                <div className="contact-detail-edit-field">
-                  <label>직책</label>
-                  <input name="position" type="text" value={editForm.position} onChange={handleEditChange} placeholder="예: 과장, 팀장" />
-                </div>
-                <div className="contact-detail-edit-field">
-                  <label>주소</label>
-                  <input name="address" type="text" value={editForm.address} onChange={handleEditChange} placeholder="주소" />
-                </div>
-                <div className="contact-detail-edit-field">
-                  <label>생일</label>
-                  <input name="birthDate" type="text" value={editForm.birthDate} onChange={handleEditChange} placeholder="예: 1990-01-15" />
-                </div>
-                <div className="contact-detail-edit-field">
-                  <label>메모</label>
-                  <textarea name="memo" value={editForm.memo} onChange={handleEditChange} placeholder="메모" rows={2} />
-                </div>
-
-                <div className="contact-detail-edit-field">
-                  <label>상태</label>
-                  <select name="status" value={editForm.status} onChange={handleEditChange}>
-                    {STATUS_OPTIONS.map((s) => (
-                      <option key={s} value={s}>{statusLabel[s]}</option>
-                    ))}
-                  </select>
-                  <p className="contact-detail-edit-status-hint">
-                    <span className="material-symbols-outlined">info</span>
-                    {statusHint[editForm.status]}
-                  </p>
-                </div>
-
-                <CustomFieldsSection
-                  definitions={customDefinitions}
-                  values={editForm.customFields || {}}
-                  onChangeValues={(key, value) => setEditForm((prev) => ({
-                    ...prev,
-                    customFields: { ...(prev.customFields || {}), [key]: value }
-                  }))}
-                  fieldClassName="contact-detail-edit-field"
-                />
-
-                <div className="contact-detail-edit-footer">
-                  <button type="button" className="contact-detail-edit-cancel" onClick={cancelEdit}>취소</button>
-                  <button type="button" className="contact-detail-edit-save" disabled={editSaving} onClick={handleEditSubmit}>
-                    {editSaving ? '저장 중...' : '저장'}
-                  </button>
-                </div>
-              </div>
-            ) : (
+            {editing ? null : (
               /* ── 조회 모드: 고객사 상세와 동일한 한 장 카드 + 메타 리스트 구조 ── */
               <>
                 <section className="contact-detail-main-card customer-company-detail-card">
                   <div className="contact-detail-main-logo customer-company-detail-logo">
                     <div
-                      className={`contact-detail-avatar-in-card ${contactToShow.businessCardImageUrl ? 'contact-detail-avatar-clickable' : ''}`}
-                      role={contactToShow.businessCardImageUrl ? 'button' : undefined}
-                      tabIndex={contactToShow.businessCardImageUrl ? 0 : undefined}
-                      aria-label={contactToShow.businessCardImageUrl ? '명함 이미지 크게 보기' : undefined}
-                      onClick={() => contactToShow.businessCardImageUrl && setShowCardImageModal(true)}
+                      className={`contact-detail-avatar-in-card ${businessCardDisplayUrl ? 'contact-detail-avatar-clickable' : ''}`}
+                      role={businessCardDisplayUrl ? 'button' : undefined}
+                      tabIndex={businessCardDisplayUrl ? 0 : undefined}
+                      aria-label={businessCardDisplayUrl ? '명함 이미지 크게 보기' : undefined}
+                      onClick={() => businessCardDisplayUrl && setShowCardImageModal(true)}
                       onKeyDown={(e) => {
-                        if (!contactToShow.businessCardImageUrl) return;
+                        if (!businessCardDisplayUrl) return;
                         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowCardImageModal(true); }
                       }}
                     >
-                      {contactToShow.businessCardImageUrl ? (
-                        <img src={contactToShow.businessCardImageUrl} alt="" className="contact-detail-avatar-img" />
+                      {businessCardDisplayUrl ? (
+                        <img src={businessCardDisplayUrl} alt="" className="contact-detail-avatar-img" />
                       ) : (
                         <span className="material-symbols-outlined">contact_page</span>
                       )}
@@ -698,12 +921,12 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                         onChange={handleCardFileChange}
                         aria-label="명함 사진 선택"
                       />
-                      {!contactToShow.businessCardImageUrl && (
+                      {!businessCardDisplayUrl && (
                         <button type="button" className="contact-detail-card-btn" onClick={() => cardInputRef.current?.click()} disabled={cardUploading} title="명함 사진 추가" aria-label="명함 사진 추가">
                           <span className="material-symbols-outlined">add_photo_alternate</span>
                         </button>
                       )}
-                      {contactToShow.businessCardImageUrl && (
+                      {businessCardDisplayUrl && (
                         <>
                           <button type="button" className="contact-detail-card-btn" onClick={() => cardInputRef.current?.click()} disabled={cardUploading} title="명함 사진 수정" aria-label="명함 사진 수정">
                             <span className="material-symbols-outlined">edit</span>
@@ -818,10 +1041,180 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                   )}
                 </section>
 
+                {/* 증서 · 자료 (Google Drive: [이름]_[연락처] 폴더) */}
+                <section className="customer-company-detail-section register-sale-docs">
+                  <input
+                    ref={driveFileInputRef}
+                    type="file"
+                    multiple
+                    style={{ display: 'none' }}
+                    onChange={(e) => { handleDirectFileUpload(e.target.files); e.target.value = ''; }}
+                    disabled={driveUploading}
+                    aria-hidden="true"
+                  />
+                  <div className="customer-company-detail-section-head">
+                    <h3 className="customer-company-detail-section-title">
+                      <span className="material-symbols-outlined">folder</span>
+                      증서 · 자료
+                    </h3>
+                    <button
+                      type="button"
+                      className="customer-company-detail-btn-all"
+                      onClick={() => { if (!driveUploading && driveFileInputRef.current) driveFileInputRef.current.click(); }}
+                      disabled={driveUploading}
+                      title="파일 추가"
+                      aria-label="파일 추가"
+                    >
+                      <span className="material-symbols-outlined">add</span>
+                    </button>
+                  </div>
+                  {driveFolderLink && getDriveFolderIdFromLink(driveFolderLink) ? (
+                    <div
+                      className={`register-sale-docs-list-wrap ${docsDropActive ? 'register-sale-docs-dropzone-active' : ''} ${driveUploading ? 'register-sale-docs-dropzone-disabled' : ''}`}
+                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); if (!driveUploading) setDocsDropActive(true); }}
+                      onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDocsDropActive(false); }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setDocsDropActive(false);
+                        if (!driveUploading && e.dataTransfer?.files?.length) handleDirectFileUpload(e.dataTransfer.files);
+                      }}
+                      aria-label="Drive 폴더 (폴더 클릭 시 들어가기, 파일 클릭 시 열기)"
+                    >
+                      {driveBreadcrumb.length > 0 && (
+                        <div className="register-sale-docs-breadcrumb">
+                          {driveBreadcrumb.map((seg, i) => (
+                            <span key={seg.id}>
+                              {i > 0 && <span className="register-sale-docs-breadcrumb-sep"> &gt; </span>}
+                              <button
+                                type="button"
+                                className="register-sale-docs-breadcrumb-btn"
+                                onClick={() => {
+                                  setDriveCurrentFolderId(seg.id);
+                                  setDriveBreadcrumb((b) => b.slice(0, i + 1));
+                                }}
+                              >
+                                {seg.name}
+                              </button>
+                            </span>
+                          ))}
+                          <a
+                            href={driveCurrentFolderId ? `https://drive.google.com/drive/folders/${driveCurrentFolderId}` : driveFolderLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="register-sale-docs-open-drive"
+                            title="Drive에서 열기"
+                          >
+                            <span className="material-symbols-outlined">open_in_new</span>
+                          </a>
+                        </div>
+                      )}
+                      {loadingDriveFiles ? (
+                        <p className="register-sale-docs-loading">목록 불러오는 중…</p>
+                      ) : driveFilesList.length === 0 ? (
+                        <div
+                          className={`register-sale-docs-dropzone register-sale-docs-dropzone-inline ${docsDropActive ? 'register-sale-docs-dropzone-active' : ''} ${driveUploading ? 'register-sale-docs-dropzone-disabled' : ''}`}
+                          onClick={() => { if (!driveUploading && driveFileInputRef.current) driveFileInputRef.current.click(); }}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !driveUploading && driveFileInputRef.current) driveFileInputRef.current.click(); }}
+                        >
+                          <span className="material-symbols-outlined register-sale-docs-dropzone-icon">upload_file</span>
+                          <span>{driveUploading ? '업로드 중…' : '비어 있음. 클릭하거나 파일을 놓아 추가'}</span>
+                        </div>
+                      ) : (
+                        <ul className="register-sale-docs-file-list">
+                          {driveFilesList.map((item) => {
+                            const isFolder = item.mimeType === DRIVE_FOLDER_MIME;
+                            const link = isFolder
+                              ? null
+                              : (item.webViewLink || `https://drive.google.com/file/d/${item.id}/view`);
+                            return (
+                              <li key={item.id}>
+                                <button
+                                  type="button"
+                                  className={`register-sale-docs-file-row ${isFolder ? 'register-sale-docs-file-row--folder' : 'register-sale-docs-file-row--file'}`}
+                                  onClick={() => {
+                                    if (isFolder) {
+                                      setDriveCurrentFolderId(item.id);
+                                      setDriveBreadcrumb((b) => [...b, { id: item.id, name: item.name || '폴더' }]);
+                                    } else if (link) {
+                                      window.open(link, '_blank', 'noopener,noreferrer');
+                                    }
+                                  }}
+                                >
+                                  <span className="material-symbols-outlined register-sale-docs-file-icon">
+                                    {isFolder ? 'folder' : 'description'}
+                                  </span>
+                                  <span className="register-sale-docs-file-name">{item.name || (isFolder ? '폴더' : '파일')}</span>
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                      {driveUploading ? (
+                        <div className="register-sale-docs-embed-overlay">업로드 중…</div>
+                      ) : docsDropActive ? (
+                        <div className="register-sale-docs-embed-overlay">여기에 놓기</div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div
+                      className={`register-sale-docs-dropzone ${docsDropActive ? 'register-sale-docs-dropzone-active' : ''} ${driveUploading ? 'register-sale-docs-dropzone-disabled' : ''}`}
+                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); if (!driveUploading) setDocsDropActive(true); }}
+                      onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDocsDropActive(false); }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setDocsDropActive(false);
+                        if (!driveUploading && e.dataTransfer?.files?.length) handleDirectFileUpload(e.dataTransfer.files);
+                      }}
+                      onClick={() => { if (!driveUploading && driveFileInputRef.current) driveFileInputRef.current.click(); }}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !driveUploading && driveFileInputRef.current) driveFileInputRef.current.click(); }}
+                      aria-label="파일 업로드 (드래그 앤 드롭 또는 클릭)"
+                    >
+                      <span className="material-symbols-outlined register-sale-docs-dropzone-icon">upload_file</span>
+                      <span>{driveUploading ? '업로드 중…' : '파일을 여기에 놓거나 클릭하여 선택'}</span>
+                    </div>
+                  )}
+                  {driveError && <p className="register-sale-docs-error">{driveError}</p>}
+                </section>
+
                 <section className="contact-detail-section">
                   <div className="contact-detail-section-head">
                     <h3>업무 기록</h3>
                     <span className="contact-detail-section-badge">{historyItems.length}건</span>
+                  </div>
+                  <div className={`contact-detail-summary-card ${contactToShow?.summaryStatus === 'error' ? 'is-error' : ''}`}>
+                    <div className="contact-detail-summary-head">
+                      <strong>업무 요약</strong>
+                      <span className={`contact-detail-summary-status is-${contactToShow?.summaryStatus || 'idle'}`}>
+                        {summaryStatusText[contactToShow?.summaryStatus || 'idle'] || '요약 대기'}
+                      </span>
+                    </div>
+                    <p className="contact-detail-summary-text">
+                      {contactToShow?.summary?.trim()
+                        ? contactToShow.summary
+                        : (contactToShow?.summaryStatus === 'queued' || contactToShow?.summaryStatus === 'processing'
+                          ? '최신 업무 기록을 기준으로 Gemini가 요약을 만드는 중입니다. 모달을 닫아도 나중에 다시 확인할 수 있습니다.'
+                          : '아직 저장된 업무 요약이 없습니다. 최신 업무 기록을 등록하면 자동으로 요약됩니다.')}
+                    </p>
+                    {contactToShow?.summaryUpdatedAt && (
+                      <p className="contact-detail-summary-meta">
+                        마지막 요약: {formatHistoryDate(contactToShow.summaryUpdatedAt)}
+                      </p>
+                    )}
+                    {contactToShow?.summaryError && (
+                      <p className="contact-detail-summary-error">{contactToShow.summaryError}</p>
+                    )}
+                    {summaryNotice?.text && (
+                      <p className={`contact-detail-summary-notice is-${summaryNotice.type || 'info'}`}>
+                        {summaryNotice.text}
+                      </p>
+                    )}
                   </div>
                   <div className="contact-detail-journal-input-wrap">
                     {error && <p className="contact-detail-journal-error">{error}</p>}
@@ -908,6 +1301,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
           companyName={companyNameForSales}
           companyId={companyIdForSales}
           items={productSalesList}
+          driveFolderLink={driveFolderLink || undefined}
           onClose={() => setShowProductSalesModal(false)}
           onAddSale={() => { setShowProductSalesModal(false); setShowRegisterSaleModal(true); }}
           onSelectItem={(row) => { setShowProductSalesModal(false); setSelectedSaleForEdit(row); }}
@@ -949,7 +1343,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
         />
       )}
 
-      {showCardImageModal && contactToShow.businessCardImageUrl && (
+      {showCardImageModal && businessCardDisplayUrl && (
         <div
           className="contact-detail-card-image-backdrop"
           role="dialog"
@@ -966,7 +1360,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
             >
               <span className="material-symbols-outlined">close</span>
             </button>
-            <img src={contactToShow.businessCardImageUrl} alt="명함" className="contact-detail-card-image-img" />
+            <img src={businessCardDisplayUrl} alt="명함" className="contact-detail-card-image-img" />
           </div>
         </div>
       )}

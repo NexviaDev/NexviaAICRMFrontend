@@ -214,11 +214,162 @@
   margin-bottom: 0.75rem;
 }
 
+.customer-company-detail-name-wrap {
+  position: relative;
+}
+
+.customer-company-detail-name-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: inherit;
+  text-align: left;
+  border-radius: 0.25rem;
+  transition: opacity 0.2s;
+}
+
+.customer-company-detail-name-link:hover {
+  opacity: 0.85;
+}
+
+.customer-company-detail-name-link:hover .customer-company-detail-name {
+  text-decoration: underline;
+}
+
+.customer-company-detail-name-link-icon {
+  font-size: 1.125rem;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.customer-company-detail-name-link:hover .customer-company-detail-name-link-icon {
+  color: var(--primary);
+}
+
 .customer-company-detail-name {
   margin: 0;
   font-size: 1.5rem;
   font-weight: 700;
   color: var(--primary);
+}
+
+/* 등록된 사업자명 / 사업자 등록증 팝오버 */
+.customer-company-detail-registered-name-popover {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  margin-top: 0.5rem;
+  min-width: 16rem;
+  max-width: 22rem;
+  padding: 0.75rem 2rem 0.75rem 1rem;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+}
+
+.customer-company-detail-certificate-popover {
+  min-width: 18rem;
+  max-width: 28rem;
+}
+
+.customer-company-detail-registered-name-popover-title {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.customer-company-detail-registered-name-popover-value {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+/* 등록된 사업자 등록증 (Cloudinary) */
+.customer-company-detail-certificate-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.customer-company-detail-certificate-img {
+  display: block;
+  max-width: 100%;
+  max-height: 20rem;
+  width: auto;
+  height: auto;
+  border-radius: 0.35rem;
+  border: 1px solid var(--card-border);
+  background: var(--bg-light);
+}
+
+.customer-company-detail-certificate-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--primary);
+  text-decoration: none;
+  transition: opacity 0.2s;
+}
+
+.customer-company-detail-certificate-link:hover {
+  opacity: 0.85;
+  text-decoration: underline;
+}
+
+.customer-company-detail-certificate-link .material-symbols-outlined {
+  font-size: 1rem;
+}
+
+.customer-company-detail-certificate-empty,
+.customer-company-detail-certificate-doc-hint {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.customer-company-detail-certificate-doc-hint {
+  margin-bottom: 0.25rem;
+}
+
+.customer-company-detail-registered-name-popover-close {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  border-radius: 0.25rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s, background 0.2s;
+}
+
+.customer-company-detail-registered-name-popover-close:hover {
+  color: var(--text);
+  background: var(--bg-light);
+}
+
+.customer-company-detail-registered-name-popover-close .material-symbols-outlined {
+  font-size: 1rem;
 }
 
 .customer-company-detail-status-badge {
@@ -470,6 +621,93 @@
   margin-bottom: 1.5rem;
 }
 
+.customer-company-detail-summary-card {
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.75rem;
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.customer-company-detail-summary-card.is-error {
+  background: rgba(239, 68, 68, 0.05);
+  border-color: rgba(239, 68, 68, 0.18);
+}
+
+.customer-company-detail-summary-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.customer-company-detail-summary-head strong {
+  font-size: 0.9375rem;
+  color: var(--text);
+}
+
+.customer-company-detail-summary-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: rgba(148, 163, 184, 0.14);
+}
+
+.customer-company-detail-summary-status.is-queued,
+.customer-company-detail-summary-status.is-processing {
+  color: #355070;
+  background: rgba(191, 219, 254, 0.55);
+}
+
+.customer-company-detail-summary-status.is-completed {
+  color: #2f5d50;
+  background: rgba(209, 250, 229, 0.8);
+}
+
+.customer-company-detail-summary-status.is-error {
+  color: var(--danger);
+  background: rgba(254, 226, 226, 0.9);
+}
+
+.customer-company-detail-summary-text {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.customer-company-detail-summary-meta {
+  margin: 0.6rem 0 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.customer-company-detail-summary-error {
+  margin: 0.45rem 0 0;
+  font-size: 0.78rem;
+  color: var(--danger);
+}
+
+.customer-company-detail-summary-notice {
+  margin: 0.45rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.customer-company-detail-summary-notice.is-info {
+  color: #355070;
+}
+
+.customer-company-detail-summary-notice.is-muted {
+  color: var(--text-muted);
+}
+
 .customer-company-detail-journal-datetime-row {
   display: flex;
   align-items: center;
@@ -682,105 +920,244 @@
   color: var(--text-muted);
 }
 
-/* 증서 · 자료 (Drive 임베드) - register-sale-modal과 동일 스타일 */
+/* ========== 증서 · 자료 (Drive) - 배경/테두리 없음, 제품 판매 현황과 동일 너비 ========== */
 .customer-company-detail-section.register-sale-docs {
-  padding: 0.75rem 0;
-  border-top: 1px dashed var(--card-border);
+  padding: 0;
+  margin: 0 0 2rem;
 }
 
-.register-sale-docs-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 0.5rem;
-  padding: 0.5rem 0.65rem;
-  border-radius: 0.5rem;
-  background: var(--primary-pastel, rgba(99, 102, 241, 0.06));
-  border: 1px solid rgba(99, 102, 241, 0.12);
+.customer-company-detail-section.register-sale-docs .customer-company-detail-section-head {
+  margin-bottom: 0.75rem;
+  padding: 0;
+  background: none;
+  border: none;
+  box-shadow: none;
 }
 
-.register-sale-docs-head-left {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  min-width: 0;
-  flex: 1;
-}
-
-.register-sale-docs-label {
-  font-size: 0.8125rem;
+.customer-company-detail-section.register-sale-docs .customer-company-detail-section-title {
+  font-size: 1rem;
   font-weight: 600;
   color: var(--text);
-  margin: 0;
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.5rem;
 }
 
-.register-sale-docs-label::before {
-  content: '';
-  display: inline-block;
-  width: 0.2rem;
-  height: 1rem;
-  border-radius: 2px;
-  background: var(--primary);
-  opacity: 0.8;
-}
-
-.register-sale-docs-hint {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  margin: 0;
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.register-sale-docs-add-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.25rem;
-  height: 2.25rem;
-  padding: 0;
-  border: none;
-  border-radius: 0.5rem;
-  background: var(--primary);
-  color: #fff;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: opacity 0.2s, filter 0.2s;
-}
-
-.register-sale-docs-add-btn:hover:not(:disabled) {
-  filter: brightness(1.1);
-}
-
-.register-sale-docs-add-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.register-sale-docs-add-btn .material-symbols-outlined {
+.customer-company-detail-section.register-sale-docs .customer-company-detail-section-title .material-symbols-outlined {
+  color: var(--primary);
   font-size: 1.25rem;
 }
 
-.register-sale-docs-embed-wrap {
-  position: relative;
-  margin-bottom: 0.5rem;
-  border-radius: 0.5rem;
-  overflow: auto;
-  border: 1px solid var(--card-border);
-  background: var(--bg-light, #f5f5f5);
-  min-height: 160px;
-  max-height: 320px;
+.customer-company-detail-section.register-sale-docs .customer-company-detail-btn-all {
+  padding: 0.35rem;
+  border-radius: 0.4rem;
+  font-size: 1.1rem;
+  background: none;
+  color: var(--text);
+  border: none;
+  box-shadow: none;
+  transition: color 0.2s;
+}
+.customer-company-detail-section.register-sale-docs .customer-company-detail-btn-all:hover:not(:disabled) {
+  color: var(--primary);
+}
+.customer-company-detail-section.register-sale-docs .customer-company-detail-btn-all:disabled {
+  opacity: 0.5;
 }
 
-.register-sale-docs-embed-wrap.register-sale-docs-dropzone-active {
-  border-color: var(--primary);
-  background: var(--primary-pastel, rgba(99, 102, 241, 0.08));
+/* 목록/드롭존 컨테이너 - Google Drive가 보이는 구간만 테두리 */
+.register-sale-docs-embed-wrap,
+.register-sale-docs-list-wrap {
+  position: relative;
+  margin-bottom: 0.5rem;
+  border-radius: 0.35rem;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: none;
+  min-height: 180px;
+  max-height: 340px;
+  box-shadow: none;
+}
+
+.register-sale-docs-list-wrap {
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+/* 브레드크럼 */
+.register-sale-docs-breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  font-size: 0.8125rem;
+  padding: 0.35rem 0;
+  border-radius: 0;
+  background: none;
+  border: none;
+}
+
+.register-sale-docs-breadcrumb-btn {
+  background: none;
+  border: none;
+  padding: 0.25rem 0.4rem;
+  border-radius: 0.25rem;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+.register-sale-docs-breadcrumb-btn:hover {
+  color: var(--primary);
+}
+
+.register-sale-docs-breadcrumb-sep {
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.register-sale-docs-open-drive {
+  margin-left: auto;
+  padding: 0.35rem;
+  color: var(--text-muted);
+  border-radius: 0.25rem;
+  transition: color 0.2s;
+}
+.register-sale-docs-open-drive:hover {
+  color: var(--primary);
+  background: none;
+}
+
+.register-sale-docs-open-drive .material-symbols-outlined {
+  font-size: 1.1rem;
+}
+
+/* 로딩 */
+.register-sale-docs-loading {
+  margin: 0;
+  padding: 1.25rem 0;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+.register-sale-docs-loading::before {
+  content: '';
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid var(--card-border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: register-sale-docs-spin 0.7s linear infinite;
+}
+@keyframes register-sale-docs-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 빈 상태 드롭존 (인라인) */
+.register-sale-docs-dropzone-inline {
+  min-height: 100px;
+  margin: 0;
+  border-radius: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+}
+.register-sale-docs-dropzone-inline:hover:not(.register-sale-docs-dropzone-disabled) {
+  border: none;
+  background: none;
+  color: var(--text);
+}
+
+/* 파일/폴더 목록 */
+.register-sale-docs-file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.register-sale-docs-file-list::-webkit-scrollbar {
+  width: 6px;
+}
+.register-sale-docs-file-list::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 3px;
+}
+.register-sale-docs-file-list::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 3px;
+}
+.register-sale-docs-file-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.register-sale-docs-file-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.5rem 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.875rem;
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.register-sale-docs-file-row:hover {
+  background: none;
+  color: var(--primary);
+}
+
+.register-sale-docs-file-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+}
+.register-sale-docs-file-row--folder .register-sale-docs-file-icon {
+  color: var(--text-muted);
+}
+.register-sale-docs-file-row--folder:hover .register-sale-docs-file-icon {
+  color: var(--primary);
+}
+.register-sale-docs-file-row--file .register-sale-docs-file-icon {
+  color: var(--text-muted);
+}
+.register-sale-docs-file-row--file:hover .register-sale-docs-file-icon {
+  color: var(--primary);
+}
+
+.register-sale-docs-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.register-sale-docs-embed-wrap.register-sale-docs-dropzone-active,
+.register-sale-docs-list-wrap.register-sale-docs-dropzone-active {
+  border: none;
+  background: none;
+  box-shadow: none;
 }
 
 .register-sale-docs-embed {
@@ -795,44 +1172,50 @@
   pointer-events: none;
 }
 
-.register-sale-docs-embed-wrap .register-sale-docs-embed-overlay {
+.register-sale-docs-embed-wrap .register-sale-docs-embed-overlay,
+.register-sale-docs-list-wrap .register-sale-docs-embed-overlay {
   position: absolute;
   inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.85);
-  color: var(--primary);
+  background: none;
+  color: var(--text);
   font-size: 0.9375rem;
   font-weight: 600;
   pointer-events: none;
+  border-radius: 0;
 }
 
+/* 폴더 없을 때 전체 드롭존 - Google Drive 구간이라 테두리 */
 .register-sale-docs-dropzone {
-  padding: 1rem 1.25rem;
+  padding: 1rem;
   font-size: 0.875rem;
   color: var(--text-muted);
-  background: var(--bg-light, #f5f5f5);
-  border: 2px dashed var(--card-border);
-  border-radius: 0.5rem;
+  background: none;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 0.35rem;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  transition: border-color 0.2s, background 0.2s, color 0.2s;
+  transition: color 0.2s;
+  box-shadow: none;
+  min-height: 120px;
 }
 
 .register-sale-docs-dropzone:hover:not(.register-sale-docs-dropzone-disabled) {
-  border-color: var(--primary);
-  color: var(--primary);
-  background: var(--primary-pastel, rgba(99, 102, 241, 0.08));
+  border: none;
+  background: none;
+  color: var(--text);
+  box-shadow: none;
 }
 
 .register-sale-docs-dropzone-active {
-  border-color: var(--primary);
-  color: var(--primary);
-  background: var(--primary-pastel, rgba(99, 102, 241, 0.12));
+  border: none;
+  background: none;
+  color: var(--text);
 }
 
 .register-sale-docs-dropzone-disabled {
@@ -842,10 +1225,41 @@
 
 .register-sale-docs-dropzone-icon {
   font-size: 1.5rem;
+  color: var(--text-muted);
+}
+
+.customer-company-detail-info-drive-link-wrap {
+  margin: 0 0 0.5rem;
+  padding: 0;
+}
+
+.customer-company-detail-info-drive-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--primary);
+  text-decoration: none;
+  padding: 0.35rem 0;
+  border-radius: 0.25rem;
+  transition: opacity 0.2s;
+}
+
+.customer-company-detail-info-drive-link:hover {
+  opacity: 0.85;
+  text-decoration: underline;
+}
+
+.customer-company-detail-info-drive-link .material-symbols-outlined {
+  font-size: 1.1rem;
 }
 
 .register-sale-docs-error {
   margin: 0.5rem 0 0;
   font-size: 0.8125rem;
   color: var(--danger, #c53030);
+  padding: 0;
+  border-radius: 0;
+  background: none;
 }

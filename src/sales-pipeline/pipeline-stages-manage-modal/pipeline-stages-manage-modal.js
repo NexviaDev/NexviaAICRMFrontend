@@ -119,7 +119,7 @@ export default function PipelineStagesManageModal({ onClose, onSaved }) {
           </button>
         </header>
         <div className="psm-body">
-          <p className="psm-hint">단계를 추가·삭제할 수 있습니다. 수정하지 않으면 기본 4단계(신규 리드, 접촉 완료, 제안서 발송, 종료)만 표시됩니다.</p>
+          <p className="psm-hint">단계를 추가·삭제할 수 있습니다. 수정하지 않으면 기본 3단계(신규 리드, 접촉 완료, 제안서 발송)만 표시됩니다.</p>
           <form onSubmit={handleAdd} className="psm-form">
             <div className="psm-row">
               <div className="psm-field">

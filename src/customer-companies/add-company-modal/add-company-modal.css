@@ -30,6 +30,68 @@
   animation: addCompanyModalIn 0.2s ease-out;
 }
 
+/* 샘플 디자인: 800px 모달 */
+.add-company-modal-sample {
+  max-width: 50rem;
+  border-radius: 0.75rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+}
+
+/* 헤더 (샘플): 아이콘 박스 + 제목 + 닫기 */
+.add-company-modal-header-sample {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--card-border);
+  flex-shrink: 0;
+  background: var(--card);
+}
+
+.add-company-modal-header-icon-wrap {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.add-company-modal-header-icon {
+  font-size: 1.25rem;
+  color: #000;
+}
+
+.add-company-modal-header-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text);
+  flex: 1;
+}
+
+.add-company-modal-close-sample {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 50%;
+  transition: background 0.2s, color 0.2s;
+  cursor: pointer;
+}
+
+.add-company-modal-close-sample:hover {
+  background: var(--bg-light);
+  color: var(--text);
+}
+
 .add-company-modal-form {
   display: flex;
   flex-direction: column;
@@ -82,6 +144,596 @@
   min-height: 0;
 }
 
+.add-company-modal-sample .add-company-modal-body {
+  padding: 1.5rem;
+}
+
+/* 섹션 (샘플) */
+.add-company-section {
+  margin-bottom: 2rem;
+}
+
+.add-company-section:last-of-type {
+  margin-bottom: 0;
+}
+
+.add-company-section-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.add-company-hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.add-company-muted {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.add-company-assignees {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+
+.add-company-assignee-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.add-company-assignee-item input {
+  margin: 0;
+}
+
+.add-company-assignee-email {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.add-company-assignee-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin-bottom: 0.75rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--bg-light);
+}
+
+.add-company-assignee-search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  padding: 0.5rem 0.75rem;
+}
+
+.add-company-assignee-search-input:focus {
+  outline: none;
+}
+
+.add-company-assignee-search-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 0 0.375rem 0.375rem 0;
+  transition: color 0.2s, background 0.2s;
+}
+
+.add-company-assignee-search-btn:hover {
+  color: var(--primary);
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.add-company-assignee-search-btn .material-symbols-outlined {
+  font-size: 1.25rem;
+}
+
+.add-company-assignee-open-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.add-company-assignee-open-btn:hover {
+  background: var(--bg-light);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.add-company-assignee-open-btn .material-symbols-outlined {
+  font-size: 1.125rem;
+}
+
+.add-company-assignee-summary {
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.add-company-assignee-summary strong {
+  color: var(--text);
+}
+
+/* 사업자등록증 업로드 영역 (샘플) */
+.add-company-upload-zone {
+  padding: 2rem;
+  min-height: 7rem;
+  border: 2px dashed var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--bg-light);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  text-align: center;
+  transition: border-color 0.2s, background 0.2s, color 0.2s;
+}
+
+.add-company-upload-zone:hover:not(.add-company-upload-zone-disabled),
+.add-company-upload-zone.add-company-upload-zone-active {
+  border-color: var(--primary);
+  background: rgba(29, 40, 58, 0.04);
+  color: var(--primary);
+}
+
+.add-company-upload-zone-disabled {
+  opacity: 0.85;
+  cursor: wait;
+  pointer-events: none;
+}
+
+.add-company-upload-icon-wrap {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  background: rgba(29, 40, 58, 0.1);
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.add-company-upload-icon {
+  font-size: 1.5rem;
+}
+
+.add-company-upload-title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.add-company-upload-zone:hover:not(.add-company-upload-zone-disabled) .add-company-upload-title,
+.add-company-upload-zone.add-company-upload-zone-active .add-company-upload-title {
+  color: var(--primary);
+}
+
+.add-company-upload-hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.add-company-upload-filename {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* 2열 그리드 */
+.add-company-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem 1.5rem;
+}
+
+/* 대표자명 + 담당자 한 행: 담당자가 남은 너비 사용 */
+.add-company-row-representative-assignee {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+}
+
+.add-company-field-representative {
+  flex: 0 0 10rem;
+  min-width: 0;
+}
+
+.add-company-field-assignee {
+  flex: 1;
+  min-width: 0;
+}
+
+.add-company-assignee-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--card);
+}
+
+.add-company-assignee-input-wrap .add-company-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  border-radius: 0.5rem 0 0 0.5rem;
+}
+
+.add-company-assignee-search-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: none;
+  border-left: 1px solid var(--card-border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 0 0.5rem 0.5rem 0;
+  transition: color 0.2s, background 0.2s;
+}
+
+.add-company-assignee-search-icon-btn:hover {
+  background: var(--bg-light);
+  color: var(--primary);
+}
+
+.add-company-assignee-search-icon-btn .material-symbols-outlined {
+  font-size: 1.25rem;
+}
+
+@media (max-width: 640px) {
+  .add-company-grid-2 {
+    grid-template-columns: 1fr;
+  }
+  .add-company-row-representative-assignee {
+    flex-direction: column;
+  }
+  .add-company-field-representative {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+}
+
+/* 필드 (샘플) */
+.add-company-field {
+  margin-bottom: 0;
+}
+
+.add-company-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 0.375rem;
+}
+
+.add-company-label-muted {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.add-company-required {
+  color: var(--danger);
+}
+
+.add-company-input {
+  width: 100%;
+  height: 2.75rem;
+  padding: 0 0.75rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--text);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.add-company-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(29, 40, 58, 0.15);
+}
+
+.add-company-input::placeholder {
+  color: var(--text-muted);
+}
+
+.add-company-field select.add-company-input {
+  cursor: pointer;
+  appearance: auto;
+}
+
+/* 주소 입력 (아이콘 왼쪽) */
+.add-company-address-input-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.add-company-address-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  font-size: 1.25rem;
+  color: var(--text-muted);
+  background: var(--bg-light);
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+}
+
+.add-company-input-with-icon {
+  padding-left: 0.75rem;
+  min-width: 0;
+}
+
+.add-company-address-input-wrap .add-company-address-map-btn {
+  flex-shrink: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--text-muted);
+  border: 1px solid var(--card-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, color 0.2s;
+}
+
+.add-company-address-input-wrap .add-company-address-map-btn:hover:not(:disabled) {
+  background: var(--bg-light);
+  color: var(--text);
+}
+
+/* 위도/경도 + 위치 동기화 한 줄 */
+.add-company-lat-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 0.75rem 1rem;
+  align-items: flex-end;
+  margin-top: 1rem;
+}
+
+@media (max-width: 640px) {
+  .add-company-lat-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .add-company-field-btn {
+    grid-column: 1 / -1;
+  }
+}
+
+.add-company-field-btn {
+  display: flex;
+  align-items: flex-end;
+}
+
+.add-company-btn-sync {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 2.75rem;
+  padding: 0 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--primary);
+  background: rgba(29, 40, 58, 0.08);
+  border: 1px solid rgba(29, 40, 58, 0.2);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s, color 0.2s;
+}
+
+.add-company-btn-sync:hover:not(:disabled) {
+  background: rgba(29, 40, 58, 0.12);
+  color: #1d283a;
+}
+
+.add-company-btn-sync:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.add-company-btn-sync .material-symbols-outlined {
+  font-size: 1.125rem;
+}
+
+/* 메모 textarea */
+.add-company-textarea {
+  width: 100%;
+  min-height: 5rem;
+  padding: 0.75rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--text);
+  resize: vertical;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.add-company-textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(29, 40, 58, 0.15);
+}
+
+.add-company-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+/* 사용자 정의 필드 섹션 */
+.add-company-section-custom {
+  border-top: 1px solid var(--card-border);
+  padding-top: 1.5rem;
+}
+
+.add-company-custom-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.add-company-custom-head .add-company-section-title {
+  margin: 0;
+}
+
+.add-company-btn-field-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--primary);
+  background: transparent;
+  border: 1px solid var(--primary);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.add-company-btn-field-add:hover {
+  background: rgba(29, 40, 58, 0.08);
+  color: #1d283a;
+}
+
+.add-company-btn-field-add .material-symbols-outlined {
+  font-size: 1rem;
+}
+
+.add-company-custom-field {
+  margin-bottom: 0.75rem;
+}
+
+.add-company-custom-field input:not([type="checkbox"]),
+.add-company-custom-field select,
+.add-company-custom-field textarea {
+  width: 100%;
+  height: 2.75rem;
+  padding: 0 0.75rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--text);
+}
+
+.add-company-custom-field textarea {
+  height: auto;
+  min-height: 5rem;
+  padding: 0.75rem;
+}
+
+.add-company-custom-field label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-bottom: 0.375rem;
+  color: var(--text);
+}
+
+/* 푸터 (샘플): slate-50 스타일, 취소 + 고객사 저장 */
+.add-company-modal-form > footer.add-company-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--card-border);
+  background: #f8fafc;
+  flex-shrink: 0;
+}
+
+.add-company-btn-cancel {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.add-company-btn-cancel:hover {
+  background: var(--bg-light);
+  border-color: var(--text-muted);
+}
+
+.add-company-btn-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.add-company-btn-save:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.add-company-btn-save:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.add-company-btn-save .material-symbols-outlined {
+  font-size: 1.125rem;
+}
+
 .add-company-modal-error {
   margin: 0 0 1rem;
   padding: 0.5rem;
@@ -89,6 +741,42 @@
   color: var(--danger);
   background: var(--pastel-peach);
   border-radius: 0.375rem;
+}
+
+.add-company-certificate-dropzone {
+  padding: 1rem;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 0.35rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 80px;
+  transition: border-color 0.2s, color 0.2s;
+  background: none;
+}
+.add-company-certificate-dropzone:hover:not(.add-company-certificate-dropzone-disabled),
+.add-company-certificate-dropzone.add-company-certificate-dropzone-active {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.add-company-certificate-dropzone-disabled {
+  opacity: 0.8;
+  cursor: wait;
+  pointer-events: none;
+}
+.add-company-certificate-dropzone-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+.add-company-certificate-filename {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
 }
 
 .add-company-modal-field {
@@ -579,4 +1267,297 @@
   padding: 1.5rem;
   overflow-y: auto;
   min-height: 0;
+}
+
+/* ========== 증서 · 자료 (Google Drive) - customer-company-detail-modal과 동일 디자인 ========== */
+.add-company-modal .customer-company-detail-section.register-sale-docs {
+  padding: 0;
+  margin: 0 0 2rem;
+}
+
+.add-company-modal .customer-company-detail-section.register-sale-docs .customer-company-detail-section-head {
+  margin-bottom: 0.75rem;
+  padding: 0;
+  background: none;
+  border: none;
+  box-shadow: none;
+}
+
+.add-company-modal .customer-company-detail-section.register-sale-docs .customer-company-detail-section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.add-company-modal .customer-company-detail-section.register-sale-docs .customer-company-detail-section-title .material-symbols-outlined {
+  color: var(--primary);
+  font-size: 1.25rem;
+}
+
+.add-company-modal .customer-company-detail-section.register-sale-docs .customer-company-detail-btn-all {
+  padding: 0.35rem;
+  border-radius: 0.4rem;
+  font-size: 1.1rem;
+  background: none;
+  color: var(--text);
+  border: none;
+  box-shadow: none;
+  transition: color 0.2s;
+}
+.add-company-modal .customer-company-detail-section.register-sale-docs .customer-company-detail-btn-all:hover:not(:disabled) {
+  color: var(--primary);
+}
+.add-company-modal .customer-company-detail-section.register-sale-docs .customer-company-detail-btn-all:disabled {
+  opacity: 0.5;
+}
+
+.add-company-modal .register-sale-docs-list-wrap {
+  position: relative;
+  margin-bottom: 0.5rem;
+  border-radius: 0.35rem;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: none;
+  min-height: 180px;
+  max-height: 340px;
+  box-shadow: none;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.add-company-modal .register-sale-docs-breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  font-size: 0.8125rem;
+  padding: 0.35rem 0;
+  border-radius: 0;
+  background: none;
+  border: none;
+}
+
+.add-company-modal .register-sale-docs-breadcrumb-btn {
+  background: none;
+  border: none;
+  padding: 0.25rem 0.4rem;
+  border-radius: 0.25rem;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+.add-company-modal .register-sale-docs-breadcrumb-btn:hover {
+  color: var(--primary);
+}
+
+.add-company-modal .register-sale-docs-breadcrumb-sep {
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.add-company-modal .register-sale-docs-open-drive {
+  margin-left: auto;
+  padding: 0.35rem;
+  color: var(--text-muted);
+  border-radius: 0.25rem;
+  transition: color 0.2s;
+}
+.add-company-modal .register-sale-docs-open-drive:hover {
+  color: var(--primary);
+  background: none;
+}
+
+.add-company-modal .register-sale-docs-open-drive .material-symbols-outlined {
+  font-size: 1.1rem;
+}
+
+.add-company-modal .register-sale-docs-loading {
+  margin: 0;
+  padding: 1.25rem 0;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+.add-company-modal .register-sale-docs-loading::before {
+  content: '';
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid var(--card-border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: add-company-drive-spin 0.7s linear infinite;
+}
+@keyframes add-company-drive-spin {
+  to { transform: rotate(360deg); }
+}
+
+.add-company-modal .register-sale-docs-dropzone-inline {
+  min-height: 100px;
+  margin: 0;
+  border-radius: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+}
+.add-company-modal .register-sale-docs-dropzone-inline:hover:not(.register-sale-docs-dropzone-disabled) {
+  border: none;
+  background: none;
+  color: var(--text);
+}
+
+.add-company-modal .register-sale-docs-file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.add-company-modal .register-sale-docs-file-list::-webkit-scrollbar {
+  width: 6px;
+}
+.add-company-modal .register-sale-docs-file-list::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 3px;
+}
+.add-company-modal .register-sale-docs-file-list::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 3px;
+}
+.add-company-modal .register-sale-docs-file-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.add-company-modal .register-sale-docs-file-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.5rem 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.875rem;
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.add-company-modal .register-sale-docs-file-row:hover {
+  background: none;
+  color: var(--primary);
+}
+
+.add-company-modal .register-sale-docs-file-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+}
+.add-company-modal .register-sale-docs-file-row--folder .register-sale-docs-file-icon {
+  color: var(--text-muted);
+}
+.add-company-modal .register-sale-docs-file-row--folder:hover .register-sale-docs-file-icon {
+  color: var(--primary);
+}
+.add-company-modal .register-sale-docs-file-row--file .register-sale-docs-file-icon {
+  color: var(--text-muted);
+}
+.add-company-modal .register-sale-docs-file-row--file:hover .register-sale-docs-file-icon {
+  color: var(--primary);
+}
+
+.add-company-modal .register-sale-docs-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.add-company-modal .register-sale-docs-list-wrap.register-sale-docs-dropzone-active {
+  border: none;
+  background: none;
+  box-shadow: none;
+}
+
+.add-company-modal .register-sale-docs-list-wrap .register-sale-docs-embed-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  color: var(--text);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  pointer-events: none;
+  border-radius: 0;
+}
+
+.add-company-modal .register-sale-docs-dropzone {
+  padding: 1rem;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 0.35rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: color 0.2s;
+  box-shadow: none;
+  min-height: 120px;
+}
+
+.add-company-modal .register-sale-docs-dropzone:hover:not(.register-sale-docs-dropzone-disabled) {
+  border: none;
+  background: none;
+  color: var(--text);
+  box-shadow: none;
+}
+
+.add-company-modal .register-sale-docs-dropzone-active {
+  border: none;
+  background: none;
+  color: var(--text);
+}
+
+.add-company-modal .register-sale-docs-dropzone-disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.add-company-modal .register-sale-docs-dropzone-icon {
+  font-size: 1.5rem;
+  color: var(--text-muted);
+}
+
+.add-company-modal .register-sale-docs-error {
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--danger, #c53030);
+  padding: 0;
+  border-radius: 0;
+  background: none;
 }

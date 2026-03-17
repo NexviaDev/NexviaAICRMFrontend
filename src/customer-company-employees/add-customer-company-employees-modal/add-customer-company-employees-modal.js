@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import GoogleContactsModal from '../google-contacts-modal/google-contacts-modal';
 import CustomerCompanySearchModal from '../../customer-companies/customer-company-search-modal/customer-company-search-modal';
 import CustomFieldsSection from '../../shared/custom-fields-section';
 import CustomFieldsManageModal from '../../shared/custom-fields-manage-modal/custom-fields-manage-modal';
+import AssigneePickerModal from '../../company-overview/assignee-picker-modal/assignee-picker-modal';
 import './add-customer-company-employees-company-employees-modal.css';
 
 import { API_BASE } from '@/config';
@@ -31,31 +32,97 @@ function formatPhoneInput(value) {
   return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
 }
 
-const getInitialForm = (initialCustomerCompany) => {
-    const base = { name: '', company: '', email: '', phone: '', position: '', address: '', birthDate: '', memo: '', customerCompanyId: '', customFields: {} };
-    if (initialCustomerCompany && (initialCustomerCompany._id || initialCustomerCompany.name)) {
-      return {
-        ...base,
-        company: initialCustomerCompany.name || '',
-        customerCompanyId: initialCustomerCompany._id || '',
-        address: initialCustomerCompany.address != null ? String(initialCustomerCompany.address).trim() : ''
-      };
-    }
-    return base;
+/** 연락처 담당자 초기값: 수정 시 = 저장된 값만(없으면 빈 배열), 등록 시 = 현재 사용자 1명 */
+function getInitialAssigneeIds(isEditMode, contact) {
+  if (isEditMode && contact != null) {
+    if (!Array.isArray(contact.assigneeUserIds)) return [];
+    return contact.assigneeUserIds
+      .map((id) => {
+        if (id == null) return null;
+        const raw = id._id ?? id.id ?? id;
+        return raw ? String(raw) : null;
+      })
+      .filter(Boolean);
+  }
+  try {
+    const u = JSON.parse(localStorage.getItem('crm_user') || '{}');
+    return u?._id ? [String(u._id)] : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+/** 폼 초기값: 등록/수정에 따라 담당자만 다르게, 나머지는 contact 또는 initialCustomerCompany 기준 */
+function buildInitialForm(contact, initialCustomerCompany) {
+  const isEditMode = Boolean(contact && (contact._id || contact.id));
+  const assigneeUserIds = getInitialAssigneeIds(isEditMode, contact);
+
+  const base = {
+    name: '',
+    company: '',
+    email: '',
+    phone: '',
+    position: '',
+    address: '',
+    birthDate: '',
+    memo: '',
+    customerCompanyId: '',
+    customFields: {},
+    assigneeUserIds,
+    status: 'Lead'
   };
 
-export default function AddContactModal({ onClose, onSaved, initialCustomerCompany }) {
-  const [form, setForm] = useState(() => getInitialForm(initialCustomerCompany));
+  if (isEditMode && contact) {
+    const companyId = contact.customerCompanyId?._id ?? contact.customerCompanyId ?? '';
+    const companyName = typeof contact.company === 'string' ? contact.company : (contact.company?.name ?? '');
+    return {
+      ...base,
+      name: contact.name ?? '',
+      email: contact.email ?? '',
+      phone: contact.phone ?? '',
+      position: contact.position ?? '',
+      address: contact.address ?? '',
+      birthDate: contact.birthDate ?? '',
+      memo: contact.memo ?? '',
+      company: companyName,
+      customerCompanyId: companyId,
+      customFields: contact.customFields ? { ...contact.customFields } : {},
+      assigneeUserIds,
+      status: contact.status || 'Lead'
+    };
+  }
+
+  if (initialCustomerCompany && (initialCustomerCompany._id || initialCustomerCompany.name)) {
+    return {
+      ...base,
+      company: initialCustomerCompany.name || '',
+      customerCompanyId: initialCustomerCompany._id || '',
+      address: initialCustomerCompany.address != null ? String(initialCustomerCompany.address).trim() : ''
+    };
+  }
+
+  return base;
+}
+
+export default function AddContactModal({ onClose, onSaved, onUpdated, initialCustomerCompany, contact }) {
+  const isEditMode = Boolean(contact && (contact._id || contact.id));
+  const effectiveInitialCompany = isEditMode && (contact?.customerCompanyId || contact?.company)
+    ? { _id: contact.customerCompanyId?._id ?? contact.customerCompanyId, name: typeof contact.company === 'string' ? contact.company : (contact.company?.name ?? '') }
+    : initialCustomerCompany;
+
+  const [form, setForm] = useState(() => buildInitialForm(contact, initialCustomerCompany));
+  const [showAssigneePicker, setShowAssigneePicker] = useState(false);
+  const [companyEmployeesForDisplay, setCompanyEmployeesForDisplay] = useState([]);
   const [customDefinitions, setCustomDefinitions] = useState([]);
   const [showCustomFieldsModal, setShowCustomFieldsModal] = useState(false);
-  const [isIndividual, setIsIndividual] = useState(!(initialCustomerCompany && initialCustomerCompany._id));
+  const [isIndividual, setIsIndividual] = useState(isEditMode ? Boolean(contact.isIndividual) : !(effectiveInitialCompany && effectiveInitialCompany._id));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [showCompanySearchModal, setShowCompanySearchModal] = useState(false);
   const [showBulkGoogle, setShowBulkGoogle] = useState(false);
   const [bulkSaving, setBulkSaving] = useState(false);
   const [bulkResult, setBulkResult] = useState(null);
-  const fixedCompany = !!(initialCustomerCompany && initialCustomerCompany._id);
+  const fixedCompany = !!(effectiveInitialCompany && effectiveInitialCompany._id);
 
   const fetchCustomDefinitions = async () => {
     try {
@@ -69,17 +136,49 @@ export default function AddContactModal({ onClose, onSaved, initialCustomerCompa
     fetchCustomDefinitions();
   }, []);
 
+  /** 수정 모드에서 열린 연락처(contact)가 바뀌면 폼을 그 연락처 기준으로 다시 채움 (담당자 포함) */
+  const contactId = contact?._id ?? contact?.id ?? null;
+  useEffect(() => {
+    if (!contactId) return;
+    setForm(buildInitialForm(contact, initialCustomerCompany));
+    setIsIndividual(Boolean(contact?.isIndividual));
+  }, [contactId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE}/companies/overview`, { headers: getAuthHeader() })
+      .then((r) => r.json().catch(() => ({})))
+      .then((data) => {
+        if (!cancelled && Array.isArray(data?.employees)) setCompanyEmployeesForDisplay(data.employees);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const assigneeIdToName = useMemo(() => {
+    const map = {};
+    (companyEmployeesForDisplay || []).forEach((e) => {
+      const id = e.id != null ? String(e.id) : null;
+      if (id) map[id] = e.name || e.email || id;
+    });
+    return map;
+  }, [companyEmployeesForDisplay]);
+
+  const assigneeInputValue = (form.assigneeUserIds || [])
+    .map((id) => assigneeIdToName[String(id)] || id)
+    .join(', ');
+
   useEffect(() => {
     const onKey = (e) => {
       if (e.key !== 'Escape') return;
       if (showBulkGoogle) setShowBulkGoogle(false);
+      else if (showAssigneePicker) setShowAssigneePicker(false);
       else if (showCompanySearchModal) setShowCompanySearchModal(false);
       else if (showCustomFieldsModal) setShowCustomFieldsModal(false);
       else onClose?.();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, showBulkGoogle, showCompanySearchModal, showCustomFieldsModal]);
+  }, [onClose, showAssigneePicker, showBulkGoogle, showCompanySearchModal, showCustomFieldsModal]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -162,23 +261,37 @@ export default function AddContactModal({ onClose, onSaved, initialCustomerCompa
         address: (form.address || '').trim() || undefined,
         birthDate: (form.birthDate || '').trim() || undefined,
         memo: (form.memo || '').trim() || undefined,
-        status: 'Lead'
+        status: isEditMode ? (form.status || 'Lead') : 'Lead'
       };
-      if (isIndividual) payload.isIndividual = true;
-      else payload.customerCompanyId = form.customerCompanyId;
+      if (isIndividual) {
+        payload.isIndividual = true;
+        payload.customerCompanyId = null;
+      } else {
+        const companyId = (form.customerCompanyId != null && String(form.customerCompanyId).trim()) ? String(form.customerCompanyId).trim() : null;
+        payload.customerCompanyId = companyId;
+      }
       if (form.customFields && Object.keys(form.customFields).length) payload.customFields = form.customFields;
-      const res = await fetch(`${API_BASE}/customer-company-employees`, {
-        method: 'POST',
+      payload.assigneeUserIds = Array.isArray(form.assigneeUserIds) ? form.assigneeUserIds : [];
+
+      const url = isEditMode ? `${API_BASE}/customer-company-employees/${contact._id || contact.id}` : `${API_BASE}/customer-company-employees`;
+      const method = isEditMode ? 'PATCH' : 'POST';
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         body: JSON.stringify(payload)
       });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setError(data.error || '저장에 실패했습니다.');
+        setError(data.error || (isEditMode ? '수정에 실패했습니다.' : '저장에 실패했습니다.'));
         return;
       }
-      onSaved?.();
-      onClose?.();
+      if (isEditMode) {
+        onUpdated?.(data);
+        onClose?.();
+      } else {
+        onSaved?.();
+        onClose?.();
+      }
     } catch (_) {
       setError('서버에 연결할 수 없습니다.');
     } finally {
@@ -187,8 +300,8 @@ export default function AddContactModal({ onClose, onSaved, initialCustomerCompa
   };
 
   return (
-    <div className="add-contact-modal-overlay">
-      <div className="add-contact-modal" onClick={(e) => e.stopPropagation()}>
+    <div className={`add-contact-modal-overlay ${isEditMode ? 'add-contact-modal-overlay--slide' : ''}`}>
+      <div className={`add-contact-modal ${isEditMode ? 'add-contact-modal--slide' : ''}`} onClick={(e) => e.stopPropagation()}>
         {showBulkGoogle && (
           <GoogleContactsModal
             mode="bulk"
@@ -197,34 +310,38 @@ export default function AddContactModal({ onClose, onSaved, initialCustomerCompa
           />
         )}
         <div className="add-contact-modal-header">
-          <h3>새 연락처 추가</h3>
+          <h3>{isEditMode ? '연락처 수정' : '새 연락처 추가'}</h3>
           <button type="button" className="add-contact-modal-close" onClick={onClose} aria-label="닫기">
             <span className="material-symbols-outlined">close</span>
           </button>
         </div>
         <form onSubmit={handleSubmit} className="add-contact-modal-form">
           <div className="add-contact-modal-body">
-          <button
-            type="button"
-            className="add-contact-google-import"
-            onClick={() => setShowBulkGoogle(true)}
-          >
-            <img src="https://www.gstatic.com/images/branding/product/1x/contacts_2022_48dp.png" alt="" className="add-contact-google-icon" />
-            Google 주소록에서 가져오기
-          </button>
-          {bulkSaving && (
-            <div className="add-contact-bulk-progress">
-              <span className="material-symbols-outlined add-contact-bulk-spinner">sync</span>
-              대량 등록 중… 잠시 기다려 주세요.
-            </div>
-          )}
-          {bulkResult && (
-            <div className={`add-contact-bulk-result ${bulkResult.fail > 0 ? 'has-fail' : ''}`}>
-              <span className="material-symbols-outlined">{bulkResult.fail > 0 ? 'info' : 'check_circle'}</span>
-              총 {bulkResult.total}명 중 <strong>{bulkResult.success}명</strong> 등록 완료
-              {bulkResult.fail > 0 && <>, {bulkResult.fail}명 실패</>}
-              <button type="button" className="add-contact-bulk-dismiss" onClick={() => setBulkResult(null)}>×</button>
-            </div>
+          {!isEditMode && (
+            <>
+              <button
+                type="button"
+                className="add-contact-google-import"
+                onClick={() => setShowBulkGoogle(true)}
+              >
+                <img src="https://www.gstatic.com/images/branding/product/1x/contacts_2022_48dp.png" alt="" className="add-contact-google-icon" />
+                Google 주소록에서 가져오기
+              </button>
+              {bulkSaving && (
+                <div className="add-contact-bulk-progress">
+                  <span className="material-symbols-outlined add-contact-bulk-spinner">sync</span>
+                  대량 등록 중… 잠시 기다려 주세요.
+                </div>
+              )}
+              {bulkResult && (
+                <div className={`add-contact-bulk-result ${bulkResult.fail > 0 ? 'has-fail' : ''}`}>
+                  <span className="material-symbols-outlined">{bulkResult.fail > 0 ? 'info' : 'check_circle'}</span>
+                  총 {bulkResult.total}명 중 <strong>{bulkResult.success}명</strong> 등록 완료
+                  {bulkResult.fail > 0 && <>, {bulkResult.fail}명 실패</>}
+                  <button type="button" className="add-contact-bulk-dismiss" onClick={() => setBulkResult(null)}>×</button>
+                </div>
+              )}
+            </>
           )}
           {error && <p className="add-contact-modal-error">{error}</p>}
           <div className="add-contact-modal-field">
@@ -283,6 +400,29 @@ export default function AddContactModal({ onClose, onSaved, initialCustomerCompa
             <label htmlFor="add-contact-memo">메모</label>
             <textarea id="add-contact-memo" name="memo" value={form.memo} onChange={handleChange} placeholder="메모 (Google 연락처 소개 등)" rows={2} className="add-contact-memo-input" />
           </div>
+          <div className="add-contact-modal-field add-contact-assignees-wrap">
+            <label htmlFor="add-contact-assignee-input">담당자</label>
+            <div className="add-contact-assignee-input-wrap">
+              <input
+                id="add-contact-assignee-input"
+                type="text"
+                readOnly
+                className="add-contact-assignee-input"
+                placeholder="검색 아이콘으로 담당자 선택"
+                value={assigneeInputValue}
+                aria-label="담당자 (검색으로만 수정 가능)"
+              />
+              <button
+                type="button"
+                className="add-contact-assignee-search-icon-btn"
+                onClick={() => setShowAssigneePicker(true)}
+                title="담당자 검색"
+                aria-label="담당자 검색"
+              >
+                <span className="material-symbols-outlined">search</span>
+              </button>
+            </div>
+          </div>
             <CustomFieldsSection
               definitions={customDefinitions}
               values={form.customFields || {}}
@@ -300,7 +440,7 @@ export default function AddContactModal({ onClose, onSaved, initialCustomerCompa
             </button>
             <div className="add-contact-modal-footer-actions">
               <button type="button" className="add-contact-modal-cancel" onClick={onClose}>취소</button>
-              <button type="submit" className="add-contact-modal-save" disabled={saving}>{saving ? '저장 중...' : '연락처 저장'}</button>
+              <button type="submit" className="add-contact-modal-save" disabled={saving}>{saving ? '저장 중...' : isEditMode ? '저장' : '연락처 저장'}</button>
             </div>
           </div>
         </form>
@@ -311,6 +451,14 @@ export default function AddContactModal({ onClose, onSaved, initialCustomerCompa
             onFieldAdded={() => fetchCustomDefinitions()}
             apiBase={API_BASE}
             getAuthHeader={getAuthHeader}
+          />
+        )}
+        {showAssigneePicker && (
+          <AssigneePickerModal
+            open={showAssigneePicker}
+            onClose={() => setShowAssigneePicker(false)}
+            selectedIds={form.assigneeUserIds || []}
+            onConfirm={(ids) => setForm((prev) => ({ ...prev, assigneeUserIds: ids }))}
           />
         )}
         {showCompanySearchModal && (

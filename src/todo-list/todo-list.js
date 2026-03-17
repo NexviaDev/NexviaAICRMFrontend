@@ -1,183 +1,257 @@
 import { useState, useEffect, useCallback } from 'react';
+import { API_BASE } from '@/config';
 import './todo-list.css';
 
-const STORAGE_KEY = 'nexvia_todo_list';
-const STATUS_TODO = 'todo';
-const STATUS_IN_PROGRESS = 'inProgress';
-const STATUS_DONE = 'done';
+function getAuthHeader() {
+  const token = localStorage.getItem('crm_token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
-const COLUMNS = [
-  { id: STATUS_TODO, title: '시작 (To Do)' },
-  { id: STATUS_IN_PROGRESS, title: '진행중 (In Progress)' },
-  { id: STATUS_DONE, title: '완료 (Completed)' }
-];
-
-const DEFAULT_TASKS = [
-  { id: '1', title: 'Update Client Proposal', description: 'Review the final draft for the Q4 contract and update the pricing table based on the latest figures.', priority: 'high', dueDate: 'Oct 24', status: STATUS_TODO },
-  { id: '2', title: 'Database Migration', description: 'Plan the schema changes for the new user profile module and backup existing data.', priority: 'medium', dueDate: 'Oct 26', status: STATUS_TODO },
-  { id: '3', title: 'UI/UX Redesign', description: 'Finalizing the dashboard wireframes based on user feedback sessions.', priority: 'medium', dueDate: 'Ongoing', status: STATUS_IN_PROGRESS },
-  { id: '4', title: 'Weekly Team Sync', description: 'Discuss project timelines and individual roadblocks for the upcoming week.', priority: 'low', dueDate: 'Done', status: STATUS_DONE },
-  { id: '5', title: 'API Documentation', description: 'Complete the Swagger docs for the authentication endpoints.', priority: 'medium', dueDate: 'Oct 19', status: STATUS_DONE }
-];
+/** Google Tasks API: status is "needsAction" | "completed" */
+const STATUS_NEEDS_ACTION = 'needsAction';
+const STATUS_COMPLETED = 'completed';
 
 const AVATAR_PLACEHOLDER = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%2394a3b8"%3E%3Cpath d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/%3E%3C/svg%3E';
 
-function loadTasks() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_TASKS;
-    const list = JSON.parse(raw);
-    return Array.isArray(list) && list.length > 0 ? list : DEFAULT_TASKS;
-  } catch {
-    return DEFAULT_TASKS;
-  }
-}
-
-function saveTasks(tasks) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
-  } catch (_) {}
-}
-
-function generateId() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2);
+/** RFC 3339 date-only for Google Tasks (due field) */
+function toDueRfc3339(dateStr) {
+  if (!dateStr) return undefined;
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return undefined;
+  return d.toISOString().slice(0, 10) + 'T00:00:00.000Z';
 }
 
 export default function TodoList() {
+  const [taskLists, setTaskLists] = useState([]);
+  const [taskListId, setTaskListId] = useState(null);
   const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [search, setSearch] = useState('');
-  const [activeTab, setActiveTab] = useState('all');
   const [showAddModal, setShowAddModal] = useState(false);
-  const [editingId, setEditingId] = useState(null);
-  const [form, setForm] = useState({ title: '', description: '', priority: 'medium', dueDate: '' });
-  const [dragTaskId, setDragTaskId] = useState(null);
-  const [dropTargetColId, setDropTargetColId] = useState(null);
+  const [form, setForm] = useState({
+    title: '',
+    description: '',
+    dueDate: '',
+    dueTime: '',
+    allDay: true,
+    listId: '',
+    participantIds: []
+  });
+  const [createListTitle, setCreateListTitle] = useState('');
+  const [creatingList, setCreatingList] = useState(false);
+  const [companyMembers, setCompanyMembers] = useState([]);
+  const [currentUserId, setCurrentUserId] = useState(null);
+  const [togglingId, setTogglingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+
+  const fetchTaskLists = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/google-tasks/lists`, { headers: getAuthHeader(), credentials: 'include' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '할 일 목록을 불러올 수 없습니다.');
+      }
+      const data = await res.json();
+      const items = data.items || [];
+      setTaskLists(items);
+      if (items.length > 0) setTaskListId((prev) => prev || items[0].id);
+      if (items.length === 0) setError('Google 할 일 목록이 없습니다. Google Tasks에서 목록을 만든 뒤 다시 시도해 주세요.');
+    } catch (err) {
+      setError(err.message || '할 일 목록 조회 실패');
+      setTaskListId(null);
+      setTaskLists([]);
+    }
+  }, []);
+
+  const fetchTasks = useCallback(async () => {
+    if (!taskListId) return;
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE}/google-tasks/lists/${encodeURIComponent(taskListId)}/tasks`, {
+        headers: getAuthHeader(),
+        credentials: 'include'
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '할 일을 불러올 수 없습니다.');
+      }
+      const data = await res.json();
+      setTasks(data.items || []);
+    } catch (err) {
+      setError(err.message || '할 일 조회 실패');
+      setTasks([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [taskListId]);
 
   useEffect(() => {
-    setTasks(loadTasks());
-  }, []);
+    fetchTaskLists();
+  }, [fetchTaskLists]);
 
-  const persist = useCallback((nextTasks) => {
-    setTasks(nextTasks);
-    saveTasks(nextTasks);
-  }, []);
+  useEffect(() => {
+    if (taskListId) fetchTasks();
+    else setTasks([]);
+  }, [taskListId, fetchTasks]);
+
+  useEffect(() => {
+    if (!showAddModal) return;
+    setCreateListTitle('');
+    setForm((p) => ({ ...p, listId: taskListId || '', dueDate: p.dueDate || '', dueTime: '', allDay: true, participantIds: p.participantIds || [] }));
+    (async () => {
+      try {
+        const [meRes, membersRes] = await Promise.all([
+          fetch(`${API_BASE}/auth/me`, { headers: getAuthHeader(), credentials: 'include' }),
+          fetch(`${API_BASE}/calendar-events/team-members`, { headers: getAuthHeader(), credentials: 'include' })
+        ]);
+        if (meRes.ok) {
+          const me = await meRes.json();
+          setCurrentUserId(me.user?._id || me._id);
+        }
+        if (membersRes.ok) {
+          const data = await membersRes.json();
+          setCompanyMembers(data.members || []);
+        }
+      } catch (_) {}
+    })();
+  }, [showAddModal, taskListId]);
 
   const filteredTasks = search.trim()
     ? tasks.filter(
         (t) =>
           (t.title || '').toLowerCase().includes(search.trim().toLowerCase()) ||
-          (t.description || '').toLowerCase().includes(search.trim().toLowerCase())
+          (t.notes || '').toLowerCase().includes(search.trim().toLowerCase())
       )
     : tasks;
 
-  const getTasksByStatus = (status) => filteredTasks.filter((t) => t.status === status);
-
-  const moveTask = (id, newStatus) => {
-    persist(tasks.map((t) => (t.id === id ? { ...t, status: newStatus } : t)));
-  };
-
-  const addTask = (e) => {
-    e.preventDefault();
-    if (!form.title?.trim()) return;
-    const d = form.dueDate ? new Date(form.dueDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
-    persist([
-      ...tasks,
-      {
-        id: generateId(),
-        title: form.title.trim(),
-        description: (form.description || '').trim(),
-        priority: form.priority || 'medium',
-        dueDate: d,
-        status: STATUS_TODO
+  const handleToggleComplete = async (task) => {
+    if (!taskListId || togglingId) return;
+    const newStatus = task.status === STATUS_COMPLETED ? STATUS_NEEDS_ACTION : STATUS_COMPLETED;
+    setTogglingId(task.id);
+    try {
+      const res = await fetch(
+        `${API_BASE}/google-tasks/lists/${encodeURIComponent(taskListId)}/tasks/${encodeURIComponent(task.id)}`,
+        {
+          method: 'PATCH',
+          headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            status: newStatus,
+            ...(newStatus === STATUS_COMPLETED ? { completed: new Date().toISOString() } : {})
+          })
+        }
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '상태 변경 실패');
       }
-    ]);
-    setForm({ title: '', description: '', priority: 'medium', dueDate: '' });
-    setShowAddModal(false);
-  };
-
-  const updateTask = (id, updates) => {
-    persist(tasks.map((t) => (t.id === id ? { ...t, ...updates } : t)));
-    setEditingId(null);
-  };
-
-  const deleteTask = (id) => {
-    persist(tasks.filter((t) => t.id !== id));
-    setEditingId(null);
-  };
-
-  const startEdit = (task) => {
-    setEditingId(task.id);
-    setForm({
-      title: task.title,
-      description: task.description || '',
-      priority: task.priority || 'medium',
-      dueDate: task.dueDate || ''
-    });
-  };
-
-  const submitEdit = (e) => {
-    e.preventDefault();
-    if (!editingId || !form.title?.trim()) return;
-    updateTask(editingId, {
-      title: form.title.trim(),
-      description: (form.description || '').trim(),
-      priority: form.priority || 'medium',
-      dueDate: (form.dueDate || '').trim() || null
-    });
-    setForm({ title: '', description: '', priority: 'medium', dueDate: '' });
-  };
-
-  const priorityClass = (p) => {
-    if (p === 'high') return 'task-priority-high';
-    if (p === 'low') return 'task-priority-low';
-    if (p === 'medium') return 'task-priority-medium';
-    return 'task-priority-medium';
-  };
-
-  const priorityLabel = (p) => (p === 'high' ? 'High' : p === 'low' ? 'Low' : 'Medium');
-
-  const handleCardDragStart = (e, task) => {
-    if (editingId === task.id) return;
-    const cardEl = e.currentTarget.closest?.('.todo-card') || e.currentTarget;
-    e.dataTransfer.setData('text/plain', JSON.stringify({ taskId: task.id, status: task.status }));
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('application/json', JSON.stringify({ taskId: task.id, status: task.status }));
-    setDragTaskId(task.id);
-    if (cardEl && e.dataTransfer.setDragImage) {
-      const rect = cardEl.getBoundingClientRect();
-      e.dataTransfer.setDragImage(cardEl, rect.width / 2, rect.height / 2);
+      await fetchTasks();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setTogglingId(null);
     }
   };
 
-  const handleCardDragEnd = () => {
-    setDragTaskId(null);
-    setDropTargetColId(null);
-  };
-
-  const handleColumnDragOver = (e, colId) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setDropTargetColId(colId);
-  };
-
-  const handleColumnDragLeave = (e) => {
-    if (!e.currentTarget.contains(e.relatedTarget)) setDropTargetColId(null);
-  };
-
-  const handleColumnDrop = (e, targetColId) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDropTargetColId(null);
-    setDragTaskId(null);
-    const raw = e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('application/json');
-    if (!raw) return;
+  const handleDelete = async (taskId) => {
+    if (!taskListId || deletingId) return;
+    setDeletingId(taskId);
     try {
-      const data = JSON.parse(raw);
-      const taskId = data?.taskId;
-      const currentStatus = data?.status;
-      if (!taskId || currentStatus === targetColId) return;
-      moveTask(taskId, targetColId);
-    } catch (_) {}
+      const res = await fetch(
+        `${API_BASE}/google-tasks/lists/${encodeURIComponent(taskListId)}/tasks/${encodeURIComponent(taskId)}`,
+        { method: 'DELETE', headers: getAuthHeader(), credentials: 'include' }
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '삭제 실패');
+      }
+      await fetchTasks();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleCreateList = async (e) => {
+    e.preventDefault();
+    if (!createListTitle?.trim() || creatingList) return;
+    setCreatingList(true);
+    try {
+      const res = await fetch(`${API_BASE}/google-tasks/lists`, {
+        method: 'POST',
+        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ title: createListTitle.trim() })
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '목록 생성 실패');
+      }
+      const created = await res.json();
+      setCreateListTitle('');
+      await fetchTaskLists();
+      setTaskListId(created.id);
+      setForm((p) => ({ ...p, listId: created.id }));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCreatingList(false);
+    }
+  };
+
+  const addTask = async (e) => {
+    e.preventDefault();
+    if (!form.title?.trim()) return;
+    const listId = form.listId || taskListId;
+    if (!listId) {
+      setError('목록을 선택하거나 새 목록을 만든 뒤 추가해 주세요.');
+      return;
+    }
+    try {
+      let notes = (form.description || '').trim();
+      if (!form.allDay && form.dueTime) notes = (notes ? notes + '\n' : '') + '시간: ' + form.dueTime;
+      const body = { title: form.title.trim() };
+      if (notes) body.notes = notes;
+      const due = toDueRfc3339(form.dueDate);
+      if (due) body.due = due;
+      if (Array.isArray(form.participantIds) && form.participantIds.length > 0) body.participantIds = form.participantIds;
+      const res = await fetch(`${API_BASE}/google-tasks/lists/${encodeURIComponent(listId)}/tasks`, {
+        method: 'POST',
+        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(body)
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '추가 실패');
+      }
+      setForm({ title: '', description: '', dueDate: '', dueTime: '', allDay: true, listId: '', participantIds: [] });
+      setShowAddModal(false);
+      if (listId === taskListId) await fetchTasks();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const toggleParticipant = (userId) => {
+    setForm((p) => {
+      const ids = p.participantIds || [];
+      const next = ids.includes(userId) ? ids.filter((id) => id !== userId) : [...ids, userId];
+      return { ...p, participantIds: next };
+    });
+  };
+
+  const formatDue = (dueStr) => {
+    if (!dueStr) return '';
+    try {
+      const d = new Date(dueStr);
+      return d.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric', year: 'numeric' });
+    } catch {
+      return dueStr;
+    }
   };
 
   return (
@@ -185,25 +259,25 @@ export default function TodoList() {
       <header className="todo-header">
         <div className="todo-header-left">
           <div className="todo-header-title-wrap">
-            <span className="material-symbols-outlined todo-header-icon">view_kanban</span>
-            <h2 className="todo-header-title">Task Board</h2>
+            <span className="material-symbols-outlined todo-header-icon">checklist</span>
+            <h2 className="todo-header-title">할 일 (Google Tasks)</h2>
           </div>
           <div className="todo-search-wrap">
             <span className="material-symbols-outlined todo-search-icon">search</span>
             <input
               type="text"
               className="todo-search-input"
-              placeholder="Search tasks..."
+              placeholder="검색..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              aria-label="Search tasks"
+              aria-label="검색"
             />
           </div>
         </div>
         <div className="todo-header-right">
           <button type="button" className="todo-btn-new" onClick={() => setShowAddModal(true)}>
             <span className="material-symbols-outlined">add</span>
-            New Task
+            새 할 일
           </button>
           <div className="todo-header-icons">
             <button type="button" className="todo-icon-btn" aria-label="알림">
@@ -211,205 +285,131 @@ export default function TodoList() {
               <span className="todo-noti-dot" />
             </button>
             <button type="button" className="todo-icon-btn" aria-label="포럼">
-              <span className="material-symbols-outlined">forum</span>
+              <span className="material-symbols-outlined">chat_bubble</span>
             </button>
             <div className="todo-avatar" style={{ backgroundImage: `url(${AVATAR_PLACEHOLDER})` }} aria-hidden />
           </div>
         </div>
       </header>
 
-      <div className="todo-tabs">
-        <button type="button" className={`todo-tab ${activeTab === 'all' ? 'active' : ''}`} onClick={() => setActiveTab('all')}>
-          All Tasks
-        </button>
-        <button type="button" className={`todo-tab ${activeTab === 'my' ? 'active' : ''}`} onClick={() => setActiveTab('my')}>
-          My Tasks
-        </button>
-        <button type="button" className={`todo-tab ${activeTab === 'team' ? 'active' : ''}`} onClick={() => setActiveTab('team')}>
-          Team Tasks
-        </button>
-      </div>
-
-      <div className="todo-board">
-        <div className="todo-board-inner">
-          {COLUMNS.map((col) => {
-            const columnTasks = getTasksByStatus(col.id);
-            return (
-              <div key={col.id} className="todo-column">
-                <div className="todo-column-head">
-                  <div className="todo-column-title-wrap">
-                    <h3 className="todo-column-title">{col.title}</h3>
-                    <span className="todo-column-count">{columnTasks.length}</span>
-                  </div>
-                  <button type="button" className="todo-column-more" aria-label="더보기">
-                    <span className="material-symbols-outlined">more_horiz</span>
-                  </button>
-                </div>
-                <div
-                  className={`todo-column-cards ${dropTargetColId === col.id ? 'todo-column-cards-drop' : ''}`}
-                  onDragOver={(e) => handleColumnDragOver(e, col.id)}
-                  onDragLeave={handleColumnDragLeave}
-                  onDrop={(e) => handleColumnDrop(e, col.id)}
+      <div className="todo-list-container">
+        {error && (
+          <div className="todo-list-error">
+            <span className="material-symbols-outlined">error</span>
+            {error}
+          </div>
+        )}
+        {loading && (
+          <p className="todo-list-loading">불러오는 중...</p>
+        )}
+        {!loading && taskListId && !error && (
+          <ul className="todo-list-single">
+            {filteredTasks.length === 0 ? (
+              <li className="todo-list-empty">할 일이 없습니다. 새 할 일을 추가해 보세요.</li>
+            ) : (
+              filteredTasks.map((task) => (
+                <li
+                  key={task.id}
+                  className={`todo-list-row ${task.status === STATUS_COMPLETED ? 'todo-list-row-done' : ''}`}
                 >
-                  {columnTasks.map((task) => (
-                    <div
-                      key={task.id}
-                      className={`todo-card ${col.id === STATUS_IN_PROGRESS ? 'todo-card-progress' : ''} ${col.id === STATUS_DONE ? 'todo-card-done' : ''} ${dragTaskId === task.id ? 'todo-card-dragging' : ''}`}
-                      draggable={editingId !== task.id}
-                      onDragStart={(e) => handleCardDragStart(e, task)}
-                      onDragEnd={handleCardDragEnd}
-                      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDropTargetColId(col.id); }}
-                      onDrop={(e) => { e.preventDefault(); handleColumnDrop(e, col.id); }}
-                    >
-                      {editingId === task.id ? (
-                        <form onSubmit={submitEdit} className="todo-card-edit-form">
-                          <input
-                            type="text"
-                            value={form.title}
-                            onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
-                            placeholder="제목"
-                            className="todo-edit-input"
-                            autoFocus
-                          />
-                          <textarea
-                            value={form.description}
-                            onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
-                            placeholder="설명"
-                            className="todo-edit-textarea"
-                            rows={2}
-                          />
-                          <select
-                            value={form.priority}
-                            onChange={(e) => setForm((p) => ({ ...p, priority: e.target.value }))}
-                            className="todo-edit-select"
-                          >
-                            <option value="high">High</option>
-                            <option value="medium">Medium</option>
-                            <option value="low">Low</option>
-                          </select>
-                          <input
-                            type="text"
-                            value={form.dueDate}
-                            onChange={(e) => setForm((p) => ({ ...p, dueDate: e.target.value }))}
-                            placeholder="e.g. Oct 24, Ongoing, Done"
-                            className="todo-edit-input"
-                          />
-                          <div className="todo-edit-actions">
-                            <button type="button" className="todo-btn-cancel" onClick={() => setEditingId(null)}>취소</button>
-                            <button type="submit" className="todo-btn-save">저장</button>
-                          </div>
-                        </form>
-                      ) : (
-                        <>
-                          <div className="todo-card-top">
-                            <span
-                              className="todo-card-drag-handle"
-                              draggable
-                              onDragStart={(e) => handleCardDragStart(e, task)}
-                              onDragEnd={handleCardDragEnd}
-                              title="드래그하여 이동"
-                              aria-label="드래그하여 다른 칸으로 이동"
-                            >
-                              <span className="material-symbols-outlined">drag_indicator</span>
-                            </span>
-                            <span className={`todo-priority ${priorityClass(task.priority)}`}>{priorityLabel(task.priority)}</span>
-                            {col.id === STATUS_DONE ? (
-                              <span className="material-symbols-outlined todo-card-done-icon">check_circle</span>
-                            ) : (
-                              <button type="button" className="todo-card-edit" onClick={() => startEdit(task)} aria-label="수정">
-                                <span className="material-symbols-outlined">edit</span>
-                              </button>
-                            )}
-                          </div>
-                          <h4 className="todo-card-title">{task.title}</h4>
-                          {task.description && <p className="todo-card-desc">{task.description}</p>}
-                          <div className="todo-card-footer">
-                            <div className="todo-card-date">
-                              <span className="material-symbols-outlined">
-                                {col.id === STATUS_DONE ? 'event_available' : 'schedule'}
-                              </span>
-                              <span>{task.dueDate || (col.id === STATUS_DONE ? 'Done' : '')}</span>
-                            </div>
-                            <div className="todo-card-footer-right">
-                              {col.id !== STATUS_TODO && (
-                                <button type="button" className="todo-move-btn" onClick={() => moveTask(task.id, STATUS_TODO)} title="To Do로">↩</button>
-                              )}
-                              {col.id !== STATUS_IN_PROGRESS && (
-                                <button type="button" className="todo-move-btn" onClick={() => moveTask(task.id, STATUS_IN_PROGRESS)} title="진행중">▶</button>
-                              )}
-                              {col.id !== STATUS_DONE && (
-                                <button type="button" className="todo-move-btn" onClick={() => moveTask(task.id, STATUS_DONE)} title="완료">✓</button>
-                              )}
-                              {col.id === STATUS_DONE && (
-                                <>
-                                  <button type="button" className="todo-delete-btn" onClick={() => startEdit(task)} aria-label="수정">
-                                    <span className="material-symbols-outlined">edit</span>
-                                  </button>
-                                  <button type="button" className="todo-delete-btn" onClick={() => deleteTask(task.id)} aria-label="삭제">
-                                    <span className="material-symbols-outlined">delete</span>
-                                  </button>
-                                </>
-                              )}
-                              <img src={AVATAR_PLACEHOLDER} alt="" className="todo-card-avatar" />
-                            </div>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                  <button
+                    type="button"
+                    className="todo-list-check"
+                    onClick={() => handleToggleComplete(task)}
+                    disabled={togglingId === task.id}
+                    aria-label={task.status === STATUS_COMPLETED ? '완료 해제' : '완료'}
+                  >
+                    <span className="material-symbols-outlined">
+                      {task.status === STATUS_COMPLETED ? 'check_circle' : 'radio_button_unchecked'}
+                    </span>
+                  </button>
+                  <div className="todo-list-content">
+                    <span className="todo-list-title">{task.title || '(제목 없음)'}</span>
+                    {(task.notes || task.due) && (
+                      <div className="todo-list-meta">
+                        {task.notes && <span className="todo-list-notes">{task.notes}</span>}
+                        {task.due && <span className="todo-list-due">{formatDue(task.due)}</span>}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="todo-list-delete"
+                    onClick={() => handleDelete(task.id)}
+                    disabled={deletingId === task.id}
+                    aria-label="삭제"
+                  >
+                    <span className="material-symbols-outlined">delete</span>
+                  </button>
+                </li>
+              ))
+            )}
+          </ul>
+        )}
       </div>
 
       {showAddModal && (
         <div className="todo-modal-overlay" onClick={() => setShowAddModal(false)} role="dialog" aria-modal="true">
           <div className="todo-modal" onClick={(e) => e.stopPropagation()}>
             <div className="todo-modal-header">
-              <h3>New Task</h3>
+              <h3>새 할 일</h3>
               <button type="button" className="todo-modal-close" onClick={() => setShowAddModal(false)} aria-label="닫기">
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
             <form onSubmit={addTask} className="todo-modal-form">
               <div className="todo-modal-field">
-                <label htmlFor="todo-add-title">Title *</label>
+                <label htmlFor="todo-add-title">제목 *</label>
                 <input
                   id="todo-add-title"
                   type="text"
                   value={form.title}
                   onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
-                  placeholder="Task title"
+                  placeholder="할 일 제목"
                   required
                 />
               </div>
               <div className="todo-modal-field">
-                <label htmlFor="todo-add-desc">Description</label>
+                <label>목록</label>
+                <select
+                  value={form.listId}
+                  onChange={(e) => setForm((p) => ({ ...p, listId: e.target.value }))}
+                  className="todo-modal-select"
+                >
+                  <option value="">목록 선택</option>
+                  {taskLists.map((list) => (
+                    <option key={list.id} value={list.id}>{list.title}</option>
+                  ))}
+                  <option value="__new__">+ 새 목록 만들기</option>
+                </select>
+                {form.listId === '__new__' && (
+                  <div className="todo-modal-new-list">
+                    <input
+                      type="text"
+                      value={createListTitle}
+                      onChange={(e) => setCreateListTitle(e.target.value)}
+                      placeholder="새 목록 이름"
+                      className="todo-modal-input-inline"
+                    />
+                    <button type="button" className="todo-btn-small" onClick={handleCreateList} disabled={creatingList || !createListTitle?.trim()}>
+                      {creatingList ? '만드는 중…' : '만들기'}
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div className="todo-modal-field">
+                <label htmlFor="todo-add-desc">메모</label>
                 <textarea
                   id="todo-add-desc"
                   value={form.description}
                   onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
-                  placeholder="Description"
+                  placeholder="메모 (선택)"
                   rows={3}
                 />
               </div>
-              <div className="todo-modal-row">
+              <div className="todo-modal-field todo-modal-row">
                 <div className="todo-modal-field">
-                  <label htmlFor="todo-add-priority">Priority</label>
-                  <select
-                    id="todo-add-priority"
-                    value={form.priority}
-                    onChange={(e) => setForm((p) => ({ ...p, priority: e.target.value }))}
-                  >
-                    <option value="high">High</option>
-                    <option value="medium">Medium</option>
-                    <option value="low">Low</option>
-                  </select>
-                </div>
-                <div className="todo-modal-field">
-                  <label htmlFor="todo-add-due">Due date</label>
+                  <label htmlFor="todo-add-due">마감일</label>
                   <input
                     id="todo-add-due"
                     type="date"
@@ -417,10 +417,51 @@ export default function TodoList() {
                     onChange={(e) => setForm((p) => ({ ...p, dueDate: e.target.value }))}
                   />
                 </div>
+                <div className="todo-modal-field todo-modal-allday">
+                  <label className="todo-modal-check-label">
+                    <input
+                      type="checkbox"
+                      checked={form.allDay}
+                      onChange={(e) => setForm((p) => ({ ...p, allDay: e.target.checked }))}
+                    />
+                    종일
+                  </label>
+                </div>
+                {!form.allDay && (
+                  <div className="todo-modal-field">
+                    <label htmlFor="todo-add-time">시간</label>
+                    <input
+                      id="todo-add-time"
+                      type="time"
+                      value={form.dueTime}
+                      onChange={(e) => setForm((p) => ({ ...p, dueTime: e.target.value }))}
+                    />
+                  </div>
+                )}
+              </div>
+              <div className="todo-modal-field">
+                <label>참여자 (같은 회사 직원)</label>
+                <div className="todo-modal-participants">
+                  {companyMembers
+                    .filter((m) => m._id !== currentUserId)
+                    .map((m) => (
+                      <label key={m._id} className="todo-modal-participant-item">
+                        <input
+                          type="checkbox"
+                          checked={(form.participantIds || []).includes(m._id)}
+                          onChange={() => toggleParticipant(m._id)}
+                        />
+                        <span>{m.name || m.email || m._id}</span>
+                      </label>
+                    ))}
+                  {companyMembers.filter((m) => m._id !== currentUserId).length === 0 && (
+                    <span className="todo-modal-participants-empty">선택 가능한 팀원이 없습니다.</span>
+                  )}
+                </div>
               </div>
               <div className="todo-modal-actions">
-                <button type="button" className="todo-btn-cancel" onClick={() => setShowAddModal(false)}>Cancel</button>
-                <button type="submit" className="todo-btn-new">Add</button>
+                <button type="button" className="todo-btn-cancel" onClick={() => setShowAddModal(false)}>취소</button>
+                <button type="submit" className="todo-btn-new" disabled={!form.listId || form.listId === '__new__'}>추가</button>
               </div>
             </form>
           </div>

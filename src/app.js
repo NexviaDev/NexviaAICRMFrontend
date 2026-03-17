@@ -17,6 +17,7 @@ import AiVoice from './ai-voice/ai-voice';
 import Email from './email/email';
 import Map from './map/map';
 import TodoList from './todo-list/todo-list';
+import GoogleChat from './chat/chat';
 import LeadCapture from './lead-capture/lead-capture';
 
 /** 로그인하지 않으면 /login으로 리다이렉트 */
@@ -45,6 +46,7 @@ function App() {
         <Route path="email" element={<Email />} />
         <Route path="map" element={<Map />} />
         <Route path="todo-list" element={<TodoList />} />
+        <Route path="chat" element={<GoogleChat />} />
         <Route path="reports/sales" element={<SalesReport />} />
         <Route path="reports/performance" element={<EmployeePerformance />} />
         <Route path="reports/work-report/:employeeId?" element={<EmployeeWorkReport />} />

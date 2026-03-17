@@ -1,0 +1,101 @@
+/* 수주 성공 전체보기 모달 */
+.wonall-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.wonall-modal {
+  background: var(--card);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+  max-width: 480px;
+  width: 100%;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.wonall-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--card-border);
+  flex-shrink: 0;
+}
+
+.wonall-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.wonall-close {
+  padding: 0.35rem;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 0.5rem;
+}
+
+.wonall-close:hover {
+  background: var(--bg-light);
+  color: var(--text);
+}
+
+.wonall-list {
+  padding: 1rem 1.25rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.wonall-empty {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 1.5rem;
+}
+
+.wonall-card {
+  padding: 0.85rem 1rem;
+  background: var(--bg-light);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  cursor: default;
+}
+
+.wonall-card-title {
+  margin: 0 0 0.25rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.wonall-card-contact {
+  margin: 0 0 0.35rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.wonall-card-meta {
+  margin: 0;
+}
+
+.wonall-card-value {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+}

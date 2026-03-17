@@ -134,6 +134,10 @@ export default function LeadCapture() {
   const [lastClickedLeadIndex, setLastClickedLeadIndex] = useState(null);
   const [savingContacts, setSavingContacts] = useState(false);
   const [saveContactsFeedback, setSaveContactsFeedback] = useState(null);
+  const [embedCodeText, setEmbedCodeText] = useState('');
+  const [previewHtml, setPreviewHtml] = useState('');
+  const [showEmbedPreview, setShowEmbedPreview] = useState(false);
+  const [apiKeyForPreview, setApiKeyForPreview] = useState('');
 
   const fetchSettings = useCallback(async () => {
     try {
@@ -483,6 +487,21 @@ ${customInputs}
     }
   }
 
+  useEffect(() => {
+    if (selectedForm?.webhookUrl) setEmbedCodeText(getEmbedSnippet());
+  }, [selectedForm?._id, selectedForm?.webhookUrl, customFields?.length]);
+
+  function handleLoadDefaultEmbedCode() {
+    setEmbedCodeText(getEmbedSnippet());
+  }
+
+  function handleShowEmbedPreview() {
+    let code = embedCodeText || getEmbedSnippet();
+    if (apiKeyForPreview.trim()) code = code.replace(/YOUR_API_KEY/g, apiKeyForPreview.trim());
+    setPreviewHtml(code);
+    setShowEmbedPreview(true);
+  }
+
   async function handleRemoveCustomField(def) {
     if (!window.confirm(`"${def.label}" 필드를 제거할까요?`)) return;
     setRemovingFieldId(def._id);
@@ -711,6 +730,66 @@ ${customInputs}
                 {copyFeedback.embedCode ? '임베드 코드 복사됨' : '임베드 코드 복사'}
               </button>
             </div>
+
+            {/* 임베드 코드 편집 + 미리보기 (미리보기에서 보내기 = 실제 등록) */}
+            {selectedForm?.webhookUrl && (
+              <div className="lead-capture-embed-preview-section">
+                <h3 className="lead-capture-embed-preview-title">임베드 코드 편집 및 미리보기</h3>
+                <p className="lead-capture-embed-preview-desc">코드를 수정한 뒤 미리보기를 누르면 폼이 렌더됩니다. 미리보기에서 제출(보내기)하면 실제로 리드가 등록됩니다.</p>
+                <div className="lead-capture-embed-code-wrap">
+                  <textarea
+                    className="lead-capture-embed-code-textarea"
+                    value={embedCodeText}
+                    onChange={(e) => setEmbedCodeText(e.target.value)}
+                    placeholder="임베드 코드가 채널 선택 시 자동으로 채워집니다."
+                    spellCheck={false}
+                    rows={14}
+                  />
+                  <div className="lead-capture-embed-code-actions">
+                    <button type="button" className="lead-capture-embed-code-btn secondary" onClick={handleLoadDefaultEmbedCode}>
+                      <span className="material-symbols-outlined">restart_alt</span> 기본 코드 불러오기
+                    </button>
+                    <label className="lead-capture-embed-api-key-label">
+                      <span>API 키 (미리보기 제출용, 선택)</span>
+                      <input
+                        type="password"
+                        className="lead-capture-embed-api-key-input"
+                        value={apiKeyForPreview}
+                        onChange={(e) => setApiKeyForPreview(e.target.value)}
+                        placeholder="YOUR_API_KEY 대신 쓸 키"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="lead-capture-embed-code-btn primary"
+                      onClick={handleShowEmbedPreview}
+                      disabled={!embedCodeText.trim()}
+                    >
+                      <span className="material-symbols-outlined">preview</span> 미리보기
+                    </button>
+                  </div>
+                </div>
+                {showEmbedPreview && (
+                  <div className="lead-capture-embed-preview-wrap">
+                    <div className="lead-capture-embed-preview-head">
+                      <span className="lead-capture-embed-preview-label">미리보기</span>
+                      <button type="button" className="lead-capture-embed-preview-close" onClick={() => setShowEmbedPreview(false)} aria-label="미리보기 닫기">
+                        <span className="material-symbols-outlined">close</span>
+                      </button>
+                    </div>
+                    <div className="lead-capture-embed-preview-body">
+                      <iframe
+                        title="리드 캡처 폼 미리보기"
+                        className="lead-capture-embed-preview-iframe"
+                        srcDoc={previewHtml}
+                        sandbox="allow-scripts allow-forms"
+                      />
+                    </div>
+                    <p className="lead-capture-embed-preview-hint">폼을 작성한 뒤 &quot;제출&quot; 버튼을 누르면 웹훅으로 실제 등록됩니다.</p>
+                  </div>
+                )}
+              </div>
+            )}
           </section>
 
           <aside className="lead-capture-sidebar">

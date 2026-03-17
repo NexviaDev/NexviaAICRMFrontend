@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import './product-search-modal.css';
 
 import { API_BASE } from '@/config';
@@ -8,8 +8,37 @@ function getAuthHeader() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+const FIELD_LABELS = {
+  name: '제품명',
+  code: '코드',
+  category: '카테고리',
+  version: '버전',
+  price: '가격',
+  currency: '통화',
+  billingType: '결제 유형',
+  status: '상태'
+};
+
+/** 제품 객체에서 표시용 키 목록 (순서 유지, 내부 필드 제외) */
+function getDisplayKeys(product) {
+  const skip = new Set(['_id', 'companyId', 'createdAt', 'updatedAt', '__v']);
+  const order = ['name', 'code', 'category', 'version', 'price', 'currency', 'billingType', 'status'];
+  const ordered = order.filter((k) => product.hasOwnProperty(k));
+  const rest = Object.keys(product).filter((k) => !skip.has(k) && !order.includes(k));
+  return [...ordered, ...rest];
+}
+
+function formatDisplayValue(key, value) {
+  if (value == null || value === '') return '—';
+  if (key === 'price') return Number(value).toLocaleString();
+  if (typeof value === 'object' && !Array.isArray(value) && value !== null) {
+    return Object.entries(value).filter(([, v]) => v != null && v !== '').map(([k, v]) => `${k}: ${v}`).join(', ') || '—';
+  }
+  return String(value);
+}
+
 /**
- * 제품 검색 모달 (담당자 검색 모달과 동일한 UX)
+ * 제품 검색 모달: 가격·전체 필드 표시, 체크박스, Shift+클릭 범위 선택, 선택 완료 시 onSelect(배열)
  */
 export default function ProductSearchModal({ onClose, onSelect }) {
   const [search, setSearch] = useState('');
@@ -17,6 +46,8 @@ export default function ProductSearchModal({ onClose, onSelect }) {
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState('');
+  const [selected, setSelected] = useState(new Set());
+  const lastClickedIdx = useRef(null);
 
   const runSearch = useCallback(async () => {
     setError('');
@@ -33,6 +64,8 @@ export default function ProductSearchModal({ onClose, onSelect }) {
         return;
       }
       setItems(data.items || []);
+      setSelected(new Set());
+      lastClickedIdx.current = null;
     } catch (_) {
       setError('서버에 연결할 수 없습니다.');
       setItems([]);
@@ -46,8 +79,60 @@ export default function ProductSearchModal({ onClose, onSelect }) {
     runSearch();
   };
 
-  const handleSelect = (product) => {
-    onSelect?.(product);
+  const handleRowClick = (idx, e) => {
+    if (e.target.closest('input[type="checkbox"]')) return;
+    const id = items[idx]?._id;
+    if (!id) return;
+    if (e.shiftKey && lastClickedIdx.current !== null) {
+      const start = Math.min(lastClickedIdx.current, idx);
+      const end = Math.max(lastClickedIdx.current, idx);
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (let i = start; i <= end; i++) {
+          if (items[i]?._id) next.add(items[i]._id);
+        }
+        return next;
+      });
+    } else {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+    }
+    lastClickedIdx.current = idx;
+  };
+
+  const handleCheckboxClick = (idx, e) => {
+    e.stopPropagation();
+    const id = items[idx]?._id;
+    if (!id) return;
+    if (e.shiftKey && lastClickedIdx.current !== null) {
+      const start = Math.min(lastClickedIdx.current, idx);
+      const end = Math.max(lastClickedIdx.current, idx);
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (let i = start; i <= end; i++) {
+          if (items[i]?._id) next.add(items[i]._id);
+        }
+        return next;
+      });
+    } else {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+    }
+    lastClickedIdx.current = idx;
+  };
+
+  const handleConfirm = () => {
+    const selectedProducts = items.filter((p) => p._id && selected.has(p._id));
+    if (selectedProducts.length === 0) return;
+    onSelect?.(selectedProducts);
     onClose?.();
   };
 
@@ -91,28 +176,72 @@ export default function ProductSearchModal({ onClose, onSelect }) {
           ) : items.length === 0 ? (
             <p className="product-search-modal-empty">검색 조건에 맞는 제품이 없습니다.</p>
           ) : (
-            <ul className="product-search-modal-list">
-              {items.map((p) => (
-                <li
-                  key={p._id}
-                  className="product-search-modal-item"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => handleSelect(p)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelect(p); } }}
-                  aria-label={`${p.name || ''} 선택`}
+            <>
+              <ul className="product-search-modal-list">
+                {items.map((p, idx) => {
+                  const isChecked = selected.has(p._id);
+                  const displayKeys = getDisplayKeys(p);
+                  return (
+                    <li
+                      key={p._id}
+                      className={`product-search-modal-item ${isChecked ? 'is-selected' : ''}`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => handleRowClick(idx, e)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleRowClick(idx, e); } }}
+                      aria-label={`${p.name || ''} 선택`}
+                    >
+                      <div className="product-search-modal-item-check" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          className="product-search-modal-item-checkbox"
+                          checked={isChecked}
+                          onChange={() => {}}
+                          onClick={(e) => handleCheckboxClick(idx, e)}
+                          aria-label={`${p.name || '제품'} 선택`}
+                        />
+                      </div>
+                      <span className="material-symbols-outlined product-search-modal-item-icon">inventory_2</span>
+                      <div className="product-search-modal-item-content">
+                        {displayKeys.map((key) => (
+                          <div key={key} className={`product-search-modal-item-row ${key === 'name' ? 'product-search-modal-item-row-primary' : ''}`}>
+                            {key !== 'customFields' && (
+                              <span className="product-search-modal-item-label">
+                                {FIELD_LABELS[key] || key}:
+                              </span>
+                            )}
+                            <span className="product-search-modal-item-value">
+                              {key === 'customFields' && typeof p[key] === 'object'
+                                ? Object.entries(p[key] || {}).filter(([, v]) => v != null && v !== '').map(([k, v]) => `${k}: ${v}`).join(', ') || '—'
+                                : formatDisplayValue(key, p[key])}
+                            </span>
+                          </div>
+                        ))}
+                        {displayKeys.length === 0 && (
+                          <div className="product-search-modal-item-row">
+                            <span className="product-search-modal-item-value">{p.name || '—'}</span>
+                          </div>
+                        )}
+                      </div>
+                      <span className="material-symbols-outlined product-search-modal-item-arrow">arrow_forward</span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className="product-search-modal-footer">
+                <p className="product-search-modal-selected-count">
+                  <strong>{selected.size}</strong>개 선택 (Shift+클릭으로 범위 선택)
+                </p>
+                <button
+                  type="button"
+                  className="product-search-modal-confirm-btn"
+                  disabled={selected.size === 0}
+                  onClick={handleConfirm}
                 >
-                  <span className="material-symbols-outlined product-search-modal-item-icon">inventory_2</span>
-                  <div className="product-search-modal-item-content">
-                    <span className="product-search-modal-item-name">{p.name || '—'}</span>
-                    <span className="product-search-modal-item-sub">
-                      {[p.code && `UID: ${p.code}`, p.category, p.version].filter(Boolean).join(' · ') || '—'}
-                    </span>
-                  </div>
-                  <span className="material-symbols-outlined product-search-modal-item-arrow">arrow_forward</span>
-                </li>
-              ))}
-            </ul>
+                  선택 완료
+                </button>
+              </div>
+            </>
           )}
         </div>
       </div>
