@@ -1561,3 +1561,43 @@
   border-radius: 0;
   background: none;
 }
+
+/* ── 수정 모드: 사업자등록증 교체 대기 표시 ── */
+.register-sale-docs-cert-pending {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.82rem;
+  color: var(--primary, #5c6bc0);
+  background: rgba(92, 107, 192, 0.06);
+  border-bottom: 1px solid var(--card-border, #e0e0e0);
+}
+
+.register-sale-docs-cert-pending-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.register-sale-docs-cert-pending-cancel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0.15rem;
+  border: none;
+  background: none;
+  color: var(--text-muted, #999);
+  border-radius: 0.25rem;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.register-sale-docs-cert-pending-cancel:hover {
+  color: var(--danger, #c53030);
+  background: rgba(197, 48, 48, 0.08);
+}

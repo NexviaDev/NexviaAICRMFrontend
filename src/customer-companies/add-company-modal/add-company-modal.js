@@ -111,6 +111,25 @@ function getDriveFileIdFromUrl(url) {
   return m ? m[1] : null;
 }
 
+/** Drive 저장 시 파일명: 사업자등록증_고객사명_사업자번호.확장자 */
+function buildCertificateDriveFileName(companyName, businessNumberRaw, mimeType, originalFileName) {
+  const namePart = sanitizeFolderNamePart(companyName || '미소속').replace(/\s+/g, '_').slice(0, 60) || '미소속';
+  const bnPart = String(businessNumberRaw || '').replace(/\D/g, '').slice(0, 12) || '미등록';
+  const m = (mimeType || '').toLowerCase();
+  let ext = 'pdf';
+  if (m.includes('pdf')) ext = 'pdf';
+  else if (m.includes('jpeg') || m.includes('jpg')) ext = 'jpg';
+  else if (m.includes('png')) ext = 'png';
+  else if (m.includes('webp')) ext = 'webp';
+  else {
+    const fn = originalFileName || '';
+    const i = fn.lastIndexOf('.');
+    if (i >= 0) ext = fn.slice(i + 1).replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'jpg';
+  }
+  const base = `사업자등록증_${namePart}_${bnPart}.${ext}`;
+  return base.length > 200 ? `${base.slice(0, 196 - ext.length)}.${ext}` : base;
+}
+
 const INFORMATION_FOLDER_NAME = 'information';
 
 export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }) {
@@ -144,6 +163,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
   const [certificateFile, setCertificateFile] = useState(null);
   const [certificateDropActive, setCertificateDropActive] = useState(false);
   const [extractingCertificate, setExtractingCertificate] = useState(false);
+
   const [driveFolderLink, setDriveFolderLink] = useState('');
   const [driveFolderId, setDriveFolderId] = useState(null);
   const [driveInformationFolderId, setDriveInformationFolderId] = useState(null);
@@ -752,7 +772,12 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
           headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({
-            name: certificateFile.name,
+            name: buildCertificateDriveFileName(
+              form.name,
+              form.businessNumber,
+              certificateFile.type,
+              certificateFile.name
+            ),
             mimeType: certificateFile.type || 'application/octet-stream',
             contentBase64,
             parentFolderId: infoData.id
@@ -792,60 +817,21 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
     <form onSubmit={handleSubmit} className="add-company-modal-form">
       <div className="add-company-modal-body">
         {error && <p className="add-company-modal-error">{error}</p>}
-        {/* 사업자등록증 업로드 (샘플 디자인) */}
-        <section className="add-company-section">
-          <h3 className="add-company-section-title">사업자등록증 업로드</h3>
-          <input
-            ref={certificateInputRef}
-            type="file"
-            accept="image/*,.pdf"
-            style={{ display: 'none' }}
-            onChange={(e) => {
-              const file = e.target.files?.[0] ?? null;
-              setCertificateFile(file);
-              e.target.value = '';
-              if (file && !isEdit) extractFromCertificateAndFillForm(file);
-            }}
-            aria-hidden="true"
-          />
-          <div
-            className={`add-company-upload-zone ${certificateDropActive ? 'add-company-upload-zone-active' : ''} ${extractingCertificate ? 'add-company-upload-zone-disabled' : ''}`}
-            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); if (!extractingCertificate) setCertificateDropActive(true); }}
-            onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setCertificateDropActive(false); }}
-            onDrop={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setCertificateDropActive(false);
-              const file = e.dataTransfer?.files?.[0];
-              if (file) {
-                setCertificateFile(file);
-                if (!isEdit) extractFromCertificateAndFillForm(file);
-              }
-            }}
-            onClick={() => { if (!extractingCertificate && certificateInputRef.current) certificateInputRef.current.click(); }}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !extractingCertificate && certificateInputRef.current) { e.preventDefault(); certificateInputRef.current.click(); } }}
-            aria-label="사업자 등록증 첨부 (드래그 앤 드롭 또는 클릭)"
-          >
-            <div className="add-company-upload-icon-wrap">
-              <span className="material-symbols-outlined add-company-upload-icon">upload_file</span>
-            </div>
-            {extractingCertificate ? (
-              <p className="add-company-upload-title">증빙에서 정보를 읽는 중…</p>
-            ) : certificateFile ? (
-              <p className="add-company-upload-title add-company-upload-filename">{certificateFile.name}</p>
-            ) : (
-              <>
-                <p className="add-company-upload-title">파일을 드래그하거나 클릭하여 업로드하세요</p>
-                <p className="add-company-upload-hint">사업자등록증을 업로드하면 정보를 자동으로 입력합니다.</p>
-              </>
-            )}
-          </div>
-        </section>
-        {/* 증서 · 자료 (Google Drive) - 이미 업로드된 파일이 하나라도 있을 때만 표시 */}
-        {(isEdit && (company?.driveRootFolderId || company?.businessRegistrationCertificateDriveUrl)) && (
+        {/* 사업자등록증 · 자료 */}
+        {isEdit && driveFolderId ? (
           <section className="customer-company-detail-section register-sale-docs">
+            <input
+              ref={certificateInputRef}
+              type="file"
+              accept="image/*,.pdf"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const file = e.target.files?.[0] ?? null;
+                setCertificateFile(file);
+                e.target.value = '';
+              }}
+              aria-hidden="true"
+            />
             <input
               ref={driveFileInputRef}
               type="file"
@@ -858,7 +844,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
             <div className="customer-company-detail-section-head">
               <h3 className="customer-company-detail-section-title">
                 <span className="material-symbols-outlined">folder</span>
-                증서 · 자료
+                사업자등록증 · 자료
               </h3>
               <button
                 type="button"
@@ -871,6 +857,15 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
                 <span className="material-symbols-outlined">add</span>
               </button>
             </div>
+            {certificateFile && (
+              <div className="register-sale-docs-cert-pending">
+                <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>upload_file</span>
+                <span className="register-sale-docs-cert-pending-name">{certificateFile.name}</span>
+                <button type="button" className="register-sale-docs-cert-pending-cancel" onClick={() => setCertificateFile(null)}>
+                  <span className="material-symbols-outlined" style={{ fontSize: '1rem' }}>close</span>
+                </button>
+              </div>
+            )}
             {driveFolderLink && getDriveFolderIdFromLink(driveFolderLink) ? (
               <div
                 className={`register-sale-docs-list-wrap ${docsDropActive ? 'register-sale-docs-dropzone-active' : ''} ${driveUploading ? 'register-sale-docs-dropzone-disabled' : ''}`}
@@ -984,6 +979,57 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
               </div>
             )}
             {driveError && <p className="register-sale-docs-error">{driveError}</p>}
+          </section>
+        ) : (
+          <section className="add-company-section">
+            <h3 className="add-company-section-title">사업자등록증 업로드</h3>
+            <input
+              ref={certificateInputRef}
+              type="file"
+              accept="image/*,.pdf"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const file = e.target.files?.[0] ?? null;
+                setCertificateFile(file);
+                e.target.value = '';
+                if (file) extractFromCertificateAndFillForm(file);
+              }}
+              aria-hidden="true"
+            />
+            <div
+              className={`add-company-upload-zone ${certificateDropActive ? 'add-company-upload-zone-active' : ''} ${extractingCertificate ? 'add-company-upload-zone-disabled' : ''}`}
+              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); if (!extractingCertificate) setCertificateDropActive(true); }}
+              onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setCertificateDropActive(false); }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setCertificateDropActive(false);
+                const file = e.dataTransfer?.files?.[0];
+                if (file) {
+                  setCertificateFile(file);
+                  extractFromCertificateAndFillForm(file);
+                }
+              }}
+              onClick={() => { if (!extractingCertificate && certificateInputRef.current) certificateInputRef.current.click(); }}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !extractingCertificate && certificateInputRef.current) { e.preventDefault(); certificateInputRef.current.click(); } }}
+              aria-label="사업자 등록증 첨부 (드래그 앤 드롭 또는 클릭)"
+            >
+              <div className="add-company-upload-icon-wrap">
+                <span className="material-symbols-outlined add-company-upload-icon">upload_file</span>
+              </div>
+              {extractingCertificate ? (
+                <p className="add-company-upload-title">증빙에서 정보를 읽는 중…</p>
+              ) : certificateFile ? (
+                <p className="add-company-upload-title add-company-upload-filename">{certificateFile.name}</p>
+              ) : (
+                <>
+                  <p className="add-company-upload-title">파일을 드래그하거나 클릭하여 업로드하세요</p>
+                  <p className="add-company-upload-hint">사업자등록증을 업로드하면 정보를 자동으로 입력합니다.</p>
+                </>
+              )}
+            </div>
           </section>
         )}
         {/* 기본 정보 2열 그리드 */}

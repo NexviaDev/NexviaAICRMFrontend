@@ -123,13 +123,10 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   const companyWrapRef = useRef(null);
   const [customDefinitions, setCustomDefinitions] = useState([]);
 
-  const [cardUploading, setCardUploading] = useState(false);
-  const [cardDeleting, setCardDeleting] = useState(false);
-  const [cardError, setCardError] = useState('');
-  const cardInputRef = useRef(null);
-  const cardSubmittingRef = useRef(false);
   const [displayedContact, setDisplayedContact] = useState(contact);
   const [showCardImageModal, setShowCardImageModal] = useState(false);
+  const [showContactCardEmptyPopover, setShowContactCardEmptyPopover] = useState(false);
+  const contactNameCardPopoverRef = useRef(null);
   const [googleSaving, setGoogleSaving] = useState(false);
   const [googleResult, setGoogleResult] = useState(null);
   const [showProductSalesModal, setShowProductSalesModal] = useState(false);
@@ -150,10 +147,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   const [loadingDriveFiles, setLoadingDriveFiles] = useState(false);
   const driveFileInputRef = useRef(null);
 
-  /** 고객사 없을 때 폴더명: [이름]_[연락처] (긴 이름은 80자, 연락처 40자로 자름) */
-  const driveFolderName = contact
-    ? `${sanitizeFolderNamePart(contact.companyName || contact.name || '이름없음', 80)}_${sanitizeFolderNamePart(contact.phone || contact.email || '미등록', 40)}`
-    : '';
+  const [driveFolderName, setDriveFolderName] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -172,6 +166,9 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
       if (companyWrapRef.current && !companyWrapRef.current.contains(e.target)) {
         setCompanyDropdownOpen(false);
       }
+      if (contactNameCardPopoverRef.current && !contactNameCardPopoverRef.current.contains(e.target)) {
+        setShowContactCardEmptyPopover(false);
+      }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -183,6 +180,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
       if (showRegisterSaleModal) setShowRegisterSaleModal(false);
       else if (showProductSalesModal) setShowProductSalesModal(false);
       else if (showCardImageModal) setShowCardImageModal(false);
+      else if (showContactCardEmptyPopover) setShowContactCardEmptyPopover(false);
       else if (showDeleteConfirm) setShowDeleteConfirm(false);
       else if (editing) {
         setEditing(false);
@@ -192,14 +190,29 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, editing, showDeleteConfirm, showCardImageModal, showProductSalesModal, showRegisterSaleModal]);
+  }, [onClose, editing, showDeleteConfirm, showCardImageModal, showContactCardEmptyPopover, showProductSalesModal, showRegisterSaleModal]);
 
   useEffect(() => {
     setDisplayedContact((prev) => ({ ...(prev || {}), ...(contact || {}) }));
   }, [contact]);
 
   const contactToShow = displayedContact || contact || {};
-  const businessCardDisplayUrl = contactToShow.businessCardDriveUrl || contactToShow.businessCardImageUrl;
+  const businessCardImageUrl = contactToShow.businessCardImageUrl || '';
+  const businessCardDriveUrl = contactToShow.businessCardDriveUrl || '';
+  const hasBusinessCardImage = !!businessCardImageUrl;
+  const hasAnyBusinessCard = hasBusinessCardImage || !!businessCardDriveUrl;
+
+  const openBusinessCardView = useCallback(() => {
+    if (businessCardImageUrl) {
+      setShowContactCardEmptyPopover(false);
+      setShowCardImageModal(true);
+    } else if (businessCardDriveUrl) {
+      setShowContactCardEmptyPopover(false);
+      window.open(businessCardDriveUrl, '_blank', 'noopener,noreferrer');
+    } else {
+      setShowContactCardEmptyPopover((v) => !v);
+    }
+  }, [businessCardImageUrl, businessCardDriveUrl]);
   const status = contactToShow.status || 'Lead';
   const displayStatus = statusLabel[status] || status;
   const contactId = contact?._id;
@@ -291,9 +304,14 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
     fetchProductSales();
   }, [contactId, companyIdForSales]);
 
-  /* Drive 탭: 등록폴더(company-drive-settings) 아래 [이름]_[연락처] 폴더 ensure 후 표시 (기존 값 미사용) */
+  /**
+   * Drive 폴더 초기화:
+   *  - customerCompanyId가 있으면 → 등록폴더 / [고객사명]_[사업자번호]
+   *  - customerCompanyId가 null 이면 → 등록폴더 / [이름]_[연락처]
+   *  폴더가 없으면 ensure로 새로 만들고, driveRootFolderId를 연락처에 PATCH 저장.
+   */
   useEffect(() => {
-    if (!contact || !driveFolderName) return;
+    if (!contact) return;
     let cancelled = false;
     (async () => {
       try {
@@ -303,22 +321,58 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
         if (cancelled || !driveRootUrl) return;
         const registeredFolderId = getDriveFolderIdFromLink(driveRootUrl);
         if (!registeredFolderId) return;
+
+        const ccId = contact.customerCompanyId?._id ?? contact.customerCompanyId ?? null;
+        let folderName;
+
+        if (ccId) {
+          let ccName = contact.customerCompanyId?.name || contact.companyName || '';
+          let ccBn = contact.customerCompanyId?.businessNumber || '';
+          if (!ccName || !ccBn) {
+            try {
+              const ccRes = await fetch(`${API_BASE}/customer-companies/${ccId}`, { headers: getAuthHeader() });
+              const ccData = await ccRes.json().catch(() => ({}));
+              if (cancelled) return;
+              if (ccRes.ok && ccData._id) {
+                ccName = ccData.name || ccName;
+                ccBn = ccData.businessNumber || ccBn;
+              }
+            } catch (_) {}
+          }
+          const bnPart = String(ccBn || '').replace(/\D/g, '') || '미등록';
+          folderName = `${sanitizeFolderNamePart(ccName || '미소속', 80)}_${sanitizeFolderNamePart(bnPart, 20)}`;
+        } else {
+          const namePart = sanitizeFolderNamePart(contact.name || '이름없음', 80);
+          const contactPart = sanitizeFolderNamePart(contact.phone || contact.email || '미등록', 40);
+          folderName = `${namePart}_${contactPart}`;
+        }
+
+        if (cancelled) return;
+        setDriveFolderName(folderName);
+
         const r = await fetch(`${API_BASE}/drive/folders/ensure`, {
           method: 'POST',
           headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ folderName: driveFolderName, parentFolderId: registeredFolderId })
+          body: JSON.stringify({ folderName, parentFolderId: registeredFolderId })
         });
         const data = await r.json().catch(() => ({}));
         if (cancelled) return;
         if (r.ok && data.id) {
           setDriveFolderId(data.id);
           setDriveFolderLink(data.webViewLink || `https://drive.google.com/drive/folders/${data.id}`);
+          if (contact.driveRootFolderId !== data.id) {
+            fetch(`${API_BASE}/customer-company-employees/${contact._id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+              body: JSON.stringify({ driveRootFolderId: data.id })
+            }).catch(() => {});
+          }
         }
       } catch (_) {}
     })();
     return () => { cancelled = true; };
-  }, [contact, driveFolderName]);
+  }, [contactId]);
 
   useEffect(() => {
     if (driveFolderId && driveFolderName) {
@@ -367,6 +421,11 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
       try {
         let parentId = driveCurrentFolderId || driveFolderId;
         if (!parentId) {
+          if (!driveFolderName) {
+            setDriveError('Drive 폴더가 아직 준비되지 않았습니다. 잠시 뒤 다시 시도해 주세요.');
+            setDriveUploading(false);
+            return;
+          }
           const rootRes = await fetch(`${API_BASE}/custom-field-definitions/drive-root`, { headers: getAuthHeader() });
           const rootJson = await rootRes.json().catch(() => ({}));
           const driveRootUrl = (rootJson.driveRootUrl != null && String(rootJson.driveRootUrl).trim()) ? String(rootJson.driveRootUrl).trim() : '';
@@ -497,154 +556,6 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
     processing: 'Gemini 요약 생성 중...',
     completed: '최신 요약',
     error: '요약 실패'
-  };
-
-  /**
-   * 명함 등록 (02~04)
-   * 02. company-drive-settings 등록폴더로 먼저 이동
-   * 03. customerCompanyId 있음 → 등록폴더 아래 [회사명]_[사업자번호] 폴더(있으면 사용) → 'business card' 생성 후 등록
-   * 04. customerCompanyId null → 등록폴더 아래 [이름]_[연락처] 폴더(있으면 사용, 없으면 생성) → 'business card'에 등록
-   */
-  const handleCardFileChange = async (e) => {
-    const file = e.target?.files?.[0];
-    e.target.value = '';
-    if (!file || !contactId) return;
-    if (cardSubmittingRef.current) return;
-    if (!file.type.startsWith('image/')) {
-      setCardError('이미지 파일만 업로드할 수 있습니다.');
-      return;
-    }
-    setCardError('');
-    cardSubmittingRef.current = true;
-    setCardUploading(true);
-    try {
-      // 02. 등록폴더(company-drive-settings) 먼저 조회
-      const rootRes = await fetch(`${API_BASE}/custom-field-definitions/drive-root`, { headers: getAuthHeader() });
-      const rootJson = await rootRes.json().catch(() => ({}));
-      const driveRootUrl = (rootJson.driveRootUrl != null && String(rootJson.driveRootUrl).trim()) ? String(rootJson.driveRootUrl).trim() : '';
-      if (!driveRootUrl) {
-        setCardError('회사 공유 드라이브 경로를 먼저 설정해 주세요. (회사 개요 → 전체 공유 드라이브 주소)');
-        return;
-      }
-      const registeredFolderId = getDriveFolderIdFromLink(driveRootUrl);
-      if (!registeredFolderId) {
-        setCardError('드라이브 경로 형식이 올바르지 않습니다.');
-        return;
-      }
-
-      let targetFolderId;
-      const cc = contact.customerCompanyId;
-      const hasCustomerCompany = cc && (typeof cc.name === 'string' && cc.name.trim()) || (typeof cc?.companyName === 'string' && cc.companyName.trim());
-
-      if (hasCustomerCompany) {
-        // 03. customerCompanyId 있음(DB에서 조회된 고객사) → [회사명]_[사업자번호] 기존 폴더 접근 후 'business card'에 등록
-        const ccName = typeof cc.name === 'string' ? cc.name : (cc.companyName || '미소속');
-        const ccBn = cc.businessNumber != null ? String(cc.businessNumber).replace(/\D/g, '') : '';
-        const companyFolderName = `${sanitizeFolderNamePart(ccName, 80)}_${sanitizeFolderNamePart(ccBn || '미등록', 20)}`;
-        const ensureCompany = await fetch(`${API_BASE}/drive/folders/ensure`, {
-          method: 'POST',
-          headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ folderName: companyFolderName, parentFolderId: registeredFolderId })
-        });
-        const companyData = await ensureCompany.json().catch(() => ({}));
-        if (!ensureCompany.ok || !companyData.id) {
-          setCardError(companyData.error || '고객사 폴더를 준비할 수 없습니다.');
-          return;
-        }
-        targetFolderId = companyData.id;
-      } else {
-        // 04. customerCompanyId null → [이름]_[연락처] 있으면 사용, 없으면 생성 후 'business card'에 등록
-        const ensurePerson = await fetch(`${API_BASE}/drive/folders/ensure`, {
-          method: 'POST',
-          headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ folderName: driveFolderName, parentFolderId: registeredFolderId })
-        });
-        const personData = await ensurePerson.json().catch(() => ({}));
-        if (!ensurePerson.ok || !personData.id) {
-          setCardError(personData.error || '폴더를 준비할 수 없습니다.');
-          return;
-        }
-        targetFolderId = personData.id;
-      }
-
-      const infoRes = await fetch(`${API_BASE}/drive/folders/ensure`, {
-        method: 'POST',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ folderName: 'business card', parentFolderId: targetFolderId })
-      });
-      const infoData = await infoRes.json().catch(() => ({}));
-      if (!infoRes.ok || !infoData.id) {
-        setCardError(infoData.error || 'business card 폴더를 준비할 수 없습니다.');
-        return;
-      }
-      const contentBase64 = await fileToBase64(file);
-      if (!contentBase64) {
-        setCardError('파일 변환에 실패했습니다.');
-        return;
-      }
-      const uploadRes = await fetch(`${API_BASE}/drive/upload`, {
-        method: 'POST',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          name: file.name,
-          mimeType: file.type || 'image/jpeg',
-          contentBase64,
-          parentFolderId: infoData.id
-        })
-      });
-      const uploadData = await uploadRes.json().catch(() => ({}));
-      if (!uploadRes.ok || !uploadData.webViewLink) {
-        setCardError(uploadData.error || 'Drive 업로드에 실패했습니다.');
-        return;
-      }
-      const patchRes = await fetch(`${API_BASE}/customer-company-employees/${contactId}`, {
-        method: 'PATCH',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ businessCardDriveUrl: uploadData.webViewLink })
-      });
-      const patched = await patchRes.json().catch(() => ({}));
-      if (patchRes.ok && patched._id) {
-        setDisplayedContact({ ...contact, businessCardDriveUrl: uploadData.webViewLink });
-        onUpdated?.({ ...contact, businessCardDriveUrl: uploadData.webViewLink });
-      } else {
-        setCardError(patched.error || '명함 URL 저장에 실패했습니다.');
-      }
-    } catch (_) {
-      setCardError('서버에 연결할 수 없습니다.');
-    } finally {
-      setCardUploading(false);
-      cardSubmittingRef.current = false;
-    }
-  };
-
-  const handleCardDelete = async () => {
-    const hasCard = contact.businessCardDriveUrl || contact.businessCardImageUrl;
-    if (!contactId || !hasCard) return;
-    if (!window.confirm('명함 사진을 삭제할까요?')) return;
-    setCardError('');
-    setCardDeleting(true);
-    try {
-      const res = await fetch(`${API_BASE}/customer-company-employees/${contactId}/business-card`, {
-        method: 'DELETE',
-        headers: getAuthHeader()
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) {
-        const next = { ...contact, businessCardImageUrl: '', businessCardPublicId: '', businessCardDriveUrl: '' };
-        setDisplayedContact(next);
-        onUpdated?.(next);
-      } else {
-        setCardError(data.error || '명함 사진 삭제에 실패했습니다.');
-      }
-    } catch (_) {
-      setCardError('서버에 연결할 수 없습니다.');
-    } finally {
-      setCardDeleting(false);
-    }
   };
 
   const handleAddToGoogleContacts = async () => {
@@ -894,54 +805,42 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
               /* ── 조회 모드: 고객사 상세와 동일한 한 장 카드 + 메타 리스트 구조 ── */
               <>
                 <section className="contact-detail-main-card customer-company-detail-card">
-                  <div className="contact-detail-main-logo customer-company-detail-logo">
-                    <div
-                      className={`contact-detail-avatar-in-card ${businessCardDisplayUrl ? 'contact-detail-avatar-clickable' : ''}`}
-                      role={businessCardDisplayUrl ? 'button' : undefined}
-                      tabIndex={businessCardDisplayUrl ? 0 : undefined}
-                      aria-label={businessCardDisplayUrl ? '명함 이미지 크게 보기' : undefined}
-                      onClick={() => businessCardDisplayUrl && setShowCardImageModal(true)}
-                      onKeyDown={(e) => {
-                        if (!businessCardDisplayUrl) return;
-                        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowCardImageModal(true); }
-                      }}
-                    >
-                      {businessCardDisplayUrl ? (
-                        <img src={businessCardDisplayUrl} alt="" className="contact-detail-avatar-img" />
-                      ) : (
-                        <span className="material-symbols-outlined">contact_page</span>
-                      )}
-                    </div>
-                    <div className="contact-detail-card-actions contact-detail-card-actions-in-card">
-                      <input
-                        ref={cardInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="contact-detail-card-input"
-                        onChange={handleCardFileChange}
-                        aria-label="명함 사진 선택"
-                      />
-                      {!businessCardDisplayUrl && (
-                        <button type="button" className="contact-detail-card-btn" onClick={() => cardInputRef.current?.click()} disabled={cardUploading} title="명함 사진 추가" aria-label="명함 사진 추가">
-                          <span className="material-symbols-outlined">add_photo_alternate</span>
-                        </button>
-                      )}
-                      {businessCardDisplayUrl && (
-                        <>
-                          <button type="button" className="contact-detail-card-btn" onClick={() => cardInputRef.current?.click()} disabled={cardUploading} title="명함 사진 수정" aria-label="명함 사진 수정">
-                            <span className="material-symbols-outlined">edit</span>
-                          </button>
-                          <button type="button" className="contact-detail-card-btn contact-detail-card-btn-danger" onClick={handleCardDelete} disabled={cardDeleting} title="명함 사진 삭제" aria-label="명함 사진 삭제">
-                            <span className="material-symbols-outlined">delete</span>
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
                   <div className="customer-company-detail-info">
-                    {cardError && <p className="contact-detail-card-error">{cardError}</p>}
                     <div className="customer-company-detail-name-row">
-                      <h1 className="customer-company-detail-name contact-detail-name-in-card">{contactToShow.name || '—'}</h1>
+                      <div className="customer-company-detail-name-wrap" ref={contactNameCardPopoverRef}>
+                        <button
+                          type="button"
+                          className="customer-company-detail-name-link contact-detail-name-card-link"
+                          onClick={openBusinessCardView}
+                          aria-expanded={showContactCardEmptyPopover}
+                          aria-haspopup="dialog"
+                          aria-label="이름 클릭 시 명함 보기"
+                        >
+                          <h1 className="customer-company-detail-name contact-detail-name-in-card">{contactToShow.name || '—'}</h1>
+                          <span className="material-symbols-outlined customer-company-detail-name-link-icon">
+                            {hasAnyBusinessCard ? 'badge' : 'contact_page'}
+                          </span>
+                        </button>
+                        {showContactCardEmptyPopover && (
+                          <div
+                            className="customer-company-detail-registered-name-popover customer-company-detail-certificate-popover contact-detail-card-empty-popover"
+                            role="dialog"
+                            aria-label="명함 안내"
+                          >
+                            <div className="customer-company-detail-registered-name-popover-title">명함</div>
+                            <p className="customer-company-detail-certificate-empty">등록된 명함이 없습니다.</p>
+                            <p className="contact-detail-card-empty-hint">연락처 수정 등 다른 화면에서 명함을 등록할 수 있습니다.</p>
+                            <button
+                              type="button"
+                              className="customer-company-detail-registered-name-popover-close"
+                              onClick={() => setShowContactCardEmptyPopover(false)}
+                              aria-label="닫기"
+                            >
+                              <span className="material-symbols-outlined">close</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
                       <span className={`contact-detail-status-badge ${statusClass[status] || ''}`}>{displayStatus}</span>
                     </div>
                     <div className="customer-company-detail-meta">
@@ -1343,15 +1242,14 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
         />
       )}
 
-      {showCardImageModal && businessCardDisplayUrl && (
+      {showCardImageModal && businessCardImageUrl && (
         <div
           className="contact-detail-card-image-backdrop"
           role="dialog"
           aria-modal="true"
           aria-label="명함 이미지 미리보기"
-          onClick={() => setShowCardImageModal(false)}
         >
-          <div className="contact-detail-card-image-content" onClick={(e) => e.stopPropagation()}>
+          <div className="contact-detail-card-image-content">
             <button
               type="button"
               className="contact-detail-card-image-close"
@@ -1360,7 +1258,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
             >
               <span className="material-symbols-outlined">close</span>
             </button>
-            <img src={businessCardDisplayUrl} alt="명함" className="contact-detail-card-image-img" />
+            <img src={businessCardImageUrl} alt="명함" className="contact-detail-card-image-img" />
           </div>
         </div>
       )}

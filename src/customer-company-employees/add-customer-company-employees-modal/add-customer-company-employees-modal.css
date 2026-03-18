@@ -312,6 +312,27 @@
   font-size: 1rem;
   color: var(--text);
 }
+
+.add-contact-company-text-input {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--card-border, #e0e0e0);
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--text);
+}
+
+.add-contact-company-text-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+}
+
+.add-contact-company-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
 .add-contact-company-display {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -617,4 +638,243 @@
 
 .add-contact-assignee-search-icon-btn .material-symbols-outlined {
   font-size: 1.25rem;
+}
+
+/* 명함 업로드 구역: add-company-modal.css의 .add-company-upload-zone 등과 동일 클래스 사용 */
+.add-contact-modal-body .add-company-section {
+  margin-bottom: 1.25rem;
+}
+
+/* ── 수정 모드: 증서·자료 Drive 스타일 (add-company-modal과 동일 디자인) ── */
+.add-contact-modal .customer-company-detail-section.register-sale-docs {
+  padding: 0;
+  margin: 0 0 1.25rem;
+}
+
+.add-contact-modal .customer-company-detail-section.register-sale-docs .customer-company-detail-section-head {
+  margin-bottom: 0.75rem;
+  padding: 0;
+  background: none;
+  border: none;
+  box-shadow: none;
+}
+
+.add-contact-modal .customer-company-detail-section.register-sale-docs .customer-company-detail-section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.add-contact-modal .customer-company-detail-section.register-sale-docs .customer-company-detail-section-title .material-symbols-outlined {
+  color: var(--primary);
+  font-size: 1.25rem;
+}
+
+.add-contact-modal .customer-company-detail-section.register-sale-docs .customer-company-detail-btn-all {
+  padding: 0.35rem;
+  border-radius: 0.4rem;
+  font-size: 1.1rem;
+  background: none;
+  color: var(--text);
+  border: none;
+  box-shadow: none;
+  transition: color 0.2s;
+}
+
+.add-contact-modal .customer-company-detail-section.register-sale-docs .customer-company-detail-btn-all:hover:not(:disabled) {
+  color: var(--primary);
+}
+
+.add-contact-modal .customer-company-detail-section.register-sale-docs .customer-company-detail-btn-all:disabled {
+  opacity: 0.5;
+}
+
+.add-contact-modal .register-sale-docs-list-wrap {
+  position: relative;
+  margin-bottom: 0.5rem;
+  border-radius: 0.35rem;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: none;
+  min-height: 120px;
+  max-height: 260px;
+  box-shadow: none;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.add-contact-modal .register-sale-docs-breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  font-size: 0.8125rem;
+  padding: 0.35rem 0;
+  border-radius: 0;
+  background: none;
+  border: none;
+}
+
+.add-contact-modal .register-sale-docs-breadcrumb-btn {
+  background: none;
+  border: none;
+  padding: 0.25rem 0.4rem;
+  border-radius: 0.25rem;
+  color: var(--text);
+  font: inherit;
+  font-weight: 500;
+}
+
+.add-contact-modal .register-sale-docs-open-drive {
+  margin-left: auto;
+  padding: 0.35rem;
+  color: var(--text-muted);
+  border-radius: 0.25rem;
+  transition: color 0.2s;
+}
+
+.add-contact-modal .register-sale-docs-open-drive:hover {
+  color: var(--primary);
+  background: none;
+}
+
+.add-contact-modal .register-sale-docs-open-drive .material-symbols-outlined {
+  font-size: 1.1rem;
+}
+
+.add-contact-modal .register-sale-docs-loading {
+  margin: 0;
+  padding: 1.25rem 0;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.add-contact-modal .register-sale-docs-loading::before {
+  content: '';
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid var(--card-border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: add-contact-drive-spin 0.7s linear infinite;
+}
+
+@keyframes add-contact-drive-spin {
+  to { transform: rotate(360deg); }
+}
+
+.add-contact-modal .register-sale-docs-dropzone-inline {
+  min-height: 80px;
+  margin: 0;
+  border-radius: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+}
+
+.add-contact-modal .register-sale-docs-dropzone-inline:hover {
+  border: none;
+  background: none;
+  color: var(--text);
+}
+
+.add-contact-modal .register-sale-docs-file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.add-contact-modal .register-sale-docs-file-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.add-contact-modal .register-sale-docs-file-list::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 3px;
+}
+
+.add-contact-modal .register-sale-docs-file-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.5rem 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.875rem;
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.add-contact-modal .register-sale-docs-file-row:hover {
+  background: none;
+  color: var(--primary);
+}
+
+.add-contact-modal .register-sale-docs-file-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  transition: color 0.2s;
+}
+
+.add-contact-modal .register-sale-docs-file-row:hover .register-sale-docs-file-icon {
+  color: var(--primary);
+}
+
+.add-contact-modal .register-sale-docs-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.add-contact-modal .register-sale-docs-list-wrap.register-sale-docs-dropzone-active {
+  border: none;
+  background: none;
+  box-shadow: none;
+}
+
+.add-contact-modal .register-sale-docs-list-wrap .register-sale-docs-embed-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  color: var(--text);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  pointer-events: none;
+  border-radius: 0;
+}
+
+.add-contact-modal .register-sale-docs-dropzone-icon {
+  font-size: 1.5rem;
+  color: var(--text-muted);
 }

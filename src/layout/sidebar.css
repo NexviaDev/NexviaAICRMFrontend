@@ -272,6 +272,7 @@
   .sidebar {
     position: fixed;
     top: 0;
+    left: auto; /* 기본 left:0과 함께 right 지정 시 right가 무시되는 것 방지 → 오른쪽에서 슬라이드 */
     right: 0;
     width: 16rem;
     height: 100vh;

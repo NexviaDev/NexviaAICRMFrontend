@@ -466,10 +466,34 @@
   font-size: 1.125rem;
 }
 
+.lead-capture-leads-table-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.75rem;
+  color: var(--text-muted, #64748b);
+  line-height: 1.45;
+  max-width: 36rem;
+}
+
+.lead-capture-leads-table-hint strong {
+  color: #475569;
+}
+
 .lead-capture-leads-actions {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.lead-capture-crm-map-btn .material-symbols-outlined,
+.lead-capture-push-mapped-btn .material-symbols-outlined {
+  font-size: 1.05rem;
+  vertical-align: middle;
+  margin-right: 0.2rem;
+}
+
+.lead-capture-push-feedback-err {
+  color: #c53030 !important;
 }
 
 .lead-capture-save-contacts-btn {

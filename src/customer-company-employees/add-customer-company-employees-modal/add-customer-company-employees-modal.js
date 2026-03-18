@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import GoogleContactsModal from '../google-contacts-modal/google-contacts-modal';
 import CustomerCompanySearchModal from '../../customer-companies/customer-company-search-modal/customer-company-search-modal';
 import CustomFieldsSection from '../../shared/custom-fields-section';
 import CustomFieldsManageModal from '../../shared/custom-fields-manage-modal/custom-fields-manage-modal';
 import AssigneePickerModal from '../../company-overview/assignee-picker-modal/assignee-picker-modal';
-import './add-customer-company-employees-company-employees-modal.css';
+import '../../customer-companies/add-company-modal/add-company-modal.css';
+import './add-customer-company-employees-modal.css';
 
 import { API_BASE } from '@/config';
 
@@ -30,6 +31,51 @@ function formatPhoneInput(value) {
   if (digits.length <= 3) return digits;
   if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
   return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
+}
+
+function sanitizeFolderNamePart(s, maxLen = 80) {
+  const t = String(s ?? '')
+    .replace(/[/\\*?:<>"|]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return t.length > maxLen ? t.slice(0, maxLen) : t;
+}
+
+function getDriveFolderIdFromLink(url) {
+  if (!url || typeof url !== 'string') return null;
+  const m = url.trim().match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : null;
+}
+
+/** Drive 업로드용: 고객사명·연락처 기반 파일명 (add-company 사업자등록증 명명 규칙과 동일한 방식) */
+function buildBusinessCardDriveFileName(snapshot, file) {
+  const namePart = sanitizeFolderNamePart(snapshot.name || '이름없음', 50).replace(/\s+/g, '_') || '이름없음';
+  const contactRaw = (snapshot.phone || snapshot.email || '미등록').trim();
+  const contactPart = sanitizeFolderNamePart(contactRaw.replace(/[^\w\s가-힣@.-]/g, ' '), 45).replace(/\s+/g, '_') || '미등록';
+  const m = (file?.type || '').toLowerCase();
+  let ext = 'jpg';
+  if (m.includes('png')) ext = 'png';
+  else if (m.includes('webp')) ext = 'webp';
+  else if (m.includes('gif')) ext = 'gif';
+  else {
+    const fn = file?.name || '';
+    const i = fn.lastIndexOf('.');
+    if (i >= 0) ext = fn.slice(i + 1).replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'jpg';
+  }
+  const base = `명함_${namePart}_${contactPart}.${ext}`;
+  return base.length > 200 ? `${base.slice(0, 196 - ext.length)}.${ext}` : base;
+}
+
+function fileToBase64(file) {
+  return file.arrayBuffer().then((buf) => {
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    const chunk = 8192;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+    }
+    return btoa(binary);
+  });
 }
 
 /** 연락처 담당자 초기값: 수정 시 = 저장된 값만(없으면 빈 배열), 등록 시 = 현재 사용자 1명 */
@@ -74,10 +120,13 @@ function buildInitialForm(contact, initialCustomerCompany) {
 
   if (isEditMode && contact) {
     const companyId = contact.customerCompanyId?._id ?? contact.customerCompanyId ?? '';
-    const companyName = typeof contact.company === 'string' ? contact.company : (contact.company?.name ?? '');
+    const companyName = companyId
+      ? (typeof contact.company === 'string' ? contact.company : (contact.company?.name ?? ''))
+      : ((contact.companyName && String(contact.companyName).trim())
+        || (typeof contact.company === 'string' ? contact.company : (contact.company?.name ?? '')) || '');
     return {
       ...base,
-      name: contact.name ?? '',
+      name: String(contact.name ?? '').replace(/\s/g, ''),
       email: contact.email ?? '',
       phone: contact.phone ?? '',
       position: contact.position ?? '',
@@ -85,7 +134,7 @@ function buildInitialForm(contact, initialCustomerCompany) {
       birthDate: contact.birthDate ?? '',
       memo: contact.memo ?? '',
       company: companyName,
-      customerCompanyId: companyId,
+      customerCompanyId: companyId ? String(companyId) : '',
       customFields: contact.customFields ? { ...contact.customFields } : {},
       assigneeUserIds,
       status: contact.status || 'Lead'
@@ -115,7 +164,6 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
   const [companyEmployeesForDisplay, setCompanyEmployeesForDisplay] = useState([]);
   const [customDefinitions, setCustomDefinitions] = useState([]);
   const [showCustomFieldsModal, setShowCustomFieldsModal] = useState(false);
-  const [isIndividual, setIsIndividual] = useState(isEditMode ? Boolean(contact.isIndividual) : !(effectiveInitialCompany && effectiveInitialCompany._id));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [showCompanySearchModal, setShowCompanySearchModal] = useState(false);
@@ -123,6 +171,23 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
   const [bulkSaving, setBulkSaving] = useState(false);
   const [bulkResult, setBulkResult] = useState(null);
   const fixedCompany = !!(effectiveInitialCompany && effectiveInitialCompany._id);
+
+  /** 고객사 칸·검색 선택 모두 비었을 때 = 개인 연락처 (고정 고객사 맥락이 아닐 때만) */
+  const isIndividual = useMemo(() => {
+    if (fixedCompany) return false;
+    const hasId = !!String(form.customerCompanyId || '').trim();
+    const hasCompanyText = !!(form.company || '').trim();
+    return !hasId && !hasCompanyText;
+  }, [fixedCompany, form.customerCompanyId, form.company]);
+
+  const cardInputRef = useRef(null);
+  const [businessCardFile, setBusinessCardFile] = useState(null);
+  const [businessCardDropActive, setBusinessCardDropActive] = useState(false);
+  const [extractingBusinessCard, setExtractingBusinessCard] = useState(false);
+
+  const [bcDriveFolderId, setBcDriveFolderId] = useState(null);
+  const [bcDriveFiles, setBcDriveFiles] = useState([]);
+  const [loadingBcFiles, setLoadingBcFiles] = useState(false);
 
   const fetchCustomDefinitions = async () => {
     try {
@@ -141,8 +206,63 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
   useEffect(() => {
     if (!contactId) return;
     setForm(buildInitialForm(contact, initialCustomerCompany));
-    setIsIndividual(Boolean(contact?.isIndividual));
   }, [contactId]);
+
+  useEffect(() => {
+    setBusinessCardFile(null);
+    setBcDriveFolderId(null);
+    setBcDriveFiles([]);
+  }, [contactId]);
+
+  useEffect(() => {
+    if (!isEditMode || !contactId || !contact?.driveRootFolderId) {
+      setBcDriveFolderId(null);
+      setBcDriveFiles([]);
+      return;
+    }
+    let cancelled = false;
+    const rootId = String(contact.driveRootFolderId).trim();
+    if (!rootId) return;
+    (async () => {
+      try {
+        const r = await fetch(`${API_BASE}/drive/folders/ensure`, {
+          method: 'POST',
+          headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ folderName: 'business card', parentFolderId: rootId })
+        });
+        const data = await r.json().catch(() => ({}));
+        if (cancelled) return;
+        if (r.ok && data.id) {
+          setBcDriveFolderId(data.id);
+        }
+      } catch (_) {}
+    })();
+    return () => { cancelled = true; };
+  }, [isEditMode, contactId, contact?.driveRootFolderId]);
+
+  useEffect(() => {
+    if (!bcDriveFolderId) {
+      setBcDriveFiles([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingBcFiles(true);
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/drive/files?folderId=${encodeURIComponent(bcDriveFolderId)}&pageSize=50`, {
+          headers: getAuthHeader()
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!cancelled) setBcDriveFiles(res.ok && Array.isArray(data.files) ? data.files : []);
+      } catch (_) {
+        if (!cancelled) setBcDriveFiles([]);
+      } finally {
+        if (!cancelled) setLoadingBcFiles(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [bcDriveFolderId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -183,9 +303,159 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
   const handleChange = (e) => {
     const { name, value } = e.target;
     if (name === 'phone') setForm((prev) => ({ ...prev, phone: formatPhoneInput(value) }));
+    else if (name === 'name') setForm((prev) => ({ ...prev, name: value.replace(/\s/g, '') }));
     else setForm((prev) => ({ ...prev, [name]: value }));
     setError('');
   };
+
+  /** 고객사 직접 입력 시 DB 연결 해제(customerCompanyId null로 저장됨) */
+  const handleCompanyInputChange = (e) => {
+    setForm((prev) => ({ ...prev, company: e.target.value, customerCompanyId: '' }));
+    setError('');
+  };
+
+  /** 명함 이미지 → Gemini 추출 → 폼 기입 (회사명은 고객사 칸에, 이름은 띄어쓰기 제거) */
+  const extractFromBusinessCardAndFillForm = async (file) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setError('명함은 이미지 파일만 등록할 수 있습니다.');
+      return;
+    }
+    setExtractingBusinessCard(true);
+    setError('');
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(`${API_BASE}/customer-company-employees/extract-from-business-card`, {
+        method: 'POST',
+        headers: getAuthHeader(),
+        body: fd
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || '명함에서 정보를 읽지 못했습니다.');
+        return;
+      }
+      setForm((prev) => {
+        const cn = data.companyName && String(data.companyName).trim();
+        const nameNoSpace = (s) => String(s || '').replace(/\s/g, '');
+        const next = {
+          ...prev,
+          name: nameNoSpace(data.name && String(data.name).trim()) || nameNoSpace(prev.name),
+          email: (data.email && String(data.email).trim()) || prev.email,
+          phone: data.phone ? formatPhoneInput(String(data.phone)) : prev.phone,
+          position: (data.position && String(data.position).trim()) || prev.position,
+          address: (data.address && String(data.address).trim()) || prev.address
+        };
+        if (!fixedCompany && cn) {
+          next.company = cn;
+          next.customerCompanyId = '';
+        }
+        return next;
+      });
+    } catch (_) {
+      setError('서버에 연결할 수 없습니다.');
+    } finally {
+      setExtractingBusinessCard(false);
+    }
+  };
+
+  /**
+   * 연락처 저장 후 명함 업로드:
+   *  - customerCompanyId 있으면 → 등록폴더 / [고객사명]_[사업자번호] / business card
+   *  - customerCompanyId null 이면 → 등록폴더 / [이름]_[연락처] / business card
+   *  (customer-company-employees-detail-modal의 Drive 폴더 로직과 동일)
+   */
+  const performBusinessCardUpload = useCallback(async (empId, file, snapshot) => {
+    const rootRes = await fetch(`${API_BASE}/custom-field-definitions/drive-root`, { headers: getAuthHeader() });
+    const rootJson = await rootRes.json().catch(() => ({}));
+    const driveRootUrl = rootJson.driveRootUrl != null ? String(rootJson.driveRootUrl).trim() : '';
+    if (!driveRootUrl) {
+      return { ok: false, error: '회사 공유 드라이브 경로를 먼저 설정해 주세요. (회사 개요 → 전체 공유 드라이브 주소)' };
+    }
+    const registeredFolderId = getDriveFolderIdFromLink(driveRootUrl);
+    if (!registeredFolderId) {
+      return { ok: false, error: '드라이브 경로 형식이 올바르지 않습니다.' };
+    }
+
+    const ccId = snapshot.customerCompanyId || null;
+    let parentFolderName;
+    let targetFolderId;
+
+    if (ccId) {
+      let ccName = snapshot.companyLabel || '';
+      let ccBn = '';
+      try {
+        const ccRes = await fetch(`${API_BASE}/customer-companies/${ccId}`, { headers: getAuthHeader() });
+        const cc = await ccRes.json().catch(() => ({}));
+        if (ccRes.ok && cc._id) {
+          ccName = cc.name || ccName;
+          ccBn = cc.businessNumber || '';
+        }
+      } catch (_) {}
+      const bnPart = String(ccBn || '').replace(/\D/g, '') || '미등록';
+      parentFolderName = `${sanitizeFolderNamePart(ccName || '미소속', 80)}_${sanitizeFolderNamePart(bnPart, 20)}`;
+    } else {
+      parentFolderName = `${sanitizeFolderNamePart(snapshot.name || '이름없음', 80)}_${sanitizeFolderNamePart(snapshot.phone || snapshot.email || '미등록', 40)}`;
+    }
+
+    const ensureParent = await fetch(`${API_BASE}/drive/folders/ensure`, {
+      method: 'POST',
+      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ folderName: parentFolderName, parentFolderId: registeredFolderId })
+    });
+    const parentData = await ensureParent.json().catch(() => ({}));
+    if (!ensureParent.ok || !parentData.id) {
+      return { ok: false, error: parentData.error || '폴더를 준비할 수 없습니다.' };
+    }
+    targetFolderId = parentData.id;
+
+    const bcRes = await fetch(`${API_BASE}/drive/folders/ensure`, {
+      method: 'POST',
+      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ folderName: 'business card', parentFolderId: targetFolderId })
+    });
+    const bcData = await bcRes.json().catch(() => ({}));
+    if (!bcRes.ok || !bcData.id) {
+      return { ok: false, error: bcData.error || 'business card 폴더를 준비할 수 없습니다.' };
+    }
+
+    const contentBase64 = await fileToBase64(file);
+    if (!contentBase64) {
+      return { ok: false, error: '파일 변환에 실패했습니다.' };
+    }
+    const uploadRes = await fetch(`${API_BASE}/drive/upload`, {
+      method: 'POST',
+      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        name: buildBusinessCardDriveFileName(snapshot, file),
+        mimeType: file.type || 'image/jpeg',
+        contentBase64,
+        parentFolderId: bcData.id
+      })
+    });
+    const uploadData = await uploadRes.json().catch(() => ({}));
+    if (!uploadRes.ok || !uploadData.webViewLink) {
+      return { ok: false, error: uploadData.error || 'Drive 명함 업로드에 실패했습니다.' };
+    }
+
+    const patchRes = await fetch(`${API_BASE}/customer-company-employees/${empId}`, {
+      method: 'PATCH',
+      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        businessCardDriveUrl: uploadData.webViewLink,
+        driveRootFolderId: targetFolderId
+      })
+    });
+    if (!patchRes.ok) {
+      const pe = await patchRes.json().catch(() => ({}));
+      return { ok: false, error: pe.error || '명함 Drive 링크 저장에 실패했습니다.' };
+    }
+    return { ok: true, businessCardDriveUrl: uploadData.webViewLink };
+  }, []);
 
   const handleBulkImport = async (contacts) => {
     if (!contacts || contacts.length === 0) return;
@@ -193,25 +463,29 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
     setBulkResult(null);
     setError('');
     const useFixedCompany = !!(initialCustomerCompany && initialCustomerCompany._id);
+    const currentUserId = (() => { try { const u = JSON.parse(localStorage.getItem('crm_user') || '{}'); return u?._id ? String(u._id) : null; } catch (_) { return null; } })();
     let success = 0;
     let fail = 0;
     for (const c of contacts) {
       try {
+        const gCompany = (c.company || '').trim();
         const payload = {
-          name: (c.name || '').trim(),
+          name: String(c.name || '').replace(/\s/g, '').trim(),
           email: (c.email || '').trim(),
           phone: c.phone ? formatPhoneInput(c.phone).trim() : '',
           position: (c.title || '').trim(),
-          companyName: (c.company || '').trim(),
+          companyName: useFixedCompany ? '' : gCompany,
           address: (useFixedCompany && initialCustomerCompany?.address)
             ? String(initialCustomerCompany.address).trim()
             : (c.address || '').trim(),
           birthDate: (c.birthday || '').trim(),
           memo: (c.biography || '').trim() || undefined,
           status: 'Lead',
-          isIndividual: !useFixedCompany
+          isIndividual: !useFixedCompany && !gCompany,
+          assigneeUserIds: currentUserId ? [currentUserId] : []
         };
         if (useFixedCompany) payload.customerCompanyId = initialCustomerCompany._id;
+        if (!useFixedCompany && gCompany) payload.customerCompanyId = null;
         if (!payload.name && !payload.email && !payload.phone) { fail++; continue; }
         const res = await fetch(`${API_BASE}/customer-company-employees`, {
           method: 'POST',
@@ -229,32 +503,21 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
     if (success > 0) onSaved?.();
   };
 
-  const handleIndividualChange = (e) => {
-    const checked = e.target.checked;
-    setIsIndividual(checked);
-    if (checked) setForm((prev) => ({ ...prev, company: '', customerCompanyId: '' }));
-    setError('');
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    const hasCompany = !isIndividual && !!form.customerCompanyId;
     const hasName = !!(form.name && form.name.trim());
     const hasEmail = !!(form.email && form.email.trim());
     const hasPhone = !!(form.phone && form.phone.trim());
-    if (!hasCompany && !hasName && !hasEmail && !hasPhone) {
-      setError('이름, 고객사, 이메일, 전화번호 중 최소한 하나는 기입이 되어야 합니다.');
-      return;
-    }
-    if (!isIndividual && !form.customerCompanyId && (form.company || '').trim()) {
-      setError('고객사를 검색에서 선택해 주세요.');
+    const hasContactBit = hasName || hasEmail || hasPhone;
+    if (!hasContactBit) {
+      setError('이름, 이메일, 전화번호 중 최소 한 가지는 입력해 주세요.');
       return;
     }
     setSaving(true);
     try {
       const payload = {
-        name: form.name.trim(),
+        name: form.name.replace(/\s/g, '').trim(),
         email: form.email.trim(),
         phone: form.phone.trim(),
         position: (form.position || '').trim() || undefined,
@@ -266,9 +529,16 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
       if (isIndividual) {
         payload.isIndividual = true;
         payload.customerCompanyId = null;
+        payload.companyName = '';
       } else {
-        const companyId = (form.customerCompanyId != null && String(form.customerCompanyId).trim()) ? String(form.customerCompanyId).trim() : null;
-        payload.customerCompanyId = companyId;
+        const companyId = String(form.customerCompanyId || '').trim();
+        if (companyId) {
+          payload.customerCompanyId = companyId;
+          if ((form.company || '').trim()) payload.companyName = (form.company || '').trim();
+        } else {
+          payload.customerCompanyId = null;
+          payload.companyName = (form.company || '').trim();
+        }
       }
       if (form.customFields && Object.keys(form.customFields).length) payload.customFields = form.customFields;
       payload.assigneeUserIds = Array.isArray(form.assigneeUserIds) ? form.assigneeUserIds : [];
@@ -282,11 +552,38 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.error || (isEditMode ? '수정에 실패했습니다.' : '저장에 실패했습니다.'));
+        if (res.status === 409 && data.duplicateId) {
+          setError(`동일한 이름·연락처가 이미 존재합니다: ${data.error || '중복된 연락처'}`);
+        } else {
+          setError(data.error || (isEditMode ? '수정에 실패했습니다.' : '저장에 실패했습니다.'));
+        }
         return;
       }
+      const empId = isEditMode ? (contact._id || contact.id) : (data._id || data.id);
+      const snapshot = {
+        name: form.name.replace(/\s/g, '').trim(),
+        phone: form.phone.trim(),
+        email: form.email.trim(),
+        customerCompanyId: form.customerCompanyId,
+        isIndividual,
+        companyLabel: form.company.trim()
+      };
+      let payloadOut = data;
+      if (businessCardFile && empId) {
+        const up = await performBusinessCardUpload(empId, businessCardFile, snapshot);
+        if (!up.ok) {
+          setError(
+            `${isEditMode ? '연락처는 저장되었으나' : '연락처는 등록되었으나'} 명함 저장에 실패했습니다. ${up.error || ''}`.trim()
+          );
+          if (isEditMode) onUpdated?.(data);
+          else onSaved?.();
+          onClose?.();
+          return;
+        }
+        payloadOut = { ...data, businessCardDriveUrl: up.businessCardDriveUrl };
+      }
       if (isEditMode) {
-        onUpdated?.(data);
+        onUpdated?.(payloadOut);
         onClose?.();
       } else {
         onSaved?.();
@@ -343,36 +640,210 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
               )}
             </>
           )}
+          {isEditMode && bcDriveFolderId ? (
+            <section className="customer-company-detail-section register-sale-docs" aria-label="명함 등록">
+              <input
+                ref={cardInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  e.target.value = '';
+                  if (file) {
+                    setBusinessCardFile(file);
+                    extractFromBusinessCardAndFillForm(file);
+                  }
+                }}
+                aria-hidden="true"
+              />
+              <div className="customer-company-detail-section-head">
+                <h3 className="customer-company-detail-section-title">
+                  <span className="material-symbols-outlined">folder</span>
+                  명함
+                </h3>
+                <button
+                  type="button"
+                  className="customer-company-detail-btn-all"
+                  onClick={() => { if (!extractingBusinessCard && cardInputRef.current) cardInputRef.current.click(); }}
+                  disabled={extractingBusinessCard}
+                  title="명함 교체"
+                  aria-label="명함 교체"
+                >
+                  <span className="material-symbols-outlined">swap_horiz</span>
+                </button>
+              </div>
+              {businessCardFile && (
+                <div className="register-sale-docs-cert-pending">
+                  <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>upload_file</span>
+                  <span className="register-sale-docs-cert-pending-name">{businessCardFile.name}</span>
+                  <button type="button" className="register-sale-docs-cert-pending-cancel" onClick={() => setBusinessCardFile(null)}>
+                    <span className="material-symbols-outlined" style={{ fontSize: '1rem' }}>close</span>
+                  </button>
+                </div>
+              )}
+              <div
+                className={`register-sale-docs-list-wrap ${businessCardDropActive ? 'register-sale-docs-dropzone-active' : ''}`}
+                onDragOver={(ev) => { ev.preventDefault(); ev.stopPropagation(); setBusinessCardDropActive(true); }}
+                onDragLeave={(ev) => { ev.preventDefault(); ev.stopPropagation(); setBusinessCardDropActive(false); }}
+                onDrop={(ev) => {
+                  ev.preventDefault();
+                  ev.stopPropagation();
+                  setBusinessCardDropActive(false);
+                  const file = ev.dataTransfer?.files?.[0];
+                  if (file) {
+                    setBusinessCardFile(file);
+                    extractFromBusinessCardAndFillForm(file);
+                  }
+                }}
+                aria-label="Drive 폴더"
+              >
+                <div className="register-sale-docs-breadcrumb">
+                  <button type="button" className="register-sale-docs-breadcrumb-btn" style={{ cursor: 'default' }}>
+                    business card
+                  </button>
+                  <a
+                    href={`https://drive.google.com/drive/folders/${bcDriveFolderId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="register-sale-docs-open-drive"
+                    title="Drive에서 열기"
+                  >
+                    <span className="material-symbols-outlined">open_in_new</span>
+                  </a>
+                </div>
+                {loadingBcFiles ? (
+                  <p className="register-sale-docs-loading">목록 불러오는 중…</p>
+                ) : bcDriveFiles.length === 0 ? (
+                  <div
+                    className={`register-sale-docs-dropzone register-sale-docs-dropzone-inline ${businessCardDropActive ? 'register-sale-docs-dropzone-active' : ''}`}
+                    onClick={() => { if (!extractingBusinessCard && cardInputRef.current) cardInputRef.current.click(); }}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(ev) => { if ((ev.key === 'Enter' || ev.key === ' ') && !extractingBusinessCard && cardInputRef.current) cardInputRef.current.click(); }}
+                  >
+                    <span className="material-symbols-outlined register-sale-docs-dropzone-icon">upload_file</span>
+                    <span>비어 있음. 클릭하거나 파일을 놓아 추가</span>
+                  </div>
+                ) : (
+                  <ul className="register-sale-docs-file-list">
+                    {bcDriveFiles.map((item) => (
+                      <li key={item.id}>
+                        <button
+                          type="button"
+                          className="register-sale-docs-file-row register-sale-docs-file-row--file"
+                          onClick={() => {
+                            const link = item.webViewLink || `https://drive.google.com/file/d/${item.id}/view`;
+                            window.open(link, '_blank', 'noopener,noreferrer');
+                          }}
+                        >
+                          <span className="material-symbols-outlined register-sale-docs-file-icon">description</span>
+                          <span className="register-sale-docs-file-name">{item.name || '파일'}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {businessCardDropActive && (
+                  <div className="register-sale-docs-embed-overlay">여기에 놓기</div>
+                )}
+              </div>
+            </section>
+          ) : (
+            <section className="add-company-section" aria-label="명함 등록">
+              <h3 className="add-company-section-title">명함 업로드</h3>
+              <input
+                ref={cardInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  e.target.value = '';
+                  if (file) {
+                    setBusinessCardFile(file);
+                    extractFromBusinessCardAndFillForm(file);
+                  }
+                }}
+                aria-hidden="true"
+              />
+              <div
+                className={`add-company-upload-zone ${businessCardDropActive ? 'add-company-upload-zone-active' : ''} ${extractingBusinessCard ? 'add-company-upload-zone-disabled' : ''}`}
+                onDragOver={(ev) => { ev.preventDefault(); ev.stopPropagation(); if (!extractingBusinessCard) setBusinessCardDropActive(true); }}
+                onDragLeave={(ev) => { ev.preventDefault(); ev.stopPropagation(); setBusinessCardDropActive(false); }}
+                onDrop={(ev) => {
+                  ev.preventDefault();
+                  ev.stopPropagation();
+                  setBusinessCardDropActive(false);
+                  const file = ev.dataTransfer?.files?.[0];
+                  if (file) {
+                    setBusinessCardFile(file);
+                    extractFromBusinessCardAndFillForm(file);
+                  }
+                }}
+                onClick={() => { if (!extractingBusinessCard && cardInputRef.current) cardInputRef.current.click(); }}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(ev) => {
+                  if ((ev.key === 'Enter' || ev.key === ' ') && !extractingBusinessCard && cardInputRef.current) {
+                    ev.preventDefault();
+                    cardInputRef.current.click();
+                  }
+                }}
+                aria-label="명함 이미지 첨부 (드래그 앤 드롭 또는 클릭)"
+              >
+                <div className="add-company-upload-icon-wrap">
+                  <span className="material-symbols-outlined add-company-upload-icon">upload_file</span>
+                </div>
+                {extractingBusinessCard ? (
+                  <p className="add-company-upload-title">명함에서 정보를 읽는 중…</p>
+                ) : businessCardFile ? (
+                  <p className="add-company-upload-title add-company-upload-filename">{businessCardFile.name}</p>
+                ) : (
+                  <>
+                    <p className="add-company-upload-title">파일을 드래그하거나 클릭하여 업로드하세요</p>
+                    <p className="add-company-upload-hint">명함을 올리면 정보를 자동으로 입력합니다. 저장 시 Google Drive business card 폴더에만 등록됩니다.</p>
+                  </>
+                )}
+              </div>
+            </section>
+          )}
           {error && <p className="add-contact-modal-error">{error}</p>}
           <div className="add-contact-modal-field">
             <label htmlFor="add-contact-name">이름</label>
-            <input id="add-contact-name" name="name" type="text" value={form.name} onChange={handleChange} placeholder="예: 홍길동" />
+            <input id="add-contact-name" name="name" type="text" value={form.name} onChange={handleChange} placeholder="띄어쓰기 없이 예: 홍길동" autoComplete="name" />
           </div>
           <div className="add-contact-modal-field add-contact-company-field">
             <label htmlFor="add-contact-company">고객사</label>
-            <div className="add-contact-company-wrap">
-              <span className="add-contact-company-display">
-                {fixedCompany ? form.company : (isIndividual ? '개인 (미등록)' : (form.company || '검색으로 고객사 선택'))}
-              </span>
-              {!fixedCompany && (
+            {fixedCompany ? (
+              <div className="add-contact-company-wrap">
+                <span className="add-contact-company-display">{form.company}</span>
+              </div>
+            ) : (
+              <div className="add-contact-company-wrap">
+                <input
+                  id="add-contact-company"
+                  name="company"
+                  type="text"
+                  className="add-contact-company-text-input"
+                  value={form.company}
+                  onChange={handleCompanyInputChange}
+                  placeholder=""
+                  autoComplete="organization"
+                  aria-describedby="add-contact-company-hint"
+                />
                 <button
                   type="button"
                   className="add-contact-company-search"
                   title="고객사 검색"
                   onClick={() => setShowCompanySearchModal(true)}
-                  disabled={isIndividual}
                 >
                   <span className="material-symbols-outlined">search</span>
                   검색
                 </button>
-              )}
-            </div>
-            {!fixedCompany && (
-              <label className="add-contact-modal-checkbox">
-                <input type="checkbox" checked={isIndividual} onChange={handleIndividualChange} />
-                <span>개인 (고객사 없이 연락처만 등록)</span>
-              </label>
+              </div>
             )}
+
           </div>
           <div className="add-contact-modal-row">
             <div className="add-contact-modal-field">
@@ -440,7 +911,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
             </button>
             <div className="add-contact-modal-footer-actions">
               <button type="button" className="add-contact-modal-cancel" onClick={onClose}>취소</button>
-              <button type="submit" className="add-contact-modal-save" disabled={saving}>{saving ? '저장 중...' : isEditMode ? '저장' : '연락처 저장'}</button>
+              <button type="submit" className="add-contact-modal-save" disabled={saving || extractingBusinessCard}>{saving ? '저장 중...' : isEditMode ? '저장' : '연락처 저장'}</button>
             </div>
           </div>
         </form>

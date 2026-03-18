@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { API_BASE, BACKEND_BASE_URL } from '@/config';
 import LeadCaptureFormModal from './lead-capture-form-modal/lead-capture-form-modal';
 import LeadCaptureApiDocModal from './lead-capture-api-doc-modal/lead-capture-api-doc-modal';
 import LeadCaptureLeadsModal from './lead-capture-leads-modal/lead-capture-leads-modal';
+import LeadCaptureCrmMappingModal from './lead-capture-crm-mapping/lead-capture-crm-mapping-modal';
 import CustomFieldsManageModal from '../shared/custom-fields-manage-modal/custom-fields-manage-modal';
 import './lead-capture.css';
 
@@ -134,6 +136,9 @@ export default function LeadCapture() {
   const [lastClickedLeadIndex, setLastClickedLeadIndex] = useState(null);
   const [savingContacts, setSavingContacts] = useState(false);
   const [saveContactsFeedback, setSaveContactsFeedback] = useState(null);
+  const [pushingMapped, setPushingMapped] = useState(false);
+  const [pushMappedFeedback, setPushMappedFeedback] = useState(null);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [embedCodeText, setEmbedCodeText] = useState('');
   const [previewHtml, setPreviewHtml] = useState('');
   const [showEmbedPreview, setShowEmbedPreview] = useState(false);
@@ -342,6 +347,84 @@ export default function LeadCapture() {
     if (success > 0) setTimeout(() => setSaveContactsFeedback(null), 3000);
   }, [selectedLeadIds, channelLeads]);
 
+  const mappingModalOpen = searchParams.get('leadMapping') === '1' && !!selectedFormId;
+
+  const openMappingModal = useCallback(() => {
+    if (!selectedFormId) return;
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        p.set('leadMapping', '1');
+        return p;
+      },
+      { replace: false }
+    );
+  }, [selectedFormId, setSearchParams]);
+
+  const closeMappingModal = useCallback(() => {
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        p.delete('leadMapping');
+        return p;
+      },
+      { replace: true }
+    );
+  }, [setSearchParams]);
+
+  const handleCrmMappingSaved = useCallback((data) => {
+    if (data?._id) setSelectedForm((prev) => (prev && prev._id === data._id ? { ...prev, ...data } : prev));
+  }, []);
+
+  const handleCrmMappingPushComplete = useCallback((pushData) => {
+    const s = pushData?.summary || {};
+    const text =
+      s.registerTarget === 'company'
+        ? `고객사 신규 ${s.createdCompany ?? 0}건 · 동일 고객사(명+사업자번호) 스킵 ${s.skippedDuplicateCompany ?? 0}건 · 실패 ${s.failed ?? 0}건`
+        : `연락처 신규 ${s.createdContact ?? 0}건 · 동일 연락처(이름+전화) 스킵 ${s.skippedDuplicateContact ?? 0}건 · 실패 ${s.failed ?? 0}건`;
+    setPushMappedFeedback({ type: 'ok', text });
+    setSelectedLeadIds([]);
+    setLastClickedLeadIndex(null);
+    setTimeout(() => setPushMappedFeedback(null), 5000);
+  }, []);
+
+  const handlePushMappedToCrm = useCallback(async () => {
+    const ids = selectedLeadIds.map(String);
+    if (!ids.length || !selectedFormId) return;
+    const mappings = selectedForm?.crmFieldMapping?.mappings;
+    if (!Array.isArray(mappings) || mappings.length === 0) {
+      setPushMappedFeedback({ type: 'err', text: '먼저 「데이터 매핑」에서 매핑 시작으로 저장해 주세요.' });
+      setTimeout(() => setPushMappedFeedback(null), 4000);
+      return;
+    }
+    setPushingMapped(true);
+    setPushMappedFeedback(null);
+    try {
+      const res = await fetch(`${API_BASE}/lead-capture-forms/${selectedFormId}/push-to-crm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+        credentials: 'include',
+        body: JSON.stringify({ leadIds: ids })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || '등록 실패');
+      const s = data.summary || {};
+      const text =
+        s.registerTarget === 'company'
+          ? `고객사 신규 ${s.createdCompany ?? 0}건 · 동일 고객사(명+사업자번호) 스킵 ${s.skippedDuplicateCompany ?? 0}건 · 실패 ${s.failed ?? 0}건`
+          : `연락처 신규 ${s.createdContact ?? 0}건 · 동일 연락처(이름+전화) 스킵 ${s.skippedDuplicateContact ?? 0}건 · 실패 ${s.failed ?? 0}건`;
+      setPushMappedFeedback({ type: 'ok', text });
+      setSelectedLeadIds([]);
+      setLastClickedLeadIndex(null);
+      setTimeout(() => setPushMappedFeedback(null), 5000);
+    } catch (e) {
+      setPushMappedFeedback({ type: 'err', text: e.message || '등록 실패' });
+      setTimeout(() => setPushMappedFeedback(null), 5000);
+    } finally {
+      setPushingMapped(false);
+    }
+  }, [selectedLeadIds, selectedFormId, selectedForm?.crmFieldMapping]);
+
   async function handleRegenerateApiKey() {
     try {
       const res = await fetch(`${API_BASE}/lead-capture-forms/regenerate-api-key`, {
@@ -418,17 +501,78 @@ export default function LeadCapture() {
         return `  <input type="${type}" name="custom_${d.key}" placeholder="${placeholder}"${required} />`;
       })
       .join('\n');
-    return `<!-- 리드 캡처 임베드: 기본 필드 + 현재 빌더에 등록된 커스텀 필드 포함. YOUR_API_KEY를 실제 API 키로 바꾸세요. -->
-<form id="lead-capture-form" style="display:flex;flex-direction:column;gap:0.5rem;max-width:320px;">
-  <input type="text" name="name" placeholder="이름" required />
-  <input type="number" name="phone" placeholder="연락처" />
-  <input type="email" name="email" placeholder="이메일" required />
-  <input type="text" name="company" placeholder="회사명" />
-  <input type="text" name="address" placeholder="회사 주소" />
-  <input type="file" name="business_card" accept="image/*,.pdf" aria-label="명함" />
+    return `<!-- 리드 캡처 임베드: 기본 필드 + 빌더 커스텀 필드. YOUR_API_KEY를 실제 API 키로 바꾸세요. -->
+<style>
+  .lead-form-wrapper {
+    max-width: 420px;
+    margin: 0 auto;
+    padding: 24px;
+    border-radius: 16px;
+    background: #ffffff;
+    box-shadow: 0 10px 30px rgba(90, 103, 134, 0.1);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .lead-form-title {
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 16px;
+    text-align: center;
+    color: #3d4f6f;
+  }
+  .lead-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .lead-form input {
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid #e2e8f0;
+    font-size: 14px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .lead-form input:focus {
+    outline: none;
+    border-color: #9aacd4;
+    box-shadow: 0 0 0 3px rgba(154, 172, 212, 0.22);
+  }
+  .lead-form input[type="file"] {
+    padding: 8px;
+    background: #f8fafc;
+  }
+  .lead-form button {
+    margin-top: 10px;
+    padding: 14px;
+    border-radius: 12px;
+    border: none;
+    background: linear-gradient(135deg, #8b9dc9, #b8a8d9);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .lead-form button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 18px rgba(139, 157, 201, 0.35);
+  }
+  .lead-form button:active {
+    transform: scale(0.98);
+  }
+</style>
+<div class="lead-form-wrapper">
+  <div class="lead-form-title">문의 등록</div>
+  <form id="lead-capture-form" class="lead-form">
+    <input type="text" name="name" placeholder="이름" required />
+    <input type="number" name="phone" placeholder="연락처" />
+    <input type="email" name="email" placeholder="이메일" required />
+    <input type="text" name="company" placeholder="회사명" />
+    <input type="text" name="address" placeholder="회사 주소" />
+    <input type="file" name="business_card" accept="image/*,.pdf" aria-label="명함" />
 ${customInputs}
-  <button type="submit">제출</button>
-</form>
+    <button type="submit">문의 보내기</button>
+  </form>
+</div>
 <script>
 (function() {
   var form = document.getElementById('lead-capture-form');
@@ -870,8 +1014,22 @@ ${customInputs}
           <div className="lead-capture-card-head lead-capture-builder-head">
             <div>
               <h2 className="lead-capture-card-title">수신된 리드</h2>
+              <p className="lead-capture-leads-table-hint">
+                표는 최근 5건 미리보기입니다. 체크 후 「매핑 등록」은 선택한 <strong>모든 리드</strong>에 적용됩니다. (데이터 매핑에서 연락처 또는 고객사 중 하나만 선택)
+              </p>
             </div>
             <div className="lead-capture-leads-actions">
+              {selectedLeadIds.length > 0 && (
+                <button
+                  type="button"
+                  className="lead-capture-outline-btn lead-capture-push-mapped-btn"
+                  onClick={handlePushMappedToCrm}
+                  disabled={pushingMapped}
+                  title="저장된 매핑으로 고객사·연락처에 등록"
+                >
+                  {pushingMapped ? '등록 중…' : '매핑 등록'}
+                </button>
+              )}
               {selectedLeadIds.length > 0 && (
                 <button
                   type="button"
@@ -882,6 +1040,16 @@ ${customInputs}
                   {savingContacts ? '저장 중…' : '연락처 저장'}
                 </button>
               )}
+              <button
+                type="button"
+                className="lead-capture-outline-btn lead-capture-crm-map-btn"
+                onClick={openMappingModal}
+                disabled={!selectedFormId}
+                title="리드 필드를 고객사·연락처 DB 필드에 연결"
+              >
+                <span className="material-symbols-outlined">conversion_path</span>
+                데이터 매핑
+              </button>
               <button
                 type="button"
                 className="lead-capture-outline-btn lead-capture-fullview-btn"
@@ -896,6 +1064,11 @@ ${customInputs}
           {saveContactsFeedback && (
             <p className="lead-capture-save-feedback">
               연락처 저장: {saveContactsFeedback.success}건 성공{saveContactsFeedback.fail > 0 ? `, ${saveContactsFeedback.fail}건 실패` : ''}
+            </p>
+          )}
+          {pushMappedFeedback && (
+            <p className={`lead-capture-save-feedback ${pushMappedFeedback.type === 'err' ? 'lead-capture-push-feedback-err' : ''}`}>
+              매핑 등록: {pushMappedFeedback.text}
             </p>
           )}
           <div className="lead-capture-leads-wrap">
@@ -1045,6 +1218,19 @@ ${customInputs}
         onPreviewImage={setLeadImagePreview}
         onSaveContacts={handleSaveSelectedAsContacts}
         savingContacts={savingContacts}
+      />
+
+      <LeadCaptureCrmMappingModal
+        open={mappingModalOpen}
+        onClose={closeMappingModal}
+        formId={selectedFormId}
+        formName={selectedForm?.name}
+        sampleLead={channelLeads[0] || null}
+        initialCrmFieldMapping={selectedForm?.crmFieldMapping}
+        customFieldDefinitions={customFields}
+        onSaved={handleCrmMappingSaved}
+        selectedLeadIds={selectedLeadIds}
+        onPushComplete={handleCrmMappingPushComplete}
       />
 
       
