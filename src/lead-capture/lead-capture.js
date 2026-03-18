@@ -131,6 +131,7 @@ export default function LeadCapture() {
   const [channelLeads, setChannelLeads] = useState([]);
   const [channelLeadsLoading, setChannelLeadsLoading] = useState(false);
   const [showLeadsModal, setShowLeadsModal] = useState(false);
+  const [showApiDocModal, setShowApiDocModal] = useState(false);
   const [leadImagePreview, setLeadImagePreview] = useState(null);
   const [selectedLeadIds, setSelectedLeadIds] = useState([]);
   const [lastClickedLeadIndex, setLastClickedLeadIndex] = useState(null);
@@ -278,9 +279,14 @@ export default function LeadCapture() {
     setLastClickedLeadIndex(index);
   }, [channelLeads, lastClickedLeadIndex]);
 
-  const handleSelectAllLeads = useCallback((checked) => {
-    if (checked) setSelectedLeadIds(channelLeads.map((l) => String(l._id)));
-    else setSelectedLeadIds([]);
+  const handleSelectAllLeads = useCallback((checked, explicitIds) => {
+    if (explicitIds) {
+      setSelectedLeadIds(explicitIds.map(String));
+    } else if (checked) {
+      setSelectedLeadIds(channelLeads.map((l) => String(l._id)));
+    } else {
+      setSelectedLeadIds([]);
+    }
     setLastClickedLeadIndex(null);
   }, [channelLeads]);
 
@@ -979,77 +985,48 @@ ${customInputs}
               </div>
             </div>
             <div className="lead-capture-card">
-              <h2 className="lead-capture-card-title">퀵 스탯</h2>
+              <div className="lead-capture-card-head" style={{ marginBottom: '0.75rem' }}>
+                <h2 className="lead-capture-card-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                  <span className="material-symbols-outlined">integration_instructions</span>
+                  API 매뉴얼
+                </h2>
+                <button
+                  type="button"
+                  className="lead-capture-fullview-btn"
+                  onClick={() => setShowApiDocModal(true)}
+                  disabled={!selectedFormId}
+                >
+                  전체보기
+                  <span className="material-symbols-outlined">arrow_forward</span>
+                </button>
+              </div>
               <div className="lead-capture-stats">
                 <div className="lead-capture-stat-row">
-                  <span className="lead-capture-stat-label">캡처율</span>
-                  <span className="lead-capture-stat-value">24.2%</span>
+                  <span className="lead-capture-stat-label">메서드</span>
+                  <span className="lead-capture-stat-value">POST</span>
                 </div>
                 <div className="lead-capture-stat-row">
-                  <span className="lead-capture-stat-label">주요 소스</span>
-                  <span className="lead-capture-stat-value">Direct (45%)</span>
+                  <span className="lead-capture-stat-label">필수 필드</span>
+                  <span className="lead-capture-stat-value">name, email</span>
                 </div>
                 <div className="lead-capture-stat-row">
-                  <span className="lead-capture-stat-label">무효 리드</span>
-                  <span className="lead-capture-stat-value">12 (0.4%)</span>
+                  <span className="lead-capture-stat-label">커스텀 필드</span>
+                  <span className="lead-capture-stat-value">{customFields.length}개</span>
                 </div>
               </div>
             </div>
           </aside>
         </div>
 
-        {selectedForm && (
-          <section className="lead-capture-card lead-capture-api-doc-inline-wrap">
-            <LeadCaptureApiDocModal
-              inline
-              backendBaseUrl={BACKEND_BASE_URL}
-              webhookUrl={selectedForm.webhookUrl}
-              formId={selectedForm._id}
-              customFields={customFields}
-            />
-          </section>
-        )}
-
         <section className="lead-capture-card lead-capture-leads-card">
           <div className="lead-capture-card-head lead-capture-builder-head">
             <div>
               <h2 className="lead-capture-card-title">수신된 리드</h2>
               <p className="lead-capture-leads-table-hint">
-                표는 최근 5건 미리보기입니다. 체크 후 「매핑 등록」은 선택한 <strong>모든 리드</strong>에 적용됩니다. (데이터 매핑에서 연락처 또는 고객사 중 하나만 선택)
+                표는 최근 5건 미리보기입니다. 체크 후 「데이터 매핑」을 누르면 <strong>선택한 리드만</strong> 등록합니다. 미선택 시 전체 리드가 등록됩니다.
               </p>
             </div>
             <div className="lead-capture-leads-actions">
-              {selectedLeadIds.length > 0 && (
-                <button
-                  type="button"
-                  className="lead-capture-outline-btn lead-capture-push-mapped-btn"
-                  onClick={handlePushMappedToCrm}
-                  disabled={pushingMapped}
-                  title="저장된 매핑으로 고객사·연락처에 등록"
-                >
-                  {pushingMapped ? '등록 중…' : '매핑 등록'}
-                </button>
-              )}
-              {selectedLeadIds.length > 0 && (
-                <button
-                  type="button"
-                  className="lead-capture-outline-btn lead-capture-save-contacts-btn"
-                  onClick={handleSaveSelectedAsContacts}
-                  disabled={savingContacts}
-                >
-                  {savingContacts ? '저장 중…' : '연락처 저장'}
-                </button>
-              )}
-              <button
-                type="button"
-                className="lead-capture-outline-btn lead-capture-crm-map-btn"
-                onClick={openMappingModal}
-                disabled={!selectedFormId}
-                title="리드 필드를 고객사·연락처 DB 필드에 연결"
-              >
-                <span className="material-symbols-outlined">conversion_path</span>
-                데이터 매핑
-              </button>
               <button
                 type="button"
                 className="lead-capture-outline-btn lead-capture-fullview-btn"
@@ -1059,16 +1036,21 @@ ${customInputs}
                 전체보기
                 <span className="material-symbols-outlined">arrow_forward</span>
               </button>
+              <button
+                type="button"
+                className="lead-capture-outline-btn lead-capture-crm-map-btn"
+                onClick={openMappingModal}
+                disabled={!selectedFormId}
+                title={selectedLeadIds.length > 0 ? `선택 ${selectedLeadIds.length}건 매핑` : '전체 리드 매핑'}
+              >
+                <span className="material-symbols-outlined">conversion_path</span>
+                데이터 매핑{selectedLeadIds.length > 0 ? ` (${selectedLeadIds.length})` : ''}
+              </button>
             </div>
           </div>
-          {saveContactsFeedback && (
-            <p className="lead-capture-save-feedback">
-              연락처 저장: {saveContactsFeedback.success}건 성공{saveContactsFeedback.fail > 0 ? `, ${saveContactsFeedback.fail}건 실패` : ''}
-            </p>
-          )}
           {pushMappedFeedback && (
             <p className={`lead-capture-save-feedback ${pushMappedFeedback.type === 'err' ? 'lead-capture-push-feedback-err' : ''}`}>
-              매핑 등록: {pushMappedFeedback.text}
+              {pushMappedFeedback.text}
             </p>
           )}
           <div className="lead-capture-leads-wrap">
@@ -1208,6 +1190,16 @@ ${customInputs}
         </div>
       )}
 
+      {showApiDocModal && selectedForm && (
+        <LeadCaptureApiDocModal
+          backendBaseUrl={BACKEND_BASE_URL}
+          webhookUrl={selectedForm.webhookUrl}
+          formId={selectedForm._id}
+          customFields={customFields}
+          onClose={() => setShowApiDocModal(false)}
+        />
+      )}
+
       <LeadCaptureLeadsModal
         open={showLeadsModal}
         onClose={() => setShowLeadsModal(false)}
@@ -1216,8 +1208,7 @@ ${customInputs}
         onLeadCheckboxChange={handleLeadCheckboxChange}
         onSelectAllLeads={handleSelectAllLeads}
         onPreviewImage={setLeadImagePreview}
-        onSaveContacts={handleSaveSelectedAsContacts}
-        savingContacts={savingContacts}
+        onOpenMapping={openMappingModal}
       />
 
       <LeadCaptureCrmMappingModal

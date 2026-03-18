@@ -1,3 +1,4 @@
+import { useState, useMemo } from 'react';
 import './lead-capture-leads-modal.css';
 
 export default function LeadCaptureLeadsModal({
@@ -8,11 +9,46 @@ export default function LeadCaptureLeadsModal({
   onLeadCheckboxChange,
   onSelectAllLeads,
   onPreviewImage,
-  onSaveContacts,
-  savingContacts
+  onOpenMapping
 }) {
+  const [search, setSearch] = useState('');
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return channelLeads;
+    const q = search.trim().toLowerCase();
+    return channelLeads.filter((lead) => {
+      const cf = lead.customFields || {};
+      return (
+        (lead.name || '').toLowerCase().includes(q) ||
+        (lead.email || '').toLowerCase().includes(q) ||
+        (cf.company || '').toLowerCase().includes(q) ||
+        (cf.phone || '').toLowerCase().includes(q)
+      );
+    });
+  }, [channelLeads, search]);
+
   if (!open) return null;
-  const hasSelection = selectedLeadIds.length > 0;
+
+  const allFilteredIds = filtered.map((l) => String(l._id));
+  const allChecked =
+    filtered.length > 0 &&
+    allFilteredIds.every((id) => selectedLeadIds.includes(id));
+
+  const handleSelectAllFiltered = (checked) => {
+    if (checked) {
+      const merged = new Set([...selectedLeadIds.map(String), ...allFilteredIds]);
+      onSelectAllLeads(true, Array.from(merged));
+    } else {
+      const remove = new Set(allFilteredIds);
+      const remaining = selectedLeadIds.filter((id) => !remove.has(String(id)));
+      onSelectAllLeads(false, remaining);
+    }
+  };
+
+  const handleOpenMappingFromModal = () => {
+    onClose?.();
+    setTimeout(() => onOpenMapping?.(), 80);
+  };
 
   return (
     <div
@@ -26,21 +62,18 @@ export default function LeadCaptureLeadsModal({
         <div className="lead-capture-leads-modal-header">
           <h2 id="lead-capture-leads-modal-title" className="lead-capture-leads-modal-title">
             수신된 리드 전체
+            <span className="lead-capture-leads-modal-count">{channelLeads.length}건</span>
           </h2>
           <div className="lead-capture-leads-modal-header-actions">
-            {hasSelection && (
-              <button
-                type="button"
-                className="lead-capture-leads-modal-save-btn"
-                onClick={onSaveContacts}
-                disabled={savingContacts}
-                aria-label="선택한 리드를 연락처로 저장"
-                title="연락처 저장"
-              >
-                <span className="material-symbols-outlined">person_add</span>
-                <span className="lead-capture-leads-modal-save-label">연락처 저장</span>
-              </button>
-            )}
+            <button
+              type="button"
+              className="lead-capture-leads-modal-mapping-btn"
+              onClick={handleOpenMappingFromModal}
+              title={selectedLeadIds.length > 0 ? `선택 ${selectedLeadIds.length}건 매핑` : '전체 리드 매핑'}
+            >
+              <span className="material-symbols-outlined">conversion_path</span>
+              데이터 매핑{selectedLeadIds.length > 0 ? ` (${selectedLeadIds.length})` : ''}
+            </button>
             <button
               type="button"
               className="lead-capture-form-modal-close"
@@ -51,9 +84,38 @@ export default function LeadCaptureLeadsModal({
             </button>
           </div>
         </div>
+
+        <div className="lead-capture-leads-modal-search-bar">
+          <span className="material-symbols-outlined lead-capture-leads-modal-search-icon">search</span>
+          <input
+            type="text"
+            className="lead-capture-leads-modal-search-input"
+            placeholder="이름, 이메일, 회사명, 연락처 검색…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {search && (
+            <button
+              type="button"
+              className="lead-capture-leads-modal-search-clear"
+              onClick={() => setSearch('')}
+              aria-label="검색 초기화"
+            >
+              <span className="material-symbols-outlined">close</span>
+            </button>
+          )}
+          {search.trim() && (
+            <span className="lead-capture-leads-modal-search-count">
+              {filtered.length}건
+            </span>
+          )}
+        </div>
+
         <div className="lead-capture-leads-modal-body">
-          {channelLeads.length === 0 ? (
-            <p className="lead-capture-empty-cell">수신된 리드가 없습니다.</p>
+          {filtered.length === 0 ? (
+            <p className="lead-capture-empty-cell">
+              {search.trim() ? '검색 결과가 없습니다.' : '수신된 리드가 없습니다.'}
+            </p>
           ) : (
             <table className="lead-capture-table lead-capture-leads-table">
               <thead>
@@ -61,12 +123,8 @@ export default function LeadCaptureLeadsModal({
                   <th className="lead-capture-th-checkbox">
                     <input
                       type="checkbox"
-                      checked={
-                        channelLeads.length > 0 &&
-                        selectedLeadIds.length === channelLeads.length &&
-                        channelLeads.every((l) => selectedLeadIds.includes(String(l._id)))
-                      }
-                      onChange={(e) => onSelectAllLeads(e.target.checked)}
+                      checked={allChecked}
+                      onChange={(e) => handleSelectAllFiltered(e.target.checked)}
                       aria-label="전체 선택"
                     />
                   </th>
@@ -78,7 +136,8 @@ export default function LeadCaptureLeadsModal({
                 </tr>
               </thead>
               <tbody>
-                {channelLeads.map((lead, idx) => {
+                {filtered.map((lead) => {
+                  const globalIdx = channelLeads.indexOf(lead);
                   const cf = lead.customFields || {};
                   const businessCard = cf.business_card;
                   const isImageUrl =
@@ -86,16 +145,16 @@ export default function LeadCaptureLeadsModal({
                     (businessCard.startsWith('data:image') || businessCard.startsWith('http'));
                   const isSelected = selectedLeadIds.includes(String(lead._id));
                   return (
-                    <tr key={lead._id}>
+                    <tr key={lead._id} className={isSelected ? 'lead-capture-row-selected' : ''}>
                       <td className="lead-capture-td-checkbox">
                         <input
                           type="checkbox"
                           checked={isSelected}
-                          onChange={() => onLeadCheckboxChange(lead._id, idx, false)}
+                          onChange={() => onLeadCheckboxChange(lead._id, globalIdx, false)}
                           onClick={(e) => {
                             if (e.shiftKey) {
                               e.preventDefault();
-                              onLeadCheckboxChange(lead._id, idx, true);
+                              onLeadCheckboxChange(lead._id, globalIdx, true);
                             }
                           }}
                           aria-label={`${lead.name || '리드'} 선택`}

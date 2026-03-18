@@ -45,6 +45,7 @@ export default function LeadCaptureCrmMappingModal({
   const [rows, setRows] = useState([]);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null);
+  const [pushResult, setPushResult] = useState(null);
 
   const targetOptions = useMemo(() => {
     const schemaFields = registerTarget === 'contact' ? contactSchemaFields : companySchemaFields;
@@ -106,6 +107,7 @@ export default function LeadCaptureCrmMappingModal({
     next = rt === 'contact' ? ensureContactMappingRowsComplete(next) : ensureCompanyMappingRowsComplete(next);
     setRows(next);
     setSaveMsg(null);
+    setPushResult(null);
   }, [open, formId, initialCrmFieldMapping]);
 
   /** CRM 추가 필드 정의가 늦게 오면 빠진 대상 행만 붙임 (저장 매핑·편집 유지) */
@@ -170,9 +172,12 @@ export default function LeadCaptureCrmMappingModal({
   }, []);
 
   const handleMappingStart = async () => {
-    if (!formId) return;
-    const invalid = rows.some((r) => {
-      if (!r.targetKey) return true;
+    if (!formId) {
+      setSaveMsg('폼 ID가 없습니다. 모달을 닫고 다시 열어 주세요.');
+      return;
+    }
+    const mappedRows = rows.filter((r) => r.targetKey);
+    const invalid = mappedRows.some((r) => {
       if (registerTarget === 'contact' && !r.targetKey.startsWith('contact.')) return true;
       if (registerTarget === 'company' && !r.targetKey.startsWith('company.')) return true;
       return false;
@@ -181,7 +186,10 @@ export default function LeadCaptureCrmMappingModal({
       setSaveMsg('대상 필드가 등록 종류와 맞지 않습니다. 행을 확인해 주세요.');
       return;
     }
-    const ids = (selectedLeadIds || []).map(String).filter(Boolean);
+    if (mappedRows.length === 0) {
+      setSaveMsg('최소 하나 이상의 필드를 매핑해 주세요.');
+      return;
+    }
     setSaving(true);
     setSaveMsg(null);
     try {
@@ -198,13 +206,26 @@ export default function LeadCaptureCrmMappingModal({
       if (!res.ok) throw new Error(data.error || '매핑 저장 실패');
       onSaved?.(data);
 
+      let ids = (selectedLeadIds || []).map(String).filter(Boolean);
+
       if (!ids.length) {
-        setSaveMsg(
-          '매핑은 저장되었습니다. CRM에 반영하려면 채널 표에서 리드를 체크한 뒤 다시 「매핑 시작」을 누르거나, 표 상단의 「매핑 등록」을 사용하세요.'
-        );
+        setSaveMsg('매핑 저장 완료. 리드 목록을 불러오는 중…');
+        const leadsRes = await fetch(`${API_BASE}/lead-capture-forms/${formId}/leads`, {
+          headers: getAuthHeader(),
+          credentials: 'include'
+        });
+        const leadsData = await leadsRes.json().catch(() => ({}));
+        if (leadsRes.ok && Array.isArray(leadsData.items)) {
+          ids = leadsData.items.map((l) => String(l._id));
+        }
+      }
+
+      if (!ids.length) {
+        setSaveMsg('매핑은 저장되었지만, 등록할 리드가 없습니다.');
         return;
       }
 
+      setSaveMsg(`매핑 저장 완료. ${ids.length}건 리드 CRM 등록 중…`);
       const pushRes = await fetch(`${API_BASE}/lead-capture-forms/${formId}/push-to-crm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
@@ -214,14 +235,9 @@ export default function LeadCaptureCrmMappingModal({
       const pushData = await pushRes.json().catch(() => ({}));
       if (!pushRes.ok) throw new Error(pushData.error || 'CRM 등록 실패');
 
-      const s = pushData.summary || {};
-      const text =
-        s.registerTarget === 'company'
-          ? `고객사 신규 ${s.createdCompany ?? 0}건 · 동일 고객사 스킵 ${s.skippedDuplicateCompany ?? 0}건 · 실패 ${s.failed ?? 0}건`
-          : `연락처 신규 ${s.createdContact ?? 0}건 · 동일 연락처 스킵 ${s.skippedDuplicateContact ?? 0}건 · 실패 ${s.failed ?? 0}건`;
       onPushComplete?.(pushData);
-      setSaveMsg(`등록 완료 — ${text}`);
-      setTimeout(() => setSaveMsg(null), 8000);
+      setSaveMsg(null);
+      setPushResult(pushData);
     } catch (e) {
       setSaveMsg(e.message || '실패');
     } finally {
@@ -240,7 +256,117 @@ export default function LeadCaptureCrmMappingModal({
     return { mapped: targets.size, err, totalOpt: targetOptions.length };
   }, [rows, lead, registerTarget, targetOptions.length]);
 
+  const handleResultConfirm = useCallback(() => {
+    setPushResult(null);
+    onClose?.();
+  }, [onClose]);
+
   if (!open) return null;
+
+  if (pushResult) {
+    const s = pushResult.summary || {};
+    const results = Array.isArray(pushResult.results) ? pushResult.results : [];
+    const isCompany = s.registerTarget === 'company';
+    const created = isCompany ? (s.createdCompany ?? 0) : (s.createdContact ?? 0);
+    const skipped = isCompany ? (s.skippedDuplicateCompany ?? 0) : (s.skippedDuplicateContact ?? 0);
+    const failed = s.failed ?? 0;
+    const total = s.total ?? results.length;
+    const failedItems = results.filter((r) => !r.ok);
+    const skippedItems = results.filter((r) => r.ok && r.skipped);
+    const successItems = results.filter((r) => r.ok && !r.skipped);
+
+    return (
+      <div className="lc-crm-map-overlay" role="dialog" aria-modal="true">
+        <div className="lc-crm-result-panel" onClick={(e) => e.stopPropagation()}>
+          <div className="lc-crm-result-icon-wrap">
+            <span className="material-symbols-outlined lc-crm-result-icon" style={{ color: failed > 0 ? '#f59e0b' : '#10b981' }}>
+              {failed > 0 ? 'warning' : 'check_circle'}
+            </span>
+          </div>
+          <h2 className="lc-crm-result-title">
+            {failed > 0 ? 'CRM 등록 완료 (일부 실패)' : 'CRM 등록 완료'}
+          </h2>
+          <p className="lc-crm-result-sub">
+            총 {total}건 처리 · {isCompany ? '고객사' : '연락처'} 리스트
+          </p>
+
+          <div className="lc-crm-result-cards">
+            <div className="lc-crm-result-card success">
+              <span className="material-symbols-outlined">check_circle</span>
+              <div>
+                <p className="lc-crm-result-card-num">{created}건</p>
+                <p className="lc-crm-result-card-label">신규 등록</p>
+              </div>
+            </div>
+            <div className="lc-crm-result-card skip">
+              <span className="material-symbols-outlined">content_copy</span>
+              <div>
+                <p className="lc-crm-result-card-num">{skipped}건</p>
+                <p className="lc-crm-result-card-label">중복 스킵</p>
+              </div>
+            </div>
+            <div className="lc-crm-result-card fail">
+              <span className="material-symbols-outlined">error</span>
+              <div>
+                <p className="lc-crm-result-card-num">{failed}건</p>
+                <p className="lc-crm-result-card-label">실패</p>
+              </div>
+            </div>
+          </div>
+
+          {failedItems.length > 0 && (
+            <div className="lc-crm-result-detail-section">
+              <h3 className="lc-crm-result-detail-title fail">
+                <span className="material-symbols-outlined">error</span>
+                실패 상세
+              </h3>
+              <ul className="lc-crm-result-detail-list">
+                {failedItems.map((item, i) => (
+                  <li key={i} className="lc-crm-result-detail-item fail">
+                    <span className="lc-crm-result-detail-id">리드 {item.leadId?.slice(-6) || i + 1}</span>
+                    <span>{item.error || '알 수 없는 오류'}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {skippedItems.length > 0 && (
+            <div className="lc-crm-result-detail-section">
+              <h3 className="lc-crm-result-detail-title skip">
+                <span className="material-symbols-outlined">content_copy</span>
+                중복 스킵 상세
+              </h3>
+              <ul className="lc-crm-result-detail-list">
+                {skippedItems.slice(0, 10).map((item, i) => (
+                  <li key={i} className="lc-crm-result-detail-item skip">
+                    <span className="lc-crm-result-detail-id">리드 {item.leadId?.slice(-6) || i + 1}</span>
+                    <span>{isCompany ? '동일 고객사(이름+사업자번호) 존재' : '동일 연락처(이름+전화) 존재'}</span>
+                  </li>
+                ))}
+                {skippedItems.length > 10 && (
+                  <li className="lc-crm-result-detail-item skip">… 외 {skippedItems.length - 10}건</li>
+                )}
+              </ul>
+            </div>
+          )}
+
+          {successItems.length > 0 && (
+            <div className="lc-crm-result-detail-section">
+              <h3 className="lc-crm-result-detail-title success">
+                <span className="material-symbols-outlined">check_circle</span>
+                신규 등록 완료 ({successItems.length}건)
+              </h3>
+            </div>
+          )}
+
+          <button type="button" className="lc-crm-result-confirm" onClick={handleResultConfirm}>
+            확인
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="lc-crm-map-overlay" role="dialog" aria-modal="true" aria-labelledby="lc-crm-map-title">
@@ -254,11 +380,11 @@ export default function LeadCaptureCrmMappingModal({
             </button>
             <h2 id="lc-crm-map-title">필드 매핑 (CRM)</h2>
             <span className="lc-crm-map-draft">Draft</span>
-            {(selectedLeadIds || []).length > 0 && (
-              <span className="lc-crm-map-lead-count" title="매핑 시작 시 등록될 리드 수">
-                등록 대상 {(selectedLeadIds || []).length}건
-              </span>
-            )}
+            <span className="lc-crm-map-lead-count" title="매핑 시작 시 등록될 리드 수">
+              {(selectedLeadIds || []).length > 0
+                ? `선택 리드 ${(selectedLeadIds || []).length}건`
+                : '전체 리드 등록'}
+            </span>
           </div>
           <div className="lc-crm-map-head-actions">
             <button type="button" className="lc-crm-map-btn-discard" onClick={onClose}>
@@ -275,8 +401,8 @@ export default function LeadCaptureCrmMappingModal({
           <div className="lc-crm-map-title-block">
             <h1>{formName || '리드 캡처 채널'}</h1>
             <p className="lc-crm-map-lead-hint">
-              아래 <strong>등록 대상</strong>을 고른 뒤 <strong>매핑 시작</strong>을 누르면 매핑이 저장되고, 표에서 <strong>체크한 리드</strong>가
-              CRM에 등록됩니다. 리드를 체크하지 않았다면 매핑만 저장됩니다. (표는 최근 5건만 미리보기)
+              아래 <strong>등록 대상</strong>을 고른 뒤 <strong>매핑 시작</strong>을 누르면 매핑이 저장되고, 이 채널의 <strong>모든 리드</strong>가
+              CRM에 등록됩니다. 표에서 리드를 체크한 경우 <strong>선택한 리드만</strong> 등록됩니다.
             </p>
           </div>
 

@@ -65,14 +65,17 @@ export default function CustomerCompanyEmployees() {
   const sortKey = sort.key;
   const sortDir = sort.dir;
   const [companyEmployees, setCompanyEmployees] = useState([]);
-  const SORT_COLUMN_OPTIONS = [
-    { key: 'company', label: '회사' },
+  const [searchField, setSearchField] = useState('');
+  const SEARCH_FIELD_OPTIONS = [
     { key: 'name', label: '이름' },
+    { key: 'company', label: '회사' },
     { key: 'email', label: '이메일' },
     { key: 'phone', label: '전화' },
+    { key: 'position', label: '직책' },
+    { key: 'address', label: '주소' },
     { key: 'status', label: '상태' },
     { key: 'assigneeUserIds', label: '담당자' },
-    { key: 'lastSupportedAt', label: '최근 지원 일자' }
+    { key: 'memo', label: '메모' }
   ];
   const assigneeIdToName = useMemo(() => {
     const map = {};
@@ -146,7 +149,10 @@ export default function CustomerCompanyEmployees() {
     setLoading(true);
     try {
       const params = new URLSearchParams({ page, limit: LIMIT });
-      if (search.trim()) params.set('search', search.trim());
+      if (search.trim()) {
+        params.set('search', search.trim());
+        if (searchField) params.set('searchField', searchField);
+      }
       const st = overrideStatus !== undefined ? overrideStatus : '';
       if (st) params.set('status', st);
       if (assigneeMeOnly) params.set('assigneeMe', '1');
@@ -165,7 +171,7 @@ export default function CustomerCompanyEmployees() {
     } finally {
       setLoading(false);
     }
-  }, [search, assigneeMeOnly]);
+  }, [search, searchField, assigneeMeOnly]);
 
   useEffect(() => { fetchContacts(pagination.page); }, [pagination.page, fetchContacts]);
 
@@ -387,16 +393,21 @@ export default function CustomerCompanyEmployees() {
             <span className="material-symbols-outlined">search</span>
           </button>
           <form id="customer-company-employees-search-form" onSubmit={onSearch}>
-            <input type="text" placeholder="모든 필드 검색 (이름, 회사, 이메일, 전화, 직책, 메모, 커스텀 필드 등)..." value={search} onChange={(e) => setSearch(e.target.value)} />
+            <input
+              type="text"
+              placeholder={searchField ? `${SEARCH_FIELD_OPTIONS.find((o) => o.key === searchField)?.label || searchField} 검색...` : '모든 필드 검색 (이름, 회사, 이메일, 전화, 직책, 메모, 커스텀 필드 등)...'}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </form>
           <select
             className="cce-sort-column-select"
-            value={sortKey || ''}
-            onChange={(e) => setSort((prev) => ({ ...prev, key: e.target.value || null }))}
-            aria-label="정렬 기준"
+            value={searchField}
+            onChange={(e) => setSearchField(e.target.value)}
+            aria-label="검색 필드"
           >
-            <option value="">전체 보기</option>
-            {SORT_COLUMN_OPTIONS.map((o) => (
+            <option value="">전체 필드</option>
+            {SEARCH_FIELD_OPTIONS.map((o) => (
               <option key={o.key} value={o.key}>{o.label}</option>
             ))}
           </select>

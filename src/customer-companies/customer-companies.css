@@ -424,6 +424,9 @@
 }
 .cc-favorite-btn .material-symbols-outlined {
   font-size: 1.3rem;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+.cc-favorite-btn.is-active .material-symbols-outlined {
   font-variation-settings: 'FILL' 1, 'wght' 500, 'GRAD' 0, 'opsz' 24;
 }
 

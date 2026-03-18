@@ -1,7 +1,10 @@
-/* DataFieldMapping.html 스타일 참고 · 파스텔 톤 · 헤더/사이드바 제외 본문만 */
+/* DataFieldMapping.html 스타일 참고 · 파스텔 톤 · 사이드바(16rem) 고려 배치 */
 .lc-crm-map-overlay {
   position: fixed;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 16rem;
   z-index: 1100;
   background: rgba(30, 41, 59, 0.35);
   display: flex;
@@ -10,6 +13,12 @@
   padding: 1.5rem;
   overflow-y: auto;
   box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+  .lc-crm-map-overlay {
+    left: 0;
+  }
 }
 
 .lc-crm-map-panel {
@@ -526,4 +535,189 @@
 
 .lc-crm-map-save-msg.err {
   color: #b91c1c;
+}
+
+/* ── 결과 모달 ── */
+.lc-crm-result-panel {
+  width: 100%;
+  max-width: 32rem;
+  margin: 4rem auto 2rem;
+  background: #fff;
+  border-radius: 1rem;
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.18);
+  border: 1px solid #e2e8f0;
+  padding: 2rem 2rem 1.5rem;
+  text-align: center;
+  max-height: calc(100vh - 6rem);
+  overflow-y: auto;
+}
+
+.lc-crm-result-icon-wrap {
+  margin-bottom: 0.75rem;
+}
+
+.lc-crm-result-icon {
+  font-size: 3rem !important;
+}
+
+.lc-crm-result-title {
+  margin: 0 0 0.25rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.lc-crm-result-sub {
+  margin: 0 0 1.25rem;
+  font-size: 0.8125rem;
+  color: #64748b;
+}
+
+.lc-crm-result-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.lc-crm-result-card {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.85rem 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid #e2e8f0;
+  text-align: left;
+}
+
+.lc-crm-result-card .material-symbols-outlined {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.lc-crm-result-card.success {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.lc-crm-result-card.success .material-symbols-outlined {
+  color: #16a34a;
+}
+
+.lc-crm-result-card.skip {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.lc-crm-result-card.skip .material-symbols-outlined {
+  color: #d97706;
+}
+
+.lc-crm-result-card.fail {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.lc-crm-result-card.fail .material-symbols-outlined {
+  color: #dc2626;
+}
+
+.lc-crm-result-card-num {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.lc-crm-result-card-label {
+  margin: 0;
+  font-size: 0.7rem;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.lc-crm-result-detail-section {
+  text-align: left;
+  margin-bottom: 0.75rem;
+}
+
+.lc-crm-result-detail-title {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.lc-crm-result-detail-title .material-symbols-outlined {
+  font-size: 1rem;
+}
+
+.lc-crm-result-detail-title.fail {
+  color: #dc2626;
+}
+
+.lc-crm-result-detail-title.skip {
+  color: #d97706;
+}
+
+.lc-crm-result-detail-title.success {
+  color: #16a34a;
+}
+
+.lc-crm-result-detail-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.lc-crm-result-detail-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  color: #334155;
+}
+
+.lc-crm-result-detail-item.fail {
+  background: #fef2f2;
+}
+
+.lc-crm-result-detail-item.skip {
+  background: #fffbeb;
+}
+
+.lc-crm-result-detail-id {
+  font-weight: 600;
+  font-size: 0.65rem;
+  padding: 0.15rem 0.4rem;
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 0.25rem;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.lc-crm-result-confirm {
+  margin-top: 1rem;
+  width: 100%;
+  padding: 0.75rem 1.5rem;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: #fff;
+  background: #3d5a80;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(61, 90, 128, 0.25);
+  transition: opacity 0.15s;
+}
+
+.lc-crm-result-confirm:hover {
+  opacity: 0.9;
 }

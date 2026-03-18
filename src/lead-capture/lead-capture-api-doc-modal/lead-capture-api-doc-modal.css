@@ -1,12 +1,21 @@
 .lead-capture-api-doc-overlay {
   position: fixed;
-  inset: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 16rem;
   background: rgba(0, 0, 0, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1002;
   padding: 1.5rem;
+}
+
+@media (max-width: 768px) {
+  .lead-capture-api-doc-overlay {
+    left: 0;
+  }
 }
 
 .lead-capture-api-doc-box {

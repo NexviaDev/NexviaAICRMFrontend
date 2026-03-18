@@ -81,12 +81,15 @@ export default function CustomerCompanies() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sort, setSort] = useState({ key: null, dir: 'asc' });
   const [companyEmployees, setCompanyEmployees] = useState([]); // 사내 직원 (담당자 이름 표시용)
-  const SORT_COLUMN_OPTIONS = [
+  const [searchField, setSearchField] = useState('');
+  const SEARCH_FIELD_OPTIONS = [
     { key: 'name', label: '고객사명' },
     { key: 'representativeName', label: '대표자' },
     { key: 'businessNumber', label: '사업자 번호' },
     { key: 'address', label: '주소' },
-    { key: 'assigneeUserIds', label: '담당자' }
+    { key: 'status', label: '상태' },
+    { key: 'assigneeUserIds', label: '담당자' },
+    { key: 'memo', label: '메모' }
   ];
   const sortKey = sort.key;
   const assigneeIdToName = useMemo(() => {
@@ -146,7 +149,10 @@ export default function CustomerCompanies() {
     setLoading(true);
     try {
       const params = new URLSearchParams({ limit: '500' });
-      if (searchApplied) params.set('search', searchApplied);
+      if (searchApplied) {
+        params.set('search', searchApplied);
+        if (searchField) params.set('searchField', searchField);
+      }
       if (assigneeMeOnly) params.set('assigneeMe', '1');
       const url = `${API_BASE}/customer-companies?${params.toString()}`;
       const res = await fetch(url, { headers: getAuthHeader() });
@@ -161,7 +167,7 @@ export default function CustomerCompanies() {
     } finally {
       setLoading(false);
     }
-  }, [searchApplied, assigneeMeOnly]);
+  }, [searchApplied, searchField, assigneeMeOnly]);
 
   useEffect(() => { fetchList(); }, [fetchList]);
   useEffect(() => { setPage(1); }, [items.length, searchApplied, assigneeMeOnly]);
@@ -315,7 +321,7 @@ export default function CustomerCompanies() {
           <form id="customer-companies-search-form" onSubmit={runSearch} className="header-search-form">
             <input
               type="text"
-              placeholder="모든 필드 검색 (고객사명, 대표자, 주소, 메모, 커스텀 필드 등)..."
+              placeholder={searchField ? `${SEARCH_FIELD_OPTIONS.find((o) => o.key === searchField)?.label || searchField} 검색...` : '모든 필드 검색 (고객사명, 대표자, 주소, 메모, 커스텀 필드 등)...'}
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               aria-label="고객사 검색"
@@ -323,12 +329,12 @@ export default function CustomerCompanies() {
           </form>
           <select
             className="cc-sort-column-select"
-            value={sortKey || ''}
-            onChange={(e) => setSort((prev) => ({ ...prev, key: e.target.value || null }))}
-            aria-label="정렬 기준"
+            value={searchField}
+            onChange={(e) => setSearchField(e.target.value)}
+            aria-label="검색 필드"
           >
-            <option value="">전체 보기</option>
-            {SORT_COLUMN_OPTIONS.map((o) => (
+            <option value="">전체 필드</option>
+            {SEARCH_FIELD_OPTIONS.map((o) => (
               <option key={o.key} value={o.key}>{o.label}</option>
             ))}
           </select>

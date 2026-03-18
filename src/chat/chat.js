@@ -119,9 +119,27 @@ export default function GoogleChat() {
       return {};
     }
   });
+  const [favoriteSpaceIds, setFavoriteSpaceIds] = useState(() => {
+    try {
+      const raw = localStorage.getItem('nexvia_chat_favorite_space_ids');
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+  const [hiddenSpaceIds, setHiddenSpaceIds] = useState(() => {
+    try {
+      const raw = localStorage.getItem('nexvia_chat_hidden_space_ids');
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+  const [spaceListTab, setSpaceListTab] = useState('all');
   const [editingSpaceName, setEditingSpaceName] = useState(false);
   const [editingSpaceNameValue, setEditingSpaceNameValue] = useState('');
-  const [leaveLoading, setLeaveLoading] = useState(false);
   const messagesWrapRef = useRef(null);
 
   useEffect(() => {
@@ -129,6 +147,18 @@ export default function GoogleChat() {
       localStorage.setItem('nexvia_chat_custom_space_names', JSON.stringify(customSpaceNames));
     } catch (_) {}
   }, [customSpaceNames]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('nexvia_chat_favorite_space_ids', JSON.stringify(favoriteSpaceIds));
+    } catch (_) {}
+  }, [favoriteSpaceIds]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('nexvia_chat_hidden_space_ids', JSON.stringify(hiddenSpaceIds));
+    } catch (_) {}
+  }, [hiddenSpaceIds]);
 
   /** 새 메시지 추가/로드 시 맨 아래로 스크롤 */
   useEffect(() => {
@@ -245,6 +275,12 @@ export default function GoogleChat() {
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    const validIds = new Set(spaces.map((space) => spaceIdFromName(space.name)));
+    setFavoriteSpaceIds((prev) => prev.filter((id) => validIds.has(id)));
+    setHiddenSpaceIds((prev) => prev.filter((id) => validIds.has(id)));
+  }, [spaces]);
+
   const fetchMessages = useCallback(async (spaceId, silent = false) => {
     if (!spaceId) {
       setMessages([]);
@@ -342,13 +378,26 @@ export default function GoogleChat() {
 
   const filteredSpaces = useMemo(() => {
     const q = (searchQuery || '').trim().toLowerCase();
-    if (!q) return spaces;
-    return spaces.filter((space) => {
+    const visibleByTab = spaces.filter((space) => {
+      const id = spaceIdFromName(space.name);
+      const isHidden = hiddenSpaceIds.includes(id);
+      return spaceListTab === 'hidden' ? isHidden : !isHidden;
+    });
+    const filtered = !q ? visibleByTab : visibleByTab.filter((space) => {
       const id = spaceIdFromName(space.name);
       const name = customSpaceNames[id] ?? spaceDisplayNames[id] ?? space.displayName ?? id;
       return (name || '').toLowerCase().includes(q);
     });
-  }, [spaces, searchQuery, spaceDisplayNames, customSpaceNames]);
+    const order = new Map(filtered.map((space, index) => [spaceIdFromName(space.name), index]));
+    return [...filtered].sort((a, b) => {
+      const aId = spaceIdFromName(a.name);
+      const bId = spaceIdFromName(b.name);
+      const aFav = favoriteSpaceIds.includes(aId);
+      const bFav = favoriteSpaceIds.includes(bId);
+      if (aFav !== bFav) return aFav ? -1 : 1;
+      return (order.get(aId) ?? 0) - (order.get(bId) ?? 0);
+    });
+  }, [spaces, searchQuery, spaceDisplayNames, customSpaceNames, favoriteSpaceIds, hiddenSpaceIds, spaceListTab]);
 
   const saveCustomSpaceName = () => {
     if (!selectedSpaceId) return;
@@ -356,6 +405,29 @@ export default function GoogleChat() {
     setCustomSpaceNames((prev) => (v ? { ...prev, [selectedSpaceId]: v } : (() => { const next = { ...prev }; delete next[selectedSpaceId]; return next; })()));
     setEditingSpaceName(false);
     setEditingSpaceNameValue('');
+  };
+
+  const toggleFavoriteSpace = (spaceId) => {
+    if (!spaceId) return;
+    setFavoriteSpaceIds((prev) => (
+      prev.includes(spaceId)
+        ? prev.filter((id) => id !== spaceId)
+        : [spaceId, ...prev]
+    ));
+  };
+
+  const toggleHiddenSpace = (spaceId) => {
+    if (!spaceId) return;
+    const willHide = !hiddenSpaceIds.includes(spaceId);
+    setHiddenSpaceIds((prev) => (
+      prev.includes(spaceId)
+        ? prev.filter((id) => id !== spaceId)
+        : [spaceId, ...prev]
+    ));
+    if (willHide && selectedSpaceId === spaceId && spaceListTab !== 'hidden') {
+      setSelectedSpaceId(null);
+      setMessages([]);
+    }
   };
 
   const openContactModal = (chatResourceName) => {
@@ -512,36 +584,6 @@ export default function GoogleChat() {
     }
   };
 
-  const handleLeaveSpace = async () => {
-    if (!selectedSpaceId || leaveLoading) return;
-    if (!window.confirm('이 채팅방에서 나가시겠습니까?')) return;
-    setLeaveLoading(true);
-    setError('');
-    try {
-      const res = await fetch(`${API_BASE}/google-chat/spaces/${encodeURIComponent(selectedSpaceId)}/members`, {
-        method: 'DELETE',
-        headers: getAuthHeader(),
-        credentials: 'include'
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || '채팅방 나가기에 실패했습니다.');
-      }
-      setCustomSpaceNames((prev) => {
-        const next = { ...prev };
-        delete next[selectedSpaceId];
-        return next;
-      });
-      setSelectedSpaceId(null);
-      setMessages([]);
-      await fetchSpaces();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLeaveLoading(false);
-    }
-  };
-
   return (
     <div className="google-chat-page">
       {error && (
@@ -573,18 +615,42 @@ export default function GoogleChat() {
             <input
               type="text"
               className="google-chat-search-input"
-              placeholder="채팅방 검색"
+              placeholder={spaceListTab === 'hidden' ? '숨긴 채팅방 검색' : '채팅방 검색'}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               aria-label="채팅방 검색"
             />
+            <div className="google-chat-space-tabs" role="tablist" aria-label="대화 목록 탭">
+              <button
+                type="button"
+                className={`google-chat-space-tab ${spaceListTab === 'all' ? 'is-active' : ''}`}
+                onClick={() => setSpaceListTab('all')}
+                role="tab"
+                aria-selected={spaceListTab === 'all'}
+              >
+                전체
+              </button>
+              <button
+                type="button"
+                className={`google-chat-space-tab ${spaceListTab === 'hidden' ? 'is-active' : ''}`}
+                onClick={() => setSpaceListTab('hidden')}
+                role="tab"
+                aria-selected={spaceListTab === 'hidden'}
+              >
+                숨김
+              </button>
+            </div>
           </div>
           <div className="google-chat-space-list-wrap">
             {loading ? (
               <p className="google-chat-loading">불러오는 중...</p>
             ) : filteredSpaces.length === 0 ? (
               <p className="google-chat-empty">
-                {spaces.length === 0 ? '참여 중인 스페이스가 없습니다.' : '검색 결과가 없습니다.'}
+                {spaces.length === 0
+                  ? '참여 중인 스페이스가 없습니다.'
+                  : spaceListTab === 'hidden'
+                    ? '숨긴 채팅방이 없습니다.'
+                    : '검색 결과가 없습니다.'}
               </p>
             ) : (
               <ul className="google-chat-space-list">
@@ -592,38 +658,62 @@ export default function GoogleChat() {
                   const id = spaceIdFromName(space.name);
                   const displayName = customSpaceNames[id] ?? spaceDisplayNames[id] ?? space.displayName ?? space.name ?? id;
                   const isSelected = selectedSpaceId === id;
+                  const isFavorite = favoriteSpaceIds.includes(id);
+                  const isHidden = hiddenSpaceIds.includes(id);
                   const spaceType = space.spaceType || space.type;
                   const isGroup = spaceType !== 'DIRECT_MESSAGE' && spaceType !== 'DM';
                   return (
                     <li key={id}>
-                      <button
-                        type="button"
-                        className={`google-chat-space-item ${isSelected ? 'selected' : ''}`}
-                        onClick={() => setSelectedSpaceId(id)}
-                      >
-                        <div className={`google-chat-space-avatar ${isGroup ? 'groups' : ''}`}>
-                          <span className="material-symbols-outlined">
-                            {isGroup ? 'groups' : 'person'}
-                          </span>
-                        </div>
-                        <div className="google-chat-space-item-content">
-                          <div className="google-chat-space-item-row">
-                            <span className="google-chat-space-name">{displayName}</span>
-                            <span className="google-chat-space-time">
-                              {isSelected && messages.length ? (
-                                new Date(messages[messages.length - 1]?.createTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
-                              ) : (
-                                ''
-                              )}
+                      <div className={`google-chat-space-item-shell ${isSelected ? 'selected' : ''}`}>
+                        <button
+                          type="button"
+                          className={`google-chat-space-item ${isSelected ? 'selected' : ''}`}
+                          onClick={() => setSelectedSpaceId(id)}
+                        >
+                          <div className={`google-chat-space-avatar ${isGroup ? 'groups' : ''}`}>
+                            <span className="material-symbols-outlined">
+                              {isGroup ? 'groups' : 'person'}
                             </span>
                           </div>
-                          <p className="google-chat-space-preview">
-                            {isSelected && messages.length
-                              ? (messages[messages.length - 1]?.text || '').slice(0, 40) + (messages[messages.length - 1]?.text?.length > 40 ? '…' : '')
-                              : '대화'}
-                          </p>
+                          <div className="google-chat-space-item-content">
+                            <div className="google-chat-space-item-row">
+                              <span className="google-chat-space-name">{displayName}</span>
+                              <span className="google-chat-space-time">
+                                {isSelected && messages.length ? (
+                                  new Date(messages[messages.length - 1]?.createTime).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+                                ) : (
+                                  ''
+                                )}
+                              </span>
+                            </div>
+                            <p className="google-chat-space-preview">
+                              {isSelected && messages.length
+                                ? (messages[messages.length - 1]?.text || '').slice(0, 40) + (messages[messages.length - 1]?.text?.length > 40 ? '…' : '')
+                                : '대화'}
+                            </p>
+                          </div>
+                        </button>
+                        <div className="google-chat-space-item-actions">
+                          <button
+                            type="button"
+                            className={`google-chat-space-favorite-btn ${isFavorite ? 'is-active' : ''}`}
+                            onClick={() => toggleFavoriteSpace(id)}
+                            aria-label={isFavorite ? '즐겨찾기 해제' : '즐겨찾기 추가'}
+                            title={isFavorite ? '즐겨찾기 해제' : '즐겨찾기 추가'}
+                          >
+                            <span className="material-symbols-outlined">star</span>
+                          </button>
+                          <button
+                            type="button"
+                            className={`google-chat-space-visibility-btn ${isHidden ? 'is-active' : ''}`}
+                            onClick={() => toggleHiddenSpace(id)}
+                            aria-label={isHidden ? '숨기기 해제' : '대화 숨기기'}
+                            title={isHidden ? '숨기기 해제' : '대화 숨기기'}
+                          >
+                            <span className="material-symbols-outlined">{isHidden ? 'visibility' : 'visibility_off'}</span>
+                          </button>
                         </div>
-                      </button>
+                      </div>
                     </li>
                   );
                 })}
@@ -679,6 +769,19 @@ export default function GoogleChat() {
                   </div>
                 </div>
                 <div className="google-chat-main-header-actions">
+                  {selectedSpace && (
+                    <button
+                      type="button"
+                      className={`google-chat-header-action-btn ${hiddenSpaceIds.includes(selectedSpaceId) ? 'is-active' : ''}`}
+                      onClick={() => toggleHiddenSpace(selectedSpaceId)}
+                      aria-label={hiddenSpaceIds.includes(selectedSpaceId) ? '숨기기 해제' : '대화 숨기기'}
+                      title={hiddenSpaceIds.includes(selectedSpaceId) ? '숨기기 해제' : '대화 숨기기'}
+                    >
+                      <span className="material-symbols-outlined">
+                        {hiddenSpaceIds.includes(selectedSpaceId) ? 'visibility' : 'visibility_off'}
+                      </span>
+                    </button>
+                  )}
                   {selectedSpace && (selectedSpace.spaceType || selectedSpace.type) !== 'DIRECT_MESSAGE' && (selectedSpace.spaceType || selectedSpace.type) !== 'DM' && (
                     <button
                       type="button"
@@ -690,16 +793,6 @@ export default function GoogleChat() {
                       <span className="material-symbols-outlined">person_add</span>
                     </button>
                   )}
-                  <button
-                    type="button"
-                    className="google-chat-header-action-btn google-chat-leave-btn"
-                    onClick={handleLeaveSpace}
-                    disabled={leaveLoading}
-                    aria-label="채팅방 나가기"
-                    title="채팅방 나가기"
-                  >
-                    <span className="material-symbols-outlined">{leaveLoading ? 'hourglass_empty' : 'exit_to_app'}</span>
-                  </button>
                 </div>
               </header>
               <div ref={messagesWrapRef} className="google-chat-messages-wrap">

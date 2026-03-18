@@ -446,9 +446,6 @@
   flex-shrink: 0;
 }
 
-.lead-capture-outline-btn:hover {
-  background: var(--primary-pastel, rgba(99, 102, 241, 0.18));
-}
 
 .lead-capture-fullview-btn {
   background: #fff;
@@ -483,6 +480,8 @@
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
+  justify-content: flex-end;
+  flex-shrink: 0;
 }
 
 .lead-capture-crm-map-btn .material-symbols-outlined,
@@ -1003,14 +1002,11 @@
 }
 
 .lead-capture-stat-value {
-  font-size: 1rem;
-  font-weight: 800;
-  color: var(--text);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
 }
 
-.lead-capture-stat-row:first-child .lead-capture-stat-value {
-  font-size: 1.25rem;
-}
+
 
 .lead-capture-copy-btn:disabled {
   opacity: 0.5;
