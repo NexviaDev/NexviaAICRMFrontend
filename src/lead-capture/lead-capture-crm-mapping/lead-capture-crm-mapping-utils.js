@@ -79,10 +79,13 @@ export function defaultCompanyMappingRows() {
   return [
     { id: 'co1', sourceType: 'field', sourceKey: 'customFields.company', constantValue: '', targetKey: 'company.name' },
     { id: 'co2', sourceType: 'field', sourceKey: 'name', constantValue: '', targetKey: 'company.representativeName' },
+    { id: 'co0', sourceType: 'field', sourceKey: '', constantValue: '', targetKey: 'company.businessNumber' },
     { id: 'co3', sourceType: 'field', sourceKey: 'customFields.address', constantValue: '', targetKey: 'company.address' },
     { id: 'co4', sourceType: 'constant', sourceKey: '', constantValue: 'lead', targetKey: 'company.status' }
   ];
 }
+
+const REQUIRED_COMPANY_TARGET_KEYS = new Set(defaultCompanyMappingRows().map((row) => row.targetKey));
 
 export function ensureContactMappingRowsComplete(rows) {
   const targets = new Set((rows || []).map((r) => r.targetKey));
@@ -177,10 +180,15 @@ export function rowStatus(row, preview, registerTarget) {
       ? { type: 'ok', label: 'VALID' }
       : { type: 'warn', label: '값 입력' };
   }
-  if (!row.sourceKey) return { type: 'warn', label: '소스 선택' };
+  if (!row.sourceKey) {
+    if (registerTarget === 'company' && REQUIRED_COMPANY_TARGET_KEYS.has(row.targetKey)) {
+      return { type: 'warn', label: '필수' };
+    }
+    return { type: 'warn', label: '소스 선택' };
+  }
   const empty = !preview || String(preview).trim() === '';
   if (empty) {
-    if (registerTarget === 'company' && row.targetKey === 'company.name') {
+    if (registerTarget === 'company' && REQUIRED_COMPANY_TARGET_KEYS.has(row.targetKey)) {
       return { type: 'warn', label: '필수' };
     }
     if (registerTarget === 'contact' && ['contact.name', 'contact.email', 'contact.phone'].includes(row.targetKey)) {

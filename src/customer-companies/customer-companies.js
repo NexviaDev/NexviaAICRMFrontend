@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AddCompanyModal from './add-company-modal/add-company-modal';
 import CustomerCompanyDetailModal from './customer-company-detail-modal/customer-company-detail-modal';
+import CustomerCompaniesExcelImportModal from './customer-companies-excel-import-modal/customer-companies-excel-import-modal';
 import ListTemplateModal from '../components/list-template-modal/list-template-modal';
 import {
   LIST_IDS,
@@ -15,9 +16,10 @@ import './customer-companies-responsive.css';
 import { API_BASE } from '@/config';
 const MODAL_PARAM = 'modal';
 const MODAL_ADD_COMPANY = 'add-company';
+const MODAL_EXCEL_IMPORT = 'excel-import';
 const MODAL_DETAIL = 'detail';
 const DETAIL_ID_PARAM = 'id';
-const PAGE_SIZE = 20;
+const LIMIT = 10;
 
 /** 페이지네이션에 표시할 번호 목록 (현재 페이지 주변 + 첫/끝, 생략은 '...') */
 function getPageNumbers(current, total) {
@@ -82,6 +84,7 @@ export default function CustomerCompanies() {
   const [sort, setSort] = useState({ key: null, dir: 'asc' });
   const [companyEmployees, setCompanyEmployees] = useState([]); // 사내 직원 (담당자 이름 표시용)
   const [searchField, setSearchField] = useState('');
+  const [pagination, setPagination] = useState({ page: 1, limit: LIMIT, total: 0, totalPages: 0 });
   const SEARCH_FIELD_OPTIONS = [
     { key: 'name', label: '고객사명' },
     { key: 'representativeName', label: '대표자' },
@@ -101,12 +104,11 @@ export default function CustomerCompanies() {
     return map;
   }, [companyEmployees]);
   const sortDir = sort.dir;
-  const [page, setPage] = useState(1);
   /** URL로 연 상세 모달용: 목록에 없을 때 id로 따로 조회한 회사 (새로고침 시 items 비어 있을 수 있음) */
   const [detailCompanyById, setDetailCompanyById] = useState(null);
   const [loadingDetailCompany, setLoadingDetailCompany] = useState(false);
-
   const isAddModalOpen = searchParams.get(MODAL_PARAM) === MODAL_ADD_COMPANY;
+  const isExcelImportOpen = searchParams.get(MODAL_PARAM) === MODAL_EXCEL_IMPORT;
   const detailId = searchParams.get(DETAIL_ID_PARAM);
   const isDetailOpen = searchParams.get(MODAL_PARAM) === MODAL_DETAIL && detailId;
   const selectedCompanyFromList = isDetailOpen
@@ -145,10 +147,10 @@ export default function CustomerCompanies() {
     return () => { cancelled = true; };
   }, [isDetailOpen, detailId, selectedCompanyFromList]);
 
-  const fetchList = useCallback(async () => {
+  const fetchList = useCallback(async (page = 1) => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ limit: '500' });
+      const params = new URLSearchParams({ page: String(page), limit: String(LIMIT) });
       if (searchApplied) {
         params.set('search', searchApplied);
         if (searchField) params.set('searchField', searchField);
@@ -159,18 +161,26 @@ export default function CustomerCompanies() {
       if (res.ok) {
         const data = await res.json();
         setItems(data.items || []);
+        setPagination(data.pagination || { page: 1, limit: LIMIT, total: 0, totalPages: 0 });
       } else {
         setItems([]);
+        setPagination((p) => ({ ...p, total: 0, totalPages: 0 }));
       }
     } catch (_) {
       setItems([]);
+      setPagination((p) => ({ ...p, total: 0, totalPages: 0 }));
     } finally {
       setLoading(false);
     }
   }, [searchApplied, searchField, assigneeMeOnly]);
 
-  useEffect(() => { fetchList(); }, [fetchList]);
-  useEffect(() => { setPage(1); }, [items.length, searchApplied, assigneeMeOnly]);
+  useEffect(() => { fetchList(pagination.page); }, [pagination.page, fetchList]);
+  useEffect(() => {
+    const onExcelImportDone = () => { fetchList(pagination.page); };
+    window.addEventListener('cc-excel-import-completed', onExcelImportDone);
+    return () => window.removeEventListener('cc-excel-import-completed', onExcelImportDone);
+  }, [fetchList, pagination.page]);
+  useEffect(() => { setPagination((p) => ({ ...p, page: 1 })); }, [searchApplied, searchField, assigneeMeOnly]);
 
   /** 새 고객사 추가 시 정의된 커스텀 필드를 리스트 템플릿에 반영 */
   useEffect(() => {
@@ -207,9 +217,17 @@ export default function CustomerCompanies() {
     setSearchParams(next, { replace: true });
   };
 
+  const openExcelImportModal = () => setSearchParams({ [MODAL_PARAM]: MODAL_EXCEL_IMPORT });
+  const closeExcelImportModal = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete(MODAL_PARAM);
+    setSearchParams(next, { replace: true });
+  };
+
   const runSearch = (e) => {
     e?.preventDefault();
     setSearchApplied(searchInput.trim());
+    setPagination((p) => ({ ...p, page: 1 }));
   };
 
   const handleToggleFavorite = async (rowId, nextValue) => {
@@ -224,7 +242,7 @@ export default function CustomerCompanies() {
       if (!res.ok) return;
       setItems((prev) => prev.map((row) => (row._id === rowId ? { ...row, isFavorite: !!data.isFavorite } : row)));
       setDetailCompanyById((prev) => (prev?._id === rowId ? { ...prev, isFavorite: !!data.isFavorite } : prev));
-      fetchList();
+      fetchList(pagination.page);
     } catch (_) {}
   };
 
@@ -295,12 +313,6 @@ export default function CustomerCompanies() {
     });
   }, [items, sortKey, sortDir, getSortValue]);
 
-  const totalPages = Math.max(1, Math.ceil(sortedItems.length / PAGE_SIZE));
-  const currentPageItems = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE;
-    return sortedItems.slice(start, start + PAGE_SIZE);
-  }, [sortedItems, page]);
-
   const handleSortColumn = useCallback((key) => {
     if (key === '_favorite') return;
     setSort((prev) => {
@@ -352,7 +364,7 @@ export default function CustomerCompanies() {
           <div>
             <h2>고객사 리스트</h2>
             <p className="page-desc">
-              총 {items.length}개 고객사{totalPages > 1 ? ` (${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, sortedItems.length)}건 표시)` : ''}를 관리 중입니다
+              총 {pagination.total || 0}개 고객사를 관리 중입니다
             </p>
           </div>
           <div className="customer-companies-actions">
@@ -373,6 +385,16 @@ export default function CustomerCompanies() {
               <span className="material-symbols-outlined">person_pin_circle</span>
               <span className="cc-filter-label">내 담당 업체 보기</span>
             </button>
+            <button
+              type="button"
+              className="icon-btn cc-assignee-filter-btn"
+              onClick={openExcelImportModal}
+              title="엑셀 파일을 매핑하여 고객사 일괄 등록"
+              aria-label="엑셀 매핑 가져오기"
+            >
+              <span className="material-symbols-outlined">upload_file</span>
+              <span className="cc-filter-label">엑셀 매핑 가져오기</span>
+            </button>
             <button type="button" className="btn-outline"><span className="material-symbols-outlined">file_download</span> 내보내기</button>
             <button type="button" className="btn-primary" onClick={openAddModal}><span className="material-symbols-outlined">add</span> 고객사 추가</button>
           </div>
@@ -382,11 +404,11 @@ export default function CustomerCompanies() {
           <div className="customer-companies-mobile-cards-wrap">
             {loading ? (
               <p className="customer-companies-mobile-cards-message">불러오는 중...</p>
-            ) : currentPageItems.length === 0 ? (
+            ) : sortedItems.length === 0 ? (
               <p className="customer-companies-mobile-cards-message">등록된 고객사가 없습니다.</p>
             ) : (
               <div className="customer-companies-mobile-cards-list">
-                {currentPageItems.map((row) => (
+                {sortedItems.map((row) => (
                   <div
                     key={row._id}
                     className="customer-companies-mobile-card"
@@ -465,10 +487,10 @@ export default function CustomerCompanies() {
               <tbody>
                 {loading ? (
                   <tr><td colSpan={colSpan} className="text-center">불러오는 중...</td></tr>
-                ) : currentPageItems.length === 0 ? (
+                ) : sortedItems.length === 0 ? (
                   <tr><td colSpan={colSpan} className="text-center">등록된 고객사가 없습니다.</td></tr>
                 ) : (
-                  currentPageItems.map((row) => (
+                  sortedItems.map((row) => (
                     <tr key={row._id} className="customer-companies-row-clickable" onClick={() => openDetailModal(row)}>
                       {displayColumns.map((col) => (
                         <td
@@ -506,35 +528,33 @@ export default function CustomerCompanies() {
               </tbody>
             </table>
           </div>
-          {totalPages > 1 && (
-            <div className="pagination-bar">
-              <p className="pagination-info">
-                <strong>{sortedItems.length}</strong>개 중 <strong>{(page - 1) * PAGE_SIZE + 1}</strong>–<strong>{Math.min(page * PAGE_SIZE, sortedItems.length)}</strong>건 표시
-              </p>
-              <div className="pagination-btns">
-                <button type="button" className="pagination-btn" aria-label="첫 페이지" disabled={page <= 1} onClick={() => setPage(1)}><span className="material-symbols-outlined">first_page</span></button>
-                <button type="button" className="pagination-btn" aria-label="이전 페이지" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}><span className="material-symbols-outlined">chevron_left</span></button>
-                {getPageNumbers(page, totalPages).map((n, i) =>
-                  n === '...' ? (
-                    <span key={`ellipsis-${i}`} className="pagination-ellipsis" aria-hidden>…</span>
-                  ) : (
-                    <button
-                      key={n}
-                      type="button"
-                      className={`pagination-btn pagination-btn-num ${page === n ? 'active' : ''}`}
-                      aria-label={`${n}페이지`}
-                      aria-current={page === n ? 'page' : undefined}
-                      onClick={() => setPage(n)}
-                    >
-                      {n}
-                    </button>
-                  )
-                )}
-                <button type="button" className="pagination-btn" aria-label="다음 페이지" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}><span className="material-symbols-outlined">chevron_right</span></button>
-                <button type="button" className="pagination-btn" aria-label="마지막 페이지" disabled={page >= totalPages} onClick={() => setPage(totalPages)}><span className="material-symbols-outlined">last_page</span></button>
-              </div>
+          <div className="pagination-bar">
+            <p className="pagination-info">
+              <strong>{pagination.total}</strong>개 중 <strong>{items.length ? (pagination.page - 1) * pagination.limit + 1 : 0}</strong>–<strong>{(pagination.page - 1) * pagination.limit + items.length}</strong>건 표시
+            </p>
+            <div className="pagination-btns">
+              <button type="button" className="pagination-btn" aria-label="첫 페이지" disabled={pagination.page <= 1} onClick={() => setPagination((p) => ({ ...p, page: 1 }))}><span className="material-symbols-outlined">first_page</span></button>
+              <button type="button" className="pagination-btn" aria-label="이전 페이지" disabled={pagination.page <= 1} onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}><span className="material-symbols-outlined">chevron_left</span></button>
+              {getPageNumbers(pagination.page, pagination.totalPages || 1).map((n, i) =>
+                n === '...' ? (
+                  <span key={`ellipsis-${i}`} className="pagination-ellipsis" aria-hidden>…</span>
+                ) : (
+                  <button
+                    key={n}
+                    type="button"
+                    className={`pagination-btn pagination-btn-num ${pagination.page === n ? 'active' : ''}`}
+                    aria-label={`${n}페이지`}
+                    aria-current={pagination.page === n ? 'page' : undefined}
+                    onClick={() => setPagination((p) => ({ ...p, page: n }))}
+                  >
+                    {n}
+                  </button>
+                )
+              )}
+              <button type="button" className="pagination-btn" aria-label="다음 페이지" disabled={pagination.page >= (pagination.totalPages || 1)} onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}><span className="material-symbols-outlined">chevron_right</span></button>
+              <button type="button" className="pagination-btn" aria-label="마지막 페이지" disabled={pagination.page >= (pagination.totalPages || 1)} onClick={() => setPagination((p) => ({ ...p, page: pagination.totalPages || 1 }))}><span className="material-symbols-outlined">last_page</span></button>
             </div>
-          )}
+          </div>
         </div>
       </div>
       {settingsOpen && (
@@ -550,9 +570,14 @@ export default function CustomerCompanies() {
       {isAddModalOpen && (
         <AddCompanyModal
           onClose={closeAddModal}
-          onSaved={() => { fetchList(); closeAddModal(); }}
+          onSaved={() => { fetchList(pagination.page); closeAddModal(); }}
         />
       )}
+      <CustomerCompaniesExcelImportModal
+        open={isExcelImportOpen}
+        onClose={closeExcelImportModal}
+        onImported={() => { fetchList(pagination.page); }}
+      />
       {isDetailOpen && !selectedCompany && loadingDetailCompany && (
         <div className="customer-companies-detail-loading-overlay" role="dialog" aria-busy="true">
           <p>고객사 정보를 불러오는 중...</p>
@@ -577,10 +602,10 @@ export default function CustomerCompanies() {
               ));
               setDetailCompanyById((prev) => (prev && String(prev._id) === id ? { ...prev, ...updatedCompany } : prev));
             }
-            fetchList();
+            fetchList(pagination.page);
           }}
           onDeleted={() => {
-            fetchList();
+            fetchList(pagination.page);
             closeDetailModal();
           }}
         />
