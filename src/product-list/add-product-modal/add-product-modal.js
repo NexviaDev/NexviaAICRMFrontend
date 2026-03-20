@@ -5,12 +5,47 @@ import './add-product-modal.css';
 
 import { API_BASE } from '@/config';
 const STATUS_OPTIONS = ['Active', 'EndOfLife', 'Draft'];
-const BILLING_OPTIONS = ['Monthly', 'Annual'];
+const BILLING_OPTIONS = ['Monthly', 'Annual', 'Perpetual'];
+const BILLING_LABELS = { Monthly: '월간', Annual: '연간', Perpetual: '영구' };
 const CURRENCY_OPTIONS = ['KRW', 'USD'];
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+/** 표시용: 천 단위 쉼표 (소수점 유지, 최대 소수 자릿수 제한) */
+function formatPriceDisplay(num, maxFractionDigits = 4) {
+  const n = Number(num);
+  if (!Number.isFinite(n)) return '';
+  return n.toLocaleString('ko-KR', {
+    maximumFractionDigits: maxFractionDigits,
+    minimumFractionDigits: 0
+  });
+}
+
+/** 입력 문자열 → 숫자 */
+function parsePriceInput(str) {
+  const v = String(str ?? '').replace(/,/g, '').trim();
+  if (v === '' || v === '.') return 0;
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * 입력 중 천 단위 쉼표 삽입 (정수부만). 소수점 이하 원문 유지.
+ */
+function formatPriceWhileTyping(raw) {
+  const s = String(raw).replace(/,/g, '');
+  if (s === '') return '';
+  if (s === '.') return '.';
+  const dot = s.indexOf('.');
+  const intRaw = dot === -1 ? s : s.slice(0, dot);
+  const decRaw = dot === -1 ? '' : s.slice(dot + 1).replace(/\./g, '');
+  if (!/^\d*$/.test(intRaw) || !/^\d*$/.test(decRaw)) return raw;
+  const intFmt = intRaw === '' ? '' : intRaw.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  if (dot === -1) return intFmt;
+  return `${intFmt}.${decRaw}`;
 }
 
 export default function AddProductModal({ product, onClose, onSaved }) {
@@ -30,6 +65,7 @@ export default function AddProductModal({ product, onClose, onSaved }) {
   const [showCustomFieldsModal, setShowCustomFieldsModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [priceInput, setPriceInput] = useState(() => formatPriceDisplay(product?.price ?? 0));
 
   const fetchCustomDefinitions = async () => {
     try {
@@ -42,6 +78,10 @@ export default function AddProductModal({ product, onClose, onSaved }) {
   useEffect(() => {
     fetchCustomDefinitions();
   }, []);
+
+  useEffect(() => {
+    setPriceInput(formatPriceDisplay(product?.price ?? 0));
+  }, [product?._id, product?.price]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -78,7 +118,7 @@ export default function AddProductModal({ product, onClose, onSaved }) {
           code: form.code.trim() || undefined,
           category: form.category.trim() || undefined,
           version: form.version.trim() || undefined,
-          price: Number(form.price) || 0,
+          price: parsePriceInput(priceInput),
           currency: form.currency,
           billingType: form.billingType,
           status: form.status,
@@ -130,7 +170,26 @@ export default function AddProductModal({ product, onClose, onSaved }) {
           <div className="add-product-modal-field add-product-modal-row">
             <div className="add-product-modal-field">
               <label htmlFor="add-product-price">가격</label>
-              <input id="add-product-price" name="price" type="number" min="0" step="0.01" value={form.price} onChange={handleChange} />
+              <input
+                id="add-product-price"
+                name="price"
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                placeholder="예: 1,000,000"
+                value={priceInput}
+                onChange={(e) => {
+                  const next = formatPriceWhileTyping(e.target.value);
+                  setPriceInput(next);
+                  setForm((prev) => ({ ...prev, price: parsePriceInput(next) }));
+                  setError('');
+                }}
+                onBlur={() => {
+                  const n = parsePriceInput(priceInput);
+                  setPriceInput(formatPriceDisplay(n));
+                  setForm((prev) => ({ ...prev, price: n }));
+                }}
+              />
             </div>
             <div className="add-product-modal-field">
               <label htmlFor="add-product-currency">통화</label>
@@ -145,7 +204,7 @@ export default function AddProductModal({ product, onClose, onSaved }) {
             <label htmlFor="add-product-billingType">결제 주기</label>
             <select id="add-product-billingType" name="billingType" value={form.billingType} onChange={handleChange}>
               {BILLING_OPTIONS.map((b) => (
-                <option key={b} value={b}>{b === 'Monthly' ? '월간' : '연간'}</option>
+                <option key={b} value={b}>{BILLING_LABELS[b] ?? b}</option>
               ))}
             </select>
           </div>

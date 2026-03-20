@@ -1,24 +1,63 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import './home.css';
 
 import { API_BASE } from '@/config';
 
+function getAuthHeader() {
+  const token = localStorage.getItem('crm_token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+const DEFAULT_STAGE_LABELS = {
+  NewLead: '신규 리드',
+  Contacted: '접촉 완료',
+  ProposalSent: '제안서 발송'
+};
+const DEFAULT_ACTIVE_STAGES = ['NewLead', 'Contacted', 'ProposalSent'];
+
+/** sales-pipeline.js DROP_ZONE_CONFIG·하단 드롭존과 동일 — 진행 딜·첫 단계 집계에서 제외 */
+const DROP_ZONE_STAGES = ['Lost', 'Abandoned', 'Won'];
+
+function formatCurrency(value, currency) {
+  if (!value) return currency === 'KRW' ? '₩0' : '$0';
+  if (currency === 'USD') return '$' + Number(value).toLocaleString();
+  return '₩' + Number(value).toLocaleString();
+}
+
+/** 대시보드 wonRevenue { KRW, USD } → 표시 문자열 (통화 혼합 시 · 구분) */
+function formatWonRevenue(w) {
+  const krw = w?.KRW ?? 0;
+  const usd = w?.USD ?? 0;
+  if (!krw && !usd) return formatCurrency(0, 'KRW');
+  const parts = [];
+  if (krw) parts.push(formatCurrency(krw, 'KRW'));
+  if (usd) parts.push(formatCurrency(usd, 'USD'));
+  return parts.join(' · ');
+}
+
 export default function Home() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [grouped, setGrouped] = useState({});
+  const [totals, setTotals] = useState({});
+  const [stageDefinitions, setStageDefinitions] = useState([]);
+  const [pipelineLoading, setPipelineLoading] = useState(true);
+  const [healthPinged, setHealthPinged] = useState(false);
+  const pipelineMounted = useRef(true);
 
   useEffect(() => {
     let cancelled = false;
     const fetchData = async () => {
       try {
-        const res = await fetch(`${API_BASE}/reports/dashboard`);
+        const res = await fetch(`${API_BASE}/reports/dashboard`, { headers: getAuthHeader() });
         if (!cancelled && res.ok) {
           const json = await res.json();
           setData(json);
         }
       } catch (_) {
         if (!cancelled) setData({
-          totalRevenue: 425890,
+          wonRevenue: { KRW: 0, USD: 0 },
           activeDeals: 128,
           newLeads: 45,
           taskCompletion: 82
@@ -31,13 +70,124 @@ export default function Home() {
     return () => { cancelled = true; };
   }, []);
 
+  const fetchStageDefinitions = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=salesPipelineStage`, { headers: getAuthHeader() });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(json.items)) setStageDefinitions(json.items);
+      else setStageDefinitions([]);
+    } catch {
+      setStageDefinitions([]);
+    }
+  }, []);
+
+  const fetchPipeline = useCallback(async () => {
+    setPipelineLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/sales-opportunities`, { headers: getAuthHeader() });
+      if (!res.ok) throw new Error('fetch failed');
+      const json = await res.json();
+      if (pipelineMounted.current) {
+        setGrouped(json.grouped || {});
+        setTotals(json.totals || {});
+      }
+    } catch {
+      if (pipelineMounted.current) {
+        setGrouped({});
+        setTotals({});
+      }
+    } finally {
+      if (pipelineMounted.current) setPipelineLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    pipelineMounted.current = true;
+    return () => { pipelineMounted.current = false; };
+  }, []);
+
+  useEffect(() => {
+    fetchStageDefinitions();
+  }, [fetchStageDefinitions]);
+
+  useEffect(() => {
+    if (!healthPinged) {
+      fetch(`${API_BASE}/health`).finally(() => setHealthPinged(true));
+      return;
+    }
+    fetchPipeline();
+  }, [fetchPipeline, healthPinged]);
+
+  const activeStages = stageDefinitions.length > 0
+    ? stageDefinitions.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((d) => d.key)
+    : DEFAULT_ACTIVE_STAGES;
+  const stageLabels = stageDefinitions.length > 0
+    ? Object.fromEntries(stageDefinitions.map((d) => [d.key, d.label]))
+    : DEFAULT_STAGE_LABELS;
+
+  /** 세일즈 현황 메인 컬럼만 (Quick Actions·드롭존 단계 제외) */
+  const pipelineMainStages = useMemo(
+    () => activeStages.filter((s) => !DROP_ZONE_STAGES.includes(s)),
+    [activeStages]
+  );
+
+  const inProgressDealCount = useMemo(
+    () => pipelineMainStages.reduce((sum, s) => sum + (grouped[s]?.length || 0), 0),
+    [pipelineMainStages, grouped]
+  );
+
+  /** 파이프라인 첫 컬럼 = 세일즈 현황 좌측 첫 단계(기본 NewLead) */
+  const firstPipelineStageKey = pipelineMainStages[0] || 'NewLead';
+  const newLeadStageCount = grouped[firstPipelineStageKey]?.length ?? 0;
+  const firstPipelineStageLabel =
+    stageLabels[firstPipelineStageKey] ||
+    DEFAULT_STAGE_LABELS[firstPipelineStageKey] ||
+    firstPipelineStageKey;
+
   const stats = data || {};
   const cards = [
-    { label: '총 매출', value: `$${(stats.totalRevenue || 0).toLocaleString()}`, trend: '+12.5%', up: true, color: 'primary' },
-    { label: '진행 중인 딜', value: stats.activeDeals ?? 128, trend: '-2.4%', up: false, color: 'rose' },
-    { label: '신규 리드', value: stats.newLeads ?? 45, trend: '+5.0%', up: true, color: 'mint' },
-    { label: '업무 완료율', value: `${stats.taskCompletion ?? 82}%`, trend: '+8.2%', up: true, color: 'primary' }
+    {
+      label: '총 매출 (수주 성공)',
+      value: formatWonRevenue(stats.wonRevenue),
+      color: 'primary',
+      fromPipeline: false
+    },
+    {
+      label: '진행 중 딜 (파이프라인)',
+      value: inProgressDealCount,
+      color: 'rose',
+      fromPipeline: true
+    },
+    {
+      label: `${firstPipelineStageLabel} · 파이프라인 첫 단계`,
+      value: newLeadStageCount,
+      color: 'mint',
+      fromPipeline: true
+    },
+    {
+      label: '업무 완료율',
+      value: `${stats.taskCompletion ?? 82}%`,
+      color: 'primary',
+      fromPipeline: false
+    }
   ];
+
+  const pipelineColumns = useMemo(() => {
+    const cols = pipelineMainStages.map((stage) => {
+      const items = grouped[stage] || [];
+      const total = totals[stage] || 0;
+      const mainCurrency = items.length > 0 ? (items[0].currency || 'KRW') : 'KRW';
+      return { stage, label: stageLabels[stage] ?? stage, count: items.length, total, currency: mainCurrency };
+    });
+    const maxCount = Math.max(1, ...cols.map((c) => c.count));
+    const maxTotal = Math.max(1, ...cols.map((c) => c.total));
+    return cols.map((c) => ({
+      ...c,
+      hCount: Math.round((c.count / maxCount) * 95),
+      hValue: Math.round((c.total / maxTotal) * 95),
+      hMix: Math.round(((c.count / maxCount + c.total / maxTotal) / 2) * 95)
+    }));
+  }, [pipelineMainStages, grouped, totals, stageLabels]);
 
   return (
     <div className="page home-page">
@@ -59,9 +209,10 @@ export default function Home() {
             <div key={card.label} className="stat-card">
               <div className="stat-card-top">
                 <p className="stat-label">{card.label}</p>
-                <span className={`stat-trend ${card.up ? 'up' : 'down'}`}>{card.trend}</span>
               </div>
-              <h3 className="stat-value">{loading ? '—' : card.value}</h3>
+              <h3 className="stat-value">
+                {card.fromPipeline ? (pipelineLoading ? '—' : card.value) : loading ? '—' : card.value}
+              </h3>
               <div className="stat-bar-wrap">
                 <div className={`stat-bar stat-bar-${card.color}`} style={{ width: typeof card.value === 'string' && card.value.includes('%') ? card.value : '65%' }} />
               </div>
@@ -73,24 +224,32 @@ export default function Home() {
           <div className="panel-head">
             <h2>영업 파이프라인</h2>
             <div className="panel-actions">
-              <button type="button" className="chip active">최근 30일</button>
-              <button type="button" className="chip">최근 90일</button>
+              <Link to="/sales-pipeline" className="home-pipeline-link">
+                세일즈 현황에서 관리
+                <span className="material-symbols-outlined" aria-hidden>arrow_forward</span>
+              </Link>
             </div>
           </div>
           <div className="pipeline-bars">
-            {['리드 (24)', '검토 (18)', '제안 (12)', '협상 (8)', '계약 (32)'].map((label, i) => (
-              <div key={label} className="pipeline-col">
-                <div className="pipeline-label">
-                  <span>{label}</span>
-                  <span className="pipeline-value">{['$240k', '$185k', '$310k', '$215k', '$1.2M'][i]}</span>
+            {pipelineLoading ? (
+              <p className="home-pipeline-loading">파이프라인 불러오는 중…</p>
+            ) : pipelineColumns.length === 0 ? (
+              <p className="home-pipeline-empty">표시할 단계가 없습니다. 세일즈 현황에서 단계를 설정해 주세요.</p>
+            ) : (
+              pipelineColumns.map((col) => (
+                <div key={col.stage} className="pipeline-col">
+                  <div className="pipeline-label">
+                    <span>{col.label} ({col.count})</span>
+                    <span className="pipeline-value">{formatCurrency(col.total, col.currency)}</span>
+                  </div>
+                  <div className="pipeline-bar-wrap">
+                    <div className="pipeline-bar" style={{ height: `${col.hCount}%` }} title={`건수 비중 ${col.count}건`} />
+                    <div className="pipeline-bar alt" style={{ height: `${col.hValue}%` }} title="단계별 금액 비중" />
+                    <div className="pipeline-bar dark" style={{ height: `${col.hMix}%` }} title="건수·금액 혼합" />
+                  </div>
                 </div>
-                <div className="pipeline-bar-wrap">
-                  <div className="pipeline-bar" style={{ height: [40, 65, 50, 75, 95][i] + '%' }} />
-                  <div className="pipeline-bar alt" style={{ height: [65, 80, 60, 90, 100][i] + '%' }} />
-                  <div className="pipeline-bar dark" style={{ height: [50, 70, 60, 85, 90][i] + '%' }} />
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
 

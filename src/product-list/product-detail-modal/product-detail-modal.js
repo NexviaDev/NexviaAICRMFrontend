@@ -5,10 +5,10 @@ import './product-detail-modal.css';
 
 import { API_BASE } from '@/config';
 const STATUS_OPTIONS = ['Active', 'EndOfLife', 'Draft'];
-const BILLING_OPTIONS = ['Monthly', 'Annual'];
+const BILLING_OPTIONS = ['Monthly', 'Annual', 'Perpetual'];
 const CURRENCY_OPTIONS = ['KRW', 'USD'];
 const STATUS_LABELS = { Active: '활성', EndOfLife: 'End of Life', Draft: '초안' };
-const BILLING_LABELS = { Monthly: '월간', Annual: '연간' };
+const BILLING_LABELS = { Monthly: '월간', Annual: '연간', Perpetual: '영구' };
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -218,7 +218,7 @@ export default function ProductDetailModal({ product, onClose, onUpdated, onDele
                   <label htmlFor="product-edit-billingType">결제 주기</label>
                   <select id="product-edit-billingType" name="billingType" value={editForm.billingType} onChange={handleEditChange}>
                     {BILLING_OPTIONS.map((b) => (
-                      <option key={b} value={b}>{b === 'Monthly' ? '월간' : '연간'}</option>
+                      <option key={b} value={b}>{BILLING_LABELS[b] ?? b}</option>
                     ))}
                   </select>
                 </div>

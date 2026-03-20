@@ -46,3 +46,16 @@ button {
 input, select, textarea {
   font-family: inherit;
 }
+
+/* 리스트 테이블 본문: 행 셀 텍스트 동일 크기 (헤더·툴바·페이지네이션 제외) */
+.customer-companies-page .data-table tbody td,
+.customer-company-employees-page .data-table tbody td,
+.product-list-page .data-table tbody td {
+  font-size: 0.875rem;
+}
+
+.customer-companies-page .data-table tbody td .status-badge,
+.customer-company-employees-page .data-table tbody td .status-badge,
+.product-list-page .data-table tbody td .status-badge {
+  font-size: 0.875rem;
+}

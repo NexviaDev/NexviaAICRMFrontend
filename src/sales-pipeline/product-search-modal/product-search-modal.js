@@ -19,6 +19,8 @@ const FIELD_LABELS = {
   status: '상태'
 };
 
+const BILLING_LABELS = { Monthly: '월간', Annual: '연간', Perpetual: '영구' };
+
 /** 제품 객체에서 표시용 키 목록 (순서 유지, 내부 필드 제외) */
 function getDisplayKeys(product) {
   const skip = new Set(['_id', 'companyId', 'createdAt', 'updatedAt', '__v']);
@@ -31,6 +33,7 @@ function getDisplayKeys(product) {
 function formatDisplayValue(key, value) {
   if (value == null || value === '') return '—';
   if (key === 'price') return Number(value).toLocaleString();
+  if (key === 'billingType') return BILLING_LABELS[value] ?? String(value);
   if (typeof value === 'object' && !Array.isArray(value) && value !== null) {
     return Object.entries(value).filter(([, v]) => v != null && v !== '').map(([k, v]) => `${k}: ${v}`).join(', ') || '—';
   }

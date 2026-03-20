@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AddProductModal from './add-product-modal/add-product-modal';
 import ProductDetailModal from './product-detail-modal/product-detail-modal';
-import RegisterSaleModal from './register-sale-modal/register-sale-modal';
 import ListTemplateModal from '../components/list-template-modal/list-template-modal';
 import {
   LIST_IDS,
@@ -14,12 +13,28 @@ import './product-list.css';
 
 import { API_BASE } from '@/config';
 const LIST_ID = LIST_IDS.PRODUCT_LIST;
-const LIMIT = 20;
+const LIMIT = 10;
+
+/** 페이지네이션에 표시할 번호 목록 (현재 페이지 주변 + 첫/끝, 생략은 '...') — customer-companies와 동일 */
+function getPageNumbers(current, total) {
+  if (total <= 0) return [];
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages = new Set([1, total, current, current - 1, current + 1].filter((p) => p >= 1 && p <= total));
+  const sorted = [...pages].sort((a, b) => a - b);
+  const result = [];
+  for (let i = 0; i < sorted.length; i++) {
+    if (i > 0 && sorted[i] - sorted[i - 1] > 1) result.push('...');
+    result.push(sorted[i]);
+  }
+  return result;
+}
+
 const MODAL_PARAM = 'modal';
 const MODAL_DETAIL = 'detail';
 const DETAIL_ID_PARAM = 'id';
 const STATUS_LABELS = { Active: '활성', EndOfLife: 'End of Life', Draft: '초안' };
-const BILLING_LABELS = { Monthly: '월간', Annual: '연간' };
+const BILLING_LABELS = { Monthly: '월간', Annual: '연간', Perpetual: '영구' };
+const CUSTOM_FIELDS_PREFIX = 'customFields.';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -42,8 +57,7 @@ export default function ProductList() {
   const [filterBilling, setFilterBilling] = useState('');
   const [loading, setLoading] = useState(true);
   const [addModalOpen, setAddModalOpen] = useState(false);
-  const [registerSaleOpen, setRegisterSaleOpen] = useState(false);
-  const [registerSaleInitialProduct, setRegisterSaleInitialProduct] = useState(null);
+  const [customFieldColumns, setCustomFieldColumns] = useState([]);
   const [template, setTemplate] = useState(() => getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID)));
   const [dragOverKey, setDragOverKey] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -55,12 +69,10 @@ export default function ProductList() {
   const isDetailOpen = searchParams.get(MODAL_PARAM) === MODAL_DETAIL && detailId;
   const detailProduct = isDetailOpen ? items.find((p) => p._id === detailId) || null : null;
 
-  const fetchList = useCallback(async () => {
+  const fetchList = useCallback(async (page = 1) => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      params.set('page', String(pagination.page));
-      params.set('limit', String(pagination.limit));
+      const params = new URLSearchParams({ page: String(page), limit: String(LIMIT) });
       if (searchApplied) params.set('search', searchApplied);
       if (filterStatus) params.set('status', filterStatus);
       if (filterBilling) params.set('billingType', filterBilling);
@@ -68,32 +80,42 @@ export default function ProductList() {
       if (res.ok) {
         const data = await res.json();
         setItems(data.items || []);
-        setPagination((prev) => ({
-          ...prev,
-          total: data.pagination?.total ?? 0,
-          totalPages: data.pagination?.totalPages ?? 0
-        }));
+        setPagination(data.pagination || { page: 1, limit: LIMIT, total: 0, totalPages: 0 });
       } else {
         setItems([]);
+        setPagination((p) => ({ ...p, total: 0, totalPages: 0 }));
       }
     } catch (_) {
       setItems([]);
+      setPagination((p) => ({ ...p, total: 0, totalPages: 0 }));
     } finally {
       setLoading(false);
     }
-  }, [pagination.page, pagination.limit, searchApplied, filterStatus, filterBilling]);
+  }, [searchApplied, filterStatus, filterBilling]);
 
-  useEffect(() => { fetchList(); }, [fetchList]);
+  useEffect(() => { fetchList(pagination.page); }, [pagination.page, fetchList]);
+  useEffect(() => { setPagination((p) => ({ ...p, page: 1 })); }, [searchApplied, filterStatus, filterBilling]);
+
+  /** 제품 커스텀 필드 정의 → 리스트 템플릿 열에 반영 (열 설정 모달·표시 순서) */
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE}/custom-field-definitions?entityType=product`, { headers: getAuthHeader() })
+      .then((r) => r.json().catch(() => ({})))
+      .then((data) => {
+        if (cancelled) return;
+        const defs = Array.isArray(data?.items) ? data.items : [];
+        const extra = defs.map((d) => ({ key: `${CUSTOM_FIELDS_PREFIX}${d.key}`, label: d.label || d.key || '' }));
+        setCustomFieldColumns(extra);
+        setTemplate((prev) => getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), extra));
+      })
+      .catch(() => { if (!cancelled) setCustomFieldColumns([]); });
+    return () => { cancelled = true; };
+  }, []);
 
   const runSearch = (e) => {
     e?.preventDefault();
     setSearchApplied(searchInput.trim());
     setPagination((p) => ({ ...p, page: 1 }));
-  };
-
-  const setPage = (page) => {
-    if (page < 1 || page > pagination.totalPages) return;
-    setPagination((p) => ({ ...p, page }));
   };
 
   const openAdd = () => setAddModalOpen(true);
@@ -114,7 +136,7 @@ export default function ProductList() {
       const res = await fetch(`${API_BASE}/products/${row._id}`, { method: 'DELETE', headers: getAuthHeader() });
       if (res.ok) {
         closeDetail();
-        fetchList();
+        fetchList(pagination.page);
       } else {
         const data = await res.json().catch(() => ({}));
         alert(data.error || '삭제에 실패했습니다.');
@@ -124,18 +146,15 @@ export default function ProductList() {
     }
   };
 
-  const start = pagination.total === 0 ? 0 : (pagination.page - 1) * pagination.limit + 1;
-  const end = Math.min(pagination.page * pagination.limit, pagination.total);
-
   const saveTemplate = useCallback(async (payload) => {
     try {
       const data = await patchListTemplate(LIST_ID, payload);
-      const next = getEffectiveTemplate(LIST_ID, data.listTemplates?.[LIST_ID] || payload);
+      const next = getEffectiveTemplate(LIST_ID, data.listTemplates?.[LIST_ID] || payload, customFieldColumns);
       setTemplate(next);
     } catch (err) {
       alert(err.message || '저장에 실패했습니다.');
     }
-  }, []);
+  }, [customFieldColumns]);
 
   const handleHeaderDragStart = (e, key) => {
     e.dataTransfer.setData('text/plain', key);
@@ -165,10 +184,18 @@ export default function ProductList() {
 
   const getSortValue = useCallback((row, key) => {
     if (key === 'name') return (row.name || '').toLowerCase();
+    if (key === 'code') return (row.code || '').toLowerCase();
     if (key === 'category') return (row.category || '').toLowerCase();
     if (key === 'version') return (row.version || '').toLowerCase();
     if (key === 'price') return Number(row.price) || 0;
+    if (key === 'currency') return (row.currency || '').toLowerCase();
+    if (key === 'billingType') return (row.billingType || '').toLowerCase();
     if (key === 'status') return (row.status || '').toLowerCase();
+    if (key.startsWith(CUSTOM_FIELDS_PREFIX)) {
+      const fk = key.slice(CUSTOM_FIELDS_PREFIX.length);
+      const v = row.customFields?.[fk];
+      return (v !== undefined && v !== null ? String(v) : '').toLowerCase();
+    }
     return '';
   }, []);
 
@@ -203,7 +230,7 @@ export default function ProductList() {
           <form id="product-list-search-form" onSubmit={runSearch} className="header-search-form">
             <input
               type="text"
-              placeholder="제품명, 카테고리, 버전, 코드 검색..."
+              placeholder="모든 필드 검색 (제품명, 코드, 카테고리, 버전, 가격, 통화, 결제·상태, 커스텀 필드 등)…"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               aria-label="제품 검색"
@@ -213,7 +240,16 @@ export default function ProductList() {
         <div className="header-actions">
           <button type="button" className="icon-btn" aria-label="알림"><span className="material-symbols-outlined">notifications</span></button>
           <button type="button" className="icon-btn" aria-label="채팅"><span className="material-symbols-outlined">chat_bubble</span></button>
-          <button type="button" className="icon-btn" aria-label="리스트 열 설정" onClick={() => setSettingsOpen(true)} title="리스트 열 설정">
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="리스트 열 설정"
+            onClick={() => {
+              setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), customFieldColumns));
+              setSettingsOpen(true);
+            }}
+            title="리스트 열 설정"
+          >
             <span className="material-symbols-outlined">settings</span>
           </button>
         </div>
@@ -225,9 +261,6 @@ export default function ProductList() {
             <p className="page-desc">총 {pagination.total}개 제품</p>
           </div>
           <div className="product-list-top-actions">
-            <button type="button" className="btn-secondary product-list-btn-register-sale" onClick={() => { setRegisterSaleInitialProduct(null); setRegisterSaleOpen(true); }}>
-              <span className="material-symbols-outlined">point_of_sale</span> 판매 등록
-            </button>
             <button type="button" className="btn-primary" onClick={openAdd}>
               <span className="material-symbols-outlined">add</span> 제품 추가
             </button>
@@ -238,7 +271,7 @@ export default function ProductList() {
             <select
               className="product-list-filter-select"
               value={filterStatus}
-              onChange={(e) => { setFilterStatus(e.target.value); setPagination((p) => ({ ...p, page: 1 })); }}
+              onChange={(e) => setFilterStatus(e.target.value)}
               aria-label="상태 필터"
             >
               <option value="">상태: 전체</option>
@@ -249,12 +282,13 @@ export default function ProductList() {
             <select
               className="product-list-filter-select"
               value={filterBilling}
-              onChange={(e) => { setFilterBilling(e.target.value); setPagination((p) => ({ ...p, page: 1 })); }}
+              onChange={(e) => setFilterBilling(e.target.value)}
               aria-label="결제 주기 필터"
             >
               <option value="">결제: 전체</option>
               <option value="Monthly">월간</option>
               <option value="Annual">연간</option>
+              <option value="Perpetual">영구</option>
             </select>
           </div>
         </div>
@@ -302,25 +336,16 @@ export default function ProductList() {
                       {displayColumns.map((col) => (
                         <td key={col.key}>
                           {col.key === 'name' && (
-                            <div className="product-list-cell-name-wrap" onClick={(e) => e.stopPropagation()}>
-                              <div className="product-list-cell-name">
-                                <div className="product-list-icon-wrap">
-                                  <span className="material-symbols-outlined">inventory_2</span>
-                                </div>
-                                <div>
-                                  <span className="product-list-name">{row.name || '—'}</span>
-                                  {row.code && <span className="product-list-uid">UID: {row.code}</span>}
-                                </div>
+                            <div className="product-list-cell-name">
+                              <div className="product-list-icon-wrap">
+                                <span className="material-symbols-outlined">inventory_2</span>
                               </div>
-                              <button
-                                type="button"
-                                className="product-list-row-sale-btn"
-                                onClick={() => { setRegisterSaleInitialProduct(row); setRegisterSaleOpen(true); }}
-                                title="이 제품으로 판매 등록"
-                                aria-label="판매 등록"
-                              >
-                                <span className="material-symbols-outlined">point_of_sale</span>
-                              </button>
+                              <div>
+                                <span className="product-list-name">{row.name || '—'}</span>
+                                {row.code && !template.visible?.code && (
+                                  <span className="product-list-uid">UID: {row.code}</span>
+                                )}
+                              </div>
                             </div>
                           )}
                           {col.key === 'category' && (
@@ -329,10 +354,17 @@ export default function ProductList() {
                             ) : '—'
                           )}
                           {col.key === 'version' && <span className="product-list-version">{row.version || '—'}</span>}
+                          {col.key === 'code' && <span className="text-muted">{row.code || '—'}</span>}
+                          {col.key === 'currency' && <span>{row.currency || '—'}</span>}
+                          {col.key === 'billingType' && (
+                            <span className="product-list-billing">{row.billingType ? BILLING_LABELS[row.billingType] || row.billingType : '—'}</span>
+                          )}
                           {col.key === 'price' && (
                             <div className="product-list-pricing">
                               <span className="product-list-price">{formatPrice(row.price, row.currency)}</span>
-                              <span className="product-list-billing">{row.billingType ? BILLING_LABELS[row.billingType] || row.billingType : ''}</span>
+                              {row.billingType && !template.visible?.billingType && (
+                                <span className="product-list-billing">{BILLING_LABELS[row.billingType] || row.billingType}</span>
+                              )}
                             </div>
                           )}
                           {col.key === 'status' && (
@@ -340,6 +372,11 @@ export default function ProductList() {
                               {STATUS_LABELS[row.status] || row.status}
                             </span>
                           )}
+                          {col.key.startsWith(CUSTOM_FIELDS_PREFIX) && (() => {
+                            const fk = col.key.slice(CUSTOM_FIELDS_PREFIX.length);
+                            const v = row.customFields?.[fk];
+                            return <span className="text-muted">{v !== undefined && v !== null && v !== '' ? String(v) : '—'}</span>;
+                          })()}
                         </td>
                       ))}
                     </tr>
@@ -348,62 +385,40 @@ export default function ProductList() {
               </tbody>
             </table>
           </div>
-          {pagination.totalPages > 0 && (
-            <div className="product-list-pagination">
-              <span className="product-list-pagination-info">
-                {start}–{end} / 총 {pagination.total}건
-              </span>
-              <div className="product-list-pagination-btns">
-                <button
-                  type="button"
-                  className="product-list-page-btn"
-                  onClick={() => setPage(pagination.page - 1)}
-                  disabled={pagination.page <= 1}
-                  aria-label="이전 페이지"
-                >
-                  <span className="material-symbols-outlined">chevron_left</span>
-                </button>
-                {(() => {
-                  const total = pagination.totalPages;
-                  if (total <= 0) return null;
-                  const len = Math.min(5, total);
-                  let start = Math.max(1, pagination.page - Math.floor(len / 2));
-                  if (start + len > total + 1) start = total - len + 1;
-                  if (start < 1) start = 1;
-                  return Array.from({ length: len }, (_, i) => {
-                    const p = start + i;
-                    if (p > total) return null;
-                    return (
-                      <button
-                        key={p}
-                        type="button"
-                        className={`product-list-page-btn ${p === pagination.page ? 'active' : ''}`}
-                        onClick={() => setPage(p)}
-                      >
-                        {p}
-                      </button>
-                    );
-                  });
-                })()}
-                <button
-                  type="button"
-                  className="product-list-page-btn"
-                  onClick={() => setPage(pagination.page + 1)}
-                  disabled={pagination.page >= pagination.totalPages}
-                  aria-label="다음 페이지"
-                >
-                  <span className="material-symbols-outlined">chevron_right</span>
-                </button>
-              </div>
+          <div className="pagination-bar">
+            <p className="pagination-info">
+              <strong>{pagination.total}</strong>개 중 <strong>{items.length ? (pagination.page - 1) * pagination.limit + 1 : 0}</strong>–<strong>{(pagination.page - 1) * pagination.limit + items.length}</strong>건 표시
+            </p>
+            <div className="pagination-btns">
+              <button type="button" className="pagination-btn" aria-label="첫 페이지" disabled={pagination.page <= 1} onClick={() => setPagination((p) => ({ ...p, page: 1 }))}><span className="material-symbols-outlined">first_page</span></button>
+              <button type="button" className="pagination-btn" aria-label="이전 페이지" disabled={pagination.page <= 1} onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}><span className="material-symbols-outlined">chevron_left</span></button>
+              {getPageNumbers(pagination.page, pagination.totalPages || 1).map((n, i) =>
+                n === '...' ? (
+                  <span key={`ellipsis-${i}`} className="pagination-ellipsis" aria-hidden>…</span>
+                ) : (
+                  <button
+                    key={n}
+                    type="button"
+                    className={`pagination-btn pagination-btn-num ${pagination.page === n ? 'active' : ''}`}
+                    aria-label={`${n}페이지`}
+                    aria-current={pagination.page === n ? 'page' : undefined}
+                    onClick={() => setPagination((p) => ({ ...p, page: n }))}
+                  >
+                    {n}
+                  </button>
+                )
+              )}
+              <button type="button" className="pagination-btn" aria-label="다음 페이지" disabled={pagination.page >= (pagination.totalPages || 1)} onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}><span className="material-symbols-outlined">chevron_right</span></button>
+              <button type="button" className="pagination-btn" aria-label="마지막 페이지" disabled={pagination.page >= (pagination.totalPages || 1)} onClick={() => setPagination((p) => ({ ...p, page: pagination.totalPages || 1 }))}><span className="material-symbols-outlined">last_page</span></button>
             </div>
-          )}
+          </div>
         </div>
       </div>
       {addModalOpen && (
         <AddProductModal
           product={null}
           onClose={closeAddModal}
-          onSaved={() => { fetchList(); closeAddModal(); }}
+          onSaved={() => { fetchList(pagination.page); closeAddModal(); }}
         />
       )}
       {settingsOpen && (
@@ -420,15 +435,8 @@ export default function ProductList() {
         <ProductDetailModal
           product={detailProduct}
           onClose={closeDetail}
-          onUpdated={(updated) => { fetchList(); }}
+          onUpdated={() => { fetchList(pagination.page); }}
           onDelete={handleDelete}
-        />
-      )}
-      {registerSaleOpen && (
-        <RegisterSaleModal
-          initialProduct={registerSaleInitialProduct}
-          onClose={() => { setRegisterSaleOpen(false); setRegisterSaleInitialProduct(null); }}
-          onSaved={() => setRegisterSaleOpen(false)}
         />
       )}
     </div>

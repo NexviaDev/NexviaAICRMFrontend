@@ -113,9 +113,6 @@
 }
 
 .stat-card-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
   margin-bottom: 0.5rem;
 }
 
@@ -126,23 +123,6 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-muted);
-}
-
-.stat-trend {
-  font-size: 0.7rem;
-  font-weight: 700;
-  padding: 0.2rem 0.5rem;
-  border-radius: 9999px;
-}
-
-.stat-trend.up {
-  background: var(--pastel-mint);
-  color: var(--success);
-}
-
-.stat-trend.down {
-  background: var(--pastel-peach);
-  color: var(--danger);
 }
 
 .stat-value {
@@ -210,10 +190,46 @@
   color: var(--primary);
 }
 
+.home-pipeline-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--primary);
+  text-decoration: none;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+  transition: color 0.2s, opacity 0.2s;
+}
+
+.home-pipeline-link:hover {
+  background: none;
+  color: var(--primary);
+  opacity: 0.85;
+  text-decoration: underline;
+}
+
+.home-pipeline-link .material-symbols-outlined {
+  font-size: 1rem;
+}
+
+.home-pipeline-loading,
+.home-pipeline-empty {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 1rem 0;
+  text-align: center;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
 .sales-pipeline .pipeline-bars {
   padding: 2rem;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr));
   gap: 1rem;
 }
 

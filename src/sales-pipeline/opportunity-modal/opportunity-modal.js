@@ -26,6 +26,8 @@ const CURRENCY_OPTIONS = [
   { value: 'JPY', label: 'JPY' }
 ];
 
+const PRODUCT_BILLING_LABELS = { Monthly: '월간', Annual: '연간', Perpetual: '영구' };
+
 
 function formatNumberInput(val) {
   const num = String(val).replace(/[^0-9]/g, '');
@@ -302,7 +304,7 @@ export default function OpportunityModal({ mode, oppId, defaultStage, stageOptio
                         {selectedProduct.code != null && selectedProduct.code !== '' && <><dt>코드</dt><dd>{selectedProduct.code}</dd></>}
                         {selectedProduct.category != null && selectedProduct.category !== '' && <><dt>카테고리</dt><dd>{selectedProduct.category}</dd></>}
                         {selectedProduct.version != null && selectedProduct.version !== '' && <><dt>버전</dt><dd>{selectedProduct.version}</dd></>}
-                        {selectedProduct.billingType != null && selectedProduct.billingType !== '' && <><dt>결제 유형</dt><dd>{selectedProduct.billingType}</dd></>}
+                        {selectedProduct.billingType != null && selectedProduct.billingType !== '' && <><dt>결제 유형</dt><dd>{PRODUCT_BILLING_LABELS[selectedProduct.billingType] ?? selectedProduct.billingType}</dd></>}
                         {selectedProduct.status != null && selectedProduct.status !== '' && <><dt>상태</dt><dd>{selectedProduct.status}</dd></>}
                         {selectedProduct.customFields && typeof selectedProduct.customFields === 'object' && Object.entries(selectedProduct.customFields).filter(([, v]) => v != null && v !== '').map(([k, v]) => (
                           <React.Fragment key={k}><dt>{k}</dt><dd>{String(v)}</dd></React.Fragment>
