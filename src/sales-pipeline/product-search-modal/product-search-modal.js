@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import './product-search-modal.css';
 
 import { API_BASE } from '@/config';
+import { listPriceFromProduct } from '@/lib/product-price-utils';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -13,7 +14,10 @@ const FIELD_LABELS = {
   code: '코드',
   category: '카테고리',
   version: '버전',
-  price: '가격',
+  price: '소비자가',
+  listPrice: '소비자가',
+  costPrice: '원가',
+  channelPrice: '유통가',
   currency: '통화',
   billingType: '결제 유형',
   status: '상태'
@@ -23,14 +27,26 @@ const BILLING_LABELS = { Monthly: '월간', Annual: '연간', Perpetual: '영구
 
 /** 제품 객체에서 표시용 키 목록 (순서 유지, 내부 필드 제외) */
 function getDisplayKeys(product) {
-  const skip = new Set(['_id', 'companyId', 'createdAt', 'updatedAt', '__v']);
-  const order = ['name', 'code', 'category', 'version', 'price', 'currency', 'billingType', 'status'];
-  const ordered = order.filter((k) => product.hasOwnProperty(k));
+  const skip = new Set(['_id', 'companyId', 'createdAt', 'updatedAt', '__v', 'price']);
+  const order = ['name', 'code', 'category', 'version', 'listPrice', 'costPrice', 'channelPrice', 'currency', 'billingType', 'status'];
+  const ordered = order.filter((k) => {
+    if (k === 'listPrice') return product.listPrice != null || product.price != null;
+    if (k === 'costPrice' || k === 'channelPrice') return true;
+    return product.hasOwnProperty(k);
+  });
   const rest = Object.keys(product).filter((k) => !skip.has(k) && !order.includes(k));
   return [...ordered, ...rest];
 }
 
-function formatDisplayValue(key, value) {
+function formatDisplayValue(key, value, product) {
+  if (key === 'listPrice') {
+    const n = listPriceFromProduct(product);
+    return Number.isFinite(n) ? n.toLocaleString() : '—';
+  }
+  if (key === 'costPrice' || key === 'channelPrice') {
+    const n = value == null || value === '' ? 0 : Number(value);
+    return Number.isFinite(n) ? n.toLocaleString() : '—';
+  }
   if (value == null || value === '') return '—';
   if (key === 'price') return Number(value).toLocaleString();
   if (key === 'billingType') return BILLING_LABELS[value] ?? String(value);
@@ -216,7 +232,7 @@ export default function ProductSearchModal({ onClose, onSelect }) {
                             <span className="product-search-modal-item-value">
                               {key === 'customFields' && typeof p[key] === 'object'
                                 ? Object.entries(p[key] || {}).filter(([, v]) => v != null && v !== '').map(([k, v]) => `${k}: ${v}`).join(', ') || '—'
-                                : formatDisplayValue(key, p[key])}
+                                : formatDisplayValue(key, p[key], p)}
                             </span>
                           </div>
                         ))}

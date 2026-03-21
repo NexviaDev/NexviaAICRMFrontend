@@ -37,7 +37,9 @@ export const DEFAULT_COLUMNS = {
     { key: 'code', label: '제품 코드' },
     { key: 'category', label: '카테고리' },
     { key: 'version', label: '버전' },
-    { key: 'price', label: '가격' },
+    { key: 'price', label: '소비자가' },
+    { key: 'costPrice', label: '원가' },
+    { key: 'channelPrice', label: '유통가' },
     { key: 'currency', label: '통화' },
     { key: 'billingType', label: '결제 주기' },
     { key: 'status', label: '상태' }

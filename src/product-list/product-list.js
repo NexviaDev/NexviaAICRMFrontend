@@ -12,6 +12,7 @@ import {
 import './product-list.css';
 
 import { API_BASE } from '@/config';
+import { listPriceFromProduct } from '@/lib/product-price-utils';
 const LIST_ID = LIST_IDS.PRODUCT_LIST;
 const LIMIT = 10;
 
@@ -187,7 +188,9 @@ export default function ProductList() {
     if (key === 'code') return (row.code || '').toLowerCase();
     if (key === 'category') return (row.category || '').toLowerCase();
     if (key === 'version') return (row.version || '').toLowerCase();
-    if (key === 'price') return Number(row.price) || 0;
+    if (key === 'price') return listPriceFromProduct(row);
+    if (key === 'costPrice') return Number(row.costPrice) || 0;
+    if (key === 'channelPrice') return Number(row.channelPrice) || 0;
     if (key === 'currency') return (row.currency || '').toLowerCase();
     if (key === 'billingType') return (row.billingType || '').toLowerCase();
     if (key === 'status') return (row.status || '').toLowerCase();
@@ -361,11 +364,17 @@ export default function ProductList() {
                           )}
                           {col.key === 'price' && (
                             <div className="product-list-pricing">
-                              <span className="product-list-price">{formatPrice(row.price, row.currency)}</span>
+                              <span className="product-list-price">{formatPrice(listPriceFromProduct(row), row.currency)}</span>
                               {row.billingType && !template.visible?.billingType && (
                                 <span className="product-list-billing">{BILLING_LABELS[row.billingType] || row.billingType}</span>
                               )}
                             </div>
+                          )}
+                          {col.key === 'costPrice' && (
+                            <span className="product-list-price">{formatPrice(row.costPrice, row.currency)}</span>
+                          )}
+                          {col.key === 'channelPrice' && (
+                            <span className="product-list-price">{formatPrice(row.channelPrice, row.currency)}</span>
                           )}
                           {col.key === 'status' && (
                             <span className={`status-badge status-${row.status === 'Active' ? 'active' : row.status === 'EndOfLife' ? 'eol' : 'draft'}`}>

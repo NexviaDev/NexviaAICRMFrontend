@@ -4,6 +4,7 @@ import CustomFieldsSection from '../../shared/custom-fields-section';
 import ProductSalesModal from '../../shared/product-sales-modal/product-sales-modal';
 import RegisterSaleModal from '../../product-list/register-sale-modal/register-sale-modal';
 import AddContactModal from '../add-customer-company-employees-modal/add-customer-company-employees-modal';
+import DriveLargeFileWarningModal from '../../shared/drive-large-file-warning-modal/drive-large-file-warning-modal';
 import './customer-company-employees-detail-modal.css';
 
 import { API_BASE } from '@/config';
@@ -81,6 +82,7 @@ function sanitizeFolderNamePart(s, maxLen = 80) {
 }
 
 const DRIVE_FOLDER_MIME = 'application/vnd.google-apps.folder';
+const MAX_DRIVE_API_UPLOAD_SIZE = 5 * 1024 * 1024;
 
 function getDriveFolderIdFromLink(url) {
   if (!url || typeof url !== 'string') return null;
@@ -138,6 +140,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   const [driveFolderId, setDriveFolderId] = useState(null);
   const [driveUploading, setDriveUploading] = useState(false);
   const [driveError, setDriveError] = useState('');
+  const [largeFileWarning, setLargeFileWarning] = useState({ open: false, files: [], folderUrl: '' });
   const [docsDropActive, setDocsDropActive] = useState(false);
   const [dragInModal, setDragInModal] = useState(false);
   const [driveEmbedKey, setDriveEmbedKey] = useState(0);
@@ -177,7 +180,8 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   useEffect(() => {
     const onKey = (e) => {
       if (e.key !== 'Escape') return;
-      if (showRegisterSaleModal) setShowRegisterSaleModal(false);
+      if (largeFileWarning.open) setLargeFileWarning({ open: false, files: [], folderUrl: '' });
+      else if (showRegisterSaleModal) setShowRegisterSaleModal(false);
       else if (showProductSalesModal) setShowProductSalesModal(false);
       else if (showCardImageModal) setShowCardImageModal(false);
       else if (showContactCardEmptyPopover) setShowContactCardEmptyPopover(false);
@@ -190,7 +194,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, editing, showDeleteConfirm, showCardImageModal, showContactCardEmptyPopover, showProductSalesModal, showRegisterSaleModal]);
+  }, [onClose, editing, showDeleteConfirm, showCardImageModal, showContactCardEmptyPopover, showProductSalesModal, showRegisterSaleModal, largeFileWarning.open]);
 
   useEffect(() => {
     setDisplayedContact((prev) => ({ ...(prev || {}), ...(contact || {}) }));
@@ -456,6 +460,21 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
           setDriveFolderId(parentId);
           setDriveFolderLink(data.webViewLink || `https://drive.google.com/drive/folders/${parentId}`);
         }
+        const directDriveFiles = filesArray.filter((file) => Number(file?.size || 0) > MAX_DRIVE_API_UPLOAD_SIZE);
+        const apiUploadFiles = filesArray.filter((file) => Number(file?.size || 0) <= MAX_DRIVE_API_UPLOAD_SIZE);
+        if (directDriveFiles.length > 0) {
+          const names = directDriveFiles.slice(0, 3).map((file) => file.name).join(', ');
+          const more = directDriveFiles.length > 3 ? ` 외 ${directDriveFiles.length - 3}건` : '';
+          setDriveError(`5MB 초과 파일은 API로 바로 올릴 수 없습니다: ${names}${more}`);
+          setLargeFileWarning({
+            open: true,
+            files: directDriveFiles.map((file) => ({ name: file.name, size: file.size })),
+            folderUrl: `https://drive.google.com/drive/folders/${parentId}`
+          });
+        }
+        if (!apiUploadFiles.length) {
+          return;
+        }
         const uploadOne = async (file) => {
           const contentBase64 = await fileToBase64(file);
           if (!contentBase64) {
@@ -476,7 +495,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
           const upData = await up.json().catch(() => ({}));
           if (!up.ok) setDriveError((e) => (e ? e : (upData.error || '업로드 실패')));
         };
-        await Promise.all(filesArray.map((file) => uploadOne(file)));
+        await Promise.all(apiUploadFiles.map((file) => uploadOne(file)));
         fetchDriveFiles();
       } catch (_) {
         setDriveError('Drive에 연결할 수 없습니다.');
@@ -1262,6 +1281,16 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
           </div>
         </div>
       )}
+      <DriveLargeFileWarningModal
+        open={largeFileWarning.open}
+        files={largeFileWarning.files}
+        onClose={() => setLargeFileWarning({ open: false, files: [], folderUrl: '' })}
+        onConfirm={() => {
+          const url = largeFileWarning.folderUrl;
+          setLargeFileWarning({ open: false, files: [], folderUrl: '' });
+          if (url) window.open(url, '_blank', 'noopener,noreferrer');
+        }}
+      />
     </>
   );
 }

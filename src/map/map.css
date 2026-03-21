@@ -341,12 +341,52 @@ div[class*="gm-style-cc"] {
 .map-controls {
   display: flex;
   flex-direction: column;
+  align-items: flex-end;
   gap: 0.5rem;
+}
+
+.map-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.5rem;
+  padding: 0.5rem 0.8rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text, #334155);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, color 0.2s, transform 0.2s;
+}
+
+.map-filter-chip:hover {
+  background: #f0f9ff;
+  border-color: #93c5fd;
+  color: var(--primary, #2563eb);
+  transform: translateY(-1px);
+}
+
+.map-filter-chip.active {
+  background: #e0f2fe;
+  border-color: #60a5fa;
+  color: var(--primary, #2563eb);
+}
+
+.map-filter-chip .material-symbols-outlined {
+  font-size: 1.1rem;
+}
+
+.map-filter-chip span:last-child {
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
 .map-zoom-btns {
   display: flex;
   flex-direction: column;
+  width: fit-content;
+  align-self: flex-end;
   border-radius: 0.5rem;
   overflow: hidden;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);

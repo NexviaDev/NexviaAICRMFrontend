@@ -19,6 +19,20 @@ import Map from './map/map';
 import TodoList from './todo-list/todo-list';
 import GoogleChat from './chat/chat';
 import LeadCapture from './lead-capture/lead-capture';
+import LegalPublicPage from './legal/LegalPublicPage';
+
+function getStoredUser() {
+  try {
+    const raw = localStorage.getItem('crm_user');
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function isPendingUser() {
+  return getStoredUser()?.role === 'pending';
+}
 
 /** 로그인하지 않으면 /login으로 리다이렉트 */
 function ProtectedRoute({ children }) {
@@ -27,29 +41,35 @@ function ProtectedRoute({ children }) {
   return children;
 }
 
+function PendingRestrictedRoute({ children }) {
+  if (isPendingUser()) return <Navigate to="/company-overview" replace />;
+  return children;
+}
+
 function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
+      <Route path="/legal/:doc" element={<LegalPublicPage />} />
       <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-        <Route index element={<Home />} />
+        <Route index element={<PendingRestrictedRoute><Home /></PendingRestrictedRoute>} />
         <Route path="company-overview" element={<CompanyOverview />} />
-        <Route path="customer-companies" element={<CustomerCompanies />} />
-        <Route path="customer-company-employees" element={<CustomerCompanyEmployees />} />
-        <Route path="calendar" element={<Calendar />} />
-        <Route path="sales-pipeline" element={<SalesPipeline />} />
-        <Route path="product-list" element={<ProductList />} />
-        <Route path="lead-capture" element={<LeadCapture />} />
-        <Route path="meeting-minutes" element={<MeetingMinutes />} />
-        <Route path="ai-voice" element={<AiVoice />} />
-        <Route path="email" element={<Email />} />
-        <Route path="map" element={<Map />} />
-        <Route path="todo-list" element={<TodoList />} />
-        <Route path="chat" element={<GoogleChat />} />
-        <Route path="reports/sales" element={<SalesReport />} />
-        <Route path="reports/performance" element={<EmployeePerformance />} />
-        <Route path="reports/work-report/:employeeId?" element={<EmployeeWorkReport />} />
+        <Route path="customer-companies" element={<PendingRestrictedRoute><CustomerCompanies /></PendingRestrictedRoute>} />
+        <Route path="customer-company-employees" element={<PendingRestrictedRoute><CustomerCompanyEmployees /></PendingRestrictedRoute>} />
+        <Route path="calendar" element={<PendingRestrictedRoute><Calendar /></PendingRestrictedRoute>} />
+        <Route path="sales-pipeline" element={<PendingRestrictedRoute><SalesPipeline /></PendingRestrictedRoute>} />
+        <Route path="product-list" element={<PendingRestrictedRoute><ProductList /></PendingRestrictedRoute>} />
+        <Route path="lead-capture" element={<PendingRestrictedRoute><LeadCapture /></PendingRestrictedRoute>} />
+        <Route path="meeting-minutes" element={<PendingRestrictedRoute><MeetingMinutes /></PendingRestrictedRoute>} />
+        <Route path="ai-voice" element={<PendingRestrictedRoute><AiVoice /></PendingRestrictedRoute>} />
+        <Route path="email" element={<PendingRestrictedRoute><Email /></PendingRestrictedRoute>} />
+        <Route path="map" element={<PendingRestrictedRoute><Map /></PendingRestrictedRoute>} />
+        <Route path="todo-list" element={<PendingRestrictedRoute><TodoList /></PendingRestrictedRoute>} />
+        <Route path="chat" element={<PendingRestrictedRoute><GoogleChat /></PendingRestrictedRoute>} />
+        <Route path="reports/sales" element={<PendingRestrictedRoute><SalesReport /></PendingRestrictedRoute>} />
+        <Route path="reports/performance" element={<PendingRestrictedRoute><EmployeePerformance /></PendingRestrictedRoute>} />
+        <Route path="reports/work-report/:employeeId?" element={<PendingRestrictedRoute><EmployeeWorkReport /></PendingRestrictedRoute>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

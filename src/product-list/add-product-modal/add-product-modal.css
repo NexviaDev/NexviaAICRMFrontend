@@ -6,8 +6,8 @@
   align-items: center;
   justify-content: center;
   padding: 1rem;
-  background: rgba(15, 23, 42, 0.6);
-  backdrop-filter: blur(4px);
+  background: rgba(44, 52, 55, 0.1);
+  backdrop-filter: blur(6px);
   animation: addProductOverlayIn 0.2s ease-out;
 }
 
@@ -18,12 +18,13 @@
 
 .add-product-modal {
   width: 100%;
-  max-width: 32rem;
+  max-width: 42rem;
   max-height: 90vh;
-  background: var(--card);
+  background: var(--surface-container-lowest, #fff);
   border-radius: 0.75rem;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-  border: 1px solid var(--card-border);
+  box-shadow:
+    0 25px 50px -12px rgba(0, 0, 0, 0.12),
+    0 0 0 1px rgba(172, 179, 183, 0.15);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -39,108 +40,315 @@
 }
 
 @keyframes addProductModalIn {
-  from { opacity: 0; transform: scale(0.96); }
+  from { opacity: 0; transform: scale(0.98); }
   to { opacity: 1; transform: scale(1); }
 }
 
 .add-product-modal-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  padding: 1rem 1.5rem;
+  gap: 1rem;
+  padding: 1.5rem 2rem;
   border-bottom: 1px solid var(--card-border);
+  background: color-mix(in srgb, var(--bg-light, #f0f4f7) 50%, transparent);
 }
 
-.add-product-modal-header h3 {
+.add-product-modal-header-text {
+  min-width: 0;
+}
+
+.add-product-modal-title {
   margin: 0;
-  font-size: 1.125rem;
+  font-size: 1.5rem;
   font-weight: 700;
+  letter-spacing: -0.02em;
   color: var(--text);
+  line-height: 1.25;
+}
+
+.add-product-modal-subtitle {
+  margin: 0.35rem 0 0;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  line-height: 1.4;
 }
 
 .add-product-modal-close {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.25rem;
+  flex-shrink: 0;
+  padding: 0.5rem;
   border: none;
-  background: none;
+  background: transparent;
   color: var(--text-muted);
-  border-radius: 0.375rem;
+  border-radius: 0.5rem;
   transition: color 0.2s, background 0.2s;
+  cursor: pointer;
 }
 
 .add-product-modal-close:hover {
   color: var(--text);
-  background: var(--bg-light);
+  background: color-mix(in srgb, var(--card-border) 45%, transparent);
 }
 
 .add-product-modal-body {
-  padding: 1.5rem;
+  padding: 2rem;
   overflow-y: auto;
   flex: 1;
   min-height: 0;
 }
 
 .add-product-modal-error {
-  margin: 0 0 1rem;
-  padding: 0.5rem;
+  margin: 0 0 1.25rem;
+  padding: 0.625rem 0.75rem;
   font-size: 0.875rem;
   color: var(--danger);
   background: var(--pastel-peach);
-  border-radius: 0.375rem;
+  border-radius: 0.5rem;
 }
 
-.add-product-modal-field {
-  margin-bottom: 1rem;
+.add-product-modal-section {
+  margin-bottom: 2rem;
 }
 
-.add-product-modal-field:last-of-type {
+.add-product-modal-section:last-of-type {
   margin-bottom: 0;
 }
 
-.add-product-modal-row {
+.add-product-modal-section-head {
   display: flex;
-  gap: 1rem;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
 }
 
-.add-product-modal-row .add-product-modal-field {
-  flex: 1;
+.add-product-modal-section-accent {
+  width: 0.25rem;
+  height: 1rem;
+  border-radius: 9999px;
+  background: var(--primary);
+  flex-shrink: 0;
 }
 
+.add-product-modal-section-accent--tertiary {
+  background: var(--pastel-mint-strong, #3f6750);
+}
+
+.add-product-modal-section-title {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--primary);
+}
+
+.add-product-modal-section-title--tertiary {
+  color: var(--pastel-mint-strong, #335b45);
+}
+
+.add-product-modal-grid {
+  display: grid;
+  gap: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .add-product-modal-grid--basic {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* 6열: 소비자가(4) + 상태(2) / 원가(3) + 유통가(3) / 결제 주기(6) */
+  .add-product-modal-grid--pricing {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .add-product-modal-grid--basic .add-product-modal-field--span2 {
+    grid-column: span 2;
+  }
+
+  .add-product-modal-grid--pricing .add-product-modal-field--span2 {
+    grid-column: span 4;
+  }
+
+  .add-product-modal-grid--pricing .add-product-modal-field--pricing-status {
+    grid-column: span 2;
+  }
+
+  .add-product-modal-grid--pricing .add-product-modal-field--pricing-half {
+    grid-column: span 3;
+  }
+
+  .add-product-modal-grid--pricing .add-product-modal-field--billing-full {
+    grid-column: 1 / -1;
+  }
+}
+
+.add-product-modal-field {
+  margin-bottom: 0;
+}
+
+.add-product-modal-field .add-product-modal-label,
 .add-product-modal-field label {
   display: block;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--text);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
   margin-bottom: 0.375rem;
+  margin-left: 0.125rem;
 }
 
 .add-product-modal-field label .required {
   color: var(--danger);
 }
 
-.add-product-modal-field input:not([type="checkbox"]),
+.add-product-modal-input-icon-wrap {
+  position: relative;
+}
+
+.add-product-modal-input-icon-wrap input {
+  padding-right: 2.5rem;
+}
+
+.add-product-modal-input-suffix {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 1.125rem;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.add-product-modal-input-mono {
+  font-family: ui-monospace, monospace;
+  font-size: 0.8125rem;
+}
+
+.add-product-modal-field input:not([type="checkbox"]):not([type="radio"]),
 .add-product-modal-field select {
   width: 100%;
-  padding: 0.5rem 0.75rem;
+  padding: 0.75rem 1rem;
   font-size: 0.875rem;
   border: 1px solid var(--card-border);
   border-radius: 0.5rem;
-  background: var(--card);
+  background: transparent;
   color: var(--text);
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: box-shadow 0.2s, border-color 0.2s;
 }
 
-.add-product-modal-field input[type="checkbox"] {
-  width: auto;
+.add-product-modal-field input::placeholder {
+  color: color-mix(in srgb, var(--text-muted) 55%, transparent);
 }
 
-.add-product-modal-field input:focus,
+.add-product-modal-field input:focus:not([type="radio"]):not([type="checkbox"]),
 .add-product-modal-field select:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(91, 124, 153, 0.2);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 22%, transparent);
+}
+
+.add-product-modal-price-currency-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+.add-product-modal-price-currency-row > input {
+  flex: 1;
+  min-width: 0;
+}
+
+.add-product-modal-currency-select {
+  width: 8rem !important;
+  flex-shrink: 0;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.add-product-modal-segmented {
+  display: flex;
+  padding: 0.25rem;
+  border-radius: 0.5rem;
+  background: var(--surface-container-high, #e3e9ed);
+  min-height: 3rem;
+  align-items: stretch;
+  gap: 0.125rem;
+}
+
+.add-product-modal-segment {
+  flex: 1;
+  border: none;
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  white-space: nowrap;
+  padding: 0 0.35rem;
+}
+
+.add-product-modal-segment.is-active {
+  background: var(--surface-container-lowest, #fff);
+  color: var(--primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.add-product-modal-segment:hover:not(.is-active) {
+  color: var(--text);
+}
+
+.add-product-modal-radio-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+  min-height: 2.75rem;
+}
+
+.add-product-modal-radio {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  flex: 1 1 0;
+  min-width: 0;
+  cursor: pointer;
+  font-size: 0.8125rem;
+  color: var(--text);
+  margin: 0;
+  line-height: 1;
+}
+
+.add-product-modal-radio span {
+  white-space: nowrap;
+  line-height: 1;
+  margin: 0;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+.add-product-modal-radio input[type="radio"] {
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+  vertical-align: middle;
+  accent-color: var(--primary);
+  cursor: pointer;
+  align-self: center;
+}
+
+.add-product-modal-radio.is-checked span {
+  font-weight: 600;
 }
 
 .add-product-modal-footer {
@@ -148,10 +356,10 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 1rem 1.5rem;
+  padding: 1.5rem 2rem;
   border-top: 1px solid var(--card-border);
   flex-shrink: 0;
-  background: var(--card);
+  background: var(--surface-container-low, #f0f4f7);
 }
 
 .add-product-modal-extra {
@@ -170,7 +378,7 @@
 }
 
 .add-product-modal-extra:hover {
-  opacity: 0.9;
+  opacity: 0.92;
 }
 
 .add-product-modal-extra .material-symbols-outlined {
@@ -179,40 +387,61 @@
 
 .add-product-modal-footer-actions {
   display: flex;
+  align-items: center;
+  justify-content: flex-end;
   gap: 0.75rem;
 }
 
 .add-product-modal-cancel {
-  padding: 0.5rem 1rem;
+  padding: 0.625rem 1.25rem;
   font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--text);
+  font-weight: 600;
+  color: var(--text-muted);
   background: transparent;
   border: none;
   border-radius: 0.5rem;
-  transition: background 0.2s;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.15s;
 }
 
 .add-product-modal-cancel:hover {
-  background: var(--bg-light);
+  background: color-mix(in srgb, var(--card-border) 40%, transparent);
+}
+
+.add-product-modal-cancel:active {
+  transform: scale(0.98);
 }
 
 .add-product-modal-save {
-  padding: 0.5rem 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.75rem;
   font-size: 0.875rem;
-  font-weight: 500;
+  font-weight: 700;
   color: #fff;
   background: var(--primary);
   border: none;
   border-radius: 0.5rem;
-  transition: opacity 0.2s;
+  box-shadow: 0 1px 2px rgba(44, 100, 133, 0.25);
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.15s;
 }
 
 .add-product-modal-save:hover:not(:disabled) {
-  opacity: 0.9;
+  opacity: 0.92;
+}
+
+.add-product-modal-save:active:not(:disabled) {
+  transform: scale(0.98);
 }
 
 .add-product-modal-save:disabled {
-  opacity: 0.7;
+  opacity: 0.65;
   cursor: not-allowed;
+}
+
+.add-product-modal-save-icon {
+  font-size: 1.125rem !important;
 }

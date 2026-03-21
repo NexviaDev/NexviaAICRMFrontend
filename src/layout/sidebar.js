@@ -34,7 +34,20 @@ function applyOrder(items, order) {
   return [...ordered, ...rest];
 }
 
-export default function Sidebar({ drawerOpen, onCloseDrawer }) {
+function formatCompanyRole(user) {
+  if (user?.role === 'owner') return '대표 (Owner)';
+  if (user?.role === 'senior') return '책임 (Senior)';
+  if (user?.role === 'pending') return '권한 대기';
+  if (user?.role === 'staff') return '직원 (Staff)';
+  return user?.role || '계정';
+}
+
+function isPendingBlockedMenu(user, to) {
+  if (user?.role !== 'pending') return false;
+  return to !== '/company-overview';
+}
+
+export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
   const navigate = useNavigate();
   const savedOrder = useMemo(() => getSavedSidebarOrder(), []);
   const [orderedItems, setOrderedItems] = useState(() => applyOrder(MENU_ITEMS, savedOrder));
@@ -53,7 +66,7 @@ export default function Sidebar({ drawerOpen, onCloseDrawer }) {
     }
   }, []);
 
-  const user = useMemo(() => {
+  const storedUser = useMemo(() => {
     try {
       const raw = localStorage.getItem('crm_user');
       return raw ? JSON.parse(raw) : null;
@@ -61,6 +74,7 @@ export default function Sidebar({ drawerOpen, onCloseDrawer }) {
       return null;
     }
   }, []);
+  const user = currentUser || storedUser;
 
   const handleDragStart = useCallback((e, itemTo) => {
     e.stopPropagation();
@@ -144,6 +158,9 @@ export default function Sidebar({ drawerOpen, onCloseDrawer }) {
         onDrop={handleNavDrop}
       >
         {orderedItems.map((item) => (
+          (() => {
+            const isLocked = isPendingBlockedMenu(user, item.to);
+            return (
           <div
             key={item.to}
             data-to={item.to}
@@ -168,17 +185,23 @@ export default function Sidebar({ drawerOpen, onCloseDrawer }) {
             </span>
             <NavLink
               to={item.to}
-              className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+              className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''} ${isLocked ? 'sidebar-link-locked' : ''}`}
               end={item.to === '/'}
               onClick={(e) => {
                 if (item.to === '#') e.preventDefault();
-                else onCloseDrawer?.();
+                else if (isLocked) {
+                  e.preventDefault();
+                  window.alert('현재 계정은 권한 대기 상태입니다. 사내 현황에서 회사의 허용을 받아야 다른 메뉴에 접근할 수 있습니다.');
+                } else onCloseDrawer?.();
               }}
             >
               <span className="material-symbols-outlined">{item.icon}</span>
               <span>{item.label}</span>
+              {isLocked && <span className="material-symbols-outlined sidebar-lock-icon" aria-hidden>lock</span>}
             </NavLink>
           </div>
+            );
+          })()
         ))}
       </nav>
       {savingOrder && (
@@ -191,7 +214,7 @@ export default function Sidebar({ drawerOpen, onCloseDrawer }) {
           <div className="sidebar-avatar" />
           <div className="sidebar-user-info">
             <p className="sidebar-user-name">{user?.name || '사용자'}</p>
-            <p className="sidebar-user-role">{user?.role || '계정'}</p>
+            <p className="sidebar-user-role">{formatCompanyRole(user)}</p>
           </div>
         </Link>
         <button type="button" className="sidebar-logout" onClick={() => { localStorage.removeItem('crm_token'); localStorage.removeItem('crm_user'); navigate('/login', { replace: true }); }}>

@@ -21,7 +21,7 @@ export default function ImportProgressModal({ inProgressJob }) {
             schedule
           </span>
         </div>
-        <h2 className="lc-crm-result-title">매핑 처리 중입니다</h2>
+        <h2 className="lc-crm-result-title">매칭 처리 중입니다</h2>
         <p className="lc-crm-result-sub">
           {inProgressJob?.totalRows != null ? `총 ${inProgressJob.totalRows}행` : ''} · 처리 {inProgressJob?.processedRows || 0}행 · {percent}%
         </p>

@@ -1,8 +1,6 @@
 import { useState } from 'react';
 import './add-company.css';
 
-import { API_BASE } from '@/config';
-
 /**
  * 회사 추가 모달 (회원가입 등에서 사용)
  * 회사명, 주소, 상세주소, 사업자 번호, 대표자 성함 필수
@@ -39,34 +37,18 @@ export default function AddCompany({ isOpen, onClose, onSuccess, setError }) {
       if (setError) setError('회사명, 주소, 상세주소, 사업자 번호, 대표자 성함을 모두 입력해 주세요.');
       return;
     }
-    setLoading(true);
     if (setError) setError('');
+    setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/companies/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: n,
-          address: a,
-          addressDetail: ad,
-          businessNumber: bn,
-          representativeName: rn
-        })
+      onSuccess({
+        name: n,
+        address: a,
+        addressDetail: ad,
+        businessNumber: bn,
+        representativeName: rn,
+        isNewDraft: true
       });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.name) {
-        onSuccess({
-          name: data.name,
-          address: data.address || '',
-          addressDetail: data.addressDetail || '',
-          businessNumber: data.businessNumber || bn
-        });
-        handleClose();
-      } else {
-        if (setError) setError(data.error || '회사 추가에 실패했습니다.');
-      }
-    } catch (_) {
-      if (setError) setError('서버에 연결할 수 없습니다.');
+      handleClose();
     } finally {
       setLoading(false);
     }
@@ -78,7 +60,8 @@ export default function AddCompany({ isOpen, onClose, onSuccess, setError }) {
     <div className="add-company-overlay">
       <div className="add-company-modal" onClick={(e) => e.stopPropagation()}>
         <h3 className="add-company-title">회사 추가</h3>
-        <p className="add-company-desc">등록된 회사 정보를 입력해 주세요. (전부 필수)</p>
+        <p className="add-company-desc">등록할 회사 정보를 입력해 주세요. (전부 필수)</p>
+        <p className="add-company-desc">이 회사는 회원 정보 저장 시 함께 등록되며, 최초 저장자가 Owner 권한을 받습니다.</p>
         <form onSubmit={handleSubmit} className="add-company-form">
           <div className="add-company-field">
             <label htmlFor="ac-name">회사명 *</label>
@@ -102,7 +85,7 @@ export default function AddCompany({ isOpen, onClose, onSuccess, setError }) {
           </div>
           <div className="add-company-actions">
             <button type="button" className="add-company-btn add-company-btn-cancel" onClick={handleClose}>취소</button>
-            <button type="submit" className="add-company-btn add-company-btn-submit" disabled={loading}>{loading ? '추가 중...' : '추가'}</button>
+            <button type="submit" className="add-company-btn add-company-btn-submit" disabled={loading}>{loading ? '확인 중...' : '추가'}</button>
           </div>
         </form>
       </div>

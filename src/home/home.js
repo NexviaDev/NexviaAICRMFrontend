@@ -18,22 +18,37 @@ const DEFAULT_ACTIVE_STAGES = ['NewLead', 'Contacted', 'ProposalSent'];
 
 /** sales-pipeline.js DROP_ZONE_CONFIG·하단 드롭존과 동일 — 진행 딜·첫 단계 집계에서 제외 */
 const DROP_ZONE_STAGES = ['Lost', 'Abandoned', 'Won'];
+const CURRENCY_SYMBOLS = { KRW: '₩', USD: '$', JPY: '¥' };
 
 function formatCurrency(value, currency) {
-  if (!value) return currency === 'KRW' ? '₩0' : '$0';
-  if (currency === 'USD') return '$' + Number(value).toLocaleString();
-  return '₩' + Number(value).toLocaleString();
+  const code = String(currency || 'KRW').toUpperCase();
+  const prefix = CURRENCY_SYMBOLS[code] || `${code} `;
+  if (!value) return `${prefix}0`;
+  return prefix + Number(value).toLocaleString();
 }
 
-/** 대시보드 wonRevenue { KRW, USD } → 표시 문자열 (통화 혼합 시 · 구분) */
+/** 대시보드 매출 객체 → 표시 문자열 (통화 혼합 시 · 구분) */
 function formatWonRevenue(w) {
-  const krw = w?.KRW ?? 0;
-  const usd = w?.USD ?? 0;
-  if (!krw && !usd) return formatCurrency(0, 'KRW');
+  const entries = Object.entries(w || {}).filter(([, amount]) => Number(amount) > 0);
+  if (entries.length === 0) return formatCurrency(0, 'KRW');
   const parts = [];
-  if (krw) parts.push(formatCurrency(krw, 'KRW'));
-  if (usd) parts.push(formatCurrency(usd, 'USD'));
+  for (const [currency, amount] of entries) {
+    parts.push(formatCurrency(amount, currency));
+  }
   return parts.join(' · ');
+}
+
+function prepareChartSeries(series) {
+  const items = Array.isArray(series) ? series : [];
+  const maxAbs = Math.max(1, ...items.map((item) => Math.abs(Number(item?.value) || 0)));
+  return items.map((item) => {
+    const value = Number(item?.value) || 0;
+    return {
+      label: item?.label || '',
+      value,
+      height: value === 0 ? 0 : Math.max(10, Math.round((Math.abs(value) / maxAbs) * 48))
+    };
+  });
 }
 
 export default function Home() {
@@ -44,6 +59,7 @@ export default function Home() {
   const [stageDefinitions, setStageDefinitions] = useState([]);
   const [pipelineLoading, setPipelineLoading] = useState(true);
   const [healthPinged, setHealthPinged] = useState(false);
+  const [selectedGraphCurrency, setSelectedGraphCurrency] = useState('KRW');
   const pipelineMounted = useRef(true);
 
   useEffect(() => {
@@ -58,6 +74,11 @@ export default function Home() {
       } catch (_) {
         if (!cancelled) setData({
           wonRevenue: { KRW: 0, USD: 0 },
+          salesGraphs: {
+            currencies: ['KRW'],
+            consumerByCurrency: { KRW: [] },
+            netMarginByCurrency: { KRW: [] }
+          },
           activeDeals: 128,
           newLeads: 45,
           taskCompletion: 82
@@ -145,6 +166,19 @@ export default function Home() {
     firstPipelineStageKey;
 
   const stats = data || {};
+  const graphCurrencies = useMemo(() => {
+    const currencies = Array.isArray(stats.salesGraphs?.currencies)
+      ? stats.salesGraphs.currencies.filter(Boolean)
+      : [];
+    return currencies.length > 0 ? currencies : ['KRW'];
+  }, [stats.salesGraphs]);
+
+  useEffect(() => {
+    if (!graphCurrencies.includes(selectedGraphCurrency)) {
+      setSelectedGraphCurrency(graphCurrencies[0] || 'KRW');
+    }
+  }, [graphCurrencies, selectedGraphCurrency]);
+
   const cards = [
     {
       label: '총 매출 (수주 성공)',
@@ -189,6 +223,74 @@ export default function Home() {
     }));
   }, [pipelineMainStages, grouped, totals, stageLabels]);
 
+  const consumerSeries = useMemo(
+    () => prepareChartSeries(stats.salesGraphs?.consumerByCurrency?.[selectedGraphCurrency] || []),
+    [stats.salesGraphs, selectedGraphCurrency]
+  );
+  const netMarginSeries = useMemo(
+    () => prepareChartSeries(stats.salesGraphs?.netMarginByCurrency?.[selectedGraphCurrency] || []),
+    [stats.salesGraphs, selectedGraphCurrency]
+  );
+  const consumerTotal = useMemo(
+    () => consumerSeries.reduce((sum, item) => sum + item.value, 0),
+    [consumerSeries]
+  );
+  const netMarginTotal = useMemo(
+    () => netMarginSeries.reduce((sum, item) => sum + item.value, 0),
+    [netMarginSeries]
+  );
+
+  const renderChartPanel = (title, subtitle, total, series, tone, emptyText) => (
+    <div className="panel home-chart-panel">
+      <div className="panel-head home-chart-head">
+        <div>
+          <h2>{title}</h2>
+          <p className="home-chart-subtitle">{subtitle}</p>
+        </div>
+        <div className="home-chart-actions">
+          <span className={`panel-badge home-chart-total tone-${tone}`}>{formatCurrency(total, selectedGraphCurrency)}</span>
+          {graphCurrencies.length > 0 && (
+            <div className="panel-actions">
+              {graphCurrencies.map((currency) => (
+                <button
+                  key={currency}
+                  type="button"
+                  className={`chip ${selectedGraphCurrency === currency ? 'active' : ''}`}
+                  onClick={() => setSelectedGraphCurrency(currency)}
+                >
+                  {currency}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="home-chart-body">
+        {loading ? (
+          <p className="home-chart-empty">그래프 불러오는 중…</p>
+        ) : series.length === 0 || series.every((item) => item.value === 0) ? (
+          <p className="home-chart-empty">{emptyText}</p>
+        ) : (
+          <div className="home-mini-chart">
+            {series.map((item) => (
+              <div key={`${title}-${item.label}`} className="home-mini-chart-col">
+                <span className={`home-mini-chart-value tone-${tone}`}>{formatCurrency(item.value, selectedGraphCurrency)}</span>
+                <div className="home-mini-chart-track">
+                  <div
+                    className={`home-mini-chart-bar tone-${tone} ${item.value < 0 ? 'negative' : ''}`}
+                    style={{ height: `${item.height}%` }}
+                    title={`${item.label} ${formatCurrency(item.value, selectedGraphCurrency)}`}
+                  />
+                </div>
+                <span className="home-mini-chart-label">{item.label}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className="page home-page">
       <header className="page-header">
@@ -218,6 +320,25 @@ export default function Home() {
               </div>
             </div>
           ))}
+        </div>
+
+        <div className="home-insights-grid">
+          {renderChartPanel(
+            '소비자가 기준 그래프',
+            '수주 성공 건의 최근 6개월 소비자가 합계입니다.',
+            consumerTotal,
+            consumerSeries,
+            'consumer',
+            '최근 6개월 소비자가 데이터가 없습니다.'
+          )}
+          {renderChartPanel(
+            '순마진 그래프',
+            '수주 금액에서 원가와 유통가를 제외한 최근 6개월 순마진입니다.',
+            netMarginTotal,
+            netMarginSeries,
+            'margin',
+            '최근 6개월 순마진 데이터가 없습니다.'
+          )}
         </div>
 
         <div className="panel sales-pipeline">

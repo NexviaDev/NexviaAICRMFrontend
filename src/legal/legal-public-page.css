@@ -1,0 +1,50 @@
+.legal-public-page {
+  min-height: 100vh;
+  background: #f8f9fb;
+  color: #334155;
+}
+
+.legal-public-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  padding: 1rem 1.25rem;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.legal-public-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #5c6bc0;
+  text-decoration: none;
+  margin-bottom: 0.75rem;
+}
+
+.legal-public-back:hover {
+  text-decoration: underline;
+}
+
+.legal-public-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.legal-public-main {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 1.25rem 1.25rem 3rem;
+}
+
+.legal-public-article {
+  background: #fff;
+  border-radius: 0.75rem;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}

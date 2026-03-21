@@ -76,6 +76,7 @@ export default function Map() {
   const navigate = useNavigate();
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [assigneeMeOnly, setAssigneeMeOnly] = useState(true);
   const [searchInput, setSearchInput] = useState('');
   const [selected, setSelected] = useState(null);
   const [myLocation, setMyLocation] = useState(null);
@@ -104,7 +105,9 @@ export default function Map() {
   const fetchCompanies = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/customer-companies?limit=500`, { headers: getAuthHeader() });
+      const params = new URLSearchParams({ limit: '500' });
+      if (assigneeMeOnly) params.set('assigneeMe', '1');
+      const res = await fetch(`${API_BASE}/customer-companies?${params.toString()}`, { headers: getAuthHeader() });
       const data = await res.json().catch(() => ({}));
       if (res.ok && Array.isArray(data.items)) {
         setCompanies(data.items);
@@ -116,11 +119,15 @@ export default function Map() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [assigneeMeOnly]);
 
   useEffect(() => {
     fetchCompanies();
   }, [fetchCompanies]);
+
+  useEffect(() => {
+    initialViewAppliedRef.current = false;
+  }, [assigneeMeOnly]);
 
   // 지도 탭/창을 다시 열었을 때 최신 고객사 목록 반영
   useEffect(() => {
@@ -600,6 +607,16 @@ export default function Map() {
 
           <div className="map-top-bar">
             <div className="map-controls">
+              <button
+                type="button"
+                className={`map-filter-chip ${assigneeMeOnly ? 'active' : ''}`}
+                onClick={() => setAssigneeMeOnly((prev) => !prev)}
+                aria-label={assigneeMeOnly ? '전체 고객사 보기' : '내 담당 고객사만 보기'}
+                title={assigneeMeOnly ? '전체 고객사 보기' : '내 담당 고객사만 보기'}
+              >
+                <span className="material-symbols-outlined">person_pin_circle</span>
+                <span>{assigneeMeOnly ? '전체 보기' : '내 담당만'}</span>
+              </button>
               <div className="map-zoom-btns">
                 <button type="button" className="map-ctrl-btn" onClick={zoomIn} aria-label="확대">
                   <span className="material-symbols-outlined">add</span>
@@ -695,7 +712,7 @@ export default function Map() {
               </div>
               {searchInput.trim() && (
                 <span className="map-search-result-count">
-                  고객사 {companiesToShowOnMap.length}건
+                  {assigneeMeOnly ? '내 담당 고객사' : '전체 고객사'} {companiesToShowOnMap.length}건
                   {searchPlace && (
                     <> · 검색한 구글 장소 뱃지 {showSearchPlaceMarker ? '표시 중' : '끔 (우측 place 버튼으로 켜기)'}</>
                   )}

@@ -52,15 +52,17 @@ const LIST_ID = LIST_IDS.CUSTOMER_COMPANIES;
 
 const CUSTOM_FIELDS_PREFIX = 'customFields.';
 /** @param {Record<string, string>} [assigneeIdToName] - userId → 이름 (목록 담당자 셀 표시용) */
-function cellValue(row, key, assigneeIdToName = {}) {
+function cellValue(row, key, assigneeIdToName = {}, assigneeNamesReady = false) {
   if (key === 'name') return row.name || '—';
   if (key === 'representativeName') return row.representativeName || '—';
   if (key === 'businessNumber') return formatBusinessNumber(row.businessNumber);
   if (key === 'address') return row.address || '—';
   if (key === 'assigneeUserIds') {
     const ids = Array.isArray(row.assigneeUserIds) ? row.assigneeUserIds : [];
-    const names = ids.map((id) => assigneeIdToName[String(id)] || String(id)).filter(Boolean);
-    return names.length ? names.join(', ') : '—';
+    const names = ids.map((id) => assigneeIdToName[String(id)] || '').filter(Boolean);
+    if (names.length) return names.join(', ');
+    if (ids.length === 0) return '—';
+    return assigneeNamesReady ? '—' : '담당자 불러오는 중...';
   }
   if (key.startsWith(CUSTOM_FIELDS_PREFIX)) {
     const fieldKey = key.slice(CUSTOM_FIELDS_PREFIX.length);
@@ -83,6 +85,7 @@ export default function CustomerCompanies() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sort, setSort] = useState({ key: null, dir: 'asc' });
   const [companyEmployees, setCompanyEmployees] = useState([]); // 사내 직원 (담당자 이름 표시용)
+  const [companyEmployeesLoaded, setCompanyEmployeesLoaded] = useState(false);
   const [searchField, setSearchField] = useState('');
   const [pagination, setPagination] = useState({ page: 1, limit: LIMIT, total: 0, totalPages: 0 });
   const SEARCH_FIELD_OPTIONS = [
@@ -119,10 +122,17 @@ export default function CustomerCompanies() {
   /** 사내 직원 목록 (담당자 열 이름 표시용) */
   useEffect(() => {
     let cancelled = false;
+    setCompanyEmployeesLoaded(false);
     fetch(`${API_BASE}/companies/overview`, { headers: getAuthHeader() })
       .then((r) => r.json().catch(() => ({})))
       .then((data) => {
         if (!cancelled && Array.isArray(data?.employees)) setCompanyEmployees(data.employees);
+      })
+      .catch(() => {
+        if (!cancelled) setCompanyEmployees([]);
+      })
+      .finally(() => {
+        if (!cancelled) setCompanyEmployeesLoaded(true);
       });
     return () => { cancelled = true; };
   }, []);
@@ -515,10 +525,10 @@ export default function CustomerCompanies() {
                           ) : col.key === 'name' ? (
                             <div className="cell-user">
                               <div className="avatar-img company-avatar"><span className="material-symbols-outlined">business</span></div>
-                              <span className="font-semibold">{cellValue(row, col.key, assigneeIdToName)}</span>
+                              <span className="font-semibold">{cellValue(row, col.key, assigneeIdToName, companyEmployeesLoaded)}</span>
                             </div>
                           ) : (
-                            cellValue(row, col.key, assigneeIdToName)
+                            cellValue(row, col.key, assigneeIdToName, companyEmployeesLoaded)
                           )}
                         </td>
                       ))}

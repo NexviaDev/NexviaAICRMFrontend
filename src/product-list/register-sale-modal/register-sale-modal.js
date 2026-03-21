@@ -5,6 +5,7 @@ import ProductSearchModal from '../../sales-pipeline/product-search-modal/produc
 import './register-sale-modal.css';
 
 import { API_BASE } from '@/config';
+import { listPriceFromProduct } from '@/lib/product-price-utils';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -83,7 +84,10 @@ export default function RegisterSaleModal({
   const [productMode, setProductMode] = useState(initialProduct ? 'registered' : 'registered');
   const [productId, setProductId] = useState(initialProduct?._id || '');
   const [productName, setProductName] = useState(initialProduct?.name || '');
-  const [unitPrice, setUnitPrice] = useState(initialProduct?.price != null ? String(initialProduct.price) : '');
+  const [unitPrice, setUnitPrice] = useState(() => {
+    const lp = listPriceFromProduct(initialProduct);
+    return lp > 0 ? String(lp) : '';
+  });
   const [currency, setCurrency] = useState(initialProduct?.currency || 'KRW');
   const [quantity, setQuantity] = useState('1');
   const [discountType, setDiscountType] = useState('none');
@@ -137,7 +141,8 @@ export default function RegisterSaleModal({
     if (initialProduct) {
       setProductId(initialProduct._id);
       setProductName(initialProduct.name || '');
-      setUnitPrice(initialProduct.price != null ? String(initialProduct.price) : '');
+      const lp = listPriceFromProduct(initialProduct);
+      setUnitPrice(lp > 0 ? String(lp) : '');
       setCurrency(initialProduct.currency || 'KRW');
       setProductMode('registered');
     }
@@ -910,7 +915,8 @@ export default function RegisterSaleModal({
             if (!product) return;
             setProductId(product._id);
             setProductName(product.name || '');
-            setUnitPrice(product.price != null ? String(product.price) : '');
+            const lp = listPriceFromProduct(product);
+            setUnitPrice(lp > 0 ? String(lp) : '');
             setCurrency(product.currency || 'KRW');
             setShowProductSearch(false);
           }}

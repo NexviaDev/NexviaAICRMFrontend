@@ -5,6 +5,7 @@ import ProductSearchModal from '../product-search-modal/product-search-modal';
 import './opportunity-modal.css';
 
 import { API_BASE } from '@/config';
+import { listPriceFromProduct } from '@/lib/product-price-utils';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -439,7 +440,7 @@ export default function OpportunityModal({ mode, oppId, defaultStage, stageOptio
             onSelect={(products) => {
               const product = Array.isArray(products) ? products[0] : products;
               if (!product) return;
-              const price = product.price != null ? Number(product.price) : 0;
+              const price = listPriceFromProduct(product);
               setSelectedProduct(product);
               setShowProductFields(false);
               setForm((f) => ({

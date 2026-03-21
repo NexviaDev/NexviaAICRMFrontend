@@ -1,0 +1,139 @@
+/* 공통 법적 문서 모달 — 로그인 페이지·공개 /legal 경로와 공유 */
+
+.legal-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+  background: rgba(44, 52, 55, 0.45);
+  backdrop-filter: blur(4px);
+  animation: legalModalIn 0.2s ease-out;
+}
+
+@media (min-width: 640px) {
+  .legal-modal-overlay {
+    align-items: center;
+    padding: 1.5rem;
+  }
+}
+
+@keyframes legalModalIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.legal-modal-panel {
+  width: 100%;
+  max-width: 42rem;
+  max-height: min(92vh, 720px);
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 0.75rem 0.75rem 0 0;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+}
+
+@media (min-width: 640px) {
+  .legal-modal-panel {
+    border-radius: 0.75rem;
+    max-height: min(85vh, 720px);
+  }
+}
+
+.legal-modal-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid #e2e8f0;
+  background: #fafbfc;
+}
+
+.legal-modal-title {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: #2c3437;
+  line-height: 1.3;
+}
+
+.legal-modal-close {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.legal-modal-close:hover {
+  background: #e8eaf6;
+  color: #5c6bc0;
+}
+
+.legal-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.25rem 1.25rem 1.75rem;
+  font-size: 0.875rem;
+  line-height: 1.65;
+  color: #334155;
+}
+
+.legal-modal-body h2 {
+  margin: 1.5rem 0 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.legal-modal-body h2:first-child {
+  margin-top: 0;
+}
+
+.legal-modal-body p {
+  margin: 0 0 0.75rem;
+}
+
+.legal-modal-body ul {
+  margin: 0 0 0.75rem;
+  padding-left: 1.25rem;
+}
+
+.legal-modal-body li {
+  margin-bottom: 0.35rem;
+}
+
+.legal-modal-body strong {
+  color: #0f172a;
+}
+
+.legal-modal-body .legal-muted {
+  font-size: 0.8125rem;
+  color: #64748b;
+}
+
+.legal-modal-body .legal-box {
+  margin: 1rem 0;
+  padding: 0.875rem 1rem;
+  background: #f1f5f9;
+  border-radius: 0.5rem;
+  border-left: 3px solid #94a3b8;
+}

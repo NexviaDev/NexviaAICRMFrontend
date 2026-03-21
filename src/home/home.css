@@ -159,6 +159,18 @@
   margin-bottom: 2rem;
 }
 
+.home-insights-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5rem;
+}
+
+@media (max-width: 1024px) {
+  .home-insights-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .panel-head {
   padding: 1.5rem;
   border-bottom: 1px solid var(--card-border);
@@ -174,6 +186,127 @@
 }
 
 .panel-actions { display: flex; gap: 0.5rem; }
+
+.home-chart-head {
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.home-chart-subtitle {
+  margin: 0.35rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.home-chart-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.65rem;
+}
+
+.home-chart-total {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  text-transform: none;
+}
+
+.home-chart-total.tone-consumer {
+  background: #eef5ff;
+  color: #40618a;
+}
+
+.home-chart-total.tone-margin {
+  background: #eefbf4;
+  color: #2b7a58;
+}
+
+.home-chart-body {
+  padding: 1.5rem;
+}
+
+.home-chart-empty {
+  margin: 0;
+  min-height: 11rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.home-mini-chart {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(4.5rem, 1fr));
+  gap: 0.85rem;
+  align-items: end;
+}
+
+.home-mini-chart-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.home-mini-chart-value {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.home-mini-chart-value.tone-consumer {
+  color: #40618a;
+}
+
+.home-mini-chart-value.tone-margin {
+  color: #2b7a58;
+}
+
+.home-mini-chart-track {
+  position: relative;
+  height: 11rem;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 0.35rem;
+}
+
+.home-mini-chart-track::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: rgba(91, 124, 153, 0.16);
+}
+
+.home-mini-chart-bar {
+  position: relative;
+  width: 100%;
+  min-height: 2px;
+  border-radius: 0.75rem 0.75rem 0 0;
+  transition: height 0.25s ease;
+}
+
+.home-mini-chart-bar.tone-consumer {
+  background: linear-gradient(180deg, #b7cff8 0%, #7ba7dc 100%);
+}
+
+.home-mini-chart-bar.tone-margin {
+  background: linear-gradient(180deg, #bce9d0 0%, #6bbd96 100%);
+}
+
+.home-mini-chart-bar.negative {
+  background: linear-gradient(180deg, #f8c9d2 0%, #e294a6 100%);
+}
+
+.home-mini-chart-label {
+  font-size: 0.75rem;
+  text-align: center;
+  color: var(--text-muted);
+}
 
 .chip {
   padding: 0.35rem 0.75rem;

@@ -5,8 +5,14 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { API_BASE } from '@/config';
-import AssigneePickerModal from '../../company-overview/assignee-picker-modal/assignee-picker-modal';
+import {
+  getGoogleMapsApiKey,
+  loadGoogleMapsPromise,
+  geocodeAddressWithGoogleMaps
+} from '@/lib/google-maps-client';
+import ImportMappingModal from './import-mapping-modal';
 import ImportProgressModal from './import-progress-modal';
+import ImportResultModal from './import-result-modal';
 import '../../lead-capture/lead-capture-crm-mapping/lead-capture-crm-mapping-modal.css';
 import './customer-companies-excel-import-modal.css';
 import {
@@ -53,6 +59,10 @@ const FALLBACK_TARGET_OPTIONS = [
   { value: 'company.memo', label: '고객사 · 메모' }
 ];
 
+const GOOGLE_MAPS_API_KEY = getGoogleMapsApiKey();
+const CLIENT_GEO_LAT_KEY = '__nexvia_client_latitude__';
+const CLIENT_GEO_LNG_KEY = '__nexvia_client_longitude__';
+
 function digitsOnly(value) {
   if (value == null) return '';
   return String(value).replace(/\D/g, '');
@@ -61,13 +71,15 @@ function digitsOnly(value) {
 function holdBusinessNumberKey(item, fallbackIndex) {
   const fromPayload = digitsOnly(item?.companyPayload?.businessNumber);
   if (fromPayload) return fromPayload;
+  const ri = item?.rowIndex;
+  if (ri != null && ri !== '') return `no_bn_${String(ri)}`;
   return `no_bn_${fallbackIndex}`;
 }
 
 function buildHoldGroups(holdItems) {
   const map = new Map();
   holdItems.forEach((item, idx) => {
-    const key = holdBusinessNumberKey(item, idx);
+    const key = String(holdBusinessNumberKey(item, idx));
     if (!map.has(key)) map.set(key, { key, businessNumber: key.startsWith('no_bn_') ? '' : key, items: [] });
     map.get(key).items.push(item);
   });
@@ -78,13 +90,13 @@ function buildExistingCandidatesForGroup(group) {
   const map = new Map();
   (group?.items || []).forEach((item) => {
     const list = Array.isArray(item?.conflictCandidates) ? item.conflictCandidates : [];
-    list.forEach((c) => {
-      const id = String(c?.companyId || '').trim();
+    list.forEach((candidate) => {
+      const id = String(candidate?.companyId || '').trim();
       if (!id || map.has(id)) return;
       map.set(id, {
         companyId: id,
-        name: c?.name || '',
-        businessNumber: c?.businessNumber || ''
+        name: candidate?.name || '',
+        businessNumber: candidate?.businessNumber || ''
       });
     });
   });
@@ -96,9 +108,11 @@ function buildResolveActionsForGroup(group, selected) {
   const picked = selected || { type: 'hold', key: String(group.items[0].rowIndex) };
   const actions = [];
   group.items.forEach((item) => {
+    const ri = Number(item.rowIndex);
+    if (!Number.isFinite(ri)) return;
     if (picked.type === 'existing') {
       actions.push({
-        rowIndex: item.rowIndex,
+        rowIndex: ri,
         action: 'merge',
         targetCompanyId: String(picked.key || ''),
         targetHoldRowIndex: ''
@@ -106,7 +120,7 @@ function buildResolveActionsForGroup(group, selected) {
     } else {
       const isPickedHold = String(item.rowIndex) === String(picked.key || '');
       actions.push({
-        rowIndex: item.rowIndex,
+        rowIndex: ri,
         action: isPickedHold ? 'add' : 'merge',
         targetCompanyId: '',
         targetHoldRowIndex: isPickedHold ? '' : String(picked.key || '')
@@ -114,6 +128,46 @@ function buildResolveActionsForGroup(group, selected) {
     }
   });
   return actions;
+}
+
+function readMappedExcelValue(excelRow, mapping) {
+  if (!mapping) return '';
+  if (mapping.sourceType === 'constant') return mapping.constantValue ?? '';
+  if (!mapping.sourceKey) return '';
+  return excelRow && typeof excelRow === 'object' ? excelRow[mapping.sourceKey] ?? '' : '';
+}
+
+function readCompanyFieldValueFromExcelRow(excelRow, mappings, targetKey) {
+  const mapping = (mappings || []).find((item) => String(item?.targetKey || '') === targetKey);
+  const value = readMappedExcelValue(excelRow, mapping);
+  return value == null ? '' : String(value).trim();
+}
+
+function applyResolvedActionsToPreviewResults(results, actions) {
+  const list = Array.isArray(results) ? results : [];
+  const actionList = Array.isArray(actions) ? actions : [];
+  const actionByRowIndex = new Map(
+    actionList
+      .map((action) => [Number(action?.rowIndex), action])
+      .filter(([rowIndex]) => Number.isFinite(rowIndex))
+  );
+
+  return list.map((item) => {
+    const rowIndex = Number(item?.rowIndex);
+    const action = actionByRowIndex.get(rowIndex);
+    if (!action) return item;
+    return {
+      ...item,
+      hold: false,
+      previewPending: true,
+      previewResolved: true,
+      previewResolvedAction: String(action.action || ''),
+      previewResolvedTargetCompanyId: String(action.targetCompanyId || ''),
+      previewResolvedTargetHoldRowIndex: String(action.targetHoldRowIndex || ''),
+      reason: '',
+      code: action.action === 'add' ? 'hold_resolved_add_preview' : 'hold_resolved_merge_preview'
+    };
+  });
 }
 
 async function parseExcelToRows(file) {
@@ -128,6 +182,63 @@ async function parseExcelToRows(file) {
   return json;
 }
 
+/** POST /import-excel/preview 응답 → 결과 모달용 results (아직 MongoDB 반영 전) */
+function mapPreviewResultsToUiResults(previewResults) {
+  const results = [];
+  for (const pr of previewResults) {
+    const i = pr.rowIndex;
+    const name = (pr.companyName || '').trim();
+    if (pr.kind === 'create') {
+      results.push({ rowIndex: i, ok: true, companyName: name, previewPending: true });
+    } else if (pr.kind === 'duplicate_exact') {
+      results.push({ rowIndex: i, ok: true, skipped: true, companyId: pr.companyId, companyName: name });
+    } else if (pr.kind === 'hold') {
+      results.push({
+        rowIndex: i,
+        ok: true,
+        hold: true,
+        companyName: name,
+        reason: '사업자번호가 같고 회사명이 달라 확인이 필요합니다.',
+        companyPayload: pr.companyPayload,
+        conflictCandidates: pr.conflictCandidates || [],
+        code: pr.code
+      });
+    } else if (pr.kind === 'error') {
+      results.push({ rowIndex: i, ok: false, error: pr.error, companyName: name });
+    } else if (pr.kind === 'empty') {
+      results.push({ rowIndex: i, ok: true, skipped: 'empty_row', companyName: '' });
+    } else {
+      results.push({ rowIndex: i, ok: false, error: '잘못된 행', companyName: name });
+    }
+  }
+  return results;
+}
+
+function buildPreviewSummary(previewResults) {
+  let created = 0;
+  let skippedDuplicateCompany = 0;
+  let onHold = 0;
+  let failed = 0;
+  let emptySkipped = 0;
+  for (const p of previewResults) {
+    if (p.kind === 'create') created += 1;
+    else if (p.kind === 'duplicate_exact') skippedDuplicateCompany += 1;
+    else if (p.kind === 'hold') onHold += 1;
+    else if (p.kind === 'error') failed += 1;
+    else if (p.kind === 'empty') emptySkipped += 1;
+    else failed += 1;
+  }
+  return {
+    total: previewResults.length,
+    created,
+    skippedDuplicateCompany,
+    onHold,
+    failed,
+    emptySkipped,
+    registerTarget: 'company'
+  };
+}
+
 export default function CustomerCompaniesExcelImportModal({ open, onClose, onImported }) {
   const fileInputRef = useRef(null);
   const [companySchemaFields, setCompanySchemaFields] = useState([]);
@@ -137,13 +248,15 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
   const [excelFileName, setExcelFileName] = useState('');
   const [dragOver, setDragOver] = useState(false);
   const [saving, setSaving] = useState(false);
+  /** 가져오기 클릭 후 서버 미리보기(중복 검사) API 대기 중 — 이 동안만 별도 모달 표시 */
+  const [previewChecking, setPreviewChecking] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null);
   const [importResult, setImportResult] = useState(null);
   const [inProgressJob, setInProgressJob] = useState(null);
   const [showHoldList, setShowHoldList] = useState(false);
   const [holdGroupSelection, setHoldGroupSelection] = useState({});
-  const [stagedHoldGroupActions, setStagedHoldGroupActions] = useState({});
-  const [resolvingHold, setResolvingHold] = useState(false);
+  const [resolvedHoldActions, setResolvedHoldActions] = useState([]);
+  const [appliedHoldGroupKeys, setAppliedHoldGroupKeys] = useState({});
   const [showAssigneePicker, setShowAssigneePicker] = useState(false);
   const [companyEmployeesForDisplay, setCompanyEmployeesForDisplay] = useState([]);
   const [assigneeDisplayText, setAssigneeDisplayText] = useState(undefined);
@@ -151,8 +264,23 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
     const id = getCurrentUserId();
     return id ? [id] : [];
   });
+  const previewRawSessionRef = useRef(null);
+  const holdGroupSelectionRef = useRef({});
+  /** 사용자가 확인을 눌러 실제 저장을 시작한 현재 작업만 폴링 결과로 반영 */
+  const activeImportJobRef = useRef(null);
 
   const registerTarget = 'company';
+
+  const updateHoldGroupSelection = useCallback((groupKey, selection) => {
+    holdGroupSelectionRef.current = {
+      ...(holdGroupSelectionRef.current || {}),
+      [String(groupKey)]: selection
+    };
+    setHoldGroupSelection((prev) => ({
+      ...prev,
+      [String(groupKey)]: selection
+    }));
+  }, []);
 
   const excelHeaders = useMemo(() => {
     if (!excelRows.length) return [];
@@ -248,10 +376,18 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
       setImportResult(null);
       setInProgressJob(null);
       setShowAssigneePicker(false);
+      activeImportJobRef.current = null;
       return;
     }
     setSaveMsg(null);
     setImportResult(null);
+    setInProgressJob(null);
+    setShowHoldList(false);
+    setHoldGroupSelection({});
+    holdGroupSelectionRef.current = {};
+    setResolvedHoldActions([]);
+    setAppliedHoldGroupKeys({});
+    activeImportJobRef.current = null;
     setRows(ensureCompanyMappingRowsComplete(rowsFromSavedMappings(null, registerTarget)));
     const id = getCurrentUserId();
     setAssigneeUserIds(id ? [id] : []);
@@ -348,10 +484,18 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
       return;
     }
 
-    setSaving(true);
+    setPreviewChecking(true);
     setSaveMsg(null);
+    setInProgressJob(null);
+    setImportResult(null);
+    setShowHoldList(false);
+    setHoldGroupSelection({});
+    holdGroupSelectionRef.current = {};
+    setResolvedHoldActions([]);
+    setAppliedHoldGroupKeys({});
+    activeImportJobRef.current = null;
     try {
-      const res = await fetch(`${API_BASE}/customer-companies/import-excel`, {
+      const previewRes = await fetch(`${API_BASE}/customer-companies/import-excel/preview`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         credentials: 'include',
@@ -361,27 +505,180 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
           assigneeUserIds: Array.isArray(assigneeUserIds) && assigneeUserIds.length > 0 ? assigneeUserIds : undefined
         })
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || '가져오기 실패');
+      const previewData = await previewRes.json().catch(() => ({}));
+      if (!previewRes.ok) throw new Error(previewData.error || '중복 검사에 실패했습니다.');
 
-      if (res.status === 202 && data.jobId) {
-        setInProgressJob({
-          jobId: data.jobId,
-          totalRows: data.totalRows ?? excelRows.length,
-          processedRows: 0,
-          processingStats: null
-        });
-        setSaveMsg('처리 중입니다. 완료될 때까지 이 화면을 유지해 주세요.');
-        return;
-      }
-
-      setImportResult(data);
+      const list = Array.isArray(previewData.results) ? previewData.results : [];
+      setImportResult({
+        phase: 'preview',
+        rawPreviewResults: list,
+        summary: buildPreviewSummary(list),
+        results: mapPreviewResultsToUiResults(list)
+      });
     } catch (e) {
       setSaveMsg(e.message || '실패');
     } finally {
-      setSaving(false);
+      setPreviewChecking(false);
     }
   };
+
+  const geocodeAddressForImport = useCallback(async (google, address) => {
+    const addr = String(address || '').trim();
+    if (!addr) return null;
+
+    const clientCoords = google ? await geocodeAddressWithGoogleMaps(google, addr) : null;
+    if (clientCoords?.latitude != null && clientCoords?.longitude != null) {
+      return clientCoords;
+    }
+
+    const geoRes = await fetch(`${API_BASE}/customer-companies/geocode`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      credentials: 'include',
+      body: JSON.stringify({ address: addr })
+    });
+    const geoData = await geoRes.json().catch(() => ({}));
+    if (!geoRes.ok) {
+      throw new Error(geoData.error || `주소 좌표 계산 실패: ${addr}`);
+    }
+    if (geoData.latitude == null || geoData.longitude == null) {
+      throw new Error(`주소 좌표를 찾을 수 없습니다: ${addr}`);
+    }
+    return {
+      latitude: Number(geoData.latitude),
+      longitude: Number(geoData.longitude)
+    };
+  }, []);
+
+  const buildClientGeocodedImportPayload = useCallback(async () => {
+    const mappings = toApiMappings(rows);
+    const previewRows = Array.isArray(importResult?.rawPreviewResults) ? importResult.rawPreviewResults : [];
+    if (previewRows.length === 0) {
+      throw new Error('미리보기 데이터가 없습니다. 다시 가져오기를 눌러 주세요.');
+    }
+
+    const rowsToGeocode = previewRows.filter((item) => item?.kind === 'create' || item?.kind === 'hold');
+    if (rowsToGeocode.length === 0) {
+      return { mappings, rows: excelRows, geocodedCount: 0 };
+    }
+
+    const enrichedRows = excelRows.map((row) => (
+      row && typeof row === 'object' ? { ...row } : row
+    ));
+    const hasLatitudeMapping = mappings.some((m) => String(m?.targetKey || '') === 'company.latitude');
+    const hasLongitudeMapping = mappings.some((m) => String(m?.targetKey || '') === 'company.longitude');
+    const google = GOOGLE_MAPS_API_KEY ? await loadGoogleMapsPromise() : null;
+    let geocodedCount = 0;
+    let processed = 0;
+    let firstGeocodeError = '';
+    let addressedRows = 0;
+
+    for (const item of rowsToGeocode) {
+      processed += 1;
+      const rowIndex = Number(item?.rowIndex);
+      if (!Number.isFinite(rowIndex) || !enrichedRows[rowIndex] || typeof enrichedRows[rowIndex] !== 'object') continue;
+
+      const address =
+        String(item?.companyPayload?.address || '').trim() ||
+        readCompanyFieldValueFromExcelRow(enrichedRows[rowIndex], mappings, 'company.address');
+      if (!address) continue;
+      addressedRows += 1;
+
+      setSaveMsg(`위도·경도 계산 중입니다… ${processed}/${rowsToGeocode.length}`);
+      try {
+        const coords = await geocodeAddressForImport(google, address);
+        if (!coords) continue;
+
+        enrichedRows[rowIndex][CLIENT_GEO_LAT_KEY] = coords.latitude;
+        enrichedRows[rowIndex][CLIENT_GEO_LNG_KEY] = coords.longitude;
+        geocodedCount += 1;
+      } catch (e) {
+        if (!firstGeocodeError) firstGeocodeError = e.message || '위도·경도 계산 실패';
+      }
+    }
+
+    if (addressedRows > 0 && geocodedCount === 0 && firstGeocodeError) {
+      throw new Error(firstGeocodeError);
+    }
+
+    const nextMappings = [...mappings];
+    if (geocodedCount > 0) {
+      if (!hasLatitudeMapping) {
+        nextMappings.push({
+          sourceType: 'field',
+          sourceKey: CLIENT_GEO_LAT_KEY,
+          constantValue: '',
+          targetKey: 'company.latitude'
+        });
+      }
+      if (!hasLongitudeMapping) {
+        nextMappings.push({
+          sourceType: 'field',
+          sourceKey: CLIENT_GEO_LNG_KEY,
+          constantValue: '',
+          targetKey: 'company.longitude'
+        });
+      }
+    }
+
+    return { mappings: nextMappings, rows: enrichedRows, geocodedCount };
+  }, [excelRows, importResult, rows, geocodeAddressForImport]);
+
+  const commitExcelImport = useCallback(
+    async ({ stagedActions = [], mappingsOverride, rowsOverride, startMessage } = {}) => {
+      const previewRows = Array.isArray(importResult?.rawPreviewResults) ? importResult.rawPreviewResults : [];
+      if (previewRows.length === 0) {
+        setSaveMsg('미리보기 데이터가 없습니다. 다시 가져오기를 눌러 주세요.');
+        return;
+      }
+
+      const mappings = Array.isArray(mappingsOverride) && mappingsOverride.length > 0 ? mappingsOverride : toApiMappings(rows);
+      const importRows = Array.isArray(rowsOverride) && rowsOverride.length > 0 ? rowsOverride : excelRows;
+
+      setSaving(true);
+      setSaveMsg(startMessage || '서버에 등록 중입니다…');
+      try {
+        const res = await fetch(`${API_BASE}/customer-companies/import-excel`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+          credentials: 'include',
+          body: JSON.stringify({
+            mappings,
+            rows: importRows,
+            assigneeUserIds: Array.isArray(assigneeUserIds) && assigneeUserIds.length > 0 ? assigneeUserIds : undefined,
+            holdResolutions: Array.isArray(stagedActions) ? stagedActions : []
+          })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || '가져오기 실패');
+
+        setImportResult(null);
+        setShowHoldList(false);
+        setHoldGroupSelection({});
+        setResolvedHoldActions([]);
+        setAppliedHoldGroupKeys({});
+
+        if (res.status === 202 && data.jobId) {
+          activeImportJobRef.current = String(data.jobId);
+          setInProgressJob({
+            jobId: data.jobId,
+            totalRows: data.totalRows ?? importRows.length,
+            processedRows: 0,
+            processingStats: null
+          });
+          setSaveMsg('처리 중입니다. 완료될 때까지 이 화면을 유지해 주세요.');
+          return;
+        }
+
+        setImportResult(data);
+      } catch (e) {
+        setSaveMsg(e.message || '실패');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [rows, excelRows, assigneeUserIds, importResult]
+  );
 
   const summary = useMemo(() => {
     let err = 0;
@@ -393,14 +690,45 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
     return { mapped: rows.filter((r) => r.targetKey).length, err, totalOpt: targetOptions.length };
   }, [rows, sampleRow, targetOptions.length]);
 
-  const handleResultConfirm = useCallback(() => {
+  const handleResultConfirm = useCallback(async () => {
+    if (importResult?.phase === 'preview') {
+      const results = Array.isArray(importResult.results) ? importResult.results : [];
+      const holdItems = results.filter((r) => r && r.hold);
+      const visibleHoldGroups = buildHoldGroups(holdItems).filter((group) => !appliedHoldGroupKeys[group.key]);
+      if (visibleHoldGroups.length > 0) {
+        setSaveMsg('보류를 모두 적용한 뒤 확인을 눌러 주세요.');
+        return;
+      }
+
+      const stagedActions = Array.isArray(resolvedHoldActions) ? resolvedHoldActions : [];
+      setSaving(true);
+      try {
+        setSaveMsg('주소 기준 위도·경도를 계산 중입니다…');
+        const { mappings, rows: importRows, geocodedCount } = await buildClientGeocodedImportPayload();
+        await commitExcelImport({
+          stagedActions,
+          mappingsOverride: mappings,
+          rowsOverride: importRows,
+          startMessage:
+            geocodedCount > 0
+              ? `위도·경도 ${geocodedCount}건 계산 후 서버에 등록 중입니다…`
+              : '좌표 계산 가능한 주소가 없어 원본 데이터로 서버 등록을 진행합니다…'
+        });
+      } catch (e) {
+        setSaveMsg(e.message || '위도·경도 계산 또는 등록 준비에 실패했습니다.');
+        setSaving(false);
+      }
+      return;
+    }
+
     if (importResult) onImported?.(importResult);
     setImportResult(null);
     setShowHoldList(false);
     setHoldGroupSelection({});
-    setStagedHoldGroupActions({});
+    setResolvedHoldActions([]);
+    setAppliedHoldGroupKeys({});
     onClose?.();
-  }, [importResult, onClose, onImported]);
+  }, [importResult, onClose, onImported, resolvedHoldActions, appliedHoldGroupKeys, buildClientGeocodedImportPayload, commitExcelImport]);
 
   useEffect(() => {
     if (!inProgressJob?.jobId || !open) return;
@@ -413,7 +741,10 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || stopped) return;
+        if (!activeImportJobRef.current) return;
+        if (String(inProgressJob.jobId) !== String(activeImportJobRef.current)) return;
         if (data.status === 'completed' || data.status === 'failed') {
+          activeImportJobRef.current = null;
           setInProgressJob(null);
           setImportResult({
             ...data,
@@ -451,7 +782,22 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
   }, [inProgressJob?.jobId]);
 
   useEffect(() => {
-    if (!importResult) return;
+    if (!importResult) {
+      previewRawSessionRef.current = null;
+      holdGroupSelectionRef.current = {};
+      return;
+    }
+    const raw = importResult.rawPreviewResults;
+    const isPreview = importResult.phase === 'preview';
+    if (!isPreview || !Array.isArray(raw)) {
+      if (!isPreview) previewRawSessionRef.current = null;
+      return;
+    }
+    if (previewRawSessionRef.current === raw) {
+      return;
+    }
+    previewRawSessionRef.current = raw;
+
     const results = Array.isArray(importResult.results) ? importResult.results : [];
     const holdItems = results.filter((r) => r && r.hold);
     const groups = buildHoldGroups(holdItems);
@@ -459,85 +805,84 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
     groups.forEach((g) => {
       const existing = buildExistingCandidatesForGroup(g);
       if (existing.length > 0) {
-        defaults[g.key] = { type: 'existing', key: existing[0].companyId };
+        defaults[g.key] = { type: 'existing', key: String(existing[0].companyId) };
       } else if (g.items.length > 0) {
         defaults[g.key] = { type: 'hold', key: String(g.items[0].rowIndex) };
       }
     });
+    holdGroupSelectionRef.current = defaults;
     setHoldGroupSelection(defaults);
-    setStagedHoldGroupActions({});
+    setResolvedHoldActions([]);
+    setAppliedHoldGroupKeys({});
+    if (holdItems.length > 0) setShowHoldList(true);
   }, [importResult]);
-
-  const handleResolveHolds = useCallback(async (overrideActions = null) => {
-    const effectiveJobId = importResult?.jobId || importResult?._id || inProgressJob?.jobId;
-    if (!effectiveJobId) {
-      setSaveMsg('작업 ID가 없어 보류 처리를 진행할 수 없습니다.');
-      return false;
-    }
-    const actions = Array.isArray(overrideActions) ? overrideActions : [];
-    if (!actions.length) {
-      setSaveMsg('보류 목록에서 최소 1건 이상 체크해 주세요.');
-      return false;
-    }
-
-    setResolvingHold(true);
-    setSaveMsg(null);
-    try {
-      const res = await fetch(`${API_BASE}/customer-companies/import-excel/jobs/${effectiveJobId}/resolve-holds`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        credentials: 'include',
-        body: JSON.stringify({ actions })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || '보류 처리 실패');
-      setImportResult((prev) => (prev ? { ...prev, summary: data.summary || prev.summary, results: data.results || prev.results } : prev));
-      setStagedHoldGroupActions({});
-      if (Array.isArray(data.resolveErrors) && data.resolveErrors.length) {
-        setSaveMsg(`일부 보류 처리 실패: ${data.resolveErrors.length}건`);
-        return false;
-      } else {
-        setSaveMsg('보류 항목 처리를 완료했습니다.');
-      }
-      return true;
-    } catch (e) {
-      setSaveMsg(e.message || '보류 처리 실패');
-      return false;
-    } finally {
-      setResolvingHold(false);
-    }
-  }, [importResult, inProgressJob?.jobId]);
 
   const handleResolveSingleHoldGroup = useCallback((group) => {
     const existing = buildExistingCandidatesForGroup(group);
     const defaultSelection = existing.length > 0
-      ? { type: 'existing', key: existing[0].companyId }
+      ? { type: 'existing', key: String(existing[0].companyId) }
       : { type: 'hold', key: String(group.items?.[0]?.rowIndex ?? '') };
-    const selected = holdGroupSelection[group.key] || defaultSelection;
+    const selected = holdGroupSelectionRef.current?.[group.key] || holdGroupSelection[group.key] || defaultSelection;
     const actions = buildResolveActionsForGroup(group, selected);
-    if (!actions.length) return;
-    setStagedHoldGroupActions((prev) => ({ ...prev, [group.key]: actions }));
-    setSaveMsg('선택한 보류 그룹을 완료 처리 목록으로 이동했습니다. 마지막에 확인을 눌러 저장하세요.');
+    if (!actions.length) {
+      setSaveMsg('이 그룹에 적용할 동작을 만들 수 없습니다. 다시 선택해 주세요.');
+      return;
+    }
+    const rowIndexesInGroup = new Set(
+      (group.items || [])
+        .map((item) => Number(item?.rowIndex))
+        .filter((n) => Number.isFinite(n))
+    );
+    setResolvedHoldActions((prev) => {
+      const rest = (Array.isArray(prev) ? prev : []).filter((action) => !rowIndexesInGroup.has(Number(action?.rowIndex)));
+      return [...rest, ...actions];
+    });
+    setAppliedHoldGroupKeys((prev) => ({ ...prev, [String(group.key)]: true }));
+    setImportResult((prev) => {
+      if (!prev || prev.phase !== 'preview') return prev;
+      return {
+        ...prev,
+        results: applyResolvedActionsToPreviewResults(prev.results, actions)
+      };
+    });
+    setSaveMsg('이 그룹이 적용되었습니다. 보류가 0건이 되면 확인 버튼으로 위도·경도 계산 후 등록할 수 있습니다.');
   }, [holdGroupSelection]);
 
   if (!open) return null;
+
+  if (previewChecking) {
+    return (
+      <div className="lc-crm-map-overlay cc-excel-import-modal" role="dialog" aria-modal="true">
+        <div className="lc-crm-result-panel" onClick={(e) => e.stopPropagation()}>
+          <div className="lc-crm-result-icon-wrap">
+            <span className="material-symbols-outlined lc-crm-result-icon" style={{ color: '#3d5a80' }}>
+              sync
+            </span>
+          </div>
+          <h2 className="lc-crm-result-title">매칭 처리 중입니다</h2>
+          <p className="lc-crm-result-sub">중복 검사를 실행하고 있습니다. 잠시만 기다려 주세요…</p>
+          <p className="lc-crm-map-save-msg" style={{ marginTop: '0.75rem', color: '#64748b' }}>
+            이 단계에서는 위·경도를 계산하지 않습니다.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (inProgressJob?.jobId) {
     return <ImportProgressModal inProgressJob={inProgressJob} />;
   }
 
   if (importResult) {
+    const isPreviewPhase = importResult.phase === 'preview';
     const s = importResult.summary || {};
     const results = Array.isArray(importResult.results) ? importResult.results : [];
     const created = s.created ?? 0;
     const completedResolved = (s.holdResolvedAdd ?? 0) + (s.holdResolvedMerge ?? 0);
-    const stagedCompleted = Object.values(stagedHoldGroupActions).reduce(
-      (sum, list) => sum + (Array.isArray(list) ? list.length : 0),
-      0
-    );
+    const stagedCompleted = Array.isArray(resolvedHoldActions) ? resolvedHoldActions.length : 0;
+    const previewNewPlanned = s.created ?? 0;
     const completedTotal = created + completedResolved + stagedCompleted;
     const skippedDup = s.skippedDuplicateCompany ?? 0;
-    const onHold = s.onHold ?? results.filter((r) => r && r.hold).length;
     const emptySk = s.emptySkipped ?? 0;
     const skipped = skippedDup + emptySk;
     const failed = s.failed ?? 0;
@@ -545,538 +890,88 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
     const failedItems = results.filter((r) => !r.ok);
     const skippedItems = results.filter((r) => r.ok && r.skipped);
     const holdItems = results.filter((r) => r && r.hold);
-    const visibleHoldGroups = buildHoldGroups(holdItems).filter((g) => !stagedHoldGroupActions[g.key]);
-    const successItems = results.filter((r) => r.ok && !r.skipped);
+    const allHoldGroups = buildHoldGroups(holdItems);
+    const visibleHoldGroups = allHoldGroups.filter((group) => !appliedHoldGroupKeys[group.key]);
+    const onHoldRemaining = visibleHoldGroups.reduce((acc, g) => acc + g.items.length, 0);
+    const onHold = isPreviewPhase
+      ? onHoldRemaining
+      : (s.onHold ?? results.filter((r) => r && r.hold).length);
+    const stagedResolvedItems = allHoldGroups
+      .filter((group) => appliedHoldGroupKeys[group.key])
+      .flatMap((group) => group.items || []);
+    const previewReadyCount = previewNewPlanned + stagedResolvedItems.length;
+    const canConfirmPreview = isPreviewPhase && onHoldRemaining === 0;
+    const successItems = isPreviewPhase
+      ? results.filter((r) => r.ok && r.previewPending)
+      : results.filter((r) => r.ok && !r.skipped && !r.hold);
 
     return (
-      <div className="lc-crm-map-overlay" role="dialog" aria-modal="true">
-        <div className="lc-crm-result-panel" onClick={(e) => e.stopPropagation()}>
-          <div className="lc-crm-result-icon-wrap">
-            <span
-              className="material-symbols-outlined lc-crm-result-icon"
-              style={{ color: failed > 0 ? '#f59e0b' : '#10b981' }}
-            >
-              {failed > 0 ? 'warning' : 'check_circle'}
-            </span>
-          </div>
-          <h2 className="lc-crm-result-title">{failed > 0 ? '가져오기 완료 (일부 실패)' : '가져오기 완료'}</h2>
-          <p className="lc-crm-result-sub">총 {total}행 처리 · 고객사 리스트</p>
-
-          <div className="lc-crm-result-cards">
-            <div className="lc-crm-result-card success">
-              <span className="material-symbols-outlined">check_circle</span>
-              <div>
-                <p className="lc-crm-result-card-num">{completedTotal}건</p>
-                <p className="lc-crm-result-card-label">완료 처리</p>
-              </div>
-            </div>
-            <div className="lc-crm-result-card skip">
-              <span className="material-symbols-outlined">content_copy</span>
-              <div>
-                <p className="lc-crm-result-card-num">{skipped}건</p>
-                <p className="lc-crm-result-card-label">스킵 (중복·빈 행)</p>
-              </div>
-            </div>
-            <div className="lc-crm-result-card fail">
-              <span className="material-symbols-outlined">error</span>
-              <div>
-                <p className="lc-crm-result-card-num">{failed}건</p>
-                <p className="lc-crm-result-card-label">실패</p>
-              </div>
-            </div>
-            <div className="lc-crm-result-card warn">
-              <span className="material-symbols-outlined">pending</span>
-              <div>
-                <p className="lc-crm-result-card-num">{onHold}건</p>
-                <p className="lc-crm-result-card-label">보류</p>
-              </div>
-            </div>
-          </div>
-
-          {failedItems.length > 0 && (
-            <div className="lc-crm-result-detail-section">
-              <h3 className="lc-crm-result-detail-title fail">
-                <span className="material-symbols-outlined">error</span>
-                실패 상세
-              </h3>
-              <ul className="lc-crm-result-detail-list">
-                {failedItems.map((item, i) => (
-                  <li key={i} className="lc-crm-result-detail-item fail">
-                    <span className="lc-crm-result-detail-id">
-                      {String(item.companyName || '').trim() || `행 ${(item.rowIndex ?? i) + 1}`}
-                    </span>
-                    <span>{item.error || '알 수 없는 오류'}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {skippedItems.length > 0 && skippedDup > 0 && (
-            <div className="lc-crm-result-detail-section">
-              <h3 className="lc-crm-result-detail-title skip">
-                <span className="material-symbols-outlined">content_copy</span>
-                중복 스킵 (이름+사업자번호 동일)
-              </h3>
-              <p className="lc-crm-map-save-msg" style={{ marginTop: '0.5rem' }}>
-                빈 행 {emptySk}건은 자동으로 건너뛰었습니다.
-              </p>
-            </div>
-          )}
-
-          {successItems.length > 0 && (
-            <div className="lc-crm-result-detail-section">
-              <h3 className="lc-crm-result-detail-title success">
-                <span className="material-symbols-outlined">check_circle</span>
-                신규 등록 {successItems.length}건
-              </h3>
-            </div>
-          )}
-
-          {visibleHoldGroups.length > 0 && (
-            <div className="lc-crm-result-detail-section">
-              <h3 className="lc-crm-result-detail-title skip" style={{ justifyContent: 'space-between' }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                  <span className="material-symbols-outlined">pending</span>
-                  보류 {visibleHoldGroups.reduce((acc, g) => acc + g.items.length, 0)}건
-                </span>
-                <button
-                  type="button"
-                  className="lc-crm-map-btn-discard"
-                  onClick={() => setShowHoldList((v) => !v)}
-                  style={{ minWidth: 0, padding: '0.35rem 0.65rem' }}
-                >
-                  {showHoldList ? '숨기기' : '목록 보기'}
-                </button>
-              </h3>
-              {showHoldList && (
-                <div>
-                  {visibleHoldGroups.map((group) => {
-                    const existingCandidates = buildExistingCandidatesForGroup(group);
-                    const selected = holdGroupSelection[group.key] || null;
-                    return (
-                    <div key={group.key} className="lc-crm-result-detail-section" style={{ marginTop: '0.6rem', padding: '0.65rem', border: '1px solid #e2e8f0', borderRadius: '0.6rem' }}>
-                      <h4 style={{ margin: 0, fontSize: '0.85rem', color: '#334155' }}>
-                        사업자번호 그룹: {group.businessNumber || '미기입'}
-                      </h4>
-                      <p style={{ margin: '0.25rem 0 0.55rem', fontSize: '0.75rem', color: '#64748b' }}>
-                        이 그룹에서 1개만 체크하면 해당 업체를 기준으로 나머지는 합쳐집니다. (기존 업체 우선)
-                      </p>
-                      {existingCandidates.length > 0 && (
-                        <>
-                          <h5 style={{ margin: '0 0 0.35rem', fontSize: '0.78rem', color: '#475569' }}>기존 DB 업체</h5>
-                          <ul className="lc-crm-result-detail-list">
-                            {existingCandidates.map((c) => {
-                              const checked = selected?.type === 'existing' && String(selected?.key) === String(c.companyId);
-                              return (
-                                <li key={`existing-${c.companyId}`} className="lc-crm-result-detail-item success">
-                                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', width: '100%' }}>
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      onChange={() => setHoldGroupSelection((prev) => ({ ...prev, [group.key]: { type: 'existing', key: String(c.companyId) } }))}
-                                    />
-                                    <span>{c.name || '(이름없음)'} / {c.businessNumber || '-'}</span>
-                                  </label>
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        </>
-                      )}
-                      <h5 style={{ margin: '0.45rem 0 0.35rem', fontSize: '0.78rem', color: '#475569' }}>이번 업로드 문제 업체</h5>
-                      <ul className="lc-crm-result-detail-list">
-                        {group.items.map((item, i) => {
-                          const checked = selected?.type === 'hold' && String(selected?.key) === String(item.rowIndex);
-                          return (
-                            <li key={String(item.rowIndex)} className="lc-crm-result-detail-item skip">
-                              <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.45rem', width: '100%' }}>
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => setHoldGroupSelection((prev) => ({ ...prev, [group.key]: { type: 'hold', key: String(item.rowIndex) } }))}
-                                />
-                                <span>
-                                  {String(item.companyName || '').trim() || `행 ${(item.rowIndex ?? i) + 1}`}
-                                  {item.reason ? ` — 사유: ${item.reason}` : ''}
-                                </span>
-                              </label>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.55rem' }}>
-                        <button
-                          type="button"
-                          className="lc-crm-result-confirm"
-                          onClick={() => handleResolveSingleHoldGroup(group)}
-                          disabled={resolvingHold}
-                          style={{ minWidth: '7.5rem' }}
-                        >
-                          {resolvingHold ? '적용 중…' : '이 그룹 적용'}
-                        </button>
-                      </div>
-                    </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-
-          <button
-            type="button"
-            className="lc-crm-result-confirm"
-            onClick={async () => {
-              const stagedActions = Object.values(stagedHoldGroupActions).flatMap((list) => (Array.isArray(list) ? list : []));
-              if (stagedActions.length > 0) {
-                const ok = await handleResolveHolds(stagedActions);
-                if (!ok) return;
-              }
-              const unresolved = visibleHoldGroups.length;
-              if (unresolved > 0) {
-                setSaveMsg(`아직 보류 그룹 ${unresolved}개가 남아 있습니다. 남은 그룹도 적용 후 확인해 주세요.`);
-                return;
-              }
-              handleResultConfirm();
-            }}
-            disabled={resolvingHold}
-          >
-            확인
-          </button>
-          {saveMsg && (
-            <p className={`lc-crm-map-save-msg ${saveMsg.includes('실패') || saveMsg.includes('남아') || saveMsg.includes('먼저') ? 'err' : ''}`}>
-              {saveMsg}
-            </p>
-          )}
-        </div>
-      </div>
+      <ImportResultModal
+        isPreviewPhase={isPreviewPhase}
+        failed={failed}
+        total={total}
+        previewReadyCount={previewReadyCount}
+        completedTotal={completedTotal}
+        skipped={skipped}
+        onHold={onHold}
+        failedItems={failedItems}
+        skippedDup={skippedDup}
+        emptySk={emptySk}
+        successItems={successItems}
+        stagedResolvedItems={stagedResolvedItems}
+        visibleHoldGroups={visibleHoldGroups}
+        showHoldList={showHoldList}
+        onToggleHoldList={() => setShowHoldList((v) => !v)}
+        holdGroupSelection={holdGroupSelection}
+        updateHoldGroupSelection={updateHoldGroupSelection}
+        onApplyHoldGroup={handleResolveSingleHoldGroup}
+        saving={saving}
+        canConfirmPreview={canConfirmPreview}
+        onConfirm={handleResultConfirm}
+        saveMsg={saveMsg}
+      />
     );
   }
 
   return (
-    <div className="lc-crm-map-overlay" role="dialog" aria-modal="true" aria-labelledby="cc-excel-map-title">
-      <div className="lc-crm-map-panel" onClick={(e) => e.stopPropagation()}>
-        <header className="lc-crm-map-head">
-          <div className="lc-crm-map-head-left">
-            <button
-              type="button"
-              className="lc-crm-map-btn-discard"
-              onClick={onClose}
-              aria-label="뒤로"
-              disabled={saving || resolvingHold || !!inProgressJob?.jobId}
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: '1.25rem', verticalAlign: 'middle' }}>
-                arrow_back
-              </span>
-            </button>
-            <h2 id="cc-excel-map-title">엑셀 → 고객사 매핑</h2>
-            <span className="lc-crm-map-draft">Excel</span>
-            <span className="lc-crm-map-lead-count" title="업로드된 행 수">
-              {excelRows.length > 0 ? `${excelRows.length}행` : '파일 없음'}
-            </span>
-          </div>
-          <div className="lc-crm-map-head-actions">
-            <button type="button" className="lc-crm-map-btn-discard" onClick={onClose} disabled={saving || resolvingHold || !!inProgressJob?.jobId}>
-              닫기
-            </button>
-            <button type="button" className="lc-crm-map-btn-save" onClick={handleImport} disabled={saving || !!inProgressJob?.jobId}>
-              <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>
-                play_arrow
-              </span>
-              {saving ? '처리 중…' : '가져오기'}
-            </button>
-          </div>
-        </header>
-
-        <div className="lc-crm-map-body">
-          <div className="lc-crm-map-title-block">
-            <h1>고객사 일괄 등록</h1>
-            <p className="lc-crm-map-lead-hint">
-              엑셀 <strong>첫 행은 헤더</strong>(열 이름)로 사용됩니다. 각 열을 <strong>고객사 필드</strong>에 연결한 뒤{' '}
-              <strong>가져오기</strong>를 누르세요. 대상 필드는 서버 스키마에서 자동으로 불러오며, 커스텀 필드가 추가되면
-              여기에도 반영됩니다.
-            </p>
-          </div>
-
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
-            className="visually-hidden"
-            style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) void ingestFile(f);
-              e.target.value = '';
-            }}
-          />
-
-          <div
-            role="button"
-            tabIndex={0}
-            className={`cc-excel-dropzone ${dragOver ? 'is-dragover' : ''}`}
-            onDragEnter={(e) => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={(e) => { e.preventDefault(); if (!e.currentTarget.contains(e.relatedTarget)) setDragOver(false); }}
-            onDragOver={(e) => { e.preventDefault(); }}
-            onDrop={onDrop}
-            onClick={() => fileInputRef.current?.click()}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                fileInputRef.current?.click();
-              }
-            }}
-          >
-            <span className="material-symbols-outlined cc-excel-dropzone-icon">cloud_upload</span>
-            <p className="cc-excel-dropzone-title">엑셀 파일을 여기에 놓거나 클릭하여 선택</p>
-            <p className="cc-excel-dropzone-hint">.xlsx · .xls · CSV · 최대 500행 (서버 제한)</p>
-            {excelFileName ? (
-              <div className="cc-excel-file-badge">
-                <span className="material-symbols-outlined" style={{ fontSize: '1rem' }}>
-                  description
-                </span>
-                {excelFileName}
-              </div>
-            ) : null}
-          </div>
-
-          <p className="lc-crm-map-target-desc" style={{ marginBottom: '1rem' }}>
-            미리보기는 <strong>첫 데이터 행</strong> 기준입니다. 열 이름이 바뀌면 소스 매핑을 다시 확인하세요.{' '}
-            먼저 <strong>고객사명+사업자번호 중복</strong>을 검사하고, 등록 가능한 행만 <strong>주소</strong> 기준
-            Gemini 지오코딩(비어 있는 위·경도만 보강)을 진행합니다.
-          </p>
-          <p className="lc-crm-map-target-desc" style={{ marginTop: '-0.5rem', marginBottom: '1rem' }}>
-            필수 매핑: <strong>사업자 번호, 고객사 명, 대표자명, 주소</strong>
-          </p>
-          {targetOptions.length === 0 && (
-            <p className="lc-crm-map-source-meta" style={{ marginTop: '-0.35rem', marginBottom: '0.85rem', color: '#b45309' }}>
-              대상 필드 API 응답이 비어 기본 필드 목록으로 표시 중입니다.
-            </p>
-          )}
-          <div className="add-company-field add-company-field-assignee" style={{ marginBottom: '1rem' }}>
-            <label className="add-company-label" htmlFor="cc-import-assignee-input">담당자</label>
-            <div className="add-company-assignee-input-wrap">
-              <input
-                id="cc-import-assignee-input"
-                type="text"
-                className="add-company-input"
-                placeholder="담당자를 선택해 주세요"
-                value={assigneeInputValue}
-                onChange={(e) => setAssigneeDisplayText(e.target.value)}
-              />
-              <button
-                type="button"
-                className="add-company-assignee-search-icon-btn"
-                onClick={() => setShowAssigneePicker(true)}
-                title="담당자 선택"
-                aria-label="담당자 선택"
-              >
-                <span className="material-symbols-outlined">search</span>
-              </button>
-            </div>
-            {showMeBadge && (
-              <div style={{ marginTop: '0.45rem' }}>
-                <span
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '0.25rem',
-                    padding: '0.2rem 0.6rem',
-                    borderRadius: '999px',
-                    background: '#e8f3ff',
-                    color: '#295b8c',
-                    fontSize: '0.75rem',
-                    fontWeight: 700
-                  }}
-                >
-                  나
-                </span>
-              </div>
-            )}
-            <p className="lc-crm-map-source-meta" style={{ marginTop: '0.35rem' }}>
-              담당자를 선택하지 않으면 로그인한 사용자 본인으로 등록됩니다.
-            </p>
-          </div>
-
-          <div className="lc-crm-map-table-head">
-            <div>소스 필드 (엑셀 열)</div>
-            <div />
-            <div>대상 필드 (고객사 CRM)</div>
-            <div>미리보기</div>
-            <div style={{ textAlign: 'right' }}>상태</div>
-          </div>
-
-          <div className="lc-crm-map-rows">
-            {rows.map((row) => {
-              const preview = previewExcelMappedValue(sampleRow, row);
-              const st = rowStatus(row, preview, registerTarget);
-              const isConst = row.sourceType === 'constant';
-              return (
-                <div key={row.id} className={`lc-crm-map-row ${isConst ? 'is-constant' : ''}`}>
-                  <div className="lc-crm-map-source-cell">
-                    <div className="lc-crm-map-icon-box">
-                      <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>
-                        {isConst ? 'add_circle' : 'input'}
-                      </span>
-                    </div>
-                    <p>{isConst ? '고정값' : '엑셀 열'}</p>
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      {isConst ? (
-                        <input
-                          className="lc-crm-map-input"
-                          style={{ marginTop: '0.35rem' }}
-                          placeholder="값 입력…"
-                          value={row.constantValue}
-                          onChange={(e) => updateRow(row.id, { constantValue: e.target.value })}
-                        />
-                      ) : (
-                        <>
-                          <select
-                            className="lc-crm-map-select"
-                            value={row.sourceKey}
-                            onChange={(e) => updateRow(row.id, { sourceKey: e.target.value })}
-                          >
-                            <option value="">소스 선택…</option>
-                            {sourceOptions.map((s) => (
-                              <option key={s.key} value={s.key}>
-                                {s.label}
-                              </option>
-                            ))}
-                          </select>
-                          <p className="lc-crm-map-source-meta">
-                            {sourceOptions.find((x) => x.key === row.sourceKey)?.meta || ''}
-                          </p>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <div className="lc-crm-map-connector-wrap" style={{ display: 'flex', alignItems: 'center' }}>
-                    <div className="lc-crm-map-connector" />
-                  </div>
-                  <div>
-                    <select
-                      className="lc-crm-map-select"
-                      value={row.targetKey}
-                      onChange={(e) => updateRow(row.id, { targetKey: e.target.value })}
-                    >
-                      <option value="">대상 선택…</option>
-                      {effectiveTargetOptions.map((t) => (
-                        <option key={t.value} value={t.value}>
-                          {t.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="lc-crm-map-preview">
-                    <span className="material-symbols-outlined">visibility</span>
-                    <span>{preview || '—'}</span>
-                  </div>
-                  <div
-                    className="lc-crm-map-status"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'flex-end',
-                      gap: '0.35rem',
-                      flexWrap: 'wrap'
-                    }}
-                  >
-                    {!isConst && (
-                      <span
-                        className={`lc-crm-map-badge ${st.type === 'ok' ? 'ok' : st.type === 'warn' ? 'warn' : st.type === 'err' ? 'err' : 'muted'}`}
-                      >
-                        {st.type === 'ok' && <span className="material-symbols-outlined">check_circle</span>}
-                        {st.type === 'warn' && <span className="material-symbols-outlined">priority_high</span>}
-                        {st.type === 'err' && <span className="material-symbols-outlined">error</span>}
-                        {st.label}
-                      </span>
-                    )}
-                    {rows.length > 1 && (
-                      <button
-                        type="button"
-                        className="lc-crm-map-row-delete"
-                        onClick={() => removeRow(row.id)}
-                        aria-label="행 삭제"
-                      >
-                        <span className="material-symbols-outlined">delete</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="lc-crm-map-footer-card">
-            <div className="lc-crm-map-footer-hint">
-              <div className="lc-crm-map-footer-icon">
-                <span className="material-symbols-outlined">lightbulb</span>
-              </div>
-              <div>
-                <p>동적 필드</p>
-                <span>
-                  고객사 스키마·커스텀 필드 정의는 API에서 가져옵니다. 새 필드를 DB에 추가하면 다음에 모달을 열 때 대상
-                  목록에 자동 반영됩니다.
-                </span>
-              </div>
-            </div>
-            <button type="button" className="lc-crm-map-btn-add-const" onClick={addConstantRow}>
-              <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>
-                add
-              </span>
-              고정값 추가
-            </button>
-          </div>
-
-          <div className="lc-crm-map-summary">
-            <div className="lc-crm-map-summary-card">
-              <p>매핑된 대상</p>
-              <p className="num">
-                {summary.mapped} / {rows.length}
-              </p>
-              <div className="lc-crm-map-bar">
-                <div style={{ width: `${rows.length ? Math.min(100, (summary.mapped / rows.length) * 100) : 0}%` }} />
-              </div>
-            </div>
-            <div className="lc-crm-map-summary-card">
-              <p>주의</p>
-              <p className="num rose">{summary.err}</p>
-              <p style={{ margin: '0.35rem 0 0', fontSize: '0.65rem', color: '#64748b' }}>
-                미리보기 = 첫 데이터 행
-              </p>
-            </div>
-            <div className="lc-crm-map-summary-card">
-              <p>등록</p>
-              <p className="num" style={{ fontSize: '1rem' }}>
-                고객사만
-              </p>
-              <p style={{ margin: '0.35rem 0 0', fontSize: '0.65rem', color: '#64748b' }}>
-                중복(상호+사업자번호)은 스킵
-              </p>
-            </div>
-          </div>
-
-          {saveMsg && (
-            <p className={`lc-crm-map-save-msg ${saveMsg.includes('실패') || saveMsg.includes('필요') ? 'err' : ''}`}>
-              {saveMsg}
-            </p>
-          )}
-        </div>
-      </div>
-      {showAssigneePicker && (
-        <AssigneePickerModal
-          open={showAssigneePicker}
-          onClose={() => setShowAssigneePicker(false)}
-          selectedIds={assigneeUserIds || []}
-          onConfirm={(ids) => {
-            setAssigneeUserIds(ids || []);
-            const names = (ids || []).map((id) => assigneeIdToName[String(id)] || id).join(', ');
-            setAssigneeDisplayText(names);
-            setShowAssigneePicker(false);
-          }}
-        />
-      )}
-    </div>
+    <ImportMappingModal
+      onClose={onClose}
+      saving={saving}
+      previewChecking={previewChecking}
+      inProgressJob={inProgressJob}
+      onImport={handleImport}
+      excelRows={excelRows}
+      fileInputRef={fileInputRef}
+      ingestFile={ingestFile}
+      dragOver={dragOver}
+      setDragOver={setDragOver}
+      onDrop={onDrop}
+      excelFileName={excelFileName}
+      targetOptions={targetOptions}
+      assigneeInputValue={assigneeInputValue}
+      onAssigneeInputChange={setAssigneeDisplayText}
+      onOpenAssigneePicker={() => setShowAssigneePicker(true)}
+      showMeBadge={showMeBadge}
+      rows={rows}
+      sampleRow={sampleRow}
+      registerTarget={registerTarget}
+      sourceOptions={sourceOptions}
+      effectiveTargetOptions={effectiveTargetOptions}
+      updateRow={updateRow}
+      removeRow={removeRow}
+      addConstantRow={addConstantRow}
+      summary={summary}
+      saveMsg={saveMsg}
+      showAssigneePicker={showAssigneePicker}
+      assigneeUserIds={assigneeUserIds}
+      assigneeIdToName={assigneeIdToName}
+      onCloseAssigneePicker={() => setShowAssigneePicker(false)}
+      onConfirmAssigneePicker={(ids) => {
+        setAssigneeUserIds(ids || []);
+        const names = (ids || []).map((id) => assigneeIdToName[String(id)] || id).join(', ');
+        setAssigneeDisplayText(names);
+        setShowAssigneePicker(false);
+      }}
+    />
   );
 }

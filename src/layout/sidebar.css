@@ -160,8 +160,22 @@
   color: #fff;
 }
 
+.sidebar-link-locked {
+  opacity: 0.62;
+}
+
+.sidebar-link-locked:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .sidebar-link .material-symbols-outlined {
   font-size: 1.25rem;
+}
+
+.sidebar-lock-icon {
+  margin-left: auto;
+  font-size: 1rem !important;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .sidebar-order-saving {

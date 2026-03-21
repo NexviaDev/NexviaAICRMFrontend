@@ -54,6 +54,8 @@ export default function Register() {
   const [companySearchModalOpen, setCompanySearchModalOpen] = useState(false);
   const [companyConfirmed, setCompanyConfirmed] = useState(false);
   const [companyBusinessNumber, setCompanyBusinessNumber] = useState('');
+  const [companyRepresentativeName, setCompanyRepresentativeName] = useState('');
+  const [companyNeedsCreate, setCompanyNeedsCreate] = useState(false);
 
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -78,6 +80,8 @@ export default function Register() {
             setCompanyAddress(data.user.companyAddress || '');
             setCompanyAddressDetail(data.user.companyAddressDetail || '');
             setCompanyDepartment(data.user.companyDepartment || '');
+            setCompanyNeedsCreate(false);
+            setCompanyRepresentativeName('');
             if (data.user.companyName) {
               setCompanyConfirmed(true);
               fetch(`${API_BASE}/companies/search?q=${encodeURIComponent(data.user.companyName)}&limit=5`)
@@ -112,6 +116,8 @@ export default function Register() {
             setCompanyAddress(data.user.companyAddress || '');
             setCompanyAddressDetail(data.user.companyAddressDetail || '');
             setCompanyDepartment(data.user.companyDepartment || '');
+            setCompanyNeedsCreate(false);
+            setCompanyRepresentativeName('');
             if (data.user.companyName) {
               setCompanyConfirmed(true);
               fetch(`${API_BASE}/companies/search?q=${encodeURIComponent(data.user.companyName)}&limit=5`)
@@ -137,9 +143,13 @@ export default function Register() {
     const address = typeof company === 'object' && company ? (company.address ?? '') : '';
     const addressDetail = typeof company === 'object' && company ? (company.addressDetail ?? '') : '';
     const businessNumber = typeof company === 'object' && company ? (company.businessNumber ?? '') : '';
+    const representativeName = typeof company === 'object' && company ? (company.representativeName ?? '') : '';
+    const isNewDraft = !!(typeof company === 'object' && company?.isNewDraft);
     setCompanyName(name);
     setCompanyConfirmed(true);
     setCompanyBusinessNumber(businessNumber);
+    setCompanyRepresentativeName(representativeName);
+    setCompanyNeedsCreate(isNewDraft);
     setCompanySearchModalOpen(false);
     if (address !== undefined) setCompanyAddress(address);
     if (addressDetail !== undefined) setCompanyAddressDetail(addressDetail);
@@ -273,6 +283,16 @@ export default function Register() {
       setLoading(false);
       return;
     }
+    if (companyNeedsCreate && !companyBusinessNumber.trim()) {
+      setError('새 회사 저장을 위해 사업자 번호가 필요합니다.');
+      setLoading(false);
+      return;
+    }
+    if (companyNeedsCreate && !companyRepresentativeName.trim()) {
+      setError('새 회사 저장을 위해 대표자 성함이 필요합니다.');
+      setLoading(false);
+      return;
+    }
     try {
       const res = await fetch(`${API_BASE}/auth/register`, {
         method: 'POST',
@@ -286,7 +306,10 @@ export default function Register() {
           companyName: companyName.trim(),
           companyAddress: companyAddress.trim(),
           companyAddressDetail: companyAddressDetail.trim(),
-          companyDepartment: companyDepartment.trim()
+          companyDepartment: companyDepartment.trim(),
+          companyBusinessNumber: companyBusinessNumber.trim(),
+          companyRepresentativeName: companyNeedsCreate ? companyRepresentativeName.trim() : '',
+          createCompanyOnSave: companyNeedsCreate
         })
       });
       const data = await res.json().catch(() => ({}));
@@ -363,6 +386,16 @@ export default function Register() {
       setLoading(false);
       return;
     }
+    if (companyNeedsCreate && !companyBusinessNumber.trim()) {
+      setError('새 회사 저장을 위해 사업자 번호가 필요합니다.');
+      setLoading(false);
+      return;
+    }
+    if (companyNeedsCreate && !companyRepresentativeName.trim()) {
+      setError('새 회사 저장을 위해 대표자 성함이 필요합니다.');
+      setLoading(false);
+      return;
+    }
     try {
       const body = {
         name: name.trim(),
@@ -370,7 +403,10 @@ export default function Register() {
         companyName: companyName.trim(),
         companyAddress: companyAddress.trim(),
         companyAddressDetail: companyAddressDetail.trim(),
-        companyDepartment: companyDepartment.trim()
+        companyDepartment: companyDepartment.trim(),
+        companyBusinessNumber: companyBusinessNumber.trim(),
+        companyRepresentativeName: companyNeedsCreate ? companyRepresentativeName.trim() : '',
+        createCompanyOnSave: companyNeedsCreate
       };
       if (password) body.password = password;
       const res = await fetch(`${API_BASE}/auth/complete-profile`, {
@@ -453,6 +489,11 @@ export default function Register() {
                   {!companyConfirmed && (
                     <span className="register-company-status unconfirmed">
                       <span className="material-symbols-outlined">info</span> 돋보기를 눌러 검색하거나, 회사 추가를 이용해 주세요
+                    </span>
+                  )}
+                  {isEditMode && companyConfirmed && (
+                    <span className="register-company-status unconfirmed">
+                      <span className="material-symbols-outlined">hourglass_top</span> 회사를 변경하면 권한이 `권한 대기` 상태로 전환됩니다.
                     </span>
                   )}
                   <button type="button" className="register-company-add-btn" onClick={() => setAddCompanyModalOpen(true)}>+ 회사 추가</button>
@@ -558,6 +599,11 @@ export default function Register() {
                   {!companyConfirmed && (
                     <span className="register-company-status unconfirmed">
                       <span className="material-symbols-outlined">info</span> 돋보기를 눌러 검색하거나, 회사 추가를 이용해 주세요
+                    </span>
+                  )}
+                  {companyConfirmed && (
+                    <span className="register-company-status confirmed">
+                      <span className="material-symbols-outlined">verified_user</span> 새 회사라면 저장 시 최초 저장자에게 자동으로 `Owner` 권한이 부여됩니다.
                     </span>
                   )}
                   <button type="button" className="register-company-add-btn" onClick={() => setAddCompanyModalOpen(true)}>+ 회사 추가</button>

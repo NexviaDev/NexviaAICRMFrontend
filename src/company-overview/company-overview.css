@@ -53,6 +53,13 @@
   color: var(--danger, #c53030);
 }
 
+.company-overview-inline-error {
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(197, 48, 48, 0.14);
+  border-radius: 0.8rem;
+  background: #fff7f7;
+}
+
 .company-overview-card {
   background: var(--card);
   border: 1px solid var(--card-border);
@@ -117,6 +124,52 @@
   font-size: 0.9rem;
 }
 
+.company-overview-approval-box {
+  margin-bottom: 1rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid rgba(107, 143, 184, 0.22);
+  border-radius: 0.8rem;
+  background: #f6f9fd;
+}
+
+.company-overview-approval-text,
+.company-overview-request-message {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.company-overview-approval-text {
+  color: var(--text-muted);
+}
+
+.company-overview-request-message {
+  margin-top: 0.65rem;
+  color: #41658b;
+  font-weight: 600;
+}
+
+.company-overview-request-btn {
+  margin-top: 0.9rem;
+  padding: 0.7rem 1rem;
+  border: none;
+  border-radius: 0.7rem;
+  background: #9fb9d9;
+  color: #123150;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter 0.2s ease, transform 0.2s ease;
+}
+
+.company-overview-request-btn:hover:not(:disabled) {
+  filter: brightness(0.98);
+  transform: translateY(-1px);
+}
+
+.company-overview-request-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .company-overview-table-wrap {
   overflow-x: auto;
 }
@@ -146,6 +199,76 @@
 
 .company-overview-table td {
   color: var(--text);
+}
+
+.company-overview-approval-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+}
+
+.company-overview-approval-check input {
+  width: 1rem;
+  height: 1rem;
+}
+
+.company-overview-select {
+  min-width: 9rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.55rem;
+  background: #fff;
+  color: var(--text);
+  font-size: 0.84rem;
+}
+
+.company-overview-role-trigger {
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.company-overview-role-trigger:disabled {
+  cursor: wait;
+}
+
+.company-overview-role-trigger:focus-visible .company-overview-badge,
+.company-overview-role-trigger:hover .company-overview-badge {
+  box-shadow: 0 0 0 2px rgba(91, 124, 153, 0.18);
+}
+
+.company-overview-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 6.5rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.company-overview-badge.role-owner {
+  background: #fdf3d6;
+  color: #9a6b08;
+}
+
+.company-overview-badge.role-senior {
+  background: #efeafe;
+  color: #6450b8;
+}
+
+.company-overview-badge.role-pending {
+  background: #fff3e9;
+  color: #b86a2c;
+}
+
+.company-overview-badge.role-staff {
+  background: #edf5ff;
+  color: #41658b;
 }
 
 @media (max-width: 768px) {

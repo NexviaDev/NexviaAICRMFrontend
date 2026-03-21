@@ -1,10 +1,24 @@
-import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { API_BASE } from '@/config';
 import nexviaLogo from '../../img/Nexvia Logo(1).png';
+import PrivacyPolicyModal from './legal-modals/PrivacyPolicyModal';
+import TermsOfServiceModal from './legal-modals/TermsOfServiceModal';
+import GoogleApiTermsModal from './legal-modals/GoogleApiTermsModal';
 import './login.css';
 
+const SUPPORT_MAIL = 'develop@nexvia.co.kr';
+
+/** 로그인 화면 법적 문서 모달 — URL: /login?legal=privacy | terms | google */
+const LEGAL_QUERY = 'legal';
+const LEGAL_VALUES = /** @type {const} */ (['privacy', 'terms', 'google']);
+
 const getGoogleAuthUrl = () => `${API_BASE}/auth/google`;
+
+function parseLegalModal(searchParams) {
+  const v = searchParams.get(LEGAL_QUERY);
+  return LEGAL_VALUES.includes(v) ? v : null;
+}
 
 /** Sample Design/CDN ref.txt — Cloudinary */
 const FEATURE_BG = {
@@ -21,12 +35,33 @@ const FEATURE_BG = {
 
 export default function Login() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [error, setError] = useState('');
+
+  const legalModal = parseLegalModal(searchParams);
+
+  const setLegalQuery = useCallback(
+    (value) => {
+      const next = new URLSearchParams(searchParams);
+      if (value && LEGAL_VALUES.includes(value)) next.set(LEGAL_QUERY, value);
+      else next.delete(LEGAL_QUERY);
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams]
+  );
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!legalModal) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setLegalQuery(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [legalModal, setLegalQuery]);
 
   useEffect(() => {
     const token = searchParams.get('token');
@@ -42,7 +77,7 @@ export default function Login() {
         .then((data) => {
           if (data.user) {
             localStorage.setItem('crm_user', JSON.stringify(data.user));
-            navigate('/', { replace: true });
+            navigate(data.user.role === 'pending' ? '/company-overview' : '/', { replace: true });
           }
         })
         .catch(() => setError('로그인 정보를 불러오지 못했습니다.'));
@@ -151,13 +186,24 @@ export default function Login() {
       <footer className="login-site-footer">
         <p className="login-site-footer-copy">© 2026 Nexvia CRM. All rights reserved.</p>
         <div className="login-site-footer-links">
-          <a href="#features">Privacy</a>
-          <a href="#features">Terms</a>
-          <a href="#features">Google Cloud</a>
-          <a href="#features">Support</a>
+          <Link to="/login?legal=privacy" replace className="login-footer-legal-btn">
+            개인정보 보호정책
+          </Link>
+          <Link to="/login?legal=terms" replace className="login-footer-legal-btn">
+            이용약관
+          </Link>
+          <Link to="/login?legal=google" replace className="login-footer-legal-btn">
+            Google API·연동 고지
+          </Link>
+          <a href={`mailto:${SUPPORT_MAIL}`} className="login-footer-mailto">
+            문의
+          </a>
         </div>
-        <p className="login-site-footer-photo-credit">기능 카드 이미지: Cloudinary (CDN ref)</p>
       </footer>
+
+      <PrivacyPolicyModal open={legalModal === 'privacy'} onClose={() => setLegalQuery(null)} />
+      <TermsOfServiceModal open={legalModal === 'terms'} onClose={() => setLegalQuery(null)} />
+      <GoogleApiTermsModal open={legalModal === 'google'} onClose={() => setLegalQuery(null)} />
     </div>
   );
 }

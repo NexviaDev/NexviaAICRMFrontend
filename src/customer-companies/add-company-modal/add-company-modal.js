@@ -2,10 +2,17 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import CustomFieldsSection from '../../shared/custom-fields-section';
 import CustomFieldsManageModal from '../../shared/custom-fields-manage-modal/custom-fields-manage-modal';
 import AssigneePickerModal from '../../company-overview/assignee-picker-modal/assignee-picker-modal';
+import DriveLargeFileWarningModal from '../../shared/drive-large-file-warning-modal/drive-large-file-warning-modal';
 import './add-company-modal.css';
 
 import { API_BASE } from '@/config';
-const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+import {
+  getGoogleMapsApiKey,
+  loadGoogleMaps,
+  geocodeAddressWithGoogleMaps
+} from '@/lib/google-maps-client';
+
+const GOOGLE_MAPS_API_KEY = getGoogleMapsApiKey();
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.978 };
 const DEFAULT_ZOOM = 14;
 function getPickerMarkerIcon(google) {
@@ -23,43 +30,6 @@ function getPickerMarkerIcon(google) {
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
-function loadGoogleMaps(onLoad) {
-  if (!GOOGLE_MAPS_API_KEY) {
-    onLoad(null);
-    return;
-  }
-  if (window.google?.maps?.Map) {
-    onLoad(window.google);
-    return;
-  }
-  if (window.__googleMapsLoading) {
-    const t = setInterval(() => {
-      if (window.google?.maps?.Map) {
-        clearInterval(t);
-        onLoad(window.google);
-      }
-    }, 100);
-    return () => clearInterval(t);
-  }
-  const cb = '__nexviaMapPickerInit';
-  window[cb] = function () {
-    window.__googleMapsLoading = false;
-    window[cb] = null;
-    onLoad(window.google);
-  };
-  window.__googleMapsLoading = true;
-  const script = document.createElement('script');
-  script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&language=ko&loading=async&callback=${cb}`;
-  script.async = true;
-  script.defer = true;
-  script.onerror = () => {
-    window.__googleMapsLoading = false;
-    if (window[cb]) window[cb] = null;
-    onLoad(null);
-  };
-  document.head.appendChild(script);
 }
 
 /** 사업자번호: 숫자만 허용, 10자리까지 입력 시 123-45-67890 형식으로 자동 구분 */
@@ -131,6 +101,7 @@ function buildCertificateDriveFileName(companyName, businessNumberRaw, mimeType,
 }
 
 const INFORMATION_FOLDER_NAME = 'information';
+const MAX_DRIVE_API_UPLOAD_SIZE = 5 * 1024 * 1024;
 
 export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }) {
   const isEdit = Boolean(company);
@@ -169,6 +140,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
   const [driveInformationFolderId, setDriveInformationFolderId] = useState(null);
   const [driveUploading, setDriveUploading] = useState(false);
   const [driveError, setDriveError] = useState('');
+  const [largeFileWarning, setLargeFileWarning] = useState({ open: false, files: [], folderUrl: '' });
   const [driveCurrentFolderId, setDriveCurrentFolderId] = useState(null);
   const [driveBreadcrumb, setDriveBreadcrumb] = useState([]);
   const [driveFilesList, setDriveFilesList] = useState([]);
@@ -382,6 +354,21 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
             setDriveInformationFolderId(infoData.id);
           }
         }
+        const directDriveFiles = filesArray.filter((file) => Number(file?.size || 0) > MAX_DRIVE_API_UPLOAD_SIZE);
+        const apiUploadFiles = filesArray.filter((file) => Number(file?.size || 0) <= MAX_DRIVE_API_UPLOAD_SIZE);
+        if (directDriveFiles.length > 0) {
+          const names = directDriveFiles.slice(0, 3).map((file) => file.name).join(', ');
+          const more = directDriveFiles.length > 3 ? ` 외 ${directDriveFiles.length - 3}건` : '';
+          setDriveError(`5MB 초과 파일은 API로 바로 올릴 수 없습니다: ${names}${more}`);
+          setLargeFileWarning({
+            open: true,
+            files: directDriveFiles.map((file) => ({ name: file.name, size: file.size })),
+            folderUrl: `https://drive.google.com/drive/folders/${parentId}`
+          });
+        }
+        if (!apiUploadFiles.length) {
+          return;
+        }
         const uploadOne = async (file) => {
           const contentBase64 = await fileToBase64(file);
           if (!contentBase64) {
@@ -402,7 +389,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
           const upData = await up.json().catch(() => ({}));
           if (!up.ok) setDriveError((e) => (e ? e : (upData.error || '업로드 실패')));
         };
-        await Promise.all(filesArray.map((file) => uploadOne(file)));
+        await Promise.all(apiUploadFiles.map((file) => uploadOne(file)));
         fetchDriveFiles();
       } catch (_) {
         setDriveError('Drive에 연결할 수 없습니다.');
@@ -416,14 +403,15 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
   useEffect(() => {
     const onKey = (e) => {
       if (e.key !== 'Escape') return;
-      if (showMapPicker) setShowMapPicker(false);
+      if (largeFileWarning.open) setLargeFileWarning({ open: false, files: [], folderUrl: '' });
+      else if (showMapPicker) setShowMapPicker(false);
       else if (showAssigneePicker) setShowAssigneePicker(false);
       else if (showCustomFieldsModal) setShowCustomFieldsModal(false);
       else onClose?.();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, showAssigneePicker, showCustomFieldsModal, showMapPicker]);
+  }, [onClose, showAssigneePicker, showCustomFieldsModal, showMapPicker, largeFileWarning.open]);
 
   // 지도 피커: 열릴 때 Google Maps 로드 후 지도 초기화 + 주소 있으면 바로 검색
   useEffect(() => {
@@ -596,22 +584,19 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
     if (!address) return;
     if (!GOOGLE_MAPS_API_KEY) return;
     setAddressGeocoding(true);
-    loadGoogleMaps((google) => {
+    loadGoogleMaps(async (google) => {
       if (!google?.maps?.Geocoder) {
         setAddressGeocoding(false);
         return;
       }
-      const geocoder = new google.maps.Geocoder();
-      geocoder.geocode({ address }, (results, status) => {
-        setAddressGeocoding(false);
-        if (status !== google.maps.GeocoderStatus.OK || !results?.[0]?.geometry?.location) return;
-        const loc = results[0].geometry.location;
-        setForm((prev) => ({
-          ...prev,
-          latitude: loc.lat(),
-          longitude: loc.lng()
-        }));
-      });
+      const coords = await geocodeAddressWithGoogleMaps(google, address);
+      setAddressGeocoding(false);
+      if (!coords) return;
+      setForm((prev) => ({
+        ...prev,
+        latitude: coords.latitude,
+        longitude: coords.longitude
+      }));
     });
   };
 
@@ -1251,6 +1236,16 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
               </div>
             </div>
           )}
+          <DriveLargeFileWarningModal
+            open={largeFileWarning.open}
+            files={largeFileWarning.files}
+            onClose={() => setLargeFileWarning({ open: false, files: [], folderUrl: '' })}
+            onConfirm={() => {
+              const url = largeFileWarning.folderUrl;
+              setLargeFileWarning({ open: false, files: [], folderUrl: '' });
+              if (url) window.open(url, '_blank', 'noopener,noreferrer');
+            }}
+          />
         </div>
       </>
     );
@@ -1331,6 +1326,16 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
           </div>
         </div>
       )}
+      <DriveLargeFileWarningModal
+        open={largeFileWarning.open}
+        files={largeFileWarning.files}
+        onClose={() => setLargeFileWarning({ open: false, files: [], folderUrl: '' })}
+        onConfirm={() => {
+          const url = largeFileWarning.folderUrl;
+          setLargeFileWarning({ open: false, files: [], folderUrl: '' });
+          if (url) window.open(url, '_blank', 'noopener,noreferrer');
+        }}
+      />
     </div>
   );
 }

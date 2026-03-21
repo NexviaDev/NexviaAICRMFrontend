@@ -289,6 +289,46 @@
   color: #0d9488;
 }
 
+.login-footer-legal-btn {
+  font: inherit;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  text-decoration: underline;
+  text-decoration-color: rgba(14, 116, 144, 0.35);
+  text-underline-offset: 3px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.login-footer-legal-btn:visited {
+  color: #94a3b8;
+}
+
+.login-footer-legal-btn:hover {
+  color: #0d9488;
+}
+
+.login-footer-mailto {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  text-decoration: underline;
+  text-decoration-color: rgba(14, 116, 144, 0.35);
+  text-underline-offset: 3px;
+}
+
+.login-footer-mailto:hover {
+  color: #0d9488;
+}
+
 .login-site-footer-photo-credit {
   margin: 0;
   width: 100%;
@@ -300,7 +340,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .login-google,
-  .login-site-footer-links a {
+  .login-site-footer-links a,
+  .login-footer-legal-btn {
     transition: none;
   }
 }

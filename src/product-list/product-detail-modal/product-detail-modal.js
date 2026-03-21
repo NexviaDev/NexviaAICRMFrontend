@@ -4,6 +4,7 @@ import CustomFieldsSection from '../../shared/custom-fields-section';
 import './product-detail-modal.css';
 
 import { API_BASE } from '@/config';
+import { listPriceFromProduct } from '@/lib/product-price-utils';
 const STATUS_OPTIONS = ['Active', 'EndOfLife', 'Draft'];
 const BILLING_OPTIONS = ['Monthly', 'Annual', 'Perpetual'];
 const CURRENCY_OPTIONS = ['KRW', 'USD'];
@@ -64,7 +65,9 @@ export default function ProductDetailModal({ product, onClose, onUpdated, onDele
       code: product.code ?? '',
       category: product.category ?? '',
       version: product.version ?? '',
-      price: product.price ?? 0,
+      listPrice: listPriceFromProduct(product),
+      costPrice: Number(product.costPrice) || 0,
+      channelPrice: Number(product.channelPrice) || 0,
       currency: product.currency ?? 'KRW',
       billingType: product.billingType ?? 'Monthly',
       status: product.status ?? 'Active',
@@ -102,7 +105,10 @@ export default function ProductDetailModal({ product, onClose, onUpdated, onDele
           code: editForm.code?.trim() || undefined,
           category: editForm.category?.trim() || undefined,
           version: editForm.version?.trim() || undefined,
-          price: Number(editForm.price) || 0,
+          listPrice: Number(editForm.listPrice) || 0,
+          costPrice: Number(editForm.costPrice) || 0,
+          channelPrice: Number(editForm.channelPrice) || 0,
+          price: Number(editForm.listPrice) || 0,
           currency: editForm.currency,
           billingType: editForm.billingType,
           status: editForm.status,
@@ -202,8 +208,8 @@ export default function ProductDetailModal({ product, onClose, onUpdated, onDele
                 </div>
                 <div className="product-detail-edit-row">
                   <div className="product-detail-edit-field">
-                    <label htmlFor="product-edit-price">가격</label>
-                    <input id="product-edit-price" name="price" type="number" min="0" step="0.01" value={editForm.price} onChange={handleEditChange} />
+                    <label htmlFor="product-edit-list-price">소비자가</label>
+                    <input id="product-edit-list-price" name="listPrice" type="number" min="0" step="0.01" value={editForm.listPrice} onChange={handleEditChange} />
                   </div>
                   <div className="product-detail-edit-field">
                     <label htmlFor="product-edit-currency">통화</label>
@@ -212,6 +218,16 @@ export default function ProductDetailModal({ product, onClose, onUpdated, onDele
                         <option key={c} value={c}>{c}</option>
                       ))}
                     </select>
+                  </div>
+                </div>
+                <div className="product-detail-edit-row">
+                  <div className="product-detail-edit-field">
+                    <label htmlFor="product-edit-cost-price">원가</label>
+                    <input id="product-edit-cost-price" name="costPrice" type="number" min="0" step="0.01" value={editForm.costPrice} onChange={handleEditChange} />
+                  </div>
+                  <div className="product-detail-edit-field">
+                    <label htmlFor="product-edit-channel-price">유통가</label>
+                    <input id="product-edit-channel-price" name="channelPrice" type="number" min="0" step="0.01" value={editForm.channelPrice} onChange={handleEditChange} />
                   </div>
                 </div>
                 <div className="product-detail-edit-field">
@@ -277,8 +293,16 @@ export default function ProductDetailModal({ product, onClose, onUpdated, onDele
                       <dd>{product.version || '—'}</dd>
                     </div>
                     <div className="product-detail-dl-row">
-                      <dt>가격</dt>
-                      <dd>{formatPrice(product.price, product.currency)}</dd>
+                      <dt>소비자가</dt>
+                      <dd>{formatPrice(listPriceFromProduct(product), product.currency)}</dd>
+                    </div>
+                    <div className="product-detail-dl-row">
+                      <dt>원가</dt>
+                      <dd>{formatPrice(product.costPrice, product.currency)}</dd>
+                    </div>
+                    <div className="product-detail-dl-row">
+                      <dt>유통가</dt>
+                      <dd>{formatPrice(product.channelPrice, product.currency)}</dd>
                     </div>
                     <div className="product-detail-dl-row">
                       <dt>결제 주기</dt>

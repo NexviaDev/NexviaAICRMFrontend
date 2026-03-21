@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE } from '@/config';
 import { getPendingExcelImportJobs, removePendingExcelImportJob } from '@/lib/cc-excel-import-jobs';
 import Sidebar from './sidebar';
@@ -8,8 +8,41 @@ import './layout.css';
 export default function Layout() {
   const [sidebarDrawerOpen, setSidebarDrawerOpen] = useState(false);
   const [importBanner, setImportBanner] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const raw = localStorage.getItem('crm_user');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
   const location = useLocation();
+  const navigate = useNavigate();
   const isSalesPipeline = location.pathname === '/sales-pipeline';
+
+  useEffect(() => {
+    const token = localStorage.getItem('crm_token');
+    if (!token) return;
+    let cancelled = false;
+    fetch(`${API_BASE}/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then((res) => res.json().catch(() => ({})))
+      .then((data) => {
+        if (cancelled || !data?.user) return;
+        localStorage.setItem('crm_user', JSON.stringify(data.user));
+        setCurrentUser(data.user);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (currentUser?.role === 'pending' && location.pathname !== '/company-overview') {
+      window.alert('현재 계정은 권한 대기 상태입니다. 사내 현황에서 회사의 허용을 받아야 다른 메뉴에 접근할 수 있습니다.');
+      navigate('/company-overview', { replace: true });
+    }
+  }, [currentUser?.role, location.pathname, navigate]);
 
   useEffect(() => {
     const token = localStorage.getItem('crm_token');
@@ -70,6 +103,7 @@ export default function Layout() {
         aria-hidden="true"
       />
       <Sidebar
+        currentUser={currentUser}
         drawerOpen={sidebarDrawerOpen}
         onCloseDrawer={() => setSidebarDrawerOpen(false)}
       />
