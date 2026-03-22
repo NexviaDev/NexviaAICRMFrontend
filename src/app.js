@@ -20,6 +20,7 @@ import TodoList from './todo-list/todo-list';
 import GoogleChat from './chat/chat';
 import LeadCapture from './lead-capture/lead-capture';
 import LegalPublicPage from './legal/LegalPublicPage';
+import Subscription from './subscription/subscription';
 
 function getStoredUser() {
   try {
@@ -70,6 +71,7 @@ function App() {
         <Route path="reports/sales" element={<PendingRestrictedRoute><SalesReport /></PendingRestrictedRoute>} />
         <Route path="reports/performance" element={<PendingRestrictedRoute><EmployeePerformance /></PendingRestrictedRoute>} />
         <Route path="reports/work-report/:employeeId?" element={<PendingRestrictedRoute><EmployeeWorkReport /></PendingRestrictedRoute>} />
+        <Route path="subscription" element={<PendingRestrictedRoute><Subscription /></PendingRestrictedRoute>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

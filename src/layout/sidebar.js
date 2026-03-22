@@ -22,6 +22,7 @@ const MENU_ITEMS = [
   { to: '/reports/sales', icon: 'bar_chart', label: '리포트' },
   { to: '/reports/performance', icon: 'trending_up', label: '실적' },
   { to: '/reports/work-report', icon: 'summarize', label: '업무 보고' },
+  { to: '/subscription', icon: 'subscriptions', label: '구독관리' },
   { to: '#', icon: 'settings', label: '설정' }
 ];
 

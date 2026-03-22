@@ -471,6 +471,17 @@ div[class*="gm-style-cc"] {
   font-family: monospace;
 }
 
+.map-mylocation-accuracy {
+  margin: 0.35rem 0 0;
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.map-mylocation-accuracy-warn {
+  color: var(--pastel-warn-text, #b45309);
+}
+
 .map-bottom-chips {
   position: absolute;
   bottom: 1.5rem;

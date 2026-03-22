@@ -29,10 +29,49 @@ function getAuthHeader() {
 
 /** 위치 API 옵션: 지하철·이동 시 정확도·실시간 반영용 (고정밀 + 캐시 미사용) */
 const GEOLOCATION_OPTIONS = {
-  enableHighAccuracy: true,  // GPS 우선 사용 → 실내/지하철에서도 가능한 한 정확도 향상
-  maximumAge: 0,             // 캐시 사용 안 함 → 미세한 실시간 이동 반영
-  timeout: 20000             // 첫 위치 대기 20초 (지하철/실내에서는 응답이 느릴 수 있음)
+  enableHighAccuracy: true, // GPS 우선 — 모바일에서도 반드시 켜야 기지국-only보다 나음
+  maximumAge: 0, // 오래된 캐시 위치 방지 (스마트폰에서 큰 오차의 흔한 원인)
+  // 모바일은 첫 GPS 고정까지 20~60초 걸릴 수 있음
+  timeout: 45000
 };
+
+/** 최근 N회 측정 가중 평균: accuracy가 나쁜 샘플(기지국/Wi-Fi) 가중치 낮춤 → 스마트폰 흔들림 완화 */
+const LOCATION_SAMPLE_MAX_STILL = 8;
+const LOCATION_SAMPLE_MAX_MOVING = 4;
+
+/**
+ * @param {{ current: Array<{ lat: number, lng: number, accuracy: number }> }} bufferRef
+ * @param {GeolocationPosition} pos
+ * @returns {{ lat: number, lng: number, accuracy: number } | null}
+ */
+function pushGeolocationSample(bufferRef, pos) {
+  const lat = pos.coords.latitude;
+  const lng = pos.coords.longitude;
+  const rawAcc = pos.coords.accuracy;
+  const accuracy = typeof rawAcc === 'number' && rawAcc > 0 ? rawAcc : 150;
+  const speed = pos.coords.speed;
+  const buf = bufferRef.current;
+  buf.push({ lat, lng, accuracy });
+  const maxSamples =
+    speed != null && !Number.isNaN(speed) && speed > 1.2 ? LOCATION_SAMPLE_MAX_MOVING : LOCATION_SAMPLE_MAX_STILL;
+  while (buf.length > maxSamples) buf.shift();
+  return weightedGeolocationMean(buf);
+}
+
+function weightedGeolocationMean(buf) {
+  if (!buf.length) return null;
+  let sw = 0;
+  let slat = 0;
+  let slng = 0;
+  const latestAcc = buf[buf.length - 1].accuracy;
+  for (const s of buf) {
+    const w = 1 / (s.accuracy * s.accuracy + 1);
+    sw += w;
+    slat += s.lat * w;
+    slng += s.lng * w;
+  }
+  return { lat: slat / sw, lng: slng / sw, accuracy: latestAcc };
+}
 
 /** Google Maps 스크립트 비동기 로드 (loading=async + callback 권장 방식) */
 function loadGoogleMaps(onLoad) {
@@ -83,6 +122,7 @@ export default function Map() {
   const [liveLocationOn, setLiveLocationOn] = useState(true);
   const [mapReady, setMapReady] = useState(false);
   const watchIdRef = useRef(null);
+  const locationSamplesRef = useRef([]);
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const searchInputRef = useRef(null);
@@ -142,7 +182,10 @@ export default function Map() {
   useEffect(() => {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
-      (pos) => setMyLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      (pos) => {
+        const w = pushGeolocationSample(locationSamplesRef, pos);
+        if (w) setMyLocation({ lat: w.lat, lng: w.lng, accuracy: w.accuracy });
+      },
       () => {},
       GEOLOCATION_OPTIONS
     );
@@ -152,7 +195,10 @@ export default function Map() {
   useEffect(() => {
     if (!mapReady || !navigator.geolocation || myLocation) return;
     navigator.geolocation.getCurrentPosition(
-      (pos) => setMyLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      (pos) => {
+        const w = pushGeolocationSample(locationSamplesRef, pos);
+        if (w) setMyLocation({ lat: w.lat, lng: w.lng, accuracy: w.accuracy });
+      },
       () => {},
       GEOLOCATION_OPTIONS
     );
@@ -168,8 +214,12 @@ export default function Map() {
       return;
     }
     if (watchIdRef.current != null) return;
+    locationSamplesRef.current = [];
     const watchId = navigator.geolocation.watchPosition(
-      (pos) => setMyLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      (pos) => {
+        const w = pushGeolocationSample(locationSamplesRef, pos);
+        if (w) setMyLocation({ lat: w.lat, lng: w.lng, accuracy: w.accuracy });
+      },
       () => alert('위치를 가져올 수 없습니다.'),
       GEOLOCATION_OPTIONS
     );
@@ -182,6 +232,7 @@ export default function Map() {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
     }
+    locationSamplesRef.current = [];
     setLiveLocationOn(false);
     setMyLocation(null);
     if (myLocationMarkerRef.current) {
@@ -573,12 +624,15 @@ export default function Map() {
 
   const goToMyLocation = () => {
     if (!navigator.geolocation) return;
+    locationSamplesRef.current = [];
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        const w = pushGeolocationSample(locationSamplesRef, pos);
+        if (!w) return;
+        const loc = { lat: w.lat, lng: w.lng, accuracy: w.accuracy };
         setMyLocation(loc);
         if (mapInstanceRef.current) {
-          mapInstanceRef.current.panTo(loc);
+          mapInstanceRef.current.panTo({ lat: loc.lat, lng: loc.lng });
           mapInstanceRef.current.setZoom(15); // 내 위치 주변으로 확대
         }
       },
@@ -731,6 +785,14 @@ export default function Map() {
               <p className="map-mylocation-coords">
                 {myLocation.lat.toFixed(6)}, {myLocation.lng.toFixed(6)}
               </p>
+              {typeof myLocation.accuracy === 'number' && (
+                <p className="map-mylocation-accuracy" title="브라우저가 보고한 위치 반경 오차입니다. 실외·GPS 수신 시 더 작아집니다.">
+                  오차 약 ±{Math.round(myLocation.accuracy)}m
+                  {myLocation.accuracy > 80 && (
+                    <span className="map-mylocation-accuracy-warn"> · 정확도 낮음(실외 대기 또는 위치 권한·고정밀 확인)</span>
+                  )}
+                </p>
+              )}
             </div>
           )}
 
