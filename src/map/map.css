@@ -394,69 +394,6 @@ div[class*="gm-style-cc"] {
   font-size: 1.5rem;
 }
 
-.map-mylocation-panel {
-  position: absolute;
-  bottom: 4rem;
-  left: 1.5rem;
-  padding: 0.75rem 1rem;
-  background: var(--card);
-  border-radius: 0.5rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  z-index: 10;
-  max-width: min(18rem, calc(100vw - 3rem));
-}
-
-.map-mylocation-panel-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--text);
-  margin-bottom: 0.35rem;
-}
-
-.map-mylocation-panel-header .material-symbols-outlined {
-  font-size: 1.125rem;
-  color: var(--primary);
-}
-
-.map-mylocation-live {
-  margin-left: auto;
-  font-size: 0.6875rem;
-  font-weight: 500;
-  color: var(--primary);
-  background: var(--pastel-sky, #e0f2fe);
-  padding: 0.15rem 0.4rem;
-  border-radius: 0.25rem;
-}
-
-.map-mylocation-coords {
-  margin: 0;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  font-family: monospace;
-}
-
-.map-mylocation-accuracy {
-  margin: 0.35rem 0 0;
-  font-size: 0.6875rem;
-  color: var(--text-muted);
-  line-height: 1.35;
-}
-
-.map-mylocation-accuracy-warn {
-  color: var(--pastel-warn-text, #b45309);
-}
-
-.map-mylocation-accuracy-note {
-  margin: 0.35rem 0 0;
-  font-size: 0.65rem;
-  line-height: 1.4;
-  color: var(--text-muted);
-  opacity: 0.92;
-}
-
 .map-zoom-btns {
   display: flex;
   flex-direction: column;

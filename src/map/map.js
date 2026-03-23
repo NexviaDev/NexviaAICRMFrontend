@@ -33,14 +33,8 @@ const GEOLOCATION_OPTIONS_WATCH = {
   timeout: 60000
 };
 
-/** 브라우저 보고 accuracy(m)에 배율을 곱해 지도 반투명 원 반경 — 실제보다 넉넉히 보이게 */
-const MY_LOCATION_MAP_RADIUS_MULT = 15;
-const MY_LOCATION_MAP_RADIUS_MIN_M = 75;
-
-function myLocationMapRadiusMeters(reportedAccuracyM) {
-  const r = typeof reportedAccuracyM === 'number' && reportedAccuracyM > 0 ? reportedAccuracyM : 55;
-  return Math.max(MY_LOCATION_MAP_RADIUS_MIN_M, r * MY_LOCATION_MAP_RADIUS_MULT);
-}
+/** 실시간 내 위치 반투명 원 — 지표 기준 고정 반경(줌만 바뀌고 실제 거리는 항상 동일) */
+const MY_LOCATION_CIRCLE_RADIUS_M = 2000;
 
 /**
  * PWA·브라우저: navigator.geolocation.
@@ -667,7 +661,7 @@ export default function Map() {
     }
   }, [mapReady, companiesToShowOnMap, showMarkerLabels, myLocation]);
 
-  /** 내 위치 불확실성 구간 — 보고 accuracy×배율(최소 m)로 원 반경. 점 마커 없음. */
+  /** 내 위치 — 반경 15km 고정 원(미터). 점 마커 없음. */
   useEffect(() => {
     if (!mapReady || !mapInstanceRef.current || !window.google) return;
     if (!myLocation) {
@@ -679,11 +673,9 @@ export default function Map() {
     }
     const map = mapInstanceRef.current;
     const center = { lat: myLocation.lat, lng: myLocation.lng };
-    const reported =
-      typeof myLocation.accuracy === 'number' && myLocation.accuracy > 0 ? myLocation.accuracy : 55;
-    const radiusM = myLocationMapRadiusMeters(reported);
+    const radiusM = MY_LOCATION_CIRCLE_RADIUS_M;
     if (!myLocationAccuracyCircleRef.current) {
-      myLocationAccuracyCircleRef.current = new window.google.maps.Circle({
+      const circle = new window.google.maps.Circle({
         strokeColor: '#e53935',
         strokeOpacity: 0,
         strokeWeight: 0,
@@ -695,8 +687,12 @@ export default function Map() {
         zIndex: 99,
         clickable: false
       });
+      myLocationAccuracyCircleRef.current = circle;
       map.panTo(center);
-      map.setZoom(15);
+      const b = circle.getBounds();
+      if (b && typeof map.fitBounds === 'function') {
+        map.fitBounds(b, { top: 56, right: 48, bottom: 100, left: 48 });
+      }
     } else {
       myLocationAccuracyCircleRef.current.setCenter(center);
       myLocationAccuracyCircleRef.current.setRadius(radiusM);
@@ -910,32 +906,6 @@ export default function Map() {
               )}
             </div>
           </div>
-
-          {myLocation && (
-            <div className="map-mylocation-panel">
-              <div className="map-mylocation-panel-header">
-                <span className="material-symbols-outlined">location_on</span>
-                <span>현재 위치</span>
-                {liveLocationOn && <span className="map-mylocation-live">실시간</span>}
-              </div>
-              <p className="map-mylocation-coords">
-                {myLocation.lat.toFixed(6)}, {myLocation.lng.toFixed(6)}
-              </p>
-              {typeof myLocation.accuracy === 'number' && (
-                <>
-                  <p
-                    className="map-mylocation-accuracy"
-                    title={`보고 오차 ±${Math.round(myLocation.accuracy)}m, 지도 원 반경 ${Math.round(myLocationMapRadiusMeters(myLocation.accuracy))}m`}
-                  >
-                    기기 보고 오차 약 ±{Math.round(myLocation.accuracy)}m · 지도 원 반경 약{' '}
-                    {Math.round(myLocationMapRadiusMeters(myLocation.accuracy))}m (보고×{MY_LOCATION_MAP_RADIUS_MULT}
-                    {', 최소 '}
-                    {MY_LOCATION_MAP_RADIUS_MIN_M}m)
-                  </p>
-                </>
-              )}
-            </div>
-          )}
 
           {mapReady && companiesWithCoords.length === 0 && companies.length > 0 && (
             <div className="map-hint-panel">
