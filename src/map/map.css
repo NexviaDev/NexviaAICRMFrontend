@@ -3,12 +3,22 @@
 .map-page {
   display: flex;
   flex-direction: column;
+  /* 모바일 주소창·dvh: 에뮬레이터(100vh 고정)와 실제 폰(뷰포트 변동) 차이 완화 */
   flex: 0 0 100vh;
   height: 100vh;
   max-height: 100vh;
   min-height: 100vh;
   overflow: hidden;
   background: var(--background-light, #f6f7f7);
+}
+
+@supports (height: 100dvh) {
+  .map-page {
+    flex-basis: 100dvh;
+    height: 100dvh;
+    max-height: 100dvh;
+    min-height: 100dvh;
+  }
 }
 
 .map-layout {
