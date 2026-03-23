@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import CompanyDriveSettingsModal from './company-drive-settings-modal/company-drive-settings-modal';
 import './company-overview.css';
 
@@ -7,6 +7,15 @@ import { API_BASE } from '@/config';
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function formatSubscriptionDate(iso) {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'short' });
+  } catch {
+    return '—';
+  }
 }
 
 export default function CompanyOverview() {
@@ -28,33 +37,49 @@ export default function CompanyOverview() {
     return '직원 (Staff)';
   };
 
+  const refreshOverview = useCallback(async () => {
+    const res = await fetch(`${API_BASE}/companies/overview`, { headers: getAuthHeader() });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(json.error || '조회에 실패했습니다.');
+    setData(json);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
-    const fetchOverview = async () => {
+    (async () => {
       try {
-        const res = await fetch(`${API_BASE}/companies/overview`, { headers: getAuthHeader() });
-        if (!res.ok) {
-          const json = await res.json().catch(() => ({}));
-          throw new Error(json.error || '조회에 실패했습니다.');
-        }
-        const json = await res.json();
-        if (!cancelled) setData(json);
+        await refreshOverview();
       } catch (e) {
         if (!cancelled) setError(e.message || '사내 현황을 불러올 수 없습니다.');
       } finally {
         if (!cancelled) setLoading(false);
       }
-    };
-    fetchOverview();
+    })();
     return () => { cancelled = true; };
-  }, []);
+  }, [refreshOverview]);
 
-  const { company = {}, employees = [] } = data || {};
+  const { company = {}, employees = [], subscription = {} } = data || {};
   const me = data?.me || {};
   const fullAddress = [company.address, company.addressDetail].filter(Boolean).join(' ');
   const isPendingUser = me.role === 'pending';
   const canManageRoles = ['owner', 'senior'].includes(me.role);
+  /** 역할 단계: Pending → Staff → Senior → Owner. 구독·시트 블록은 Senior 이상만 표시 */
+  const canSeeSubscriptionSection = ['senior', 'owner'].includes(me.role);
   const canEditRole = (emp) => canManageRoles && String(emp.id) !== String(me.id) && emp.role !== 'owner';
+  /** 구독 시트: 대표·책임·직원(비-pending) 인원만큼만 부여 가능 */
+  const subActive = subscription?.hasActiveSubscription === true;
+  const seatsRemaining = subscription?.seatsRemaining;
+  const noSeatForPromotion = subActive && typeof seatsRemaining === 'number' && seatsRemaining <= 0;
+
+  const sortedEmployees = useMemo(() => {
+    const order = { owner: 0, senior: 1, staff: 2, pending: 3 };
+    return [...employees].sort((a, b) => {
+      const ra = order[a.role] ?? 99;
+      const rb = order[b.role] ?? 99;
+      if (ra !== rb) return ra - rb;
+      return (a.name || a.email || '').localeCompare(b.name || b.email || '', 'ko');
+    });
+  }, [employees]);
 
   useEffect(() => {
     if (!isPendingUser) {
@@ -102,21 +127,7 @@ export default function CompanyOverview() {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || '직원 권한 변경에 실패했습니다.');
-      setData((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          employees: (prev.employees || []).map((emp) => (
-            String(emp.id) === String(memberId)
-              ? {
-                  ...emp,
-                  ...(patch.role ? { role: json.item?.role || patch.role } : {}),
-                  ...(patch.role ? { roleLabel: json.item?.roleLabel || roleLabel(patch.role) } : {})
-                }
-              : emp
-          ))
-        };
-      });
+      await refreshOverview();
       setEditingRoleMemberId('');
     } catch (e) {
       setActionError(e.message || '직원 권한 변경에 실패했습니다.');
@@ -193,12 +204,72 @@ export default function CompanyOverview() {
           </dl>
         </section>
 
+        {canSeeSubscriptionSection && (
+          <section className="company-overview-card company-subscription-card" aria-labelledby="co-sub-title">
+            <h2 id="co-sub-title" className="company-overview-section-title">
+              <span className="material-symbols-outlined">payments</span>
+              구독 · 시트 (역할 인원)
+            </h2>
+            <p className="company-subscription-visibility-note">
+              이 섹션은 책임(Senior) 이상만 볼 수 있습니다. 
+            </p>
+            {subActive ? (
+              <>
+                <dl className="company-info-list company-subscription-dl">
+                  <div className="company-info-row">
+                    <dt>구독 이용 인원</dt>
+                    <dd>{subscription.seatCount != null ? `${subscription.seatCount}명` : '—'}</dd>
+                  </div>
+                  <div className="company-info-row">
+                    <dt>역할 배정 사용</dt>
+                    <dd>
+                      {subscription.activeRoleCount != null ? `${subscription.activeRoleCount}명` : '—'}
+                      <span className="company-subscription-slots">
+                        {' '}(남은 시트 {typeof seatsRemaining === 'number' ? `${seatsRemaining}명` : '—'})
+                      </span>
+                    </dd>
+                  </div>
+                  <div className="company-info-row">
+                    <dt>월 정기 금액(안내)</dt>
+                    <dd>
+                      {subscription.planAmount != null
+                        ? `${Number(subscription.planAmount).toLocaleString('ko-KR')}원`
+                        : '—'}
+                    </dd>
+                  </div>
+                  <div className="company-info-row">
+                    <dt>다음 정기 결제 예정</dt>
+                    <dd>{formatSubscriptionDate(subscription.nextBillingAt)}</dd>
+                  </div>
+                </dl>
+                <p className="company-subscription-hint">
+                  대표·책임·직원 역할은 구독 인원(시트) 수만큼만 올릴 수 있습니다. 권한 대기(Pending)는 시트를 쓰지 않습니다.
+                  {noSeatForPromotion && ' 현재 시트가 없어 권한 대기 중인 계정을 직원/책임으로 올릴 수 없습니다.'}
+                </p>
+              </>
+            ) : (
+              <p className="company-subscription-hint">
+                활성 구독이 없습니다. 구독이 연동되면 위 인원만큼만 대표·책임·직원 역할을 부여할 수 있습니다.
+              </p>
+            )}
+          </section>
+        )}
+
         <section className="company-overview-card employees-card">
           <h2 className="company-overview-section-title">
             <span className="material-symbols-outlined">group</span>
             직원 리스트
-            <span className="company-overview-count">({employees.length}명)</span>
+            <span className="company-overview-count">({sortedEmployees.length}명)</span>
           </h2>
+          {canSeeSubscriptionSection && subscription?.overLimit && (
+            <div className="company-overview-seat-warning" role="status">
+              <span className="material-symbols-outlined">warning</span>
+              <span>
+                구독 인원({subscription.seatCount}명)보다 역할이 부여된 직원이 많습니다. 구독에서 인원을 늘리거나,
+                일부 직원을 권한 대기로 내려 주세요.
+              </span>
+            </div>
+          )}
           {isPendingUser && (
             <div className="company-overview-approval-box">
               <p className="company-overview-approval-text">
@@ -215,7 +286,7 @@ export default function CompanyOverview() {
               {requestMessage && <p className="company-overview-request-message">{requestMessage}</p>}
             </div>
           )}
-          {employees.length === 0 ? (
+          {sortedEmployees.length === 0 ? (
             <p className="company-overview-empty">등록된 직원이 없습니다.</p>
           ) : (
             <div className="company-overview-table-wrap">
@@ -231,7 +302,7 @@ export default function CompanyOverview() {
                   </tr>
                 </thead>
                 <tbody>
-                  {employees.map((emp) => (
+                  {sortedEmployees.map((emp) => (
                     <tr key={emp.id}>
                       <td>{emp.name || '—'}</td>
                       <td>{emp.email || '—'}</td>
@@ -250,8 +321,22 @@ export default function CompanyOverview() {
                             onChange={(e) => updateMemberAccess(emp.id, { role: e.target.value })}
                           >
                             <option value="pending">권한 대기 (Pending Approval)</option>
-                            <option value="staff">직원 (Staff)</option>
-                            {me.role === 'owner' && <option value="senior">책임 (Senior)</option>}
+                            <option
+                              value="staff"
+                              disabled={emp.role === 'pending' && noSeatForPromotion}
+                              title={emp.role === 'pending' && noSeatForPromotion ? '구독 시트가 부족합니다. 구독 관리에서 인원을 늘리세요.' : undefined}
+                            >
+                              직원 (Staff)
+                            </option>
+                            {me.role === 'owner' && (
+                              <option
+                                value="senior"
+                                disabled={emp.role === 'pending' && noSeatForPromotion}
+                                title={emp.role === 'pending' && noSeatForPromotion ? '구독 시트가 부족합니다.' : undefined}
+                              >
+                                책임 (Senior)
+                              </option>
+                            )}
                           </select>
                         ) : (
                           canEditRole(emp) ? (

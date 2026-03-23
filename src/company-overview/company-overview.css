@@ -271,6 +271,59 @@
   color: #41658b;
 }
 
+.company-subscription-card {
+  background: linear-gradient(135deg, rgba(224, 242, 254, 0.35) 0%, rgba(239, 246, 255, 0.65) 100%);
+  border-color: rgba(99, 102, 241, 0.12);
+}
+
+.company-subscription-visibility-note {
+  margin: -0.25rem 0 1rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(99, 102, 241, 0.1);
+}
+
+.company-subscription-dl {
+  margin-bottom: 0.5rem;
+}
+
+.company-subscription-slots {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.company-subscription-hint {
+  margin: 0.75rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.company-overview-seat-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.65rem;
+  background: rgba(254, 243, 199, 0.45);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  font-size: 0.85rem;
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.company-overview-seat-warning .material-symbols-outlined {
+  font-size: 1.25rem;
+  color: #b45309;
+  flex-shrink: 0;
+}
+
 @media (max-width: 768px) {
   .company-overview-content {
     padding: 1rem;

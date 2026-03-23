@@ -40,6 +40,44 @@ function formatDate(iso) {
   }
 }
 
+function formatRenewalShort(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
+  } catch {
+    return '—';
+  }
+}
+
+const MIN_SEATS = 3;
+
+function clampSeat(n) {
+  const x = Math.floor(Number(n));
+  if (!Number.isFinite(x) || x < MIN_SEATS) return MIN_SEATS;
+  return Math.min(x, 500);
+}
+
+/** 서버 subscriptionPricing.js 와 동일한 월 요금(원) */
+function monthlyKrwForSeats(seatCount) {
+  const s = clampSeat(seatCount);
+  if (s <= 3) return 240000;
+  return 240000 + (s - 3) * 40000;
+}
+
+function seatBreakdown(seatCount) {
+  const s = clampSeat(seatCount);
+  const extra = Math.max(0, s - 3);
+  return {
+    baseKrw: 240000,
+    extraSeats: extra,
+    additionalKrw: extra * 40000,
+    totalKrw: monthlyKrwForSeats(s)
+  };
+}
+
+const PENDING_SEAT_KEY = 'sub_pending_seat_count';
+
 export default function Subscription() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
@@ -49,6 +87,8 @@ export default function Subscription() {
   const [actionMsg, setActionMsg] = useState('');
   const [billingLoading, setBillingLoading] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [seatsInput, setSeatsInput] = useState(MIN_SEATS);
+  const [seatApplyLoading, setSeatApplyLoading] = useState(false);
 
   const refresh = useCallback(async () => {
     const res = await fetch(`${API_BASE}/subscription/status`, { headers: { ...getAuthHeader(), 'Content-Type': 'application/json' } });
@@ -74,6 +114,8 @@ export default function Subscription() {
         if (!cancelled) {
           setConfig(cfgJson);
           setStatus(stJson);
+          const s = stJson?.seatCount ?? cfgJson?.seatCount ?? MIN_SEATS;
+          setSeatsInput(clampSeat(s));
         }
       } catch (e) {
         if (!cancelled) setError(e.message || '오류가 발생했습니다.');
@@ -84,51 +126,62 @@ export default function Subscription() {
     return () => { cancelled = true; };
   }, []);
 
-  /** 토스 리다이렉트 후 빌링키 발급 + 첫 결제 */
   useEffect(() => {
     const billing = searchParams.get('billing');
     const authKey = searchParams.get('authKey');
     const customerKey = searchParams.get('customerKey');
-    const failCode = searchParams.get('code');
     const failMessage = searchParams.get('message');
 
     if (billing === '0') {
-      setActionMsg(failMessage || failCode || '카드 인증이 취소되었거나 실패했습니다.');
+      setActionMsg(failMessage || searchParams.get('code') || '카드 인증이 취소되었거나 실패했습니다.');
       setSearchParams({}, { replace: true });
       return;
     }
 
     if (billing !== '1' || !authKey || !customerKey) return;
+
     const dedupeKey = `sub_billing_done_${authKey}`;
-    if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(dedupeKey)) return;
-    if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(dedupeKey, '1');
+    /** 이미 이 authKey로 서버 처리까지 끝난 경우 — URL만 정리하고 상태만 동기화 */
+    if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(dedupeKey)) {
+      setConfirming(false);
+      setSearchParams({}, { replace: true });
+      refresh().catch(() => {});
+      return;
+    }
 
     let cancelled = false;
     (async () => {
       setConfirming(true);
       setError('');
       try {
+        let seatCount = MIN_SEATS;
+        try {
+          const raw = sessionStorage.getItem(PENDING_SEAT_KEY);
+          if (raw) seatCount = clampSeat(parseInt(raw, 10));
+        } catch (_) {}
         const res = await fetch(`${API_BASE}/subscription/confirm-billing`, {
           method: 'POST',
           headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-          body: JSON.stringify({ authKey, customerKey })
+          body: JSON.stringify({ authKey, customerKey, seatCount })
         });
         const json = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(json.error || '빌링 등록에 실패했습니다.');
-        if (!cancelled) {
-          setActionMsg(`첫 월 구독 결제가 완료되었습니다. (결제키: ${json.subscription?.paymentKey || '—'})`);
-          await refresh();
-        }
+        try {
+          if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(dedupeKey, '1');
+        } catch (_) {}
+        try {
+          sessionStorage.removeItem(PENDING_SEAT_KEY);
+        } catch (_) {}
+        setActionMsg(`첫 구독 결제가 완료되었습니다. (이용 ${seatCount}명, 결제키: ${json.subscription?.paymentKey || '—'})`);
+        await refresh();
       } catch (e) {
         if (!cancelled) {
           setError(e.message || '처리에 실패했습니다.');
-          try {
-            sessionStorage.removeItem(dedupeKey);
-          } catch (_) {}
         }
       } finally {
+        /** Strict Mode 등으로 effect가 두 번 돌아도 UI가 '처리 중'에 고이지 않도록 항상 해제 */
+        setConfirming(false);
         if (!cancelled) {
-          setConfirming(false);
           setSearchParams({}, { replace: true });
         }
       }
@@ -138,9 +191,13 @@ export default function Subscription() {
 
   const handleRequestBillingAuth = async () => {
     if (!config?.clientKey || !config?.customerKey) return;
+    const seats = clampSeat(seatsInput);
     setBillingLoading(true);
     setError('');
     try {
+      try {
+        sessionStorage.setItem(PENDING_SEAT_KEY, String(seats));
+      } catch (_) {}
       await loadTossScript();
       const TossPayments = window.TossPayments;
       if (!TossPayments) throw new Error('토스 결제 SDK를 찾을 수 없습니다.');
@@ -162,6 +219,9 @@ export default function Subscription() {
         customerName: name || '고객'
       });
     } catch (e) {
+      try {
+        sessionStorage.removeItem(PENDING_SEAT_KEY);
+      } catch (_) {}
       if (e?.code === 'USER_CANCEL' || e?.message?.includes('취소')) {
         setActionMsg('결제창이 닫혔습니다.');
       } else {
@@ -191,12 +251,85 @@ export default function Subscription() {
     }
   };
 
+  const handleApplySeats = async () => {
+    const target = clampSeat(seatsInput);
+    const hasActive = status?.hasSubscription && status?.status === 'active';
+    if (!hasActive) {
+      setError('먼저 구독을 등록해 주세요.');
+      return;
+    }
+    const current = clampSeat(status?.seatCount ?? MIN_SEATS);
+    if (target === current) {
+      setActionMsg('변경할 인원이 없습니다.');
+      return;
+    }
+
+    if (target < current) {
+      const ok = window.confirm(
+        `인원을 ${current}명 → ${target}명으로 줄입니다.\n\n` +
+          `다음 정기 결제일부터는 ${target}명 기준으로 월 요금이 청구됩니다.\n` +
+          `이전에 인원을 늘릴 때 이미 낸 비례(일회) 금액은 환불되지 않습니다.\n\n` +
+          '진행할까요?'
+      );
+      if (!ok) return;
+    }
+
+    setSeatApplyLoading(true);
+    setError('');
+    try {
+      if (target > current) {
+        const prev = await fetch(
+          `${API_BASE}/subscription/seat-change-preview?seatCount=${encodeURIComponent(target)}`,
+          { headers: getAuthHeader() }
+        );
+        const pv = await prev.json().catch(() => ({}));
+        if (!prev.ok) throw new Error(pv.error || '미리보기에 실패했습니다.');
+        const add = pv.additionalChargeKrw ?? 0;
+        if (add > 0) {
+          const ok = window.confirm(
+            `인원을 ${current}명 → ${target}명으로 늘립니다.\n추가 결제(비례): ${add.toLocaleString('ko-KR')}원\n구간: ${pv.tierLabel || '—'}\n정기 결제 예정일은 바뀌지 않습니다. 진행할까요?`
+          );
+          if (!ok) {
+            setSeatApplyLoading(false);
+            return;
+          }
+        }
+      }
+
+      const res = await fetch(`${API_BASE}/subscription/seats`, {
+        method: 'PUT',
+        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ seatCount: target })
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || '인원 변경에 실패했습니다.');
+      setActionMsg(json.message || '이용 인원이 반영되었습니다.');
+      await refresh();
+    } catch (e) {
+      setError(e.message || '인원 변경에 실패했습니다.');
+    } finally {
+      setSeatApplyLoading(false);
+    }
+  };
+
+  const handleCancelChanges = () => {
+    const active = status?.hasSubscription && status?.status === 'active';
+    if (active) {
+      setSeatsInput(clampSeat(status?.seatCount ?? MIN_SEATS));
+      setActionMsg('입력을 등록 인원 기준으로 되돌렸습니다.');
+    } else {
+      setSeatsInput(MIN_SEATS);
+      setActionMsg('인원 입력을 초기화했습니다.');
+    }
+  };
+
+  const bumpSeat = (delta) => {
+    setSeatsInput((prev) => clampSeat(prev + delta));
+  };
+
   if (loading) {
     return (
       <div className="page subscription-page">
-        <header className="page-header">
-          <h1 className="page-title">구독 관리</h1>
-        </header>
         <div className="page-content">
           <p className="subscription-loading">불러오는 중...</p>
         </div>
@@ -205,78 +338,319 @@ export default function Subscription() {
   }
 
   const hasActive = status?.hasSubscription && status?.status === 'active';
+  const previewMonthly = monthlyKrwForSeats(seatsInput);
+  const breakdown = seatBreakdown(seatsInput);
+  const autoOn = config?.autoBillingEnabled === true || status?.autoBillingEnabled === true;
+  const currentSeats = clampSeat(status?.seatCount ?? MIN_SEATS);
+  const seatsDirty = hasActive && clampSeat(seatsInput) !== currentSeats;
+  const nextRenewalPhrase = status?.nextBillingAt
+    ? `월간 (다음 갱신 ${formatRenewalShort(status.nextBillingAt)})`
+    : '월간';
+
+  const primarySidebarDisabled = hasActive
+    ? (seatApplyLoading || billingLoading || confirming || !seatsDirty)
+    : (billingLoading || confirming || !config?.clientKey);
+
+  const invRef = status?.lastOrderId || status?.lastPaymentKey || '';
+  const invShort = invRef ? String(invRef).slice(-10).toUpperCase() : '—';
 
   return (
     <div className="page subscription-page">
-      <header className="page-header">
-        <h1 className="page-title">구독 관리</h1>
-      </header>
       <div className="page-content">
         {error && <div className="subscription-error" role="alert">{error}</div>}
         {confirming && <p className="subscription-loading">카드 등록 결과를 처리하는 중...</p>}
-        {actionMsg && !error && <div className="subscription-note">{actionMsg}</div>}
+        {actionMsg && !error && <div className="subscription-toast-note">{actionMsg}</div>}
 
-        <section className="subscription-hero">
-          <h2>Nexvia CRM 월 구독</h2>
-          <p>
-            토스페이먼츠 자동결제(빌링)로 카드를 한 번 등록하면 매월 같은 금액이 청구됩니다.
-            개발·테스트 단계에서는 월 <strong>1,000원</strong>으로 설정되어 있습니다.
-          </p>
-          <div className="subscription-price">
-            <strong>{config?.planAmount ?? 1000}</strong>
-            <span>원 / 월 (부가세 포함 방식은 토스·상점 설정에 따름)</span>
+        <nav className="subscription-breadcrumb" aria-label="위치">
+          <span>워크스페이스</span>
+          <span className="material-symbols-outlined">chevron_right</span>
+          <span className="current">구독</span>
+        </nav>
+
+        <header className="subscription-title-block">
+          <h1 className="subscription-headline">구독 및 인원</h1>
+        </header>
+
+        <div className="subscription-layout">
+          <div className="subscription-main">
+            <section className="subscription-status-card" aria-labelledby="sub-status-title">
+              <div className="subscription-status-head">
+                <div>
+                  <h2 id="sub-status-title">{hasActive ? '이용 중인 구독' : '구독 상태'}</h2>
+                  <p className="sub">
+                    {hasActive ? (
+                      <>
+                        귀사는 현재 <span className="tier">Nexvia CRM 표준 플랜</span>을 사용 중입니다.
+                      </>
+                    ) : (
+                      '카드를 등록하고 인원을 선택하면 첫 결제로 구독이 시작됩니다.'
+                    )}
+                  </p>
+                </div>
+                <span
+                  className={`subscription-badge ${hasActive ? 'subscription-badge--active' : 'subscription-badge--inactive'}`}
+                >
+                  {hasActive ? (
+                    <>
+                      <span className="material-symbols-outlined" style={{ fontSize: '0.95rem', fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+                      Active
+                    </>
+                  ) : (
+                    '미등록'
+                  )}
+                </span>
+              </div>
+              <div className="subscription-status-grid">
+                <div>
+                  <p className="subscription-stat-label">청구 주기</p>
+                  <p className="subscription-stat-value">{hasActive ? nextRenewalPhrase : '—'}</p>
+                </div>
+                <div>
+                  <p className="subscription-stat-label">다음 정기 결제 금액</p>
+                  <p className="subscription-stat-value">
+                    {hasActive && status?.planAmount != null
+                      ? `${Number(status.planAmount).toLocaleString('ko-KR')}원`
+                      : `${previewMonthly.toLocaleString('ko-KR')}원`}
+                  </p>
+                </div>
+                <div>
+                  <p className="subscription-stat-label">등록 인원</p>
+                  <p className="subscription-stat-value">
+                    {hasActive ? `${currentSeats}명` : '—'}
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <section className="subscription-seat-card" aria-labelledby="seat-widget-title">
+              <div className="subscription-seat-card-header">
+                <div>
+                  <h3 id="seat-widget-title">인원 조정</h3>
+                  <p className="sub">팀 규모에 맞게 조정하세요. 월 요금은 아래에 즉시 반영됩니다.</p>
+                </div>
+                <div className="subscription-stepper">
+                  <button
+                    type="button"
+                    aria-label="인원 한 명 줄이기"
+                    onClick={() => bumpSeat(-1)}
+                    disabled={clampSeat(seatsInput) <= MIN_SEATS}
+                  >
+                    <span className="material-symbols-outlined">remove</span>
+                  </button>
+                  <input
+                    type="number"
+                    min={MIN_SEATS}
+                    max={500}
+                    value={seatsInput}
+                    onChange={(e) => setSeatsInput(clampSeat(e.target.value))}
+                    aria-label="이용 인원"
+                  />
+                  <button
+                    type="button"
+                    aria-label="인원 한 명 늘리기"
+                    onClick={() => bumpSeat(1)}
+                    disabled={clampSeat(seatsInput) >= 500}
+                  >
+                    <span className="material-symbols-outlined">add</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="subscription-cost-grid">
+                <div className="subscription-rules-box">
+                  <p className="label">요금 구성</p>
+                  <ul className="subscription-rules-list">
+                    <li>
+                      <span>기본 (1~3명)</span>
+                      <span>{breakdown.baseKrw.toLocaleString('ko-KR')}원</span>
+                    </li>
+                    <li>
+                      <span>
+                        {breakdown.extraSeats > 0
+                          ? `추가 (+${breakdown.extraSeats}명)`
+                          : '추가 인원'}
+                      </span>
+                      <span>
+                        {breakdown.additionalKrw > 0
+                          ? `+${breakdown.additionalKrw.toLocaleString('ko-KR')}원`
+                          : '0원'}
+                      </span>
+                    </li>
+                    <li className="total-row">
+                      <span>월 합계 (정기)</span>
+                      <span>{breakdown.totalKrw.toLocaleString('ko-KR')}원</span>
+                    </li>
+                  </ul>
+                </div>
+                <div className="subscription-estimate-box">
+                  <p className="label">예상 월 합계</p>
+                  <p className="amount">
+                    {previewMonthly.toLocaleString('ko-KR')}
+                    <span className="unit">원</span>
+                  </p>
+                  <p className="hint">인원 추가 시 비례 요금은 별도 청구됩니다.</p>
+                </div>
+              </div>
+
+              <div className="subscription-policy-banner">
+                <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>info</span>
+                <div>
+                  <p className="banner-title">정책 안내</p>
+                  <p>
+                    인원 추가만으로 정기 결제 주기는 바뀌지 않습니다.
+                    {hasActive && status?.nextBillingAt
+                      ? ` 다음 갱신 예정일은 ${formatRenewalShort(status.nextBillingAt)} 입니다.`
+                      : ' 구독 시작 후 다음 갱신일이 표시됩니다.'}
+                  </p>
+                  <p className="subscription-policy-banner-second">
+                    인원을 줄이면 <strong>다음 정기 결제일부터</strong> 줄인 인원 기준으로 월 요금이 청구됩니다(예: 10명→5명이면 이후 정기일부터 5명 요금).
+                    그동안 인원을 늘릴 때 발생한 비례(일회) 결제 금액은 <strong>환불되지 않습니다</strong>.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <section className="subscription-prorate-section" aria-labelledby="prorate-heading">
+              <h3 id="prorate-heading">비례 요금표 (월 중 인원 추가)</h3>
+              <div className="subscription-prorate-table-wrap">
+                <table className="subscription-prorate-table">
+                  <caption>마지막 정기 결제 이후 경과 기간별 인당 일회 요금</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">남은 기간(정기 결제 기준)</th>
+                      <th scope="col">인당 요금</th>
+                      <th scope="col">비고</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>7일 이내</td>
+                      <td>40,000원</td>
+                      <td className="muted">마지막 정기 결제 직후 구간</td>
+                    </tr>
+                    <tr>
+                      <td>7일 초과 ~ 14일 이하</td>
+                      <td>30,000원</td>
+                      <td className="muted">중간 구간</td>
+                    </tr>
+                    <tr>
+                      <td>14일 초과 ~ 21일 이하</td>
+                      <td>20,000원</td>
+                      <td className="muted">중간 구간</td>
+                    </tr>
+                    <tr>
+                      <td>21일 초과</td>
+                      <td>10,000원</td>
+                      <td className="muted">갱신 직전 구간</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
           </div>
-        </section>
 
-        <section className="subscription-card">
-          <h3>현재 상태</h3>
-          <dl className="subscription-dl">
-            <dt>구독</dt>
-            <dd>{hasActive ? '이용 중' : '미등록'}</dd>
-            <dt>다음 결제 예정</dt>
-            <dd>{formatDate(status?.nextBillingAt)}</dd>
-            <dt>마지막 결제</dt>
-            <dd>{formatDate(status?.lastBillingAt)}</dd>
-            <dt>등록 카드</dt>
-            <dd>
-              {status?.cardCompany && status?.cardNumberMasked
-                ? `${status.cardCompany} ${status.cardNumberMasked}`
-                : '—'}
-            </dd>
-          </dl>
+          <aside className="subscription-sidebar">
+            <div className="subscription-finalize-card">
+              <h3>변경 확정</h3>
+              <p className="sub">
+                {hasActive
+                  ? '인원을 조정한 뒤 저장하면 반영됩니다. 증원 시 비례 금액이 즉시 결제되고, 감소 시에는 다음 정기일부터 요금만 조정되며 과거 비례 결제는 환불되지 않습니다.'
+                  : '인원을 선택한 뒤 카드 등록으로 첫 결제를 진행하세요.'}
+              </p>
+              <div className="subscription-finalize-actions">
+                {hasActive ? (
+                  <>
+                    <button
+                      type="button"
+                      className="subscription-btn-primary-lg"
+                      onClick={handleApplySeats}
+                      disabled={primarySidebarDisabled}
+                    >
+                      <span className="material-symbols-outlined">payments</span>
+                      {seatApplyLoading ? '처리 중...' : '저장 및 결제'}
+                    </button>
+                    <button
+                      type="button"
+                      className="subscription-btn-outline"
+                      onClick={handleCancelChanges}
+                      disabled={seatApplyLoading || billingLoading || confirming}
+                    >
+                      변경 취소
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="subscription-btn-primary-lg"
+                      onClick={handleRequestBillingAuth}
+                      disabled={primarySidebarDisabled}
+                    >
+                      <span className="material-symbols-outlined">credit_card</span>
+                      {billingLoading ? '결제창 여는 중...' : '카드 등록 및 첫 결제'}
+                    </button>
+                    <button
+                      type="button"
+                      className="subscription-btn-outline"
+                      onClick={handleCancelChanges}
+                      disabled={billingLoading || confirming}
+                    >
+                      입력 초기화
+                    </button>
+                  </>
+                )}
+              </div>
+              <div className="subscription-mail-note">
+                <span className="material-symbols-outlined">mail</span>
+                <p>결제가 완료되면 등록 이메일로 안내 메일이 발송됩니다 (Nodemailer·Gmail 등 서버 설정 시).</p>
+              </div>
+            </div>
 
-          <div className="subscription-actions">
-            {!hasActive && (
-              <button
-                type="button"
-                className="subscription-btn subscription-btn-primary"
-                onClick={handleRequestBillingAuth}
-                disabled={billingLoading || confirming || !config?.clientKey}
-              >
-                <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>credit_card</span>
-                {billingLoading ? '결제창 여는 중...' : '카드 등록 및 첫 달 결제 (1,000원)'}
-              </button>
-            )}
+            <div className="subscription-history-section">
+              <h3>결제 내역</h3>
+              {hasActive && status?.lastBillingAt ? (
+                <div className="subscription-history-item">
+                  <div className="row-top">
+                    <span className="inv">{invShort !== '—' ? `REF-${invShort}` : '최근 결제'}</span>
+                    <span className="paid">완료</span>
+                  </div>
+                  <div className="row-bottom">
+                    <div>
+                      <p className="date">{formatDate(status.lastBillingAt)}</p>
+                      <p className="desc">{currentSeats}명 기준 월 구독</p>
+                    </div>
+                    <p className="amt">
+                      {status?.planAmount != null
+                        ? `${Number(status.planAmount).toLocaleString('ko-KR')}원`
+                        : '—'}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <p className="subscription-history-empty">아직 표시할 결제 내역이 없습니다.</p>
+              )}
+            </div>
+
             {hasActive && (
-              <button
-                type="button"
-                className="subscription-btn subscription-btn-secondary"
-                onClick={handleDevCharge}
-                disabled={billingLoading || confirming}
-              >
-                개발용: 지금 즉시 한 번 더 결제
-              </button>
+              <div className="subscription-dev-row">
+                <button
+                  type="button"
+                  className="subscription-btn-ghost"
+                  onClick={handleDevCharge}
+                  disabled={billingLoading || confirming}
+                >
+                  개발용: 즉시 월 정기 금액 테스트 결제
+                </button>
+              </div>
             )}
-          </div>
+          </aside>
+        </div>
 
-          <p className="subscription-note">
-            테스트 키(TOSS_CLIENT_KEY / TOSS_SECRET_KEY)를 사용하면 실제 출금 없이 시뮬레이션됩니다.
-            자동결제(빌링) 계약이 없는 키로 연동하면 토스에서 NOT_SUPPORTED_METHOD가 날 수 있습니다.
-            서버가 잠들면(Railway 등) 정기 결제는 매시간 깨어난 뒤 처리되며, 운영 시 외부 크론으로
-            <code style={{ margin: '0 0.25rem' }}>POST /api/subscription/cron/process-due</code>
-            호출을 권장합니다.
-          </p>
-        </section>
+        <p className="subscription-footnote">
+          테스트 키(TOSS_CLIENT_KEY / TOSS_SECRET_KEY) 사용 시 실제 출금 없이 시뮬레이션될 수 있습니다.
+          정기 자동결제는 <code>SUBSCRIPTION_AUTO_BILLING_ENABLED=true</code> 일 때만 서버 스케줄·크론으로 청구됩니다.
+          현재: {autoOn ? '자동결제 설정됨' : '보류(수동·크론만)'}.
+        </p>
       </div>
     </div>
   );
