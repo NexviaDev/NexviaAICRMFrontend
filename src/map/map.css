@@ -186,33 +186,15 @@ div[class*="gm-style-cc"] {
   margin: 0;
 }
 
-.map-marker-mylocation {
-  transform: translate(50%, -50%);
-}
-
-.map-mylocation-dot {
-  width: 1rem;
-  height: 1rem;
-  border-radius: 50%;
-  border: 3px solid var(--card);
-  background: var(--primary, #5c6bc0);
-  box-shadow: 0 0 0 2px var(--primary);
-  animation: map-pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes map-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
-}
-
 .map-top-bar {
   position: absolute;
-  top: 1.5rem;
+  top: 0;
+  bottom: 0;
   left: 1.5rem;
   right: 1.5rem;
   display: flex;
   justify-content: flex-end;
-  align-items: flex-start;
+  align-items: center;
   gap: 1rem;
   z-index: 10;
   pointer-events: none;
@@ -220,63 +202,6 @@ div[class*="gm-style-cc"] {
 
 .map-top-bar > * {
   pointer-events: auto;
-}
-
-/* 스마트폰/PWA: 위치 정확도 안내(파스텔, 닫기 시 세션 동안 숨김) */
-.map-smart-location-hint {
-  position: absolute;
-  top: 4.25rem;
-  left: 1rem;
-  right: 1rem;
-  z-index: 11;
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
-  padding: 0.5rem 0.65rem;
-  background: #e8f4fc;
-  border: 1px solid #bae6fd;
-  border-radius: 0.5rem;
-  box-shadow: 0 2px 10px rgba(44, 100, 133, 0.08);
-  max-height: 40vh;
-  overflow-y: auto;
-}
-
-.map-smart-location-hint-text {
-  margin: 0;
-  font-size: 0.7rem;
-  line-height: 1.45;
-  color: var(--text);
-  flex: 1;
-  min-width: 0;
-}
-
-.map-smart-location-hint-text strong {
-  color: var(--primary, #5b7c99);
-}
-
-.map-smart-location-hint-code {
-  font-size: 0.65rem;
-  word-break: break-all;
-  background: rgba(255, 255, 255, 0.85);
-  padding: 0.05rem 0.2rem;
-  border-radius: 0.2rem;
-}
-
-.map-smart-location-hint-close {
-  flex-shrink: 0;
-  border: none;
-  background: var(--pastel-lavender, #d4d4f0);
-  color: var(--primary, #5b7c99);
-  font-size: 0.6875rem;
-  font-weight: 600;
-  padding: 0.25rem 0.5rem;
-  border-radius: 0.35rem;
-  cursor: pointer;
-  font-family: inherit;
-}
-
-.map-smart-location-hint-close:hover {
-  filter: brightness(0.97);
 }
 
 /* 검색창: 지도 하단 정중앙 (위로 올림) */
@@ -434,9 +359,102 @@ div[class*="gm-style-cc"] {
   font-size: 1.1rem;
 }
 
-.map-filter-chip span:last-child {
-  font-size: 0.78rem;
-  font-weight: 700;
+/* 원형 컨트롤(map-ctrl-btn-circle)과 동일한 외곽선·그림자·라운드 */
+.map-filter-chip.map-filter-chip--icon-only {
+  justify-content: center;
+  align-items: center;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0;
+  gap: 0;
+  border: none;
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  background: var(--card);
+  color: var(--text);
+  transition: background 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+
+.map-filter-chip.map-filter-chip--icon-only:hover {
+  background: var(--pastel-sky, #e0f2fe);
+  color: var(--primary);
+  transform: none;
+  border: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.map-filter-chip.map-filter-chip--icon-only.active {
+  background: var(--pastel-sky, #bae6fd);
+  border: 1px solid var(--primary);
+  color: var(--primary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.map-filter-chip--icon-only .material-symbols-outlined {
+  font-size: 1.5rem;
+}
+
+.map-mylocation-panel {
+  position: absolute;
+  bottom: 4rem;
+  left: 1.5rem;
+  padding: 0.75rem 1rem;
+  background: var(--card);
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+  max-width: min(18rem, calc(100vw - 3rem));
+}
+
+.map-mylocation-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 0.35rem;
+}
+
+.map-mylocation-panel-header .material-symbols-outlined {
+  font-size: 1.125rem;
+  color: var(--primary);
+}
+
+.map-mylocation-live {
+  margin-left: auto;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--primary);
+  background: var(--pastel-sky, #e0f2fe);
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.25rem;
+}
+
+.map-mylocation-coords {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-family: monospace;
+}
+
+.map-mylocation-accuracy {
+  margin: 0.35rem 0 0;
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
+.map-mylocation-accuracy-warn {
+  color: var(--pastel-warn-text, #b45309);
+}
+
+.map-mylocation-accuracy-note {
+  margin: 0.35rem 0 0;
+  font-size: 0.65rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+  opacity: 0.92;
 }
 
 .map-zoom-btns {
@@ -483,60 +501,6 @@ div[class*="gm-style-cc"] {
   background: var(--pastel-sky, #bae6fd);
   border: 1px solid var(--primary);
   color: var(--primary);
-}
-
-.map-mylocation-panel {
-  position: absolute;
-  bottom: 4rem;
-  left: 1.5rem;
-  padding: 0.75rem 1rem;
-  background: var(--card);
-  border-radius: 0.5rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  z-index: 10;
-}
-
-.map-mylocation-panel-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--text);
-  margin-bottom: 0.35rem;
-}
-
-.map-mylocation-panel-header .material-symbols-outlined {
-  font-size: 1.125rem;
-  color: var(--primary);
-}
-
-.map-mylocation-live {
-  margin-left: auto;
-  font-size: 0.6875rem;
-  font-weight: 500;
-  color: var(--primary);
-  background: var(--pastel-sky);
-  padding: 0.15rem 0.4rem;
-  border-radius: 0.25rem;
-}
-
-.map-mylocation-coords {
-  margin: 0;
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  font-family: monospace;
-}
-
-.map-mylocation-accuracy {
-  margin: 0.35rem 0 0;
-  font-size: 0.6875rem;
-  color: var(--text-muted);
-  line-height: 1.35;
-}
-
-.map-mylocation-accuracy-warn {
-  color: var(--pastel-warn-text, #b45309);
 }
 
 .map-bottom-chips {

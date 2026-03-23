@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import CustomerCompanyDetailModal from '../customer-companies/customer-company-detail-modal/customer-company-detail-modal';
 import './map.css';
 
@@ -28,29 +27,24 @@ function getAuthHeader() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-/**
- * 위치 API: 고정밀(GPS) 우선 + 캐시 미사용.
- * timeout만 늘려서는 한계가 있음 — 스마트폰/PWA/TWA는 아래 보조(화면 켜짐 유지, 네이티브 주입)를 함께 쓰는 것을 권장.
- */
-const GEOLOCATION_OPTIONS_INITIAL = {
-  enableHighAccuracy: true,
-  maximumAge: 0,
-  timeout: 60000
-};
-
-/** watchPosition: 일부 브라우저는 watch에서 timeout을 무시하기도 함 */
 const GEOLOCATION_OPTIONS_WATCH = {
   enableHighAccuracy: true,
   maximumAge: 0,
   timeout: 60000
 };
 
-const MAP_LOCATION_HINT_KEY = 'crm_map_smart_location_hint_dismissed';
+/** 브라우저 보고 accuracy(m)에 배율을 곱해 지도 반투명 원 반경 — 실제보다 넉넉히 보이게 */
+const MY_LOCATION_MAP_RADIUS_MULT = 15;
+const MY_LOCATION_MAP_RADIUS_MIN_M = 75;
+
+function myLocationMapRadiusMeters(reportedAccuracyM) {
+  const r = typeof reportedAccuracyM === 'number' && reportedAccuracyM > 0 ? reportedAccuracyM : 55;
+  return Math.max(MY_LOCATION_MAP_RADIUS_MIN_M, r * MY_LOCATION_MAP_RADIUS_MULT);
+}
 
 /**
- * PWA·일반 브라우저: `navigator.geolocation`.
- * Capacitor Android 앱: `main.js`가 로드하는 `lib/nexvia-native-geolocation.js` 가
- * `Capacitor.isNativePlatform()` 일 때만 `window.__nexviaGeolocation` 에 Fused Location 연동을 주입함.
+ * PWA·브라우저: navigator.geolocation.
+ * Capacitor: `lib/nexvia-native-geolocation.js` 가 네이티브일 때만 `window.__nexviaGeolocation` 주입.
  */
 function getGeolocationService() {
   if (typeof window === 'undefined') return null;
@@ -66,14 +60,8 @@ function getGeolocationService() {
   return navigator.geolocation || null;
 }
 
-/** 하위 호환·단발 요청용 */
-const GEOLOCATION_OPTIONS = GEOLOCATION_OPTIONS_INITIAL;
-
-/** 최근 N회 측정: 정지 시 더 많이 모아 “우연히 좋은 한 번”의 GPS 고정을 잡기 쉽게 */
 const LOCATION_SAMPLE_MAX_STILL = 10;
 const LOCATION_SAMPLE_MAX_MOVING = 5;
-
-/** 샘플 보관 시간(ms) — 오래된 기지국 추정치가 최적 해와 섞이지 않게. GPS 주기가 느릴 때 여유 */
 const LOCATION_SAMPLE_MAX_AGE_MS = 28000;
 
 function haversineMeters(a, b) {
@@ -95,10 +83,6 @@ function medianNum(arr) {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
-/**
- * 중앙값 기준으로 튀는 샘플 제거 (실내·기지국에서 가끔 수백 m 튀는 값 완화)
- * @param {Array<{ lat: number, lng: number, accuracy: number }>} samples
- */
 function removeSpatialOutliers(samples) {
   if (samples.length < 3) return samples;
   const medLat = medianNum(samples.map((s) => s.lat));
@@ -125,26 +109,13 @@ function weightedGeolocationMean(buf) {
   return { lat: slat / sw, lng: slng / sw, accuracy: latestAcc };
 }
 
-/**
- * 급격한 점프 완화: 보고 정확도가 낮은데 수백 m 이동하면 한 번에 따라가지 않음 (핸드폰 오측 완화).
- * 단, WiFi 끄고 데이터만 쓸 때는 먼저 기지국(큰 accuracy)·후에 GPS(작은 accuracy)로 바뀌는 전환이 흔함 —
- * 이때는 정확도가 눈에 띄게 좋아지면 바로 반영해야 지도가 실제 위치로 따라옴.
- * @param {{ lat: number, lng: number, accuracy: number } | null} prev
- * @param {{ lat: number, lng: number, accuracy: number }} next
- */
 function dampLargeJump(prev, next) {
   if (!prev) return next;
-  // 기지국/거친 네트워크 → GPS(또는 훨씬 나은 고정)로의 전환: 한 번에 반영
-  if (
-    prev.accuracy >= 85 &&
-    next.accuracy < prev.accuracy * 0.72 &&
-    next.accuracy < 140
-  ) {
+  if (prev.accuracy >= 85 && next.accuracy < prev.accuracy * 0.72 && next.accuracy < 140) {
     return next;
   }
   const d = haversineMeters(prev, next);
   const maxJump = 3 * Math.max(next.accuracy, prev.accuracy || 50, 20) + 35;
-  // 전형적인 실외 GPS 반경(~50m 이하)이면 큰 점프도 신뢰
   if (d <= maxJump || next.accuracy <= 55) return next;
   const t = Math.min(0.35, maxJump / d);
   return {
@@ -156,8 +127,6 @@ function dampLargeJump(prev, next) {
 
 /**
  * @param {{ current: Array<{ lat: number, lng: number, accuracy: number, ts: number }> }} bufferRef
- * @param {GeolocationPosition} pos
- * @returns {{ lat: number, lng: number, accuracy: number } | null}
  */
 function pushGeolocationSample(bufferRef, pos) {
   const lat = pos.coords.latitude;
@@ -186,11 +155,12 @@ function pushGeolocationSample(bufferRef, pos) {
   const moving = speed != null && !Number.isNaN(speed) && speed > 1.2;
 
   if (moving) {
-    const wMean = weightedGeolocationMean(spatial.map(({ lat: la, lng: ln, accuracy: ac }) => ({ lat: la, lng: ln, accuracy: ac })));
+    const wMean = weightedGeolocationMean(
+      spatial.map(({ lat: la, lng: ln, accuracy: ac }) => ({ lat: la, lng: ln, accuracy: ac }))
+    );
     return wMean;
   }
 
-  // 정지·저속: 최근 샘플 중 오차가 가장 작은 상위 몇 개로 가중 평균(단일 “운 좋은 한 번” 완화, 셀룰러 노이즈 완화)
   const now = Date.now();
   const recent = spatial.filter((s) => now - s.ts < 18000);
   const pool = recent.length ? recent : spatial;
@@ -288,39 +258,20 @@ function zoomForGoogleIpAccuracyMeters(acc) {
 }
 
 export default function Map() {
-  const navigate = useNavigate();
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [assigneeMeOnly, setAssigneeMeOnly] = useState(true);
   const [searchInput, setSearchInput] = useState('');
   const [selected, setSelected] = useState(null);
-  const [myLocation, setMyLocation] = useState(null);
-  const [liveLocationOn, setLiveLocationOn] = useState(true);
-  const [smartLocationHintOpen, setSmartLocationHintOpen] = useState(() => {
-    try {
-      if (typeof window === 'undefined') return false;
-      if (sessionStorage.getItem(MAP_LOCATION_HINT_KEY)) return false;
-      return Boolean(window.matchMedia?.('(pointer: coarse)')?.matches);
-    } catch {
-      return false;
-    }
-  });
   const [mapReady, setMapReady] = useState(false);
-  const watchIdRef = useRef(null);
-  const locationSamplesRef = useRef([]);
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const searchInputRef = useRef(null);
   const autocompleteRef = useRef(null);
   const markersRef = useRef([]);
-  const myLocationMarkerRef = useRef(null);
-  const myLocationAccuracyCircleRef = useRef(null); // 브라우저가 보고한 오차 반경(시각적 신뢰구간)
-  const lastRefinedLocationRef = useRef(null); // 이상치·급점프 완화 후 마지막 좌표 (핸드폰 튐 완화)
-  const lastDisplayedPositionRef = useRef(null); // 부드러운 이동용: 마지막으로 그린 위치
-  const locationAnimationFrameRef = useRef(null); // 진행 중인 위치 애니메이션 취소용
   const searchPlaceMarkerRef = useRef(null);
   const markerLabelsRef = useRef([]); // 마커별 말주머니(업체명) InfoWindow 목록
-  const initialViewAppliedRef = useRef(false); // 초기 뷰(내 위치/고객사)는 한 번만 적용 → 검색 후 화면이 덮어쓰이지 않도록
+  const initialViewAppliedRef = useRef(false); // 초기 뷰(내 위치/고객사 fit 등)는 한 번만 적용 → 검색 후 화면이 덮어쓰이지 않도록
   const [showMarkerLabels, setShowMarkerLabels] = useState(false); // 업체명 말주머니 표시 (기본 끔)
   const [searchPlace, setSearchPlace] = useState(null); // Google 검색한 장소 { lat, lng, label }
   const [searchPlaceLoading, setSearchPlaceLoading] = useState(false);
@@ -328,6 +279,12 @@ export default function Map() {
   const [grayscaleMode, setGrayscaleMode] = useState(false); // 지도 흑백 모드
   const [headingFollowOn, setHeadingFollowOn] = useState(false); // 기기 방향에 맞춰 지도 회전 (북이 항상 위가 아님)
   const orientationHandlerRef = useRef(null);
+  const [myLocation, setMyLocation] = useState(null);
+  const [liveLocationOn, setLiveLocationOn] = useState(false);
+  const watchIdRef = useRef(null);
+  const locationSamplesRef = useRef([]);
+  const myLocationAccuracyCircleRef = useRef(null);
+  const lastRefinedLocationRef = useRef(null);
 
   const fetchCompanies = useCallback(async () => {
     setLoading(true);
@@ -365,53 +322,6 @@ export default function Map() {
     return () => document.removeEventListener('visibilitychange', onVisibility);
   }, [fetchCompanies]);
 
-  // 마운트 시점에 바로 내 위치 요청 (지도보다 먼저 받아서 처음부터 내 위치로 보이게)
-  useEffect(() => {
-    const geo = getGeolocationService();
-    if (!geo) return;
-    geo.getCurrentPosition(
-      (pos) => {
-        const w = pushGeolocationSample(locationSamplesRef, pos);
-        if (!w) return;
-        const damped = dampLargeJump(lastRefinedLocationRef.current, w);
-        lastRefinedLocationRef.current = damped;
-        setMyLocation({ lat: damped.lat, lng: damped.lng, accuracy: damped.accuracy });
-      },
-      () => {},
-      GEOLOCATION_OPTIONS_INITIAL
-    );
-  }, []);
-
-  // 지도 로드 시점에 아직 위치가 없으면 한 번 더 내 위치 요청
-  useEffect(() => {
-    const geo = getGeolocationService();
-    if (!mapReady || !geo || myLocation) return;
-    geo.getCurrentPosition(
-      (pos) => {
-        const w = pushGeolocationSample(locationSamplesRef, pos);
-        if (!w) return;
-        const damped = dampLargeJump(lastRefinedLocationRef.current, w);
-        lastRefinedLocationRef.current = damped;
-        setMyLocation({ lat: damped.lat, lng: damped.lng, accuracy: damped.accuracy });
-      },
-      () => {},
-      GEOLOCATION_OPTIONS_INITIAL
-    );
-  }, [mapReady, myLocation]);
-
-  const companiesWithCoords = companies.filter((c) => c.latitude != null && c.longitude != null);
-  // 지도에는 위경도 있는 고객사는 항상 전부 표시 (검색창은 구글 장소 이동용이라 고객사 필터에 쓰지 않음)
-  const companiesToShowOnMap = companiesWithCoords;
-
-  const dismissSmartLocationHint = useCallback(() => {
-    try {
-      sessionStorage.setItem(MAP_LOCATION_HINT_KEY, '1');
-    } catch {
-      /* 사생활 모드 등 */
-    }
-    setSmartLocationHintOpen(false);
-  }, []);
-
   const startLiveLocation = useCallback(() => {
     const geo = getGeolocationService();
     if (!geo) {
@@ -445,22 +355,8 @@ export default function Map() {
     lastRefinedLocationRef.current = null;
     setLiveLocationOn(false);
     setMyLocation(null);
-    if (myLocationMarkerRef.current) {
-      myLocationMarkerRef.current.setMap(null);
-      myLocationMarkerRef.current = null;
-    }
   }, []);
 
-  // 실시간 내 위치 기본 켜기: 지도 준비되면 watch 시작
-  useEffect(() => {
-    if (!mapReady || !getGeolocationService() || !liveLocationOn) return;
-    startLiveLocation();
-  }, [mapReady, liveLocationOn, startLiveLocation]);
-
-  /**
-   * 스마트폰/PWA: 화면이 꺼지거나 절전되면 GPS 갱신이 끊기는 경우가 있어 Wake Lock 요청(HTTPS·사용자 환경에 따라 거부될 수 있음).
-   * TWA 순수 웹과 동일 API이며, “더 정확한 좌표”를 웹만으로 보장하진 못함.
-   */
   useEffect(() => {
     if (!liveLocationOn) return;
     let cancelled = false;
@@ -491,6 +387,10 @@ export default function Map() {
       lockRef.current = null;
     };
   }, [liveLocationOn]);
+
+  const companiesWithCoords = companies.filter((c) => c.latitude != null && c.longitude != null);
+  // 지도에는 위경도 있는 고객사는 항상 전부 표시 (검색창은 구글 장소 이동용이라 고객사 필터에 쓰지 않음)
+  const companiesToShowOnMap = companiesWithCoords;
 
   // 기기 방향(나침반)에 맞춰 지도 회전 — 핸드폰에서 보는 방향이 위쪽
   useEffect(() => {
@@ -549,15 +449,11 @@ export default function Map() {
 
   useEffect(() => {
     return () => {
-      if (locationAnimationFrameRef.current != null) cancelAnimationFrame(locationAnimationFrameRef.current);
       if (watchIdRef.current != null) {
         getGeolocationService()?.clearWatch(watchIdRef.current);
       }
       markersRef.current.forEach((m) => m.setMap(null));
       markersRef.current = [];
-      if (myLocationMarkerRef.current) {
-        myLocationMarkerRef.current.setMap(null);
-      }
       if (myLocationAccuracyCircleRef.current) {
         myLocationAccuracyCircleRef.current.setMap(null);
         myLocationAccuracyCircleRef.current = null;
@@ -599,7 +495,7 @@ export default function Map() {
     });
   }, [mapReady, grayscaleMode]);
 
-  // Geolocation API(considerIp): GPS·고객사 초기 뷰보다 먼저 도착하면 대략 지역만 지도 중심으로 잡음(initialViewAppliedRef는 건드리지 않음 → 이후 브라우저 위치/마커가 덮어씀)
+  // Geolocation API(considerIp): 브라우저 GPS·고객사 초기 뷰보다 먼저 도착하면 대략 지역만 지도 중심으로 잡음(initialViewAppliedRef는 건드리지 않음 → 이후 내 위치/고객사가 덮어씀)
   useEffect(() => {
     if (!mapReady || !GOOGLE_MAPS_API_KEY) return;
     let cancelled = false;
@@ -734,7 +630,7 @@ export default function Map() {
     if (!initialViewAppliedRef.current) {
       if (myLocation) {
         map.panTo({ lat: myLocation.lat, lng: myLocation.lng });
-        map.setZoom(15); // 내 위치 주변으로 확대 (약 2~3km)
+        map.setZoom(15);
         initialViewAppliedRef.current = true;
       } else if (companiesToShowOnMap.length === 1) {
         const c = companiesToShowOnMap[0];
@@ -755,6 +651,42 @@ export default function Map() {
       }
     }
   }, [mapReady, companiesToShowOnMap, showMarkerLabels, myLocation]);
+
+  /** 내 위치 불확실성 구간 — 보고 accuracy×배율(최소 m)로 원 반경. 점 마커 없음. */
+  useEffect(() => {
+    if (!mapReady || !mapInstanceRef.current || !window.google) return;
+    if (!myLocation) {
+      if (myLocationAccuracyCircleRef.current) {
+        myLocationAccuracyCircleRef.current.setMap(null);
+        myLocationAccuracyCircleRef.current = null;
+      }
+      return;
+    }
+    const map = mapInstanceRef.current;
+    const center = { lat: myLocation.lat, lng: myLocation.lng };
+    const reported =
+      typeof myLocation.accuracy === 'number' && myLocation.accuracy > 0 ? myLocation.accuracy : 55;
+    const radiusM = myLocationMapRadiusMeters(reported);
+    if (!myLocationAccuracyCircleRef.current) {
+      myLocationAccuracyCircleRef.current = new window.google.maps.Circle({
+        strokeColor: '#e53935',
+        strokeOpacity: 1,
+        strokeWeight: 1,
+        fillColor: '#e53935',
+        fillOpacity: 0.09,
+        map,
+        center,
+        radius: radiusM,
+        zIndex: 99,
+        clickable: false
+      });
+      map.panTo(center);
+      map.setZoom(15);
+    } else {
+      myLocationAccuracyCircleRef.current.setCenter(center);
+      myLocationAccuracyCircleRef.current.setRadius(radiusM);
+    }
+  }, [mapReady, myLocation]);
 
   // Google 검색한 장소 마커 (주황색) — showSearchPlaceMarker 켜져 있을 때만 표시
   useEffect(() => {
@@ -786,96 +718,6 @@ export default function Map() {
       }
     };
   }, [mapReady, searchPlace, showSearchPlaceMarker]);
-
-  // 내 위치 마커 생성/갱신 — 갱신 시 부드럽게 이동 (카카오맵·티맵처럼 실시간 미세 이동 느낌)
-  useEffect(() => {
-    if (!mapReady || !mapInstanceRef.current || !window.google) return;
-    if (!myLocation) {
-      lastDisplayedPositionRef.current = null;
-      if (locationAnimationFrameRef.current != null) cancelAnimationFrame(locationAnimationFrameRef.current);
-      if (myLocationMarkerRef.current) {
-        myLocationMarkerRef.current.setMap(null);
-        myLocationMarkerRef.current = null;
-      }
-      return;
-    }
-    const target = { lat: myLocation.lat, lng: myLocation.lng };
-    const marker = myLocationMarkerRef.current;
-    if (marker) {
-      const from = lastDisplayedPositionRef.current ?? (() => {
-        const p = marker.getPosition();
-        return p ? { lat: p.lat(), lng: p.lng() } : target;
-      })();
-      lastDisplayedPositionRef.current = target;
-      if (locationAnimationFrameRef.current != null) cancelAnimationFrame(locationAnimationFrameRef.current);
-      const DURATION_MS = 450;
-      const start = performance.now();
-      const easeOutCubic = (t) => 1 - (1 - t) ** 3;
-      const tick = () => {
-        const elapsed = performance.now() - start;
-        const t = Math.min(1, elapsed / DURATION_MS);
-        const k = easeOutCubic(t);
-        const lat = from.lat + (target.lat - from.lat) * k;
-        const lng = from.lng + (target.lng - from.lng) * k;
-        if (myLocationMarkerRef.current) myLocationMarkerRef.current.setPosition({ lat, lng });
-        if (t < 1) locationAnimationFrameRef.current = requestAnimationFrame(tick);
-      };
-      locationAnimationFrameRef.current = requestAnimationFrame(tick);
-      return;
-    }
-    lastDisplayedPositionRef.current = target;
-    const newMarker = new window.google.maps.Marker({
-      position: target,
-      map: mapInstanceRef.current,
-      title: '내 위치',
-      icon: {
-        path: window.google.maps.SymbolPath.CIRCLE,
-        scale: 12,
-        fillColor: '#e53935',
-        fillOpacity: 1,
-        strokeColor: '#fff',
-        strokeWeight: 3
-      },
-      zIndex: 100
-    });
-    myLocationMarkerRef.current = newMarker;
-    mapInstanceRef.current.panTo(target);
-    mapInstanceRef.current.setZoom(15); // 내 위치 주변으로 확대 (약 2~3km)
-  }, [mapReady, myLocation]);
-
-  // 내 위치 오차 반경(브라우저 accuracy) — 지도 위에 옅은 원으로 표시해 “어느 정도 불확실한지” 가시화
-  useEffect(() => {
-    if (!mapReady || !mapInstanceRef.current || !window.google) return;
-    if (!myLocation) {
-      if (myLocationAccuracyCircleRef.current) {
-        myLocationAccuracyCircleRef.current.setMap(null);
-        myLocationAccuracyCircleRef.current = null;
-      }
-      return;
-    }
-    const map = mapInstanceRef.current;
-    const center = { lat: myLocation.lat, lng: myLocation.lng };
-    const r =
-      typeof myLocation.accuracy === 'number' && myLocation.accuracy > 0 ? myLocation.accuracy : 55;
-    const radiusM = Math.max(12, r);
-    if (!myLocationAccuracyCircleRef.current) {
-      myLocationAccuracyCircleRef.current = new window.google.maps.Circle({
-        strokeColor: '#e53935',
-        strokeOpacity: 0.38,
-        strokeWeight: 1,
-        fillColor: '#e53935',
-        fillOpacity: 0.07,
-        map,
-        center,
-        radius: radiusM,
-        zIndex: 99,
-        clickable: false
-      });
-    } else {
-      myLocationAccuracyCircleRef.current.setCenter(center);
-      myLocationAccuracyCircleRef.current.setRadius(radiusM);
-    }
-  }, [mapReady, myLocation]);
 
   /** 검색창 입력으로 Google 지오코딩 후 해당 위치로 지도 이동 + 마커 표시 */
   const goToSearchPlace = useCallback(() => {
@@ -921,29 +763,6 @@ export default function Map() {
     }
   };
 
-  const goToMyLocation = () => {
-    const geo = getGeolocationService();
-    if (!geo) return;
-    locationSamplesRef.current = [];
-    lastRefinedLocationRef.current = null;
-    geo.getCurrentPosition(
-      (pos) => {
-        const w = pushGeolocationSample(locationSamplesRef, pos);
-        if (!w) return;
-        const damped = dampLargeJump(lastRefinedLocationRef.current, w);
-        lastRefinedLocationRef.current = damped;
-        const loc = { lat: damped.lat, lng: damped.lng, accuracy: damped.accuracy };
-        setMyLocation(loc);
-        if (mapInstanceRef.current) {
-          mapInstanceRef.current.panTo({ lat: loc.lat, lng: loc.lng });
-          mapInstanceRef.current.setZoom(15); // 내 위치 주변으로 확대
-        }
-      },
-      () => alert('위치를 가져올 수 없습니다.'),
-      GEOLOCATION_OPTIONS_INITIAL
-    );
-  };
-
   if (!GOOGLE_MAPS_API_KEY) {
     return (
       <div className="page map-page">
@@ -962,56 +781,16 @@ export default function Map() {
         <div className="map-main">
           <div ref={mapContainerRef} className="map-canvas map-canvas-google" />
 
-          {smartLocationHintOpen && (
-            <div className="map-smart-location-hint" role="note">
-              <p className="map-smart-location-hint-text">
-                <strong>스마트폰·PWA:</strong> Wi‑Fi를 끄면 기지국 추정만으로 오차가 커질 수 있습니다. 안드로이드는 설정에서{' '}
-                <em>정확한 위치</em>를 허용하고, Wi‑Fi/블루투스 위치 보조를 켜 두면 도움이 됩니다. 지도는 Google Geolocation API로 IP 기반
-                대략 위치를 먼저 잡을 수 있으나(Console에서 Geolocation API 사용 설정), GPS만큼 정밀하지는 않습니다. 스토어 앱 수준은{' '}
-                <code className="map-smart-location-hint-code">window.__nexviaGeolocation</code> 등 네이티브 연동을 검토하세요.
-              </p>
-              <button
-                type="button"
-                className="map-smart-location-hint-close"
-                onClick={dismissSmartLocationHint}
-                aria-label="위치 안내 닫기"
-              >
-                닫기
-              </button>
-            </div>
-          )}
-
           <div className="map-top-bar">
             <div className="map-controls">
-              <div className="map-header-notify-chat" aria-label="공지 및 채팅 바로가기">
-                <button
-                  type="button"
-                  className="map-ctrl-btn map-ctrl-btn-circle"
-                  aria-label="공지사항"
-                  title="공지사항"
-                  onClick={() => navigate('/notification')}
-                >
-                  <span className="material-symbols-outlined">notifications</span>
-                </button>
-                <button
-                  type="button"
-                  className="map-ctrl-btn map-ctrl-btn-circle"
-                  aria-label="채팅"
-                  title="채팅"
-                  onClick={() => navigate('/chat')}
-                >
-                  <span className="material-symbols-outlined">chat_bubble</span>
-                </button>
-              </div>
               <button
                 type="button"
-                className={`map-filter-chip ${assigneeMeOnly ? 'active' : ''}`}
+                className={`map-filter-chip map-filter-chip--icon-only ${assigneeMeOnly ? 'active' : ''}`}
                 onClick={() => setAssigneeMeOnly((prev) => !prev)}
                 aria-label={assigneeMeOnly ? '전체 고객사 보기' : '내 담당 고객사만 보기'}
                 title={assigneeMeOnly ? '전체 고객사 보기' : '내 담당 고객사만 보기'}
               >
                 <span className="material-symbols-outlined">person_pin_circle</span>
-                <span>{assigneeMeOnly ? '전체 보기' : '내 담당만'}</span>
               </button>
               <div className="map-zoom-btns">
                 <button type="button" className="map-ctrl-btn" onClick={zoomIn} aria-label="확대">
@@ -1023,21 +802,21 @@ export default function Map() {
               </div>
               <button
                 type="button"
+                className={`map-ctrl-btn map-ctrl-btn-circle ${liveLocationOn ? 'active' : ''}`}
+                onClick={liveLocationOn ? stopLiveLocation : startLiveLocation}
+                aria-label={liveLocationOn ? '실시간 위치 끄기' : '실시간 내 위치 켜기 (버튼을 눌렀을 때만)'}
+                title={liveLocationOn ? '실시간 위치 끄기' : '실시간 내 위치 켜기 — 페이지 로드 시에는 실행되지 않습니다'}
+              >
+                <span className="material-symbols-outlined">my_location</span>
+              </button>
+              <button
+                type="button"
                 className={`map-ctrl-btn map-ctrl-btn-circle ${showMarkerLabels ? 'active' : ''}`}
                 onClick={() => setShowMarkerLabels((v) => !v)}
                 aria-label={showMarkerLabels ? '업체명 말주머니 끄기' : '업체명 말주머니 켜기'}
                 title={showMarkerLabels ? '업체명 말주머니 끄기' : '업체명 말주머니 켜기'}
               >
                 <span className="material-symbols-outlined">label</span>
-              </button>
-              <button
-                type="button"
-                className={`map-ctrl-btn map-ctrl-btn-circle ${liveLocationOn ? 'active' : ''}`}
-                onClick={liveLocationOn ? stopLiveLocation : startLiveLocation}
-                aria-label={liveLocationOn ? '실시간 위치 끄기' : '내 위치 (실시간)'}
-                title={liveLocationOn ? '실시간 위치 끄기' : '실시간 내 위치 켜기'}
-              >
-                <span className="material-symbols-outlined">my_location</span>
               </button>
               <button
                 type="button"
@@ -1128,12 +907,25 @@ export default function Map() {
                 {myLocation.lat.toFixed(6)}, {myLocation.lng.toFixed(6)}
               </p>
               {typeof myLocation.accuracy === 'number' && (
-                <p className="map-mylocation-accuracy" title="브라우저가 보고한 위치 반경 오차입니다. 실외·GPS 수신 시 더 작아집니다.">
-                  오차 약 ±{Math.round(myLocation.accuracy)}m
-                  {myLocation.accuracy > 80 && (
-                    <span className="map-mylocation-accuracy-warn"> · 정확도 낮음(실외 대기 또는 위치 권한·고정밀 확인)</span>
+                <>
+                  <p
+                    className="map-mylocation-accuracy"
+                    title={`기기 보고 반경 약 ±${Math.round(myLocation.accuracy)}m. 지도 빨간 원은 보고값×${MY_LOCATION_MAP_RADIUS_MULT}(최소 ${MY_LOCATION_MAP_RADIUS_MIN_M}m)로 그려 실제 불확실성을 넉넉히 표시합니다.`}
+                  >
+                    기기 보고 오차 약 ±{Math.round(myLocation.accuracy)}m · 지도 원 반경 약{' '}
+                    {Math.round(myLocationMapRadiusMeters(myLocation.accuracy))}m (보고×{MY_LOCATION_MAP_RADIUS_MULT}
+                    {', 최소 '}
+                    {MY_LOCATION_MAP_RADIUS_MIN_M}m)
+                    {myLocation.accuracy > 80 && (
+                      <span className="map-mylocation-accuracy-warn"> · 보고 정확도 낮음(실외·권한·고정밀 확인)</span>
+                    )}
+                  </p>
+                  {myLocation.accuracy > 90 && (
+                    <p className="map-mylocation-accuracy-note">
+                      기기(폰·PC)·브라우저마다 위치를 잡는 방식이 달라 표시가 다를 수 있습니다.
+                    </p>
                   )}
-                </p>
+                </>
               )}
             </div>
           )}
