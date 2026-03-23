@@ -81,6 +81,12 @@ function getDriveFileIdFromUrl(url) {
   return m ? m[1] : null;
 }
 
+function isCertificateLikeFile(file) {
+  const mime = String(file?.type || '').toLowerCase();
+  const name = String(file?.name || '').toLowerCase();
+  return mime.startsWith('image/') || mime === 'application/pdf' || name.endsWith('.pdf');
+}
+
 /** Drive 저장 시 파일명: 사업자등록증_고객사명_사업자번호.확장자 */
 function buildCertificateDriveFileName(companyName, businessNumberRaw, mimeType, originalFileName) {
   const namePart = sanitizeFolderNamePart(companyName || '미소속').replace(/\s+/g, '_').slice(0, 60) || '미소속';
@@ -151,6 +157,10 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
   const pickerMarkerRef = useRef(null);
   const certificateInputRef = useRef(null);
   const driveFileInputRef = useRef(null);
+  /** 루트 폴더 ensure — 저장된 ID를 보지 않고 이름 기준으로 재조회/생성 */
+  const driveRootEnsureInFlightRef = useRef(false);
+  /** information 하위 폴더 ensure — Strict Mode 중복 호출 방지 */
+  const driveInformationEnsureInFlightRef = useRef(false);
   const submittingRef = useRef(false);
 
   const fetchCustomDefinitions = async () => {
@@ -209,22 +219,76 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
     : (form.assigneeUserIds || []).map((id) => assigneeIdToName[String(id)] || id).join(', ');
 
   const driveFolderName = useMemo(() => {
-    const namePart = sanitizeFolderNamePart(form.name || '미소속');
-    const numPart = sanitizeFolderNamePart((form.businessNumber || '').replace(/-/g, '')) || '미등록';
+    /**
+     * 수정 모드 첫 렌더에서는 form 기본값이 비어 있어 '미소속_미등록'이 먼저 계산될 수 있음.
+     * 이때 드래그앤드롭을 바로 하면 잘못된 폴더가 생기므로, 초기값은 company 데이터를 우선 사용.
+     */
+    const sourceName = (form.name || '').trim() || (isEdit ? String(company?.name || '').trim() : '');
+    const sourceBusinessNumber =
+      (form.businessNumber || '').trim() || (isEdit ? String(company?.businessNumber || '').trim() : '');
+    const namePart = sanitizeFolderNamePart(sourceName || '미소속');
+    const numPart = sanitizeFolderNamePart(sourceBusinessNumber.replace(/\D/g, '')) || '미등록';
     return `${namePart}_${numPart}`;
-  }, [form.name, form.businessNumber]);
+  }, [form.name, form.businessNumber, isEdit, company?.name, company?.businessNumber]);
 
-  /* Drive 루트 폴더: 수정 모드에서 이미 저장된 driveRootFolderId가 있으면 사용 */
+  const ensureCompanyDriveRootFolder = useCallback(async () => {
+    if (!driveFolderName) return null;
+    const r = await fetch(`${API_BASE}/drive/folders/ensure`, {
+      method: 'POST',
+      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ folderName: driveFolderName })
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.id) {
+      throw new Error(data.error || '폴더를 준비할 수 없습니다.');
+    }
+    const folderLink = data.webViewLink || `https://drive.google.com/drive/folders/${data.id}`;
+    setDriveFolderId(data.id);
+    setDriveFolderLink(folderLink);
+    return { id: data.id, webViewLink: folderLink };
+  }, [driveFolderName]);
+
+  const ensureCompanyDriveInformationFolder = useCallback(async () => {
+    const ensuredRoot = await ensureCompanyDriveRootFolder();
+    const rootId = ensuredRoot?.id || null;
+    if (!rootId) throw new Error('폴더를 준비할 수 없습니다.');
+    const r = await fetch(`${API_BASE}/drive/folders/ensure`, {
+      method: 'POST',
+      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ folderName: INFORMATION_FOLDER_NAME, parentFolderId: rootId })
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.id) {
+      throw new Error(data.error || 'information 폴더를 준비할 수 없습니다.');
+    }
+    setDriveInformationFolderId(data.id);
+    return {
+      rootId,
+      rootLink: ensuredRoot.webViewLink || `https://drive.google.com/drive/folders/${rootId}`,
+      infoId: data.id
+    };
+  }, [ensureCompanyDriveRootFolder]);
+
+  /* Drive 루트 폴더: 수정 모달 진입 시 이름 기준으로 재조회 후 없으면 생성 */
   useEffect(() => {
-    if (!isEdit || !company?.driveRootFolderId) {
+    if (!isEdit || !company?._id || !driveFolderName) {
       setDriveFolderId(null);
       setDriveFolderLink('');
       return;
     }
-    const storedFolderId = String(company.driveRootFolderId).trim();
-    setDriveFolderId(storedFolderId);
-    setDriveFolderLink(`https://drive.google.com/drive/folders/${storedFolderId}`);
-  }, [isEdit, company?.driveRootFolderId]);
+    if (driveRootEnsureInFlightRef.current) return;
+    driveRootEnsureInFlightRef.current = true;
+    ensureCompanyDriveRootFolder()
+      .catch(() => {
+        setDriveFolderId(null);
+        setDriveFolderLink('');
+      })
+      .finally(() => {
+        driveRootEnsureInFlightRef.current = false;
+      });
+  }, [isEdit, company?._id, driveFolderName, ensureCompanyDriveRootFolder]);
 
   /* 증서·자료: 루트 아래 information 폴더로 진입 (중복 검사는 백엔드 ensureFolder에서 처리) */
   useEffect(() => {
@@ -235,23 +299,16 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
       setDriveFilesList([]);
       return;
     }
-    let cancelled = false;
+    if (driveInformationEnsureInFlightRef.current) return;
+    driveInformationEnsureInFlightRef.current = true;
     (async () => {
       try {
-        const r = await fetch(`${API_BASE}/drive/folders/ensure`, {
-          method: 'POST',
-          headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ folderName: INFORMATION_FOLDER_NAME, parentFolderId: driveFolderId })
-        });
-        const data = await r.json().catch(() => ({}));
-        if (cancelled) return;
-        if (r.ok && data.id) {
-          setDriveInformationFolderId(data.id);
-          setDriveCurrentFolderId(data.id);
+        const ensured = await ensureCompanyDriveInformationFolder();
+        if (ensured?.infoId) {
+          setDriveCurrentFolderId(ensured.infoId);
           setDriveBreadcrumb([
-            { id: driveFolderId, name: driveFolderName },
-            { id: data.id, name: INFORMATION_FOLDER_NAME }
+            { id: ensured.rootId, name: driveFolderName },
+            { id: ensured.infoId, name: INFORMATION_FOLDER_NAME }
           ]);
         } else {
           setDriveInformationFolderId(null);
@@ -259,24 +316,47 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
           setDriveBreadcrumb([{ id: driveFolderId, name: driveFolderName }]);
         }
       } catch (_) {
-        if (!cancelled) {
-          setDriveInformationFolderId(null);
-          setDriveCurrentFolderId(driveFolderId);
-          setDriveBreadcrumb([{ id: driveFolderId, name: driveFolderName }]);
-        }
+        setDriveInformationFolderId(null);
+        setDriveCurrentFolderId(driveFolderId);
+        setDriveBreadcrumb([{ id: driveFolderId, name: driveFolderName }]);
+      } finally {
+        driveInformationEnsureInFlightRef.current = false;
       }
     })();
-    return () => { cancelled = true; };
-  }, [driveFolderId, driveFolderName]);
+  }, [driveFolderId, driveFolderName, ensureCompanyDriveInformationFolder]);
 
   const fetchDriveFiles = useCallback(async () => {
-    if (!driveCurrentFolderId) {
+    if (!driveFolderName) {
       setDriveFilesList([]);
       return;
     }
     setLoadingDriveFiles(true);
     try {
-      const res = await fetch(`${API_BASE}/drive/files?folderId=${encodeURIComponent(driveCurrentFolderId)}&pageSize=100`, {
+      /**
+       * Google Drive 사용 시마다 먼저 [회사명]_[사업자번호] 와 information 폴더가 실제 목록에 있는지 확인.
+       * 삭제되었으면 재생성한 뒤 최신 ID를 기준으로 목록을 읽는다.
+       */
+      let targetFolderId = driveCurrentFolderId;
+      const isInfoContext =
+        !targetFolderId ||
+        targetFolderId === driveInformationFolderId ||
+        targetFolderId === driveFolderId;
+      if (isInfoContext) {
+        const ensured = await ensureCompanyDriveInformationFolder();
+        targetFolderId = ensured?.infoId || ensured?.rootId || null;
+        if (ensured?.infoId) {
+          setDriveCurrentFolderId(ensured.infoId);
+          setDriveBreadcrumb([
+            { id: ensured.rootId, name: driveFolderName },
+            { id: ensured.infoId, name: INFORMATION_FOLDER_NAME }
+          ]);
+        }
+      }
+      if (!targetFolderId) {
+        setDriveFilesList([]);
+        return;
+      }
+      const res = await fetch(`${API_BASE}/drive/files?folderId=${encodeURIComponent(targetFolderId)}&pageSize=100`, {
         headers: getAuthHeader()
       });
       const data = await res.json().catch(() => ({}));
@@ -290,7 +370,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
     } finally {
       setLoadingDriveFiles(false);
     }
-  }, [driveCurrentFolderId]);
+  }, [driveCurrentFolderId, driveInformationFolderId, driveFolderId, driveFolderName, ensureCompanyDriveInformationFolder]);
 
   useEffect(() => {
     fetchDriveFiles();
@@ -306,52 +386,26 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
       try {
         let parentId = driveCurrentFolderId || driveInformationFolderId || driveFolderId;
         if (!parentId) {
-          const r = await fetch(`${API_BASE}/drive/folders/ensure`, {
-            method: 'POST',
-            headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ folderName: driveFolderName })
-          });
-          const data = await r.json().catch(() => ({}));
-          if (!r.ok) {
-            setDriveError(data.error || '폴더를 준비할 수 없습니다.');
-            setDriveUploading(false);
+          try {
+            const ensured = await ensureCompanyDriveInformationFolder();
+            parentId = ensured?.infoId || ensured?.rootId || null;
+          } catch (e) {
+            setDriveError(e.message || '폴더를 준비할 수 없습니다.');
             return;
           }
-          parentId = data.id;
-          setDriveFolderId(parentId);
-          setDriveFolderLink(data.webViewLink || `https://drive.google.com/drive/folders/${parentId}`);
-          if (companyId) {
-            fetch(`${API_BASE}/customer-companies/${companyId}`, {
-              method: 'PATCH',
-              headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-              body: JSON.stringify({ driveRootFolderId: parentId })
-            }).then(() => {}).catch(() => {});
-          }
-          const infoRes = await fetch(`${API_BASE}/drive/folders/ensure`, {
-            method: 'POST',
-            headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ folderName: INFORMATION_FOLDER_NAME, parentFolderId: parentId })
-          });
-          const infoData = await infoRes.json().catch(() => ({}));
-          if (infoRes.ok && infoData.id) {
-            parentId = infoData.id;
-            setDriveInformationFolderId(infoData.id);
+          if (!parentId) {
+            setDriveError('폴더를 준비할 수 없습니다.');
+            return;
           }
         } else if (parentId === driveFolderId && driveInformationFolderId) {
           parentId = driveInformationFolderId;
         } else if (parentId === driveFolderId) {
-          const infoRes = await fetch(`${API_BASE}/drive/folders/ensure`, {
-            method: 'POST',
-            headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ folderName: INFORMATION_FOLDER_NAME, parentFolderId: driveFolderId })
-          });
-          const infoData = await infoRes.json().catch(() => ({}));
-          if (infoRes.ok && infoData.id) {
-            parentId = infoData.id;
-            setDriveInformationFolderId(infoData.id);
+          try {
+            const ensured = await ensureCompanyDriveInformationFolder();
+            parentId = ensured?.infoId || ensured?.rootId || driveFolderId;
+          } catch (e) {
+            setDriveError(e.message || 'information 폴더를 준비할 수 없습니다.');
+            return;
           }
         }
         const directDriveFiles = filesArray.filter((file) => Number(file?.size || 0) > MAX_DRIVE_API_UPLOAD_SIZE);
@@ -397,7 +451,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
         setDriveUploading(false);
       }
     },
-    [driveFolderName, driveFolderId, driveInformationFolderId, driveCurrentFolderId, fetchDriveFiles, isEdit, company?._id]
+    [driveFolderId, driveInformationFolderId, driveCurrentFolderId, ensureCompanyDriveInformationFolder, fetchDriveFiles]
   );
 
   useEffect(() => {
@@ -668,6 +722,23 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
     setError('');
   };
 
+  const queueCertificateFile = useCallback((file) => {
+    if (!file) return;
+    setCertificateFile(file);
+    setError('');
+  }, []);
+
+  const handleEditModeDrop = useCallback((files) => {
+    const filesArray = Array.from(files || []);
+    if (!filesArray.length) return;
+    if (filesArray.length === 1 && isCertificateLikeFile(filesArray[0])) {
+      queueCertificateFile(filesArray[0]);
+      return;
+    }
+    handleDirectFileUpload(filesArray);
+  }, [queueCertificateFile, handleDirectFileUpload]);
+
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (submittingRef.current) return;
@@ -705,30 +776,25 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
       let finalCompany = data;
       const companyIdForCert = isEdit ? company._id : (data._id || data.id);
       if (certificateFile && companyIdForCert) {
-        let rootFolderId = isEdit && company.driveRootFolderId ? String(company.driveRootFolderId).trim() : null;
+        let rootFolderId = driveFolderId || null;
         if (!rootFolderId) {
-          const namePart = sanitizeFolderNamePart(form.name || '미소속');
-          const numPart = sanitizeFolderNamePart((form.businessNumber || '').replace(/-/g, '')) || '미등록';
-          const driveFolderName = `${namePart}_${numPart}`;
-          const ensureRes = await fetch(`${API_BASE}/drive/folders/ensure`, {
-            method: 'POST',
-            headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ folderName: driveFolderName })
-          });
-          const ensureData = await ensureRes.json().catch(() => ({}));
-          if (!ensureRes.ok || !ensureData.id) {
-            setError(ensureData.error || '고객사는 저장되었으나 Drive 폴더를 준비할 수 없습니다.');
+          try {
+            const ensured = await ensureCompanyDriveRootFolder();
+            rootFolderId = ensured?.id || null;
+          } catch (e) {
+            setError(e.message || '고객사는 저장되었으나 Drive 폴더를 준비할 수 없습니다.');
             return;
           }
-          rootFolderId = ensureData.id;
+          if (!rootFolderId) {
+            setError('고객사는 저장되었으나 Drive 폴더를 준비할 수 없습니다.');
+            return;
+          }
         }
-        const ensureData = { id: rootFolderId };
         const infoRes = await fetch(`${API_BASE}/drive/folders/ensure`, {
           method: 'POST',
           headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ folderName: INFORMATION_FOLDER_NAME, parentFolderId: ensureData.id })
+          body: JSON.stringify({ folderName: INFORMATION_FOLDER_NAME, parentFolderId: rootFolderId })
         });
         const infoData = await infoRes.json().catch(() => ({}));
         if (!infoRes.ok || !infoData.id) {
@@ -777,8 +843,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
           method: 'PATCH',
           headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            businessRegistrationCertificateDriveUrl: uploadData.webViewLink,
-            driveRootFolderId: ensureData.id
+            businessRegistrationCertificateDriveUrl: uploadData.webViewLink
           })
         });
         const patched = await patchRes.json().catch(() => ({}));
@@ -812,7 +877,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
               style={{ display: 'none' }}
               onChange={(e) => {
                 const file = e.target.files?.[0] ?? null;
-                setCertificateFile(file);
+                queueCertificateFile(file);
                 e.target.value = '';
               }}
               aria-hidden="true"
@@ -860,7 +925,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
                   e.preventDefault();
                   e.stopPropagation();
                   setDocsDropActive(false);
-                  if (!driveUploading && e.dataTransfer?.files?.length) handleDirectFileUpload(e.dataTransfer.files);
+                  if (!driveUploading && e.dataTransfer?.files?.length) handleEditModeDrop(e.dataTransfer.files);
                 }}
                 aria-label="Drive 폴더 (폴더 클릭 시 들어가기, 파일 클릭 시 열기)"
               >
@@ -951,7 +1016,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
                   e.preventDefault();
                   e.stopPropagation();
                   setDocsDropActive(false);
-                  if (!driveUploading && e.dataTransfer?.files?.length) handleDirectFileUpload(e.dataTransfer.files);
+                  if (!driveUploading && e.dataTransfer?.files?.length) handleEditModeDrop(e.dataTransfer.files);
                 }}
                 onClick={() => { if (!driveUploading && driveFileInputRef.current) driveFileInputRef.current.click(); }}
                 role="button"
@@ -975,7 +1040,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
               style={{ display: 'none' }}
               onChange={(e) => {
                 const file = e.target.files?.[0] ?? null;
-                setCertificateFile(file);
+                queueCertificateFile(file);
                 e.target.value = '';
                 if (file) extractFromCertificateAndFillForm(file);
               }}

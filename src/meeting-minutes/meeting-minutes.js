@@ -5,6 +5,7 @@ import MeetingDetailModal from './meeting-detail-modal/meeting-detail-modal';
 import './meeting-minutes.css';
 
 import { API_BASE } from '@/config';
+import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 const MODAL_PARAM = 'modal';
 const MODAL_ADD = 'add';
 const MODAL_DETAIL = 'detail';
@@ -130,6 +131,7 @@ export default function MeetingMinutes() {
           </form>
         </div>
         <div className="header-actions">
+          <PageHeaderNotifyChat noWrapper buttonClassName="icon-btn" />
           <button type="button" className="btn-primary" onClick={openAddModal}>
             <span className="material-symbols-outlined">add</span>
             새 회의 일지

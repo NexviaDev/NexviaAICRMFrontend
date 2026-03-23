@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import AddProductModal from './add-product-modal/add-product-modal';
 import ProductDetailModal from './product-detail-modal/product-detail-modal';
 import ListTemplateModal from '../components/list-template-modal/list-template-modal';
@@ -49,6 +49,7 @@ function formatPrice(price, currency) {
 }
 
 export default function ProductList() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [items, setItems] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, limit: LIMIT, total: 0, totalPages: 0 });
@@ -241,8 +242,8 @@ export default function ProductList() {
           </form>
         </div>
         <div className="header-actions">
-          <button type="button" className="icon-btn" aria-label="알림"><span className="material-symbols-outlined">notifications</span></button>
-          <button type="button" className="icon-btn" aria-label="채팅"><span className="material-symbols-outlined">chat_bubble</span></button>
+          <button type="button" className="icon-btn" aria-label="공지사항" onClick={() => navigate('/notification')}><span className="material-symbols-outlined">notifications</span></button>
+          <button type="button" className="icon-btn" aria-label="채팅" onClick={() => navigate('/chat')}><span className="material-symbols-outlined">chat_bubble</span></button>
           <button
             type="button"
             className="icon-btn"

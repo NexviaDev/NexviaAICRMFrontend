@@ -5,6 +5,7 @@ import CustomerCompanyEmployeesSearchModal from '../customer-company-employees/c
 import './ai-voice.css';
 
 import { API_BASE } from '@/config';
+import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -343,6 +344,7 @@ export default function AiVoice() {
       <header className="ai-voice-header">
         <h2 className="ai-voice-header-title">AI 음성 기록</h2>
         <div className="ai-voice-header-actions">
+          <PageHeaderNotifyChat buttonClassName="ai-voice-icon-btn" wrapperClassName="ai-voice-header-notify-chat" />
           <form className="ai-voice-search-wrap" onSubmit={handleSearchSubmit}>
             <span className="material-symbols-outlined ai-voice-search-icon">search</span>
             <input

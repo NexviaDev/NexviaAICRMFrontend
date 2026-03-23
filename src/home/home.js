@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import './home.css';
 
 import { API_BASE } from '@/config';
+import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -298,11 +299,7 @@ export default function Home() {
           <span className="material-symbols-outlined">search</span>
           <input type="text" placeholder="딜, 연락처, 업무 검색..." />
         </div>
-        <div className="header-actions">
-          <button type="button" className="icon-btn"><span className="material-symbols-outlined">notifications</span></button>
-          <button type="button" className="icon-btn"><span className="material-symbols-outlined">chat_bubble</span></button>
-          <button type="button" className="btn-primary"><span className="material-symbols-outlined">add</span> 새로 만들기</button>
-        </div>
+        <PageHeaderNotifyChat />
       </header>
 
       <div className="page-content">

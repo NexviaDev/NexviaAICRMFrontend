@@ -33,6 +33,12 @@
   gap: 1rem;
 }
 
+.ai-voice-header-notify-chat {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .ai-voice-search-wrap {
   position: relative;
   width: 16rem;

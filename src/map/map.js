@@ -27,35 +27,62 @@ function getAuthHeader() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-/** 위치 API 옵션: 지하철·이동 시 정확도·실시간 반영용 (고정밀 + 캐시 미사용) */
-const GEOLOCATION_OPTIONS = {
-  enableHighAccuracy: true, // GPS 우선 — 모바일에서도 반드시 켜야 기지국-only보다 나음
-  maximumAge: 0, // 오래된 캐시 위치 방지 (스마트폰에서 큰 오차의 흔한 원인)
-  // 모바일은 첫 GPS 고정까지 20~60초 걸릴 수 있음
-  timeout: 45000
+/** 위치 API: 고정밀 + 캐시 미사용. 핸드폰 첫 GPS 고정은 30~90초 걸릴 수 있어 초기 timeout을 넉넉히 둠 */
+const GEOLOCATION_OPTIONS_INITIAL = {
+  enableHighAccuracy: true,
+  maximumAge: 0,
+  timeout: 60000
 };
 
-/** 최근 N회 측정 가중 평균: accuracy가 나쁜 샘플(기지국/Wi-Fi) 가중치 낮춤 → 스마트폰 흔들림 완화 */
-const LOCATION_SAMPLE_MAX_STILL = 8;
-const LOCATION_SAMPLE_MAX_MOVING = 4;
+/** watchPosition: 동일 정책(짧은 stale 방지). 일부 브라우저는 watch에서 timeout을 무시하기도 함 */
+const GEOLOCATION_OPTIONS_WATCH = {
+  enableHighAccuracy: true,
+  maximumAge: 0,
+  timeout: 60000
+};
+
+/** 하위 호환·단발 요청용 */
+const GEOLOCATION_OPTIONS = GEOLOCATION_OPTIONS_INITIAL;
+
+/** 최근 N회 측정: 정지 시 더 많이 모아 “우연히 좋은 한 번”의 GPS 고정을 잡기 쉽게 */
+const LOCATION_SAMPLE_MAX_STILL = 10;
+const LOCATION_SAMPLE_MAX_MOVING = 5;
+
+/** 샘플 보관 시간(ms) — 오래된 기지국 추정치가 최적 해와 섞이지 않게 */
+const LOCATION_SAMPLE_MAX_AGE_MS = 18000;
+
+function haversineMeters(a, b) {
+  const R = 6371000;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const lat1 = (a.lat * Math.PI) / 180;
+  const lat2 = (b.lat * Math.PI) / 180;
+  const h =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+function medianNum(arr) {
+  if (!arr.length) return 0;
+  const s = [...arr].sort((x, y) => x - y);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
 
 /**
- * @param {{ current: Array<{ lat: number, lng: number, accuracy: number }> }} bufferRef
- * @param {GeolocationPosition} pos
- * @returns {{ lat: number, lng: number, accuracy: number } | null}
+ * 중앙값 기준으로 튀는 샘플 제거 (실내·기지국에서 가끔 수백 m 튀는 값 완화)
+ * @param {Array<{ lat: number, lng: number, accuracy: number }>} samples
  */
-function pushGeolocationSample(bufferRef, pos) {
-  const lat = pos.coords.latitude;
-  const lng = pos.coords.longitude;
-  const rawAcc = pos.coords.accuracy;
-  const accuracy = typeof rawAcc === 'number' && rawAcc > 0 ? rawAcc : 150;
-  const speed = pos.coords.speed;
-  const buf = bufferRef.current;
-  buf.push({ lat, lng, accuracy });
-  const maxSamples =
-    speed != null && !Number.isNaN(speed) && speed > 1.2 ? LOCATION_SAMPLE_MAX_MOVING : LOCATION_SAMPLE_MAX_STILL;
-  while (buf.length > maxSamples) buf.shift();
-  return weightedGeolocationMean(buf);
+function removeSpatialOutliers(samples) {
+  if (samples.length < 3) return samples;
+  const medLat = medianNum(samples.map((s) => s.lat));
+  const medLng = medianNum(samples.map((s) => s.lng));
+  const medAcc = medianNum(samples.map((s) => s.accuracy));
+  const center = { lat: medLat, lng: medLng };
+  const thresholdM = Math.max(95, medAcc * 2.2 + 25);
+  const filtered = samples.filter((s) => haversineMeters(center, s) <= thresholdM);
+  return filtered.length >= 1 ? filtered : samples;
 }
 
 function weightedGeolocationMean(buf) {
@@ -71,6 +98,68 @@ function weightedGeolocationMean(buf) {
     slng += s.lng * w;
   }
   return { lat: slat / sw, lng: slng / sw, accuracy: latestAcc };
+}
+
+/**
+ * 급격한 점프 완화: 보고 정확도가 낮은데 수백 m 이동하면 한 번에 따라가지 않음 (핸드폰 오측 완화)
+ * @param {{ lat: number, lng: number, accuracy: number } | null} prev
+ * @param {{ lat: number, lng: number, accuracy: number }} next
+ */
+function dampLargeJump(prev, next) {
+  if (!prev) return next;
+  const d = haversineMeters(prev, next);
+  const maxJump = 3 * Math.max(next.accuracy, prev.accuracy || 50, 20) + 35;
+  if (d <= maxJump || next.accuracy <= 35) return next;
+  const t = Math.min(0.35, maxJump / d);
+  return {
+    lat: prev.lat + (next.lat - prev.lat) * t,
+    lng: prev.lng + (next.lng - prev.lng) * t,
+    accuracy: Math.max(next.accuracy, prev.accuracy || 0)
+  };
+}
+
+/**
+ * @param {{ current: Array<{ lat: number, lng: number, accuracy: number, ts: number }> }} bufferRef
+ * @param {GeolocationPosition} pos
+ * @returns {{ lat: number, lng: number, accuracy: number } | null}
+ */
+function pushGeolocationSample(bufferRef, pos) {
+  const lat = pos.coords.latitude;
+  const lng = pos.coords.longitude;
+  const rawAcc = pos.coords.accuracy;
+  const accuracy = typeof rawAcc === 'number' && rawAcc > 0 ? rawAcc : 150;
+  const speed = pos.coords.speed;
+  const ts = Date.now();
+  const buf = bufferRef.current;
+  buf.push({ lat, lng, accuracy, ts });
+
+  const cutoff = ts - LOCATION_SAMPLE_MAX_AGE_MS;
+  bufferRef.current = buf.filter((s) => s.ts >= cutoff);
+
+  const maxSamples =
+    speed != null && !Number.isNaN(speed) && speed > 1.2 ? LOCATION_SAMPLE_MAX_MOVING : LOCATION_SAMPLE_MAX_STILL;
+  while (bufferRef.current.length > maxSamples) bufferRef.current.shift();
+
+  const raw = bufferRef.current.map(({ lat: la, lng: ln, accuracy: ac, ts: t }) => ({
+    lat: la,
+    lng: ln,
+    accuracy: ac,
+    ts: t
+  }));
+  const spatial = removeSpatialOutliers(raw);
+  const moving = speed != null && !Number.isNaN(speed) && speed > 1.2;
+
+  if (moving) {
+    const wMean = weightedGeolocationMean(spatial.map(({ lat: la, lng: ln, accuracy: ac }) => ({ lat: la, lng: ln, accuracy: ac })));
+    return wMean;
+  }
+
+  // 정지·저속: 짧은 시간 안에서 “가장 좋은 accuracy” 한 점을 우선(모바일에서 가끔 들어오는 좁은 오차 고정 반영)
+  const now = Date.now();
+  const recent = spatial.filter((s) => now - s.ts < 15000);
+  const pool = recent.length ? recent : spatial;
+  const best = pool.reduce((a, b) => (a.accuracy <= b.accuracy ? a : b));
+  return { lat: best.lat, lng: best.lng, accuracy: best.accuracy };
 }
 
 /** Google Maps 스크립트 비동기 로드 (loading=async + callback 권장 방식) */
@@ -129,6 +218,8 @@ export default function Map() {
   const autocompleteRef = useRef(null);
   const markersRef = useRef([]);
   const myLocationMarkerRef = useRef(null);
+  const myLocationAccuracyCircleRef = useRef(null); // 브라우저가 보고한 오차 반경(시각적 신뢰구간)
+  const lastRefinedLocationRef = useRef(null); // 이상치·급점프 완화 후 마지막 좌표 (핸드폰 튐 완화)
   const lastDisplayedPositionRef = useRef(null); // 부드러운 이동용: 마지막으로 그린 위치
   const locationAnimationFrameRef = useRef(null); // 진행 중인 위치 애니메이션 취소용
   const searchPlaceMarkerRef = useRef(null);
@@ -184,10 +275,13 @@ export default function Map() {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const w = pushGeolocationSample(locationSamplesRef, pos);
-        if (w) setMyLocation({ lat: w.lat, lng: w.lng, accuracy: w.accuracy });
+        if (!w) return;
+        const damped = dampLargeJump(lastRefinedLocationRef.current, w);
+        lastRefinedLocationRef.current = damped;
+        setMyLocation({ lat: damped.lat, lng: damped.lng, accuracy: damped.accuracy });
       },
       () => {},
-      GEOLOCATION_OPTIONS
+      GEOLOCATION_OPTIONS_INITIAL
     );
   }, []);
 
@@ -197,10 +291,13 @@ export default function Map() {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const w = pushGeolocationSample(locationSamplesRef, pos);
-        if (w) setMyLocation({ lat: w.lat, lng: w.lng, accuracy: w.accuracy });
+        if (!w) return;
+        const damped = dampLargeJump(lastRefinedLocationRef.current, w);
+        lastRefinedLocationRef.current = damped;
+        setMyLocation({ lat: damped.lat, lng: damped.lng, accuracy: damped.accuracy });
       },
       () => {},
-      GEOLOCATION_OPTIONS
+      GEOLOCATION_OPTIONS_INITIAL
     );
   }, [mapReady, myLocation]);
 
@@ -215,13 +312,17 @@ export default function Map() {
     }
     if (watchIdRef.current != null) return;
     locationSamplesRef.current = [];
+    lastRefinedLocationRef.current = null;
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         const w = pushGeolocationSample(locationSamplesRef, pos);
-        if (w) setMyLocation({ lat: w.lat, lng: w.lng, accuracy: w.accuracy });
+        if (!w) return;
+        const damped = dampLargeJump(lastRefinedLocationRef.current, w);
+        lastRefinedLocationRef.current = damped;
+        setMyLocation({ lat: damped.lat, lng: damped.lng, accuracy: damped.accuracy });
       },
       () => alert('위치를 가져올 수 없습니다.'),
-      GEOLOCATION_OPTIONS
+      GEOLOCATION_OPTIONS_WATCH
     );
     watchIdRef.current = watchId;
     setLiveLocationOn(true);
@@ -233,6 +334,7 @@ export default function Map() {
       watchIdRef.current = null;
     }
     locationSamplesRef.current = [];
+    lastRefinedLocationRef.current = null;
     setLiveLocationOn(false);
     setMyLocation(null);
     if (myLocationMarkerRef.current) {
@@ -312,6 +414,10 @@ export default function Map() {
       markersRef.current = [];
       if (myLocationMarkerRef.current) {
         myLocationMarkerRef.current.setMap(null);
+      }
+      if (myLocationAccuracyCircleRef.current) {
+        myLocationAccuracyCircleRef.current.setMap(null);
+        myLocationAccuracyCircleRef.current = null;
       }
       if (searchPlaceMarkerRef.current) {
         searchPlaceMarkerRef.current.setMap(null);
@@ -578,6 +684,40 @@ export default function Map() {
     mapInstanceRef.current.setZoom(15); // 내 위치 주변으로 확대 (약 2~3km)
   }, [mapReady, myLocation]);
 
+  // 내 위치 오차 반경(브라우저 accuracy) — 지도 위에 옅은 원으로 표시해 “어느 정도 불확실한지” 가시화
+  useEffect(() => {
+    if (!mapReady || !mapInstanceRef.current || !window.google) return;
+    if (!myLocation) {
+      if (myLocationAccuracyCircleRef.current) {
+        myLocationAccuracyCircleRef.current.setMap(null);
+        myLocationAccuracyCircleRef.current = null;
+      }
+      return;
+    }
+    const map = mapInstanceRef.current;
+    const center = { lat: myLocation.lat, lng: myLocation.lng };
+    const r =
+      typeof myLocation.accuracy === 'number' && myLocation.accuracy > 0 ? myLocation.accuracy : 55;
+    const radiusM = Math.max(12, r);
+    if (!myLocationAccuracyCircleRef.current) {
+      myLocationAccuracyCircleRef.current = new window.google.maps.Circle({
+        strokeColor: '#e53935',
+        strokeOpacity: 0.38,
+        strokeWeight: 1,
+        fillColor: '#e53935',
+        fillOpacity: 0.07,
+        map,
+        center,
+        radius: radiusM,
+        zIndex: 99,
+        clickable: false
+      });
+    } else {
+      myLocationAccuracyCircleRef.current.setCenter(center);
+      myLocationAccuracyCircleRef.current.setRadius(radiusM);
+    }
+  }, [mapReady, myLocation]);
+
   /** 검색창 입력으로 Google 지오코딩 후 해당 위치로 지도 이동 + 마커 표시 */
   const goToSearchPlace = useCallback(() => {
     const query = searchInput.trim();
@@ -625,11 +765,14 @@ export default function Map() {
   const goToMyLocation = () => {
     if (!navigator.geolocation) return;
     locationSamplesRef.current = [];
+    lastRefinedLocationRef.current = null;
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const w = pushGeolocationSample(locationSamplesRef, pos);
         if (!w) return;
-        const loc = { lat: w.lat, lng: w.lng, accuracy: w.accuracy };
+        const damped = dampLargeJump(lastRefinedLocationRef.current, w);
+        lastRefinedLocationRef.current = damped;
+        const loc = { lat: damped.lat, lng: damped.lng, accuracy: damped.accuracy };
         setMyLocation(loc);
         if (mapInstanceRef.current) {
           mapInstanceRef.current.panTo({ lat: loc.lat, lng: loc.lng });
@@ -637,7 +780,7 @@ export default function Map() {
         }
       },
       () => alert('위치를 가져올 수 없습니다.'),
-      GEOLOCATION_OPTIONS
+      GEOLOCATION_OPTIONS_INITIAL
     );
   };
 
@@ -661,6 +804,26 @@ export default function Map() {
 
           <div className="map-top-bar">
             <div className="map-controls">
+              <div className="map-header-notify-chat" aria-label="공지 및 채팅 바로가기">
+                <button
+                  type="button"
+                  className="map-ctrl-btn map-ctrl-btn-circle"
+                  aria-label="공지사항"
+                  title="공지사항"
+                  onClick={() => navigate('/notification')}
+                >
+                  <span className="material-symbols-outlined">notifications</span>
+                </button>
+                <button
+                  type="button"
+                  className="map-ctrl-btn map-ctrl-btn-circle"
+                  aria-label="채팅"
+                  title="채팅"
+                  onClick={() => navigate('/chat')}
+                >
+                  <span className="material-symbols-outlined">chat_bubble</span>
+                </button>
+              </div>
               <button
                 type="button"
                 className={`map-filter-chip ${assigneeMeOnly ? 'active' : ''}`}

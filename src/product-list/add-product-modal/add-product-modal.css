@@ -11,6 +11,14 @@
   animation: addProductOverlayIn 0.2s ease-out;
 }
 
+.add-product-modal-overlay--slide {
+  justify-content: flex-end;
+  align-items: stretch;
+  padding: 0;
+  background: rgba(29, 40, 58, 0.4);
+  backdrop-filter: blur(4px);
+}
+
 @keyframes addProductOverlayIn {
   from { opacity: 0; }
   to { opacity: 1; }
@@ -31,6 +39,22 @@
   animation: addProductModalIn 0.2s ease-out;
 }
 
+.add-product-modal--slide {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  max-width: 36rem;
+  max-height: 100vh;
+  max-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  border-radius: 0;
+  border-left: 1px solid var(--card-border);
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
+  animation: addProductModalSlideIn 0.25s ease-out;
+}
+
 .add-product-modal-form {
   display: flex;
   flex-direction: column;
@@ -42,6 +66,11 @@
 @keyframes addProductModalIn {
   from { opacity: 0; transform: scale(0.98); }
   to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes addProductModalSlideIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
 }
 
 .add-product-modal-header {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import OpportunityModal from './opportunity-modal/opportunity-modal';
 import PipelineStagesManageModal from './pipeline-stages-manage-modal/pipeline-stages-manage-modal';
 import WonAllModal from './won-all-modal/won-all-modal';
@@ -46,6 +46,7 @@ function formatCurrency(value, currency) {
 }
 
 export default function SalesPipeline() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [grouped, setGrouped] = useState({});
   const [totals, setTotals] = useState({});
@@ -226,6 +227,14 @@ export default function SalesPipeline() {
           </button>
         </div>
         <div className="sp-header-right">
+          <div className="sp-header-quick">
+            <button type="button" className="sp-quick-icon-btn" aria-label="공지사항" title="공지사항" onClick={() => navigate('/notification')}>
+              <span className="material-symbols-outlined">notifications</span>
+            </button>
+            <button type="button" className="sp-quick-icon-btn" aria-label="채팅" title="채팅" onClick={() => navigate('/chat')}>
+              <span className="material-symbols-outlined">chat_bubble</span>
+            </button>
+          </div>
           <div className="sp-search-wrap">
             <span className="material-symbols-outlined sp-search-icon">search</span>
             <input className="sp-search" type="text" placeholder="기회 검색..." value={search} onChange={onSearchInput} />

@@ -103,8 +103,23 @@
   border-bottom: 1px solid var(--gc-border);
 }
 
+.google-chat-spaces-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.google-chat-spaces-header-quick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 .google-chat-spaces-title {
-  margin: 0 0 1rem;
+  margin: 0;
   font-size: 1.25rem;
   font-weight: 700;
   color: var(--gc-text-dark);

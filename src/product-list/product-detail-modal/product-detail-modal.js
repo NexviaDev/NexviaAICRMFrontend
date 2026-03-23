@@ -1,12 +1,10 @@
 import { useState, useEffect } from 'react';
 import CustomFieldsDisplay from '../../shared/custom-fields-display';
-import CustomFieldsSection from '../../shared/custom-fields-section';
+import AddProductModal from '../add-product-modal/add-product-modal';
 import './product-detail-modal.css';
 
 import { API_BASE } from '@/config';
 import { listPriceFromProduct } from '@/lib/product-price-utils';
-const STATUS_OPTIONS = ['Active', 'EndOfLife', 'Draft'];
-const BILLING_OPTIONS = ['Monthly', 'Annual', 'Perpetual'];
 const CURRENCY_OPTIONS = ['KRW', 'USD'];
 const STATUS_LABELS = { Active: '활성', EndOfLife: 'End of Life', Draft: '초안' };
 const BILLING_LABELS = { Monthly: '월간', Annual: '연간', Perpetual: '영구' };
@@ -25,9 +23,6 @@ function formatPrice(price, currency) {
 /** 제품 세부정보 모달 - 행 클릭 시 표시, 수정 시 같은 패널에서 폼 슬라이드 */
 export default function ProductDetailModal({ product, onClose, onUpdated, onDelete }) {
   const [editing, setEditing] = useState(false);
-  const [editForm, setEditForm] = useState({});
-  const [editSaving, setEditSaving] = useState(false);
-  const [editError, setEditError] = useState('');
   const [customDefinitions, setCustomDefinitions] = useState([]);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -48,7 +43,7 @@ export default function ProductDetailModal({ product, onClose, onUpdated, onDele
     const onKey = (e) => {
       if (e.key !== 'Escape') return;
       if (showDeleteConfirm) setShowDeleteConfirm(false);
-      else if (editing) cancelEdit();
+      else if (editing) setEditing(false);
       else onClose?.();
     };
     window.addEventListener('keydown', onKey);
@@ -57,77 +52,24 @@ export default function ProductDetailModal({ product, onClose, onUpdated, onDele
 
   if (!product) return null;
 
+  if (editing) {
+    return (
+      <AddProductModal
+        product={product}
+        presentation="slide"
+        onClose={() => setEditing(false)}
+        onSaved={() => {
+          setEditing(false);
+          onUpdated?.();
+        }}
+      />
+    );
+  }
+
   const statusClass = product.status === 'Active' ? 'active' : product.status === 'EndOfLife' ? 'eol' : 'draft';
 
   const startEdit = () => {
-    setEditForm({
-      name: product.name ?? '',
-      code: product.code ?? '',
-      category: product.category ?? '',
-      version: product.version ?? '',
-      listPrice: listPriceFromProduct(product),
-      costPrice: Number(product.costPrice) || 0,
-      channelPrice: Number(product.channelPrice) || 0,
-      currency: product.currency ?? 'KRW',
-      billingType: product.billingType ?? 'Monthly',
-      status: product.status ?? 'Active',
-      customFields: product.customFields ? { ...product.customFields } : {}
-    });
-    setEditError('');
     setEditing(true);
-  };
-
-  const cancelEdit = () => {
-    setEditing(false);
-    setEditError('');
-  };
-
-  const handleEditChange = (e) => {
-    const { name, value } = e.target;
-    setEditForm((prev) => ({ ...prev, [name]: value }));
-    setEditError('');
-  };
-
-  const handleEditSubmit = async (e) => {
-    e.preventDefault();
-    setEditError('');
-    if (!editForm.name?.trim()) {
-      setEditError('제품명을 입력해 주세요.');
-      return;
-    }
-    setEditSaving(true);
-    try {
-      const res = await fetch(`${API_BASE}/products/${product._id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({
-          name: editForm.name.trim(),
-          code: editForm.code?.trim() || undefined,
-          category: editForm.category?.trim() || undefined,
-          version: editForm.version?.trim() || undefined,
-          listPrice: Number(editForm.listPrice) || 0,
-          costPrice: Number(editForm.costPrice) || 0,
-          channelPrice: Number(editForm.channelPrice) || 0,
-          price: Number(editForm.listPrice) || 0,
-          currency: editForm.currency,
-          billingType: editForm.billingType,
-          status: editForm.status,
-          customFields: editForm.customFields && Object.keys(editForm.customFields).length ? editForm.customFields : undefined
-        })
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setEditError(data.error || '저장에 실패했습니다.');
-        return;
-      }
-      const updated = await res.json();
-      setEditing(false);
-      onUpdated?.(updated);
-    } catch (_) {
-      setEditError('서버에 연결할 수 없습니다.');
-    } finally {
-      setEditSaving(false);
-    }
   };
 
   const handleDelete = () => {
@@ -164,10 +106,10 @@ export default function ProductDetailModal({ product, onClose, onUpdated, onDele
               <button
                 type="button"
                 className="product-detail-icon-btn"
-                onClick={editing ? cancelEdit : onClose}
-                aria-label={editing ? '수정 취소' : '닫기'}
+                onClick={onClose}
+                aria-label="닫기"
               >
-                <span className="material-symbols-outlined">{editing ? 'undo' : 'close'}</span>
+                <span className="material-symbols-outlined">close</span>
               </button>
             </div>
           </header>
@@ -187,83 +129,7 @@ export default function ProductDetailModal({ product, onClose, onUpdated, onDele
           )}
 
           <div className="product-detail-body">
-            {editing ? (
-              <form onSubmit={handleEditSubmit} className="product-detail-edit-form product-detail-edit-form-slide">
-                {editError && <p className="product-detail-edit-error">{editError}</p>}
-                <div className="product-detail-edit-field">
-                  <label htmlFor="product-edit-name">제품명 <span className="required">*</span></label>
-                  <input id="product-edit-name" name="name" type="text" value={editForm.name} onChange={handleEditChange} placeholder="예: Shield Pro" required />
-                </div>
-                <div className="product-detail-edit-field">
-                  <label htmlFor="product-edit-code">제품 코드 (UID)</label>
-                  <input id="product-edit-code" name="code" type="text" value={editForm.code} onChange={handleEditChange} placeholder="예: SP-9920" />
-                </div>
-                <div className="product-detail-edit-field">
-                  <label htmlFor="product-edit-category">카테고리</label>
-                  <input id="product-edit-category" name="category" type="text" value={editForm.category} onChange={handleEditChange} placeholder="예: Security" />
-                </div>
-                <div className="product-detail-edit-field">
-                  <label htmlFor="product-edit-version">버전</label>
-                  <input id="product-edit-version" name="version" type="text" value={editForm.version} onChange={handleEditChange} placeholder="예: v4.2.0" />
-                </div>
-                <div className="product-detail-edit-row">
-                  <div className="product-detail-edit-field">
-                    <label htmlFor="product-edit-list-price">소비자가</label>
-                    <input id="product-edit-list-price" name="listPrice" type="number" min="0" step="0.01" value={editForm.listPrice} onChange={handleEditChange} />
-                  </div>
-                  <div className="product-detail-edit-field">
-                    <label htmlFor="product-edit-currency">통화</label>
-                    <select id="product-edit-currency" name="currency" value={editForm.currency} onChange={handleEditChange}>
-                      {CURRENCY_OPTIONS.map((c) => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div className="product-detail-edit-row">
-                  <div className="product-detail-edit-field">
-                    <label htmlFor="product-edit-cost-price">원가</label>
-                    <input id="product-edit-cost-price" name="costPrice" type="number" min="0" step="0.01" value={editForm.costPrice} onChange={handleEditChange} />
-                  </div>
-                  <div className="product-detail-edit-field">
-                    <label htmlFor="product-edit-channel-price">유통가</label>
-                    <input id="product-edit-channel-price" name="channelPrice" type="number" min="0" step="0.01" value={editForm.channelPrice} onChange={handleEditChange} />
-                  </div>
-                </div>
-                <div className="product-detail-edit-field">
-                  <label htmlFor="product-edit-billingType">결제 주기</label>
-                  <select id="product-edit-billingType" name="billingType" value={editForm.billingType} onChange={handleEditChange}>
-                    {BILLING_OPTIONS.map((b) => (
-                      <option key={b} value={b}>{BILLING_LABELS[b] ?? b}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="product-detail-edit-field">
-                  <label htmlFor="product-edit-status">상태</label>
-                  <select id="product-edit-status" name="status" value={editForm.status} onChange={handleEditChange}>
-                    {STATUS_OPTIONS.map((s) => (
-                      <option key={s} value={s}>{s === 'Active' ? '활성' : s === 'EndOfLife' ? 'End of Life' : '초안'}</option>
-                    ))}
-                  </select>
-                </div>
-                <CustomFieldsSection
-                  definitions={customDefinitions}
-                  values={editForm.customFields || {}}
-                  onChangeValues={(key, value) => setEditForm((prev) => ({
-                    ...prev,
-                    customFields: { ...(prev.customFields || {}), [key]: value }
-                  }))}
-                  fieldClassName="product-detail-edit-field"
-                />
-                <div className="product-detail-edit-footer">
-                  <button type="button" className="product-detail-edit-cancel" onClick={cancelEdit}>취소</button>
-                  <button type="submit" className="product-detail-edit-save" disabled={editSaving}>
-                    {editSaving ? '저장 중…' : '저장'}
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <>
+            <>
                 <section className="product-detail-card">
                   <div className="product-detail-icon-wrap">
                     <span className="material-symbols-outlined">inventory_2</span>
@@ -319,8 +185,7 @@ export default function ProductDetailModal({ product, onClose, onUpdated, onDele
                   values={product.customFields || {}}
                   className="product-detail-custom-fields"
                 />
-              </>
-            )}
+            </>
           </div>
         </div>
       </div>

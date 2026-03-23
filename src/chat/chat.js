@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { API_BASE } from '@/config';
+import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import ContactRegisterModal from './ContactRegisterModal';
 import AddMemberModal from './AddMemberModal';
 import NewChatModal from './NewChatModal';
@@ -602,7 +603,13 @@ export default function GoogleChat() {
       <div className="google-chat-body">
         <aside className="google-chat-spaces">
           <div className="google-chat-spaces-header">
-            <h2 className="google-chat-spaces-title">Internal Chat</h2>
+            <div className="google-chat-spaces-header-row">
+              <h2 className="google-chat-spaces-title">Internal Chat</h2>
+              <PageHeaderNotifyChat
+                buttonClassName="google-chat-header-action-btn"
+                wrapperClassName="google-chat-spaces-header-quick"
+              />
+            </div>
             <button
               type="button"
               className="google-chat-new-chat-btn"

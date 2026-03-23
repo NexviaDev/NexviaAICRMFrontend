@@ -88,6 +88,32 @@
   gap: 12px;
 }
 
+.sp-header-quick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sp-quick-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 1px solid var(--card-border, #e2e8f0);
+  border-radius: 0.5rem;
+  background: var(--card, #fff);
+  color: var(--text-muted, #64748b);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.sp-quick-icon-btn:hover {
+  background: var(--pastel-sky, #e8f4fc);
+  color: var(--primary, #1d283a);
+}
+
 .sp-search-wrap {
   position: relative;
   width: 16rem;

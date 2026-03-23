@@ -3,6 +3,7 @@ import CompanyDriveSettingsModal from './company-drive-settings-modal/company-dr
 import './company-overview.css';
 
 import { API_BASE } from '@/config';
+import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -92,8 +93,11 @@ export default function CompanyOverview() {
   if (loading) {
     return (
       <div className="page company-overview-page">
-        <header className="page-header">
+        <header className="page-header company-overview-header">
           <h1 className="page-title">사내 현황</h1>
+          <div className="company-overview-header-tools">
+            <PageHeaderNotifyChat />
+          </div>
         </header>
         <div className="page-content company-overview-content">
           <p className="company-overview-loading">불러오는 중...</p>
@@ -105,8 +109,11 @@ export default function CompanyOverview() {
   if (error) {
     return (
       <div className="page company-overview-page">
-        <header className="page-header">
+        <header className="page-header company-overview-header">
           <h1 className="page-title">사내 현황</h1>
+          <div className="company-overview-header-tools">
+            <PageHeaderNotifyChat />
+          </div>
         </header>
         <div className="page-content company-overview-content">
           <p className="company-overview-error">{error}</p>
@@ -175,15 +182,18 @@ export default function CompanyOverview() {
     <div className="page company-overview-page">
       <header className="page-header company-overview-header">
         <h1 className="page-title">사내 현황</h1>
-        <button
-          type="button"
-          className="company-overview-settings-btn"
-          onClick={() => setShowDriveSettingsModal(true)}
-          title="전체 공유 드라이브 설정"
-          aria-label="전체 공유 드라이브 설정"
-        >
-          <span className="material-symbols-outlined">settings</span>
-        </button>
+        <div className="company-overview-header-tools">
+          <PageHeaderNotifyChat />
+          <button
+            type="button"
+            className="company-overview-settings-btn"
+            onClick={() => setShowDriveSettingsModal(true)}
+            title="전체 공유 드라이브 설정"
+            aria-label="전체 공유 드라이브 설정"
+          >
+            <span className="material-symbols-outlined">settings</span>
+          </button>
+        </div>
       </header>
       <div className="page-content company-overview-content">
         {actionError && <p className="company-overview-error company-overview-inline-error">{actionError}</p>}

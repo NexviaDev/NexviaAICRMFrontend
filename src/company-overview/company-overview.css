@@ -5,6 +5,13 @@
   gap: 1rem;
 }
 
+.company-overview-header-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-left: auto;
+}
+
 .company-overview-page .page-title {
   margin: 0;
   font-size: 1.25rem;

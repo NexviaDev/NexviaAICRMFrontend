@@ -73,6 +73,40 @@
   margin-bottom: 1.75rem;
 }
 
+.subscription-title-block--with-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.subscription-header-notify-chat {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.subscription-header-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 0.65rem;
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--sub-primary, #64748b);
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.subscription-header-icon-btn:hover {
+  background: rgba(224, 242, 254, 0.9);
+  color: var(--sub-on-surface, #0f172a);
+}
+
 .subscription-title-block h1 {
   font-family: 'Manrope', sans-serif;
   font-size: clamp(1.65rem, 4vw, 2.25rem);

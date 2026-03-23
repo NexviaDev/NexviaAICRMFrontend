@@ -125,8 +125,9 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
   const [certificateImageError, setCertificateImageError] = useState(false);
   const companyNameButtonRef = useRef(null);
   const registeredNamePopoverRef = useRef(null);
-  const companyId = company?._id;
   const [displayedCompany, setDisplayedCompany] = useState(company);
+  const companyToShow = displayedCompany || company || {};
+  const companyId = companyToShow?._id || company?._id;
 
   /* 등록된 사업자 등록증 팝오버: 바깥 클릭 시 닫기 */
   useEffect(() => {
@@ -147,11 +148,36 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
   }, [showRegisteredNamePopover]);
 
   const driveFolderName = (() => {
-    if (!company) return '미소속_미등록';
-    const namePart = sanitizeFolderNamePart(company.name || '미소속');
-    const numPart = sanitizeFolderNamePart(company.businessNumber != null ? String(company.businessNumber) : '') || '미등록';
+    if (!companyToShow?._id) return '미소속_미등록';
+    const namePart = sanitizeFolderNamePart(companyToShow.name || '미소속');
+    /** 사업자번호는 숫자만 사용 — add-company-modal·백엔드 sanitize와 동일 규칙으로 폴더명 통일 */
+    const numPart =
+      sanitizeFolderNamePart(
+        companyToShow.businessNumber != null ? String(companyToShow.businessNumber).replace(/\D/g, '') : ''
+      ) || '미등록';
     return `${namePart}_${numPart}`;
   })();
+
+  /** React Strict Mode 이중 useEffect로 ensure가 두 번 호출되어 Drive에 동일 폴더가 2개 생기는 것 방지 */
+  const driveRootEnsureInFlightRef = useRef(false);
+
+  const ensureCompanyDriveRootFolder = useCallback(async () => {
+    if (!driveFolderName) return null;
+    const r = await fetch(`${API_BASE}/drive/folders/ensure`, {
+      method: 'POST',
+      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ folderName: driveFolderName })
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.id) {
+      throw new Error(data.error || '폴더를 준비할 수 없습니다.');
+    }
+    const folderLink = data.webViewLink || `https://drive.google.com/drive/folders/${data.id}`;
+    setDriveFolderId(data.id);
+    setDriveFolderLink(folderLink);
+    return { id: data.id, webViewLink: folderLink };
+  }, [driveFolderName]);
 
   const fetchCustomDefinitions = async () => {
     try {
@@ -169,42 +195,20 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
     setDisplayedCompany((prev) => ({ ...(prev || {}), ...(company || {}) }));
   }, [company]);
 
-  /* Drive 루트 폴더: 이미 저장된 ID가 있으면 사용, 없을 때만 ensure 호출 (중복 폴더 생성 방지) */
+  /* Drive 루트 폴더: 저장된 ID 대신 이름으로 항상 재조회 후 없으면 생성 */
   useEffect(() => {
     if (!companyId || !driveFolderName) return;
-    const storedFolderId = (company && company.driveRootFolderId) ? String(company.driveRootFolderId).trim() : null;
-    if (storedFolderId) {
-      setDriveFolderId(storedFolderId);
-      setDriveFolderLink(`https://drive.google.com/drive/folders/${storedFolderId}`);
-      return;
-    }
-    let cancelled = false;
+    if (driveRootEnsureInFlightRef.current) return;
+    driveRootEnsureInFlightRef.current = true;
     (async () => {
       try {
-        const r = await fetch(`${API_BASE}/drive/folders/ensure`, {
-          method: 'POST',
-          headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ folderName: driveFolderName })
-        });
-        const data = await r.json().catch(() => ({}));
-        if (cancelled) return;
-        if (r.ok && data.id) {
-          const folderLink = data.webViewLink || `https://drive.google.com/drive/folders/${data.id}`;
-          setDriveFolderId(data.id);
-          setDriveFolderLink(folderLink);
-          if (companyId && !company?.driveRootFolderId) {
-            fetch(`${API_BASE}/customer-companies/${companyId}`, {
-              method: 'PATCH',
-              headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-              body: JSON.stringify({ driveRootFolderId: data.id })
-            }).then(() => {}).catch(() => {});
-          }
-        }
-      } catch (_) {}
+        await ensureCompanyDriveRootFolder();
+      } catch (_) {
+      } finally {
+        driveRootEnsureInFlightRef.current = false;
+      }
     })();
-    return () => { cancelled = true; };
-  }, [companyId, driveFolderName, company?.driveRootFolderId]);
+  }, [companyId, driveFolderName, ensureCompanyDriveRootFolder]);
 
   /* 증서·자료 현재 폴더: 루트 폴더가 준비되면 동기화 */
   useEffect(() => {
@@ -219,13 +223,33 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
   }, [driveFolderId, driveFolderName]);
 
   const fetchDriveFiles = useCallback(async () => {
-    if (!driveCurrentFolderId) {
+    if (!driveFolderName) {
       setDriveFilesList([]);
       return;
     }
     setLoadingDriveFiles(true);
     try {
-      const res = await fetch(`${API_BASE}/drive/files?folderId=${encodeURIComponent(driveCurrentFolderId)}&pageSize=100`, {
+      /**
+       * Google Drive 사용 시마다 먼저 [회사명]_[사업자번호] 루트가 실제 목록에 있는지 확인.
+       * 삭제되었으면 새로 만들고 그 최신 ID를 기준으로 이어서 사용한다.
+       */
+      let targetFolderId = driveCurrentFolderId;
+      const isRootContext = !targetFolderId || targetFolderId === driveFolderId;
+      if (isRootContext) {
+        const ensuredRoot = await ensureCompanyDriveRootFolder();
+        targetFolderId = ensuredRoot?.id || null;
+        if (!targetFolderId) {
+          setDriveFilesList([]);
+          return;
+        }
+        if (driveCurrentFolderId !== targetFolderId) setDriveCurrentFolderId(targetFolderId);
+        if (driveFolderId !== targetFolderId) setDriveBreadcrumb([{ id: targetFolderId, name: driveFolderName }]);
+      }
+      if (!targetFolderId) {
+        setDriveFilesList([]);
+        return;
+      }
+      const res = await fetch(`${API_BASE}/drive/files?folderId=${encodeURIComponent(targetFolderId)}&pageSize=100`, {
         headers: getAuthHeader()
       });
       const data = await res.json().catch(() => ({}));
@@ -239,7 +263,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
     } finally {
       setLoadingDriveFiles(false);
     }
-  }, [driveCurrentFolderId]);
+  }, [driveCurrentFolderId, driveFolderId, driveFolderName, ensureCompanyDriveRootFolder]);
 
   useEffect(() => {
     fetchDriveFiles();
@@ -254,22 +278,17 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
       try {
         let parentId = driveCurrentFolderId || driveFolderId;
         if (!parentId) {
-          const r = await fetch(`${API_BASE}/drive/folders/ensure`, {
-            method: 'POST',
-            headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ folderName: driveFolderName })
-          });
-          const data = await r.json().catch(() => ({}));
-          if (!r.ok) {
-            setDriveError(data.error || '폴더를 준비할 수 없습니다.');
-            setDriveUploading(false);
+          try {
+            const ensured = await ensureCompanyDriveRootFolder();
+            parentId = ensured?.id || null;
+          } catch (e) {
+            setDriveError(e.message || '폴더를 준비할 수 없습니다.');
             return;
           }
-          parentId = data.id;
-          const folderLink = data.webViewLink || `https://drive.google.com/drive/folders/${parentId}`;
-          setDriveFolderId(parentId);
-          setDriveFolderLink(folderLink);
+          if (!parentId) {
+            setDriveError('폴더를 준비할 수 없습니다.');
+            return;
+          }
         }
         const directDriveFiles = filesArray.filter((file) => Number(file?.size || 0) > MAX_DRIVE_API_UPLOAD_SIZE);
         const apiUploadFiles = filesArray.filter((file) => Number(file?.size || 0) <= MAX_DRIVE_API_UPLOAD_SIZE);
@@ -315,7 +334,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
         setDriveEmbedKey((k) => k + 1);
       }
     },
-    [driveFolderName, driveFolderId, driveCurrentFolderId, fetchDriveFiles]
+    [driveFolderId, driveCurrentFolderId, ensureCompanyDriveRootFolder, fetchDriveFiles]
   );
 
   if (!company) return null;
@@ -326,8 +345,8 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
       ? employees.find((e) => String(e._id) === String(historyItems[0].customerCompanyEmployeeId)) || null
       : null;
 
-  const status = (company.status || 'active').toLowerCase();
-  const displayStatus = STATUS_LABEL[status] || company.status || '활성';
+  const status = (companyToShow.status || 'active').toLowerCase();
+  const displayStatus = STATUS_LABEL[status] || companyToShow.status || '활성';
 
   const fetchHistory = async () => {
     if (!companyId) return;
@@ -393,8 +412,6 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
     setJournalDateTime(toDatetimeLocalValue(new Date()));
     setSummaryNotice(null);
   }, [companyId]);
-
-  const companyToShow = displayedCompany || company || {};
 
   const fetchCompanyDetail = useCallback(async () => {
     if (!companyId) return null;
@@ -589,8 +606,8 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                       ref={companyNameButtonRef}
                       className="customer-company-detail-name-link"
                       onClick={() => {
-                        if (company.businessRegistrationCertificateDriveUrl) {
-                          window.open(company.businessRegistrationCertificateDriveUrl, '_blank', 'noopener,noreferrer');
+                        if (companyToShow.businessRegistrationCertificateDriveUrl) {
+                          window.open(companyToShow.businessRegistrationCertificateDriveUrl, '_blank', 'noopener,noreferrer');
                           return;
                         }
                         setShowRegisteredNamePopover((v) => !v);
@@ -599,7 +616,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                       aria-haspopup="dialog"
                       aria-label="회사명 클릭 시 등록된 사업자 등록증 보기"
                     >
-                      <h1 className="customer-company-detail-name">{company.name || '—'}</h1>
+                      <h1 className="customer-company-detail-name">{companyToShow.name || '—'}</h1>
                       <span className="material-symbols-outlined customer-company-detail-name-link-icon">info</span>
                     </button>
                     {showRegisteredNamePopover && (
@@ -610,11 +627,11 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                         aria-label="등록된 사업자 등록증"
                       >
                         <div className="customer-company-detail-registered-name-popover-title">등록된 사업자 등록증</div>
-                        {company.businessRegistrationCertificateUrl ? (
+                        {companyToShow.businessRegistrationCertificateUrl ? (
                           <div className="customer-company-detail-certificate-body">
                             {!certificateImageError && (
                               <img
-                                src={company.businessRegistrationCertificateUrl}
+                                src={companyToShow.businessRegistrationCertificateUrl}
                                 alt="사업자 등록증"
                                 className="customer-company-detail-certificate-img"
                                 onError={() => setCertificateImageError(true)}
@@ -624,7 +641,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                               <p className="customer-company-detail-certificate-doc-hint">문서(PDF)는 아래 링크로 확인하세요.</p>
                             )}
                             <a
-                              href={company.businessRegistrationCertificateUrl}
+                              href={companyToShow.businessRegistrationCertificateUrl}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="customer-company-detail-certificate-link"
@@ -650,22 +667,22 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                   <span className={`customer-company-detail-status-badge status-${status}`}>{displayStatus}</span>
                 </div>
                 <div className="customer-company-detail-meta">
-                  {company.businessNumber != null && (
+                  {companyToShow.businessNumber != null && (
                     <div className="customer-company-detail-meta-item">
                       <span className="material-symbols-outlined">fingerprint</span>
-                      <span>사업자번호: {formatBusinessNumber(company.businessNumber)}</span>
+                      <span>사업자번호: {formatBusinessNumber(companyToShow.businessNumber)}</span>
                     </div>
                   )}
-                  {company.representativeName && (
+                  {companyToShow.representativeName && (
                     <div className="customer-company-detail-meta-item">
                       <span className="material-symbols-outlined">person</span>
-                      <span>대표: {company.representativeName}</span>
+                      <span>대표: {companyToShow.representativeName}</span>
                     </div>
                   )}
-                  {company.address && (
+                  {companyToShow.address && (
                     <div className="customer-company-detail-meta-item full">
                       <span className="material-symbols-outlined">location_on</span>
-                      <span>{company.address}</span>
+                      <span>{companyToShow.address}</span>
                     </div>
                   )}
                 </div>
@@ -674,7 +691,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
 
             <CustomFieldsDisplay
               definitions={customDefinitions}
-              values={company.customFields || {}}
+              values={companyToShow.customFields || {}}
               className="customer-company-detail-custom-fields"
             />
 
@@ -910,7 +927,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
 
             {showProductSalesModal && (
               <ProductSalesModal
-                companyName={company.name}
+                companyName={companyToShow.name}
                 companyId={companyId}
                 items={productSalesList}
                 driveFolderLink={driveFolderLink || undefined}
@@ -921,7 +938,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
             )}
             {showRegisterSaleModal && (
               <RegisterSaleModal
-                initialCustomerCompany={{ _id: companyId, name: company.name, businessNumber: company.businessNumber }}
+                initialCustomerCompany={{ _id: companyId, name: companyToShow.name, businessNumber: companyToShow.businessNumber }}
                 onClose={() => setShowRegisterSaleModal(false)}
                 onSaved={() => { setShowRegisterSaleModal(false); fetchProductSales(); }}
               />
@@ -929,7 +946,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
             {selectedSaleForEdit && (
               <RegisterSaleModal
                 saleId={selectedSaleForEdit._id}
-                initialCustomerCompany={{ _id: companyId, name: company.name, businessNumber: company.businessNumber }}
+                initialCustomerCompany={{ _id: companyId, name: companyToShow.name, businessNumber: companyToShow.businessNumber }}
                 onClose={() => setSelectedSaleForEdit(null)}
                 onSaved={() => { setSelectedSaleForEdit(null); fetchProductSales(); }}
               />
@@ -962,9 +979,10 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
 
             {showEditModal && (
               <AddCompanyModal
-                company={company}
+                company={companyToShow}
                 onClose={() => setShowEditModal(false)}
                 onUpdated={(updatedCompany) => {
+                  setDisplayedCompany((prev) => ({ ...(prev || {}), ...(updatedCompany || {}) }));
                   setShowEditModal(false);
                   onUpdated?.(updatedCompany);
                 }}

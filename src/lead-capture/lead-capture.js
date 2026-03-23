@@ -6,6 +6,7 @@ import LeadCaptureApiDocModal from './lead-capture-api-doc-modal/lead-capture-ap
 import LeadCaptureLeadsModal from './lead-capture-leads-modal/lead-capture-leads-modal';
 import LeadCaptureCrmMappingModal from './lead-capture-crm-mapping/lead-capture-crm-mapping-modal';
 import CustomFieldsManageModal from '../shared/custom-fields-manage-modal/custom-fields-manage-modal';
+import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import './lead-capture.css';
 
 function getAuthHeader() {
@@ -721,10 +722,13 @@ ${customInputs}
           <h1 className="page-title">리드 캡처</h1>
           <p className="lead-capture-subtitle">폼 및 API 연동을 설정하여 유입 리드를 수집합니다. (현재 로그인한 회사 기준)</p>
         </div>
-        <button type="button" className="lead-capture-create-btn" onClick={openCreate}>
-          <span className="material-symbols-outlined">add</span>
-          새 캡처 폼 만들기
-        </button>
+        <div className="lead-capture-header-right">
+          <PageHeaderNotifyChat />
+          <button type="button" className="lead-capture-create-btn" onClick={openCreate}>
+            <span className="material-symbols-outlined">add</span>
+            새 캡처 폼 만들기
+          </button>
+        </div>
       </header>
 
       <div className="page-content lead-capture-content">

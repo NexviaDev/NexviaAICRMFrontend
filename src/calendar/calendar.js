@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import EventModal from './event-modal/event-modal';
 import DayEventsModal from './day-events-modal/day-events-modal';
 import './calendar.css';
@@ -122,6 +122,7 @@ const FILTER_OPTIONS = [
 ];
 
 export default function Calendar() {
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [current, setCurrent] = useState(() => {
     const d = new Date();
@@ -387,8 +388,8 @@ export default function Calendar() {
           <input type="text" placeholder="일정 검색..." />
         </div>
         <div className="header-actions">
-          <button type="button" className="icon-btn"><span className="material-symbols-outlined">notifications</span></button>
-          <button type="button" className="icon-btn"><span className="material-symbols-outlined">chat_bubble</span></button>
+          <button type="button" className="icon-btn" aria-label="공지사항" onClick={() => navigate('/notification')}><span className="material-symbols-outlined">notifications</span></button>
+          <button type="button" className="icon-btn" aria-label="채팅" onClick={() => navigate('/chat')}><span className="material-symbols-outlined">chat_bubble</span></button>
           <button type="button" className="btn-primary" onClick={openAddEvent}><span className="material-symbols-outlined">add</span> 일정 추가</button>
         </div>
       </header>

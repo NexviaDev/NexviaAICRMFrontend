@@ -4,6 +4,12 @@
   position: relative;
 }
 
+.meeting-minutes-page .header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
 .meeting-minutes-top {
   margin-bottom: 1.5rem;
 }

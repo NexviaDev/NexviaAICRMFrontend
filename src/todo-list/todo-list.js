@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { API_BASE } from '@/config';
 import './todo-list.css';
 
@@ -22,6 +23,7 @@ function toDueRfc3339(dateStr) {
 }
 
 export default function TodoList() {
+  const navigate = useNavigate();
   const [taskLists, setTaskLists] = useState([]);
   const [taskListId, setTaskListId] = useState(null);
   const [tasks, setTasks] = useState([]);
@@ -260,7 +262,7 @@ export default function TodoList() {
         <div className="todo-header-left">
           <div className="todo-header-title-wrap">
             <span className="material-symbols-outlined todo-header-icon">checklist</span>
-            <h2 className="todo-header-title">할 일 (Google Tasks)</h2>
+            <h2 className="todo-header-title">할 일 (Todo List)</h2>
           </div>
           <div className="todo-search-wrap">
             <span className="material-symbols-outlined todo-search-icon">search</span>
@@ -280,11 +282,11 @@ export default function TodoList() {
             새 할 일
           </button>
           <div className="todo-header-icons">
-            <button type="button" className="todo-icon-btn" aria-label="알림">
+            <button type="button" className="todo-icon-btn" aria-label="공지사항" title="공지사항" onClick={() => navigate('/notification')}>
               <span className="material-symbols-outlined">notifications</span>
               <span className="todo-noti-dot" />
             </button>
-            <button type="button" className="todo-icon-btn" aria-label="포럼">
+            <button type="button" className="todo-icon-btn" aria-label="채팅" title="채팅" onClick={() => navigate('/chat')}>
               <span className="material-symbols-outlined">chat_bubble</span>
             </button>
             <div className="todo-avatar" style={{ backgroundImage: `url(${AVATAR_PLACEHOLDER})` }} aria-hidden />

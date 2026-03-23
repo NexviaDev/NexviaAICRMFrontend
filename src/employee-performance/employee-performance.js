@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import './employee-performance.css';
 
 import { API_BASE } from '@/config';
 
 export default function EmployeePerformance() {
+  const navigate = useNavigate();
   const [data, setData] = useState(null);
 
   useEffect(() => {
@@ -31,8 +33,8 @@ export default function EmployeePerformance() {
           <input type="text" placeholder="실적 또는 직원 검색..." />
         </div>
         <div className="header-actions">
-          <button type="button" className="icon-btn"><span className="material-symbols-outlined">notifications</span></button>
-          <button type="button" className="icon-btn"><span className="material-symbols-outlined">chat_bubble</span></button>
+          <button type="button" className="icon-btn" aria-label="공지사항" onClick={() => navigate('/notification')}><span className="material-symbols-outlined">notifications</span></button>
+          <button type="button" className="icon-btn" aria-label="채팅" onClick={() => navigate('/chat')}><span className="material-symbols-outlined">chat_bubble</span></button>
         </div>
       </header>
 

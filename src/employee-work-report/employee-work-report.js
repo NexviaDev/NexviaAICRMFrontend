@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import './employee-work-report.css';
 
 import { API_BASE } from '@/config';
@@ -16,6 +16,7 @@ const categoryClass = { Meeting: 'cat-meeting', Sales: 'cat-sales', Admin: 'cat-
 const statusDot = { Completed: 'green', 'In Progress': 'orange', Pending: 'gray' };
 
 export default function EmployeeWorkReport() {
+  const navigate = useNavigate();
   const { employeeId } = useParams();
   const [data, setData] = useState(null);
 
@@ -56,7 +57,8 @@ export default function EmployeeWorkReport() {
             <span>2023.10.01 - 2023.10.31</span>
             <span className="material-symbols-outlined">expand_more</span>
           </div>
-          <button type="button" className="icon-btn"><span className="material-symbols-outlined">notifications</span></button>
+          <button type="button" className="icon-btn" aria-label="공지사항" onClick={() => navigate('/notification')}><span className="material-symbols-outlined">notifications</span></button>
+          <button type="button" className="icon-btn" aria-label="채팅" onClick={() => navigate('/chat')}><span className="material-symbols-outlined">chat_bubble</span></button>
           <button type="button" className="icon-btn"><span className="material-symbols-outlined">download</span></button>
         </div>
       </header>

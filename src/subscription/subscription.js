@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { API_BASE } from '@/config';
+import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import './subscription.css';
 
 function getAuthHeader() {
@@ -331,6 +332,10 @@ export default function Subscription() {
     return (
       <div className="page subscription-page">
         <div className="page-content">
+          <header className="subscription-title-block subscription-title-block--with-actions">
+            <h1 className="subscription-headline">구독 및 인원</h1>
+            <PageHeaderNotifyChat buttonClassName="subscription-header-icon-btn" wrapperClassName="subscription-header-notify-chat" />
+          </header>
           <p className="subscription-loading">불러오는 중...</p>
         </div>
       </div>
@@ -361,14 +366,10 @@ export default function Subscription() {
         {confirming && <p className="subscription-loading">카드 등록 결과를 처리하는 중...</p>}
         {actionMsg && !error && <div className="subscription-toast-note">{actionMsg}</div>}
 
-        <nav className="subscription-breadcrumb" aria-label="위치">
-          <span>워크스페이스</span>
-          <span className="material-symbols-outlined">chevron_right</span>
-          <span className="current">구독</span>
-        </nav>
 
-        <header className="subscription-title-block">
+        <header className="subscription-title-block subscription-title-block--with-actions">
           <h1 className="subscription-headline">구독 및 인원</h1>
+          <PageHeaderNotifyChat buttonClassName="subscription-header-icon-btn" wrapperClassName="subscription-header-notify-chat" />
         </header>
 
         <div className="subscription-layout">

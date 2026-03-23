@@ -56,8 +56,9 @@ function formatPriceWhileTyping(raw) {
   return `${intFmt}.${decRaw}`;
 }
 
-export default function AddProductModal({ product, onClose, onSaved }) {
+export default function AddProductModal({ product, onClose, onSaved, presentation = 'centered' }) {
   const isEdit = !!product?._id;
+  const isSlidePanel = isEdit && presentation === 'slide';
   const [form, setForm] = useState({
     name: product?.name ?? '',
     code: product?.code ?? '',
@@ -167,8 +168,8 @@ export default function AddProductModal({ product, onClose, onSaved }) {
   };
 
   return (
-    <div className="add-product-modal-overlay">
-      <div className="add-product-modal">
+    <div className={`add-product-modal-overlay ${isSlidePanel ? 'add-product-modal-overlay--slide' : ''}`}>
+      <div className={`add-product-modal ${isSlidePanel ? 'add-product-modal--slide' : ''}`}>
         <div className="add-product-modal-header">
           <div className="add-product-modal-header-text">
             <h2 className="add-product-modal-title">{isEdit ? '제품 수정' : '신규 제품 등록'}</h2>
