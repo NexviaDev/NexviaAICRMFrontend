@@ -1,0 +1,129 @@
+/**
+ * Capacitor 네이티브 앱에서만 window.__nexviaGeolocation 을 주입합니다.
+ * map.js 의 getGeolocationService() 가 이 객체를 우선 사용 → Fused Location 등 네이티브 엔진.
+ * 일반 브라우저·PWA(웹만)에서는 isNativePlatform() 이 false 이므로 아무 것도 하지 않습니다.
+ */
+import { Capacitor } from '@capacitor/core';
+import { Geolocation } from '@capacitor/geolocation';
+
+function toDomPosition(cap) {
+  if (!cap?.coords) return null;
+  const c = cap.coords;
+  return {
+    coords: {
+      latitude: c.latitude,
+      longitude: c.longitude,
+      accuracy: typeof c.accuracy === 'number' ? c.accuracy : 0,
+      altitude: c.altitude ?? null,
+      altitudeAccuracy: c.altitudeAccuracy ?? null,
+      heading: c.heading ?? null,
+      speed: c.speed ?? null
+    },
+    timestamp: cap.timestamp ?? Date.now()
+  };
+}
+
+function toDomError(err, codeFallback = 2) {
+  const msg = err?.message || String(err || 'POSITION_UNAVAILABLE');
+  return {
+    code: codeFallback,
+    message: msg,
+    PERMISSION_DENIED: 1,
+    POSITION_UNAVAILABLE: 2,
+    TIMEOUT: 3
+  };
+}
+
+function toCapOptions(options) {
+  const o = options || {};
+  const timeout = typeof o.timeout === 'number' && o.timeout > 0 ? o.timeout : 60000;
+  return {
+    enableHighAccuracy: o.enableHighAccuracy !== false,
+    timeout,
+    maximumAge: typeof o.maximumAge === 'number' ? o.maximumAge : 0,
+    interval: timeout,
+    minimumUpdateInterval: 1000,
+    enableLocationFallback: true
+  };
+}
+
+function installNexviaNativeGeolocation() {
+  if (typeof window === 'undefined') return;
+  if (!Capacitor.isNativePlatform()) return;
+  if (window.__nexviaGeolocation) return;
+
+  let numericWatchId = 1;
+  /** @type {Map<number, { callbackId?: string, cancelled: boolean }>} */
+  const watchState = new Map();
+
+  async function ensureLocationPermission() {
+    try {
+      const st = await Geolocation.checkPermissions();
+      if (st.location === 'granted') return;
+      await Geolocation.requestPermissions({ permissions: ['location'] });
+    } catch {
+      /* 권한 API 실패 시에도 getCurrentPosition 에서 처리 */
+    }
+  }
+
+  window.__nexviaGeolocation = {
+    getCurrentPosition(success, error, options) {
+      void (async () => {
+        try {
+          await ensureLocationPermission();
+          const pos = await Geolocation.getCurrentPosition(toCapOptions(options));
+          success(toDomPosition(pos));
+        } catch (e) {
+          if (typeof error === 'function') error(toDomError(e, 2));
+        }
+      })();
+    },
+
+    watchPosition(success, error, options) {
+      const id = numericWatchId++;
+      watchState.set(id, { cancelled: false });
+
+      void (async () => {
+        try {
+          await ensureLocationPermission();
+          const capOpts = toCapOptions(options);
+          const callbackId = await Geolocation.watchPosition(capOpts, (pos, err) => {
+            const st = watchState.get(id);
+            if (!st || st.cancelled) return;
+            if (err) {
+              if (typeof error === 'function') error(toDomError(err, 2));
+              return;
+            }
+            if (pos && typeof success === 'function') success(toDomPosition(pos));
+          });
+
+          const st = watchState.get(id);
+          if (!st) return;
+          if (st.cancelled) {
+            await Geolocation.clearWatch({ id: callbackId });
+            watchState.delete(id);
+            return;
+          }
+          st.callbackId = callbackId;
+        } catch (e) {
+          watchState.delete(id);
+          if (typeof error === 'function') error(toDomError(e, 2));
+        }
+      })();
+
+      return id;
+    },
+
+    clearWatch(id) {
+      const st = watchState.get(id);
+      if (!st) return;
+      st.cancelled = true;
+      if (st.callbackId) {
+        void Geolocation.clearWatch({ id: st.callbackId });
+        watchState.delete(id);
+      }
+    }
+  };
+}
+
+installNexviaNativeGeolocation();

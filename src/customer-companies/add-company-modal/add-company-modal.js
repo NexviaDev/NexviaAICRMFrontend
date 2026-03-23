@@ -654,15 +654,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
     });
   };
 
-  /** 주소 옆 지도 버튼: 주소 있으면 위·경도 자동 채우기, 없으면 지도 피커 열기 */
-  const onAddressMapClick = () => {
-    if ((form.address || '').trim()) {
-      geocodeAddressToForm();
-    } else {
-      setShowMapPicker(true);
-    }
-  };
-
+  /** 지도 모달 열기 — 항상 클릭/드래그로 좌표 선택 가능 */
   const openMapPicker = () => setShowMapPicker(true);
 
   /** 사업자 등록증 파일로 Gemini 추출 → 폼 기입 → 주소로 위·경도 자동 조회 */
@@ -1149,20 +1141,31 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
                 placeholder="주소를 검색하거나 직접 입력하세요"
               />
               {GOOGLE_MAPS_API_KEY && (
-                <button
-                  type="button"
-                  className="add-company-address-map-btn"
-                  onClick={onAddressMapClick}
-                  disabled={addressGeocoding}
-                  title={form.address?.trim() ? '입력한 주소로 위·경도 자동 채우기' : '지도에서 위치 선택'}
-                  aria-label={form.address?.trim() ? '주소로 위·경도 채우기' : '지도에서 위치 선택'}
-                >
-                  {addressGeocoding ? (
-                    <span className="material-symbols-outlined add-company-map-btn-spin">progress_activity</span>
-                  ) : (
-                    <span className="material-symbols-outlined">map</span>
-                  )}
-                </button>
+                <div className="add-company-address-map-actions">
+                  <button
+                    type="button"
+                    className="add-company-address-map-btn"
+                    onClick={geocodeAddressToForm}
+                    disabled={addressGeocoding || !(form.address || '').trim()}
+                    title="입력한 주소로 위·경도 자동 채우기 (지도 없이)"
+                    aria-label="주소로 위경도 채우기"
+                  >
+                    {addressGeocoding ? (
+                      <span className="material-symbols-outlined add-company-map-btn-spin">progress_activity</span>
+                    ) : (
+                      <span className="material-symbols-outlined">travel_explore</span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className="add-company-address-map-btn add-company-address-map-btn--pick"
+                    onClick={openMapPicker}
+                    title="지도를 열어 클릭한 위치의 좌표를 사용 · 상단 검색으로 이동 후 핀을 옮길 수 있음"
+                    aria-label="지도에서 위치 찍기"
+                  >
+                    <span className="material-symbols-outlined">add_location</span>
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -1174,19 +1177,6 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
             <div className="add-company-field">
               <label className="add-company-label add-company-label-muted" htmlFor="add-company-longitude">경도 (Longitude)</label>
               <input id="add-company-longitude" name="longitude" type="text" inputMode="decimal" value={form.longitude != null ? String(form.longitude) : ''} onChange={handleChange} className="add-company-input" placeholder="126.9780" />
-            </div>
-            <div className="add-company-field add-company-field-btn">
-              {GOOGLE_MAPS_API_KEY ? (
-                <button type="button" className="add-company-btn-sync" onClick={onAddressMapClick} disabled={addressGeocoding} title="주소로 위·경도 채우기 또는 지도에서 선택">
-                  <span className="material-symbols-outlined">sync</span>
-                  위치 동기화
-                </button>
-              ) : (
-                <button type="button" className="add-company-btn-sync" onClick={() => geocodeAddressToForm()} disabled={addressGeocoding || !(form.address || '').trim()} title="주소로 위·경도 채우기">
-                  <span className="material-symbols-outlined">sync</span>
-                  위치 동기화
-                </button>
-              )}
             </div>
           </div>
         </section>
@@ -1280,14 +1270,16 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
                     <span className="material-symbols-outlined">close</span>
                   </button>
                 </div>
-                <p className="add-company-map-picker-hint">주소 검색 후 해당 위치로 이동 · 지도 클릭으로 위치 조정 후 확인하면 위도·경도가 저장됩니다.</p>
+                <p className="add-company-map-picker-hint">
+                  상단에서 주소·장소를 검색해 이동하거나, <strong>지도를 직접 클릭</strong>해 핀을 놓을 수 있습니다. 핀은 드래그로 미세 조정 후「확인」하면 위도·경도가 폼에 반영됩니다.
+                </p>
                 <div className="add-company-map-picker-search">
                   <input
                     type="text"
                     value={pickerSearchQuery}
                     onChange={(e) => setPickerSearchQuery(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), pickerSearch())}
-                    placeholder="주소 검색 후 해당 위치로 이동"
+                    placeholder="주소·장소 검색 (선택)"
                   />
                   <button type="button" className="add-company-map-picker-search-btn" onClick={pickerSearch} disabled={pickerSearching}>
                     {pickerSearching ? '검색 중…' : '검색'}
@@ -1296,7 +1288,15 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
                 <div ref={mapPickerContainerRef} className="add-company-map-picker-canvas" />
                 <div className="add-company-map-picker-actions">
                   <button type="button" className="add-company-map-picker-cancel" onClick={() => setShowMapPicker(false)}>취소</button>
-                  <button type="button" className="add-company-map-picker-confirm" onClick={pickerConfirm}>확인 (위·경도 적용)</button>
+                  <button
+                    type="button"
+                    className="add-company-map-picker-confirm"
+                    onClick={pickerConfirm}
+                    disabled={pickerLat == null || pickerLng == null}
+                    title={pickerLat == null || pickerLng == null ? '지도를 클릭해 위치를 먼저 찍어 주세요' : undefined}
+                  >
+                    확인 (위·경도 적용)
+                  </button>
                 </div>
               </div>
             </div>
@@ -1366,14 +1366,16 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            <p className="add-company-map-picker-hint">주소 검색 후 해당 위치로 이동 · 지도 클릭으로 위치 조정 후 확인하면 위도·경도가 저장됩니다.</p>
+            <p className="add-company-map-picker-hint">
+              상단에서 주소·장소를 검색해 이동하거나, <strong>지도를 직접 클릭</strong>해 핀을 놓을 수 있습니다. 핀은 드래그로 미세 조정 후「확인」하면 위도·경도가 폼에 반영됩니다.
+            </p>
             <div className="add-company-map-picker-search">
               <input
                 type="text"
                 value={pickerSearchQuery}
                 onChange={(e) => setPickerSearchQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), pickerSearch())}
-                placeholder="주소 검색 후 해당 위치로 이동"
+                placeholder="주소·장소 검색 (선택)"
               />
               <button type="button" className="add-company-map-picker-search-btn" onClick={pickerSearch} disabled={pickerSearching}>
                 {pickerSearching ? '검색 중…' : '검색'}
@@ -1384,7 +1386,13 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
               <button type="button" className="add-company-map-picker-cancel" onClick={() => setShowMapPicker(false)}>
                 취소
               </button>
-              <button type="button" className="add-company-map-picker-confirm" onClick={pickerConfirm}>
+              <button
+                type="button"
+                className="add-company-map-picker-confirm"
+                onClick={pickerConfirm}
+                disabled={pickerLat == null || pickerLng == null}
+                title={pickerLat == null || pickerLng == null ? '지도를 클릭해 위치를 먼저 찍어 주세요' : undefined}
+              >
                 확인 (위·경도 적용)
               </button>
             </div>

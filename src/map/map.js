@@ -5,6 +5,7 @@ import './map.css';
 
 import { API_BASE } from '@/config';
 // 지도 도메인 경고("이 웹사이트의 소유자이신가요?") 제거: Google Cloud Console → API 및 서비스 → 사용자 인증 정보 → 해당 키 → 애플리케이션 제한사항 → HTTP 리퍼러에 http://localhost:3000/*, https://실서비스도메인/* 추가
+// Geolocation API(대략 위치): Console에서 「Geolocation API」 사용 설정 필요(Maps JavaScript API와 별도)
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.978 }; // 서울
 const DEFAULT_ZOOM = 11; // 주변 약 30km 이내가 보이도록
@@ -27,19 +28,43 @@ function getAuthHeader() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-/** 위치 API: 고정밀 + 캐시 미사용. 핸드폰 첫 GPS 고정은 30~90초 걸릴 수 있어 초기 timeout을 넉넉히 둠 */
+/**
+ * 위치 API: 고정밀(GPS) 우선 + 캐시 미사용.
+ * timeout만 늘려서는 한계가 있음 — 스마트폰/PWA/TWA는 아래 보조(화면 켜짐 유지, 네이티브 주입)를 함께 쓰는 것을 권장.
+ */
 const GEOLOCATION_OPTIONS_INITIAL = {
   enableHighAccuracy: true,
   maximumAge: 0,
   timeout: 60000
 };
 
-/** watchPosition: 동일 정책(짧은 stale 방지). 일부 브라우저는 watch에서 timeout을 무시하기도 함 */
+/** watchPosition: 일부 브라우저는 watch에서 timeout을 무시하기도 함 */
 const GEOLOCATION_OPTIONS_WATCH = {
   enableHighAccuracy: true,
   maximumAge: 0,
   timeout: 60000
 };
+
+const MAP_LOCATION_HINT_KEY = 'crm_map_smart_location_hint_dismissed';
+
+/**
+ * PWA·일반 브라우저: `navigator.geolocation`.
+ * Capacitor Android 앱: `main.js`가 로드하는 `lib/nexvia-native-geolocation.js` 가
+ * `Capacitor.isNativePlatform()` 일 때만 `window.__nexviaGeolocation` 에 Fused Location 연동을 주입함.
+ */
+function getGeolocationService() {
+  if (typeof window === 'undefined') return null;
+  const native = window.__nexviaGeolocation;
+  if (
+    native &&
+    typeof native.getCurrentPosition === 'function' &&
+    typeof native.watchPosition === 'function' &&
+    typeof native.clearWatch === 'function'
+  ) {
+    return native;
+  }
+  return navigator.geolocation || null;
+}
 
 /** 하위 호환·단발 요청용 */
 const GEOLOCATION_OPTIONS = GEOLOCATION_OPTIONS_INITIAL;
@@ -48,8 +73,8 @@ const GEOLOCATION_OPTIONS = GEOLOCATION_OPTIONS_INITIAL;
 const LOCATION_SAMPLE_MAX_STILL = 10;
 const LOCATION_SAMPLE_MAX_MOVING = 5;
 
-/** 샘플 보관 시간(ms) — 오래된 기지국 추정치가 최적 해와 섞이지 않게 */
-const LOCATION_SAMPLE_MAX_AGE_MS = 18000;
+/** 샘플 보관 시간(ms) — 오래된 기지국 추정치가 최적 해와 섞이지 않게. GPS 주기가 느릴 때 여유 */
+const LOCATION_SAMPLE_MAX_AGE_MS = 28000;
 
 function haversineMeters(a, b) {
   const R = 6371000;
@@ -101,15 +126,26 @@ function weightedGeolocationMean(buf) {
 }
 
 /**
- * 급격한 점프 완화: 보고 정확도가 낮은데 수백 m 이동하면 한 번에 따라가지 않음 (핸드폰 오측 완화)
+ * 급격한 점프 완화: 보고 정확도가 낮은데 수백 m 이동하면 한 번에 따라가지 않음 (핸드폰 오측 완화).
+ * 단, WiFi 끄고 데이터만 쓸 때는 먼저 기지국(큰 accuracy)·후에 GPS(작은 accuracy)로 바뀌는 전환이 흔함 —
+ * 이때는 정확도가 눈에 띄게 좋아지면 바로 반영해야 지도가 실제 위치로 따라옴.
  * @param {{ lat: number, lng: number, accuracy: number } | null} prev
  * @param {{ lat: number, lng: number, accuracy: number }} next
  */
 function dampLargeJump(prev, next) {
   if (!prev) return next;
+  // 기지국/거친 네트워크 → GPS(또는 훨씬 나은 고정)로의 전환: 한 번에 반영
+  if (
+    prev.accuracy >= 85 &&
+    next.accuracy < prev.accuracy * 0.72 &&
+    next.accuracy < 140
+  ) {
+    return next;
+  }
   const d = haversineMeters(prev, next);
   const maxJump = 3 * Math.max(next.accuracy, prev.accuracy || 50, 20) + 35;
-  if (d <= maxJump || next.accuracy <= 35) return next;
+  // 전형적인 실외 GPS 반경(~50m 이하)이면 큰 점프도 신뢰
+  if (d <= maxJump || next.accuracy <= 55) return next;
   const t = Math.min(0.35, maxJump / d);
   return {
     lat: prev.lat + (next.lat - prev.lat) * t,
@@ -154,12 +190,25 @@ function pushGeolocationSample(bufferRef, pos) {
     return wMean;
   }
 
-  // 정지·저속: 짧은 시간 안에서 “가장 좋은 accuracy” 한 점을 우선(모바일에서 가끔 들어오는 좁은 오차 고정 반영)
+  // 정지·저속: 최근 샘플 중 오차가 가장 작은 상위 몇 개로 가중 평균(단일 “운 좋은 한 번” 완화, 셀룰러 노이즈 완화)
   const now = Date.now();
-  const recent = spatial.filter((s) => now - s.ts < 15000);
+  const recent = spatial.filter((s) => now - s.ts < 18000);
   const pool = recent.length ? recent : spatial;
-  const best = pool.reduce((a, b) => (a.accuracy <= b.accuracy ? a : b));
-  return { lat: best.lat, lng: best.lng, accuracy: best.accuracy };
+  const sorted = [...pool].sort((a, b) => a.accuracy - b.accuracy);
+  const top = sorted.slice(0, Math.min(4, sorted.length));
+  if (top.length === 1) {
+    return { lat: top[0].lat, lng: top[0].lng, accuracy: top[0].accuracy };
+  }
+  let sw = 0;
+  let slat = 0;
+  let slng = 0;
+  for (const s of top) {
+    const w = 1 / (s.accuracy * s.accuracy + 1);
+    sw += w;
+    slat += s.lat * w;
+    slng += s.lng * w;
+  }
+  return { lat: slat / sw, lng: slng / sw, accuracy: top[0].accuracy };
 }
 
 /** Google Maps 스크립트 비동기 로드 (loading=async + callback 권장 방식) */
@@ -200,6 +249,44 @@ function loadGoogleMaps(onLoad) {
   document.head.appendChild(script);
 }
 
+/**
+ * Google Geolocation API — https://developers.google.com/maps/documentation/geolocation/overview
+ *
+ * 웹 브라우저는 보안상 Wi‑Fi AP 목록·기지국 정보를 JS에 넘기지 않아, Geolocation API의 “풀 스펙”(Wi‑Fi/셀 혼합)은
+ * 네이티브 앱에서만 의미가 큼. 여기서는 { considerIp: true } 만 사용 → 요청을 보낸 **클라이언트 IP** 기반 대략 위치.
+ * GPS/브라우저 geolocation보다 거칠지만 초기 지도 중심을 서울 고정보다 나을 수 있음.
+ *
+ * 백엔드 프록시로 호출하면 Google이 보는 IP가 서버라 사용자 위치가 아니게 되므로, 브라우저에서 직접 호출(키는 지도와 동일하게 이미 클라이언트에 있음).
+ */
+async function fetchGoogleConsiderIpApproximate(apiKey) {
+  if (!apiKey || typeof fetch === 'undefined') return null;
+  try {
+    const res = await fetch(
+      `https://www.googleapis.com/geolocation/v1/geolocate?key=${encodeURIComponent(apiKey)}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ considerIp: true })
+      }
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.error) return null;
+    const loc = data.location;
+    if (!loc || typeof loc.lat !== 'number' || typeof loc.lng !== 'number') return null;
+    const accuracy = typeof data.accuracy === 'number' && data.accuracy > 0 ? data.accuracy : 5000;
+    return { lat: loc.lat, lng: loc.lng, accuracy };
+  } catch {
+    return null;
+  }
+}
+
+function zoomForGoogleIpAccuracyMeters(acc) {
+  if (acc >= 25000) return 9;
+  if (acc >= 12000) return 10;
+  if (acc >= 6000) return 11;
+  return 12;
+}
+
 export default function Map() {
   const navigate = useNavigate();
   const [companies, setCompanies] = useState([]);
@@ -209,6 +296,15 @@ export default function Map() {
   const [selected, setSelected] = useState(null);
   const [myLocation, setMyLocation] = useState(null);
   const [liveLocationOn, setLiveLocationOn] = useState(true);
+  const [smartLocationHintOpen, setSmartLocationHintOpen] = useState(() => {
+    try {
+      if (typeof window === 'undefined') return false;
+      if (sessionStorage.getItem(MAP_LOCATION_HINT_KEY)) return false;
+      return Boolean(window.matchMedia?.('(pointer: coarse)')?.matches);
+    } catch {
+      return false;
+    }
+  });
   const [mapReady, setMapReady] = useState(false);
   const watchIdRef = useRef(null);
   const locationSamplesRef = useRef([]);
@@ -271,8 +367,9 @@ export default function Map() {
 
   // 마운트 시점에 바로 내 위치 요청 (지도보다 먼저 받아서 처음부터 내 위치로 보이게)
   useEffect(() => {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
+    const geo = getGeolocationService();
+    if (!geo) return;
+    geo.getCurrentPosition(
       (pos) => {
         const w = pushGeolocationSample(locationSamplesRef, pos);
         if (!w) return;
@@ -287,8 +384,9 @@ export default function Map() {
 
   // 지도 로드 시점에 아직 위치가 없으면 한 번 더 내 위치 요청
   useEffect(() => {
-    if (!mapReady || !navigator.geolocation || myLocation) return;
-    navigator.geolocation.getCurrentPosition(
+    const geo = getGeolocationService();
+    if (!mapReady || !geo || myLocation) return;
+    geo.getCurrentPosition(
       (pos) => {
         const w = pushGeolocationSample(locationSamplesRef, pos);
         if (!w) return;
@@ -305,15 +403,25 @@ export default function Map() {
   // 지도에는 위경도 있는 고객사는 항상 전부 표시 (검색창은 구글 장소 이동용이라 고객사 필터에 쓰지 않음)
   const companiesToShowOnMap = companiesWithCoords;
 
+  const dismissSmartLocationHint = useCallback(() => {
+    try {
+      sessionStorage.setItem(MAP_LOCATION_HINT_KEY, '1');
+    } catch {
+      /* 사생활 모드 등 */
+    }
+    setSmartLocationHintOpen(false);
+  }, []);
+
   const startLiveLocation = useCallback(() => {
-    if (!navigator.geolocation) {
+    const geo = getGeolocationService();
+    if (!geo) {
       alert('이 브라우저에서는 현재 위치를 사용할 수 없습니다.');
       return;
     }
     if (watchIdRef.current != null) return;
     locationSamplesRef.current = [];
     lastRefinedLocationRef.current = null;
-    const watchId = navigator.geolocation.watchPosition(
+    const watchId = geo.watchPosition(
       (pos) => {
         const w = pushGeolocationSample(locationSamplesRef, pos);
         if (!w) return;
@@ -330,7 +438,7 @@ export default function Map() {
 
   const stopLiveLocation = useCallback(() => {
     if (watchIdRef.current != null) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
+      getGeolocationService()?.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
     }
     locationSamplesRef.current = [];
@@ -345,9 +453,44 @@ export default function Map() {
 
   // 실시간 내 위치 기본 켜기: 지도 준비되면 watch 시작
   useEffect(() => {
-    if (!mapReady || !navigator.geolocation || !liveLocationOn) return;
+    if (!mapReady || !getGeolocationService() || !liveLocationOn) return;
     startLiveLocation();
   }, [mapReady, liveLocationOn, startLiveLocation]);
+
+  /**
+   * 스마트폰/PWA: 화면이 꺼지거나 절전되면 GPS 갱신이 끊기는 경우가 있어 Wake Lock 요청(HTTPS·사용자 환경에 따라 거부될 수 있음).
+   * TWA 순수 웹과 동일 API이며, “더 정확한 좌표”를 웹만으로 보장하진 못함.
+   */
+  useEffect(() => {
+    if (!liveLocationOn) return;
+    let cancelled = false;
+    const lockRef = { current: null };
+
+    const requestLock = async () => {
+      try {
+        if (cancelled || typeof navigator === 'undefined' || !navigator.wakeLock?.request) return;
+        if (document.visibilityState !== 'visible') return;
+        lockRef.current?.release?.().catch?.(() => {});
+        lockRef.current = await navigator.wakeLock.request('screen');
+      } catch {
+        /* 미지원·거부 */
+      }
+    };
+
+    void requestLock();
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible' && liveLocationOn && !cancelled) void requestLock();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisibility);
+      lockRef.current?.release?.().catch?.(() => {});
+      lockRef.current = null;
+    };
+  }, [liveLocationOn]);
 
   // 기기 방향(나침반)에 맞춰 지도 회전 — 핸드폰에서 보는 방향이 위쪽
   useEffect(() => {
@@ -408,7 +551,7 @@ export default function Map() {
     return () => {
       if (locationAnimationFrameRef.current != null) cancelAnimationFrame(locationAnimationFrameRef.current);
       if (watchIdRef.current != null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
+        getGeolocationService()?.clearWatch(watchIdRef.current);
       }
       markersRef.current.forEach((m) => m.setMap(null));
       markersRef.current = [];
@@ -455,6 +598,22 @@ export default function Map() {
       styles: grayscaleMode ? GRAYSCALE_MAP_STYLES : BASE_MAP_STYLES
     });
   }, [mapReady, grayscaleMode]);
+
+  // Geolocation API(considerIp): GPS·고객사 초기 뷰보다 먼저 도착하면 대략 지역만 지도 중심으로 잡음(initialViewAppliedRef는 건드리지 않음 → 이후 브라우저 위치/마커가 덮어씀)
+  useEffect(() => {
+    if (!mapReady || !GOOGLE_MAPS_API_KEY) return;
+    let cancelled = false;
+    (async () => {
+      const rough = await fetchGoogleConsiderIpApproximate(GOOGLE_MAPS_API_KEY);
+      if (cancelled || !rough || !mapInstanceRef.current || initialViewAppliedRef.current) return;
+      const map = mapInstanceRef.current;
+      map.panTo({ lat: rough.lat, lng: rough.lng });
+      map.setZoom(zoomForGoogleIpAccuracyMeters(rough.accuracy));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mapReady]);
 
   // 구글 "이 웹사이트의 소유자이신가요?" 경고 창 숨김 — 검색 입력 시 body 등에 주입되는 요소 감지
   useEffect(() => {
@@ -763,10 +922,11 @@ export default function Map() {
   };
 
   const goToMyLocation = () => {
-    if (!navigator.geolocation) return;
+    const geo = getGeolocationService();
+    if (!geo) return;
     locationSamplesRef.current = [];
     lastRefinedLocationRef.current = null;
-    navigator.geolocation.getCurrentPosition(
+    geo.getCurrentPosition(
       (pos) => {
         const w = pushGeolocationSample(locationSamplesRef, pos);
         if (!w) return;
@@ -801,6 +961,25 @@ export default function Map() {
       <div className="map-layout">
         <div className="map-main">
           <div ref={mapContainerRef} className="map-canvas map-canvas-google" />
+
+          {smartLocationHintOpen && (
+            <div className="map-smart-location-hint" role="note">
+              <p className="map-smart-location-hint-text">
+                <strong>스마트폰·PWA:</strong> Wi‑Fi를 끄면 기지국 추정만으로 오차가 커질 수 있습니다. 안드로이드는 설정에서{' '}
+                <em>정확한 위치</em>를 허용하고, Wi‑Fi/블루투스 위치 보조를 켜 두면 도움이 됩니다. 지도는 Google Geolocation API로 IP 기반
+                대략 위치를 먼저 잡을 수 있으나(Console에서 Geolocation API 사용 설정), GPS만큼 정밀하지는 않습니다. 스토어 앱 수준은{' '}
+                <code className="map-smart-location-hint-code">window.__nexviaGeolocation</code> 등 네이티브 연동을 검토하세요.
+              </p>
+              <button
+                type="button"
+                className="map-smart-location-hint-close"
+                onClick={dismissSmartLocationHint}
+                aria-label="위치 안내 닫기"
+              >
+                닫기
+              </button>
+            </div>
+          )}
 
           <div className="map-top-bar">
             <div className="map-controls">

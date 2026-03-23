@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Nexvia CRM">
+  <rect width="512" height="512" rx="96" fill="#c8e4f5"/>
+  <rect x="64" y="64" width="384" height="384" rx="64" fill="#5b7c99"/>
+  <text x="256" y="310" text-anchor="middle" font-family="system-ui,sans-serif" font-size="200" font-weight="800" fill="#f0f4f8">N</text>
+</svg>

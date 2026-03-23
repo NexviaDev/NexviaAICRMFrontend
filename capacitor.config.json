@@ -1,0 +1,13 @@
+{
+  "appId": "com.nexvia.crm",
+  "appName": "Nexvia CRM",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "Geolocation": {
+      "locationPermissionDescription": "지도에서 현재 위치를 표시하려면 위치 권한이 필요합니다."
+    }
+  }
+}

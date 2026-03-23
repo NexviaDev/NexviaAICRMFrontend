@@ -1,0 +1,16 @@
+PWA (스마트폰 브라우저에서 "홈 화면에 추가")
+------------------------------------------
+1) .env 에 VITE_API_URL (백엔드 https 주소) 설정 후 빌드
+2) npm run build → HTTPS로 dist 배포 (Vercel 등). PWA 설치는 보통 HTTPS 에서만 안정적입니다.
+3) 배포 후 크롬 메뉴 → "앱 설치" / Safari → 홈 화면에 추가
+4) 일반 PWA 는 여전히 navigator.geolocation 만 사용합니다. window.__nexviaGeolocation 은 네이티브 앱에서만 주입됩니다.
+
+Android 앱 (Capacitor — Fused Location 으로 지도 정확도 개선)
+------------------------------------------------------------
+1) JDK 17+, Android Studio 설치
+2) frontend 폴더에서:
+   npm run build
+   npm run cap:sync
+   npm run cap:android   → Android Studio 에서 에뮬레이터/실기기 Run
+3) 실기기에서 같은 Wi-Fi 의 백엔드를 쓰려면 빌드 전 VITE_API_URL 에 PC IP 대신 배포된 API 주소를 넣는 것이 간단합니다.
+4) 위치 권한: 앱 최초 실행 시 허용. AndroidManifest 에 FINE/COARSE 위치 권한이 포함되어 있습니다.

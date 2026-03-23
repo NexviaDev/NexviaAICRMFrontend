@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import path from 'path';
 import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
 import * as esbuild from 'esbuild';
 
 // .js 파일 내 JSX를 빌드 전에 변환 (import analysis가 파싱하기 전에 실행)
@@ -31,7 +32,55 @@ export default defineConfig({
   },
   plugins: [
     jsxInJs(),
-    react({ include: /\.(jsx|js|tsx|ts)$/ })
+    react({ include: /\.(jsx|js|tsx|ts)$/ }),
+    VitePWA({
+      registerType: 'autoUpdate',
+      includeAssets: ['icon.svg'],
+      manifest: {
+        name: '넥스비아 CRM',
+        short_name: 'Nexvia CRM',
+        description: 'Nexvia AI CRM',
+        theme_color: '#5b7c99',
+        background_color: '#f0f4f8',
+        display: 'standalone',
+        orientation: 'any',
+        start_url: '/',
+        scope: '/',
+        lang: 'ko',
+        icons: [
+          {
+            src: '/icon.svg',
+            sizes: '512x512',
+            type: 'image/svg+xml',
+            purpose: 'any maskable'
+          }
+        ]
+      },
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,svg,woff2}'],
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'google-fonts-stylesheets',
+              expiration: { maxEntries: 8, maxAgeSeconds: 60 * 60 * 24 * 365 }
+            }
+          },
+          {
+            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'google-fonts-webfonts',
+              expiration: { maxEntries: 16, maxAgeSeconds: 60 * 60 * 24 * 365 }
+            }
+          }
+        ]
+      },
+      devOptions: {
+        enabled: false
+      }
+    })
   ],
   server: {
     port: 3000,
