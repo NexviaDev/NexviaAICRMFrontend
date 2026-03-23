@@ -27,6 +27,25 @@
   flex-shrink: 0;
 }
 
+/* 상단: 텍스트 대신 CDN 브랜드 이미지 전체 */
+.sidebar-header-logo {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+
+.sidebar-header-logo img {
+  max-height: 2.75rem;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+  object-position: left center;
+  display: block;
+}
+
+/* Admin 사이드바 (adminsidebar.js): 아이콘 + 텍스트 */
 .sidebar-logo {
   width: 2.5rem;
   height: 2.5rem;
@@ -35,6 +54,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
 }
 
 .sidebar-logo .material-symbols-outlined {
@@ -43,6 +64,7 @@
 
 .sidebar-brand {
   overflow: hidden;
+  min-width: 0;
 }
 
 .sidebar-title {
@@ -318,6 +340,7 @@
     visibility: hidden;
   }
 
+  .sidebar-header-logo,
   .sidebar-brand,
   .sidebar-link span:not(.material-symbols-outlined),
   .sidebar-user-info,
@@ -344,7 +367,14 @@
     visibility: visible;
   }
 
-  .sidebar.sidebar-drawer-open .sidebar-brand,
+  .sidebar.sidebar-drawer-open .sidebar-header-logo {
+    display: flex;
+  }
+
+  .sidebar.sidebar-drawer-open .sidebar-brand {
+    display: block;
+  }
+
   .sidebar.sidebar-drawer-open .sidebar-link span:not(.material-symbols-outlined),
   .sidebar.sidebar-drawer-open .sidebar-user-info,
   .sidebar.sidebar-drawer-open .sidebar-logout span:last-child {

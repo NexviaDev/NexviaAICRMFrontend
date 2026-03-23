@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { API_BASE } from '@/config';
-import nexviaLogo from '../../img/Nexvia Logo(1).png';
 import PrivacyPolicyModal from './legal-modals/PrivacyPolicyModal';
 import TermsOfServiceModal from './legal-modals/TermsOfServiceModal';
 import GoogleApiTermsModal from './legal-modals/GoogleApiTermsModal';
@@ -32,6 +31,9 @@ const FEATURE_BG = {
   businessCards:
     'https://res.cloudinary.com/djcsvvhly/image/upload/v1773987526/Business_Cards_Company_Management_nbrymi.png'
 };
+
+const NEXVIA_LOGIN_LOGO_CDN_URL =
+  'https://res.cloudinary.com/djcsvvhly/image/upload/v1774254065/NexviaLogo3_lzwlwq.png';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -89,7 +91,12 @@ export default function Login() {
   return (
     <div className="login-page">
       <div className="login-top-logo">
-        <img src={nexviaLogo} alt="Nexvia" className="login-top-logo-img" />
+        <img
+          src={NEXVIA_LOGIN_LOGO_CDN_URL}
+          alt="Nexvia"
+          className="login-top-logo-img"
+          decoding="async"
+        />
       </div>
 
       <main className="login-site-main">

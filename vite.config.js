@@ -35,7 +35,7 @@ export default defineConfig({
     react({ include: /\.(jsx|js|tsx|ts)$/ }),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['icon.svg'],
+      includeAssets: ['nexvia-app-icon.png'],
       manifest: {
         name: '넥스비아 CRM',
         short_name: 'Nexvia CRM',
@@ -49,15 +49,21 @@ export default defineConfig({
         lang: 'ko',
         icons: [
           {
-            src: '/icon.svg',
+            src: '/nexvia-app-icon.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any'
+          },
+          {
+            src: '/nexvia-app-icon.png',
             sizes: '512x512',
-            type: 'image/svg+xml',
-            purpose: 'any maskable'
+            type: 'image/png',
+            purpose: 'any'
           }
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,svg,woff2}'],
+        globPatterns: ['**/*.{js,css,html,ico,svg,png,woff2}'],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,

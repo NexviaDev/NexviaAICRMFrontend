@@ -3,6 +3,10 @@ import { NavLink, useNavigate, Link } from 'react-router-dom';
 import { getSavedSidebarOrder, patchSidebarOrder, setSavedSidebarOrderLocally } from '@/lib/list-templates';
 import './sidebar.css';
 
+/** 사이드바 상단 로고 (Cloudinary CDN) */
+const NEXVIA_LOGO_CDN_URL =
+  'https://res.cloudinary.com/djcsvvhly/image/upload/v1774253552/NexviaLogo_pid8kz.png';
+
 /** 메뉴 항목 정의 (추가 시 여기만 수정하면 되고, 저장된 순서와 병합됨). 아이콘은 중복 없이 구분되도록 지정. */
 const MENU_ITEMS = [
   { to: '/', icon: 'dashboard', label: '대시보드' },
@@ -133,12 +137,12 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
   return (
     <aside className={`sidebar ${drawerOpen ? 'sidebar-drawer-open' : ''}`}>
       <div className="sidebar-header">
-        <div className="sidebar-logo">
-          <span className="material-symbols-outlined">hub</span>
-        </div>
-        <div className="sidebar-brand">
-          <h1 className="sidebar-title">Nexvia CRM</h1>
-          <p className="sidebar-subtitle">엔터프라이즈</p>
+        <div className="sidebar-header-logo">
+          <img
+            src={NEXVIA_LOGO_CDN_URL}
+            alt="Nexvia CRM"
+            decoding="async"
+          />
         </div>
         {drawerOpen && (
           <button
