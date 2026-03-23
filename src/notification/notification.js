@@ -49,8 +49,8 @@ export default function NotificationPage() {
   }, [loadNotifications]);
 
   return (
-    <div className="notification-page">
-      <header className="notification-header">
+    <div className="page notification-page">
+      <header className="page-header notification-header">
         <div>
           <h1 className="notification-title">공지사항</h1>
           <p className="notification-subtitle">일반 사용자 화면에서는 공지 열람만 가능합니다.</p>
@@ -58,26 +58,28 @@ export default function NotificationPage() {
         <PageHeaderNotifyChat buttonClassName="notification-header-icon-btn" wrapperClassName="notification-header-actions" />
       </header>
 
-      {error && <div className="notification-feedback notification-feedback--error">{error}</div>}
+      <div className="page-content">
+        {error && <div className="notification-feedback notification-feedback--error">{error}</div>}
 
-      <section className="notification-list">
-        {loading ? (
-          <div className="notification-empty">공지사항을 불러오는 중입니다…</div>
-        ) : rows.length === 0 ? (
-          <div className="notification-empty">현재 등록된 공지사항이 없습니다.</div>
-        ) : (
-          rows.map((item) => (
-            <article key={item._id} className="notification-card">
-              <div className="notification-card-meta">
-                <span className="notification-card-badge">공지</span>
-                <span>{formatDt(item.publishedAt || item.createdAt)}</span>
-              </div>
-              <h2 className="notification-card-title">{item.title}</h2>
-              <p className="notification-card-content">{item.content}</p>
-            </article>
-          ))
-        )}
-      </section>
+        <section className="notification-list">
+          {loading ? (
+            <div className="notification-empty">공지사항을 불러오는 중입니다…</div>
+          ) : rows.length === 0 ? (
+            <div className="notification-empty">현재 등록된 공지사항이 없습니다.</div>
+          ) : (
+            rows.map((item) => (
+              <article key={item._id} className="notification-card">
+                <div className="notification-card-meta">
+                  <span className="notification-card-badge">공지</span>
+                  <span>{formatDt(item.publishedAt || item.createdAt)}</span>
+                </div>
+                <h2 className="notification-card-title">{item.title}</h2>
+                <p className="notification-card-content">{item.content}</p>
+              </article>
+            ))
+          )}
+        </section>
+      </div>
     </div>
   );
 }

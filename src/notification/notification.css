@@ -1,17 +1,22 @@
+/* 제품 리스트(product-list)와 동일: .page → .page-header(가로 패딩 2rem) → .page-content(home.css 2rem) */
 .notification-page {
   min-height: 100%;
-  padding: 24px 20px 40px;
-  background: linear-gradient(165deg, #f8fbff 0%, #fff9f7 45%, #f5fbf8 100%);
+  background: var(--bg-light);
 }
 
-.notification-header {
-  max-width: 960px;
-  margin: 0 auto 18px;
+.notification-page .notification-header.page-header {
+  flex-shrink: 0;
+  height: auto;
+  min-height: 4rem;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
   flex-wrap: wrap;
+  padding: 1rem 2rem;
+  margin: 0;
+  background: var(--card);
+  border-bottom: 1px solid var(--card-border);
 }
 
 .notification-header-actions {
@@ -56,8 +61,7 @@
 .notification-feedback,
 .notification-empty,
 .notification-card {
-  max-width: 960px;
-  margin: 0 auto;
+  width: 100%;
   background: rgba(255, 255, 255, 0.94);
   border: 1px solid #e5edf4;
   border-radius: 18px;
@@ -124,8 +128,8 @@
 }
 
 @media (max-width: 768px) {
-  .notification-page {
-    padding: 18px 14px 28px;
+  .notification-page .notification-header.page-header {
+    padding: 0.875rem 1rem;
   }
 
   .notification-card {
