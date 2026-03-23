@@ -227,10 +227,19 @@ function loadGoogleMaps(onLoad) {
  * GPS/브라우저 geolocation보다 거칠지만 초기 지도 중심을 서울 고정보다 나을 수 있음.
  *
  * 백엔드 프록시로 호출하면 Google이 보는 IP가 서버라 사용자 위치가 아니게 되므로, 브라우저에서 직접 호출(키는 지도와 동일하게 이미 클라이언트에 있음).
+ *
+ * 403: Cloud Console에서「Geolocation API」사용 설정·결제·키 제한 확인. 반복 호출은 세션에서 건너뜀(콘솔 스팸 완화).
+ * 완전히 끄려면 .env 에 VITE_SKIP_GOOGLE_CONSIDER_IP=true
  */
+const GEOLOCATE_CONSIDER_IP_SKIP_KEY = 'nexvia_geolocate_consider_ip_skip';
+
 async function fetchGoogleConsiderIpApproximate(apiKey) {
   if (!apiKey || typeof fetch === 'undefined') return null;
+  if (import.meta.env.VITE_SKIP_GOOGLE_CONSIDER_IP === 'true') return null;
   try {
+    if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(GEOLOCATE_CONSIDER_IP_SKIP_KEY) === '1') {
+      return null;
+    }
     const res = await fetch(
       `https://www.googleapis.com/geolocation/v1/geolocate?key=${encodeURIComponent(apiKey)}`,
       {
@@ -239,6 +248,14 @@ async function fetchGoogleConsiderIpApproximate(apiKey) {
         body: JSON.stringify({ considerIp: true })
       }
     );
+    if (res.status === 403 || res.status === 401) {
+      try {
+        sessionStorage.setItem(GEOLOCATE_CONSIDER_IP_SKIP_KEY, '1');
+      } catch {
+        /* 사생활 모드 등 */
+      }
+      return null;
+    }
     const data = await res.json().catch(() => ({}));
     if (!res.ok || data.error) return null;
     const loc = data.location;
@@ -324,10 +341,7 @@ export default function Map() {
 
   const startLiveLocation = useCallback(() => {
     const geo = getGeolocationService();
-    if (!geo) {
-      alert('이 브라우저에서는 현재 위치를 사용할 수 없습니다.');
-      return;
-    }
+    if (!geo) return;
     if (watchIdRef.current != null) return;
     locationSamplesRef.current = [];
     lastRefinedLocationRef.current = null;
@@ -339,7 +353,7 @@ export default function Map() {
         lastRefinedLocationRef.current = damped;
         setMyLocation({ lat: damped.lat, lng: damped.lng, accuracy: damped.accuracy });
       },
-      () => alert('위치를 가져올 수 없습니다.'),
+      () => {},
       GEOLOCATION_OPTIONS_WATCH
     );
     watchIdRef.current = watchId;
@@ -355,6 +369,11 @@ export default function Map() {
     lastRefinedLocationRef.current = null;
     setLiveLocationOn(false);
     setMyLocation(null);
+    const circle = myLocationAccuracyCircleRef.current;
+    if (circle) {
+      circle.setMap(null);
+      myLocationAccuracyCircleRef.current = null;
+    }
   }, []);
 
   useEffect(() => {
@@ -435,12 +454,8 @@ export default function Map() {
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
       try {
         const permission = await DeviceOrientationEvent.requestPermission();
-        if (permission !== 'granted') {
-          alert('방향 센서 사용이 허용되지 않았습니다. 설정에서 권한을 켜 주세요.');
-          return;
-        }
-      } catch (err) {
-        alert('방향 센서 권한을 요청할 수 없습니다. ' + (err.message || ''));
+        if (permission !== 'granted') return;
+      } catch {
         return;
       }
     }
@@ -670,10 +685,10 @@ export default function Map() {
     if (!myLocationAccuracyCircleRef.current) {
       myLocationAccuracyCircleRef.current = new window.google.maps.Circle({
         strokeColor: '#e53935',
-        strokeOpacity: 1,
-        strokeWeight: 1,
+        strokeOpacity: 0,
+        strokeWeight: 0,
         fillColor: '#e53935',
-        fillOpacity: 0.09,
+        fillOpacity: 0.12,
         map,
         center,
         radius: radiusM,
@@ -910,21 +925,13 @@ export default function Map() {
                 <>
                   <p
                     className="map-mylocation-accuracy"
-                    title={`기기 보고 반경 약 ±${Math.round(myLocation.accuracy)}m. 지도 빨간 원은 보고값×${MY_LOCATION_MAP_RADIUS_MULT}(최소 ${MY_LOCATION_MAP_RADIUS_MIN_M}m)로 그려 실제 불확실성을 넉넉히 표시합니다.`}
+                    title={`보고 오차 ±${Math.round(myLocation.accuracy)}m, 지도 원 반경 ${Math.round(myLocationMapRadiusMeters(myLocation.accuracy))}m`}
                   >
                     기기 보고 오차 약 ±{Math.round(myLocation.accuracy)}m · 지도 원 반경 약{' '}
                     {Math.round(myLocationMapRadiusMeters(myLocation.accuracy))}m (보고×{MY_LOCATION_MAP_RADIUS_MULT}
                     {', 최소 '}
                     {MY_LOCATION_MAP_RADIUS_MIN_M}m)
-                    {myLocation.accuracy > 80 && (
-                      <span className="map-mylocation-accuracy-warn"> · 보고 정확도 낮음(실외·권한·고정밀 확인)</span>
-                    )}
                   </p>
-                  {myLocation.accuracy > 90 && (
-                    <p className="map-mylocation-accuracy-note">
-                      기기(폰·PC)·브라우저마다 위치를 잡는 방식이 달라 표시가 다를 수 있습니다.
-                    </p>
-                  )}
                 </>
               )}
             </div>
