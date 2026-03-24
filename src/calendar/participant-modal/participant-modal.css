@@ -20,12 +20,17 @@
   border-radius: 1rem;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
   width: 100%;
-  max-width: 420px;
+  max-width: 860px;
   max-height: 80vh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   animation: pmSlideIn 0.22s ease-out;
+}
+
+.participant-modal--with-org {
+  max-width: min(960px, 100vw - 2rem);
+  max-height: min(92vh, 900px);
 }
 
 @keyframes pmSlideIn {
@@ -132,12 +137,230 @@
   border-color: var(--primary, #5c6bc0);
 }
 
+/* 조직도로 필터 */
+.participant-modal-org-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.participant-modal-org-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border: 1px solid #c7d2fe;
+  border-radius: 0.5rem;
+  background: #eef2ff;
+  color: #4338ca;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.participant-modal-org-toggle:hover {
+  background: #e0e7ff;
+  border-color: #a5b4fc;
+}
+
+.participant-modal-org-toggle.is-open {
+  background: #e0e7ff;
+  border-color: #818cf8;
+}
+
+.participant-modal-org-toggle .material-symbols-outlined {
+  font-size: 1.15rem;
+  font-weight: 500;
+}
+
+.participant-modal-org-filter-meta {
+  font-size: 0.78rem;
+  color: #64748b;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.participant-modal-org-clear {
+  padding: 0.15rem 0.45rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 0.35rem;
+  background: #f1f5f9;
+  color: #475569;
+  cursor: pointer;
+}
+
+.participant-modal-org-clear:hover {
+  background: #e2e8f0;
+}
+
+.participant-modal-org-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
+.participant-modal-org-hint {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: #64748b;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  padding: 0.45rem 0.65rem;
+}
+
+.participant-modal-org-loading,
+.participant-modal-org-empty {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #64748b;
+  padding: 0.5rem 0;
+}
+
+.participant-modal-org-error {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #b91c1c;
+}
+
+/* Mind Elixir — company-overview 조직도와 동일한 톤 (모달용 높이만 축소) */
+.participant-modal-org-mind {
+  width: 100%;
+  min-height: 220px;
+  height: min(320px, 38vh);
+  max-height: 40vh;
+  border: 1px solid #d8e5f2;
+  border-radius: 0.8rem;
+  overflow: hidden;
+  background: #fff;
+  -webkit-overflow-scrolling: touch;
+}
+
+.participant-modal-org-mind.co-org-mind--readonly {
+  cursor: default;
+}
+
+.participant-modal-org-mind .map-container {
+  --bgcolor: #ffffff;
+  --main-bgcolor: #ffffff;
+  --main-bgcolor-transparent: rgba(255, 255, 255, 0.92);
+  --root-bgcolor: #ffffff;
+  --root-color: #000000;
+  --root-border-color: #94a3b8;
+  --main-color: #94a3b8;
+  --color: #000000;
+  --panel-bgcolor: #ffffff;
+  --panel-color: #000000;
+  --panel-border-color: #e2e8f0;
+  background-color: #ffffff !important;
+  overflow: hidden !important;
+  height: 100% !important;
+  min-height: 0;
+  width: 100%;
+  touch-action: manipulation;
+}
+
+.participant-modal-org-mind .map-canvas {
+  transform-origin: 0 0;
+  background-color: #ffffff !important;
+}
+
+.participant-modal-org-mind me-nodes {
+  background-color: #ffffff !important;
+}
+
+.participant-modal-org-mind me-tpc {
+  box-sizing: border-box !important;
+  border: 1px solid #cbd5e1 !important;
+  border-style: solid !important;
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  min-height: 1.5em;
+}
+
+.participant-modal-org-mind me-tpc.participant-org-tpc--selected {
+  background-color: #e8eaf6 !important;
+  border-color: #7c83d8 !important;
+  box-shadow: 0 0 0 1px rgba(92, 107, 192, 0.25);
+}
+
+.participant-modal-org-mind me-tpc .text,
+.participant-modal-org-mind me-tpc .hyper-link,
+.participant-modal-org-mind me-tpc a {
+  color: #000000 !important;
+}
+
+.participant-modal-org-mind me-parent > me-tpc {
+  border-radius: 0.55rem !important;
+}
+
+.participant-modal-org-mind me-root me-tpc {
+  border-radius: 0.75rem !important;
+  border-width: 2px !important;
+}
+
+.participant-modal-org-mind me-parent > me-tpc:hover {
+  background-color: #f8fafc !important;
+}
+
+.participant-modal-org-mind me-root me-tpc:hover {
+  background-color: #f1f5f9 !important;
+}
+
+.participant-modal-org-mind svg path,
+.participant-modal-org-mind svg polyline {
+  stroke: #96aec4 !important;
+  stroke-width: 2 !important;
+  stroke-linecap: butt;
+  stroke-linejoin: miter;
+}
+
+.participant-modal-bulk-row {
+  margin-bottom: 0.5rem;
+}
+
+.participant-modal-bulk-add {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 1px solid #c7d2fe;
+  border-radius: 0.45rem;
+  background: #faf5ff;
+  color: #6d28d9;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.participant-modal-bulk-add:hover {
+  background: #f3e8ff;
+}
+
 /* 멤버 리스트 */
 .participant-modal-list {
   border: 1px solid var(--card-border, #e0e0e0);
   border-radius: 0.5rem;
   overflow-y: auto;
   max-height: 340px;
+}
+
+.participant-modal-list-head {
+  display: grid;
+  grid-template-columns: 52px minmax(110px, 1fr) minmax(180px, 2fr) minmax(120px, 1fr) minmax(120px, 1fr);
+  gap: 0.65rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--card-border, #e0e0e0);
+  background: var(--bg-light, #f8fafc);
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--text-muted, #6b7280);
 }
 
 .participant-modal-empty {
@@ -148,10 +371,11 @@
 }
 
 .participant-modal-item {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: 52px minmax(110px, 1fr) minmax(180px, 2fr) minmax(120px, 1fr) minmax(120px, 1fr);
   gap: 0.65rem;
   padding: 0.6rem 0.75rem;
+  align-items: center;
   cursor: pointer;
   transition: background 0.15s;
   border-bottom: 1px solid var(--card-border, #e0e0e0);
@@ -177,28 +401,6 @@
   cursor: pointer;
 }
 
-.participant-modal-avatar {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  border-radius: 50%;
-  background: var(--primary, #5c6bc0);
-  color: #fff;
-  font-size: 0.8rem;
-  font-weight: 700;
-  flex-shrink: 0;
-}
-
-.participant-modal-info {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-  min-width: 0;
-}
-
 .participant-modal-name {
   font-size: 0.85rem;
   font-weight: 600;
@@ -211,6 +413,15 @@
 .participant-modal-email {
   font-size: 0.75rem;
   color: var(--text-muted, #999);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.participant-modal-phone,
+.participant-modal-department {
+  font-size: 0.8rem;
+  color: var(--text, #333);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -274,5 +485,17 @@
 
   .participant-modal-list {
     max-height: 260px;
+  }
+
+  .participant-modal-list-head,
+  .participant-modal-item {
+    grid-template-columns: 44px minmax(90px, 1fr) minmax(120px, 1.4fr);
+  }
+
+  .participant-modal-list-head span:nth-child(4),
+  .participant-modal-list-head span:nth-child(5),
+  .participant-modal-item .participant-modal-phone,
+  .participant-modal-item .participant-modal-department {
+    display: none;
   }
 }

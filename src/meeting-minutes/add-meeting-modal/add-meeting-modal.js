@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import ParticipantModal from '../../calendar/participant-modal/participant-modal';
+import CategoryManageModal from './category-manage-modal';
+import '../../calendar/event-modal/event-modal.css';
 import './add-meeting-modal.css';
 
 import { API_BASE } from '@/config';
-const STATUS_OPTIONS = [{ value: 'Draft', label: '초안' }, { value: 'Finalized', label: '완료' }];
+const DEFAULT_MEETING_CATEGORIES = ['주간회의', '월간 회의', '프로젝트 회의'];
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -21,47 +23,75 @@ function toDatetimeLocal(d) {
   return `${y}-${m}-${day}T${h}:${min}`;
 }
 
-function getInitials(name) {
-  if (!name || !name.trim()) return '?';
-  const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return name.trim().slice(0, 2).toUpperCase();
-}
-
 export default function AddMeetingModal({ meeting, onClose, onSaved }) {
   const isEdit = !!meeting?._id;
+  const [categoryOptions, setCategoryOptions] = useState(DEFAULT_MEETING_CATEGORIES);
+  const [showCategoryManageModal, setShowCategoryManageModal] = useState(false);
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+  const [categoryInput, setCategoryInput] = useState('');
   const [form, setForm] = useState({
     title: '',
+    categories: Array.isArray(meeting?.categories) && meeting.categories.length > 0
+      ? meeting.categories
+      : (meeting?.category ? [meeting.category] : [DEFAULT_MEETING_CATEGORIES[0]]),
     meetingDate: toDatetimeLocal(meeting?.meetingDate || new Date()),
     location: '',
     agenda: '',
     discussionPoints: '',
-    status: meeting?.status || 'Draft',
-    actionItems: [],
     attendees: []
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [showAttendeeModal, setShowAttendeeModal] = useState(false);
+  const [showParticipantModal, setShowParticipantModal] = useState(false);
   const [teamMembers, setTeamMembers] = useState([]);
+  const discussionAudioInputRef = useRef(null);
+  const [discussionAudioDropActive, setDiscussionAudioDropActive] = useState(false);
+  const [discussionAudioUploading, setDiscussionAudioUploading] = useState(false);
+  const [discussionAudioError, setDiscussionAudioError] = useState('');
+  const [discussionAudioNotice, setDiscussionAudioNotice] = useState('');
 
   useEffect(() => {
     if (!meeting) return;
     setForm({
       title: meeting.title ?? '',
+      categories: Array.isArray(meeting.categories) && meeting.categories.length > 0
+        ? meeting.categories
+        : (meeting.category ? [meeting.category] : [DEFAULT_MEETING_CATEGORIES[0]]),
       meetingDate: toDatetimeLocal(meeting.meetingDate),
       location: meeting.location ?? '',
       agenda: meeting.agenda ?? '',
       discussionPoints: meeting.discussionPoints ?? '',
-      status: meeting.status ?? 'Draft',
-      actionItems: Array.isArray(meeting.actionItems) ? meeting.actionItems.map((a) => ({
-        description: a.description ?? '',
-        dueDate: a.dueDate ? toDatetimeLocal(a.dueDate).slice(0, 10) : '',
-        completed: !!a.completed
-      })) : [],
-      attendees: Array.isArray(meeting.attendees) ? meeting.attendees.map((a) => ({ name: a.name ?? '', role: a.role ?? '' })) : []
+      attendees: Array.isArray(meeting.attendees)
+        ? meeting.attendees.map((a) => ({
+            userId: a.userId,
+            name: a.name ?? '',
+            role: a.role ?? ''
+          }))
+        : []
     });
   }, [meeting]);
+
+  const fetchMeetingCategories = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/companies/meeting-categories`, { headers: getAuthHeader() });
+      if (!res.ok) return;
+      const data = await res.json().catch(() => ({}));
+      const list = Array.isArray(data.categories) ? data.categories.map((v) => String(v || '').trim()).filter(Boolean) : [];
+      if (list.length === 0) return;
+      setCategoryOptions(list);
+      setForm((prev) => {
+        const nextSelected = Array.isArray(prev.categories)
+          ? prev.categories.filter((c) => list.includes(c))
+          : [];
+        if (nextSelected.length > 0) return { ...prev, categories: nextSelected };
+        return { ...prev, categories: [list[0]] };
+      });
+    } catch (_) {}
+  }, []);
+
+  useEffect(() => {
+    fetchMeetingCategories();
+  }, [fetchMeetingCategories]);
 
   useEffect(() => {
     if (!isEdit) return;
@@ -76,58 +106,172 @@ export default function AddMeetingModal({ meeting, onClose, onSaved }) {
     setError('');
   };
 
-  const addActionItem = () => {
-    setForm((prev) => ({ ...prev, actionItems: [...(prev.actionItems || []), { description: '', dueDate: '', completed: false }] }));
-  };
-  const updateActionItem = (index, field, value) => {
-    setForm((prev) => {
-      const next = [...(prev.actionItems || [])];
-      if (!next[index]) return prev;
-      next[index] = { ...next[index], [field]: value };
-      return { ...prev, actionItems: next };
+  const persistMeetingCategories = async (next) => {
+    const res = await fetch(`${API_BASE}/companies/meeting-categories`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify({ categories: next })
     });
-  };
-  const removeActionItem = (index) => {
-    setForm((prev) => ({ ...prev, actionItems: (prev.actionItems || []).filter((_, i) => i !== index) }));
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || '카테고리 저장에 실패했습니다.');
+    return Array.isArray(data.categories) ? data.categories : next;
   };
 
-  const addAttendee = () => {
-    setForm((prev) => ({ ...prev, attendees: [...(prev.attendees || []), { name: '', role: '' }] }));
+  const handleAddCategory = async () => {
+    const nextItem = categoryInput.trim();
+    if (!nextItem) return;
+    if (categoryOptions.includes(nextItem)) {
+      setCategoryInput('');
+      return;
+    }
+    const next = [...categoryOptions, nextItem];
+    try {
+      const saved = await persistMeetingCategories(next);
+      setCategoryOptions(saved);
+      setCategoryInput('');
+      setForm((prev) => ({ ...prev, categories: [...new Set([...(prev.categories || []), nextItem])] }));
+    } catch (err) {
+      setError(err.message || '카테고리 저장 실패');
+    }
   };
-  const updateAttendee = (index, field, value) => {
+
+  const handleRemoveCategory = async (target) => {
+    if (DEFAULT_MEETING_CATEGORIES.includes(target)) {
+      setError('기본 카테고리(주간회의/월간 회의/프로젝트 회의)는 삭제할 수 없습니다.');
+      return;
+    }
+    const next = categoryOptions.filter((v) => v !== target);
+    if (next.length === 0) {
+      setError('카테고리는 최소 1개 이상 필요합니다.');
+      return;
+    }
+    try {
+      const saved = await persistMeetingCategories(next);
+      setCategoryOptions(saved);
+      setForm((prev) => {
+        const filtered = (prev.categories || []).filter((c) => c !== target);
+        return { ...prev, categories: filtered.length > 0 ? filtered : [saved[0] || DEFAULT_MEETING_CATEGORIES[0]] };
+      });
+    } catch (err) {
+      setError(err.message || '카테고리 저장 실패');
+    }
+  };
+
+  const toggleCategorySelection = (category) => {
     setForm((prev) => {
-      const next = [...(prev.attendees || [])];
-      if (!next[index]) return prev;
-      next[index] = { ...next[index], [field]: value };
-      return { ...prev, attendees: next };
+      const has = (prev.categories || []).includes(category);
+      if (has) {
+        const next = (prev.categories || []).filter((c) => c !== category);
+        if (next.length === 0) return prev;
+        return { ...prev, categories: next };
+      }
+      return { ...prev, categories: [...(prev.categories || []), category] };
     });
   };
-  const removeAttendee = (index) => {
-    setForm((prev) => ({ ...prev, attendees: (prev.attendees || []).filter((_, i) => i !== index) }));
+
+  const openCategoryManageModal = () => {
+    setCategoryInput('');
+    setShowCategoryDropdown(false);
+    setShowCategoryManageModal(true);
   };
 
   const fetchTeamMembers = useCallback(() => {
-    fetch(`${API_BASE}/calendar-events/team-members`, { headers: getAuthHeader() })
-      .then((r) => r.json())
-      .then((data) => { if (data.members) setTeamMembers(data.members); })
+    const headers = getAuthHeader();
+    Promise.all([
+      fetch(`${API_BASE}/calendar-events/team-members`, { headers }).then((r) => r.json().catch(() => ({}))).catch(() => ({})),
+      fetch(`${API_BASE}/companies/overview`, { headers }).then((r) => r.json().catch(() => ({}))).catch(() => ({}))
+    ])
+      .then(([teamData, overviewData]) => {
+        const fromTeam = Array.isArray(teamData?.members) ? teamData.members : [];
+        const fromOverview = Array.isArray(overviewData?.employees) ? overviewData.employees : [];
+        const overviewMap = new Map(fromOverview.map((e) => [String(e.id), e]));
+        const merged = fromTeam.map((m) => {
+          const o = overviewMap.get(String(m._id));
+          return {
+            ...m,
+            phone: m.phone || o?.phone || '',
+            department: m.department || m.companyDepartment || o?.department || ''
+          };
+        });
+        setTeamMembers(merged);
+      })
       .catch(() => {});
   }, []);
 
-  const openAttendeeModal = () => {
+  useEffect(() => {
+    fetchTeamMembers();
+  }, [fetchTeamMembers]);
+
+  const removeAttendeeEntry = useCallback((p, idx) => {
+    setForm((prev) => ({
+      ...prev,
+      attendees: (prev.attendees || []).filter((a, i) => {
+        if (p.userId && a.userId) return String(a.userId) !== String(p.userId);
+        return i !== idx;
+      })
+    }));
+  }, []);
+
+  const openParticipantModal = () => {
     if (teamMembers.length === 0) fetchTeamMembers();
-    setShowAttendeeModal(true);
+    setShowParticipantModal(true);
   };
 
-  const handleAttendeeConfirm = (selected) => {
+  const uploadAudioForDiscussion = useCallback(async (filesLike) => {
+    const files = Array.from(filesLike || []).filter((f) => f && f instanceof File);
+    if (!files.length || saving || discussionAudioUploading) return;
+    const accept = /\.(mp3|wav|m4a|webm)$/i;
+    const audioTypes = ['audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/x-m4a', 'audio/webm'];
+    const file = files.find((f) => accept.test(f.name) || audioTypes.includes(f.type));
+    if (!file) {
+      setDiscussionAudioError('MP3, WAV, M4A, WebM 파일만 업로드할 수 있습니다.');
+      return;
+    }
+    setDiscussionAudioError('');
+    setDiscussionAudioNotice('음성 파일을 처리 중입니다. AssemblyAI 전사 후 Gemini가 분류/요약합니다.');
+    setDiscussionAudioUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('audio', file);
+      const res = await fetch(`${API_BASE}/meeting-minutes/discussion/from-audio`, {
+        method: 'POST',
+        headers: getAuthHeader(),
+        body: formData
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || '음성 업로드 처리에 실패했습니다.');
+      const piece = String(data.content || '').trim();
+      if (!piece) throw new Error('요약 결과가 비어 있습니다.');
+      setForm((prev) => {
+        const prevText = String(prev.discussionPoints || '').trim();
+        const combined = prevText ? `${prevText}\n\n${piece}` : piece;
+        return { ...prev, discussionPoints: combined };
+      });
+      setDiscussionAudioNotice(
+        '요약이 논의 내용에 반영되었습니다. 개인정보 보호를 위해 AssemblyAI 전사 데이터는 삭제 요청되었습니다.'
+      );
+    } catch (e) {
+      setDiscussionAudioError(e.message || '음성 업로드 처리에 실패했습니다.');
+      setDiscussionAudioNotice('');
+    } finally {
+      setDiscussionAudioUploading(false);
+    }
+  }, [discussionAudioUploading, saving]);
+
+  const handleParticipantConfirm = useCallback((selected) => {
     setForm((prev) => ({
       ...prev,
       attendees: selected.map((s) => {
         const m = teamMembers.find((t) => String(t._id) === String(s.userId));
-        return { name: s.name || (m && m.name) || '', role: (m && m.role) ? String(m.role) : '' };
+        return {
+          userId: s.userId,
+          name: s.name || (m && m.name) || '',
+          role: m && m.role ? String(m.role) : ''
+        };
       })
     }));
-    setShowAttendeeModal(false);
-  };
+    setShowParticipantModal(false);
+  }, [teamMembers]);
 
   const currentUser = (() => {
     try {
@@ -149,17 +293,17 @@ export default function AddMeetingModal({ meeting, onClose, onSaved }) {
     try {
       const payload = {
         title: form.title.trim(),
+        category: (form.categories || [])[0] || '',
+        categories: form.categories || [],
         meetingDate: form.meetingDate ? new Date(form.meetingDate).toISOString() : new Date().toISOString(),
         location: form.location.trim(),
         agenda: form.agenda,
         discussionPoints: form.discussionPoints,
-        status: form.status,
-        actionItems: (form.actionItems || []).map((a) => ({
-          description: a.description,
-          dueDate: a.dueDate ? new Date(a.dueDate).toISOString() : undefined,
-          completed: !!a.completed
-        })),
-        attendees: (form.attendees || []).map((a) => ({ name: a.name, role: a.role }))
+        attendees: (form.attendees || []).map((a) => {
+          const row = { name: a.name, role: a.role };
+          if (a.userId) row.userId = a.userId;
+          return row;
+        })
       };
 
       const url = isEdit ? `${API_BASE}/meeting-minutes/${meeting._id}` : `${API_BASE}/meeting-minutes`;
@@ -222,12 +366,6 @@ export default function AddMeetingModal({ meeting, onClose, onSaved }) {
           <div className="add-meeting-modal-body">
             {error && <p className="add-meeting-modal-error">{error}</p>}
 
-            {/* 상단 타이틀 + 설명 (Meeting Add.html) */}
-            <div className="add-meeting-modal-hero">
-              <h3 className="add-meeting-modal-hero-title">회의 일지</h3>
-              <p className="add-meeting-modal-hero-desc">회의의 핵심 논의, 결정 사항, 결과를 기록하세요.</p>
-            </div>
-
             {/* 2열 그리드: 왼쪽 2/3, 오른쪽 1/3 */}
             <div className="add-meeting-modal-grid">
               {/* 왼쪽 열 */}
@@ -241,6 +379,42 @@ export default function AddMeetingModal({ meeting, onClose, onSaved }) {
                       <input name="title" type="text" value={form.title} onChange={handleChange} placeholder="예: 4분기 전략 회의" className="add-meeting-input" required />
                     </div>
                     <div className="add-meeting-field-row">
+                      <div className="add-meeting-field">
+                        <label className="add-meeting-label">카테고리</label>
+                        <div className="add-meeting-category-inline">
+                          <div className="add-meeting-category-dropdown-wrap">
+                            <button
+                              type="button"
+                              className="add-meeting-category-dropdown-trigger"
+                              onClick={() => setShowCategoryDropdown((v) => !v)}
+                            >
+                              <span className="add-meeting-category-dropdown-trigger-text">
+                                {(form.categories || []).length > 0 ? (form.categories || []).join(', ') : '카테고리 선택'}
+                              </span>
+                              <span className="material-symbols-outlined">
+                                {showCategoryDropdown ? 'expand_less' : 'expand_more'}
+                              </span>
+                            </button>
+                            {showCategoryDropdown && (
+                              <div className="add-meeting-category-dropdown">
+                                {categoryOptions.map((c) => (
+                                  <label key={c} className="add-meeting-category-option">
+                                    <input
+                                      type="checkbox"
+                                      checked={(form.categories || []).includes(c)}
+                                      onChange={() => toggleCategorySelection(c)}
+                                    />
+                                    <span>{c}</span>
+                                  </label>
+                                ))}
+                                <button type="button" className="add-meeting-category-dropdown-plus" onClick={openCategoryManageModal}>
+                                  <span className="material-symbols-outlined">add</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                       <div className="add-meeting-field">
                         <label className="add-meeting-label">일시</label>
                         <div className="add-meeting-input-wrap-icon">
@@ -258,115 +432,130 @@ export default function AddMeetingModal({ meeting, onClose, onSaved }) {
                     </div>
                   </div>
                 </div>
+              </div>
 
-                {/* Agenda + Discussion + Action Items 한 카드 */}
-                <div className="add-meeting-card add-meeting-card-content">
-                  {/* Meeting Agenda */}
-                  <div className="add-meeting-content-block">
-                    <div className="add-meeting-content-head">
-                      <h4 className="add-meeting-card-title">회의 안건</h4>
-                      <button type="button" className="add-meeting-link-btn">
-                        <span className="material-symbols-outlined">add</span> 항목 추가
-                      </button>
-                    </div>
-                    <div className="add-meeting-textarea-wrap add-meeting-textarea-agenda">
-                      <textarea name="agenda" value={form.agenda} onChange={handleChange} placeholder="논의된 주요 안건을 적어 주세요." className="add-meeting-textarea-inner" rows={3} />
-                    </div>
+              {/* 안건·논의: 데스크톱에서 그리드 전체 너비(참석자 열 포함) */}
+              <div className="add-meeting-card add-meeting-card-content add-meeting-card-content-fullrow">
+                {/* Meeting Agenda */}
+                <div className="add-meeting-content-block">
+                  <h4 className="add-meeting-card-title">회의 안건</h4>
+                  <div className="add-meeting-textarea-wrap add-meeting-textarea-agenda">
+                    <textarea name="agenda" value={form.agenda} onChange={handleChange} placeholder="논의된 주요 안건을 적어 주세요." className="add-meeting-textarea-inner" rows={3} />
                   </div>
+                </div>
 
-                  {/* Discussion Points */}
-                  <div className="add-meeting-content-block">
-                    <div className="add-meeting-content-head">
-                      <h4 className="add-meeting-card-title">논의 내용</h4>
-                      <div className="add-meeting-format-btns">
-                        <button type="button" className="add-meeting-format-btn" aria-label="목록"><span className="material-symbols-outlined">format_list_bulleted</span></button>
-                        <button type="button" className="add-meeting-format-btn" aria-label="굵게"><span className="material-symbols-outlined">format_bold</span></button>
-                        <button type="button" className="add-meeting-format-btn" aria-label="기울임"><span className="material-symbols-outlined">format_italic</span></button>
-                      </div>
-                    </div>
-                    <div className="add-meeting-textarea-wrap add-meeting-textarea-discussion">
-                      <textarea name="discussionPoints" value={form.discussionPoints} onChange={handleChange} placeholder="핵심 결론과 논의 내용을 요약해 주세요." className="add-meeting-textarea-inner" rows={6} />
-                    </div>
+                {/* Discussion Points */}
+                <div className="add-meeting-content-block">
+                  <h4 className="add-meeting-card-title">논의 내용</h4>
+                  <div className="add-meeting-textarea-wrap add-meeting-textarea-discussion">
+                    <textarea name="discussionPoints" value={form.discussionPoints} onChange={handleChange} placeholder="핵심 결론과 논의 내용을 요약해 주세요." className="add-meeting-textarea-inner" rows={6} />
                   </div>
-
-                  {/* Action Items */}
-                  <div className="add-meeting-content-block">
-                    <h4 className="add-meeting-card-title">액션 아이템</h4>
-                    <div className="add-meeting-action-list">
-                      {(form.actionItems || []).map((item, i) => (
-                        <div key={i} className="add-meeting-action-card">
-                          <input type="checkbox" checked={!!item.completed} onChange={(e) => updateActionItem(i, 'completed', e.target.checked)} className="add-meeting-action-check" />
-                          <input type="text" placeholder="할 일 내용..." value={item.description} onChange={(e) => updateActionItem(i, 'description', e.target.value)} className="add-meeting-action-input" />
-                          <div className="add-meeting-action-due-wrap">
-                            <span className="material-symbols-outlined add-meeting-action-due-icon">calendar_today</span>
-                            <span className="add-meeting-action-due-label">마감일</span>
-                          </div>
-                          <input type="date" value={item.dueDate || ''} onChange={(e) => updateActionItem(i, 'dueDate', e.target.value)} className="add-meeting-action-date" />
-                          <button type="button" className="add-meeting-remove-btn" onClick={() => removeActionItem(i)} aria-label="삭제">
-                            <span className="material-symbols-outlined">close</span>
-                          </button>
-                        </div>
-                      ))}
-                      <button type="button" className="add-meeting-add-action-btn" onClick={addActionItem}>
-                        <span className="material-symbols-outlined">add_circle</span> 액션 아이템 추가
-                      </button>
-                    </div>
+                  {discussionAudioError && (
+                    <p className="add-meeting-discussion-audio-error">{discussionAudioError}</p>
+                  )}
+                  {discussionAudioNotice && !discussionAudioError && (
+                    <p className="add-meeting-discussion-audio-notice">{discussionAudioNotice}</p>
+                  )}
+                  <input
+                    ref={discussionAudioInputRef}
+                    type="file"
+                    accept="audio/*,.mp3,.wav,.m4a,.webm"
+                    className="add-meeting-discussion-audio-input-hidden"
+                    onChange={(e) => {
+                      if (e.target.files?.length) uploadAudioForDiscussion(e.target.files);
+                      e.target.value = '';
+                    }}
+                    aria-hidden="true"
+                  />
+                  <div
+                    className={`add-meeting-discussion-audio-drop ${discussionAudioDropActive ? 'is-dragover' : ''} ${discussionAudioUploading ? 'is-uploading' : ''}`}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (!discussionAudioUploading && !saving) setDiscussionAudioDropActive(true);
+                    }}
+                    onDragLeave={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (!e.currentTarget.contains(e.relatedTarget)) setDiscussionAudioDropActive(false);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDiscussionAudioDropActive(false);
+                      if (!discussionAudioUploading && !saving && e.dataTransfer?.files?.length) {
+                        uploadAudioForDiscussion(e.dataTransfer.files);
+                      }
+                    }}
+                  >
+                    <span className="material-symbols-outlined">audio_file</span>
+                    <span>
+                      {discussionAudioUploading
+                        ? '음성 처리 중... (AssemblyAI 전사 → Gemini 분류/요약)'
+                        : '음성 파일 드래그앤드롭 또는 선택 (MP3/WAV/M4A/WebM) — 기존 글 뒤에 이어 붙입니다.'}
+                    </span>
+                    <button
+                      type="button"
+                      className="add-meeting-discussion-audio-btn"
+                      onClick={() => discussionAudioInputRef.current?.click()}
+                      disabled={discussionAudioUploading || saving}
+                    >
+                      파일 선택
+                    </button>
                   </div>
                 </div>
               </div>
 
-              {/* 오른쪽 열: Attendees */}
+              {/* 오른쪽 열: 참여자 (event-modal.js와 동일 패턴) */}
               <div className="add-meeting-modal-side">
-                <div className="add-meeting-card">
-                  <h4 className="add-meeting-card-title">참석자</h4>
-                  <div className="add-meeting-attendee-list">
-                    {(form.attendees || []).map((a, i) => (
-                      <div key={i} className="add-meeting-attendee-item">
-                        <div className="add-meeting-attendee-avatar">{getInitials(a.name)}</div>
-                        <div className="add-meeting-attendee-info">
-                          <input type="text" placeholder="이름" value={a.name} onChange={(e) => updateAttendee(i, 'name', e.target.value)} className="add-meeting-attendee-name-input" />
-                          <input type="text" placeholder="역할" value={a.role} onChange={(e) => updateAttendee(i, 'role', e.target.value)} className="add-meeting-attendee-role-input" />
-                        </div>
-                        <button type="button" className="add-meeting-remove-btn" onClick={() => removeAttendee(i)} aria-label="삭제">
-                          <span className="material-symbols-outlined">cancel</span>
-                        </button>
-                      </div>
-                    ))}
-                    <button type="button" className="add-meeting-manage-attendees-btn" onClick={openAttendeeModal}>
-                      <span className="material-symbols-outlined">person_add</span> 참석자 관리
+                <div className="add-meeting-card add-meeting-card-participants">
+                  <div className="event-modal-field">
+                    <label>참여자</label>
+                    <button
+                      type="button"
+                      className="event-modal-btn event-modal-participant-trigger"
+                      onClick={openParticipantModal}
+                    >
+                      <span className="material-symbols-outlined">group_add</span>
+                      참여자 선택 ({(form.attendees || []).length}명)
                     </button>
+                    {(form.attendees || []).length > 0 && (
+                      <div className="event-modal-selected-chips">
+                        {(form.attendees || []).map((p, idx) => (
+                          <span
+                            key={p.userId ? String(p.userId) : `legacy-${idx}-${p.name || ''}`}
+                            className="event-modal-participant-chip removable"
+                          >
+                            <span className="event-modal-participant-chip-label">{p.name || '(이름 없음)'}</span>
+                            <button
+                              type="button"
+                              className="event-modal-participant-chip-remove"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                removeAttendeeEntry(p, idx);
+                              }}
+                              aria-label={`${p.name || '참여자'} 제거`}
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                </div>
-
-                {/* 상태 (모바일에서 보이도록) */}
-                <div className="add-meeting-card add-meeting-status-card">
-                  <h4 className="add-meeting-card-title">상태</h4>
-                  <select name="status" value={form.status} onChange={handleChange} className="add-meeting-input">
-                    {STATUS_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
                 </div>
               </div>
             </div>
 
             {/* 하단 버튼: 수정 시 product-detail 스타일(취소/저장), 추가 시 기존 스타일 */}
-            {isEdit ? (
+            {isEdit && (
               <div className="add-meeting-edit-footer">
                 <button type="button" className="add-meeting-edit-cancel" onClick={onClose}>
                   취소
                 </button>
                 <button type="submit" className="add-meeting-edit-save" disabled={saving}>
                   {saving ? '저장 중…' : '저장'}
-                </button>
-              </div>
-            ) : (
-              <div className="add-meeting-modal-bottom-bar">
-                <button type="button" className="add-meeting-modal-btn-discard" onClick={onClose}>
-                  취소
-                </button>
-                <button type="submit" className="add-meeting-modal-btn-finish" disabled={saving}>
-                  {saving ? '저장 중...' : '작성 완료 및 요약 보내기'}
                 </button>
               </div>
             )}
@@ -395,15 +584,28 @@ export default function AddMeetingModal({ meeting, onClose, onSaved }) {
         </div>
       )}
 
-      {showAttendeeModal && (
+      {showParticipantModal && (
         <ParticipantModal
           teamMembers={teamMembers}
-          selected={[]}
+          selected={(form.attendees || [])
+            .filter((a) => a.userId)
+            .map((a) => ({ userId: a.userId, name: a.name || '' }))}
           currentUser={currentUser}
-          onConfirm={handleAttendeeConfirm}
-          onClose={() => setShowAttendeeModal(false)}
+          onConfirm={handleParticipantConfirm}
+          onClose={() => setShowParticipantModal(false)}
         />
       )}
+
+      <CategoryManageModal
+        show={showCategoryManageModal}
+        categoryInput={categoryInput}
+        setCategoryInput={setCategoryInput}
+        handleAddCategory={handleAddCategory}
+        categoryOptions={categoryOptions}
+        defaultMeetingCategories={DEFAULT_MEETING_CATEGORIES}
+        handleRemoveCategory={handleRemoveCategory}
+        onClose={() => setShowCategoryManageModal(false)}
+      />
     </>
   );
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import AddContactModal from './add-customer-company-employees-modal/add-customer-company-employees-modal';
 import ContactDetailModal from './customer-company-employees-detail-modal/customer-company-employees-detail-modal';
 import ListTemplateModal from '../components/list-template-modal/list-template-modal';
@@ -11,6 +11,7 @@ import {
 } from '../lib/list-templates';
 import './customer-company-employees.css';
 import './customer-company-employees-responsive.css';
+import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 
 import { API_BASE } from '@/config';
 const LIST_ID = LIST_IDS.CUSTOMER_COMPANY_EMPLOYEES;
@@ -46,7 +47,6 @@ const STATUS_OPTIONS = ['', 'Lead', 'Active', 'Pending', 'Inactive'];
 const CUSTOM_FIELDS_PREFIX = 'customFields.';
 
 export default function CustomerCompanyEmployees() {
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [items, setItems] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, limit: LIMIT, total: 0, totalPages: 0 });
@@ -414,11 +414,10 @@ export default function CustomerCompanyEmployees() {
           </select>
         </div>
         <div className="header-actions">
-          <button type="button" className="icon-btn" aria-label="공지사항" onClick={() => navigate('/notification')}><span className="material-symbols-outlined">notifications</span></button>
-          <button type="button" className="icon-btn" aria-label="채팅" onClick={() => navigate('/chat')}><span className="material-symbols-outlined">chat_bubble</span></button>
           <button type="button" className="icon-btn" aria-label="리스트 열 설정" onClick={() => { setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), customFieldColumns)); setSettingsOpen(true); }} title="리스트 열 설정">
             <span className="material-symbols-outlined">settings</span>
           </button>
+          <PageHeaderNotifyChat noWrapper buttonClassName="icon-btn" />
         </div>
       </header>
       <div className="page-content">

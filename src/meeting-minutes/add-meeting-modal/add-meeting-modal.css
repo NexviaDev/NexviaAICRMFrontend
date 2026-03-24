@@ -306,30 +306,48 @@
   color: var(--text-muted);
 }
 
-/* ── 2열 그리드 (lg: 3칸 중 왼쪽 2 / 오른쪽 1) ── */
+/* ── 2열 그리드: 1행 = 회의정보 | 참석자, 2행 = 안건·논의·액션(전체 너비) ── */
 .add-meeting-modal-grid {
   display: grid;
   grid-template-columns: 1fr;
   gap: 1.5rem;
+  grid-template-areas:
+    "main"
+    "full"
+    "side";
 }
 
 @media (min-width: 1024px) {
   .add-meeting-modal-grid {
     grid-template-columns: 2fr 1fr;
     gap: 2rem;
+    grid-template-areas:
+      "main side"
+      "full full";
   }
 }
 
 .add-meeting-modal-main {
+  grid-area: main;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  min-width: 0;
 }
 
 .add-meeting-modal-side {
+  grid-area: side;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  min-width: 0;
+}
+
+.add-meeting-card-content-fullrow {
+  grid-area: full;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 /* ── 카드 (Meeting Add: bg-white rounded-xl border shadow-sm) ── */
@@ -391,6 +409,243 @@
   gap: 1rem;
 }
 
+.add-meeting-category-editor {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.add-meeting-category-inline {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+.add-meeting-category-dropdown-wrap {
+  position: relative;
+  flex: 1;
+}
+
+.add-meeting-category-dropdown-trigger {
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0.45rem 0.65rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.add-meeting-category-dropdown-trigger-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.add-meeting-category-dropdown {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: 11rem;
+  overflow-y: auto;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--card);
+  padding: 0.4rem 0.5rem 0.5rem;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.add-meeting-category-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.82rem;
+  color: var(--text);
+}
+
+.add-meeting-category-option input[type="checkbox"] {
+  margin: 0;
+  accent-color: var(--primary);
+}
+
+.add-meeting-category-dropdown-plus {
+  margin-top: 0.15rem;
+  width: 100%;
+  min-height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--card-border);
+  border-radius: 0.45rem;
+  background: #f5f9ff;
+  color: var(--primary);
+  cursor: pointer;
+}
+
+.add-meeting-category-dropdown-plus:hover {
+  filter: brightness(0.98);
+}
+
+.add-meeting-category-add-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.add-meeting-category-add-btn {
+  width: 2.5rem;
+  min-width: 2.5rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--pastel-sky);
+  color: var(--primary);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.add-meeting-category-add-btn:hover {
+  filter: brightness(0.98);
+}
+
+.add-meeting-category-add-btn .material-symbols-outlined {
+  font-size: 1.2rem;
+}
+
+.add-meeting-category-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.add-meeting-category-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.22rem 0.5rem;
+  border: 1px solid var(--card-border);
+  border-radius: 999px;
+  background: #f3f7fc;
+  color: #4d6076;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.add-meeting-category-chip.is-selected {
+  background: #dceafb;
+  border-color: #bfd7f3;
+  color: #355777;
+}
+
+.add-meeting-category-chip-remove {
+  font-size: 0.95rem;
+  border-radius: 999px;
+}
+
+.add-meeting-category-chip-remove:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.add-meeting-category-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.add-meeting-category-modal {
+  width: 100%;
+  max-width: 32rem;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 0.75rem;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+.add-meeting-category-modal-head,
+.add-meeting-category-modal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.add-meeting-category-modal-foot {
+  border-bottom: none;
+  border-top: 1px solid var(--card-border);
+  justify-content: flex-end;
+}
+
+.add-meeting-category-modal-head h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.add-meeting-category-modal-body {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.add-meeting-category-list {
+  max-height: 12rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.add-meeting-category-list-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.5rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: #f8fafc;
+}
+
+.add-meeting-category-list-name {
+  flex: 1;
+  font-size: 0.875rem;
+  color: var(--text);
+}
+
+.add-meeting-category-default-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  background: #e7f2ff;
+  color: #3f6388;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
 .add-meeting-input-wrap-icon {
   position: relative;
   display: block;
@@ -410,7 +665,7 @@
   padding-left: 2.5rem;
 }
 
-/* ── Content 카드 (Agenda + Discussion + Action Items) ── */
+/* ── Content 카드 (회의 안건 + 논의 내용) ── */
 .add-meeting-card-content {
   display: flex;
   flex-direction: column;
@@ -421,64 +676,6 @@
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-}
-
-.add-meeting-content-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.add-meeting-link-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--primary);
-  background: none;
-  border: none;
-  cursor: pointer;
-  transition: opacity 0.2s;
-}
-
-.add-meeting-link-btn:hover {
-  opacity: 0.85;
-  text-decoration: underline;
-}
-
-.add-meeting-link-btn .material-symbols-outlined {
-  font-size: 1rem;
-}
-
-.add-meeting-format-btns {
-  display: flex;
-  gap: 0.25rem;
-}
-
-.add-meeting-format-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.25rem;
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  border-radius: 0.375rem;
-  cursor: pointer;
-  transition: background 0.2s, color 0.2s;
-}
-
-.add-meeting-format-btn:hover {
-  background: var(--bg-light);
-  color: var(--text);
-}
-
-.add-meeting-format-btn .material-symbols-outlined {
-  font-size: 1.25rem;
 }
 
 /* textarea 감싸기 (Meeting Add: min-h, border, rounded, bg-slate-50) ── */
@@ -514,100 +711,6 @@
   min-height: 10rem;
 }
 
-/* ── Action Items (카드 형태 행 + Add Action Item 점선 버튼) ── */
-.add-meeting-action-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.add-meeting-action-card {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  background: var(--card);
-  border: 1px solid var(--card-border);
-  border-radius: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.add-meeting-action-check {
-  width: 1.125rem;
-  height: 1.125rem;
-  accent-color: var(--primary);
-  flex-shrink: 0;
-}
-
-.add-meeting-action-input {
-  flex: 1;
-  min-width: 8rem;
-  padding: 0.25rem 0;
-  border: none;
-  background: transparent;
-  font-size: 0.875rem;
-  color: var(--text);
-  outline: none;
-}
-
-.add-meeting-action-input::placeholder {
-  color: var(--text-muted);
-}
-
-.add-meeting-action-due-wrap {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  flex-shrink: 0;
-}
-
-.add-meeting-action-due-icon {
-  font-size: 1.125rem;
-  color: var(--text-muted);
-}
-
-.add-meeting-action-due-label {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-}
-
-.add-meeting-action-date {
-  padding: 0.25rem 0.5rem;
-  font-size: 0.8rem;
-  border: 1px solid var(--card-border);
-  border-radius: 0.375rem;
-  background: var(--card);
-  color: var(--text);
-  flex-shrink: 0;
-}
-
-.add-meeting-add-action-btn {
-  width: 100%;
-  padding: 0.625rem 1rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--text-muted);
-  background: transparent;
-  border: 2px dashed var(--card-border);
-  border-radius: 0.5rem;
-  cursor: pointer;
-  transition: background 0.2s, color 0.2s, border-color 0.2s;
-}
-
-.add-meeting-add-action-btn:hover {
-  background: var(--bg-light);
-  color: var(--text);
-  border-color: var(--text-muted);
-}
-
-.add-meeting-add-action-btn .material-symbols-outlined {
-  font-size: 1.125rem;
-}
-
 .add-meeting-remove-btn {
   display: flex;
   align-items: center;
@@ -631,142 +734,111 @@
   font-size: 1.25rem;
 }
 
-/* ── Attendees (아바타 원 + 이름/역할 + Manage Attendees) ── */
-.add-meeting-attendee-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
+/* 참여자 UI: event-modal.css (chip·트리거) 재사용 */
+.add-meeting-card-participants .event-modal-field {
+  margin-bottom: 0;
 }
 
-.add-meeting-attendee-item {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
+/* ── 논의 내용 음성 드롭 (고객사 업무 기록과 동일 파이프라인) ── */
+.add-meeting-discussion-audio-input-hidden {
+  display: none;
 }
 
-.add-meeting-attendee-avatar {
-  width: 2rem;
-  height: 2rem;
-  border-radius: 9999px;
-  background: var(--pastel-sky);
-  color: var(--primary);
-  font-size: 0.625rem;
-  font-weight: 700;
+.add-meeting-discussion-audio-error {
+  margin: 0.35rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--danger);
+}
+
+.add-meeting-discussion-audio-notice {
+  margin: 0.35rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.add-meeting-discussion-audio-drop {
+  margin-top: 0.65rem;
+  border: 1px dashed rgba(100, 116, 139, 0.45);
+  border-radius: 0.6rem;
+  padding: 1.1rem 0.9rem;
+  min-height: 6.2rem;
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  background: rgba(191, 219, 254, 0.12);
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.25s ease, background-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.add-meeting-discussion-audio-drop .material-symbols-outlined {
+  font-size: 1rem;
+  color: #4f46e5;
   flex-shrink: 0;
 }
 
-.add-meeting-attendee-info {
+.add-meeting-discussion-audio-drop > span:nth-of-type(2) {
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
 }
 
-.add-meeting-attendee-name-input,
-.add-meeting-attendee-role-input {
-  width: 100%;
-  padding: 0.125rem 0;
-  border: none;
-  background: transparent;
-  font-size: 0.875rem;
-  color: var(--text);
-  outline: none;
+.add-meeting-discussion-audio-drop.is-dragover {
+  border-color: #60a5fa;
+  background: rgba(147, 197, 253, 0.22);
 }
 
-.add-meeting-attendee-name-input {
-  font-weight: 500;
+.add-meeting-discussion-audio-drop.is-uploading {
+  color: #0f172a;
+  border-color: #38bdf8;
+  background: linear-gradient(120deg, rgba(186, 230, 253, 0.38), rgba(196, 181, 253, 0.3), rgba(186, 230, 253, 0.38));
+  background-size: 230% 230%;
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.2), 0 8px 20px rgba(56, 189, 248, 0.15);
+  animation: addMeetingDiscussionAudioBarPulse 1.5s ease-in-out infinite;
 }
 
-.add-meeting-attendee-role-input {
-  font-size: 0.75rem;
-  color: var(--text-muted);
+.add-meeting-discussion-audio-drop.is-uploading::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -45%;
+  width: 45%;
+  height: 100%;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0));
+  animation: addMeetingDiscussionAudioBarShimmer 1.2s linear infinite;
+  pointer-events: none;
 }
 
-.add-meeting-attendee-role-input::placeholder,
-.add-meeting-attendee-name-input::placeholder {
-  color: var(--text-muted);
+@keyframes addMeetingDiscussionAudioBarPulse {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
 }
 
-.add-meeting-manage-attendees-btn {
-  width: 100%;
-  padding: 0.5rem 1rem;
-  margin-top: 0.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--text-muted);
-  background: var(--bg-light);
-  border: none;
-  border-radius: 0.5rem;
-  cursor: pointer;
-  transition: background 0.2s, color 0.2s;
+@keyframes addMeetingDiscussionAudioBarShimmer {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(330%); }
 }
 
-.add-meeting-manage-attendees-btn:hover {
-  background: var(--card-border);
-  color: var(--text);
-}
-
-.add-meeting-manage-attendees-btn .material-symbols-outlined {
-  font-size: 1rem;
-}
-
-.add-meeting-status-card .add-meeting-input {
-  margin-top: 0.25rem;
-}
-
-/* ── 하단 바 (Discard + Finish & Send Summary) ── */
-.add-meeting-modal-bottom-bar {
-  margin-top: 2rem;
-  padding-top: 2rem;
-  border-top: 1px solid var(--card-border);
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.75rem;
+.add-meeting-discussion-audio-btn {
+  margin-left: auto;
   flex-shrink: 0;
-}
-
-.add-meeting-modal-btn-discard {
-  padding: 0.625rem 1.5rem;
-  font-size: 0.875rem;
-  font-weight: 700;
-  color: var(--text);
-  background: var(--bg-light);
-  border: none;
-  border-radius: 0.5rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.45rem;
+  background: #ecfeff;
+  color: #155e75;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.35rem 0.55rem;
   cursor: pointer;
-  transition: background 0.2s;
 }
 
-.add-meeting-modal-btn-discard:hover {
-  background: var(--card-border);
+.add-meeting-discussion-audio-btn:hover:not(:disabled) {
+  background: #cffafe;
 }
 
-.add-meeting-modal-btn-finish {
-  padding: 0.625rem 2rem;
-  font-size: 0.875rem;
-  font-weight: 700;
-  color: #fff;
-  background: var(--primary);
-  border: none;
-  border-radius: 0.5rem;
-  box-shadow: 0 4px 14px rgba(29, 43, 58, 0.25);
-  cursor: pointer;
-  transition: opacity 0.2s;
-}
-
-.add-meeting-modal-btn-finish:hover:not(:disabled) {
-  opacity: 0.9;
-}
-
-.add-meeting-modal-btn-finish:disabled {
-  opacity: 0.7;
+.add-meeting-discussion-audio-btn:disabled {
+  opacity: 0.6;
   cursor: not-allowed;
 }

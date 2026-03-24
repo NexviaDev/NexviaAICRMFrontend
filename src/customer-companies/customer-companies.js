@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import AddCompanyModal from './add-company-modal/add-company-modal';
 import CustomerCompanyDetailModal from './customer-company-detail-modal/customer-company-detail-modal';
 import CustomerCompaniesExcelImportModal from './customer-companies-excel-import-modal/customer-companies-excel-import-modal';
@@ -12,6 +12,7 @@ import {
 } from '../lib/list-templates';
 import './customer-companies.css';
 import './customer-companies-responsive.css';
+import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 
 import { API_BASE } from '@/config';
 const MODAL_PARAM = 'modal';
@@ -73,7 +74,6 @@ function cellValue(row, key, assigneeIdToName = {}, assigneeNamesReady = false) 
 }
 
 export default function CustomerCompanies() {
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [items, setItems] = useState([]);
   const [searchInput, setSearchInput] = useState('');
@@ -363,11 +363,10 @@ export default function CustomerCompanies() {
           </select>
         </div>
         <div className="header-actions">
-          <button type="button" className="icon-btn" aria-label="공지사항" onClick={() => navigate('/notification')}><span className="material-symbols-outlined">notifications</span></button>
-          <button type="button" className="icon-btn" aria-label="채팅" onClick={() => navigate('/chat')}><span className="material-symbols-outlined">chat_bubble</span></button>
           <button type="button" className="icon-btn" aria-label="리스트 열 설정" onClick={() => { setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), customFieldColumns)); setSettingsOpen(true); }} title="리스트 열 설정">
             <span className="material-symbols-outlined">settings</span>
           </button>
+          <PageHeaderNotifyChat noWrapper buttonClassName="icon-btn" />
         </div>
       </header>
       <div className="page-content">

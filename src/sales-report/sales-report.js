@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import './sales-report.css';
+import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 
 import { API_BASE } from '@/config';
 
 export default function SalesReport() {
-  const navigate = useNavigate();
   const [data, setData] = useState(null);
 
   useEffect(() => {
@@ -36,8 +35,7 @@ export default function SalesReport() {
           <input type="text" placeholder="판매, 고객, 리포트 검색..." />
         </div>
         <div className="header-actions">
-          <button type="button" className="icon-btn" aria-label="공지사항" onClick={() => navigate('/notification')}><span className="material-symbols-outlined">notifications</span></button>
-          <button type="button" className="icon-btn" aria-label="채팅" onClick={() => navigate('/chat')}><span className="material-symbols-outlined">chat_bubble</span></button>
+          <PageHeaderNotifyChat noWrapper buttonClassName="icon-btn" />
         </div>
       </header>
 

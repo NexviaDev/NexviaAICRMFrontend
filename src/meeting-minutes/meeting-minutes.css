@@ -108,3 +108,28 @@
   font-weight: 500;
   color: var(--text-muted);
 }
+
+.meeting-minutes-detail-loading-overlay,
+.meeting-minutes-detail-error-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 1.5rem;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(4px);
+}
+
+.meeting-minutes-detail-loading-overlay p,
+.meeting-minutes-detail-error-overlay p {
+  margin: 0;
+  font-size: 0.9375rem;
+  color: #fff;
+  text-align: center;
+  max-width: 22rem;
+  line-height: 1.5;
+}

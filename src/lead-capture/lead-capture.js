@@ -723,11 +723,11 @@ ${customInputs}
           <p className="lead-capture-subtitle">폼 및 API 연동을 설정하여 유입 리드를 수집합니다. (현재 로그인한 회사 기준)</p>
         </div>
         <div className="lead-capture-header-right">
-          <PageHeaderNotifyChat />
           <button type="button" className="lead-capture-create-btn" onClick={openCreate}>
             <span className="material-symbols-outlined">add</span>
             새 캡처 폼 만들기
           </button>
+          <PageHeaderNotifyChat />
         </div>
       </header>
 
@@ -756,9 +756,8 @@ ${customInputs}
               <table className="lead-capture-table">
                 <thead>
                   <tr>
-                    <th>폼 이름</th>
+                    <th>유입 경로</th>
                     <th>상태</th>
-                    <th>소스</th>
                     <th>총 리드</th>
                     <th>최근 활동</th>
                     <th className="lead-capture-th-action">삭제</th>
@@ -767,7 +766,7 @@ ${customInputs}
                 <tbody>
                   {items.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="lead-capture-empty-cell">
+                      <td colSpan={5} className="lead-capture-empty-cell">
                         등록된 캡처 폼이 없습니다. 새 캡처 폼 만들기를 눌러 추가하세요.
                       </td>
                     </tr>
@@ -788,7 +787,6 @@ ${customInputs}
                             {row.status === 'active' ? '활성' : '비활성'}
                           </span>
                         </td>
-                        <td className="lead-capture-cell-source">{row.source || '—'}</td>
                         <td className="lead-capture-cell-count">{(row.totalLeads ?? 0).toLocaleString()}</td>
                         <td className="lead-capture-cell-activity">{formatLastActivity(row.lastActivityAt)}</td>
                         <td className="lead-capture-cell-action">

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
 import EmailComposeModal from './email-compose-modal.jsx';
 import './email.css';
+import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 
 import { API_BASE } from '@/config';
 
@@ -73,7 +73,6 @@ function EmailHtmlFrame({ html }) {
 }
 
 export default function Email() {
-  const navigate = useNavigate();
   const [folder, setFolder] = useState('inbox');
   const [searchInput, setSearchInput] = useState('');
   const [listItems, setListItems] = useState([]);
@@ -293,15 +292,10 @@ export default function Email() {
           />
         </form>
         <div className="email-header-actions">
-          <button type="button" className="email-header-icon-btn" aria-label="공지사항" title="공지사항" onClick={() => navigate('/notification')}>
-            <span className="material-symbols-outlined">notifications</span>
-          </button>
-          <button type="button" className="email-header-icon-btn" aria-label="채팅" title="채팅" onClick={() => navigate('/chat')}>
-            <span className="material-symbols-outlined">chat_bubble</span>
-          </button>
           <button type="button" className="email-header-icon-btn" aria-label="설정">
             <span className="material-symbols-outlined">settings</span>
           </button>
+          <PageHeaderNotifyChat buttonClassName="email-header-icon-btn" wrapperClassName="email-header-notify-chat" />
         </div>
       </header>
 

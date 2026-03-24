@@ -331,6 +331,195 @@
   flex-shrink: 0;
 }
 
+.co-org-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.co-org-readonly-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #64748b;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.co-org-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.co-org-toolbar-mind-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-right: auto;
+}
+
+.co-org-mind-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border-radius: 0.5rem;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+  line-height: 0;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.co-org-mind-icon-btn:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.co-org-mind-icon-btn .material-symbols-outlined {
+  font-size: 1.35rem;
+}
+
+.co-org-mind-icon-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.co-org-save-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #334155;
+  border-radius: 0.5rem;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.co-org-save-btn:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.co-org-save-btn .material-symbols-outlined {
+  font-size: 1.125rem;
+  font-weight: 500;
+}
+
+.co-org-save-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.co-org-mind {
+  width: 100%;
+  min-height: min(28rem, 65vh);
+  height: min(40rem, 72vh);
+  max-height: 72vh;
+  border: 1px solid #d8e5f2;
+  border-radius: 0.8rem;
+  overflow: hidden;
+  background: #fff;
+  -webkit-overflow-scrolling: touch;
+}
+
+.co-org-mind--readonly {
+  cursor: default;
+}
+
+/* 캔버스·노드 흰 배경 + 테마 변수 통일 (연결선 색은 팔레트 유지) */
+.co-org-mind .map-container {
+  --bgcolor: #ffffff;
+  --main-bgcolor: #ffffff;
+  --main-bgcolor-transparent: rgba(255, 255, 255, 0.92);
+  --root-bgcolor: #ffffff;
+  --root-color: #000000;
+  --root-border-color: #94a3b8;
+  --main-color: #94a3b8;
+  --color: #000000;
+  --panel-bgcolor: #ffffff;
+  --panel-color: #000000;
+  --panel-border-color: #e2e8f0;
+  background-color: #ffffff !important;
+  overflow: hidden !important;
+  height: 100% !important;
+  min-height: 0;
+  width: 100%;
+  touch-action: manipulation;
+}
+
+/* fit-to-view: 스케일 기준 좌상단 */
+.co-org-mind .map-canvas {
+  transform-origin: 0 0;
+  background-color: #ffffff !important;
+}
+
+.co-org-mind me-nodes {
+  background-color: #ffffff !important;
+}
+
+/* 모든 토픽 박스: 항상 테두리·흰 배경(신규 노드·편집 중에도 동일) · 글자 검정 */
+.co-org-mind me-tpc {
+  box-sizing: border-box !important;
+  border: 1px solid #cbd5e1 !important;
+  border-style: solid !important;
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  min-height: 1.5em;
+}
+
+.co-org-mind me-tpc .text,
+.co-org-mind me-tpc .hyper-link,
+.co-org-mind me-tpc a {
+  color: #000000 !important;
+}
+
+.co-org-mind .tags span {
+  color: #000000 !important;
+}
+
+.co-org-mind .map-container #input-box {
+  color: #000000 !important;
+}
+
+.co-org-mind me-parent > me-tpc {
+  border-radius: 0.55rem !important;
+}
+
+.co-org-mind me-root me-tpc {
+  border-radius: 0.75rem !important;
+  border-width: 2px !important;
+}
+
+.co-org-mind me-parent > me-tpc:hover {
+  background-color: #f8fafc !important;
+}
+
+.co-org-mind me-root me-tpc:hover {
+  background-color: #f1f5f9 !important;
+}
+
+.co-org-mind svg path,
+.co-org-mind svg polyline {
+  stroke: #96aec4 !important;
+  stroke-width: 2 !important;
+  stroke-linecap: butt;
+  stroke-linejoin: miter;
+}
+
 @media (max-width: 768px) {
   .company-overview-content {
     padding: 1rem;

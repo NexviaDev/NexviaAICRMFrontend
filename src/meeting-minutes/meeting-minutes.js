@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import AddMeetingModal from './add-meeting-modal/add-meeting-modal';
 import MeetingDetailModal from './meeting-detail-modal/meeting-detail-modal';
@@ -33,11 +33,52 @@ export default function MeetingMinutes() {
   const [searchInput, setSearchInput] = useState('');
   const [loading, setLoading] = useState(true);
   const [editMeeting, setEditMeeting] = useState(null);
+  const [detailMeetingOverride, setDetailMeetingOverride] = useState(null);
+  const [detailFetchLoading, setDetailFetchLoading] = useState(false);
 
-  const isAddOpen = searchParams.get(MODAL_PARAM) === MODAL_ADD;
+  const modalMode = searchParams.get(MODAL_PARAM);
+  const isAddOpen = modalMode === MODAL_ADD;
   const detailId = searchParams.get(DETAIL_ID_PARAM);
-  const isDetailOpen = searchParams.get(MODAL_PARAM) === MODAL_DETAIL && detailId;
-  const selectedMeeting = isDetailOpen ? items.find((m) => m._id === detailId) : null;
+  const isDetailOpen = modalMode === MODAL_DETAIL && detailId;
+
+  const selectedMeeting = useMemo(() => {
+    if (!isDetailOpen || !detailId) return null;
+    const fromList = items.find((m) => m._id === detailId);
+    if (fromList) return fromList;
+    return detailMeetingOverride && detailMeetingOverride._id === detailId ? detailMeetingOverride : null;
+  }, [isDetailOpen, detailId, items, detailMeetingOverride]);
+
+  useEffect(() => {
+    if (!detailId || modalMode !== MODAL_DETAIL) {
+      setDetailMeetingOverride(null);
+      setDetailFetchLoading(false);
+      return;
+    }
+    if (items.some((m) => m._id === detailId)) {
+      setDetailMeetingOverride(null);
+      setDetailFetchLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setDetailFetchLoading(true);
+    fetch(`${API_BASE}/meeting-minutes/${encodeURIComponent(detailId)}`, { headers: getAuthHeader() })
+      .then((r) => {
+        if (!r.ok) return null;
+        return r.json();
+      })
+      .then((data) => {
+        if (cancelled) return;
+        if (data && data._id && !data.error) setDetailMeetingOverride(data);
+        else setDetailMeetingOverride(null);
+      })
+      .catch(() => {
+        if (!cancelled) setDetailMeetingOverride(null);
+      })
+      .finally(() => {
+        if (!cancelled) setDetailFetchLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [detailId, items, modalMode]);
 
   const initialFromAiVoice = location.state?.fromAiVoice
     ? {
@@ -131,11 +172,11 @@ export default function MeetingMinutes() {
           </form>
         </div>
         <div className="header-actions">
-          <PageHeaderNotifyChat noWrapper buttonClassName="icon-btn" />
           <button type="button" className="btn-primary" onClick={openAddModal}>
             <span className="material-symbols-outlined">add</span>
             새 회의 일지
           </button>
+          <PageHeaderNotifyChat noWrapper buttonClassName="icon-btn" />
         </div>
       </header>
 
@@ -144,7 +185,7 @@ export default function MeetingMinutes() {
           <div>
             <h2 className="meeting-minutes-title">회의 일지</h2>
             <p className="page-desc">
-              {pagination.total}건 (총 {pagination.totalPages}페이지)
+              참석자로 지정되었거나 내가 작성한 회의만 목록에 표시됩니다. {pagination.total}건 (총 {pagination.totalPages}페이지)
             </p>
           </div>
         </div>
@@ -258,9 +299,21 @@ export default function MeetingMinutes() {
           }}
           onUpdated={(updated) => {
             setItems((prev) => prev.map((m) => (m._id === updated._id ? updated : m)));
+            setDetailMeetingOverride((prev) => (prev && prev._id === updated._id ? updated : prev));
           }}
           onDeleted={() => { fetchList(1); closeDetailModal(); }}
         />
+      )}
+      {isDetailOpen && !selectedMeeting && (loading || detailFetchLoading) && (
+        <div className="meeting-minutes-detail-loading-overlay" role="status" aria-live="polite">
+          <p>회의 일지를 불러오는 중…</p>
+        </div>
+      )}
+      {isDetailOpen && !selectedMeeting && !loading && !detailFetchLoading && (
+        <div className="meeting-minutes-detail-error-overlay">
+          <p>이 회의 일지를 열람할 수 없거나 참석자·작성자가 아닙니다.</p>
+          <button type="button" className="btn-primary" onClick={closeDetailModal}>닫기</button>
+        </div>
       )}
     </div>
   );

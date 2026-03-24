@@ -3,6 +3,16 @@
   gap: 1rem;
 }
 
+.work-report-header .header-search {
+  flex: 1;
+  max-width: 28rem;
+  min-width: 0;
+}
+
+.work-report-header .header-actions {
+  margin-left: auto;
+}
+
 .work-report-header h2 {
   margin: 0;
   font-size: 1.125rem;

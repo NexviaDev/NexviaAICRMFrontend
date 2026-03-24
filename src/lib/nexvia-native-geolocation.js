@@ -42,7 +42,8 @@ function toCapOptions(options) {
     timeout,
     maximumAge: typeof o.maximumAge === 'number' ? o.maximumAge : 0,
     interval: timeout,
-    minimumUpdateInterval: 1000,
+    /** 지도 실시간 위치 반응 — 너무 낮으면 배터리·발열 증가 (Android/iOS 플러그인 동작에 따름) */
+    minimumUpdateInterval: 250,
     enableLocationFallback: true
   };
 }

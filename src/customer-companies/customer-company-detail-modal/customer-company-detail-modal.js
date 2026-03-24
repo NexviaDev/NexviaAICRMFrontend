@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import AllEmployeesModal from './all-employees-modal/all-employees-modal';
 import AllHistoryModal from './all-history-modal/all-history-modal';
 import ProductSalesModal from '../../shared/product-sales-modal/product-sales-modal';
@@ -86,11 +87,14 @@ function fileToBase64(file) {
 
 /** 고객사 세부정보 모달 - customer-companies-detail.html 기반 */
 export default function CustomerCompanyDetailModal({ company, onClose, onUpdated, onDeleted }) {
+  const navigate = useNavigate();
   const [historyItems, setHistoryItems] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [journalText, setJournalText] = useState('');
   const [journalDateTime, setJournalDateTime] = useState(() => toDatetimeLocalValue(new Date()));
   const [savingNote, setSavingNote] = useState(false);
+  const [audioUploading, setAudioUploading] = useState(false);
+  const [audioDropActive, setAudioDropActive] = useState(false);
   const [journalError, setJournalError] = useState('');
   const [summaryNotice, setSummaryNotice] = useState(null);
   const [employees, setEmployees] = useState([]);
@@ -120,6 +124,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
   const [driveFilesList, setDriveFilesList] = useState([]);
   const [loadingDriveFiles, setLoadingDriveFiles] = useState(false);
   const fileInputRef = useRef(null);
+  const audioInputRef = useRef(null);
   const modalContentRef = useRef(null);
   const [showRegisteredNamePopover, setShowRegisteredNamePopover] = useState(false);
   const [certificateImageError, setCertificateImageError] = useState(false);
@@ -128,6 +133,21 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
   const [displayedCompany, setDisplayedCompany] = useState(company);
   const companyToShow = displayedCompany || company || {};
   const companyId = companyToShow?._id || company?._id;
+  const hasMapCoords = Number.isFinite(Number(companyToShow?.latitude)) && Number.isFinite(Number(companyToShow?.longitude));
+  const mapPreviewSrc = hasMapCoords
+    ? `https://www.google.com/maps?q=${Number(companyToShow.latitude)},${Number(companyToShow.longitude)}&z=15&output=embed`
+    : (companyToShow?.address ? `https://www.google.com/maps?q=${encodeURIComponent(String(companyToShow.address))}&z=15&output=embed` : '');
+
+  const openCompanyOnMap = useCallback(() => {
+    if (!companyId) return;
+    const q = new URLSearchParams();
+    q.set('focusCompanyId', String(companyId));
+    q.set('zoom', '16');
+    const nm = (companyToShow?.name && String(companyToShow.name).trim()) || '';
+    if (nm) q.set('focusName', nm);
+    /** 경로 이동만 수행 — onClose에서 setSearchParams만 호출하면 같은 틱에 navigate가 무시되어 /map으로 가지 못함 */
+    navigate(`/map?${q.toString()}`);
+  }, [companyId, companyToShow?.name, navigate]);
 
   /* 등록된 사업자 등록증 팝오버: 바깥 클릭 시 닫기 */
   useEffect(() => {
@@ -520,6 +540,45 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
     }
   };
 
+  const uploadAudioForJournal = useCallback(async (filesLike) => {
+    const files = Array.from(filesLike || []).filter((f) => f && f instanceof File);
+    if (!files.length || !companyId || savingNote || audioUploading) return;
+    const accept = /\.(mp3|wav|m4a|webm)$/i;
+    const audioTypes = ['audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/x-m4a', 'audio/webm'];
+    const file = files.find((f) => accept.test(f.name) || audioTypes.includes(f.type));
+    if (!file) {
+      setJournalError('MP3, WAV, M4A, WebM 파일만 업로드할 수 있습니다.');
+      return;
+    }
+    setJournalError('');
+    setSummaryNotice({
+      type: 'info',
+      text: '음성 파일을 처리 중입니다. AssemblyAI 전사 후 Gemini가 분류/요약합니다.'
+    });
+    setAudioUploading(true);
+    try {
+      const form = new FormData();
+      form.append('audio', file);
+      const res = await fetch(`${API_BASE}/customer-companies/${companyId}/history/from-audio`, {
+        method: 'POST',
+        headers: getAuthHeader(),
+        body: form
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || '음성 업로드 처리에 실패했습니다.');
+      setJournalText(data.content || '');
+      setJournalDateTime(toDatetimeLocalValue(new Date()));
+      setSummaryNotice({
+        type: 'info',
+        text: '요약이 입력창에 채워졌습니다. 내용 확인 후 "메모 저장"을 눌러 등록해 주세요. 개인정보 보호를 위해 AssemblyAI 전사 데이터는 삭제 요청되었습니다.'
+      });
+    } catch (e) {
+      setJournalError(e.message || '음성 업로드 처리에 실패했습니다.');
+    } finally {
+      setAudioUploading(false);
+    }
+  }, [audioUploading, companyId, fetchCompanyDetail, savingNote]);
+
   const summaryStatusText = {
     idle: '요약 대기',
     queued: 'Gemini 요약 대기 중...',
@@ -595,8 +654,29 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
 
           <div className="customer-company-detail-body">
             <section className="customer-company-detail-card">
-              <div className="customer-company-detail-logo">
-                <span className="material-symbols-outlined">business</span>
+              <div className="customer-company-detail-card-map">
+                <button
+                  type="button"
+                  className="customer-company-detail-card-map-btn"
+                  onClick={openCompanyOnMap}
+                  disabled={!companyId}
+                  title={companyId ? '/map으로 이동해 해당 업체를 검색·표시합니다.' : '고객사 정보가 없습니다.'}
+                >
+                  {mapPreviewSrc ? (
+                    <iframe
+                      title={`${companyToShow.name || '업체'} 위치 미리보기`}
+                      src={mapPreviewSrc}
+                      loading="lazy"
+                      referrerPolicy="no-referrer-when-downgrade"
+                      className="customer-company-detail-card-map-iframe"
+                    />
+                  ) : (
+                    <div className="customer-company-detail-card-map-empty">
+                      <span className="material-symbols-outlined">map</span>
+                      <span>주소/좌표 없음</span>
+                    </div>
+                  )}
+                </button>
               </div>
               <div className="customer-company-detail-info">
                 <div className="customer-company-detail-name-row">
@@ -669,7 +749,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                 <div className="customer-company-detail-meta">
                   {companyToShow.businessNumber != null && (
                     <div className="customer-company-detail-meta-item">
-                      <span className="material-symbols-outlined">fingerprint</span>
+                      <span className="material-symbols-outlined">badge</span>
                       <span>사업자번호: {formatBusinessNumber(companyToShow.businessNumber)}</span>
                     </div>
                   )}
@@ -1017,7 +1097,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
               </div>
               <div className={`customer-company-detail-summary-card ${companyToShow?.summaryStatus === 'error' ? 'is-error' : ''}`}>
                 <div className="customer-company-detail-summary-head">
-                  <strong>업무 요약</strong>
+                  <strong>최근 전체 업무 요약</strong>
                   <span className={`customer-company-detail-summary-status is-${companyToShow?.summaryStatus || 'idle'}`}>
                     {summaryStatusText[companyToShow?.summaryStatus || 'idle'] || '요약 대기'}
                   </span>
@@ -1063,12 +1143,59 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                   value={journalText}
                   onChange={(e) => setJournalText(e.target.value)}
                 />
+                <input
+                  ref={audioInputRef}
+                  type="file"
+                  accept="audio/*,.mp3,.wav,.m4a,.webm"
+                  className="customer-company-detail-audio-input-hidden"
+                  onChange={(e) => {
+                    if (e.target.files?.length) uploadAudioForJournal(e.target.files);
+                    e.target.value = '';
+                  }}
+                  aria-hidden="true"
+                />
+                <div
+                  className={`customer-company-detail-journal-audio-drop ${audioDropActive ? 'is-dragover' : ''} ${audioUploading ? 'is-uploading' : ''}`}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (!audioUploading && !savingNote) setAudioDropActive(true);
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (!e.currentTarget.contains(e.relatedTarget)) setAudioDropActive(false);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setAudioDropActive(false);
+                    if (!audioUploading && !savingNote && e.dataTransfer?.files?.length) {
+                      uploadAudioForJournal(e.dataTransfer.files);
+                    }
+                  }}
+                >
+                  <span className="material-symbols-outlined">audio_file</span>
+                  <span>
+                    {audioUploading
+                      ? '음성 처리 중... (AssemblyAI 전사 → Gemini 분류/요약)'
+                      : '음성 파일 드래그앤드롭 또는 선택 (MP3/WAV/M4A/WebM)'}
+                  </span>
+                  <button
+                    type="button"
+                    className="customer-company-detail-journal-audio-btn"
+                    onClick={() => audioInputRef.current?.click()}
+                    disabled={audioUploading || savingNote}
+                  >
+                    파일 선택
+                  </button>
+                </div>
                 <div className="customer-company-detail-journal-actions">
                   <button
                     type="button"
                     className="customer-company-detail-journal-save"
                     onClick={handleSaveNote}
-                    disabled={savingNote || !journalText.trim()}
+                    disabled={savingNote || audioUploading || !journalText.trim()}
                   >
                     {savingNote ? '저장 중...' : '메모 저장'}
                   </button>

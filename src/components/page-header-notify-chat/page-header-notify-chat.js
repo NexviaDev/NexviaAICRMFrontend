@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { API_BASE } from '@/config';
 import { hasUnreadNotifications } from '@/lib/notification-read-state';
 import './page-header-notify-chat.css';
 
 /**
- * 공지(/notification) · 채팅(/chat) — 사이드바 메뉴와 동일 동작.
+ * 상단 우측: 공지(/notification) · 채팅(/chat) · 할 일(/todo-list) — 사이드바와 동일 이동.
  * 공지는 API 목록과 로컬 읽음 시각을 비교해 미읽음이면 빨간 점 표시.
  */
 export default function PageHeaderNotifyChat({
@@ -13,9 +13,15 @@ export default function PageHeaderNotifyChat({
   buttonClassName = 'icon-btn',
   notificationTitle = '공지사항',
   chatTitle = '채팅',
+  calendarTitle = '캘린더',
+  todoTitle = '할 일',
+  showTodo = true,
   noWrapper = false
 }) {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const calendarActive = pathname === '/calendar';
+  const todoActive = pathname === '/todo-list';
   const [notifyUnread, setNotifyUnread] = useState(false);
 
   const checkUnread = useCallback(async () => {
@@ -76,6 +82,26 @@ export default function PageHeaderNotifyChat({
       >
         <span className="material-symbols-outlined">chat_bubble</span>
       </button>
+      <button
+        type="button"
+        className={`${buttonClassName} page-header-calendar-btn${calendarActive ? ' page-header-calendar-btn--active' : ''}`.trim()}
+        aria-label={calendarTitle}
+        title={calendarTitle}
+        onClick={() => navigate('/calendar')}
+      >
+        <span className="material-symbols-outlined">calendar_month</span>
+      </button>
+      {showTodo ? (
+        <button
+          type="button"
+          className={`${buttonClassName} page-header-todo-btn${todoActive ? ' page-header-todo-btn--active' : ''}`.trim()}
+          aria-label={todoTitle}
+          title={todoTitle}
+          onClick={() => navigate('/todo-list')}
+        >
+          <span className="material-symbols-outlined">checklist</span>
+        </button>
+      ) : null}
     </>
   );
   if (noWrapper) return buttons;

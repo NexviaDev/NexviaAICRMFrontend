@@ -5,7 +5,7 @@ import ProductSearchModal from '../product-search-modal/product-search-modal';
 import './opportunity-modal.css';
 
 import { API_BASE } from '@/config';
-import { listPriceFromProduct } from '@/lib/product-price-utils';
+import { suggestedPriceFromProduct, OPPORTUNITY_PRICE_BASIS_OPTIONS } from '@/lib/product-price-utils';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -14,11 +14,12 @@ function getAuthHeader() {
 
 const STAGE_OPTIONS = [
   { value: 'NewLead', label: '신규 리드' },
-  { value: 'Contacted', label: '접촉 완료' },
+  { value: 'Contacted', label: '연락 완료' },
   { value: 'ProposalSent', label: '제안서 발송' },
+  { value: 'Negotiation', label: '최종 협상' },
+  { value: 'Won', label: '수주 성공' },
   { value: 'Lost', label: '기회 상실' },
-  { value: 'Abandoned', label: '보류' },
-  { value: 'Won', label: '수주 성공' }
+  { value: 'Abandoned', label: '보류' }
 ];
 
 const CURRENCY_OPTIONS = [
@@ -43,6 +44,7 @@ function parseNumber(val) {
 export default function OpportunityModal({ mode, oppId, defaultStage, stageOptions, onClose, onSaved }) {
   const isEdit = mode === 'edit';
   const stageSelectOptions = Array.isArray(stageOptions) && stageOptions.length > 0 ? stageOptions : STAGE_OPTIONS;
+  const firstStageValue = stageSelectOptions[0]?.value || 'NewLead';
   const [form, setForm] = useState({
     title: '',
     customerCompanyId: '',
@@ -51,6 +53,7 @@ export default function OpportunityModal({ mode, oppId, defaultStage, stageOptio
     productId: '',
     productName: '',
     unitPrice: '',
+    priceBasis: 'consumer',
     quantity: '1',
     discountRate: '',
     discountAmount: '',
@@ -89,6 +92,7 @@ export default function OpportunityModal({ mode, oppId, defaultStage, stageOptio
         productId: product?._id || product || '',
         productName: product?.name || '',
         unitPrice: unitForDisplay > 0 ? unitForDisplay.toLocaleString() : '',
+        priceBasis: data.unitPriceBasis === 'channel' ? 'channel' : 'consumer',
         quantity: String(qty),
         discountRate: rate > 0 ? String(rate) : '',
         discountAmount: amt > 0 ? amt.toLocaleString() : '',
@@ -120,6 +124,15 @@ export default function OpportunityModal({ mode, oppId, defaultStage, stageOptio
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose, showCompanySearchModal, showContactSearchModal, showProductSearchModal]);
+
+  /** 단계 미선택(또는 현재 단계가 옵션에 없음)인 경우 첫 번째 단계를 자동 선택 */
+  useEffect(() => {
+    const available = stageSelectOptions.map((s) => s.value);
+    setForm((prev) => {
+      if (prev.stage && available.includes(prev.stage)) return prev;
+      return { ...prev, stage: firstStageValue };
+    });
+  }, [stageSelectOptions, firstStageValue]);
 
   const handleChange = (key, val) => {
     setForm((f) => ({ ...f, [key]: val }));
@@ -171,6 +184,7 @@ export default function OpportunityModal({ mode, oppId, defaultStage, stageOptio
     }
     setSaving(true);
     setError('');
+    const selectedStage = stageSelectOptions.some((s) => s.value === form.stage) ? form.stage : firstStageValue;
     try {
       const body = {
         title: titleToUse,
@@ -179,11 +193,12 @@ export default function OpportunityModal({ mode, oppId, defaultStage, stageOptio
         productId: form.productId || null,
         productName: form.productName?.trim() || '',
         unitPrice: parseNumber(form.unitPrice),
+        unitPriceBasis: form.priceBasis === 'channel' ? 'channel' : 'consumer',
         quantity: Math.max(0, Number(form.quantity) || 1),
         discountRate: Math.max(0, Math.min(100, Number(form.discountRate) || 0)),
         discountAmount: parseNumber(form.discountAmount) || 0,
         currency: form.currency,
-        stage: form.stage,
+        stage: selectedStage,
         description: form.description.trim()
       };
       const url = isEdit
@@ -279,7 +294,7 @@ export default function OpportunityModal({ mode, oppId, defaultStage, stageOptio
                   {form.productName ? (
                     <span className="opp-product-pill">
                       {form.productName}
-                      <button type="button" onClick={() => { setForm((f) => ({ ...f, productId: '', productName: '', unitPrice: '', currency: 'KRW' })); setSelectedProduct(null); setShowProductFields(false); }} aria-label="제거">
+                      <button type="button" onClick={() => { setForm((f) => ({ ...f, productId: '', productName: '', unitPrice: '', currency: 'KRW', priceBasis: f.priceBasis || 'consumer' })); setSelectedProduct(null); setShowProductFields(false); }} aria-label="제거">
                         <span className="material-symbols-outlined">close</span>
                       </button>
                     </span>
@@ -333,10 +348,41 @@ export default function OpportunityModal({ mode, oppId, defaultStage, stageOptio
                 </div>
               </div>
 
-              {/* 단가 및 통화 / 수량 / 할인율 / 차감금액 */}
+              {/* 가격 기준(제품 목록: 소비자 마진 / 유통 마진 축) */}
+              <div className="opp-label">
+                <span>가격 기준</span>
+                <p className="opp-price-basis-hint">제품 목록의 소비자 마진·유통 마진과 같은 가격 축을 선택합니다. 제품 선택 시 아래 가격이 자동 채워집니다.</p>
+                <div className="opp-price-basis-group" role="group" aria-label="가격 기준">
+                  {OPPORTUNITY_PRICE_BASIS_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      className={'opp-price-basis-btn' + (form.priceBasis === opt.value ? ' opp-price-basis-btn--selected' : '')}
+                      onClick={() => {
+                        const basis = opt.value;
+                        setForm((f) => {
+                          const next = { ...f, priceBasis: basis };
+                          if (selectedProduct) {
+                            const p = suggestedPriceFromProduct(selectedProduct, basis);
+                            next.unitPrice = p > 0 ? p.toLocaleString() : '';
+                          }
+                          return next;
+                        });
+                        setError('');
+                      }}
+                      title={opt.desc}
+                    >
+                      <span className="opp-price-basis-btn-label">{opt.label}</span>
+                      <span className="opp-price-basis-btn-sub">{opt.shortLabel}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 가격 및 통화 / 수량 / 할인율 / 차감금액 */}
               <div className="opp-financial-grid">
                 <div className="opp-label">
-                  <span>단가 및 통화</span>
+                  <span>가격 및 통화</span>
                   <div className="opp-unit-currency-wrap">
                     <input
                       type="text"
@@ -440,16 +486,19 @@ export default function OpportunityModal({ mode, oppId, defaultStage, stageOptio
             onSelect={(products) => {
               const product = Array.isArray(products) ? products[0] : products;
               if (!product) return;
-              const price = listPriceFromProduct(product);
               setSelectedProduct(product);
               setShowProductFields(false);
-              setForm((f) => ({
-                ...f,
-                productId: product._id,
-                productName: product.name || '',
-                unitPrice: price > 0 ? price.toLocaleString() : '',
-                currency: product.currency || f.currency || 'KRW'
-              }));
+              setForm((f) => {
+                const basis = f.priceBasis === 'channel' ? 'channel' : 'consumer';
+                const price = suggestedPriceFromProduct(product, basis);
+                return {
+                  ...f,
+                  productId: product._id,
+                  productName: product.name || '',
+                  unitPrice: price > 0 ? price.toLocaleString() : '',
+                  currency: product.currency || f.currency || 'KRW'
+                };
+              });
               setShowProductSearchModal(false);
             }}
           />

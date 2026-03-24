@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import AddProductModal from './add-product-modal/add-product-modal';
 import ProductDetailModal from './product-detail-modal/product-detail-modal';
 import ListTemplateModal from '../components/list-template-modal/list-template-modal';
@@ -10,6 +10,7 @@ import {
   patchListTemplate
 } from '../lib/list-templates';
 import './product-list.css';
+import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 
 import { API_BASE } from '@/config';
 import { listPriceFromProduct } from '@/lib/product-price-utils';
@@ -48,8 +49,17 @@ function formatPrice(price, currency) {
   return `${sym}${Number(price).toLocaleString()}`;
 }
 
+/** 유통 마진 = 유통가 − 원가 — 영업 기회「유통 마진 기준」가격(channelPrice)과 동일 축 */
+function getChannelMargin(row) {
+  return (Number(row.channelPrice) || 0) - (Number(row.costPrice) || 0);
+}
+
+/** 소비자 마진 = 소비자가 − 원가 — 영업 기회「소비자 마진 기준」가격(listPrice/price)과 동일 축 */
+function getConsumerMargin(row) {
+  return (Number(listPriceFromProduct(row)) || 0) - (Number(row.costPrice) || 0);
+}
+
 export default function ProductList() {
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [items, setItems] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, limit: LIMIT, total: 0, totalPages: 0 });
@@ -192,6 +202,8 @@ export default function ProductList() {
     if (key === 'price') return listPriceFromProduct(row);
     if (key === 'costPrice') return Number(row.costPrice) || 0;
     if (key === 'channelPrice') return Number(row.channelPrice) || 0;
+    if (key === 'consumerMargin') return getConsumerMargin(row);
+    if (key === 'channelMargin') return getChannelMargin(row);
     if (key === 'currency') return (row.currency || '').toLowerCase();
     if (key === 'billingType') return (row.billingType || '').toLowerCase();
     if (key === 'status') return (row.status || '').toLowerCase();
@@ -242,8 +254,6 @@ export default function ProductList() {
           </form>
         </div>
         <div className="header-actions">
-          <button type="button" className="icon-btn" aria-label="공지사항" onClick={() => navigate('/notification')}><span className="material-symbols-outlined">notifications</span></button>
-          <button type="button" className="icon-btn" aria-label="채팅" onClick={() => navigate('/chat')}><span className="material-symbols-outlined">chat_bubble</span></button>
           <button
             type="button"
             className="icon-btn"
@@ -256,6 +266,7 @@ export default function ProductList() {
           >
             <span className="material-symbols-outlined">settings</span>
           </button>
+          <PageHeaderNotifyChat noWrapper buttonClassName="icon-btn" />
         </div>
       </header>
       <div className="page-content">
@@ -376,6 +387,12 @@ export default function ProductList() {
                           )}
                           {col.key === 'channelPrice' && (
                             <span className="product-list-price">{formatPrice(row.channelPrice, row.currency)}</span>
+                          )}
+                          {col.key === 'consumerMargin' && (
+                            <span className="product-list-price">{formatPrice(getConsumerMargin(row), row.currency)}</span>
+                          )}
+                          {col.key === 'channelMargin' && (
+                            <span className="product-list-price">{formatPrice(getChannelMargin(row), row.currency)}</span>
                           )}
                           {col.key === 'status' && (
                             <span className={`status-badge status-${row.status === 'Active' ? 'active' : row.status === 'EndOfLife' ? 'eol' : 'draft'}`}>

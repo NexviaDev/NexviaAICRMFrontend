@@ -4,22 +4,36 @@ import './home.css';
 
 import { API_BASE } from '@/config';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
+import TodoList from '@/todo-list/todo-list';
+import Calendar from '@/calendar/calendar';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+/** 홈 패널에 표시할 캡처 리드 최대 건수 (오래된 순 정렬 후 앞쪽) */
+const HOME_CAPTURE_LEADS_DISPLAY_MAX = 120;
+
 const DEFAULT_STAGE_LABELS = {
   NewLead: '신규 리드',
-  Contacted: '접촉 완료',
-  ProposalSent: '제안서 발송'
+  Contacted: '연락 완료',
+  ProposalSent: '제안서 발송',
+  Negotiation: '최종 협상',
+  Won: '수주 성공'
 };
-const DEFAULT_ACTIVE_STAGES = ['NewLead', 'Contacted', 'ProposalSent'];
+const DEFAULT_ACTIVE_STAGES = ['NewLead', 'Contacted', 'ProposalSent', 'Negotiation', 'Won'];
 
 /** sales-pipeline.js DROP_ZONE_CONFIG·하단 드롭존과 동일 — 진행 딜·첫 단계 집계에서 제외 */
-const DROP_ZONE_STAGES = ['Lost', 'Abandoned', 'Won'];
+const DROP_ZONE_STAGES = ['Lost', 'Abandoned'];
 const CURRENCY_SYMBOLS = { KRW: '₩', USD: '$', JPY: '¥' };
+const PIPELINE_STEP_HINTS = {
+  NewLead: '잠재 고객 발굴',
+  Contacted: '초기 미팅 완료',
+  ProposalSent: '견적 및 협상',
+  Negotiation: '클로징 단계',
+  Won: '최종 승인'
+};
 
 function formatCurrency(value, currency) {
   const code = String(currency || 'KRW').toUpperCase();
@@ -29,6 +43,28 @@ function formatCurrency(value, currency) {
 }
 
 /** 대시보드 매출 객체 → 표시 문자열 (통화 혼합 시 · 구분) */
+function formatLeadReceivedAt(iso) {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' });
+  } catch {
+    return '—';
+  }
+}
+
+/** 리드 연락처 — customFields.phone (리드 캡처 폼과 동일), 없으면 상위 phone */
+function formatLeadContact(lead) {
+  const cf = lead?.customFields;
+  const raw =
+    cf && cf.phone != null && String(cf.phone).trim() !== ''
+      ? cf.phone
+      : lead?.phone != null && String(lead.phone).trim() !== ''
+        ? lead.phone
+        : '';
+  if (raw === '' || raw == null) return '—';
+  return String(raw);
+}
+
 function formatWonRevenue(w) {
   const entries = Object.entries(w || {}).filter(([, amount]) => Number(amount) > 0);
   if (entries.length === 0) return formatCurrency(0, 'KRW');
@@ -52,9 +88,24 @@ function prepareChartSeries(series) {
   });
 }
 
+function buildLinePath(series) {
+  if (!Array.isArray(series) || series.length === 0) return '';
+  if (series.length === 1) return 'M0,100 L400,100';
+  const maxAbs = Math.max(1, ...series.map((item) => Math.abs(Number(item?.value) || 0)));
+  return series.map((item, idx) => {
+    const x = Math.round((idx / (series.length - 1)) * 400);
+    const y = Math.round(180 - ((Number(item?.value) || 0) / maxAbs) * 130);
+    return `${idx === 0 ? 'M' : 'L'}${x},${y}`;
+  }).join(' ');
+}
+
 export default function Home() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [leadChannels, setLeadChannels] = useState([]);
+  const [leadChannelsLoading, setLeadChannelsLoading] = useState(true);
+  /** 캡처 채널별 수신 리드 (receivedAt 오름차순 = 가장 오래된 것부터) */
+  const [recentCaptureLeads, setRecentCaptureLeads] = useState([]);
   const [grouped, setGrouped] = useState({});
   const [totals, setTotals] = useState({});
   const [stageDefinitions, setStageDefinitions] = useState([]);
@@ -89,6 +140,71 @@ export default function Home() {
       }
     };
     fetchData();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchLeadCaptureDashboard = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/lead-capture-forms`, { headers: getAuthHeader(), credentials: 'include' });
+        const json = await res.json().catch(() => ({}));
+        if (!cancelled && res.ok) {
+          const items = Array.isArray(json.items) ? json.items : [];
+          const bySource = new Map();
+          items.forEach((item) => {
+            const source = String(item?.source || '기타 채널').trim() || '기타 채널';
+            const prev = bySource.get(source) || 0;
+            bySource.set(source, prev + (Number(item?.totalLeads) || 0));
+          });
+          const sorted = Array.from(bySource.entries())
+            .map(([source, count]) => ({ source, count }))
+            .sort((a, b) => b.count - a.count);
+          setLeadChannels(sorted);
+
+          const leadBatches = await Promise.all(
+            items.map(async (form) => {
+              try {
+                const lr = await fetch(`${API_BASE}/lead-capture-forms/${form._id}/leads`, {
+                  headers: getAuthHeader(),
+                  credentials: 'include'
+                });
+                const lj = await lr.json().catch(() => ({}));
+                if (!lr.ok) return [];
+                const list = Array.isArray(lj.items) ? lj.items : [];
+                const channelLabel = String(form?.name || '').trim() || '캡처 채널';
+                const channelSource = String(form?.source || '').trim() || '기타 채널';
+                return list.map((lead) => ({
+                  ...lead,
+                  _channelLabel: channelLabel,
+                  _channelSource: channelSource
+                }));
+              } catch {
+                return [];
+              }
+            })
+          );
+          const merged = leadBatches.flat();
+          merged.sort((a, b) => {
+            const ta = new Date(a.receivedAt || 0).getTime();
+            const tb = new Date(b.receivedAt || 0).getTime();
+            return ta - tb;
+          });
+          if (!cancelled) setRecentCaptureLeads(merged);
+        } else if (!cancelled) {
+          setLeadChannels([]);
+          setRecentCaptureLeads([]);
+        }
+      } catch (_) {
+        if (!cancelled) {
+          setLeadChannels([]);
+          setRecentCaptureLeads([]);
+        }
+      } finally {
+        if (!cancelled) setLeadChannelsLoading(false);
+      }
+    };
+    fetchLeadCaptureDashboard();
     return () => { cancelled = true; };
   }, []);
 
@@ -184,24 +300,32 @@ export default function Home() {
     {
       label: '총 매출 (수주 성공)',
       value: formatWonRevenue(stats.wonRevenue),
+      subtext: '지난달 대비 지표',
+      icon: 'payments',
       color: 'primary',
       fromPipeline: false
     },
     {
       label: '진행 중 딜 (파이프라인)',
       value: inProgressDealCount,
+      subtext: '현재 진행 단계 기준',
+      icon: 'handshake',
       color: 'rose',
       fromPipeline: true
     },
     {
       label: `${firstPipelineStageLabel} · 파이프라인 첫 단계`,
       value: newLeadStageCount,
+      subtext: '첫 단계 유입 건수',
+      icon: 'person_add',
       color: 'mint',
       fromPipeline: true
     },
     {
       label: '업무 완료율',
       value: `${stats.taskCompletion ?? 82}%`,
+      subtext: '최근 업무 처리 기준',
+      icon: 'task_alt',
       color: 'primary',
       fromPipeline: false
     }
@@ -271,21 +395,43 @@ export default function Home() {
           <p className="home-chart-empty">그래프 불러오는 중…</p>
         ) : series.length === 0 || series.every((item) => item.value === 0) ? (
           <p className="home-chart-empty">{emptyText}</p>
+        ) : tone === 'margin' ? (
+          <div className="home-line-chart-wrap">
+            <svg className="home-line-chart" viewBox="0 0 400 200" preserveAspectRatio="none" aria-hidden>
+              <path d={buildLinePath(series)} fill="none" />
+              {series.map((item, idx) => {
+                const maxAbs = Math.max(1, ...series.map((s) => Math.abs(Number(s?.value) || 0)));
+                const x = series.length === 1 ? 0 : Math.round((idx / (series.length - 1)) * 400);
+                const y = Math.round(180 - ((Number(item?.value) || 0) / maxAbs) * 130);
+                return <circle key={`${title}-dot-${item.label}`} cx={x} cy={y} r="4" />;
+              })}
+            </svg>
+            <div className="home-line-chart-labels">
+              {series.map((item) => (
+                <span key={`${title}-label-${item.label}`}>{item.label}</span>
+              ))}
+            </div>
+          </div>
         ) : (
-          <div className="home-mini-chart">
-            {series.map((item) => (
-              <div key={`${title}-${item.label}`} className="home-mini-chart-col">
-                <span className={`home-mini-chart-value tone-${tone}`}>{formatCurrency(item.value, selectedGraphCurrency)}</span>
-                <div className="home-mini-chart-track">
-                  <div
-                    className={`home-mini-chart-bar tone-${tone} ${item.value < 0 ? 'negative' : ''}`}
-                    style={{ height: `${item.height}%` }}
-                    title={`${item.label} ${formatCurrency(item.value, selectedGraphCurrency)}`}
-                  />
+          <div className="home-bar-chart-wrap">
+            <div className="home-mini-chart">
+              {series.map((item) => (
+                <div key={`${title}-${item.label}`} className="home-mini-chart-col">
+                  <div className="home-mini-chart-track">
+                    <div
+                      className={`home-mini-chart-bar tone-${tone} ${item.value < 0 ? 'negative' : ''}`}
+                      style={{ height: `${Math.max(12, item.height * 2)}%` }}
+                      title={`${item.label} ${formatCurrency(item.value, selectedGraphCurrency)}`}
+                    />
+                  </div>
                 </div>
-                <span className="home-mini-chart-label">{item.label}</span>
-              </div>
-            ))}
+              ))}
+            </div>
+            <div className="home-bar-chart-labels">
+              {series.map((item) => (
+                <span key={`${title}-x-${item.label}`}>{item.label}</span>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -295,28 +441,125 @@ export default function Home() {
   return (
     <div className="page home-page">
       <header className="page-header">
-        <div className="header-search">
-          <span className="material-symbols-outlined">search</span>
-          <input type="text" placeholder="딜, 연락처, 업무 검색..." />
-        </div>
         <PageHeaderNotifyChat />
       </header>
 
       <div className="page-content">
-        <div className="cards-grid">
-          {cards.map((card) => (
-            <div key={card.label} className="stat-card">
-              <div className="stat-card-top">
-                <p className="stat-label">{card.label}</p>
+        <header className="home-overview-header">
+          <h1>대시보드 개요</h1>
+          <p>환영합니다! 오늘 당신의 성과를 확인해보세요.</p>
+        </header>
+
+        <div className="home-top-grid">
+          <div className="panel home-lead-channel-panel">
+            <div className="panel-head">
+              <h2>캡처 채널별 리드 수신</h2>
+              <Link to="/lead-capture" className="home-pipeline-link">채널 관리</Link>
+            </div>
+            <div className="home-lead-channel-body">
+              {leadChannelsLoading ? (
+                <p className="home-chart-empty">채널 데이터 불러오는 중…</p>
+              ) : leadChannels.length === 0 ? (
+                <p className="home-chart-empty">표시할 캡처 채널 데이터가 없습니다.</p>
+              ) : (
+                <ul className="home-lead-channel-list">
+                  {leadChannels.slice(0, 8).map((channel) => (
+                    <li key={channel.source} className="home-lead-channel-item">
+                      <div className="home-lead-channel-source">
+                        <span className="home-lead-channel-dot" />
+                        <span>{channel.source}</span>
+                      </div>
+                      <strong>{channel.count.toLocaleString()}건</strong>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+
+          <div className="cards-grid cards-grid-compact">
+            {cards.map((card) => (
+              <div key={card.label} className="stat-card">
+                <div className="stat-card-top">
+                  <p className="stat-label">{card.label}</p>
+                  <span className="material-symbols-outlined stat-card-icon" aria-hidden>{card.icon}</span>
+                </div>
+                <h3 className="stat-value">
+                  {card.fromPipeline ? (pipelineLoading ? '—' : card.value) : loading ? '—' : card.value}
+                </h3>
+                <p className="stat-subtext">{card.subtext}</p>
+                <div className="stat-bar-wrap">
+                  <div className={`stat-bar stat-bar-${card.color}`} style={{ width: typeof card.value === 'string' && card.value.includes('%') ? card.value : '65%' }} />
+                </div>
               </div>
-              <h3 className="stat-value">
-                {card.fromPipeline ? (pipelineLoading ? '—' : card.value) : loading ? '—' : card.value}
-              </h3>
-              <div className="stat-bar-wrap">
-                <div className={`stat-bar stat-bar-${card.color}`} style={{ width: typeof card.value === 'string' && card.value.includes('%') ? card.value : '65%' }} />
+            ))}
+          </div>
+        </div>
+
+        <div className="home-schedule-split">
+          <div className="home-schedule-left-stack">
+            <div className="panel tasks-panel home-todo-panel">
+              <div className="panel-head">
+                <h2>예정 업무</h2>
+                <Link to="/todo-list" className="home-pipeline-link">모두 보기</Link>
+              </div>
+              <section className="home-todo-upcoming" aria-label="예정 업무">
+                <TodoList embedded />
+              </section>
+            </div>
+            <div className="panel tasks-panel home-leads-panel">
+              <div className="panel-head">
+                <h2>수신 리드</h2>
+                <Link to="/lead-capture" className="home-pipeline-link">리드 캡처</Link>
+              </div>
+              <div className="home-todo-leads-scroll" aria-label="캡처 채널 수신 리드 목록">
+                {leadChannelsLoading ? (
+                  <p className="home-todo-leads-empty">불러오는 중…</p>
+                ) : recentCaptureLeads.length === 0 ? (
+                  <p className="home-todo-leads-empty">수신된 리드가 없습니다.</p>
+                ) : (
+                  <>
+                    <ul className="home-todo-leads-list">
+                      {recentCaptureLeads.slice(0, HOME_CAPTURE_LEADS_DISPLAY_MAX).map((lead) => (
+                        <li key={String(lead._id)} className="home-todo-leads-item">
+                          <div className="home-todo-leads-item-main">
+                            <span className="home-todo-leads-channel" title={lead._channelLabel}>
+                              {lead._channelLabel}
+                            </span>
+                            <span className="home-todo-leads-meta">
+                              {lead._channelSource}
+                            </span>
+                          </div>
+                          <div className="home-todo-leads-item-body">
+                            <strong className="home-todo-leads-name">{lead.name || '(이름 없음)'}</strong>
+                            <span className="home-todo-leads-email">{lead.email || '—'}</span>
+                            <span className="home-todo-leads-phone">{formatLeadContact(lead)}</span>
+                          </div>
+                          <time className="home-todo-leads-time" dateTime={lead.receivedAt ? new Date(lead.receivedAt).toISOString() : undefined}>
+                            {formatLeadReceivedAt(lead.receivedAt)}
+                          </time>
+                        </li>
+                      ))}
+                    </ul>
+                    {recentCaptureLeads.length > HOME_CAPTURE_LEADS_DISPLAY_MAX ? (
+                      <p className="home-todo-leads-more">
+                        오래된 순 상위 {HOME_CAPTURE_LEADS_DISPLAY_MAX}건만 표시합니다. 전체는{' '}
+                        <Link to="/lead-capture">리드 캡처</Link>에서 확인하세요. (총 {recentCaptureLeads.length.toLocaleString()}건)
+                      </p>
+                    ) : null}
+                  </>
+                )}
               </div>
             </div>
-          ))}
+          </div>
+          <div className="panel home-dashboard-calendar-panel">
+            <div className="home-dashboard-calendar-embed">
+              <div className="home-dashboard-calendar-top-link-wrap">
+                <Link to="/calendar" className="home-pipeline-link">캘린더 전체 보기</Link>
+              </div>
+              <Calendar />
+            </div>
+          </div>
         </div>
 
         <div className="home-insights-grid">
@@ -348,23 +591,24 @@ export default function Home() {
               </Link>
             </div>
           </div>
-          <div className="pipeline-bars">
+          <div className="pipeline-steps">
             {pipelineLoading ? (
               <p className="home-pipeline-loading">파이프라인 불러오는 중…</p>
             ) : pipelineColumns.length === 0 ? (
               <p className="home-pipeline-empty">표시할 단계가 없습니다. 세일즈 현황에서 단계를 설정해 주세요.</p>
             ) : (
-              pipelineColumns.map((col) => (
-                <div key={col.stage} className="pipeline-col">
-                  <div className="pipeline-label">
-                    <span>{col.label} ({col.count})</span>
-                    <span className="pipeline-value">{formatCurrency(col.total, col.currency)}</span>
+              pipelineColumns.map((col, idx) => (
+                <div key={col.stage} className="pipeline-step-wrap">
+                  <div className={`pipeline-step-card pipeline-step-${col.stage}`}>
+                    <span className="pipeline-step-title">{col.label}</span>
                   </div>
-                  <div className="pipeline-bar-wrap">
-                    <div className="pipeline-bar" style={{ height: `${col.hCount}%` }} title={`건수 비중 ${col.count}건`} />
-                    <div className="pipeline-bar alt" style={{ height: `${col.hValue}%` }} title="단계별 금액 비중" />
-                    <div className="pipeline-bar dark" style={{ height: `${col.hMix}%` }} title="건수·금액 혼합" />
+                  <div className="pipeline-step-metrics">
+                    <p>{col.count}</p>
+                    <span>{PIPELINE_STEP_HINTS[col.stage] || '파이프라인 단계'}</span>
                   </div>
+                  {idx < pipelineColumns.length - 1 && (
+                    <span className="material-symbols-outlined pipeline-step-arrow" aria-hidden>chevron_right</span>
+                  )}
                 </div>
               ))
             )}
@@ -372,53 +616,29 @@ export default function Home() {
         </div>
 
         <div className="home-bottom">
-          <div className="panel tasks-panel">
-            <div className="panel-head"><h2>예정 업무</h2></div>
-            <div className="tasks-list">
-              <div className="task-item done">
-                <span className="material-symbols-outlined text-mint">check_circle</span>
-                <div>
-                  <p>Acme Corp 후속 연락</p>
-                  <span className="task-meta">오늘 14:30</span>
-                </div>
-              </div>
-              <div className="task-item">
-                <span className="material-symbols-outlined">radio_button_unchecked</span>
-                <div>
-                  <p>GlobalX 제안서 검토</p>
-                  <span className="task-meta">내일 10:00</span>
-                </div>
-              </div>
-              <div className="task-item">
-                <span className="material-symbols-outlined">radio_button_unchecked</span>
-                <div>
-                  <p>팀 분기 정기 회의</p>
-                  <span className="task-meta">금요일 16:00</span>
-                </div>
-              </div>
-            </div>
-            <button type="button" className="link-btn">전체 업무 보기</button>
-          </div>
           <div className="panel reps-panel">
             <div className="panel-head">
               <h2>우수 영업 담당자</h2>
-              <span className="panel-badge">3분기 실적</span>
+              <div className="home-reps-switch">
+                <button type="button">주간</button>
+                <button type="button" className="active">월간</button>
+              </div>
             </div>
             <div className="table-wrap">
               <table className="data-table">
                 <thead>
                   <tr>
                     <th>담당자</th>
-                    <th>계약 건수</th>
-                    <th>총 금액</th>
+                    <th>매출액</th>
+                    <th>딜 클로징</th>
                     <th>목표 달성률</th>
                   </tr>
                 </thead>
                 <tbody>
                   {[
-                    { name: 'Sarah Jenkins', init: 'SR', deals: 24, value: '$184,000', quota: 95 },
-                    { name: 'Mark Thompson', init: 'MT', deals: 19, value: '$142,500', quota: 82 },
-                    { name: 'David Lee', init: 'DL', deals: 15, value: '$98,000', quota: 65 }
+                    { name: '이지은', init: 'EJ', deals: 12, value: '₩24,500k', quota: 95 },
+                    { name: '김지우', init: 'KJ', deals: 9, value: '₩18,200k', quota: 82 },
+                    { name: '박도윤', init: 'PD', deals: 7, value: '₩15,900k', quota: 70 }
                   ].map((row) => (
                     <tr key={row.name}>
                       <td>
@@ -427,8 +647,8 @@ export default function Home() {
                           {row.name}
                         </div>
                       </td>
-                      <td>{row.deals}</td>
                       <td className="font-semibold">{row.value}</td>
+                      <td>{row.deals}</td>
                       <td>
                         <div className="quota-cell">
                           <div className="quota-bar"><div className="quota-fill" style={{ width: row.quota + '%' }} /></div>

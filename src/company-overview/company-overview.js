@@ -1,13 +1,62 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import CompanyDriveSettingsModal from './company-drive-settings-modal/company-drive-settings-modal';
 import './company-overview.css';
+import 'mind-elixir/style.css';
 
 import { API_BASE } from '@/config';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
+import {
+  mindOrgGenerateMainBranch,
+  mindOrgGenerateSubBranch,
+  mindOrgFitToView,
+  CO_ORG_SCALE_MIN,
+  CO_ORG_SCALE_MAX,
+  coOrgPn
+} from '@/lib/org-chart-mind-shared';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+/** 조직도 노드 → 직원 부서 선택 라벨 */
+function formatOrgDeptPickerLabel(node) {
+  if (!node || typeof node !== 'object') return '';
+  const n = String(node.name || '').trim();
+  const r = String(node.roleLabel || '').trim();
+  if (!n) return '';
+  return r ? `${n} (${r})` : n;
+}
+
+function flattenOrgChartOptions(node, acc = []) {
+  if (!node || typeof node !== 'object') return acc;
+  const id = String(node.id || '').trim();
+  if (id) acc.push({ id, label: formatOrgDeptPickerLabel(node) });
+  for (const c of node.children || []) flattenOrgChartOptions(c, acc);
+  return acc;
+}
+
+function findOrgChartNodeById(node, id) {
+  if (!node || id == null || id === '') return null;
+  const sid = String(id);
+  if (String(node.id) === sid) return node;
+  for (const c of node.children || []) {
+    const f = findOrgChartNodeById(c, sid);
+    if (f) return f;
+  }
+  return null;
+}
+
+function resolveDeptDisplay(orgChartRoot, stored) {
+  const s = String(stored || '').trim();
+  if (!s) return '';
+  const n = findOrgChartNodeById(orgChartRoot, s);
+  if (n) return formatOrgDeptPickerLabel(n);
+  return s;
+}
+
+function deptLegacySelectValue(raw) {
+  return `legacy:${encodeURIComponent(raw)}`;
 }
 
 function formatSubscriptionDate(iso) {
@@ -30,6 +79,10 @@ export default function CompanyOverview() {
   const [selectedApproverIds, setSelectedApproverIds] = useState([]);
   const [requestSending, setRequestSending] = useState(false);
   const [requestMessage, setRequestMessage] = useState('');
+  const [orgChart, setOrgChart] = useState(null);
+  const [orgSaving, setOrgSaving] = useState(false);
+  const mindContainerRef = useRef(null);
+  const mindInstanceRef = useRef(null);
 
   const roleLabel = (role) => {
     if (role === 'owner') return '대표 (Owner / CEO)';
@@ -61,9 +114,202 @@ export default function CompanyOverview() {
 
   const { company = {}, employees = [], subscription = {} } = data || {};
   const me = data?.me || {};
+  const canManageRoles = ['owner', 'senior'].includes(me.role);
+  const orgDeptOptions = useMemo(() => {
+    if (!orgChart || typeof orgChart !== 'object') return [];
+    return flattenOrgChartOptions(orgChart);
+  }, [orgChart]);
+
+  useEffect(() => {
+    if (company?.organizationChart) setOrgChart(company.organizationChart);
+  }, [company?.organizationChart]);
+
+  const saveOrgChart = useCallback(async (nextTree) => {
+    setOrgSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/companies/organization-chart`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+        body: JSON.stringify({ organizationChart: nextTree })
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || '조직도 저장 실패');
+      setOrgChart(json.organizationChart || nextTree);
+      setData((prev) => prev ? { ...prev, company: { ...prev.company, organizationChart: json.organizationChart || nextTree } } : prev);
+    } catch (e) {
+      setActionError(e.message || '조직도 저장 실패');
+    } finally {
+      setOrgSaving(false);
+    }
+  }, []);
+
+  const toMindNode = useCallback((node) => {
+    if (!node) return null;
+    return {
+      id: String(node.id || `org_${Date.now().toString(36)}`),
+      topic: node.roleLabel ? `${node.name || ''}\n${node.roleLabel}` : (node.name || ''),
+      children: (node.children || []).map(toMindNode).filter(Boolean)
+    };
+  }, []);
+
+  const toOrgNode = useCallback((node) => {
+    const lines = String(node?.topic || '').split('\n');
+    const name = String(lines[0] || '').trim() || '새 조직';
+    const roleLabel = String(lines.slice(1).join('\n') || '').trim();
+    return {
+      id: String(node?.id || `org_${Date.now().toString(36)}`),
+      name,
+      roleLabel,
+      children: Array.isArray(node?.children) ? node.children.map(toOrgNode) : []
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!orgChart || !mindContainerRef.current) return undefined;
+    let cancelled = false;
+    let debounceTimer = 0;
+    /** @type {ResizeObserver | null} */
+    let resizeObs = null;
+    let mindForCleanup = null;
+
+    const scheduleFitDebounced = () => {
+      window.clearTimeout(debounceTimer);
+      debounceTimer = window.setTimeout(() => {
+        debounceTimer = 0;
+        if (cancelled || !mindForCleanup) return;
+        mindOrgFitToView(mindForCleanup);
+      }, 120);
+    };
+
+    const scheduleFitSoon = () => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (cancelled || !mindForCleanup) return;
+          mindOrgFitToView(mindForCleanup);
+        });
+      });
+    };
+
+    const onOperation = () => scheduleFitDebounced();
+    const onExpandNode = () => scheduleFitSoon();
+
+    (async () => {
+      const mod = await import('mind-elixir');
+      const MindElixir = mod.default;
+      if (cancelled || !mindContainerRef.current) return;
+      if (mindInstanceRef.current) {
+        mindInstanceRef.current.destroy();
+        mindInstanceRef.current = null;
+      }
+      const editable = canManageRoles;
+      const mind = new MindElixir({
+        el: mindContainerRef.current,
+        direction: MindElixir.RIGHT,
+        editable,
+        contextMenu: editable,
+        toolBar: false,
+        keypress: editable
+          ? {
+              F1: (ev) => {
+                ev.preventDefault();
+              }
+            }
+          : false,
+        allowUndo: editable,
+        newTopicName: '새 조직',
+        scaleMin: CO_ORG_SCALE_MIN,
+        scaleMax: CO_ORG_SCALE_MAX,
+        generateMainBranch: mindOrgGenerateMainBranch,
+        generateSubBranch: mindOrgGenerateSubBranch,
+        handleWheel: (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+        }
+      });
+      mind.toCenter = function coOrgMindToCenter() {
+        mindOrgFitToView(this);
+      };
+      mind.linkDiv = function coOrgLinkDiv(partial) {
+        return coOrgPn(this, partial);
+      };
+      mindForCleanup = mind;
+      if (cancelled) {
+        mind.destroy();
+        mindForCleanup = null;
+        return;
+      }
+      mind.init({ nodeData: toMindNode(orgChart) });
+      if (cancelled) {
+        mind.destroy();
+        mindForCleanup = null;
+        return;
+      }
+      mind.dragMoveHelper.onMove = () => {};
+      mindInstanceRef.current = mind;
+      mind.bus.addListener('operation', onOperation);
+      mind.bus.addListener('expandNode', onExpandNode);
+      if (typeof ResizeObserver !== 'undefined' && mind.container) {
+        resizeObs = new ResizeObserver(() => scheduleFitSoon());
+        resizeObs.observe(mind.container);
+      }
+      scheduleFitSoon();
+    })();
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(debounceTimer);
+      if (mindForCleanup?.bus) {
+        mindForCleanup.bus.removeListener('operation', onOperation);
+        mindForCleanup.bus.removeListener('expandNode', onExpandNode);
+      }
+      resizeObs?.disconnect();
+      if (mindForCleanup) {
+        mindForCleanup.destroy();
+        mindForCleanup = null;
+      }
+      if (mindInstanceRef.current) {
+        mindInstanceRef.current = null;
+      }
+    };
+  }, [orgChart, toMindNode, canManageRoles]);
+
+  const handleSaveMindOrgChart = async () => {
+    if (!canManageRoles) return;
+    if (!mindInstanceRef.current) return;
+    const data = mindInstanceRef.current.getData();
+    const nodeData = data?.nodeData || data;
+    const nextTree = toOrgNode(nodeData);
+    await saveOrgChart(nextTree);
+  };
+
+  const handleOrgMindAddChild = useCallback(() => {
+    if (!canManageRoles) return;
+    const mind = mindInstanceRef.current;
+    if (!mind) return;
+    if (!mind.currentNode) {
+      setActionError('하위 조직을 추가하려면 부모가 될 칸을 먼저 클릭해 선택하세요.');
+      return;
+    }
+    setActionError('');
+    void mind.addChild().catch(() => {});
+  }, [canManageRoles]);
+
+  const handleOrgMindRemove = useCallback(() => {
+    if (!canManageRoles) return;
+    const mind = mindInstanceRef.current;
+    if (!mind) return;
+    const nodes = mind.currentNodes || [];
+    const removable = nodes.filter((n) => n?.nodeObj?.parent);
+    if (removable.length === 0) {
+      if (nodes.length > 0) setActionError('최상위(대표) 노드는 삭제할 수 없습니다. 하위 노드를 선택하세요.');
+      else setActionError('삭제할 노드를 먼저 클릭해 선택하세요.');
+      return;
+    }
+    setActionError('');
+    void mind.removeNodes(removable).catch(() => {});
+  }, [canManageRoles]);
   const fullAddress = [company.address, company.addressDetail].filter(Boolean).join(' ');
   const isPendingUser = me.role === 'pending';
-  const canManageRoles = ['owner', 'senior'].includes(me.role);
   /** 역할 단계: Pending → Staff → Senior → Owner. 구독·시트 블록은 Senior 이상만 표시 */
   const canSeeSubscriptionSection = ['senior', 'owner'].includes(me.role);
   const canEditRole = (emp) => canManageRoles && String(emp.id) !== String(me.id) && emp.role !== 'owner';
@@ -84,10 +330,14 @@ export default function CompanyOverview() {
 
   useEffect(() => {
     if (!isPendingUser) {
-      setSelectedApproverIds([]);
+      setSelectedApproverIds((prev) => (prev.length ? [] : prev));
       return;
     }
-    setSelectedApproverIds((prev) => prev.filter((id) => employees.some((emp) => String(emp.id) === String(id))));
+    setSelectedApproverIds((prev) => {
+      const next = prev.filter((id) => employees.some((emp) => String(emp.id) === String(id)));
+      if (next.length === prev.length && next.every((id, idx) => id === prev[idx])) return prev;
+      return next;
+    });
   }, [employees, isPendingUser]);
 
   if (loading) {
@@ -133,11 +383,11 @@ export default function CompanyOverview() {
         body: JSON.stringify(patch)
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || '직원 권한 변경에 실패했습니다.');
+      if (!res.ok) throw new Error(json.error || '직원 정보 변경에 실패했습니다.');
       await refreshOverview();
       setEditingRoleMemberId('');
     } catch (e) {
-      setActionError(e.message || '직원 권한 변경에 실패했습니다.');
+      setActionError(e.message || '직원 정보 변경에 실패했습니다.');
     } finally {
       setSavingMemberId('');
     }
@@ -183,7 +433,6 @@ export default function CompanyOverview() {
       <header className="page-header company-overview-header">
         <h1 className="page-title">사내 현황</h1>
         <div className="company-overview-header-tools">
-          <PageHeaderNotifyChat />
           <button
             type="button"
             className="company-overview-settings-btn"
@@ -193,6 +442,7 @@ export default function CompanyOverview() {
           >
             <span className="material-symbols-outlined">settings</span>
           </button>
+          <PageHeaderNotifyChat />
         </div>
       </header>
       <div className="page-content company-overview-content">
@@ -307,7 +557,7 @@ export default function CompanyOverview() {
                     <th>이메일</th>
                     <th>연락처</th>
                     <th>부서</th>
-                    <th>회사 역할</th>
+                    <th>CRM 관리 역할</th>
                     {isPendingUser && <th>선택</th>}
                   </tr>
                 </thead>
@@ -317,7 +567,51 @@ export default function CompanyOverview() {
                       <td>{emp.name || '—'}</td>
                       <td>{emp.email || '—'}</td>
                       <td>{emp.phone || '—'}</td>
-                      <td>{emp.department || '—'}</td>
+                      <td>
+                        {canManageRoles ? (
+                          <select
+                            className="company-overview-select"
+                            value={(() => {
+                              const raw = String(emp.department || '').trim();
+                              if (!raw) return '';
+                              if (orgDeptOptions.some((o) => o.id === raw)) return raw;
+                              return deptLegacySelectValue(raw);
+                            })()}
+                            disabled={savingMemberId === String(emp.id) || orgDeptOptions.length === 0}
+                            title={
+                              orgDeptOptions.length === 0
+                                ? '조직도 노드가 없으면 부서를 지정할 수 없습니다.'
+                                : '조직도에 있는 부서(노드)를 선택하세요. 값은 노드 ID로 저장됩니다.'
+                            }
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              if (v.startsWith('legacy:')) return;
+                              void updateMemberAccess(emp.id, { department: v });
+                            }}
+                          >
+                            <option value="">미배정</option>
+                            {(() => {
+                              const raw = String(emp.department || '').trim();
+                              const matched = orgDeptOptions.some((o) => o.id === raw);
+                              if (raw && !matched) {
+                                return (
+                                  <option value={deptLegacySelectValue(raw)}>
+                                    (기존·조직도 외) {resolveDeptDisplay(orgChart, raw)}
+                                  </option>
+                                );
+                              }
+                              return null;
+                            })()}
+                            {orgDeptOptions.map((o) => (
+                              <option key={o.id} value={o.id}>
+                                {o.label}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          resolveDeptDisplay(orgChart, emp.department) || '—'
+                        )}
+                      </td>
                       <td>
                         {editingRoleMemberId === String(emp.id) && canEditRole(emp) ? (
                           <select
@@ -385,6 +679,71 @@ export default function CompanyOverview() {
                 </tbody>
               </table>
             </div>
+          )}
+        </section>
+
+        <section className="company-overview-card">
+          <h2 className="company-overview-section-title">
+            <span className="material-symbols-outlined">account_tree</span>
+            조직도
+            {orgSaving ? <span className="company-overview-count">(저장 중...)</span> : null}
+          </h2>
+          {orgChart ? (
+            <div className="co-org-wrap">
+              {!canManageRoles ? (
+                <p className="co-org-readonly-hint">조직도 편집·저장은 대표(Owner) 또는 책임(Senior)만 가능합니다.</p>
+              ) : null}
+              <div className="co-org-toolbar">
+                <div className="co-org-toolbar-mind-actions" role="group" aria-label="조직 노드 추가·삭제">
+                  <button
+                    type="button"
+                    className="co-org-mind-icon-btn"
+                    onClick={handleOrgMindAddChild}
+                    disabled={!canManageRoles}
+                    title={
+                      canManageRoles
+                        ? '선택한 노드 아래에 하위 조직 추가'
+                        : '대표 또는 책임만 편집할 수 있습니다.'
+                    }
+                    aria-label="하위 조직 추가"
+                  >
+                    <span className="material-symbols-outlined" aria-hidden>add</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="co-org-mind-icon-btn"
+                    onClick={handleOrgMindRemove}
+                    disabled={!canManageRoles}
+                    title={
+                      canManageRoles
+                        ? '선택한 노드 삭제 (최상위 제외)'
+                        : '대표 또는 책임만 편집할 수 있습니다.'
+                    }
+                    aria-label="선택 노드 삭제"
+                  >
+                    <span className="material-symbols-outlined" aria-hidden>remove</span>
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  className="co-org-save-btn"
+                  onClick={handleSaveMindOrgChart}
+                  disabled={!canManageRoles || orgSaving}
+                  title={canManageRoles ? undefined : '대표 또는 책임만 저장할 수 있습니다.'}
+                >
+                  <span className="material-symbols-outlined" aria-hidden>
+                    {orgSaving ? 'hourglass_empty' : 'save'}
+                  </span>
+                  {orgSaving ? '저장 중...' : '조직도 저장'}
+                </button>
+              </div>
+              <div
+                ref={mindContainerRef}
+                className={`co-org-mind${!canManageRoles ? ' co-org-mind--readonly' : ''}`}
+              />
+            </div>
+          ) : (
+            <p className="company-overview-empty">조직도 데이터를 불러오는 중입니다.</p>
           )}
         </section>
       </div>

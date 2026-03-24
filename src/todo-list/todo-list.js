@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { API_BASE } from '@/config';
+import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
+import AddTodoModal from './add-todo-modal/add-todo-modal';
 import './todo-list.css';
 
 function getAuthHeader() {
@@ -22,8 +23,7 @@ function toDueRfc3339(dateStr) {
   return d.toISOString().slice(0, 10) + 'T00:00:00.000Z';
 }
 
-export default function TodoList() {
-  const navigate = useNavigate();
+export default function TodoList({ embedded = false }) {
   const [taskLists, setTaskLists] = useState([]);
   const [taskListId, setTaskListId] = useState(null);
   const [tasks, setTasks] = useState([]);
@@ -238,14 +238,6 @@ export default function TodoList() {
     }
   };
 
-  const toggleParticipant = (userId) => {
-    setForm((p) => {
-      const ids = p.participantIds || [];
-      const next = ids.includes(userId) ? ids.filter((id) => id !== userId) : [...ids, userId];
-      return { ...p, participantIds: next };
-    });
-  };
-
   const formatDue = (dueStr) => {
     if (!dueStr) return '';
     try {
@@ -257,7 +249,8 @@ export default function TodoList() {
   };
 
   return (
-    <div className="todo-page">
+    <div className={`todo-page ${embedded ? 'todo-page-embedded' : ''}`}>
+      {!embedded && (
       <header className="todo-header">
         <div className="todo-header-left">
           <div className="todo-header-title-wrap">
@@ -277,22 +270,17 @@ export default function TodoList() {
           </div>
         </div>
         <div className="todo-header-right">
-          <button type="button" className="todo-btn-new" onClick={() => setShowAddModal(true)}>
+          <button type="button" className="btn-primary" onClick={() => setShowAddModal(true)}>
             <span className="material-symbols-outlined">add</span>
             새 할 일
           </button>
-          <div className="todo-header-icons">
-            <button type="button" className="todo-icon-btn" aria-label="공지사항" title="공지사항" onClick={() => navigate('/notification')}>
-              <span className="material-symbols-outlined">notifications</span>
-              <span className="todo-noti-dot" />
-            </button>
-            <button type="button" className="todo-icon-btn" aria-label="채팅" title="채팅" onClick={() => navigate('/chat')}>
-              <span className="material-symbols-outlined">chat_bubble</span>
-            </button>
+          <div className="todo-header-trailing">
             <div className="todo-avatar" style={{ backgroundImage: `url(${AVATAR_PLACEHOLDER})` }} aria-hidden />
+            <PageHeaderNotifyChat buttonClassName="todo-icon-btn" wrapperClassName="todo-header-notify-chat" />
           </div>
         </div>
       </header>
+      )}
 
       <div className="todo-list-container">
         {error && (
@@ -350,124 +338,20 @@ export default function TodoList() {
         )}
       </div>
 
-      {showAddModal && (
-        <div className="todo-modal-overlay" onClick={() => setShowAddModal(false)} role="dialog" aria-modal="true">
-          <div className="todo-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="todo-modal-header">
-              <h3>새 할 일</h3>
-              <button type="button" className="todo-modal-close" onClick={() => setShowAddModal(false)} aria-label="닫기">
-                <span className="material-symbols-outlined">close</span>
-              </button>
-            </div>
-            <form onSubmit={addTask} className="todo-modal-form">
-              <div className="todo-modal-field">
-                <label htmlFor="todo-add-title">제목 *</label>
-                <input
-                  id="todo-add-title"
-                  type="text"
-                  value={form.title}
-                  onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
-                  placeholder="할 일 제목"
-                  required
-                />
-              </div>
-              <div className="todo-modal-field">
-                <label>목록</label>
-                <select
-                  value={form.listId}
-                  onChange={(e) => setForm((p) => ({ ...p, listId: e.target.value }))}
-                  className="todo-modal-select"
-                >
-                  <option value="">목록 선택</option>
-                  {taskLists.map((list) => (
-                    <option key={list.id} value={list.id}>{list.title}</option>
-                  ))}
-                  <option value="__new__">+ 새 목록 만들기</option>
-                </select>
-                {form.listId === '__new__' && (
-                  <div className="todo-modal-new-list">
-                    <input
-                      type="text"
-                      value={createListTitle}
-                      onChange={(e) => setCreateListTitle(e.target.value)}
-                      placeholder="새 목록 이름"
-                      className="todo-modal-input-inline"
-                    />
-                    <button type="button" className="todo-btn-small" onClick={handleCreateList} disabled={creatingList || !createListTitle?.trim()}>
-                      {creatingList ? '만드는 중…' : '만들기'}
-                    </button>
-                  </div>
-                )}
-              </div>
-              <div className="todo-modal-field">
-                <label htmlFor="todo-add-desc">메모</label>
-                <textarea
-                  id="todo-add-desc"
-                  value={form.description}
-                  onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
-                  placeholder="메모 (선택)"
-                  rows={3}
-                />
-              </div>
-              <div className="todo-modal-field todo-modal-row">
-                <div className="todo-modal-field">
-                  <label htmlFor="todo-add-due">마감일</label>
-                  <input
-                    id="todo-add-due"
-                    type="date"
-                    value={form.dueDate}
-                    onChange={(e) => setForm((p) => ({ ...p, dueDate: e.target.value }))}
-                  />
-                </div>
-                <div className="todo-modal-field todo-modal-allday">
-                  <label className="todo-modal-check-label">
-                    <input
-                      type="checkbox"
-                      checked={form.allDay}
-                      onChange={(e) => setForm((p) => ({ ...p, allDay: e.target.checked }))}
-                    />
-                    종일
-                  </label>
-                </div>
-                {!form.allDay && (
-                  <div className="todo-modal-field">
-                    <label htmlFor="todo-add-time">시간</label>
-                    <input
-                      id="todo-add-time"
-                      type="time"
-                      value={form.dueTime}
-                      onChange={(e) => setForm((p) => ({ ...p, dueTime: e.target.value }))}
-                    />
-                  </div>
-                )}
-              </div>
-              <div className="todo-modal-field">
-                <label>참여자 (같은 회사 직원)</label>
-                <div className="todo-modal-participants">
-                  {companyMembers
-                    .filter((m) => m._id !== currentUserId)
-                    .map((m) => (
-                      <label key={m._id} className="todo-modal-participant-item">
-                        <input
-                          type="checkbox"
-                          checked={(form.participantIds || []).includes(m._id)}
-                          onChange={() => toggleParticipant(m._id)}
-                        />
-                        <span>{m.name || m.email || m._id}</span>
-                      </label>
-                    ))}
-                  {companyMembers.filter((m) => m._id !== currentUserId).length === 0 && (
-                    <span className="todo-modal-participants-empty">선택 가능한 팀원이 없습니다.</span>
-                  )}
-                </div>
-              </div>
-              <div className="todo-modal-actions">
-                <button type="button" className="todo-btn-cancel" onClick={() => setShowAddModal(false)}>취소</button>
-                <button type="submit" className="todo-btn-new" disabled={!form.listId || form.listId === '__new__'}>추가</button>
-              </div>
-            </form>
-          </div>
-        </div>
+      {!embedded && showAddModal && (
+        <AddTodoModal
+          onClose={() => setShowAddModal(false)}
+          form={form}
+          setForm={setForm}
+          taskLists={taskLists}
+          createListTitle={createListTitle}
+          setCreateListTitle={setCreateListTitle}
+          handleCreateList={handleCreateList}
+          creatingList={creatingList}
+          addTask={addTask}
+          companyMembers={companyMembers}
+          currentUserId={currentUserId}
+        />
       )}
     </div>
   );

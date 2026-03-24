@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import CustomerCompanyDetailModal from '../customer-companies/customer-company-detail-modal/customer-company-detail-modal';
 import './map.css';
 
@@ -12,14 +13,23 @@ const DEFAULT_ZOOM = 11; // 주변 약 30km 이내가 보이도록
 /** 지도 기본 스타일 (POI·대중교통 숨김) */
 const BASE_MAP_STYLES = [
   { featureType: 'poi', elementType: 'all', stylers: [{ visibility: 'off' }] },
-  { featureType: 'transit', elementType: 'all', stylers: [{ visibility: 'off' }] }
+  { featureType: 'transit', elementType: 'all', stylers: [{ visibility: 'off' }] },
+  { featureType: 'water', elementType: 'labels', stylers: [{ visibility: 'off' }] }
 ];
 
 /** 지도 흑백 스타일 (채도 -100 = 완전 흑백, 기본 숨김 유지) */
 const GRAYSCALE_MAP_STYLES = [
   { featureType: 'all', stylers: [{ saturation: -100 }] },
   { featureType: 'poi', elementType: 'all', stylers: [{ visibility: 'off' }] },
-  { featureType: 'transit', elementType: 'all', stylers: [{ visibility: 'off' }] }
+  { featureType: 'transit', elementType: 'all', stylers: [{ visibility: 'off' }] },
+  { featureType: 'water', elementType: 'labels', stylers: [{ visibility: 'off' }] }
+];
+
+/** 지도 기본 수역 라벨 대신 항상 고정 표시할 한국 표기 라벨 */
+const MAP_KOREA_LABEL_MARKERS = [
+  { key: 'east-sea', text: '동해', lat: 37.65, lng: 130.55, className: 'map-korea-label map-korea-label-sea' },
+  { key: 'west-sea', text: '서해', lat: 36.55, lng: 124.9, className: 'map-korea-label map-korea-label-sea' },
+  { key: 'dokdo', text: '독도', lat: 37.2414, lng: 131.8663, className: 'map-korea-label map-korea-label-dokdo' }
 ];
 
 function getAuthHeader() {
@@ -27,10 +37,11 @@ function getAuthHeader() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+/** 실시간 추적: 최신 픽스 우선(캐시 거의 안 씀), 타임아웃은 너무 길면 첫 갱신이 느려질 수 있어 짧게 */
 const GEOLOCATION_OPTIONS_WATCH = {
   enableHighAccuracy: true,
   maximumAge: 0,
-  timeout: 60000
+  timeout: 20000
 };
 
 /** 실시간 내 위치 반투명 원 — 지표 기준 고정 반경(m). 화면 픽셀 크기와 무관하게 지상 거리는 동일 */
@@ -55,9 +66,14 @@ function getGeolocationService() {
   return navigator.geolocation || null;
 }
 
-const LOCATION_SAMPLE_MAX_STILL = 10;
-const LOCATION_SAMPLE_MAX_MOVING = 5;
-const LOCATION_SAMPLE_MAX_AGE_MS = 28000;
+/** 평활화 버퍼를 짧게 — 반응은 빨라지고, GPS 튐은 dampLargeJump·이상치 제거로 완화 */
+const LOCATION_SAMPLE_MAX_STILL = 4;
+const LOCATION_SAMPLE_MAX_MOVING = 3;
+const LOCATION_SAMPLE_MAX_AGE_MS = 12000;
+/** m/s — 보행(느린 이동)도 빨리 “이동 중” 스무딩으로 전환 */
+const LOCATION_SPEED_MOVING_MS = 0.85;
+/** 정지 시 “최근 N ms” 샘플만 사용 (이전 18s는 반응이 느려짐) */
+const LOCATION_STILL_RECENT_MS = 6000;
 
 function haversineMeters(a, b) {
   const R = 6371000;
@@ -110,9 +126,9 @@ function dampLargeJump(prev, next) {
     return next;
   }
   const d = haversineMeters(prev, next);
-  const maxJump = 3 * Math.max(next.accuracy, prev.accuracy || 50, 20) + 35;
+  const maxJump = 4.2 * Math.max(next.accuracy, prev.accuracy || 50, 20) + 40;
   if (d <= maxJump || next.accuracy <= 55) return next;
-  const t = Math.min(0.35, maxJump / d);
+  const t = Math.min(0.58, maxJump / d);
   return {
     lat: prev.lat + (next.lat - prev.lat) * t,
     lng: prev.lng + (next.lng - prev.lng) * t,
@@ -137,7 +153,9 @@ function pushGeolocationSample(bufferRef, pos) {
   bufferRef.current = buf.filter((s) => s.ts >= cutoff);
 
   const maxSamples =
-    speed != null && !Number.isNaN(speed) && speed > 1.2 ? LOCATION_SAMPLE_MAX_MOVING : LOCATION_SAMPLE_MAX_STILL;
+    speed != null && !Number.isNaN(speed) && speed > LOCATION_SPEED_MOVING_MS
+      ? LOCATION_SAMPLE_MAX_MOVING
+      : LOCATION_SAMPLE_MAX_STILL;
   while (bufferRef.current.length > maxSamples) bufferRef.current.shift();
 
   const raw = bufferRef.current.map(({ lat: la, lng: ln, accuracy: ac, ts: t }) => ({
@@ -147,7 +165,7 @@ function pushGeolocationSample(bufferRef, pos) {
     ts: t
   }));
   const spatial = removeSpatialOutliers(raw);
-  const moving = speed != null && !Number.isNaN(speed) && speed > 1.2;
+  const moving = speed != null && !Number.isNaN(speed) && speed > LOCATION_SPEED_MOVING_MS;
 
   if (moving) {
     const wMean = weightedGeolocationMean(
@@ -157,10 +175,10 @@ function pushGeolocationSample(bufferRef, pos) {
   }
 
   const now = Date.now();
-  const recent = spatial.filter((s) => now - s.ts < 18000);
+  const recent = spatial.filter((s) => now - s.ts < LOCATION_STILL_RECENT_MS);
   const pool = recent.length ? recent : spatial;
   const sorted = [...pool].sort((a, b) => a.accuracy - b.accuracy);
-  const top = sorted.slice(0, Math.min(4, sorted.length));
+  const top = sorted.slice(0, Math.min(3, sorted.length));
   if (top.length === 1) {
     return { lat: top[0].lat, lng: top[0].lng, accuracy: top[0].accuracy };
   }
@@ -269,11 +287,43 @@ function zoomForGoogleIpAccuracyMeters(acc) {
   return 12;
 }
 
-export default function Map() {
+/** 검색어로 등록 고객사 매칭 (위·경도가 있는 항목만). 부분 일치·완전 일치 */
+function matchCompaniesBySearchQuery(companies, rawQuery) {
+  const q = String(rawQuery || '').trim().toLowerCase();
+  if (!q) return [];
+  return companies.filter((c) => {
+    if (c.latitude == null || c.longitude == null) return false;
+    const name = (c.name && String(c.name).trim()) || '';
+    if (!name) return false;
+    const nl = name.toLowerCase();
+    return nl === q || nl.includes(q) || q.includes(nl);
+  });
+}
+
+export default function Map({
+  embedded = false,
+  initialFocusCompanyId = null,
+  initialOpenCompanyModal = false,
+  initialZoom = 16,
+  assigneeMeOnlyDefault = true,
+  allowCompanyDetailModal = true
+} = {}) {
+  const mapDataYear = new Date().getFullYear();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const focusCompanyId = embedded ? initialFocusCompanyId : searchParams.get('focusCompanyId');
+  const focusNameFromUrl = embedded ? null : searchParams.get('focusName');
+  const openCompanyModal = embedded ? Boolean(initialOpenCompanyModal) : searchParams.get('openCompanyModal') === '1';
+  const requestedZoom = embedded ? Number(initialZoom) : Number(searchParams.get('zoom'));
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [assigneeMeOnly, setAssigneeMeOnly] = useState(true);
-  const [searchInput, setSearchInput] = useState('');
+  /** URL로 특정 고객사 포커스 시에는 전체 목록을 불러와 해당 건이 누락되지 않게 함 */
+  const [assigneeMeOnly, setAssigneeMeOnly] = useState(
+    () => (!embedded && focusCompanyId ? false : assigneeMeOnlyDefault)
+  );
+  /** 고객사 상세에서 넘어올 때 검색창에 업체명을 바로 채움 */
+  const [searchInput, setSearchInput] = useState(
+    () => (focusNameFromUrl && String(focusNameFromUrl).trim()) || ''
+  );
   const [selected, setSelected] = useState(null);
   const [mapReady, setMapReady] = useState(false);
   const mapContainerRef = useRef(null);
@@ -281,6 +331,8 @@ export default function Map() {
   const searchInputRef = useRef(null);
   const autocompleteRef = useRef(null);
   const markersRef = useRef([]);
+  const koreaLabelMarkersRef = useRef([]);
+  const koreaLabelListenersRef = useRef([]);
   const searchPlaceMarkerRef = useRef(null);
   const markerLabelsRef = useRef([]); // 마커별 말주머니(업체명) InfoWindow 목록
   const initialViewAppliedRef = useRef(false); // 초기 뷰(내 위치/고객사 fit 등)는 한 번만 적용 → 검색 후 화면이 덮어쓰이지 않도록
@@ -297,6 +349,13 @@ export default function Map() {
   const locationSamplesRef = useRef([]);
   const myLocationAccuracyCircleRef = useRef(null);
   const lastRefinedLocationRef = useRef(null);
+  const focusRequestHandledRef = useRef(false);
+  /** 지도 검색으로 붙인 focusCompanyId 등은 URL에 남김 — 외부 딥링크 처리 후에는 제거 */
+  const skipStripFocusParamsRef = useRef(false);
+
+  useEffect(() => {
+    focusRequestHandledRef.current = false;
+  }, [focusCompanyId]);
 
   const fetchCompanies = useCallback(async () => {
     setLoading(true);
@@ -464,6 +523,10 @@ export default function Map() {
       }
       markersRef.current.forEach((m) => m.setMap(null));
       markersRef.current = [];
+      koreaLabelMarkersRef.current.forEach((m) => m.setMap(null));
+      koreaLabelMarkersRef.current = [];
+      koreaLabelListenersRef.current.forEach((l) => l.remove?.());
+      koreaLabelListenersRef.current = [];
       if (myLocationAccuracyCircleRef.current) {
         myLocationAccuracyCircleRef.current.setMap(null);
         myLocationAccuracyCircleRef.current = null;
@@ -504,6 +567,50 @@ export default function Map() {
       styles: grayscaleMode ? GRAYSCALE_MAP_STYLES : BASE_MAP_STYLES
     });
   }, [mapReady, grayscaleMode]);
+
+  /** 동해/서해/독도 고정 라벨: 초기 표시 지연 방지를 위해 tilesloaded 시점에도 재확인 */
+  useEffect(() => {
+    if (!mapReady || !mapInstanceRef.current || !window.google?.maps?.Marker) return;
+    const map = mapInstanceRef.current;
+    const ensureKoreaLabels = () => {
+      koreaLabelMarkersRef.current.forEach((m) => m.setMap(null));
+      koreaLabelMarkersRef.current = MAP_KOREA_LABEL_MARKERS.map((label) =>
+        new window.google.maps.Marker({
+          position: { lat: label.lat, lng: label.lng },
+          map,
+          clickable: false,
+          draggable: false,
+          optimized: false,
+          zIndex: 3,
+          icon: {
+            path: window.google.maps.SymbolPath.CIRCLE,
+            // scale 0은 일부 환경에서 첫 렌더가 지연될 수 있어 아주 작은 투명 원으로 고정
+            scale: 1,
+            fillOpacity: 0,
+            strokeOpacity: 0
+          },
+          label: {
+            text: label.text,
+            className: label.className,
+            color: '#1f2937',
+            fontSize: '16px',
+            fontWeight: '700'
+          }
+        })
+      );
+    };
+
+    ensureKoreaLabels();
+    const onceTilesLoaded = window.google.maps.event.addListenerOnce(map, 'tilesloaded', ensureKoreaLabels);
+    koreaLabelListenersRef.current = [onceTilesLoaded];
+
+    return () => {
+      koreaLabelMarkersRef.current.forEach((m) => m.setMap(null));
+      koreaLabelMarkersRef.current = [];
+      koreaLabelListenersRef.current.forEach((l) => l.remove?.());
+      koreaLabelListenersRef.current = [];
+    };
+  }, [mapReady]);
 
   // Geolocation API(considerIp): 브라우저 GPS·고객사 초기 뷰보다 먼저 도착하면 대략 지역만 지도 중심으로 잡음(initialViewAppliedRef는 건드리지 않음 → 이후 내 위치/고객사가 덮어씀)
   useEffect(() => {
@@ -662,6 +769,38 @@ export default function Map() {
     }
   }, [mapReady, companiesToShowOnMap, showMarkerLabels, myLocation]);
 
+  // 외부(예: 고객사 상세 모달)에서 전달된 고객사 포커스 요청 처리
+  useEffect(() => {
+    if (!focusCompanyId || focusRequestHandledRef.current) return;
+    const target = companies.find((row) => String(row?._id || '') === String(focusCompanyId));
+    if (!target) return;
+    const nm = (target.name && String(target.name).trim()) || '';
+    if (nm) setSearchInput(nm);
+    const lat = Number(target.latitude);
+    const lng = Number(target.longitude);
+    if (mapReady && mapInstanceRef.current && Number.isFinite(lat) && Number.isFinite(lng)) {
+      mapInstanceRef.current.panTo({ lat, lng });
+      mapInstanceRef.current.setZoom(Number.isFinite(requestedZoom) ? Math.min(20, Math.max(1, requestedZoom)) : 16);
+      initialViewAppliedRef.current = true;
+    }
+    if (openCompanyModal && allowCompanyDetailModal) setSelected(target);
+    focusRequestHandledRef.current = true;
+    if (!embedded) {
+      if (skipStripFocusParamsRef.current) {
+        skipStripFocusParamsRef.current = false;
+      } else {
+        setSearchParams((prev) => {
+          const next = new URLSearchParams(prev);
+          next.delete('focusCompanyId');
+          next.delete('focusName');
+          next.delete('openCompanyModal');
+          next.delete('zoom');
+          return next;
+        }, { replace: true });
+      }
+    }
+  }, [focusCompanyId, openCompanyModal, companies, mapReady, requestedZoom, setSearchParams, embedded, allowCompanyDetailModal]);
+
   /** 내 위치 — 지상 반경 고정 원(m). 점 마커 없음. */
   useEffect(() => {
     if (!mapReady || !mapInstanceRef.current || !window.google) return;
@@ -782,10 +921,91 @@ export default function Map() {
     };
   }, [mapReady, searchPlace, showSearchPlaceMarker]);
 
-  /** 검색창 입력으로 Google 지오코딩 후 해당 위치로 지도 이동 + 마커 표시 */
+  const clearFocusParamsFromUrl = useCallback(() => {
+    if (embedded) return;
+    skipStripFocusParamsRef.current = false;
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('focusCompanyId');
+      next.delete('focusName');
+      next.delete('zoom');
+      return next;
+    }, { replace: true });
+  }, [embedded, setSearchParams]);
+
+  /** 검색: ① 등록 고객사명 우선 → 지도 이동 ② 없으면 Google 지오코딩 */
   const goToSearchPlace = useCallback(() => {
     const query = searchInput.trim();
-    if (!query || !mapReady || !window.google?.maps?.Geocoder) return;
+    if (!query || !mapReady || !window.google?.maps) return;
+
+    let companyHits = matchCompaniesBySearchQuery(companies, query);
+    const qLower = query.trim().toLowerCase();
+    companyHits = [...companyHits].sort((a, b) => {
+      const an = ((a.name || '').trim()).toLowerCase();
+      const bn = ((b.name || '').trim()).toLowerCase();
+      const ae = an === qLower ? 1 : 0;
+      const be = bn === qLower ? 1 : 0;
+      if (be !== ae) return be - ae;
+      return (an.length || 0) - (bn.length || 0);
+    });
+    if (companyHits.length >= 1) {
+      setSearchPlaceLoading(false);
+      setSearchPlace(null);
+      if (searchPlaceMarkerRef.current) {
+        searchPlaceMarkerRef.current.setMap(null);
+        searchPlaceMarkerRef.current = null;
+      }
+      const map = mapInstanceRef.current;
+      if (!map) return;
+
+      if (companyHits.length === 1) {
+        const c = companyHits[0];
+        const lat = Number(c.latitude);
+        const lng = Number(c.longitude);
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+          setSearchPlace({ lat, lng, label: c.name || query });
+          setShowSearchPlaceMarker(true);
+          map.panTo({ lat, lng });
+          map.setZoom(16);
+          initialViewAppliedRef.current = true;
+          if (!embedded) {
+            skipStripFocusParamsRef.current = true;
+            setSearchParams((prev) => {
+              const next = new URLSearchParams(prev);
+              next.set('focusCompanyId', String(c._id));
+              next.set('zoom', '16');
+              const nm = (c.name && String(c.name).trim()) || '';
+              if (nm) next.set('focusName', nm);
+              else next.delete('focusName');
+              return next;
+            }, { replace: true });
+          }
+          return;
+        }
+      } else {
+        const bounds = new window.google.maps.LatLngBounds();
+        let extended = false;
+        companyHits.forEach((c) => {
+          const lat = Number(c.latitude);
+          const lng = Number(c.longitude);
+          if (Number.isFinite(lat) && Number.isFinite(lng)) {
+            bounds.extend({ lat, lng });
+            extended = true;
+          }
+        });
+        if (extended && !bounds.isEmpty()) {
+          clearFocusParamsFromUrl();
+          map.fitBounds(bounds, { top: 72, right: 56, bottom: 100, left: 56 });
+          initialViewAppliedRef.current = true;
+          setShowSearchPlaceMarker(false);
+          setSearchPlace(null);
+          return;
+        }
+      }
+    }
+
+    if (!window.google.maps.Geocoder) return;
+    clearFocusParamsFromUrl();
     setSearchPlaceLoading(true);
     setSearchPlace(null);
     if (searchPlaceMarkerRef.current) {
@@ -810,7 +1030,7 @@ export default function Map() {
         initialViewAppliedRef.current = true; // 검색 결과로 화면 고정, 이후 초기 뷰로 덮어쓰지 않음
       }
     });
-  }, [searchInput, mapReady]);
+  }, [searchInput, mapReady, companies, embedded, setSearchParams, clearFocusParamsFromUrl]);
 
   const zoomIn = () => {
     if (mapInstanceRef.current) {
@@ -828,7 +1048,7 @@ export default function Map() {
 
   if (!GOOGLE_MAPS_API_KEY) {
     return (
-      <div className="page map-page">
+      <div className={`page map-page ${embedded ? 'map-page-embedded' : ''}`}>
         <div className="map-fallback">
           <span className="material-symbols-outlined map-fallback-icon">map</span>
           <p>지도를 사용하려면 <code>VITE_GOOGLE_MAPS_API_KEY</code>를 설정해 주세요.</p>
@@ -839,7 +1059,7 @@ export default function Map() {
   }
 
   return (
-    <div className="page map-page">
+    <div className={`page map-page ${embedded ? 'map-page-embedded' : ''}`}>
       <div className="map-layout">
         <div className="map-main">
           <div ref={mapContainerRef} className="map-canvas map-canvas-google" />
@@ -919,7 +1139,7 @@ export default function Map() {
                   ref={searchInputRef}
                   type="text"
                   className="map-search-input"
-                  placeholder="고객사명·주소 또는 구글 장소 검색 (자동완성 또는 엔터)"
+                  placeholder="등록 고객사명·주소·장소 검색 (엔터 시 고객사 우선, 없으면 주소 지오코딩)"
                   value={searchInput}
                   onChange={(e) => {
                     setSearchInput(e.target.value);
@@ -959,6 +1179,10 @@ export default function Map() {
             </div>
           </div>
 
+          <div className="map-data-year-badge" aria-label="지도 데이터 기준 연도">
+            지도 데이터: Google · {mapDataYear}
+          </div>
+
           {mapReady && companiesWithCoords.length === 0 && companies.length > 0 && (
             <div className="map-hint-panel">
               <p>위도·경도가 있는 고객사만 지도에 표시됩니다. 고객사 추가 시 주소를 검색해서 선택하면 자동 저장됩니다.</p>
@@ -966,7 +1190,7 @@ export default function Map() {
           )}
         </div>
 
-        {selected && (
+        {allowCompanyDetailModal && selected && (
           <CustomerCompanyDetailModal
             company={selected}
             onClose={() => setSelected(null)}

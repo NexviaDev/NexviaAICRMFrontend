@@ -181,7 +181,13 @@
   .customer-company-detail-card {
     flex-direction: row;
     flex-wrap: wrap;
-    align-items: flex-start;
+    align-items: center;
+  }
+
+  .customer-company-detail-card-map {
+    width: 8.75rem;
+    flex: 0 0 8.75rem;
+    margin-left: auto;
   }
 }
 
@@ -205,6 +211,72 @@
 .customer-company-detail-info {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.customer-company-detail-card-map {
+  width: 100%;
+}
+
+.customer-company-detail-card-map-btn {
+  width: 100%;
+  padding: 0;
+  border: 1px solid var(--card-border);
+  border-radius: 0.65rem;
+  background: var(--card);
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+}
+
+.customer-company-detail-card-map-btn:disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+
+/* 클릭이 iframe 안의 Google 지도로 전달되면 새 탭/place로 열리므로, 부모 버튼이 /map 이동을 받도록 차단 */
+.customer-company-detail-card-map-iframe {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border: 0;
+  background: var(--bg-light);
+  pointer-events: none;
+}
+
+.customer-company-detail-card-map-empty {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  color: var(--text-muted);
+  background: var(--bg-light);
+  font-size: 0.8rem;
+}
+
+.customer-company-detail-card-map-empty .material-symbols-outlined {
+  font-size: 1.4rem;
+}
+
+.customer-company-detail-card-map-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--primary);
+  background: #eef5fb;
+}
+
+.customer-company-detail-card-map-label .material-symbols-outlined {
+  font-size: 0.95rem;
 }
 
 .customer-company-detail-name-row {
@@ -749,6 +821,90 @@
 
 .customer-company-detail-journal-input::placeholder {
   color: var(--text-muted);
+}
+
+.customer-company-detail-audio-input-hidden {
+  display: none;
+}
+
+.customer-company-detail-journal-audio-drop {
+  margin-top: 0.65rem;
+  border: 1px dashed rgba(100, 116, 139, 0.45);
+  border-radius: 0.6rem;
+  padding: 1.1rem 0.9rem;
+  min-height: 6.2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  background: rgba(191, 219, 254, 0.12);
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.25s ease, background-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.customer-company-detail-journal-audio-drop .material-symbols-outlined {
+  font-size: 1rem;
+  color: #4f46e5;
+}
+
+.customer-company-detail-journal-audio-drop.is-dragover {
+  border-color: #60a5fa;
+  background: rgba(147, 197, 253, 0.22);
+}
+
+.customer-company-detail-journal-audio-drop.is-uploading {
+  color: #0f172a;
+  border-color: #38bdf8;
+  background: linear-gradient(120deg, rgba(186, 230, 253, 0.38), rgba(196, 181, 253, 0.3), rgba(186, 230, 253, 0.38));
+  background-size: 230% 230%;
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.2), 0 8px 20px rgba(56, 189, 248, 0.15);
+  animation: customerCompanyAudioBarPulse 1.5s ease-in-out infinite;
+}
+
+.customer-company-detail-journal-audio-drop.is-uploading::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -45%;
+  width: 45%;
+  height: 100%;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0));
+  animation: customerCompanyAudioBarShimmer 1.2s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes customerCompanyAudioBarPulse {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes customerCompanyAudioBarShimmer {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(330%); }
+}
+
+.customer-company-detail-journal-audio-btn {
+  margin-left: auto;
+  border: 1px solid var(--card-border);
+  border-radius: 0.45rem;
+  background: #ecfeff;
+  color: #155e75;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.35rem 0.55rem;
+  cursor: pointer;
+}
+
+.customer-company-detail-journal-audio-btn:hover:not(:disabled) {
+  background: #cffafe;
+}
+
+.customer-company-detail-journal-audio-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .customer-company-detail-journal-error {

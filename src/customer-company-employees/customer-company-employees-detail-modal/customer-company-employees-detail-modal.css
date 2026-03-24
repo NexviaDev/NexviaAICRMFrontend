@@ -1072,6 +1072,86 @@
   color: var(--text-muted);
 }
 
+.contact-detail-audio-input-hidden {
+  display: none;
+}
+
+.contact-detail-journal-audio-drop {
+  margin-top: 0.65rem;
+  border: 1px dashed rgba(100, 116, 139, 0.45);
+  border-radius: 0.6rem;
+  padding: 1.1rem 0.9rem;
+  min-height: 6.2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  background: rgba(191, 219, 254, 0.12);
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.25s ease, background-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.contact-detail-journal-audio-drop .material-symbols-outlined {
+  font-size: 1rem;
+  color: #4f46e5;
+}
+
+.contact-detail-journal-audio-drop.is-dragover {
+  border-color: #60a5fa;
+  background: rgba(147, 197, 253, 0.22);
+}
+
+.contact-detail-journal-audio-drop.is-uploading {
+  color: #0f172a;
+  border-color: #38bdf8;
+  background: linear-gradient(120deg, rgba(186, 230, 253, 0.38), rgba(196, 181, 253, 0.3), rgba(186, 230, 253, 0.38));
+  background-size: 230% 230%;
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.2), 0 8px 20px rgba(56, 189, 248, 0.15);
+  animation: contactDetailAudioBarPulse 1.5s ease-in-out infinite;
+}
+
+.contact-detail-journal-audio-drop.is-uploading::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -45%;
+  width: 45%;
+  height: 100%;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0));
+  animation: contactDetailAudioBarShimmer 1.2s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes contactDetailAudioBarPulse {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes contactDetailAudioBarShimmer {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(330%); }
+}
+
+.contact-detail-journal-audio-btn {
+  margin-left: auto;
+  border: 1px solid var(--card-border);
+  border-radius: 0.45rem;
+  background: #ecfeff;
+  color: #155e75;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.35rem 0.55rem;
+  cursor: pointer;
+}
+
+.contact-detail-journal-audio-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .contact-detail-journal-error {
   margin: 0 0 0.5rem;
   font-size: 0.8125rem;

@@ -8,6 +8,7 @@ function getAuthHeader() {
 }
 
 const ENTITY_TYPE = 'salesPipelineStage';
+const SYSTEM_FIXED_STAGE_KEY = 'Won';
 
 /**
  * 세일즈 파이프라인 단계(컬럼) 관리 모달.
@@ -16,11 +17,12 @@ const ENTITY_TYPE = 'salesPipelineStage';
  */
 export default function PipelineStagesManageModal({ onClose, onSaved }) {
   const [definitions, setDefinitions] = useState([]);
-  const [newKey, setNewKey] = useState('');
   const [newLabel, setNewLabel] = useState('');
   const [adding, setAdding] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const visibleDefinitions = definitions.filter((def) => String(def?.key || '').trim() !== SYSTEM_FIXED_STAGE_KEY);
 
   const fetchDefinitions = async () => {
     setLoading(true);
@@ -48,11 +50,11 @@ export default function PipelineStagesManageModal({ onClose, onSaved }) {
 
   const handleAdd = async (e) => {
     e.preventDefault();
-    const key = String(newKey || '').trim();
     const label = String(newLabel || '').trim();
-    if (!key || !label) return;
-    if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(key)) {
-      alert('단계 코드는 영문으로 시작하고, 영문·숫자·언더스코어만 사용 가능합니다.');
+    if (!label) return;
+    const key = `stage_${Date.now()}`;
+    if (key === SYSTEM_FIXED_STAGE_KEY) {
+      alert('Won 단계는 시스템 고정 단계로 추가할 수 없습니다.');
       return;
     }
     setAdding(true);
@@ -74,7 +76,6 @@ export default function PipelineStagesManageModal({ onClose, onSaved }) {
         alert(data.error || '단계 추가에 실패했습니다.');
         return;
       }
-      setNewKey('');
       setNewLabel('');
       onSaved?.();
       fetchDefinitions();
@@ -87,6 +88,11 @@ export default function PipelineStagesManageModal({ onClose, onSaved }) {
 
   const handleDelete = async (id) => {
     if (!id) return;
+    const target = definitions.find((def) => String(def?._id || '') === String(id));
+    if (String(target?.key || '').trim() === SYSTEM_FIXED_STAGE_KEY) {
+      alert('Won 단계는 시스템 고정 단계로 삭제할 수 없습니다.');
+      return;
+    }
     if (!window.confirm('이 단계를 삭제하시겠습니까? 해당 단계에 있는 기회는 "신규 리드"로 보이지 않을 수 있습니다.')) return;
     setDeletingId(id);
     try {
@@ -119,19 +125,9 @@ export default function PipelineStagesManageModal({ onClose, onSaved }) {
           </button>
         </header>
         <div className="psm-body">
-          <p className="psm-hint">단계를 추가·삭제할 수 있습니다. 수정하지 않으면 기본 3단계(신규 리드, 접촉 완료, 제안서 발송)만 표시됩니다.</p>
+          <p className="psm-hint">단계를 추가·삭제할 수 있습니다. 수정하지 않으면 기본 5단계(신규 리드, 연락 완료, 제안서 발송, 최종 협상, 수주 성공)가 표시됩니다.</p>
           <form onSubmit={handleAdd} className="psm-form">
             <div className="psm-row">
-              <div className="psm-field">
-                <label>단계 코드 (영문)</label>
-                <input
-                  type="text"
-                  value={newKey}
-                  onChange={(e) => setNewKey(e.target.value)}
-                  placeholder="예: NewLead, Negotiation"
-                  required
-                />
-              </div>
               <div className="psm-field">
                 <label>표시 이름</label>
                 <input
@@ -153,10 +149,10 @@ export default function PipelineStagesManageModal({ onClose, onSaved }) {
             <div className="psm-list-wrap">
               <h4>등록된 단계 (순서대로 컬럼에 표시)</h4>
               <ul className="psm-list">
-                {definitions.length === 0 ? (
-                  <li className="psm-list-empty">등록된 단계가 없습니다. 위에서 추가하면 기본 4단계 대신 사용됩니다.</li>
+                {visibleDefinitions.length === 0 ? (
+                  <li className="psm-list-empty">등록된 단계가 없습니다. 위에서 추가하면 기본 5단계 대신 사용됩니다.</li>
                 ) : (
-                  definitions.map((def) => (
+                  visibleDefinitions.map((def) => (
                     <li key={def._id} className="psm-list-item">
                       <span className="psm-list-key">{def.key}</span>
                       <span className="psm-list-label">{def.label}</span>

@@ -31,12 +31,27 @@
   display: flex;
   align-items: center;
   gap: 1rem;
+  flex: 1;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.ai-voice-header-actions .ai-voice-search-wrap {
+  flex: 1;
+  max-width: 16rem;
+  min-width: 0;
 }
 
 .ai-voice-header-notify-chat {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+/* 헤더 공지·채팅·할 일만 테두리 없음 (상세 패널 export/삭제는 .ai-voice-icon-btn 테두리 유지) */
+.ai-voice-header-notify-chat .ai-voice-icon-btn {
+  border: none;
+  background: transparent;
 }
 
 .ai-voice-search-wrap {

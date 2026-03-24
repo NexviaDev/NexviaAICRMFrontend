@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import OpportunityModal from './opportunity-modal/opportunity-modal';
 import PipelineStagesManageModal from './pipeline-stages-manage-modal/pipeline-stages-manage-modal';
-import WonAllModal from './won-all-modal/won-all-modal';
 import './sales-pipeline.css';
+import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 
 import { API_BASE } from '@/config';
 const MODAL_PARAM = 'oppModal';
@@ -19,25 +19,18 @@ function getAuthHeader() {
 
 const DEFAULT_STAGE_LABELS = {
   NewLead: '신규 리드',
-  Contacted: '접촉 완료',
-  ProposalSent: '제안서 발송'
+  Contacted: '연락 완료',
+  ProposalSent: '제안서 발송',
+  Negotiation: '최종 협상',
+  Won: '수주 성공'
 };
-const DEFAULT_ACTIVE_STAGES = ['NewLead', 'Contacted', 'ProposalSent'];
+const DEFAULT_ACTIVE_STAGES = ['NewLead', 'Contacted', 'ProposalSent', 'Negotiation', 'Won'];
 
 const DROP_ZONE_CONFIG = {
+  Won: { icon: 'emoji_events', label: '수주 성공', colorClass: 'dz-green' },
   Lost: { icon: 'cancel', label: '기회 상실', colorClass: 'dz-red' },
-  Abandoned: { icon: 'archive', label: '보류', colorClass: 'dz-blue' },
-  Won: { icon: 'verified', label: '수주 성공', colorClass: 'dz-green' }
+  Abandoned: { icon: 'archive', label: '보류', colorClass: 'dz-blue' }
 };
-
-const WON_STAGE = 'Won';
-const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
-
-function isWithinOneMonth(opp) {
-  const d = opp.updatedAt || opp.createdAt;
-  if (!d) return true;
-  return new Date(d).getTime() >= Date.now() - ONE_MONTH_MS;
-}
 
 function formatCurrency(value, currency) {
   if (!value) return currency === 'KRW' ? '₩0' : '$0';
@@ -46,7 +39,6 @@ function formatCurrency(value, currency) {
 }
 
 export default function SalesPipeline() {
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [grouped, setGrouped] = useState({});
   const [totals, setTotals] = useState({});
@@ -58,7 +50,6 @@ export default function SalesPipeline() {
   const [healthPinged, setHealthPinged] = useState(false);
   const [stageDefinitions, setStageDefinitions] = useState([]);
   const [showStagesModal, setShowStagesModal] = useState(false);
-  const [showWonAllModal, setShowWonAllModal] = useState(false);
 
   const modalMode = searchParams.get(MODAL_PARAM);
   const editOppId = searchParams.get(OPP_ID_PARAM);
@@ -211,9 +202,17 @@ export default function SalesPipeline() {
   const activeStages = stageDefinitions.length > 0
     ? stageDefinitions.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((d) => d.key)
     : DEFAULT_ACTIVE_STAGES;
+  const boardStages = activeStages.filter((stage) => stage !== 'Won');
   const stageLabels = stageDefinitions.length > 0
     ? Object.fromEntries(stageDefinitions.map((d) => [d.key, d.label]))
     : DEFAULT_STAGE_LABELS;
+  const stageToneByKey = useMemo(() => {
+    const tone = {};
+    boardStages.forEach((stage, idx) => {
+      tone[stage] = `tone-${idx % 5}`;
+    });
+    return tone;
+  }, [boardStages]);
 
   return (
     <div className="sp-container">
@@ -227,14 +226,6 @@ export default function SalesPipeline() {
           </button>
         </div>
         <div className="sp-header-right">
-          <div className="sp-header-quick">
-            <button type="button" className="sp-quick-icon-btn" aria-label="공지사항" title="공지사항" onClick={() => navigate('/notification')}>
-              <span className="material-symbols-outlined">notifications</span>
-            </button>
-            <button type="button" className="sp-quick-icon-btn" aria-label="채팅" title="채팅" onClick={() => navigate('/chat')}>
-              <span className="material-symbols-outlined">chat_bubble</span>
-            </button>
-          </div>
           <div className="sp-search-wrap">
             <span className="material-symbols-outlined sp-search-icon">search</span>
             <input className="sp-search" type="text" placeholder="기회 검색..." value={search} onChange={onSearchInput} />
@@ -243,6 +234,7 @@ export default function SalesPipeline() {
             <span className="material-symbols-outlined">add</span>
             기회 추가
           </button>
+          <PageHeaderNotifyChat buttonClassName="sp-quick-icon-btn" wrapperClassName="sp-header-quick" />
         </div>
       </header>
 
@@ -254,33 +246,35 @@ export default function SalesPipeline() {
         </div>
       ) : (
         <div className="sp-board">
-          <div className="sp-columns-scroll">
-            <div className="sp-columns">
-            {activeStages.map((stage) => {
+          <div className="sp-stage-overview">
+            {boardStages.map((stage, idx) => {
               const items = grouped[stage] || [];
               const total = totals[stage] || 0;
               const mainCurrency = items.length > 0 ? (items[0].currency || 'KRW') : 'KRW';
               return (
                 <div
-                  key={stage}
-                  className="sp-column"
+                  key={`overview-${stage}`}
+                  className="sp-stage-overview-item"
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={(e) => handleDrop(e, stage)}
                 >
-                  <div className="sp-column-header">
-                    <div className="sp-column-title-row">
-                      <div className="sp-column-title-wrap">
-                        <span className="sp-column-title">{stageLabels[stage] ?? stage}</span>
-                        <span className="sp-column-count-pill">{items.length}</span>
-                      </div>
-                      <button className="sp-column-add" title="이 단계에 추가" onClick={() => openAddModal(stage)} aria-label="추가">
-                        <span className="material-symbols-outlined">add</span>
-                      </button>
-                    </div>
-                    <p className="sp-column-total">{formatCurrency(total, mainCurrency)}</p>
+                  <div className={`sp-stage-overview-card ${stageToneByKey[stage] || 'tone-0'}`}>
+                    <span className="sp-stage-overview-title">{stageLabels[stage] ?? stage}</span>
+                    <button className="sp-column-add" title="이 단계에 추가" onClick={() => openAddModal(stage)} aria-label="추가">
+                      <span className="material-symbols-outlined">add</span>
+                    </button>
                   </div>
-                  <div className="sp-cards">
+                  <div className="sp-stage-overview-metrics">
+                    <p>{items.length}</p>
+                    <span>파이프라인 단계</span>
+                  </div>
+                  <div className={`sp-column-header ${stageToneByKey[stage] || 'tone-0'}`}>
+                    <div className="sp-column-title-row">
+                      <div className="sp-column-title-spacer" />
+                    </div>
+                  </div>
+                  <div className="sp-cards sp-cards-inline">
                     {items.map((opp) => (
                       <div
                         key={opp._id}
@@ -306,10 +300,12 @@ export default function SalesPipeline() {
                       </div>
                     ))}
                   </div>
+                  {idx < boardStages.length - 1 && (
+                    <span className="material-symbols-outlined sp-stage-overview-arrow" aria-hidden>chevron_right</span>
+                  )}
                 </div>
               );
             })}
-            </div>
           </div>
 
           {/* Drop Zones - 항상 화면 하단에 고정 표시 */}
@@ -318,74 +314,44 @@ export default function SalesPipeline() {
             <div className="sp-dropzones">
               {Object.entries(DROP_ZONE_CONFIG).map(([stage, cfg]) => {
                 const items = grouped[stage] || [];
-                const isWon = stage === WON_STAGE;
-                const recentWonItems = isWon ? items.filter(isWithinOneMonth) : items;
-                const displayItems = isWon ? recentWonItems : items;
                 const isExpanded = expandedZone === stage;
                 return (
                   <div key={stage} className="sp-dz-wrapper">
                     <div
-                      className={`sp-dropzone ${cfg.colorClass} ${isExpanded ? 'sp-dz-expanded' : ''} ${isWon ? 'sp-dropzone-won' : ''}`}
+                      className={`sp-dropzone ${cfg.colorClass} ${isExpanded ? 'sp-dz-expanded' : ''}`}
                       onDragOver={handleDragOver}
                       onDragLeave={handleDragLeave}
                       onDrop={(e) => handleDrop(e, stage)}
                       onClick={() => items.length > 0 && setExpandedZone(isExpanded ? null : stage)}
                       style={{ cursor: items.length > 0 ? 'pointer' : 'default' }}
                     >
-                      {isWon ? (
-                        <>
-                          <div className="sp-dz-main-spacer" aria-hidden="true" />
-                          <div className="sp-dz-main">
-                            <span className="material-symbols-outlined sp-dz-icon">{cfg.icon}</span>
-                            <span className="sp-dz-label">{cfg.label}</span>
-                            {items.length > 0 && (
-                              <span className="sp-dz-count">
-                                {items.length}건
-                                <span className="material-symbols-outlined sp-dz-chevron">
-                                  {isExpanded ? 'expand_less' : 'expand_more'}
-                                </span>
-                              </span>
-                            )}
-                          </div>
-                          <div className="sp-dz-viewall-wrap">
-                            <button type="button" className="sp-dz-viewall-header-btn" onClick={(e) => { e.stopPropagation(); setShowWonAllModal(true); }}>
-                              전체보기 →
-                            </button>
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          <span className="material-symbols-outlined sp-dz-icon">{cfg.icon}</span>
-                          <span className="sp-dz-label">{cfg.label}</span>
-                          {items.length > 0 && (
-                            <span className="sp-dz-count">
-                              {items.length}건
-                              <span className="material-symbols-outlined sp-dz-chevron">
-                                {isExpanded ? 'expand_less' : 'expand_more'}
-                              </span>
-                            </span>
-                          )}
-                        </>
+                      <span className="material-symbols-outlined sp-dz-icon">{cfg.icon}</span>
+                      <span className="sp-dz-label">{cfg.label}</span>
+                      {items.length > 0 && (
+                        <span className="sp-dz-count">
+                          {items.length}건
+                          <span className="material-symbols-outlined sp-dz-chevron">
+                            {isExpanded ? 'expand_less' : 'expand_more'}
+                          </span>
+                        </span>
                       )}
                     </div>
                     {isExpanded && items.length > 0 && (
                       <div className="sp-dz-items">
-                        {displayItems.map((opp) => (
+                        {items.map((opp) => (
                           <div
                             key={opp._id}
-                            className={`sp-card sp-dz-card ${cfg.colorClass} ${isWon ? 'sp-dz-card-locked' : ''}`}
-                            draggable={!isWon}
-                            onDragStart={isWon ? undefined : (e) => handleDragStart(e, opp._id)}
-                            onDragEnd={isWon ? undefined : handleDragEnd}
-                            onClick={(e) => { e.stopPropagation(); if (!isWon) openEditModal(opp._id); }}
+                            className={`sp-card sp-dz-card ${cfg.colorClass}`}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, opp._id)}
+                            onDragEnd={handleDragEnd}
+                            onClick={(e) => { e.stopPropagation(); openEditModal(opp._id); }}
                           >
                             <div className="sp-card-top">
                               <h4 className="sp-card-title">{opp.customerCompanyName || '\u00A0'}-{opp.title || '\u00A0'}</h4>
-                              {!isWon && (
-                                <button className="sp-card-delete" title="삭제" onClick={(e) => { e.stopPropagation(); handleDelete(opp._id); }}>
-                                  <span className="material-symbols-outlined">close</span>
-                                </button>
-                              )}
+                              <button className="sp-card-delete" title="삭제" onClick={(e) => { e.stopPropagation(); handleDelete(opp._id); }}>
+                                <span className="material-symbols-outlined">close</span>
+                              </button>
                             </div>
                             <p className="sp-card-contact">{opp.contactName || '\u00A0'}</p>
                             <div className="sp-card-meta">
@@ -409,8 +375,9 @@ export default function SalesPipeline() {
           mode={modalMode}
           oppId={editOppId}
           defaultStage={defaultStage}
-          stageOptions={activeStages.map((key) => ({ value: key, label: stageLabels[key] ?? key })).concat(
-            [{ value: 'Lost', label: '기회 상실' }, { value: 'Abandoned', label: '보류' }, { value: 'Won', label: '수주 성공' }]
+          stageOptions={boardStages.map((key) => ({ value: key, label: stageLabels[key] ?? key })).concat(
+            [{ value: 'Won', label: '수주 성공' }],
+            [{ value: 'Lost', label: '기회 상실' }, { value: 'Abandoned', label: '보류' }]
           )}
           onClose={closeModal}
           onSaved={fetchData}
@@ -421,14 +388,6 @@ export default function SalesPipeline() {
         <PipelineStagesManageModal
           onClose={() => setShowStagesModal(false)}
           onSaved={() => { fetchStageDefinitions(); fetchData(); }}
-        />
-      )}
-
-      {/* 수주 성공 전체보기 모달 */}
-      {showWonAllModal && (
-        <WonAllModal
-          items={grouped[WON_STAGE] || []}
-          onClose={() => setShowWonAllModal(false)}
         />
       )}
     </div>

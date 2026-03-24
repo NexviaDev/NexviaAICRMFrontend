@@ -94,9 +94,9 @@
   width: 2.5rem;
   height: 2.5rem;
   padding: 0;
-  border: 1px solid rgba(148, 163, 184, 0.35);
+  border: none;
   border-radius: 0.65rem;
-  background: rgba(255, 255, 255, 0.85);
+  background: transparent;
   color: var(--sub-primary, #64748b);
   cursor: pointer;
   transition: background 0.2s, color 0.2s;

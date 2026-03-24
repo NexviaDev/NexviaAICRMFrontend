@@ -169,8 +169,8 @@
 }
 
 .product-list-icon-wrap {
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 2.05rem;
+  height: 2.05rem;
   border-radius: 0.5rem;
   background: var(--pastel-sky);
   color: var(--primary);
@@ -181,7 +181,7 @@
 }
 
 .product-list-icon-wrap .material-symbols-outlined {
-  font-size: 1.25rem;
+  font-size: 1.05rem;
 }
 
 .product-list-name {

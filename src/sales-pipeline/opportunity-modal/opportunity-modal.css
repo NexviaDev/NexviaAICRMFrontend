@@ -138,7 +138,55 @@
   flex: 0 0 110px;
 }
 
-/* 단가 + 통화 한 줄 (sample: input rounded-l, select rounded-r border-l-0) */
+/* 가격 기준 — 제품 목록의 소비자 마진·유통 마진과 동일 가격 축 */
+.opp-price-basis-hint {
+  margin: 0 0 0.6rem;
+  font-size: 0.75rem;
+  color: var(--text-muted, #64748b);
+  line-height: 1.45;
+}
+
+.opp-price-basis-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.opp-price-basis-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  padding: 0.55rem 0.85rem;
+  border: 1px solid var(--card-border, #e2e8f0);
+  border-radius: 8px;
+  background: var(--bg-light, #fff);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.opp-price-basis-btn:hover {
+  border-color: #cbd5e1;
+}
+
+.opp-price-basis-btn--selected {
+  border-color: var(--primary, #1d293a);
+  background: rgba(29, 41, 58, 0.06);
+}
+
+.opp-price-basis-btn-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.opp-price-basis-btn-sub {
+  font-size: 0.7rem;
+  color: var(--text-muted, #64748b);
+}
+
+/* 가격 + 통화 한 줄 */
 .opp-unit-currency-wrap {
   display: flex;
 }

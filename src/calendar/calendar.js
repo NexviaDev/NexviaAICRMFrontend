@@ -1,17 +1,32 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import EventModal from './event-modal/event-modal';
 import DayEventsModal from './day-events-modal/day-events-modal';
+import { googleEventDisplayTitle } from './google-event-display-title';
 import './calendar.css';
+import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
+import { API_BASE } from '@/config';
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
-import { API_BASE } from '@/config';
 const MODAL_PARAM = 'modal';
 const EVENT_ID_PARAM = 'eventId';
 const EDIT_PARAM = 'edit';
 const DATE_PARAM = 'date';
 const MODAL_EVENT = 'event';
 const MODAL_DAY_LIST = 'day-list';
+/** Google 일정 상세 API에 calendarId 전달 (primary 외 캘린더) */
+const GC_PARAM = 'gc';
+const GOOGLE_CALENDAR_IDS_STORAGE_KEY = 'nexvia_google_calendar_visible_ids';
+
+function pickTextOnCalendarColor(hex) {
+  if (!hex || typeof hex !== 'string' || !/^#[0-9A-Fa-f]{6}$/.test(hex)) return '#1e293b';
+  const h = hex.slice(1);
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  const L = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return L > 0.62 ? '#1e293b' : '#fff';
+}
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -24,25 +39,31 @@ function getMonthRange(year, month) {
   return { timeMin: timeMin.toISOString(), timeMax: timeMax.toISOString() };
 }
 
-/** Google Calendar 이벤트 → 통합 형식으로 변환 */
-function normalizeGoogleEvent(gev, currentUserId) {
+/** Google Calendar 이벤트 → 통합 형식으로 변환 (@param meta.calendarId, meta.accessRole — calendarList) */
+function normalizeGoogleEvent(gev, currentUserId, meta = {}) {
   const start = gev.start || {};
   const end = gev.end || {};
   const allDay = !!start.date && !start.dateTime;
+  const calendarId = meta.calendarId || 'primary';
+  const calendarName = meta.calendarSummary || calendarId;
+  const bg = (meta.backgroundColor || '').trim();
+  const titleMeta = { accessRole: meta.accessRole || '' };
   return {
     _id: `g:${gev.id}`,
     _source: 'google',
-    title: gev.summary || '(제목 없음)',
+    title: googleEventDisplayTitle(gev, titleMeta) || '(제목 없음)',
     start: start.dateTime || (start.date ? start.date + 'T00:00:00' : null),
     end: end.dateTime || (end.date ? end.date + 'T00:00:00' : null),
     allDay,
     description: gev.description || '',
-    color: '',
+    color: bg,
     visibility: 'private',
     creatorName: '',
     userId: currentUserId || '',
     participants: [],
-    googleEventId: gev.id
+    googleEventId: gev.id,
+    googleCalendarId: calendarId,
+    calendarName
   };
 }
 
@@ -121,8 +142,75 @@ const FILTER_OPTIONS = [
   { key: 'mine', label: '개인 일정' }
 ];
 
+const VIEW_OPTIONS = [
+  { key: 'month', label: '월' },
+  { key: 'day', label: '일' }
+];
+
+/** 해당 월의 day에 걸치는지 (getEventDaysInMonth 재사용) */
+function eventTouchesCalendarDay(ev, year, month, day) {
+  const days = getEventDaysInMonth(ev, year, month);
+  return days.includes(day);
+}
+
+function formatDayViewTitle(year, month, day) {
+  const d = new Date(year, month, day);
+  if (Number.isNaN(d.getTime())) return '';
+  const w = WEEKDAYS[d.getDay()];
+  return `${year}년 ${month + 1}월 ${day}일 (${w})`;
+}
+
+function formatTimeRangeKo(ev) {
+  if (!ev?.start) return '—';
+  try {
+    const s = new Date(ev.start);
+    if (Number.isNaN(s.getTime())) return '—';
+    if (ev.allDay) return '종일';
+    const timeOpts = { hour: 'numeric', minute: '2-digit', hour12: true };
+    const e = ev.end ? new Date(ev.end) : null;
+    const st = s.toLocaleTimeString('ko-KR', timeOpts);
+    if (e && !Number.isNaN(e.getTime())) {
+      return `${st} – ${e.toLocaleTimeString('ko-KR', timeOpts)}`;
+    }
+    return st;
+  } catch {
+    return '—';
+  }
+}
+
+/** Sample Design 톤 — 일정 칩 변주 (제목 해시) */
+function eventPillClass(ev, index) {
+  const t = (ev.title || '').toLowerCase();
+  if (t.includes('urgent') || t.includes('긴급')) return 'calendar-event-pill--urgent';
+  const h = String(ev._id || index).split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+  const n = h % 4;
+  if (n === 0) return 'calendar-event-pill--primary';
+  if (n === 1) return 'calendar-event-pill--tertiary';
+  if (n === 2) return 'calendar-event-pill--secondary';
+  return 'calendar-event-pill--mint';
+}
+
+function formatEventListWhen(ev) {
+  if (!ev?.start) return '—';
+  try {
+    const s = new Date(ev.start);
+    const e = ev.end ? new Date(ev.end) : null;
+    if (Number.isNaN(s.getTime())) return '—';
+    const dOpts = { month: 'long', day: 'numeric', weekday: 'short' };
+    if (ev.allDay) {
+      return `${s.toLocaleDateString('ko-KR', dOpts)} (종일)`;
+    }
+    const timeOpts = { hour: 'numeric', minute: '2-digit', hour12: true };
+    if (e && !Number.isNaN(e.getTime())) {
+      return `${s.toLocaleDateString('ko-KR', dOpts)} ${s.toLocaleTimeString('ko-KR', timeOpts)} – ${e.toLocaleTimeString('ko-KR', timeOpts)}`;
+    }
+    return `${s.toLocaleDateString('ko-KR', dOpts)} ${s.toLocaleTimeString('ko-KR', timeOpts)}`;
+  } catch {
+    return '—';
+  }
+}
+
 export default function Calendar() {
-  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [current, setCurrent] = useState(() => {
     const d = new Date();
@@ -134,28 +222,75 @@ export default function Calendar() {
   const [error, setError] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [activeFilter, setActiveFilter] = useState('all');
+  const [viewMode, setViewMode] = useState('month');
+  const [selectedDay, setSelectedDay] = useState(() => new Date().getDate());
   const [currentUser, setCurrentUser] = useState(null);
+  const [googleCalendarList, setGoogleCalendarList] = useState([]);
+  const [googleCalDropdownOpen, setGoogleCalDropdownOpen] = useState(false);
+  const googleCalDropdownRef = useRef(null);
+  const [selectedGoogleCalendarIds, setSelectedGoogleCalendarIds] = useState(() => {
+    try {
+      const raw = localStorage.getItem(GOOGLE_CALENDAR_IDS_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length) return parsed;
+      }
+    } catch {
+      /* ignore */
+    }
+    return ['primary'];
+  });
 
   const isEventModalOpen = searchParams.get(MODAL_PARAM) === MODAL_EVENT;
   const isDayListModalOpen = searchParams.get(MODAL_PARAM) === MODAL_DAY_LIST;
   const modalEventId = searchParams.get(EVENT_ID_PARAM) || null;
   const modalEdit = searchParams.get(EDIT_PARAM) === '1';
   const modalDate = searchParams.get(DATE_PARAM) || null;
+  const modalGoogleCalendarId = searchParams.get(GC_PARAM) || undefined;
+  const googleCalendarAccessRole = useMemo(() => {
+    if (!modalGoogleCalendarId || !googleCalendarList.length) return undefined;
+    const cal = googleCalendarList.find((c) => c.id === modalGoogleCalendarId);
+    return cal?.accessRole;
+  }, [modalGoogleCalendarId, googleCalendarList]);
 
   const openAddEvent = () => {
-    setSearchParams({ [MODAL_PARAM]: MODAL_EVENT }, { replace: true });
+    const next = new URLSearchParams(searchParams);
+    next.set(MODAL_PARAM, MODAL_EVENT);
+    next.delete(EVENT_ID_PARAM);
+    next.delete(GC_PARAM);
+    next.delete(EDIT_PARAM);
+    setSearchParams(next, { replace: true });
   };
   const openAddEventOnDate = (year, month, day) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    setSearchParams({ [MODAL_PARAM]: MODAL_EVENT, [DATE_PARAM]: dateStr }, { replace: true });
+    const next = new URLSearchParams(searchParams);
+    next.set(MODAL_PARAM, MODAL_EVENT);
+    next.set(DATE_PARAM, dateStr);
+    next.delete(EVENT_ID_PARAM);
+    next.delete(GC_PARAM);
+    next.delete(EDIT_PARAM);
+    setSearchParams(next, { replace: true });
   };
-  const openEventDetail = (eventId) => {
+  const openEventDetail = (eventId, googleCalendarId) => {
     if (!eventId) return;
-    setSearchParams({ [MODAL_PARAM]: MODAL_EVENT, [EVENT_ID_PARAM]: eventId });
+    const next = new URLSearchParams(searchParams);
+    next.set(MODAL_PARAM, MODAL_EVENT);
+    next.set(EVENT_ID_PARAM, eventId);
+    next.delete(EDIT_PARAM);
+    if (googleCalendarId && String(eventId).startsWith('g:')) {
+      next.set(GC_PARAM, googleCalendarId);
+    } else {
+      next.delete(GC_PARAM);
+    }
+    setSearchParams(next, { replace: true });
   };
   const openDayList = (year, month, day) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    setSearchParams({ [MODAL_PARAM]: MODAL_DAY_LIST, [DATE_PARAM]: dateStr }, { replace: true });
+    const next = new URLSearchParams(searchParams);
+    next.set(MODAL_PARAM, MODAL_DAY_LIST);
+    next.set(DATE_PARAM, dateStr);
+    next.delete(GC_PARAM);
+    setSearchParams(next, { replace: true });
   };
   const closeEventModal = () => {
     const next = new URLSearchParams(searchParams);
@@ -163,6 +298,7 @@ export default function Calendar() {
     next.delete(EVENT_ID_PARAM);
     next.delete(EDIT_PARAM);
     next.delete(DATE_PARAM);
+    next.delete(GC_PARAM);
     setSearchParams(next, { replace: true });
   };
   const refreshEvents = () => setRefreshKey((k) => k + 1);
@@ -199,9 +335,58 @@ export default function Calendar() {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(GOOGLE_CALENDAR_IDS_STORAGE_KEY, JSON.stringify(selectedGoogleCalendarIds));
+    } catch {
+      /* 사생활 모드 등 */
+    }
+  }, [selectedGoogleCalendarIds]);
+
+  useEffect(() => {
+    if (activeFilter !== 'mine') setGoogleCalDropdownOpen(false);
+  }, [activeFilter]);
+
+  useEffect(() => {
+    if (!googleCalDropdownOpen) return;
+    const onDown = (e) => {
+      if (googleCalDropdownRef.current && !googleCalDropdownRef.current.contains(e.target)) {
+        setGoogleCalDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [googleCalDropdownOpen]);
+
+  /** 개인 일정 탭: Google에 연결된 캘린더 목록(분류) — CalendarList API */
+  useEffect(() => {
+    if (activeFilter !== 'mine') return;
+    let cancelled = false;
+    fetch(`${API_BASE}/google-calendar/calendar-list`, { headers: getAuthHeader() })
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        if (data.error && !data.items) {
+          return;
+        }
+        const items = Array.isArray(data.items) ? data.items : [];
+        setGoogleCalendarList(items);
+        setSelectedGoogleCalendarIds((prev) => {
+          const knownIds = new Set(items.map((it) => it.id));
+          const kept = prev.filter((id) => knownIds.has(id));
+          if (kept.length > 0) return kept;
+          const selectedByGoogle = items.filter((it) => it.selected !== false).map((it) => it.id);
+          if (selectedByGoogle.length > 0) return selectedByGoogle;
+          return ['primary'];
+        });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [activeFilter]);
+
   /**
    * 회사 일정 탭: CRM(MongoDB)만 조회 (공개범위 적용)
-   * 개인 일정 탭: Google Calendar만 조회
+   * 개인 일정 탭: 선택한 Google 캘린더별로 이벤트 조회 후 병합
    */
   useEffect(() => {
     let cancelled = false;
@@ -225,36 +410,99 @@ export default function Calendar() {
         .catch(() => { if (!cancelled) { setError('일정을 불러올 수 없습니다.'); setCrmEvents([]); } })
         .finally(() => { if (!cancelled) setLoading(false); });
     } else {
-      const gParams = new URLSearchParams({ timeMin, timeMax, calendarId: 'primary' });
-      fetch(`${API_BASE}/google-calendar/events?${gParams}`, { headers: getAuthHeader() })
-        .then((r) => r.json())
-        .then((data) => {
+      const ids = selectedGoogleCalendarIds.length > 0 ? selectedGoogleCalendarIds : ['primary'];
+      const metaById = {};
+      googleCalendarList.forEach((it) => {
+        metaById[it.id] = {
+          calendarSummary: it.summary || it.id,
+          backgroundColor: (it.backgroundColor || '').trim(),
+          accessRole: it.accessRole || ''
+        };
+      });
+
+      Promise.all(
+        ids.map((calId) => {
+          const gParams = new URLSearchParams({ timeMin, timeMax, calendarId: calId });
+          return fetch(`${API_BASE}/google-calendar/events?${gParams}`, { headers: getAuthHeader() }).then((r) => r.json());
+        })
+      )
+        .then((results) => {
           if (cancelled) return;
-          if (data.error && !data.items) {
-            setError(data.needsReauth ? 'Google 계정 연동이 필요합니다.' : data.error);
+          const userId = currentUser?._id || '';
+          const merged = [];
+          let authErr = null;
+          let anyOk = false;
+          results.forEach((data, idx) => {
+            const calId = ids[idx];
+            if (data.error && !data.items) {
+              if (data.needsReauth) authErr = data;
+              return;
+            }
+            anyOk = true;
+            const meta = metaById[calId] || { calendarSummary: calId, backgroundColor: '', accessRole: '' };
+            (data.items || [])
+              .filter((gev) => gev && gev.id)
+              .forEach((gev) => {
+                merged.push(
+                  normalizeGoogleEvent(gev, userId, {
+                    calendarId: calId,
+                    calendarSummary: meta.calendarSummary,
+                    backgroundColor: meta.backgroundColor,
+                    accessRole: meta.accessRole
+                  })
+                );
+              });
+          });
+          if (!anyOk) {
+            setError(authErr?.needsReauth ? 'Google 계정 연동이 필요합니다.' : (authErr?.error || 'Google 캘린더를 불러올 수 없습니다.'));
             setGoogleEvents([]);
-          } else {
-            setGoogleEvents(data.items || []);
+            return;
           }
+          merged.sort((a, b) => compareCalendarEvents(a, b));
+          setGoogleEvents(merged);
           setCrmEvents([]);
         })
-        .catch(() => { if (!cancelled) { setError('Google 캘린더를 불러올 수 없습니다.'); setGoogleEvents([]); } })
+        .catch(() => {
+          if (!cancelled) {
+            setError('Google 캘린더를 불러올 수 없습니다.');
+            setGoogleEvents([]);
+          }
+        })
         .finally(() => { if (!cancelled) setLoading(false); });
     }
 
     return () => { cancelled = true; };
-  }, [timeMin, timeMax, refreshKey, activeFilter]);
+  }, [timeMin, timeMax, refreshKey, activeFilter, selectedGoogleCalendarIds, googleCalendarList, currentUser]);
 
-  /** 회사 일정=CRM 이벤트, 개인 일정=Google 이벤트 (정규화) */
+  /** 회사 일정=CRM 이벤트, 개인 일정=이미 정규화된 Google 이벤트 배열 */
   const events = useMemo(() => {
     if (activeFilter === 'all') {
       return crmEvents.map((ev) => ({ ...ev, _source: 'crm' }));
     }
-    const userId = currentUser?._id || '';
-    return googleEvents
-      .filter((gev) => gev.id)
-      .map((gev) => normalizeGoogleEvent(gev, userId));
-  }, [crmEvents, googleEvents, currentUser, activeFilter]);
+    return googleEvents;
+  }, [crmEvents, googleEvents, activeFilter]);
+
+  useEffect(() => {
+    const dim = new Date(current.year, current.month + 1, 0).getDate();
+    setSelectedDay((d) => Math.min(Math.max(1, d), dim));
+  }, [current.year, current.month]);
+
+  const eventsForSelectedDay = useMemo(
+    () =>
+      events
+        .filter((ev) => eventTouchesCalendarDay(ev, current.year, current.month, selectedDay))
+        .sort(compareCalendarEvents),
+    [events, current.year, current.month, selectedDay]
+  );
+
+  const dayViewAllDay = useMemo(
+    () => eventsForSelectedDay.filter((ev) => isAllDayEvent(ev)),
+    [eventsForSelectedDay]
+  );
+  const dayViewTimed = useMemo(
+    () => eventsForSelectedDay.filter((ev) => !isAllDayEvent(ev)),
+    [eventsForSelectedDay]
+  );
 
   const segmentsWithRow = useMemo(() => {
     const segments = [];
@@ -360,25 +608,54 @@ export default function Calendar() {
   }, [isDayListModalOpen, modalDate, current.month, allEventsByDay]);
 
   const getEventStyle = useCallback((ev) => {
-    if (ev._source === 'google' && !ev.color) {
-      return { background: 'rgba(66,133,244,0.15)', color: '#4285f4' };
+    if (ev.color) {
+      return { background: ev.color, color: pickTextOnCalendarColor(ev.color) };
     }
-    if (!ev.color) return undefined;
-    return { background: ev.color, color: '#fff' };
+    return undefined;
   }, []);
+
+  const upcomingThisMonth = useMemo(() => {
+    const monthStart = new Date(current.year, current.month, 1, 0, 0, 0, 0);
+    const monthEnd = new Date(current.year, current.month + 1, 0, 23, 59, 59, 999);
+    return events
+      .filter((ev) => {
+        if (!ev.start) return false;
+        const t = new Date(ev.start).getTime();
+        if (Number.isNaN(t)) return false;
+        return t >= monthStart.getTime() && t <= monthEnd.getTime();
+      })
+      .sort((a, b) => getEventStartTimeValue(a) - getEventStartTimeValue(b))
+      .slice(0, 5);
+  }, [events, current.year, current.month]);
 
   const isMyEvent = useCallback((ev) => {
     if (ev._source === 'google') return true;
     return currentUser && ev.userId === currentUser._id;
   }, [currentUser]);
 
-  const prevMonth = () => {
+  const prevMonth = useCallback(() => {
     setCurrent((c) => (c.month === 0 ? { year: c.year - 1, month: 11 } : { ...c, month: c.month - 1 }));
-  };
-  const nextMonth = () => {
+  }, []);
+  const nextMonth = useCallback(() => {
     setCurrent((c) => (c.month === 11 ? { year: c.year + 1, month: 0 } : { ...c, month: c.month + 1 }));
-  };
-  const title = `${current.year}년 ${current.month + 1}월`;
+  }, []);
+
+  const goPrevDay = useCallback(() => {
+    const d = new Date(current.year, current.month, selectedDay);
+    d.setDate(d.getDate() - 1);
+    setCurrent({ year: d.getFullYear(), month: d.getMonth() });
+    setSelectedDay(d.getDate());
+  }, [current.year, current.month, selectedDay]);
+
+  const goNextDay = useCallback(() => {
+    const d = new Date(current.year, current.month, selectedDay);
+    d.setDate(d.getDate() + 1);
+    setCurrent({ year: d.getFullYear(), month: d.getMonth() });
+    setSelectedDay(d.getDate());
+  }, [current.year, current.month, selectedDay]);
+
+  const monthTitle = `${current.year}년 ${current.month + 1}월`;
+  const dayTitle = formatDayViewTitle(current.year, current.month, selectedDay);
 
   return (
     <div className="page calendar-page">
@@ -388,45 +665,131 @@ export default function Calendar() {
           <input type="text" placeholder="일정 검색..." />
         </div>
         <div className="header-actions">
-          <button type="button" className="icon-btn" aria-label="공지사항" onClick={() => navigate('/notification')}><span className="material-symbols-outlined">notifications</span></button>
-          <button type="button" className="icon-btn" aria-label="채팅" onClick={() => navigate('/chat')}><span className="material-symbols-outlined">chat_bubble</span></button>
-          <button type="button" className="btn-primary" onClick={openAddEvent}><span className="material-symbols-outlined">add</span> 일정 추가</button>
+          <PageHeaderNotifyChat noWrapper buttonClassName="icon-btn" />
         </div>
       </header>
 
-      <div className="page-content">
-        <div className="calendar-top">
-          <h2>캘린더</h2>
-          <p className="page-desc">팀 일정을 확인하고 관리합니다.</p>
-        </div>
-
-        <div className="panel calendar-panel">
-          <div className="calendar-toolbar">
-            <div className="calendar-filter-tabs">
-              {FILTER_OPTIONS.map((opt) => (
-                <button
-                  key={opt.key}
-                  type="button"
-                  className={`calendar-filter-tab ${activeFilter === opt.key ? 'active' : ''}`}
-                  onClick={() => setActiveFilter(opt.key)}
+      <div className="page-content calendar-page-content">
+        <div className="calendar-shell">
+          <div className="calendar-hero">
+            <div className="calendar-hero-main">
+              <div className="calendar-title-block">
+                <h1 className="calendar-month-headline">
+                  {viewMode === 'day' ? dayTitle : monthTitle}
+                </h1>
+                <div className="calendar-round-nav">
+                  <button
+                    type="button"
+                    className="calendar-round-nav-btn"
+                    onClick={viewMode === 'day' ? goPrevDay : prevMonth}
+                    aria-label={viewMode === 'day' ? '이전 날' : '이전 달'}
+                  >
+                    <span className="material-symbols-outlined">chevron_left</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="calendar-round-nav-btn"
+                    onClick={viewMode === 'day' ? goNextDay : nextMonth}
+                    aria-label={viewMode === 'day' ? '다음 날' : '다음 달'}
+                  >
+                    <span className="material-symbols-outlined">chevron_right</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="calendar-hero-aside">
+              <div className="calendar-view-tabs" role="tablist" aria-label="보기 방식">
+                {VIEW_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={viewMode === opt.key}
+                    className={`calendar-view-tab ${viewMode === opt.key ? 'active' : ''}`}
+                    onClick={() => setViewMode(opt.key)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <div className="calendar-filter-tabs" role="tablist" aria-label="일정 범위">
+                {FILTER_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeFilter === opt.key}
+                    className={`calendar-filter-tab ${activeFilter === opt.key ? 'active' : ''}`}
+                    onClick={() => setActiveFilter(opt.key)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              {activeFilter === 'mine' && googleCalendarList.length > 0 && (
+                <div
+                  ref={googleCalDropdownRef}
+                  className="calendar-google-cal-dropdown"
                 >
-                  {opt.label}
-                </button>
-              ))}
+                  <button
+                    type="button"
+                    className="calendar-google-cal-dropdown-trigger"
+                    aria-expanded={googleCalDropdownOpen}
+                    aria-haspopup="listbox"
+                    aria-label="표시할 Google 캘린더 열기"
+                    onClick={() => setGoogleCalDropdownOpen((o) => !o)}
+                  >
+                    <span className="calendar-google-cal-dropdown-trigger-text">Google 캘린더</span>
+                    <span className="calendar-google-cal-dropdown-count">({selectedGoogleCalendarIds.length})</span>
+                    <span
+                      className={`material-symbols-outlined calendar-google-cal-dropdown-chevron ${googleCalDropdownOpen ? 'open' : ''}`}
+                      aria-hidden
+                    >
+                      expand_more
+                    </span>
+                  </button>
+                  {googleCalDropdownOpen && (
+                    <div
+                      className="calendar-google-cal-dropdown-panel"
+                      role="listbox"
+                      aria-label="표시할 Google 캘린더"
+                    >
+                      {googleCalendarList.map((cal) => (
+                        <label key={cal.id} className="calendar-google-cal-pick-item">
+                          <input
+                            type="checkbox"
+                            checked={selectedGoogleCalendarIds.includes(cal.id)}
+                            onChange={() => {
+                              setSelectedGoogleCalendarIds((prev) => {
+                                const on = prev.includes(cal.id);
+                                if (on) {
+                                  if (prev.length <= 1) return prev;
+                                  return prev.filter((x) => x !== cal.id);
+                                }
+                                return [...prev, cal.id];
+                              });
+                            }}
+                          />
+                          <span
+                            className="calendar-google-cal-swatch"
+                            style={{ background: cal.backgroundColor || '#cbd5e1' }}
+                            aria-hidden
+                          />
+                          <span className="calendar-google-cal-name">{cal.summary || cal.id}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
-          <div className="calendar-nav">
-            <button type="button" className="calendar-nav-btn" onClick={prevMonth} aria-label="이전 달">
-              <span className="material-symbols-outlined">chevron_left</span>
-            </button>
-            <h3 className="calendar-title">{title}</h3>
-            <button type="button" className="calendar-nav-btn" onClick={nextMonth} aria-label="다음 달">
-              <span className="material-symbols-outlined">chevron_right</span>
-            </button>
-          </div>
+
           {error && <p className="calendar-google-hint" role="status">{error}</p>}
-          {loading && <p className="calendar-google-loading" aria-hidden="true">일정 불러오는 중…</p>}
-          <div className="calendar-grid">
+
+          <div className="calendar-panel-card">
+            {viewMode === 'month' ? (
+            <div className="calendar-grid">
             <div className="calendar-weekday-row">
               {WEEKDAYS.map((w) => (
                 <div key={w} className="calendar-weekday">{w}</div>
@@ -442,33 +805,58 @@ export default function Calendar() {
                     {weekDays.map((d, dayIndex) => {
                       const cellIndex = weekIndex * 7 + dayIndex;
                       const isToday = d != null && d === new Date().getDate() && current.month === new Date().getMonth() && current.year === new Date().getFullYear();
+                      const isSunday = dayIndex === 0;
+                      const isSaturday = dayIndex === 6;
                       const evs = (d != null && eventsByDay[d]) || [];
                       const totalDayEvents = (d != null && allEventsByDay[d]) || [];
                       return (
                         <div
                           key={cellIndex}
-                          className={`calendar-day ${d == null ? 'empty' : ''} ${isToday ? 'today' : ''}`}
+                          className={`calendar-day ${d == null ? 'empty' : ''} ${isToday ? 'today' : ''} ${isSunday ? 'sun' : ''} ${isSaturday ? 'sat' : ''}`}
                           onDoubleClick={() => d != null && openAddEventOnDate(current.year, current.month, d)}
-                          title={d != null ? '더블클릭: 이 날짜에 일정 추가' : undefined}
+                          title={d != null ? '날짜 클릭: 일별 보기 · 더블클릭: 일정 추가' : undefined}
                         >
-                          {d != null && <span className="calendar-day-num">{d}</span>}
+                          {d != null && (
+                            <span
+                              className={`calendar-day-num ${isToday ? 'calendar-day-num--today' : ''}`}
+                              role="button"
+                              tabIndex={0}
+                              title="일별 보기"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedDay(d);
+                                setViewMode('day');
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setSelectedDay(d);
+                                  setViewMode('day');
+                                }
+                              }}
+                            >
+                              {d}
+                            </span>
+                          )}
                           {d != null && (
                             <div className="calendar-day-body" style={weekSegmentRows > 0 ? { paddingTop: `${weekSegmentPaddingRem}rem` } : undefined}>
                               <ul className={`calendar-events ${weekSegmentRows > 0 ? 'has-segments' : ''}`}>
-                                {evs.slice(0, 5).map((entry) => {
+                                {evs.slice(0, 5).map((entry, evIdx) => {
                                   const ev = entry.event;
                                   const style = getEventStyle(ev);
                                   const isGoogle = ev._source === 'google';
+                                  const pillClass = style ? '' : eventPillClass(ev, evIdx);
                                   return (
                                     <li
-                                      key={ev._id}
-                                      className={`calendar-event ${isAllDayEvent(ev) ? 'all-day' : 'timed'} ${!isMyEvent(ev) ? 'other-user' : ''} ${isGoogle ? 'google-event' : ''}`}
+                                      key={`${ev.googleCalendarId || ''}-${ev._id}`}
+                                      className={`calendar-event ${pillClass} ${isAllDayEvent(ev) ? 'all-day' : 'timed'} ${!isMyEvent(ev) ? 'other-user' : ''} ${isGoogle ? 'google-event' : ''}`}
                                       style={style}
-                                      title={`${ev.title || '(제목 없음)'}${ev.creatorName ? ` — ${ev.creatorName}` : ''}${isGoogle ? ' (Google)' : ''}`}
+                                      title={`${ev.title || '(제목 없음)'}${ev.calendarName ? ` — ${ev.calendarName}` : ''}${ev.creatorName ? ` — ${ev.creatorName}` : ''}${isGoogle ? '' : ''}`}
                                       role="button"
                                       tabIndex={0}
-                                      onClick={() => openEventDetail(ev._id)}
-                                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEventDetail(ev._id); } }}
+                                      onClick={() => openEventDetail(ev._id, ev.googleCalendarId)}
+                                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEventDetail(ev._id, ev.googleCalendarId); } }}
                                     >
                                       {isGoogle && <span className="calendar-event-google-dot" />}
                                       {!isMyEvent(ev) && ev.creatorName && <span className="calendar-event-author">{ev.creatorName.charAt(0)}</span>}
@@ -501,18 +889,19 @@ export default function Calendar() {
                     <div className="calendar-week-segments-overlay" style={{ gridTemplateRows: `repeat(${weekSegmentRows}, 1.5rem)` }} aria-hidden="true">
                       {weekSegments.map((seg) => {
                         const style = getEventStyle(seg.event);
+                        const segPill = style ? '' : eventPillClass(seg.event, seg.rowIndex ?? 0);
                         const colStart = ((startPad + seg.firstDay - 1) % 7) + 1;
                         const isGoogle = seg.event._source === 'google';
                         return (
                           <div
-                            key={`${seg.event._id}-${seg.firstDay}-${seg.rowIndex}`}
-                            className={`calendar-segment-bar ${!isMyEvent(seg.event) ? 'other-user' : ''} ${isGoogle ? 'google-event' : ''}`}
+                            key={`${seg.event.googleCalendarId || ''}-${seg.event._id}-${seg.firstDay}-${seg.rowIndex}`}
+                            className={`calendar-segment-bar ${segPill} ${!isMyEvent(seg.event) ? 'other-user' : ''} ${isGoogle ? 'google-event' : ''}`}
                             style={{ gridColumn: `${colStart} / span ${seg.span}`, gridRow: (seg.rowIndex ?? 0) + 1, ...(style || {}) }}
-                            title={`${seg.event.title || '(제목 없음)'}${seg.event.creatorName ? ` — ${seg.event.creatorName}` : ''}${isGoogle ? ' (Google)' : ''}`}
+                            title={`${seg.event.title || '(제목 없음)'}${seg.event.calendarName ? ` — ${seg.event.calendarName}` : ''}${seg.event.creatorName ? ` — ${seg.event.creatorName}` : ''}`}
                             role="button"
                             tabIndex={0}
-                            onClick={() => openEventDetail(seg.event._id)}
-                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEventDetail(seg.event._id); } }}
+                            onClick={() => openEventDetail(seg.event._id, seg.event.googleCalendarId)}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEventDetail(seg.event._id, seg.event.googleCalendarId); } }}
                           >
                             {seg.event.title || '(제목 없음)'}
                           </div>
@@ -524,6 +913,145 @@ export default function Calendar() {
               );
             })}
           </div>
+            ) : (
+            <div className="calendar-day-view">
+              <div className="calendar-day-view-toolbar">
+                <button
+                  type="button"
+                  className="calendar-day-view-add-btn"
+                  onClick={() => openAddEventOnDate(current.year, current.month, selectedDay)}
+                >
+                  <span className="material-symbols-outlined">add</span>
+                  이 날짜에 일정 추가
+                </button>
+                <button
+                  type="button"
+                  className="calendar-day-view-secondary-btn"
+                  onClick={() => openDayList(current.year, current.month, selectedDay)}
+                >
+                  하루 일정 목록
+                </button>
+              </div>
+              {eventsForSelectedDay.length === 0 ? (
+                <p className="calendar-day-view-empty">이 날짜에 표시할 일정이 없습니다.</p>
+              ) : (
+                <div className="calendar-day-view-body">
+                  {dayViewAllDay.length > 0 && (
+                    <section className="calendar-day-view-section" aria-labelledby="calendar-day-allday">
+                      <h3 id="calendar-day-allday" className="calendar-day-view-section-title">
+                        종일
+                      </h3>
+                      <ul className="calendar-day-view-list">
+                        {dayViewAllDay.map((ev, evIdx) => {
+                          const style = getEventStyle(ev);
+                          const pillClass = style ? '' : eventPillClass(ev, evIdx);
+                          const isGoogle = ev._source === 'google';
+                          return (
+                            <li key={`${ev.googleCalendarId || ''}-${ev._id}`}>
+                              <button
+                                type="button"
+                                className={`calendar-day-view-card ${pillClass} ${isGoogle ? 'google-event' : ''}`}
+                                style={style}
+                                onClick={() => openEventDetail(ev._id, ev.googleCalendarId)}
+                              >
+                                {isGoogle && <span className="calendar-event-google-dot" aria-hidden />}
+                                <span className="calendar-day-view-card-title">{ev.title || '(제목 없음)'}</span>
+                                {ev.calendarName && (
+                                  <span className="calendar-day-view-card-meta">{ev.calendarName}</span>
+                                )}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </section>
+                  )}
+                  {dayViewTimed.length > 0 && (
+                    <section className="calendar-day-view-section" aria-labelledby="calendar-day-timed">
+                      <h3 id="calendar-day-timed" className="calendar-day-view-section-title">
+                        시간
+                      </h3>
+                      <ul className="calendar-day-view-list">
+                        {dayViewTimed.map((ev, evIdx) => {
+                          const style = getEventStyle(ev);
+                          const pillClass = style ? '' : eventPillClass(ev, evIdx);
+                          const isGoogle = ev._source === 'google';
+                          return (
+                            <li key={`${ev.googleCalendarId || ''}-${ev._id}`}>
+                              <button
+                                type="button"
+                                className={`calendar-day-view-card calendar-day-view-card--timed ${pillClass} ${isGoogle ? 'google-event' : ''}`}
+                                style={style}
+                                onClick={() => openEventDetail(ev._id, ev.googleCalendarId)}
+                              >
+                                <span className="calendar-day-view-card-time">{formatTimeRangeKo(ev)}</span>
+                                <span className="calendar-day-view-card-main">
+                                  <span className="calendar-day-view-card-title">{ev.title || '(제목 없음)'}</span>
+                                  {ev.calendarName && (
+                                    <span className="calendar-day-view-card-meta">{ev.calendarName}</span>
+                                  )}
+                                </span>
+                                {isGoogle && <span className="calendar-event-google-dot" aria-hidden />}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </section>
+                  )}
+                </div>
+              )}
+            </div>
+            )}
+          </div>
+
+          <div className="calendar-bottom-grid">
+            <section className="calendar-upcoming-panel" aria-labelledby="calendar-upcoming-title">
+              <h2 id="calendar-upcoming-title" className="calendar-upcoming-title">
+                이번 달 예정된 주요 일정
+              </h2>
+              {upcomingThisMonth.length === 0 ? (
+                <p className="calendar-upcoming-empty">이번 달에 표시할 일정이 없습니다.</p>
+              ) : (
+                <ul className="calendar-upcoming-list">
+                  {upcomingThisMonth.map((ev, i) => {
+                    const icon = ev._source === 'google' ? 'event' : i % 2 === 0 ? 'event' : 'group';
+                    const iconTone = i % 2 === 0 ? 'calendar-upcoming-icon--primary' : 'calendar-upcoming-icon--tertiary';
+                    return (
+                      <li key={`${ev.googleCalendarId || ''}-${ev._id}`} className="calendar-upcoming-row">
+                        <div className={`calendar-upcoming-icon ${iconTone}`}>
+                          <span className="material-symbols-outlined">{icon}</span>
+                        </div>
+                        <div className="calendar-upcoming-text">
+                          <p className="calendar-upcoming-name">{ev.title || '(제목 없음)'}</p>
+                          <p className="calendar-upcoming-meta">{formatEventListWhen(ev)}</p>
+                        </div>
+                        <button
+                          type="button"
+                          className="calendar-upcoming-link"
+                          onClick={() => openEventDetail(ev._id, ev.googleCalendarId)}
+                        >
+                          상세보기
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </section>
+            <aside className="calendar-ai-panel" aria-label="안내">
+              <span className="material-symbols-outlined calendar-ai-icon" aria-hidden>
+                auto_awesome
+              </span>
+              <h3 className="calendar-ai-title">효율적인 일정 관리를 시작하세요.</h3>
+              <p className="calendar-ai-desc">
+                팀 캘린더에서 회사 일정과 개인 일정을 전환해 보세요. 일정은 더블클릭으로 빠르게 추가할 수 있습니다.
+              </p>
+              <button type="button" className="calendar-ai-cta" onClick={openAddEvent}>
+                일정 추가하기
+              </button>
+            </aside>
+          </div>
         </div>
       </div>
 
@@ -533,6 +1061,8 @@ export default function Calendar() {
           isEdit={modalEdit}
           initialDate={modalDate}
           calendarType={activeFilter === 'mine' ? 'personal' : 'company'}
+          googleCalendarId={modalGoogleCalendarId}
+          googleCalendarAccessRole={googleCalendarAccessRole}
           onClose={closeEventModal}
           onSaved={refreshEvents}
           onDeleted={refreshEvents}

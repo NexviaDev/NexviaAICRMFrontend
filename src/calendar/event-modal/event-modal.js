@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import ParticipantModal from '../participant-modal/participant-modal';
 import './event-modal.css';
 
 import { API_BASE } from '@/config';
+import { googleEventDisplayTitle } from '../google-event-display-title';
 
 const PRESET_COLORS = [
   { hex: '#7986cb', label: '라벤더' },
@@ -35,15 +36,48 @@ function todayStr() {
 
 function defaultTime() { return '09:00'; }
 
+/** 설명 보기: http(s) URL을 하이퍼링크로 표시 (회의 일지 링크 등) */
+function linkifyLine(line, lineKey) {
+  const urlRe = /(https?:\/\/[^\s]+)/g;
+  const parts = [];
+  let last = 0;
+  let m;
+  let i = 0;
+  while ((m = urlRe.exec(line)) !== null) {
+    if (m.index > last) parts.push(line.slice(last, m.index));
+    const href = m[1].trim();
+    parts.push(
+      <a key={`l${lineKey}-${i++}`} href={href} target="_blank" rel="noopener noreferrer" className="event-modal-desc-link">
+        {href}
+      </a>
+    );
+    last = m.index + m[1].length;
+  }
+  if (last < line.length) parts.push(line.slice(last));
+  return parts.length ? parts : line;
+}
+
+function renderDescriptionWithLinks(text) {
+  if (text == null || text === '') return null;
+  const lines = String(text).split('\n');
+  return lines.map((line, lineIdx) => (
+    <span key={lineIdx}>
+      {lineIdx > 0 ? <br /> : null}
+      {linkifyLine(line, lineIdx)}
+    </span>
+  ));
+}
+
 /** eventId가 `g:xxxxx` 형태면 Google 이벤트 */
 function isGoogleEventId(id) { return typeof id === 'string' && id.startsWith('g:'); }
 function extractGoogleId(id) { return id.slice(2); }
 
 /** Google Calendar 이벤트 → 폼 값 */
-function googleEventToForm(ev) {
+function googleEventToForm(ev, titleMeta = {}) {
   const start = ev.start || {};
   const end = ev.end || {};
   const allDay = !!start.date && !start.dateTime;
+  const displayTitle = googleEventDisplayTitle(ev, titleMeta) || '';
 
   if (allDay) {
     const startDate = start.date || todayStr();
@@ -55,12 +89,12 @@ function googleEventToForm(ev) {
     } else {
       endDate = startDate;
     }
-    return { title: ev.summary || '', description: ev.description || '', color: '', allDay: true, startDate, startTime: defaultTime(), endDate, endTime: '10:00', visibility: 'private', participants: [] };
+    return { title: displayTitle, description: ev.description || '', color: '', allDay: true, startDate, startTime: defaultTime(), endDate, endTime: '10:00', visibility: 'private', participants: [] };
   }
 
   const startDt = start.dateTime ? new Date(start.dateTime) : new Date();
   const endDt = end.dateTime ? new Date(end.dateTime) : new Date(startDt.getTime() + 3600000);
-  return { title: ev.summary || '', description: ev.description || '', color: '', allDay: false, startDate: startDt.toISOString().slice(0, 10), startTime: startDt.toTimeString().slice(0, 5), endDate: endDt.toISOString().slice(0, 10), endTime: endDt.toTimeString().slice(0, 5), visibility: 'private', participants: [] };
+  return { title: displayTitle, description: ev.description || '', color: '', allDay: false, startDate: startDt.toISOString().slice(0, 10), startTime: startDt.toTimeString().slice(0, 5), endDate: endDt.toISOString().slice(0, 10), endTime: endDt.toTimeString().slice(0, 5), visibility: 'private', participants: [] };
 }
 
 /** CRM 이벤트 → 폼 값 */
@@ -147,7 +181,12 @@ function formatEventWhen(ev, source) {
   return s.toLocaleString('ko-KR', opts) + (e ? ' ~ ' + e.toLocaleString('ko-KR', opts) : '');
 }
 
-export default function EventModal({ eventId, isEdit, initialDate, calendarType, onClose, onSaved, onDeleted, currentUser }) {
+function googleCalendarQuery(calendarId) {
+  if (!calendarId) return '';
+  return `?calendarId=${encodeURIComponent(calendarId)}`;
+}
+
+export default function EventModal({ eventId, isEdit, initialDate, calendarType, onClose, onSaved, onDeleted, currentUser, googleCalendarId, googleCalendarAccessRole }) {
   const isAdd = !eventId;
   const isPersonal = calendarType === 'personal';
   const isGoogle = !isAdd && isGoogleEventId(eventId);
@@ -183,10 +222,27 @@ export default function EventModal({ eventId, isEdit, initialDate, calendarType,
     let cancelled = false;
     fetch(`${API_BASE}/calendar-events/team-members`, { headers: getAuthHeader() })
       .then((r) => r.json())
-      .then((data) => { if (!cancelled && data.members) setTeamMembers(data.members); })
+      .then((data) => {
+        if (cancelled || !data.members) return;
+        setTeamMembers(data.members);
+      })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [isAdd, isGoogle]);
+
+  const teamMemberById = useMemo(() => {
+    const map = new Map();
+    teamMembers.forEach((m) => map.set(String(m._id), m));
+    return map;
+  }, [teamMembers]);
+
+  const participantDeptLabel = useCallback(
+    (userId) => {
+      const m = teamMemberById.get(String(userId));
+      return m?.departmentDisplay || '';
+    },
+    [teamMemberById]
+  );
 
   const fetchEvent = useCallback(async () => {
     if (isAdd) return;
@@ -194,7 +250,7 @@ export default function EventModal({ eventId, isEdit, initialDate, calendarType,
     setError('');
     try {
       const url = isGoogle
-        ? `${API_BASE}/google-calendar/events/${encodeURIComponent(realId)}`
+        ? `${API_BASE}/google-calendar/events/${encodeURIComponent(realId)}${googleCalendarQuery(googleCalendarId)}`
         : `${API_BASE}/calendar-events/${encodeURIComponent(realId)}`;
       const res = await fetch(url, { headers: getAuthHeader() });
       const data = await res.json().catch(() => ({}));
@@ -204,14 +260,15 @@ export default function EventModal({ eventId, isEdit, initialDate, calendarType,
         return;
       }
       setEvent(data);
-      setForm(isGoogle ? googleEventToForm(data) : crmEventToForm(data));
+      const gTitleMeta = { accessRole: googleCalendarAccessRole || '' };
+      setForm(isGoogle ? googleEventToForm(data, gTitleMeta) : crmEventToForm(data));
     } catch (_) {
       setError('일정을 불러올 수 없습니다.');
       setEvent(null);
     } finally {
       setLoading(false);
     }
-  }, [isAdd, isGoogle, realId]);
+  }, [isAdd, isGoogle, realId, googleCalendarId, googleCalendarAccessRole]);
 
   useEffect(() => { fetchEvent(); }, [fetchEvent]);
 
@@ -267,16 +324,19 @@ export default function EventModal({ eventId, isEdit, initialDate, calendarType,
         }
       } else if (isGoogle) {
         const body = formToGoogleBody(form);
-        const res = await fetch(`${API_BASE}/google-calendar/events/${encodeURIComponent(realId)}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-          body: JSON.stringify(body)
-        });
+        const res = await fetch(
+          `${API_BASE}/google-calendar/events/${encodeURIComponent(realId)}${googleCalendarQuery(googleCalendarId)}`,
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+            body: JSON.stringify(body)
+          }
+        );
         const data = await res.json().catch(() => ({}));
         if (!res.ok) { setError(data.error || '일정 수정에 실패했습니다.'); return; }
         setEvent(data);
         setMode('view');
-        setForm(googleEventToForm(data));
+        setForm(googleEventToForm(data, { accessRole: googleCalendarAccessRole || '' }));
         onSaved?.();
       } else {
         const body = formToCrmBody(form);
@@ -305,7 +365,7 @@ export default function EventModal({ eventId, isEdit, initialDate, calendarType,
     setError('');
     try {
       const url = isGoogle
-        ? `${API_BASE}/google-calendar/events/${encodeURIComponent(realId)}`
+        ? `${API_BASE}/google-calendar/events/${encodeURIComponent(realId)}${googleCalendarQuery(googleCalendarId)}`
         : `${API_BASE}/calendar-events/${encodeURIComponent(realId)}`;
       const res = await fetch(url, { method: 'DELETE', headers: getAuthHeader() });
       if (!res.ok) {
@@ -324,7 +384,10 @@ export default function EventModal({ eventId, isEdit, initialDate, calendarType,
 
   const modalTitle = isAdd ? '일정 추가' : mode === 'view' ? '일정 보기' : '일정 수정';
   const visLabel = VISIBILITY_OPTIONS.find((v) => v.value === (isGoogle ? 'private' : (event?.visibility || 'company')));
-  const eventTitle = isGoogle ? (event?.summary || '(제목 없음)') : (event?.title || '(제목 없음)');
+  const gCalTitleMeta = { accessRole: googleCalendarAccessRole || '' };
+  const eventTitle = isGoogle
+    ? (googleEventDisplayTitle(event, gCalTitleMeta) || '(제목 없음)')
+    : (event?.title || '(제목 없음)');
   const eventDesc = event?.description || '';
 
   return (
@@ -332,9 +395,17 @@ export default function EventModal({ eventId, isEdit, initialDate, calendarType,
       <div className="event-modal" onClick={(e) => e.stopPropagation()}>
         <div className="event-modal-header">
           <h3>
-            {modalTitle}_
-            {isGoogle && !isAdd && <span className="event-modal-source-badge google">Google</span>}
-            {!isGoogle && !isAdd && <span className="event-modal-source-badge crm">회사</span>}
+            {modalTitle}
+            {!isAdd && (
+              <>
+                {(modalTitle || '').trim() ? ' _ ' : null}
+                {isGoogle ? (
+                  <span className="event-modal-source-badge google">Google</span>
+                ) : (
+                  <span className="event-modal-source-badge crm">회사</span>
+                )}
+              </>
+            )}
           </h3>
           <button type="button" className="event-modal-close" onClick={onClose} aria-label="닫기">
             <span className="material-symbols-outlined">close</span>
@@ -370,16 +441,22 @@ export default function EventModal({ eventId, isEdit, initialDate, calendarType,
                 <>
                   <dt>참여자</dt>
                   <dd className="event-modal-participants-view">
-                    {event.participants.map((p) => (
-                      <span key={p.userId} className="event-modal-participant-chip">{p.name || '(이름 없음)'}</span>
-                    ))}
+                    {event.participants.map((p) => {
+                      const dept = participantDeptLabel(p.userId);
+                      return (
+                        <span key={p.userId} className="event-modal-participant-chip">
+                          {p.name || '(이름 없음)'}
+                          {dept ? <span className="event-modal-participant-dept"> · {dept}</span> : null}
+                        </span>
+                      );
+                    })}
                   </dd>
                 </>
               )}
               {eventDesc && (
                 <>
                   <dt>설명</dt>
-                  <dd className="event-modal-desc">{eventDesc}</dd>
+                  <dd className="event-modal-desc">{renderDescriptionWithLinks(eventDesc)}</dd>
                 </>
               )}
             </dl>
@@ -474,11 +551,29 @@ export default function EventModal({ eventId, isEdit, initialDate, calendarType,
                 </button>
                 {form.participants.length > 0 && (
                   <div className="event-modal-selected-chips">
-                    {form.participants.map((p) => (
-                      <span key={p.userId} className="event-modal-participant-chip removable" onClick={() => setForm((prev) => ({ ...prev, participants: prev.participants.filter((x) => x.userId !== p.userId) }))}>
-                        {p.name || '(이름 없음)'} ✕
-                      </span>
-                    ))}
+                    {form.participants.map((p) => {
+                      const dept = participantDeptLabel(p.userId);
+                      return (
+                        <span key={p.userId} className="event-modal-participant-chip removable">
+                          <span className="event-modal-participant-chip-label">
+                            {p.name || '(이름 없음)'}
+                            {dept ? <span className="event-modal-participant-dept"> · {dept}</span> : null}
+                          </span>
+                          <button
+                            type="button"
+                            className="event-modal-participant-chip-remove"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setForm((prev) => ({ ...prev, participants: prev.participants.filter((x) => x.userId !== p.userId) }));
+                            }}
+                            aria-label={`${p.name || '참여자'} 제거`}
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      );
+                    })}
                   </div>
                 )}
               </div>

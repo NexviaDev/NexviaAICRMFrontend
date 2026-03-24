@@ -109,6 +109,8 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   const [historyItems, setHistoryItems] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [savingNote, setSavingNote] = useState(false);
+  const [audioUploading, setAudioUploading] = useState(false);
+  const [audioDropActive, setAudioDropActive] = useState(false);
   const [error, setError] = useState('');
   const [summaryNotice, setSummaryNotice] = useState(null);
 
@@ -149,6 +151,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   const [driveFilesList, setDriveFilesList] = useState([]);
   const [loadingDriveFiles, setLoadingDriveFiles] = useState(false);
   const driveFileInputRef = useRef(null);
+  const audioInputRef = useRef(null);
 
   const [driveFolderName, setDriveFolderName] = useState('');
 
@@ -554,6 +557,45 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
       setSavingNote(false);
     }
   };
+
+  const uploadAudioForJournal = useCallback(async (filesLike) => {
+    const files = Array.from(filesLike || []).filter((f) => f && f instanceof File);
+    if (!files.length || !contactId || savingNote || audioUploading) return;
+    const accept = /\.(mp3|wav|m4a|webm)$/i;
+    const audioTypes = ['audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/x-m4a', 'audio/webm'];
+    const file = files.find((f) => accept.test(f.name) || audioTypes.includes(f.type));
+    if (!file) {
+      setError('MP3, WAV, M4A, WebM 파일만 업로드할 수 있습니다.');
+      return;
+    }
+    setError('');
+    setSummaryNotice({
+      type: 'info',
+      text: '음성 파일을 처리 중입니다. AssemblyAI 전사 후 Gemini가 분류/요약합니다.'
+    });
+    setAudioUploading(true);
+    try {
+      const form = new FormData();
+      form.append('audio', file);
+      const res = await fetch(`${API_BASE}/customer-company-employees/${contactId}/history/from-audio`, {
+        method: 'POST',
+        headers: getAuthHeader(),
+        body: form
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || '음성 업로드 처리에 실패했습니다.');
+      setJournalText(data.content || '');
+      setJournalDateTime(toDatetimeLocalValue(new Date()));
+      setSummaryNotice({
+        type: 'info',
+        text: '요약이 입력창에 채워졌습니다. 내용 확인 후 "메모 저장"을 눌러 등록해 주세요. 개인정보 보호를 위해 AssemblyAI 전사 데이터는 삭제 요청되었습니다.'
+      });
+    } catch (e) {
+      setError(e.message || '음성 업로드 처리에 실패했습니다.');
+    } finally {
+      setAudioUploading(false);
+    }
+  }, [audioUploading, contactId, savingNote]);
 
   const handleDeleteHistory = async (historyId) => {
     if (!historyId) return;
@@ -1154,11 +1196,58 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                       value={journalText}
                       onChange={(e) => setJournalText(e.target.value)}
                     />
+                    <input
+                      ref={audioInputRef}
+                      type="file"
+                      accept="audio/*,.mp3,.wav,.m4a,.webm"
+                      className="contact-detail-audio-input-hidden"
+                      onChange={(e) => {
+                        if (e.target.files?.length) uploadAudioForJournal(e.target.files);
+                        e.target.value = '';
+                      }}
+                      aria-hidden="true"
+                    />
+                    <div
+                      className={`contact-detail-journal-audio-drop ${audioDropActive ? 'is-dragover' : ''} ${audioUploading ? 'is-uploading' : ''}`}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (!audioUploading && !savingNote) setAudioDropActive(true);
+                      }}
+                      onDragLeave={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (!e.currentTarget.contains(e.relatedTarget)) setAudioDropActive(false);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setAudioDropActive(false);
+                        if (!audioUploading && !savingNote && e.dataTransfer?.files?.length) {
+                          uploadAudioForJournal(e.dataTransfer.files);
+                        }
+                      }}
+                    >
+                      <span className="material-symbols-outlined">audio_file</span>
+                      <span>
+                        {audioUploading
+                          ? '음성 처리 중... (AssemblyAI 전사 → Gemini 분류/요약)'
+                          : '음성 파일 드래그앤드롭 또는 선택 (MP3/WAV/M4A/WebM)'}
+                      </span>
+                      <button
+                        type="button"
+                        className="contact-detail-journal-audio-btn"
+                        onClick={() => audioInputRef.current?.click()}
+                        disabled={audioUploading || savingNote}
+                      >
+                        파일 선택
+                      </button>
+                    </div>
                     <div className="contact-detail-journal-actions">
                       <button
                         type="button"
                         className="contact-detail-save-note-btn"
-                        disabled={savingNote || !journalText.trim()}
+                        disabled={savingNote || audioUploading || !journalText.trim()}
                         onClick={handleSaveNote}
                       >
                         {savingNote ? '저장 중...' : '메모 저장'}

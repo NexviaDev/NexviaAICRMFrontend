@@ -15,3 +15,15 @@
   pointer-events: none;
   box-sizing: content-box;
 }
+
+/* 할 일 페이지일 때 상단 아이콘 강조 */
+.page-header-todo-btn--active {
+  color: #1d4ed8;
+  background: #e0e7ff;
+}
+
+/* 캘린더 페이지일 때 상단 아이콘 강조 */
+.page-header-calendar-btn--active {
+  color: #1d4ed8;
+  background: #e0e7ff;
+}

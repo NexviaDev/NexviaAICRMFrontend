@@ -52,7 +52,7 @@ export default function DayEventsModal({ date, events, onClose, onEventClick, cu
                       type="button"
                       className="day-events-modal-item"
                       style={event.color ? { borderLeft: `4px solid ${event.color}` } : (isGoogle ? { borderLeft: '4px solid #4285f4' } : undefined)}
-                      onClick={() => onEventClick?.(event._id)}
+                      onClick={() => onEventClick?.(event._id, event.googleCalendarId)}
                     >
                       <span className="day-events-modal-item-title">
                         {event.title || '(제목 없음)'}

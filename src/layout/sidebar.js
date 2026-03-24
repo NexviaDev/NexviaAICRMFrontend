@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { NavLink, useNavigate, Link } from 'react-router-dom';
+import { NavLink, useNavigate, Link, useLocation } from 'react-router-dom';
 import { getSavedSidebarOrder, patchSidebarOrder, setSavedSidebarOrderLocally } from '@/lib/list-templates';
 import './sidebar.css';
 
@@ -14,20 +14,23 @@ const MENU_ITEMS = [
   { to: '/customer-companies', icon: 'business', label: '고객사 리스트' },
   { to: '/customer-company-employees', icon: 'group', label: '연락처 리스트' },
   { to: '/product-list', icon: 'inventory_2', label: '제품 리스트' },
-  { to: '/calendar', icon: 'calendar_month', label: '캘린더' },
   { to: '/meeting-minutes', icon: 'event_note', label: '회의 일지' },
   { to: '/ai-voice', icon: 'mic', label: 'AI 음성 기록' },
   { to: '/email', icon: 'mail', label: '이메일' },
   { to: '/map', icon: 'map', label: '지도' },
-  { to: '/todo-list', icon: 'check_box', label: '할 일' },
-  { to: '/chat', icon: 'chat', label: 'Chat' },
   { to: '/sales-pipeline', icon: 'view_kanban', label: '세일즈 현황' },
   { to: '/lead-capture', icon: 'ads_click', label: '리드 캡처' },
-  { to: '/reports/sales', icon: 'bar_chart', label: '리포트' },
-  { to: '/reports/performance', icon: 'trending_up', label: '실적' },
-  { to: '/reports/work-report', icon: 'summarize', label: '업무 보고' },
+  { to: '/reports/work-report', icon: 'assignment', label: '직원 업무 보고' },
   { to: '/subscription', icon: 'subscriptions', label: '구독관리' }
 ];
+
+/** 자주 쓰지 않는 메뉴 — 햄버거 토글 아래에 모아 표시 */
+const OVERFLOW_MENU_PATHS = new Set(['/ai-voice', '/map', '/lead-capture']);
+
+function pathMatchesMenuItem(to, pathname) {
+  if (to === '/') return pathname === '/';
+  return pathname === to || pathname.startsWith(`${to}/`);
+}
 
 /** 저장된 순서와 기본 메뉴를 병합 (저장에 없는 새 메뉴는 맨 뒤에) */
 function applyOrder(items, order) {
@@ -51,13 +54,24 @@ function isPendingBlockedMenu(user, to) {
   return to !== '/company-overview';
 }
 
+function canShowMenuByRole(user, item) {
+  if (!item) return false;
+  if (item.to === '/subscription') {
+    return user?.role === 'owner' || user?.role === 'senior';
+  }
+  return true;
+}
+
 export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const savedOrder = useMemo(() => getSavedSidebarOrder(), []);
   const [orderedItems, setOrderedItems] = useState(() => applyOrder(MENU_ITEMS, savedOrder));
   const [draggingTo, setDraggingTo] = useState(null);
   const [dragOverTo, setDragOverTo] = useState(null);
   const [savingOrder, setSavingOrder] = useState(false);
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const overflowWrapRef = useRef(null);
   const draggedToRef = useRef(null);
   const orderedItemsRef = useRef(orderedItems);
 
@@ -79,6 +93,55 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
     }
   }, []);
   const user = currentUser || storedUser;
+  const visibleItems = useMemo(
+    () => orderedItems.filter((item) => canShowMenuByRole(user, item)),
+    [orderedItems, user]
+  );
+
+  const primaryVisible = useMemo(
+    () => visibleItems.filter((item) => !OVERFLOW_MENU_PATHS.has(item.to)),
+    [visibleItems]
+  );
+
+  const overflowVisible = useMemo(
+    () => visibleItems.filter((item) => OVERFLOW_MENU_PATHS.has(item.to)),
+    [visibleItems]
+  );
+
+  const prevPathRef = useRef(location.pathname);
+
+  useEffect(() => {
+    const path = location.pathname;
+    const inOverflow = overflowVisible.some((item) => pathMatchesMenuItem(item.to, path));
+    if (inOverflow) {
+      setOverflowOpen(true);
+    } else {
+      const prev = prevPathRef.current;
+      const wasInOverflow = overflowVisible.some((item) => pathMatchesMenuItem(item.to, prev));
+      if (wasInOverflow) setOverflowOpen(false);
+    }
+    prevPathRef.current = path;
+  }, [location.pathname, overflowVisible]);
+
+  useEffect(() => {
+    if (!overflowOpen) return;
+    const onDoc = (e) => {
+      if (overflowWrapRef.current && !overflowWrapRef.current.contains(e.target)) {
+        setOverflowOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [overflowOpen]);
+
+  useEffect(() => {
+    if (!overflowOpen) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setOverflowOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [overflowOpen]);
 
   const handleDragStart = useCallback((e, itemTo) => {
     e.stopPropagation();
@@ -161,7 +224,7 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
         onDragLeave={handleNavDragLeave}
         onDrop={handleNavDrop}
       >
-        {orderedItems.map((item) => (
+        {primaryVisible.map((item) => (
           (() => {
             const isLocked = isPendingBlockedMenu(user, item.to);
             return (
@@ -207,6 +270,67 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
             );
           })()
         ))}
+
+        {overflowVisible.length > 0 ? (
+          <div className="sidebar-overflow" ref={overflowWrapRef}>
+            <button
+              type="button"
+              className={`sidebar-overflow-toggle ${overflowOpen ? 'sidebar-overflow-toggle--open' : ''}`}
+              onClick={() => setOverflowOpen((v) => !v)}
+              aria-expanded={overflowOpen}
+              aria-controls="sidebar-overflow-menu"
+              id="sidebar-overflow-btn"
+            >
+              <span className="material-symbols-outlined sidebar-overflow-hamburger" aria-hidden>
+                menu
+              </span>
+              <span className="sidebar-overflow-toggle-label">더보기</span>
+              <span className="material-symbols-outlined sidebar-overflow-chevron" aria-hidden>
+                {overflowOpen ? 'expand_less' : 'expand_more'}
+              </span>
+            </button>
+            {overflowOpen ? (
+              <div
+                className="sidebar-overflow-panel"
+                id="sidebar-overflow-menu"
+                role="region"
+                aria-label="추가 메뉴"
+              >
+                {overflowVisible.map((item) => {
+                  const isLocked = isPendingBlockedMenu(user, item.to);
+                  return (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      className={({ isActive }) =>
+                        `sidebar-link sidebar-overflow-link ${isActive ? 'active' : ''} ${isLocked ? 'sidebar-link-locked' : ''}`
+                      }
+                      end={item.to === '/'}
+                      onClick={(e) => {
+                        if (item.to === '#') e.preventDefault();
+                        else if (isLocked) {
+                          e.preventDefault();
+                          window.alert('현재 계정은 권한 대기 상태입니다. 사내 현황에서 회사의 허용을 받아야 다른 메뉴에 접근할 수 있습니다.');
+                        } else {
+                          setOverflowOpen(false);
+                          onCloseDrawer?.();
+                        }
+                      }}
+                    >
+                      <span className="material-symbols-outlined">{item.icon}</span>
+                      <span>{item.label}</span>
+                      {isLocked ? (
+                        <span className="material-symbols-outlined sidebar-lock-icon" aria-hidden>
+                          lock
+                        </span>
+                      ) : null}
+                    </NavLink>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </nav>
       {savingOrder && (
         <div className="sidebar-order-saving" aria-live="polite">
