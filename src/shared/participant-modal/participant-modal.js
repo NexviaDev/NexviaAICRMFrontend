@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { API_BASE } from '@/config';
-import { collectAllowedMemberDeptIds } from '@/lib/org-chart-tree-utils';
+import { collectExactSelectedMemberDeptIds } from '@/lib/org-chart-tree-utils';
 import ParticipantOrgChartPicker from './participant-org-chart-picker';
 import './participant-modal.css';
 
@@ -9,7 +9,15 @@ function getAuthHeader() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-export default function ParticipantModal({ teamMembers, selected, currentUser, onConfirm, onClose }) {
+export default function ParticipantModal({
+  teamMembers,
+  selected,
+  currentUser,
+  onConfirm,
+  onClose,
+  title = '참여자 선택',
+  bulkAddLabel = '표시된 인원 모두 참여자에 추가'
+}) {
   const [localSelected, setLocalSelected] = useState(selected || []);
   const [search, setSearch] = useState('');
   const [lastClickedIndex, setLastClickedIndex] = useState(null);
@@ -53,7 +61,10 @@ export default function ParticipantModal({ teamMembers, selected, currentUser, o
     setOrgChartLoading(true);
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/companies/organization-chart`, { headers: getAuthHeader() });
+        const res = await fetch(`${API_BASE}/companies/organization-chart`, {
+          headers: getAuthHeader(),
+          credentials: 'include'
+        });
         const json = await res.json().catch(() => ({}));
         if (cancelled) return;
         if (!res.ok) throw new Error(json.error || '조직도를 불러오지 못했습니다.');
@@ -69,7 +80,7 @@ export default function ParticipantModal({ teamMembers, selected, currentUser, o
 
   const orgDeptFilter = useMemo(() => {
     if (!organizationChart || selectedOrgIds.length === 0) return null;
-    return collectAllowedMemberDeptIds(organizationChart, selectedOrgIds);
+    return collectExactSelectedMemberDeptIds(organizationChart, selectedOrgIds);
   }, [organizationChart, selectedOrgIds]);
 
   /** 조직 선택이 바뀔 때만 의존 (Set 참조 변화로 effect 중복 실행 방지) */
@@ -78,22 +89,21 @@ export default function ParticipantModal({ teamMembers, selected, currentUser, o
     [selectedOrgIds]
   );
 
-  /** 조직도에서 조직을 고르면 해당 조직·하위 소속 직원을 체크 목록에 자동 반영 */
+  /** 조직도에서 조직을 고르면 해당 조직에 직접 배정된 직원만 체크 목록에 자동 반영 (하위 부서 제외) */
   useEffect(() => {
     if (!orgSelectionKey || !organizationChart) return;
-    const allowed = collectAllowedMemberDeptIds(organizationChart, selectedOrgIds);
+    const allowed = collectExactSelectedMemberDeptIds(organizationChart, selectedOrgIds);
     if (allowed.size === 0) return;
     setLocalSelected((prev) => {
       const map = new Map(prev.map((p) => [String(p.userId), p]));
       for (const m of teamMembers) {
-        if (currentUser && m._id === currentUser._id) continue;
         const deptId = String(m.companyDepartment || '').trim();
         if (!deptId || !allowed.has(deptId)) continue;
         map.set(String(m._id), { userId: m._id, name: m.name || m.email });
       }
       return Array.from(map.values());
     });
-  }, [orgSelectionKey, organizationChart, selectedOrgIds, teamMembers, currentUser]);
+  }, [orgSelectionKey, organizationChart, selectedOrgIds, teamMembers]);
 
   const handleToggleOrgId = useCallback((id) => {
     const sid = String(id);
@@ -106,7 +116,6 @@ export default function ParticipantModal({ teamMembers, selected, currentUser, o
 
   const filtered = useMemo(() => {
     return teamMembers.filter((m) => {
-      if (currentUser && m._id === currentUser._id) return false;
       if (orgDeptFilter) {
         const deptId = String(m.companyDepartment || '').trim();
         if (!deptId || !orgDeptFilter.has(deptId)) return false;
@@ -123,7 +132,7 @@ export default function ParticipantModal({ teamMembers, selected, currentUser, o
         deptShown.includes(q)
       );
     });
-  }, [teamMembers, currentUser, search, orgDeptFilter]);
+  }, [teamMembers, search, orgDeptFilter]);
 
   const addAllVisibleToSelection = useCallback(() => {
     setLocalSelected((prev) => {
@@ -187,13 +196,13 @@ export default function ParticipantModal({ teamMembers, selected, currentUser, o
       >
 
         <div className="participant-modal-header">
-          <h3>참여자 선택</h3>
+          <h3>{title}</h3>
           <button type="button" className="participant-modal-close" onClick={handleCancel} aria-label="닫기">
             <span className="material-symbols-outlined">close</span>
           </button>
         </div>
 
-        <div className="participant-modal-body">
+        <div className="participant-modal-body" data-participant-modal-scroll>
           {localSelected.length > 0 && (
             <div className="participant-modal-chips">
               {localSelected.map((p) => (
@@ -238,7 +247,9 @@ export default function ParticipantModal({ teamMembers, selected, currentUser, o
           {orgPickerOpen ? (
             <div className="participant-modal-org-wrap">
               <p className="participant-modal-org-hint">
-                노드를 클릭하면 조직이 선택·해제되며, 선택된 조직(및 하위)에 배정된 직원은 아래 목록에서 자동으로 체크됩니다. (사내 현황 조직도와 동일)
+                노드를 클릭하면 조직이 선택·해제됩니다. 각 노드에 <strong>직접</strong> 소속된 직원(프로필 부서 = 해당 조직)만 목록에
+                나오고 자동 체크됩니다. 하위 부서 직원은 포함되지 않으니, 필요하면 하위 노드도 따로 선택하세요. 조직도를 접으려면 위의{' '}
+                <strong>조직도로 선택하기</strong>를 다시 누르세요.
               </p>
               {orgChartLoading ? (
                 <p className="participant-modal-org-loading">조직도를 불러오는 중…</p>
@@ -247,11 +258,19 @@ export default function ParticipantModal({ teamMembers, selected, currentUser, o
                 <p className="participant-modal-org-error">{orgChartError}</p>
               ) : null}
               {!orgChartLoading && !orgChartError && organizationChart ? (
-                <ParticipantOrgChartPicker
-                  organizationChart={organizationChart}
-                  selectedOrgIds={selectedOrgIds}
-                  onToggleOrgId={handleToggleOrgId}
-                />
+                <div className="participant-modal-org-tree-panel">
+                  <div className="participant-modal-org-tree-panel-head" aria-hidden>
+                    <span className="material-symbols-outlined">account_tree</span>
+                    조직 트리 (노드 클릭으로 부서 선택)
+                  </div>
+                  <div className="participant-modal-org-tree-panel-body">
+                    <ParticipantOrgChartPicker
+                      organizationChart={organizationChart}
+                      selectedOrgIds={selectedOrgIds}
+                      onToggleOrgId={handleToggleOrgId}
+                    />
+                  </div>
+                </div>
               ) : null}
               {!orgChartLoading && !orgChartError && !organizationChart ? (
                 <p className="participant-modal-org-empty">표시할 조직도가 없습니다.</p>
@@ -262,7 +281,7 @@ export default function ParticipantModal({ teamMembers, selected, currentUser, o
           {orgDeptFilter && filtered.length > 0 ? (
             <div className="participant-modal-bulk-row">
               <button type="button" className="participant-modal-bulk-add" onClick={addAllVisibleToSelection}>
-                표시된 인원 모두 참여자에 추가
+                {bulkAddLabel}
               </button>
             </div>
           ) : null}
@@ -285,7 +304,12 @@ export default function ParticipantModal({ teamMembers, selected, currentUser, o
               return (
                 <label key={m._id} className={`participant-modal-item${checked ? ' checked' : ''}`}>
                   <input type="checkbox" checked={checked} onChange={(e) => toggle(m, idx, !!e.nativeEvent?.shiftKey)} />
-                  <span className="participant-modal-name">{m.name || '(이름 없음)'}</span>
+                  <span className="participant-modal-name">
+                    {m.name || '(이름 없음)'}
+                    {currentUser && String(m._id) === String(currentUser._id) ? (
+                      <span className="participant-modal-me-note"> (나)</span>
+                    ) : null}
+                  </span>
                   <span className="participant-modal-email">{m.email || '—'}</span>
                   <span className="participant-modal-phone">{m.phone || '—'}</span>
                   <span className="participant-modal-department">

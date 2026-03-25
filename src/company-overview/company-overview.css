@@ -481,10 +481,21 @@
   min-height: 1.5em;
 }
 
+/* 루트·하위 노드 글자 크기 통일 (Mind Elixir 기본 루트 강조 오버라이드) — 연결선은 박스 측정으로 재계산됨 */
+.co-org-mind me-tpc,
+.co-org-mind me-root me-tpc,
+.co-org-mind me-parent > me-tpc {
+  font-size: 0.875rem !important;
+  line-height: 1.35 !important;
+}
+
 .co-org-mind me-tpc .text,
 .co-org-mind me-tpc .hyper-link,
 .co-org-mind me-tpc a {
   color: #000000 !important;
+  font-size: inherit !important;
+  line-height: inherit !important;
+  font-weight: 500 !important;
 }
 
 .co-org-mind .tags span {
@@ -493,6 +504,8 @@
 
 .co-org-mind .map-container #input-box {
   color: #000000 !important;
+  font-size: 0.875rem !important;
+  line-height: 1.35 !important;
 }
 
 .co-org-mind me-parent > me-tpc {
@@ -516,8 +529,8 @@
 .co-org-mind svg polyline {
   stroke: #96aec4 !important;
   stroke-width: 2 !important;
-  stroke-linecap: butt;
-  stroke-linejoin: miter;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 @media (max-width: 768px) {

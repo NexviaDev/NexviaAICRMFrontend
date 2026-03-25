@@ -11,6 +11,7 @@ import DriveLargeFileWarningModal from '../../shared/drive-large-file-warning-mo
 import './customer-company-detail-modal.css';
 
 import { API_BASE } from '@/config';
+import { getStoredCrmUser, isSeniorOrAboveRole } from '@/lib/crm-role-utils';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -21,6 +22,13 @@ function formatHistoryDate(d) {
   if (!d) return '';
   const date = new Date(d);
   return date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' }) + ' • ' + date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatCalendarVisitWhen(ev) {
+  if (!ev?.start) return '—';
+  const s = new Date(ev.start);
+  if (ev.allDay) return s.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
+  return s.toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 /** 업무 기록 내용을 문단·문장 단위로 나눠서 렌더용 배열로 반환 */
@@ -478,6 +486,10 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
 
   const handleDeleteHistory = async (historyId) => {
     if (!historyId) return;
+    if (!isSeniorOrAboveRole(getStoredCrmUser()?.role)) {
+      window.alert('업무 기록 삭제는 대표(Owner) 또는 책임(Senior)만 가능합니다.');
+      return;
+    }
     try {
       const res = await fetch(`${API_BASE}/customer-companies/${companyId}/history/${historyId}`, {
         method: 'DELETE',
@@ -589,6 +601,10 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
 
   const handleDeleteCompany = async () => {
     if (!companyId) return;
+    if (!isSeniorOrAboveRole(getStoredCrmUser()?.role)) {
+      window.alert('삭제는 대표(Owner) 또는 책임(Senior)만 가능합니다.');
+      return;
+    }
     setDeleting(true);
     try {
       const res = await fetch(`${API_BASE}/customer-companies/${companyId}`, {
@@ -611,6 +627,8 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
     }
   };
 
+  const canMutate = isSeniorOrAboveRole(getStoredCrmUser()?.role);
+
   return (
     <>
       <div className="customer-company-detail-overlay" aria-hidden="true" />
@@ -627,19 +645,23 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
               <h2>고객사 세부정보</h2>
             </div>
             <div className="customer-company-detail-header-actions">
-              <button type="button" className="customer-company-detail-icon-btn" onClick={() => setShowEditModal(true)} title="수정">
-                <span className="material-symbols-outlined">edit</span>
-              </button>
-              <button type="button" className="customer-company-detail-icon-btn customer-company-detail-delete-btn" onClick={() => setShowDeleteConfirm(true)} title="삭제">
-                <span className="material-symbols-outlined">delete</span>
-              </button>
+              {canMutate ? (
+                <>
+                  <button type="button" className="customer-company-detail-icon-btn" onClick={() => setShowEditModal(true)} title="수정 (Owner / Senior)">
+                    <span className="material-symbols-outlined">edit</span>
+                  </button>
+                  <button type="button" className="customer-company-detail-icon-btn customer-company-detail-delete-btn" onClick={() => setShowDeleteConfirm(true)} title="삭제 (Owner / Senior)">
+                    <span className="material-symbols-outlined">delete</span>
+                  </button>
+                </>
+              ) : null}
               <button type="button" className="customer-company-detail-icon-btn" onClick={onClose} aria-label="닫기">
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
           </header>
 
-          {showDeleteConfirm && (
+          {showDeleteConfirm && canMutate && (
             <div className="customer-company-detail-delete-confirm">
               <span className="material-symbols-outlined">warning</span>
               <p>이 고객사를 삭제하시겠습니까?<br />삭제하면 소속 연락처·업무 기록 등 관련 데이터에 영향을 줄 수 있습니다.</p>
@@ -654,29 +676,31 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
 
           <div className="customer-company-detail-body">
             <section className="customer-company-detail-card">
-              <div className="customer-company-detail-card-map">
-                <button
-                  type="button"
-                  className="customer-company-detail-card-map-btn"
-                  onClick={openCompanyOnMap}
-                  disabled={!companyId}
-                  title={companyId ? '/map으로 이동해 해당 업체를 검색·표시합니다.' : '고객사 정보가 없습니다.'}
-                >
-                  {mapPreviewSrc ? (
-                    <iframe
-                      title={`${companyToShow.name || '업체'} 위치 미리보기`}
-                      src={mapPreviewSrc}
-                      loading="lazy"
-                      referrerPolicy="no-referrer-when-downgrade"
-                      className="customer-company-detail-card-map-iframe"
-                    />
-                  ) : (
-                    <div className="customer-company-detail-card-map-empty">
-                      <span className="material-symbols-outlined">map</span>
-                      <span>주소/좌표 없음</span>
-                    </div>
-                  )}
-                </button>
+              <div className="customer-company-detail-card-map-col">
+                <div className="customer-company-detail-card-map">
+                  <button
+                    type="button"
+                    className="customer-company-detail-card-map-btn"
+                    onClick={openCompanyOnMap}
+                    disabled={!companyId}
+                    title={companyId ? '/map으로 이동해 해당 업체를 검색·표시합니다.' : '고객사 정보가 없습니다.'}
+                  >
+                    {mapPreviewSrc ? (
+                      <iframe
+                        title={`${companyToShow.name || '업체'} 위치 미리보기`}
+                        src={mapPreviewSrc}
+                        loading="lazy"
+                        referrerPolicy="no-referrer-when-downgrade"
+                        className="customer-company-detail-card-map-iframe"
+                      />
+                    ) : (
+                      <div className="customer-company-detail-card-map-empty">
+                        <span className="material-symbols-outlined">map</span>
+                        <span>주소/좌표 없음</span>
+                      </div>
+                    )}
+                  </button>
+                </div>
               </div>
               <div className="customer-company-detail-info">
                 <div className="customer-company-detail-name-row">
@@ -1057,7 +1081,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
               />
             )}
 
-            {showEditModal && (
+            {showEditModal && canMutate && (
               <AddCompanyModal
                 company={companyToShow}
                 onClose={() => setShowEditModal(false)}
@@ -1122,6 +1146,25 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                     {summaryNotice.text}
                   </p>
                 )}
+                {Array.isArray(companyToShow.relatedCalendarVisits) && companyToShow.relatedCalendarVisits.length > 0 ? (
+                  <div className="customer-company-detail-summary-calendar" aria-label="연결된 캘린더 방문">
+                    <div className="customer-company-detail-summary-calendar-title">
+                      <span className="material-symbols-outlined" aria-hidden>calendar_month</span>
+                      예정된 방문 (캘린더)
+                    </div>
+                    <ul className="customer-company-detail-summary-calendar-list">
+                      {companyToShow.relatedCalendarVisits.map((v) => (
+                        <li key={String(v._id)}>
+                          <span className="customer-company-detail-summary-calendar-when">{formatCalendarVisitWhen(v)}</span>
+                          <span className="customer-company-detail-summary-calendar-event">{v.title || '일정'}</span>
+                          {v.assigneeLine ? (
+                            <span className="customer-company-detail-summary-calendar-who"> · {v.assigneeLine}</span>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
               </div>
               <div className="customer-company-detail-journal-input-wrap">
                 {journalError && <p className="customer-company-detail-journal-error">{journalError}</p>}
@@ -1216,14 +1259,17 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                             {entry.employeeName && <span className="customer-company-detail-timeline-emp">{entry.employeeName}</span>}
                             <time>{formatHistoryDate(entry.createdAt)}</time>
                           </div>
-                          <button
-                            type="button"
-                            className="customer-company-detail-timeline-delete"
-                            onClick={() => handleDeleteHistory(entry._id)}
-                            aria-label="삭제"
-                          >
-                            <span className="material-symbols-outlined">delete</span>
-                          </button>
+                          {canMutate ? (
+                            <button
+                              type="button"
+                              className="customer-company-detail-timeline-delete"
+                              onClick={() => handleDeleteHistory(entry._id)}
+                              aria-label="삭제"
+                              title="업무 기록 삭제 (Owner / Senior)"
+                            >
+                              <span className="material-symbols-outlined">delete</span>
+                            </button>
+                          ) : null}
                         </div>
                         <div className="customer-company-detail-timeline-content-wrap">
                           {splitContentIntoBlocks(entry.content).map((paragraphSentences, pIdx) => (

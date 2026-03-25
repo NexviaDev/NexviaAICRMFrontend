@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import './all-history-modal.css';
 
 import { API_BASE } from '@/config';
+import { getStoredCrmUser, isSeniorOrAboveRole } from '@/lib/crm-role-utils';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -24,8 +25,14 @@ export default function AllHistoryModal({ historyItems, companyId, onClose, onRe
 
   if (!historyItems || historyItems.length === 0) return null;
 
+  const canDeleteHistory = isSeniorOrAboveRole(getStoredCrmUser()?.role);
+
   const handleDelete = async (historyId) => {
     if (!historyId || !companyId) return;
+    if (!isSeniorOrAboveRole(getStoredCrmUser()?.role)) {
+      window.alert('업무 기록 삭제는 대표(Owner) 또는 책임(Senior)만 가능합니다.');
+      return;
+    }
     try {
       const res = await fetch(`${API_BASE}/customer-companies/${companyId}/history/${historyId}`, {
         method: 'DELETE',
@@ -56,14 +63,17 @@ export default function AllHistoryModal({ historyItems, companyId, onClose, onRe
                       {entry.employeeName && <span className="all-history-emp">{entry.employeeName}</span>}
                       <time>{formatHistoryDate(entry.createdAt)}</time>
                     </div>
-                    <button
-                      type="button"
-                      className="all-history-delete"
-                      onClick={() => handleDelete(entry._id)}
-                      aria-label="삭제"
-                    >
-                      <span className="material-symbols-outlined">delete</span>
-                    </button>
+                    {canDeleteHistory ? (
+                      <button
+                        type="button"
+                        className="all-history-delete"
+                        onClick={() => handleDelete(entry._id)}
+                        aria-label="삭제"
+                        title="Owner / Senior"
+                      >
+                        <span className="material-symbols-outlined">delete</span>
+                      </button>
+                    ) : null}
                   </div>
                   <p className="all-history-content">{entry.content}</p>
                   <div className="all-history-footer">

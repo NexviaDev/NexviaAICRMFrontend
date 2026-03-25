@@ -17,8 +17,13 @@ function applyOrgSelectionHighlight(mind, organizationChart, selectedOrgIds) {
   for (const id of ids) {
     let tpc;
     try {
-      const w = mind.findEle(id);
-      tpc = w?.querySelector?.('me-tpc') || null;
+      const el = mind.findEle(id);
+      /*
+       * Mind Elixir 5.x: findEle는 [data-nodeid="me"+id] 인 노드를 반환하며, 그 노드가 곧 me-tpc다.
+       * el.querySelector('me-tpc')는 자손만 찾아 본인은 제외되므로 항상 null → 클래스가 한 번도 안 붙었음.
+       */
+      const tag = String(el?.tagName || '').toUpperCase();
+      tpc = tag === 'ME-TPC' ? el : el?.querySelector?.('me-tpc') ?? null;
     } catch {
       continue;
     }
@@ -32,8 +37,12 @@ export default function ParticipantOrgChartPicker({ organizationChart, selectedO
   const mindContainerRef = useRef(null);
   const mindInstanceRef = useRef(null);
   const onToggleRef = useRef(onToggleOrgId);
+  const selectedOrgIdsRef = useRef(selectedOrgIds);
+  const organizationChartRef = useRef(organizationChart);
   const [mindEpoch, setMindEpoch] = useState(0);
   onToggleRef.current = onToggleOrgId;
+  selectedOrgIdsRef.current = selectedOrgIds;
+  organizationChartRef.current = organizationChart;
 
   const toMindNode = useCallback((node) => {
     if (!node) return null;
@@ -70,10 +79,25 @@ export default function ParticipantOrgChartPicker({ organizationChart, selectedO
       });
     };
 
+    const reapplySelectionClasses = () => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (cancelled || !mindForCleanup?.findEle) return;
+          const chart = organizationChartRef.current;
+          if (!chart) return;
+          applyOrgSelectionHighlight(mindForCleanup, chart, selectedOrgIdsRef.current);
+        });
+      });
+    };
+
     const onOperation = () => {
       scheduleFitDebounced();
+      reapplySelectionClasses();
     };
-    const onExpandNode = () => scheduleFitSoon();
+    const onExpandNode = () => {
+      scheduleFitSoon();
+      reapplySelectionClasses();
+    };
 
     (async () => {
       const mod = await import('mind-elixir');
@@ -95,7 +119,14 @@ export default function ParticipantOrgChartPicker({ organizationChart, selectedO
         scaleMax: CO_ORG_SCALE_MAX,
         generateMainBranch: mindOrgGenerateMainBranch,
         generateSubBranch: mindOrgGenerateSubBranch,
+        /** Mind Elixir 기본 휠은 pan/zoom + preventDefault라 모달 본문 스크롤이 막힘 → 본문으로 위임 */
         handleWheel: (ev) => {
+          const scrollRoot =
+            ev.currentTarget?.closest?.('[data-participant-modal-scroll]') ||
+            ev.currentTarget?.closest?.('.participant-modal-body');
+          if (!scrollRoot) return;
+          if (scrollRoot.scrollHeight <= scrollRoot.clientHeight) return;
+          scrollRoot.scrollTop += ev.deltaY;
           ev.preventDefault();
           ev.stopPropagation();
         }

@@ -1,5 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { API_BASE } from '@/config';
+import { resolveDepartmentDisplayFromChart } from '@/lib/org-chart-tree-utils';
+import ParticipantModal from '@/shared/participant-modal/participant-modal';
 import './lead-capture-form-modal.css';
 
 function getAuthHeader() {
@@ -12,6 +14,27 @@ const STATUS_OPTIONS = [
   { value: 'inactive', label: '비활성' }
 ];
 
+function readCrmUserId() {
+  try {
+    const u = JSON.parse(localStorage.getItem('crm_user') || '{}');
+    return String(u._id || u.id || '').trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeFormAssigneeIds(form) {
+  const raw = form?.assigneeUserIds;
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+  return raw
+    .map((x) => {
+      if (x == null) return '';
+      if (typeof x === 'object' && x._id != null) return String(x._id);
+      return String(x);
+    })
+    .filter(Boolean);
+}
+
 export default function LeadCaptureFormModal({ form, onClose, onSaved }) {
   const isEdit = Boolean(form?._id);
   const [name, setName] = useState(form?.name ?? '');
@@ -19,9 +42,39 @@ export default function LeadCaptureFormModal({ form, onClose, onSaved }) {
   const [status, setStatus] = useState(form?.status ?? 'active');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [employees, setEmployees] = useState([]);
+  const [organizationChart, setOrganizationChart] = useState(null);
+  const [assigneeUserIds, setAssigneeUserIds] = useState([]);
+  const [showAssigneePicker, setShowAssigneePicker] = useState(false);
+  const [overviewError, setOverviewError] = useState('');
+
+  const fetchOverview = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/companies/overview`, {
+        headers: getAuthHeader(),
+        credentials: 'include'
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || '직원 목록을 불러올 수 없습니다.');
+      setEmployees(Array.isArray(json.employees) ? json.employees : []);
+      setOrganizationChart(json.company?.organizationChart ?? null);
+      setOverviewError('');
+    } catch (e) {
+      setOverviewError(e.message || '직원 목록 조회 실패');
+      setEmployees([]);
+      setOrganizationChart(null);
+    }
+  }, []);
 
   useEffect(() => {
-    if (form) {
+    fetchOverview();
+  }, [fetchOverview]);
+
+  useEffect(() => {
+    const myId = readCrmUserId();
+    if (form?._id) {
+      const fromForm = normalizeFormAssigneeIds(form);
+      setAssigneeUserIds(fromForm.length > 0 ? fromForm : myId ? [myId] : []);
       setName(form.name ?? '');
       setSource(form.source ?? '');
       setStatus(form.status ?? 'active');
@@ -29,8 +82,52 @@ export default function LeadCaptureFormModal({ form, onClose, onSaved }) {
       setName('');
       setSource('');
       setStatus('active');
+      setAssigneeUserIds(myId ? [myId] : []);
     }
   }, [form]);
+
+  const assigneeLabelById = useMemo(() => {
+    const m = new Map();
+    employees.forEach((e) => {
+      m.set(String(e.id), e.name || e.email || String(e.id));
+    });
+    return m;
+  }, [employees]);
+
+  /** ParticipantModal용: overview 직원(id) → 팀원 API와 동일 필드 */
+  const teamMembersForPicker = useMemo(() => {
+    return employees.map((e) => {
+      const dept = String(e.companyDepartment || e.department || '').trim();
+      const display = resolveDepartmentDisplayFromChart(organizationChart, dept);
+      return {
+        _id: e.id,
+        name: e.name,
+        email: e.email,
+        phone: e.phone || '',
+        companyDepartment: dept,
+        department: dept,
+        departmentDisplay: display || undefined
+      };
+    });
+  }, [employees, organizationChart]);
+
+  const assigneePickerSelected = useMemo(
+    () =>
+      assigneeUserIds.map((id) => ({
+        userId: id,
+        name: assigneeLabelById.get(String(id)) || `사용자 ${String(id).slice(-6)}`
+      })),
+    [assigneeUserIds, assigneeLabelById]
+  );
+
+  const currentUserForPicker = useMemo(() => {
+    const id = readCrmUserId();
+    return id ? { _id: id } : null;
+  }, []);
+
+  const removeAssignee = useCallback((id) => {
+    setAssigneeUserIds((prev) => prev.filter((x) => String(x) !== String(id)));
+  }, []);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -43,12 +140,18 @@ export default function LeadCaptureFormModal({ form, onClose, onSaved }) {
     setSaving(true);
     try {
       const headers = { ...getAuthHeader(), 'Content-Type': 'application/json' };
+      const payload = {
+        name: trimmedName,
+        source: source.trim(),
+        status,
+        assigneeUserIds
+      };
       if (isEdit) {
         const res = await fetch(`${API_BASE}/lead-capture-forms/${form._id}`, {
           method: 'PATCH',
           headers,
           credentials: 'include',
-          body: JSON.stringify({ name: trimmedName, source: source.trim(), status })
+          body: JSON.stringify(payload)
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || '수정에 실패했습니다.');
@@ -58,7 +161,7 @@ export default function LeadCaptureFormModal({ form, onClose, onSaved }) {
           method: 'POST',
           headers,
           credentials: 'include',
-          body: JSON.stringify({ name: trimmedName, source: source.trim(), status })
+          body: JSON.stringify(payload)
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || '생성에 실패했습니다.');
@@ -108,6 +211,45 @@ export default function LeadCaptureFormModal({ form, onClose, onSaved }) {
             />
           </div>
           <div className="lead-capture-form-modal-field">
+            <span className="lead-capture-form-modal-label">담당자</span>
+            <p className="lead-capture-form-modal-assignee-hint">
+              사내 현황과 동일한 직원 목록입니다. 지정하지 않으면 저장 시 본인이 기본 담당자로 들어갑니다.
+            </p>
+            {overviewError ? (
+              <p className="lead-capture-form-modal-assignee-warn">{overviewError}</p>
+            ) : null}
+            <div className="lead-capture-form-modal-assignee-chips">
+              {assigneeUserIds.length === 0 ? (
+                <span className="lead-capture-form-modal-assignee-empty">담당자 없음 (저장 시 본인)</span>
+              ) : (
+                assigneeUserIds.map((id) => (
+                  <span key={String(id)} className="lead-capture-form-modal-assignee-chip">
+                    <span className="lead-capture-form-modal-assignee-chip-label">
+                      {assigneeLabelById.get(String(id)) || `사용자 ${String(id).slice(-6)}`}
+                    </span>
+                    <button
+                      type="button"
+                      className="lead-capture-form-modal-assignee-chip-remove"
+                      onClick={() => removeAssignee(id)}
+                      aria-label="담당자 제거"
+                    >
+                      <span className="material-symbols-outlined" aria-hidden>close</span>
+                    </button>
+                  </span>
+                ))
+              )}
+            </div>
+            <button
+              type="button"
+              className="lead-capture-form-modal-btn-assignee-add"
+              onClick={() => setShowAssigneePicker(true)}
+              disabled={employees.length === 0}
+            >
+              <span className="material-symbols-outlined" aria-hidden>group_add</span>
+              담당자 추가
+            </button>
+          </div>
+          <div className="lead-capture-form-modal-field">
             <label className="lead-capture-form-modal-label" htmlFor="lc-form-status">상태</label>
             <select
               id="lc-form-status"
@@ -131,6 +273,17 @@ export default function LeadCaptureFormModal({ form, onClose, onSaved }) {
           </div>
         </form>
       </div>
+      {showAssigneePicker ? (
+        <ParticipantModal
+          title="담당자 선택"
+          bulkAddLabel="표시된 인원 모두 담당자에 추가"
+          teamMembers={teamMembersForPicker}
+          selected={assigneePickerSelected}
+          currentUser={currentUserForPicker}
+          onClose={() => setShowAssigneePicker(false)}
+          onConfirm={(picked) => setAssigneeUserIds(picked.map((p) => String(p.userId)))}
+        />
+      ) : null}
     </div>
   );
 }

@@ -13,8 +13,11 @@ import './customer-company-employees.css';
 import './customer-company-employees-responsive.css';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 
+import * as XLSX from 'xlsx';
+
 import { API_BASE } from '@/config';
 const LIST_ID = LIST_IDS.CUSTOMER_COMPANY_EMPLOYEES;
+const EXPORT_PAGE_LIMIT = 100;
 const MODAL_PARAM = 'modal';
 const MODAL_ADD_CONTACT = 'add-contact';
 const MODAL_DETAIL = 'detail';
@@ -63,6 +66,7 @@ export default function CustomerCompanyEmployees() {
   const [dragOverKey, setDragOverKey] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sort, setSort] = useState({ key: null, dir: 'asc' });
+  const [exportExcelLoading, setExportExcelLoading] = useState(false);
   const sortKey = sort.key;
   const sortDir = sort.dir;
   const [companyEmployees, setCompanyEmployees] = useState([]);
@@ -86,6 +90,16 @@ export default function CustomerCompanyEmployees() {
     });
     return map;
   }, [companyEmployees]);
+
+  const customFieldLabelByKey = useMemo(() => {
+    const m = {};
+    customFieldColumns.forEach((c) => {
+      if (!c?.key?.startsWith(CUSTOM_FIELDS_PREFIX)) return;
+      const fk = c.key.slice(CUSTOM_FIELDS_PREFIX.length);
+      m[fk] = (c.label || fk).trim() || fk;
+    });
+    return m;
+  }, [customFieldColumns]);
   /** URL로 연 상세 모달용: 목록에 없을 때 id로 따로 조회한 연락처 (새로고침·다른 페이지일 수 있음) */
   const [detailContactById, setDetailContactById] = useState(null);
   const [loadingDetailContact, setLoadingDetailContact] = useState(false);
@@ -386,6 +400,87 @@ export default function CustomerCompanyEmployees() {
     });
   }, []);
 
+  const fetchAllContactsForExport = useCallback(async () => {
+    let page = 1;
+    let totalPages = 1;
+    const all = [];
+    do {
+      const params = new URLSearchParams({ page: String(page), limit: String(EXPORT_PAGE_LIMIT) });
+      if (search.trim()) {
+        params.set('search', search.trim());
+        if (searchField) params.set('searchField', searchField);
+      }
+      if (assigneeMeOnly) params.set('assigneeMe', '1');
+      const res = await fetch(`${API_BASE}/customer-company-employees?${params}`, { headers: getAuthHeader() });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || '목록을 가져오지 못했습니다.');
+      }
+      const data = await res.json();
+      const batch = data.items || [];
+      all.push(...batch);
+      totalPages = Math.max(1, Number(data.pagination?.totalPages) || 1);
+      page += 1;
+    } while (page <= totalPages);
+    return all;
+  }, [search, searchField, assigneeMeOnly]);
+
+  const handleDownloadExcel = useCallback(async () => {
+    setExportExcelLoading(true);
+    try {
+      const rows = await fetchAllContactsForExport();
+      if (rows.length === 0) {
+        alert('다운로드할 연락처가 없습니다.');
+        return;
+      }
+      const nameMap = assigneeIdToName;
+      const customKeys = new Set();
+      rows.forEach((r) => {
+        if (r.customFields && typeof r.customFields === 'object') {
+          Object.keys(r.customFields).forEach((k) => customKeys.add(k));
+        }
+      });
+      const sortedCustomKeys = [...customKeys].sort();
+      const exportRows = rows.map((row) => {
+        const ids = Array.isArray(row.assigneeUserIds) ? row.assigneeUserIds : [];
+        const 담당자 = ids.map((id) => nameMap[String(id)] || String(id)).filter(Boolean).join(', ');
+        const cc = row.customerCompanyId && typeof row.customerCompanyId === 'object' ? row.customerCompanyId : null;
+        const o = {
+          이름: row.name || '',
+          회사: row.company || cc?.name || row.companyName || '',
+          직접입력회사명: row.companyName && !cc?.name ? row.companyName : '',
+          이메일: row.email || '',
+          전화: row.phone || '',
+          직책: row.position || '',
+          주소: row.address || '',
+          상태: row.status ? statusLabel[row.status] || row.status : '',
+          담당자,
+          최근지원일: row.lastSupportedAt ? new Date(row.lastSupportedAt).toLocaleString('ko-KR') : '',
+          즐겨찾기: row.isFavorite ? 'Y' : '',
+          사업자번호: cc?.businessNumber || '',
+          메모: row.memo || '',
+          생년월일: row.birthDate != null && row.birthDate !== '' ? String(row.birthDate) : '',
+          수정일: row.updatedAt ? new Date(row.updatedAt).toLocaleString('ko-KR') : ''
+        };
+        sortedCustomKeys.forEach((fk) => {
+          const colName = customFieldLabelByKey[fk] || `커스텀_${fk}`;
+          const v = row.customFields?.[fk];
+          o[colName] = v !== undefined && v !== null && v !== '' ? String(v) : '';
+        });
+        return o;
+      });
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(exportRows);
+      XLSX.utils.book_append_sheet(wb, ws, '연락처');
+      const stamp = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(wb, `연락처목록_${stamp}.xlsx`);
+    } catch (e) {
+      alert(e?.message || '엑셀 저장에 실패했습니다.');
+    } finally {
+      setExportExcelLoading(false);
+    }
+  }, [fetchAllContactsForExport, assigneeIdToName, customFieldLabelByKey]);
+
   return (
     <div className="page customer-company-employees-page">
       <header className="page-header">
@@ -444,7 +539,16 @@ export default function CustomerCompanyEmployees() {
               <span className="material-symbols-outlined">person_pin_circle</span>
               <span className="cce-filter-label">내 담당 직원 보기</span>
             </button>
-            <button type="button" className="btn-outline"><span className="material-symbols-outlined">file_download</span> 내보내기</button>
+            <button
+              type="button"
+              className="btn-outline cce-excel-export-btn"
+              onClick={handleDownloadExcel}
+              disabled={exportExcelLoading}
+              title="현재 검색·내 담당 필터에 맞는 연락처 전체를 엑셀(.xlsx)로 받습니다."
+            >
+              <span className="material-symbols-outlined">download</span>
+              {exportExcelLoading ? '준비 중…' : '엑셀 내려받기'}
+            </button>
             <button type="button" className="btn-primary" onClick={openAddModal}><span className="material-symbols-outlined">add</span> 새 연락처 추가</button>
           </div>
         </div>

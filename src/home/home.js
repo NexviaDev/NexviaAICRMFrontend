@@ -6,6 +6,13 @@ import { API_BASE } from '@/config';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import TodoList from '@/todo-list/todo-list';
 import Calendar from '@/calendar/calendar';
+import {
+  getLeadVisibilityUserKey,
+  loadHomeCaptureLeadVisibility,
+  saveHomeCaptureLeadVisibility,
+  isLeadVisibleInHome,
+  SNOOZE_MS
+} from '@/lib/home-capture-leads-visibility';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -112,6 +119,10 @@ export default function Home() {
   const [pipelineLoading, setPipelineLoading] = useState(true);
   const [healthPinged, setHealthPinged] = useState(false);
   const [selectedGraphCurrency, setSelectedGraphCurrency] = useState('KRW');
+  /** 홈 수신 리드: 완료 숨김(permanent) · 1주 스누즈(snoozed ISO) */
+  const [leadHomeVisibility, setLeadHomeVisibility] = useState(() =>
+    loadHomeCaptureLeadVisibility(getLeadVisibilityUserKey())
+  );
   const pipelineMounted = useRef(true);
 
   useEffect(() => {
@@ -281,6 +292,40 @@ export default function Home() {
     stageLabels[firstPipelineStageKey] ||
     DEFAULT_STAGE_LABELS[firstPipelineStageKey] ||
     firstPipelineStageKey;
+
+  const visibleHomeCaptureLeads = useMemo(
+    () =>
+      recentCaptureLeads.filter(
+        (lead) => lead._id != null && isLeadVisibleInHome(lead._id, leadHomeVisibility)
+      ),
+    [recentCaptureLeads, leadHomeVisibility]
+  );
+
+  const dismissLeadFromHome = useCallback((leadId) => {
+    const key = getLeadVisibilityUserKey();
+    setLeadHomeVisibility((prev) => {
+      const id = String(leadId);
+      const permanent = [...new Set([...prev.permanent, id])];
+      const snoozed = { ...prev.snoozed };
+      delete snoozed[id];
+      const next = { permanent, snoozed };
+      saveHomeCaptureLeadVisibility(key, next);
+      return next;
+    });
+  }, []);
+
+  const snoozeLeadHomeOneWeek = useCallback((leadId) => {
+    const key = getLeadVisibilityUserKey();
+    const until = new Date(Date.now() + SNOOZE_MS).toISOString();
+    setLeadHomeVisibility((prev) => {
+      const id = String(leadId);
+      const snoozed = { ...prev.snoozed, [id]: until };
+      const permanent = prev.permanent.filter((p) => p !== id);
+      const next = { permanent, snoozed };
+      saveHomeCaptureLeadVisibility(key, next);
+      return next;
+    });
+  }, []);
 
   const stats = data || {};
   const graphCurrencies = useMemo(() => {
@@ -512,39 +557,66 @@ export default function Home() {
                 <h2>수신 리드</h2>
                 <Link to="/lead-capture" className="home-pipeline-link">리드 캡처</Link>
               </div>
+
               <div className="home-todo-leads-scroll" aria-label="캡처 채널 수신 리드 목록">
                 {leadChannelsLoading ? (
                   <p className="home-todo-leads-empty">불러오는 중…</p>
                 ) : recentCaptureLeads.length === 0 ? (
                   <p className="home-todo-leads-empty">수신된 리드가 없습니다.</p>
+                ) : visibleHomeCaptureLeads.length === 0 ? (
+                  <p className="home-todo-leads-empty">표시할 리드가 없습니다. (완료·1주 미표시 항목은 숨겨져 있습니다.)</p>
                 ) : (
                   <>
                     <ul className="home-todo-leads-list">
-                      {recentCaptureLeads.slice(0, HOME_CAPTURE_LEADS_DISPLAY_MAX).map((lead) => (
+                      {visibleHomeCaptureLeads.slice(0, HOME_CAPTURE_LEADS_DISPLAY_MAX).map((lead) => (
                         <li key={String(lead._id)} className="home-todo-leads-item">
-                          <div className="home-todo-leads-item-main">
-                            <span className="home-todo-leads-channel" title={lead._channelLabel}>
-                              {lead._channelLabel}
-                            </span>
-                            <span className="home-todo-leads-meta">
-                              {lead._channelSource}
-                            </span>
+                          <button
+                            type="button"
+                            className="home-lead-check"
+                            onClick={() => dismissLeadFromHome(lead._id)}
+                            aria-label="처리 완료·목록에서 숨기기"
+                            title="처리 완료·목록에서 숨기기"
+                          >
+                            <span className="material-symbols-outlined" aria-hidden>radio_button_unchecked</span>
+                          </button>
+                          <div className="home-todo-leads-item-stack">
+                            <div className="home-todo-leads-item-main">
+                              <span className="home-todo-leads-channel" title={lead._channelLabel}>
+                                {lead._channelLabel}
+                              </span>
+                              <span className="home-todo-leads-meta">
+                                {lead._channelSource}
+                              </span>
+                            </div>
+                            <div className="home-todo-leads-item-body">
+                              <strong className="home-todo-leads-name">{lead.name || '(이름 없음)'}</strong>
+                              <span className="home-todo-leads-email">{lead.email || '—'}</span>
+                              <span className="home-todo-leads-phone">{formatLeadContact(lead)}</span>
+                            </div>
                           </div>
-                          <div className="home-todo-leads-item-body">
-                            <strong className="home-todo-leads-name">{lead.name || '(이름 없음)'}</strong>
-                            <span className="home-todo-leads-email">{lead.email || '—'}</span>
-                            <span className="home-todo-leads-phone">{formatLeadContact(lead)}</span>
+                          <div className="home-todo-leads-item-trailing">
+                            <button
+                              type="button"
+                              className="home-lead-snooze-btn"
+                              onClick={() => snoozeLeadHomeOneWeek(lead._id)}
+                              aria-label="일주일 뒤에 다시 표시"
+                              title="일주일 뒤에 다시 표시"
+                            >
+                              1주 보류
+                            </button>
+                            <time className="home-todo-leads-time" dateTime={lead.receivedAt ? new Date(lead.receivedAt).toISOString() : undefined}>
+                              {formatLeadReceivedAt(lead.receivedAt)}
+                            </time>
                           </div>
-                          <time className="home-todo-leads-time" dateTime={lead.receivedAt ? new Date(lead.receivedAt).toISOString() : undefined}>
-                            {formatLeadReceivedAt(lead.receivedAt)}
-                          </time>
                         </li>
                       ))}
                     </ul>
-                    {recentCaptureLeads.length > HOME_CAPTURE_LEADS_DISPLAY_MAX ? (
+                    {visibleHomeCaptureLeads.length > HOME_CAPTURE_LEADS_DISPLAY_MAX ? (
                       <p className="home-todo-leads-more">
                         오래된 순 상위 {HOME_CAPTURE_LEADS_DISPLAY_MAX}건만 표시합니다. 전체는{' '}
-                        <Link to="/lead-capture">리드 캡처</Link>에서 확인하세요. (총 {recentCaptureLeads.length.toLocaleString()}건)
+                        <Link to="/lead-capture">리드 캡처</Link>에서 확인하세요. (숨김 제외{' '}
+                        {visibleHomeCaptureLeads.length.toLocaleString()}건 · 서버 수신 총{' '}
+                        {recentCaptureLeads.length.toLocaleString()}건)
                       </p>
                     ) : null}
                   </>

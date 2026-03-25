@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import ParticipantModal from '../../calendar/participant-modal/participant-modal';
+import ParticipantModal from '@/shared/participant-modal/participant-modal';
 import CategoryManageModal from './category-manage-modal';
 import '../../calendar/event-modal/event-modal.css';
 import './add-meeting-modal.css';

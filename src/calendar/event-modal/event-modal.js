@@ -1,9 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import ParticipantModal from '../participant-modal/participant-modal';
+import ParticipantModal from '@/shared/participant-modal/participant-modal';
 import './event-modal.css';
 
 import { API_BASE } from '@/config';
 import { googleEventDisplayTitle } from '../google-event-display-title';
+import {
+  stripRelatedCompanyDescriptionBlock,
+  ensureRelatedCompanyDescription
+} from '../event-modal-related-company';
 
 const PRESET_COLORS = [
   { hex: '#7986cb', label: '라벤더' },
@@ -89,12 +93,12 @@ function googleEventToForm(ev, titleMeta = {}) {
     } else {
       endDate = startDate;
     }
-    return { title: displayTitle, description: ev.description || '', color: '', allDay: true, startDate, startTime: defaultTime(), endDate, endTime: '10:00', visibility: 'private', participants: [] };
+    return { title: displayTitle, description: ev.description || '', color: '', allDay: true, startDate, startTime: defaultTime(), endDate, endTime: '10:00', visibility: 'private', participants: [], relatedCustomerCompany: null };
   }
 
   const startDt = start.dateTime ? new Date(start.dateTime) : new Date();
   const endDt = end.dateTime ? new Date(end.dateTime) : new Date(startDt.getTime() + 3600000);
-  return { title: displayTitle, description: ev.description || '', color: '', allDay: false, startDate: startDt.toISOString().slice(0, 10), startTime: startDt.toTimeString().slice(0, 5), endDate: endDt.toISOString().slice(0, 10), endTime: endDt.toTimeString().slice(0, 5), visibility: 'private', participants: [] };
+  return { title: displayTitle, description: ev.description || '', color: '', allDay: false, startDate: startDt.toISOString().slice(0, 10), startTime: startDt.toTimeString().slice(0, 5), endDate: endDt.toISOString().slice(0, 10), endTime: endDt.toTimeString().slice(0, 5), visibility: 'private', participants: [], relatedCustomerCompany: null };
 }
 
 /** CRM 이벤트 → 폼 값 */
@@ -102,19 +106,52 @@ function crmEventToForm(ev) {
   const startDate = ev.start ? new Date(ev.start) : new Date();
   const endDate = ev.end ? new Date(ev.end) : new Date(startDate.getTime() + 3600000);
 
+  const relatedCustomerCompany = ev.relatedCustomerCompanyId
+    ? {
+        _id: String(ev.relatedCustomerCompanyId),
+        name: ev.relatedCustomerCompanyName || '',
+        address: ev.relatedCustomerCompanyAddress || ''
+      }
+    : null;
+
   if (ev.allDay) {
     const endForForm = new Date(endDate);
     if (endForForm > startDate) endForForm.setDate(endForForm.getDate() - 1);
-    return { title: ev.title || '', description: ev.description || '', color: ev.color || '', allDay: true, startDate: startDate.toISOString().slice(0, 10), startTime: defaultTime(), endDate: endForForm.toISOString().slice(0, 10), endTime: '10:00', visibility: ev.visibility || 'company', participants: ev.participants || [] };
+    return {
+      title: ev.title || '',
+      description: ev.description || '',
+      color: ev.color || '',
+      allDay: true,
+      startDate: startDate.toISOString().slice(0, 10),
+      startTime: defaultTime(),
+      endDate: endForForm.toISOString().slice(0, 10),
+      endTime: '10:00',
+      visibility: ev.visibility || 'company',
+      participants: ev.participants || [],
+      relatedCustomerCompany
+    };
   }
 
-  return { title: ev.title || '', description: ev.description || '', color: ev.color || '', allDay: false, startDate: startDate.toISOString().slice(0, 10), startTime: startDate.toTimeString().slice(0, 5), endDate: endDate.toISOString().slice(0, 10), endTime: endDate.toTimeString().slice(0, 5), visibility: ev.visibility || 'company', participants: ev.participants || [] };
+  return {
+    title: ev.title || '',
+    description: ev.description || '',
+    color: ev.color || '',
+    allDay: false,
+    startDate: startDate.toISOString().slice(0, 10),
+    startTime: startDate.toTimeString().slice(0, 5),
+    endDate: endDate.toISOString().slice(0, 10),
+    endTime: endDate.toTimeString().slice(0, 5),
+    visibility: ev.visibility || 'company',
+    participants: ev.participants || [],
+    relatedCustomerCompany
+  };
 }
 
 /** 폼 → CRM API body */
 function formToCrmBody(form) {
   const title = (form.title || '').trim() || '(제목 없음)';
-  const description = (form.description || '').trim() || undefined;
+  const descriptionRaw = ensureRelatedCompanyDescription(form.description || '', form.relatedCustomerCompany || null);
+  const description = descriptionRaw.trim() || undefined;
   const color = form.color || undefined;
   let start, end;
   if (form.allDay) {
@@ -131,7 +168,17 @@ function formToCrmBody(form) {
     start = startDt.toISOString();
     end = endDt.toISOString();
   }
-  return { title, description, color, start, end, allDay: !!form.allDay, visibility: form.visibility || 'company', participants: form.participants || [] };
+  return {
+    title,
+    description,
+    color,
+    start,
+    end,
+    allDay: !!form.allDay,
+    visibility: form.visibility || 'company',
+    participants: form.participants || [],
+    relatedCustomerCompanyId: form.relatedCustomerCompany?._id || null
+  };
 }
 
 /** 폼 → Google Calendar API body */
@@ -198,7 +245,8 @@ export default function EventModal({ eventId, isEdit, initialDate, calendarType,
     title: '', description: '', color: '', allDay: false,
     startDate: todayStr(), startTime: defaultTime(),
     endDate: todayStr(), endTime: '10:00',
-    visibility: 'company', participants: []
+    visibility: 'company', participants: [],
+    relatedCustomerCompany: null
   }));
   const [loading, setLoading] = useState(!isAdd);
   const [saving, setSaving] = useState(false);
@@ -206,6 +254,10 @@ export default function EventModal({ eventId, isEdit, initialDate, calendarType,
   const [error, setError] = useState('');
   const [teamMembers, setTeamMembers] = useState([]);
   const [showParticipantModal, setShowParticipantModal] = useState(false);
+  const [showCompanyPicker, setShowCompanyPicker] = useState(false);
+  const [companySearch, setCompanySearch] = useState('');
+  const [companySearchResults, setCompanySearchResults] = useState([]);
+  const [companySearchLoading, setCompanySearchLoading] = useState(false);
 
   const isOwner = isGoogle
     ? true
@@ -275,12 +327,64 @@ export default function EventModal({ eventId, isEdit, initialDate, calendarType,
   useEffect(() => {
     const onKey = (e) => {
       if (e.key !== 'Escape') return;
-      if (showParticipantModal) setShowParticipantModal(false);
+      if (showCompanyPicker) setShowCompanyPicker(false);
+      else if (showParticipantModal) setShowParticipantModal(false);
       else onClose?.();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, showParticipantModal]);
+  }, [onClose, showParticipantModal, showCompanyPicker]);
+
+  useEffect(() => {
+    if (!showCompanyPicker) return undefined;
+    const q = companySearch.trim();
+    if (q.length < 1) {
+      setCompanySearchResults([]);
+      return undefined;
+    }
+    const timer = window.setTimeout(async () => {
+      setCompanySearchLoading(true);
+      try {
+        const res = await fetch(
+          `${API_BASE}/customer-companies?search=${encodeURIComponent(q)}&limit=40`,
+          { headers: getAuthHeader() }
+        );
+        const data = await res.json().catch(() => ({}));
+        setCompanySearchResults(res.ok && Array.isArray(data.items) ? data.items : []);
+      } catch {
+        setCompanySearchResults([]);
+      } finally {
+        setCompanySearchLoading(false);
+      }
+    }, 320);
+    return () => window.clearTimeout(timer);
+  }, [showCompanyPicker, companySearch]);
+
+  const pickRelatedCompany = useCallback((row) => {
+    if (!row?._id) return;
+    const rel = { _id: String(row._id), name: row.name || '', address: row.address || '' };
+    setForm((prev) => ({
+      ...prev,
+      relatedCustomerCompany: rel,
+      description: ensureRelatedCompanyDescription(prev.description, rel)
+    }));
+    setShowCompanyPicker(false);
+    setError('');
+  }, []);
+
+  const removeRelatedCompany = useCallback(() => {
+    setForm((prev) => ({
+      ...prev,
+      relatedCustomerCompany: null,
+      description: stripRelatedCompanyDescriptionBlock(prev.description)
+    }));
+  }, []);
+
+  const openCompanyPicker = useCallback(() => {
+    setCompanySearch('');
+    setCompanySearchResults([]);
+    setShowCompanyPicker(true);
+  }, []);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -453,6 +557,17 @@ export default function EventModal({ eventId, isEdit, initialDate, calendarType,
                   </dd>
                 </>
               )}
+              {!isGoogle && event.relatedCustomerCompanyId && (
+                <>
+                  <dt>관련 고객사</dt>
+                  <dd>
+                    <span className="event-modal-related-company-view-name">{event.relatedCustomerCompanyName || '고객사'}</span>
+                    {event.relatedCustomerCompanyAddress ? (
+                      <span className="event-modal-related-company-view-addr"> · {event.relatedCustomerCompanyAddress}</span>
+                    ) : null}
+                  </dd>
+                </>
+              )}
               {eventDesc && (
                 <>
                   <dt>설명</dt>
@@ -579,6 +694,30 @@ export default function EventModal({ eventId, isEdit, initialDate, calendarType,
               </div>
             )}
 
+            {!isGoogle && (
+              <div className="event-modal-field">
+                <label>관련 고객사</label>
+                <button type="button" className="event-modal-btn event-modal-company-trigger" onClick={openCompanyPicker}>
+                  <span className="material-symbols-outlined">storefront</span>
+                  {form.relatedCustomerCompany ? '고객사 변경' : '고객사 선택'}
+                </button>
+                {form.relatedCustomerCompany ? (
+                  <div className="event-modal-related-company-chip">
+                    <span className="event-modal-related-company-chip-main">
+                      {form.relatedCustomerCompany.name || '고객사'}
+                      {(form.relatedCustomerCompany.address || '').trim() ? (
+                        <span className="event-modal-related-company-chip-addr"> · {form.relatedCustomerCompany.address}</span>
+                      ) : null}
+                    </span>
+                    <button type="button" className="event-modal-related-company-remove" onClick={removeRelatedCompany} aria-label="고객사 연결 제거">
+                      ✕
+                    </button>
+                  </div>
+                ) : null}
+                <p className="event-modal-related-company-hint">선택하면 설명 맨 아래에 방문 안내(고객사명·장소)가 자동으로 붙고, 제거 시 해당 구간만 삭제됩니다.</p>
+              </div>
+            )}
+
             <div className="event-modal-field">
               <label htmlFor="event-description">설명</label>
               <textarea id="event-description" name="description" value={form.description} onChange={handleChange} placeholder="설명 (선택)" rows={3} />
@@ -610,6 +749,60 @@ export default function EventModal({ eventId, isEdit, initialDate, calendarType,
           onClose={() => setShowParticipantModal(false)}
         />
       )}
+
+      {showCompanyPicker ? (
+        <div
+          className="event-modal-company-picker-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="event-modal-company-picker-title"
+          onClick={() => setShowCompanyPicker(false)}
+        >
+          <div className="event-modal-company-picker" onClick={(e) => e.stopPropagation()}>
+            <div className="event-modal-company-picker-head">
+              <h4 id="event-modal-company-picker-title">관련 고객사 선택</h4>
+              <button type="button" className="event-modal-company-picker-close" onClick={() => setShowCompanyPicker(false)} aria-label="닫기">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <input
+              type="search"
+              className="event-modal-company-picker-search"
+              placeholder="고객사명·주소 검색…"
+              value={companySearch}
+              onChange={(e) => setCompanySearch(e.target.value)}
+              autoFocus
+              aria-label="고객사 검색"
+            />
+            <div className="event-modal-company-picker-list" role="listbox">
+              {companySearchLoading ? <p className="event-modal-company-picker-msg">검색 중…</p> : null}
+              {!companySearchLoading && companySearch.trim().length < 1 ? (
+                <p className="event-modal-company-picker-msg">검색어를 입력하세요.</p>
+              ) : null}
+              {!companySearchLoading && companySearch.trim().length >= 1 && companySearchResults.length === 0 ? (
+                <p className="event-modal-company-picker-msg">검색 결과가 없습니다.</p>
+              ) : null}
+              {companySearchResults.map((row) => (
+                <button
+                  key={String(row._id)}
+                  type="button"
+                  role="option"
+                  className="event-modal-company-picker-item"
+                  onClick={() => pickRelatedCompany(row)}
+                >
+                  <span className="event-modal-company-picker-item-name">{row.name || '—'}</span>
+                  {row.address ? <span className="event-modal-company-picker-item-addr">{row.address}</span> : null}
+                </button>
+              ))}
+            </div>
+            <div className="event-modal-company-picker-footer">
+              <button type="button" className="event-modal-btn event-modal-cancel" onClick={() => setShowCompanyPicker(false)}>
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

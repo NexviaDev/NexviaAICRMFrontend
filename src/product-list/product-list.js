@@ -12,10 +12,14 @@ import {
 import './product-list.css';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 
+import * as XLSX from 'xlsx';
+
 import { API_BASE } from '@/config';
+import { getStoredCrmUser, isSeniorOrAboveRole } from '@/lib/crm-role-utils';
 import { listPriceFromProduct } from '@/lib/product-price-utils';
 const LIST_ID = LIST_IDS.PRODUCT_LIST;
 const LIMIT = 10;
+const EXPORT_PAGE_LIMIT = 100;
 
 /** 페이지네이션에 표시할 번호 목록 (현재 페이지 주변 + 첫/끝, 생략은 '...') — customer-companies와 동일 */
 function getPageNumbers(current, total) {
@@ -74,8 +78,22 @@ export default function ProductList() {
   const [dragOverKey, setDragOverKey] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sort, setSort] = useState({ key: null, dir: 'asc' });
+  const [exportExcelLoading, setExportExcelLoading] = useState(false);
   const sortKey = sort.key;
   const sortDir = sort.dir;
+
+  const customFieldLabelByKey = useMemo(() => {
+    const m = {};
+    customFieldColumns.forEach((c) => {
+      if (!c?.key?.startsWith(CUSTOM_FIELDS_PREFIX)) return;
+      const fk = c.key.slice(CUSTOM_FIELDS_PREFIX.length);
+      m[fk] = (c.label || fk).trim() || fk;
+    });
+    return m;
+  }, [customFieldColumns]);
+
+  const me = useMemo(() => getStoredCrmUser(), []);
+  const canExportExcel = isSeniorOrAboveRole(me?.role);
 
   const detailId = searchParams.get(DETAIL_ID_PARAM);
   const isDetailOpen = searchParams.get(MODAL_PARAM) === MODAL_DETAIL && detailId;
@@ -236,6 +254,84 @@ export default function ProductList() {
     });
   }, []);
 
+  const fetchAllProductsForExport = useCallback(async () => {
+    let page = 1;
+    let totalPages = 1;
+    const all = [];
+    do {
+      const params = new URLSearchParams({ page: String(page), limit: String(EXPORT_PAGE_LIMIT) });
+      if (searchApplied) params.set('search', searchApplied);
+      if (filterStatus) params.set('status', filterStatus);
+      if (filterBilling) params.set('billingType', filterBilling);
+      const res = await fetch(`${API_BASE}/products?${params}`, { headers: getAuthHeader() });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || '목록을 가져오지 못했습니다.');
+      }
+      const data = await res.json();
+      const batch = data.items || [];
+      all.push(...batch);
+      totalPages = Math.max(1, Number(data.pagination?.totalPages) || 1);
+      page += 1;
+    } while (page <= totalPages);
+    return all;
+  }, [searchApplied, filterStatus, filterBilling]);
+
+  const handleDownloadExcel = useCallback(async () => {
+    const viewer = getStoredCrmUser();
+    if (!isSeniorOrAboveRole(viewer?.role)) {
+      alert('엑셀 내려받기는 대표(Owner) 또는 책임(Senior)만 사용할 수 있습니다.');
+      return;
+    }
+    setExportExcelLoading(true);
+    try {
+      const rows = await fetchAllProductsForExport();
+      if (rows.length === 0) {
+        alert('보낼 제품이 없습니다.');
+        return;
+      }
+      const customKeys = new Set();
+      rows.forEach((r) => {
+        if (r.customFields && typeof r.customFields === 'object') {
+          Object.keys(r.customFields).forEach((k) => customKeys.add(k));
+        }
+      });
+      const sortedCustomKeys = [...customKeys].sort();
+      const exportRows = rows.map((row) => {
+        const o = {
+          제품명: row.name || '',
+          코드: row.code || '',
+          카테고리: row.category || '',
+          버전: row.version || '',
+          소비자가: listPriceFromProduct(row) ?? '',
+          원가: row.costPrice ?? '',
+          유통가: row.channelPrice ?? '',
+          소비자마진: getConsumerMargin(row),
+          유통마진: getChannelMargin(row),
+          통화: row.currency || '',
+          결제주기: row.billingType ? BILLING_LABELS[row.billingType] || row.billingType : '',
+          상태: row.status ? STATUS_LABELS[row.status] || row.status : '',
+          수정일: row.updatedAt ? new Date(row.updatedAt).toLocaleString('ko-KR') : ''
+        };
+        sortedCustomKeys.forEach((fk) => {
+          const colName = customFieldLabelByKey[fk] || `커스텀_${fk}`;
+          const v = row.customFields?.[fk];
+          o[colName] = v !== undefined && v !== null && v !== '' ? String(v) : '';
+        });
+        return o;
+      });
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(exportRows);
+      XLSX.utils.book_append_sheet(wb, ws, '제품');
+      const stamp = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(wb, `제품목록_${stamp}.xlsx`);
+    } catch (e) {
+      alert(e?.message || '엑셀 저장에 실패했습니다.');
+    } finally {
+      setExportExcelLoading(false);
+    }
+  }, [fetchAllProductsForExport, customFieldLabelByKey]);
+
   return (
     <div className="page product-list-page">
       <header className="page-header">
@@ -276,6 +372,18 @@ export default function ProductList() {
             <p className="page-desc">총 {pagination.total}개 제품</p>
           </div>
           <div className="product-list-top-actions">
+            {canExportExcel ? (
+              <button
+                type="button"
+                className="btn-secondary product-list-excel-btn"
+                onClick={handleDownloadExcel}
+                disabled={exportExcelLoading}
+                title="현재 검색·필터 조건에 맞는 제품 전체를 엑셀(.xlsx)로 받습니다. (Owner / Senior 전용)"
+              >
+                <span className="material-symbols-outlined">download</span>
+                {exportExcelLoading ? '준비 중…' : '엑셀 내려받기'}
+              </button>
+            ) : null}
             <button type="button" className="btn-primary" onClick={openAdd}>
               <span className="material-symbols-outlined">add</span> 제품 추가
             </button>

@@ -124,6 +124,63 @@ export async function patchListTemplate(listId, { columnOrder, visible, assignee
   return data;
 }
 
+/**
+ * 기본으로 햄버거 메뉴(overflow)에 두는 라우트. 사용자가 드래그로 메인에 꺼낼 수 있음.
+ * user.js listTemplates.sidebar.overflow 와 동일 문자열 배열로 저장됨.
+ */
+export const DEFAULT_SIDEBAR_OVERFLOW_ROUTES = ['/lead-capture', '/map', '/ai-voice'];
+
+/**
+ * 메인 사이드바 순서(order)와 더보기(overflow)를 정규화.
+ * - order만 있고 overflow 키가 없으면(레거시) DEFAULT_SIDEBAR_OVERFLOW_ROUTES 에 해당하는 항목을 overflow로 분리.
+ * - 양쪽에 없는 신규 메뉴는 기본 overflow 목록에 있으면 overflow 끝에, 아니면 메인 끝에 추가.
+ * @param {{ to: string }[]} menuItems
+ * @param {{ order?: string[], overflow?: string[] } | null} saved
+ */
+export function normalizeSidebarOrders(menuItems, saved) {
+  const allTos = menuItems.map((i) => i.to);
+  const defaultOv = DEFAULT_SIDEBAR_OVERFLOW_ROUTES.filter((t) => allTos.includes(t));
+  const rawOrder = Array.isArray(saved?.order) ? saved.order.filter((t) => allTos.includes(t)) : [];
+  const hasExplicitOverflow =
+    saved != null && Object.prototype.hasOwnProperty.call(saved, 'overflow') && Array.isArray(saved.overflow);
+  const rawOverflow = hasExplicitOverflow ? saved.overflow.filter((t) => allTos.includes(t)) : null;
+
+  let mainOrder;
+  let overflowOrder;
+
+  if (rawOrder.length === 0) {
+    mainOrder = allTos.filter((t) => !defaultOv.includes(t));
+    overflowOrder = defaultOv.slice();
+    return { mainOrder, overflowOrder };
+  }
+
+  if (!hasExplicitOverflow) {
+    overflowOrder = rawOrder.filter((t) => defaultOv.includes(t));
+    mainOrder = rawOrder.filter((t) => !defaultOv.includes(t));
+    const seen = new Set(rawOrder);
+    for (const t of allTos) {
+      if (!seen.has(t)) {
+        if (defaultOv.includes(t)) overflowOrder.push(t);
+        else mainOrder.push(t);
+      }
+    }
+    return { mainOrder, overflowOrder };
+  }
+
+  mainOrder = rawOrder.slice();
+  overflowOrder = rawOverflow.slice();
+  const mainSet = new Set(mainOrder);
+  overflowOrder = overflowOrder.filter((t) => !mainSet.has(t));
+  const seen = new Set([...mainOrder, ...overflowOrder]);
+  for (const t of allTos) {
+    if (!seen.has(t)) {
+      if (defaultOv.includes(t)) overflowOrder.push(t);
+      else mainOrder.push(t);
+    }
+  }
+  return { mainOrder, overflowOrder };
+}
+
 /** 현재 유저의 listTemplates.sidebar.order 가져오기 (사이드바 메뉴 순서) */
 export function getSavedSidebarOrder() {
   try {
@@ -131,6 +188,21 @@ export function getSavedSidebarOrder() {
     const user = raw ? JSON.parse(raw) : null;
     const order = user?.listTemplates?.sidebar?.order;
     return Array.isArray(order) ? order : null;
+  } catch (_) {}
+  return null;
+}
+
+/** 현재 유저의 listTemplates.sidebar 가져오기 (order + overflow) */
+export function getSavedSidebarConfig() {
+  try {
+    const raw = localStorage.getItem('crm_user');
+    const user = raw ? JSON.parse(raw) : null;
+    const sidebar = user?.listTemplates?.sidebar;
+    if (!sidebar || typeof sidebar !== 'object') return null;
+    const order = Array.isArray(sidebar.order) ? sidebar.order : null;
+    const overflow = Array.isArray(sidebar.overflow) ? sidebar.overflow : null;
+    if (!order && !overflow) return null;
+    return { order, overflow };
   } catch (_) {}
   return null;
 }
@@ -148,12 +220,29 @@ export function setSavedSidebarOrderLocally(order) {
   } catch (_) {}
 }
 
+/** localStorage의 사이드바 config를 즉시 갱신 (order + overflow) */
+export function setSavedSidebarConfigLocally({ order, overflow }) {
+  try {
+    const raw = localStorage.getItem('crm_user');
+    const user = raw ? JSON.parse(raw) : {};
+    const templates = user.listTemplates && typeof user.listTemplates === 'object' ? { ...user.listTemplates } : {};
+    const prevSidebar = templates.sidebar && typeof templates.sidebar === 'object' ? templates.sidebar : {};
+    templates.sidebar = {
+      ...prevSidebar,
+      ...(Array.isArray(order) ? { order } : {}),
+      ...(Array.isArray(overflow) ? { overflow } : {})
+    };
+    user.listTemplates = templates;
+    localStorage.setItem('crm_user', JSON.stringify(user));
+  } catch (_) {}
+}
+
 /** PATCH /api/auth/sidebar-order 호출 후 응답의 listTemplates로 crm_user 갱신 */
-export async function patchSidebarOrder(order) {
+export async function patchSidebarOrder(order, overflow) {
   const res = await fetch(`${API_BASE}/auth/sidebar-order`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-    body: JSON.stringify({ order })
+    body: JSON.stringify({ order, overflow })
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));

@@ -1,9 +1,10 @@
+/* 연락처 상세(contact-detail)와 동일: 우측에서 슬라이드. z-index만 사이드바(999) 위로 */
 .customer-company-detail-overlay {
   position: fixed;
   inset: 0;
   background: rgba(29, 40, 58, 0.4);
   backdrop-filter: blur(4px);
-  z-index: 50;
+  z-index: 1100;
   animation: ccDetailOverlayIn 0.2s ease-out;
 }
 
@@ -22,7 +23,7 @@
   background: var(--card);
   box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
   border-left: 1px solid var(--card-border);
-  z-index: 51;
+  z-index: 1101;
   overflow: hidden;
   animation: ccDetailPanelIn 0.25s ease-out;
 }
@@ -184,10 +185,15 @@
     align-items: center;
   }
 
-  .customer-company-detail-card-map {
+  .customer-company-detail-card-map-col {
     width: 8.75rem;
     flex: 0 0 8.75rem;
     margin-left: auto;
+    align-self: flex-start;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
   }
 }
 
@@ -216,8 +222,65 @@
   justify-content: center;
 }
 
+.customer-company-detail-card-map-col {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
 .customer-company-detail-card-map {
   width: 100%;
+}
+
+.customer-company-detail-card-visits {
+  padding: 0.45rem 0.5rem;
+  border-radius: 0.5rem;
+  background: #f0f4ff;
+  border: 1px solid rgba(99, 102, 241, 0.18);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--text);
+}
+
+.customer-company-detail-card-visits-head {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-weight: 700;
+  color: #4f46e5;
+  margin-bottom: 0.35rem;
+}
+
+.customer-company-detail-card-visits-head .material-symbols-outlined {
+  font-size: 0.95rem;
+}
+
+.customer-company-detail-card-visits-list {
+  margin: 0;
+  padding: 0 0 0 0.85rem;
+  list-style: disc;
+}
+
+.customer-company-detail-card-visits-list li {
+  margin-bottom: 0.25rem;
+}
+
+.customer-company-detail-card-visits-when {
+  font-weight: 600;
+  color: var(--text);
+  margin-right: 0.25rem;
+}
+
+.customer-company-detail-card-visits-title {
+  color: var(--text-muted);
+}
+
+.customer-company-detail-card-visits-who {
+  display: block;
+  margin-top: 0.1rem;
+  color: #5b6b8a;
+  font-size: 0.68rem;
 }
 
 .customer-company-detail-card-map-btn {
@@ -774,6 +837,54 @@
 
 .customer-company-detail-summary-notice.is-info {
   color: #355070;
+}
+
+.customer-company-detail-summary-calendar {
+  margin-top: 0.85rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.5rem;
+  background: #f4f6fd;
+  border: 1px solid rgba(99, 102, 241, 0.15);
+}
+
+.customer-company-detail-summary-calendar-title {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #4338ca;
+  margin-bottom: 0.45rem;
+}
+
+.customer-company-detail-summary-calendar-title .material-symbols-outlined {
+  font-size: 1rem;
+}
+
+.customer-company-detail-summary-calendar-list {
+  margin: 0;
+  padding: 0 0 0 1rem;
+  font-size: 0.78rem;
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.customer-company-detail-summary-calendar-list li {
+  margin-bottom: 0.3rem;
+}
+
+.customer-company-detail-summary-calendar-when {
+  font-weight: 600;
+  margin-right: 0.25rem;
+}
+
+.customer-company-detail-summary-calendar-event {
+  color: var(--text-muted);
+}
+
+.customer-company-detail-summary-calendar-who {
+  color: #5b6b8a;
+  font-size: 0.74rem;
 }
 
 .customer-company-detail-summary-notice.is-muted {

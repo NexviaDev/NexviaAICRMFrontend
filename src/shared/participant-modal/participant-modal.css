@@ -29,8 +29,8 @@
 }
 
 .participant-modal--with-org {
-  max-width: min(960px, 100vw - 2rem);
-  max-height: min(92vh, 900px);
+  max-width: min(1080px, 100vw - 2rem);
+  max-height: min(96vh, 1000px);
 }
 
 @keyframes pmSlideIn {
@@ -231,16 +231,47 @@
   color: #b91c1c;
 }
 
-/* Mind Elixir — company-overview 조직도와 동일한 톤 (모달용 높이만 축소) */
+/* 트리가 그려지는 구간만 구분 (힌트·로딩 문구와 분리) */
+.participant-modal-org-tree-panel {
+  border: 1px solid #c5d9eb;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  background: #e8f0f8;
+}
+
+.participant-modal-org-tree-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #334155;
+  background: #d8e8f4;
+  border-bottom: 1px solid #b8cfe0;
+}
+
+.participant-modal-org-tree-panel-head .material-symbols-outlined {
+  font-size: 1rem;
+  color: #4a6fa5;
+}
+
+.participant-modal-org-tree-panel-body {
+  background: #eef4fb;
+  padding: 0;
+}
+
+/* Mind Elixir — 트리 패널 내부 (company-overview와 유사, 배경은 패널 톤에 맞춤) */
 .participant-modal-org-mind {
   width: 100%;
-  min-height: 220px;
-  height: min(320px, 38vh);
-  max-height: 40vh;
-  border: 1px solid #d8e5f2;
-  border-radius: 0.8rem;
+  min-height: 320px;
+  height: min(460px, 50vh);
+  max-height: 54vh;
+  border: none;
+  border-radius: 0;
   overflow: hidden;
-  background: #fff;
+  background: transparent;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -249,18 +280,18 @@
 }
 
 .participant-modal-org-mind .map-container {
-  --bgcolor: #ffffff;
-  --main-bgcolor: #ffffff;
-  --main-bgcolor-transparent: rgba(255, 255, 255, 0.92);
-  --root-bgcolor: #ffffff;
+  --bgcolor: #eef4fb;
+  --main-bgcolor: #eef4fb;
+  --main-bgcolor-transparent: rgba(238, 244, 251, 0.95);
+  --root-bgcolor: #f8fafc;
   --root-color: #000000;
   --root-border-color: #94a3b8;
   --main-color: #94a3b8;
   --color: #000000;
-  --panel-bgcolor: #ffffff;
+  --panel-bgcolor: #eef4fb;
   --panel-color: #000000;
-  --panel-border-color: #e2e8f0;
-  background-color: #ffffff !important;
+  --panel-border-color: #cbd5e1;
+  background-color: #eef4fb !important;
   overflow: hidden !important;
   height: 100% !important;
   min-height: 0;
@@ -270,11 +301,11 @@
 
 .participant-modal-org-mind .map-canvas {
   transform-origin: 0 0;
-  background-color: #ffffff !important;
+  background-color: #eef4fb !important;
 }
 
 .participant-modal-org-mind me-nodes {
-  background-color: #ffffff !important;
+  background-color: transparent !important;
 }
 
 .participant-modal-org-mind me-tpc {
@@ -286,10 +317,25 @@
   min-height: 1.5em;
 }
 
+/* 선택된 부서: 단색 면으로 구분 (그라데이션·글로우 없음) */
 .participant-modal-org-mind me-tpc.participant-org-tpc--selected {
-  background-color: #e8eaf6 !important;
-  border-color: #7c83d8 !important;
-  box-shadow: 0 0 0 1px rgba(92, 107, 192, 0.25);
+  background-color: #9ec5fe !important;
+  border-color: #7eb0f5 !important;
+  border-style: solid !important;
+  box-shadow: none !important;
+  color: #0f172a !important;
+}
+
+.participant-modal-org-mind me-tpc.participant-org-tpc--selected .text,
+.participant-modal-org-mind me-tpc.participant-org-tpc--selected .hyper-link,
+.participant-modal-org-mind me-tpc.participant-org-tpc--selected a {
+  color: #0f172a !important;
+}
+
+.participant-modal-org-mind me-parent > me-tpc.participant-org-tpc--selected:hover,
+.participant-modal-org-mind me-root me-tpc.participant-org-tpc--selected:hover {
+  background-color: #8ab8f9 !important;
+  border-color: #6aa3eb !important;
 }
 
 .participant-modal-org-mind me-tpc .text,
@@ -307,11 +353,11 @@
   border-width: 2px !important;
 }
 
-.participant-modal-org-mind me-parent > me-tpc:hover {
+.participant-modal-org-mind me-parent > me-tpc:hover:not(.participant-org-tpc--selected) {
   background-color: #f8fafc !important;
 }
 
-.participant-modal-org-mind me-root me-tpc:hover {
+.participant-modal-org-mind me-root me-tpc:hover:not(.participant-org-tpc--selected) {
   background-color: #f1f5f9 !important;
 }
 
@@ -319,8 +365,8 @@
 .participant-modal-org-mind svg polyline {
   stroke: #96aec4 !important;
   stroke-width: 2 !important;
-  stroke-linecap: butt;
-  stroke-linejoin: miter;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .participant-modal-bulk-row {
@@ -348,7 +394,7 @@
   border: 1px solid var(--card-border, #e0e0e0);
   border-radius: 0.5rem;
   overflow-y: auto;
-  max-height: 340px;
+  max-height: 380px;
 }
 
 .participant-modal-list-head {
@@ -408,6 +454,12 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.participant-modal-me-note {
+  font-weight: 500;
+  font-size: 0.78rem;
+  color: var(--text-muted, #7a8794);
 }
 
 .participant-modal-email {
@@ -484,7 +536,7 @@
   }
 
   .participant-modal-list {
-    max-height: 260px;
+    max-height: 288px;
   }
 
   .participant-modal-list-head,
