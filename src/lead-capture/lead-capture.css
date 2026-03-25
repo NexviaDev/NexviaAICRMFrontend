@@ -340,9 +340,22 @@
   text-align: right;
 }
 
+.lead-capture-cell-action {
+  white-space: nowrap;
+}
+
 .lead-capture-cell-name {
   font-weight: 600;
   color: var(--text);
+}
+
+.lead-capture-cell-assignees {
+  max-width: 14rem;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .lead-capture-status-badge {
@@ -412,6 +425,26 @@
 }
 
 .lead-capture-delete-btn .material-symbols-outlined {
+  font-size: 1.25rem;
+}
+
+.lead-capture-edit-btn {
+  display: inline-flex;
+  padding: 0.35rem;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  border-radius: 0.35rem;
+  cursor: pointer;
+  margin-right: 0.2rem;
+}
+
+.lead-capture-edit-btn:hover {
+  color: var(--primary);
+  background: var(--primary-pastel, rgba(99, 102, 241, 0.08));
+}
+
+.lead-capture-edit-btn .material-symbols-outlined {
   font-size: 1.25rem;
 }
 

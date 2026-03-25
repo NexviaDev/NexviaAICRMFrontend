@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { API_BASE, BACKEND_BASE_URL } from '@/config';
+import { getStoredCrmUser, isSeniorOrAboveRole } from '@/lib/crm-role-utils';
 import LeadCaptureFormModal from './lead-capture-form-modal/lead-capture-form-modal';
 import LeadCaptureApiDocModal from './lead-capture-api-doc-modal/lead-capture-api-doc-modal';
 import LeadCaptureLeadsModal from './lead-capture-leads-modal/lead-capture-leads-modal';
@@ -75,6 +76,25 @@ function formatReceivedAt(date) {
   return d.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' });
 }
 
+/** 캡처 채널 목록 행의 담당자 표시 (populate된 User 또는 ObjectId 문자열) */
+function formatFormAssigneeLabels(row) {
+  const list = row?.assigneeUserIds;
+  if (!Array.isArray(list) || list.length === 0) return '—';
+  return list
+    .map((u) => {
+      if (u && typeof u === 'object') {
+        const n = (u.name && String(u.name).trim()) || '';
+        if (n) return n;
+        const em = (u.email && String(u.email).trim()) || '';
+        if (em) return em;
+      }
+      const id = u && typeof u === 'object' && u._id != null ? String(u._id) : String(u || '');
+      return id ? `사용자 …${id.slice(-6)}` : '';
+    })
+    .filter(Boolean)
+    .join(', ') || '—';
+}
+
 function customFieldsSummary(customFields) {
   if (!customFields || typeof customFields !== 'object') return '—';
   const entries = Object.entries(customFields).filter(([, v]) => v !== undefined && v !== null && v !== '');
@@ -145,6 +165,8 @@ export default function LeadCapture() {
   const [previewHtml, setPreviewHtml] = useState('');
   const [showEmbedPreview, setShowEmbedPreview] = useState(false);
   const [apiKeyForPreview, setApiKeyForPreview] = useState('');
+
+  const canManageCaptureChannels = isSeniorOrAboveRole(getStoredCrmUser()?.role);
 
   const fetchSettings = useCallback(async () => {
     try {
@@ -680,11 +702,19 @@ ${customInputs}
   }
 
   function openEdit(form) {
+    if (!isSeniorOrAboveRole(getStoredCrmUser()?.role)) {
+      setError('캡처 채널 수정은 대표·책임 권한만 가능합니다.');
+      return;
+    }
     setEditingForm(form);
     setModalOpen(true);
   }
 
   async function handleDelete(form) {
+    if (!isSeniorOrAboveRole(getStoredCrmUser()?.role)) {
+      setError('캡처 채널 삭제는 대표·책임 권한만 가능합니다.');
+      return;
+    }
     if (!window.confirm(`"${form.name}" 캡처 폼을 삭제할까요?`)) return;
     try {
       const res = await fetch(`${API_BASE}/lead-capture-forms/${form._id}`, {
@@ -760,13 +790,16 @@ ${customInputs}
                     <th>상태</th>
                     <th>총 리드</th>
                     <th>최근 활동</th>
-                    <th className="lead-capture-th-action">삭제</th>
+                    <th>담당자</th>
+                    {canManageCaptureChannels ? (
+                      <th className="lead-capture-th-action">관리</th>
+                    ) : null}
                   </tr>
                 </thead>
                 <tbody>
                   {items.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="lead-capture-empty-cell">
+                      <td colSpan={canManageCaptureChannels ? 6 : 5} className="lead-capture-empty-cell">
                         등록된 캡처 폼이 없습니다. 새 캡처 폼 만들기를 눌러 추가하세요.
                       </td>
                     </tr>
@@ -789,16 +822,29 @@ ${customInputs}
                         </td>
                         <td className="lead-capture-cell-count">{(row.totalLeads ?? 0).toLocaleString()}</td>
                         <td className="lead-capture-cell-activity">{formatLastActivity(row.lastActivityAt)}</td>
-                        <td className="lead-capture-cell-action">
-                          <button
-                            type="button"
-                            className="lead-capture-delete-btn"
-                            aria-label="삭제"
-                            onClick={(e) => { e.stopPropagation(); handleDelete(row); }}
-                          >
-                            <span className="material-symbols-outlined">delete</span>
-                          </button>
+                        <td className="lead-capture-cell-assignees" title={formatFormAssigneeLabels(row)}>
+                          {formatFormAssigneeLabels(row)}
                         </td>
+                        {canManageCaptureChannels ? (
+                          <td className="lead-capture-cell-action">
+                            <button
+                              type="button"
+                              className="lead-capture-edit-btn"
+                              aria-label="수정"
+                              onClick={(e) => { e.stopPropagation(); openEdit(row); }}
+                            >
+                              <span className="material-symbols-outlined">edit</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="lead-capture-delete-btn"
+                              aria-label="삭제"
+                              onClick={(e) => { e.stopPropagation(); handleDelete(row); }}
+                            >
+                              <span className="material-symbols-outlined">delete</span>
+                            </button>
+                          </td>
+                        ) : null}
                       </tr>
                     ))
                   )}

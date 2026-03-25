@@ -49,6 +49,9 @@ export default function Register() {
   const [companyAddress, setCompanyAddress] = useState('');
   const [companyAddressDetail, setCompanyAddressDetail] = useState('');
   const [companyDepartment, setCompanyDepartment] = useState('');
+  const [selectedCompanyId, setSelectedCompanyId] = useState('');
+  const [departmentOptions, setDepartmentOptions] = useState([]);
+  const [departmentLoading, setDepartmentLoading] = useState(false);
 
   const [addCompanyModalOpen, setAddCompanyModalOpen] = useState(false);
   const [companySearchModalOpen, setCompanySearchModalOpen] = useState(false);
@@ -66,6 +69,24 @@ export default function Register() {
     return t ? { Authorization: `Bearer ${t}` } : {};
   };
 
+  const resolveDepartmentValue = (raw, options) => {
+    const s = String(raw || '').trim();
+    if (!s) return '';
+    const hitById = options.find((o) => String(o.id) === s);
+    if (hitById) return String(hitById.id);
+    const hitByLabel = options.find((o) => o.label === s || o.name === s);
+    if (hitByLabel) return String(hitByLabel.id);
+    return s;
+  };
+
+  const getDepartmentForSubmit = () => String(companyDepartment || '').trim();
+  const getDepartmentDisplayText = () => {
+    const s = String(companyDepartment || '').trim();
+    if (!s) return '';
+    const hit = departmentOptions.find((o) => String(o.id) === s);
+    return hit ? hit.label : s;
+  };
+
   useEffect(() => {
     if (tokenFromUrl && needsRegister) {
       setMode('google-complete');
@@ -80,6 +101,7 @@ export default function Register() {
             setCompanyAddress(data.user.companyAddress || '');
             setCompanyAddressDetail(data.user.companyAddressDetail || '');
             setCompanyDepartment(data.user.companyDepartment || '');
+            setSelectedCompanyId(data.user.companyId ? String(data.user.companyId) : '');
             setCompanyNeedsCreate(false);
             setCompanyRepresentativeName('');
             if (data.user.companyName) {
@@ -89,6 +111,7 @@ export default function Register() {
                 .then((d) => {
                   const match = (d.items || []).find((c) => c.name === data.user.companyName);
                   if (match?.businessNumber) setCompanyBusinessNumber(match.businessNumber);
+                  if (match?._id || match?.id) setSelectedCompanyId(String(match._id || match.id));
                 })
                 .catch(() => {});
             }
@@ -116,6 +139,7 @@ export default function Register() {
             setCompanyAddress(data.user.companyAddress || '');
             setCompanyAddressDetail(data.user.companyAddressDetail || '');
             setCompanyDepartment(data.user.companyDepartment || '');
+            setSelectedCompanyId(data.user.companyId ? String(data.user.companyId) : '');
             setCompanyNeedsCreate(false);
             setCompanyRepresentativeName('');
             if (data.user.companyName) {
@@ -125,6 +149,7 @@ export default function Register() {
                 .then((d) => {
                   const match = (d.items || []).find((c) => c.name === data.user.companyName);
                   if (match?.businessNumber) setCompanyBusinessNumber(match.businessNumber);
+                  if (match?._id || match?.id) setSelectedCompanyId(String(match._id || match.id));
                 })
                 .catch(() => {});
             }
@@ -145,15 +170,44 @@ export default function Register() {
     const businessNumber = typeof company === 'object' && company ? (company.businessNumber ?? '') : '';
     const representativeName = typeof company === 'object' && company ? (company.representativeName ?? '') : '';
     const isNewDraft = !!(typeof company === 'object' && company?.isNewDraft);
+    const companyId = typeof company === 'object' && company ? (company._id || company.id || '') : '';
     setCompanyName(name);
     setCompanyConfirmed(true);
     setCompanyBusinessNumber(businessNumber);
     setCompanyRepresentativeName(representativeName);
     setCompanyNeedsCreate(isNewDraft);
+    setSelectedCompanyId(isNewDraft ? '' : String(companyId || ''));
+    setDepartmentOptions([]);
+    setCompanyDepartment('');
     setCompanySearchModalOpen(false);
     if (address !== undefined) setCompanyAddress(address);
     if (addressDetail !== undefined) setCompanyAddressDetail(addressDetail);
   };
+
+  useEffect(() => {
+    const cid = String(selectedCompanyId || '').trim();
+    if (!cid) {
+      setDepartmentOptions([]);
+      return;
+    }
+    let cancelled = false;
+    setDepartmentLoading(true);
+    fetch(`${API_BASE}/companies/${encodeURIComponent(cid)}/public-organization-chart`)
+      .then((res) => res.json().catch(() => ({})))
+      .then((data) => {
+        if (cancelled) return;
+        const options = Array.isArray(data.departments) ? data.departments : [];
+        setDepartmentOptions(options);
+        setCompanyDepartment((prev) => resolveDepartmentValue(prev, options));
+      })
+      .catch(() => {
+        if (!cancelled) setDepartmentOptions([]);
+      })
+      .finally(() => {
+        if (!cancelled) setDepartmentLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [selectedCompanyId]);
 
   const handleCheckEmail = async () => {
     setError('');
@@ -278,7 +332,8 @@ export default function Register() {
       setLoading(false);
       return;
     }
-    if (!companyDepartment.trim()) {
+    const departmentValue = getDepartmentForSubmit();
+    if (!departmentValue) {
       setError('회사 부서명을 입력해 주세요.');
       setLoading(false);
       return;
@@ -306,7 +361,7 @@ export default function Register() {
           companyName: companyName.trim(),
           companyAddress: companyAddress.trim(),
           companyAddressDetail: companyAddressDetail.trim(),
-          companyDepartment: companyDepartment.trim(),
+          companyDepartment: departmentValue,
           companyBusinessNumber: companyBusinessNumber.trim(),
           companyRepresentativeName: companyNeedsCreate ? companyRepresentativeName.trim() : '',
           createCompanyOnSave: companyNeedsCreate
@@ -381,7 +436,8 @@ export default function Register() {
       setLoading(false);
       return;
     }
-    if (!companyDepartment.trim()) {
+    const departmentValue = getDepartmentForSubmit();
+    if (!departmentValue) {
       setError('회사 부서명을 입력해 주세요.');
       setLoading(false);
       return;
@@ -403,7 +459,7 @@ export default function Register() {
         companyName: companyName.trim(),
         companyAddress: companyAddress.trim(),
         companyAddressDetail: companyAddressDetail.trim(),
-        companyDepartment: companyDepartment.trim(),
+        companyDepartment: departmentValue,
         companyBusinessNumber: companyBusinessNumber.trim(),
         companyRepresentativeName: companyNeedsCreate ? companyRepresentativeName.trim() : '',
         createCompanyOnSave: companyNeedsCreate
@@ -507,8 +563,29 @@ export default function Register() {
                   <input type="text" value={companyAddressDetail} readOnly placeholder="회사 선택 시 자동 입력" />
                 </div>
                 <div className="register-field">
-                  <label htmlFor="reg-dept">부서명 *</label>
-                  <input id="reg-dept" type="text" value={companyDepartment} onChange={(e) => setCompanyDepartment(e.target.value)} placeholder="부서명" required />
+                  <label htmlFor="reg-dept-select">부서명 *</label>
+                  <select
+                    id="reg-dept-select"
+                    className="register-select"
+                    value={departmentOptions.some((o) => String(o.id) === String(companyDepartment)) ? String(companyDepartment) : ''}
+                    onChange={(e) => setCompanyDepartment(e.target.value)}
+                    disabled={departmentLoading || departmentOptions.length === 0}
+                  >
+                    <option value="">
+                      {departmentLoading ? '부서 목록 불러오는 중…' : (departmentOptions.length ? '부서 선택 (직접 입력도 가능)' : '부서 목록 없음 (직접 입력)')}
+                    </option>
+                    {departmentOptions.map((opt) => (
+                      <option key={String(opt.id)} value={String(opt.id)}>{opt.label}</option>
+                    ))}
+                  </select>
+                  <input
+                    id="reg-dept"
+                    type="text"
+                    value={getDepartmentDisplayText()}
+                    onChange={(e) => setCompanyDepartment(e.target.value)}
+                    placeholder="직접 부서명 입력 가능"
+                    required
+                  />
                 </div>
                 <button type="submit" className="register-submit" disabled={loading}>{loading ? '저장 중...' : '저장'}</button>
               </form>
@@ -617,8 +694,29 @@ export default function Register() {
                   <input type="text" value={companyAddressDetail} readOnly placeholder="회사 선택 시 자동 입력" />
                 </div>
                 <div className="register-field">
-                  <label htmlFor="form-dept">부서명 *</label>
-                  <input id="form-dept" type="text" value={companyDepartment} onChange={(e) => setCompanyDepartment(e.target.value)} placeholder="부서명" required />
+                  <label htmlFor="form-dept-select">부서명 *</label>
+                  <select
+                    id="form-dept-select"
+                    className="register-select"
+                    value={departmentOptions.some((o) => String(o.id) === String(companyDepartment)) ? String(companyDepartment) : ''}
+                    onChange={(e) => setCompanyDepartment(e.target.value)}
+                    disabled={departmentLoading || departmentOptions.length === 0}
+                  >
+                    <option value="">
+                      {departmentLoading ? '부서 목록 불러오는 중…' : (departmentOptions.length ? '부서 선택 (직접 입력도 가능)' : '부서 목록 없음 (직접 입력)')}
+                    </option>
+                    {departmentOptions.map((opt) => (
+                      <option key={String(opt.id)} value={String(opt.id)}>{opt.label}</option>
+                    ))}
+                  </select>
+                  <input
+                    id="form-dept"
+                    type="text"
+                    value={getDepartmentDisplayText()}
+                    onChange={(e) => setCompanyDepartment(e.target.value)}
+                    placeholder="직접 부서명 입력 가능"
+                    required
+                  />
                 </div>
                 <button type="submit" className="register-submit" disabled={loading}>{loading ? '가입 중...' : '가입하기'}</button>
               </form>

@@ -1704,3 +1704,52 @@
   border-radius: 0.5rem;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
 }
+
+/* 업무 요약 카드 내 예정된 캘린더 방문 (고객사 상세 모달과 동일 클래스·동일 위치) */
+.contact-detail-panel .customer-company-detail-summary-calendar {
+  margin-top: 0.85rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.5rem;
+  background: #f4f6fd;
+  border: 1px solid rgba(99, 102, 241, 0.15);
+}
+
+.contact-detail-panel .customer-company-detail-summary-calendar-title {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #4338ca;
+  margin-bottom: 0.45rem;
+}
+
+.contact-detail-panel .customer-company-detail-summary-calendar-title .material-symbols-outlined {
+  font-size: 1rem;
+}
+
+.contact-detail-panel .customer-company-detail-summary-calendar-list {
+  margin: 0;
+  padding: 0 0 0 1rem;
+  font-size: 0.78rem;
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.contact-detail-panel .customer-company-detail-summary-calendar-list li {
+  margin-bottom: 0.3rem;
+}
+
+.contact-detail-panel .customer-company-detail-summary-calendar-when {
+  font-weight: 600;
+  margin-right: 0.25rem;
+}
+
+.contact-detail-panel .customer-company-detail-summary-calendar-event {
+  color: var(--text-muted);
+}
+
+.contact-detail-panel .customer-company-detail-summary-calendar-who {
+  color: #5b6b8a;
+  font-size: 0.74rem;
+}

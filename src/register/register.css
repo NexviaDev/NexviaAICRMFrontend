@@ -101,7 +101,24 @@
   box-sizing: border-box;
 }
 
+.register-field select {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--card);
+  font-size: 0.95rem;
+  box-sizing: border-box;
+  margin-bottom: 0.5rem;
+}
+
 .register-field input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(91, 124, 153, 0.2);
+}
+
+.register-field select:focus {
   outline: none;
   border-color: var(--primary);
   box-shadow: 0 0 0 2px rgba(91, 124, 153, 0.2);

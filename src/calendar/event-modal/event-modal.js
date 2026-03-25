@@ -6,7 +6,8 @@ import { API_BASE } from '@/config';
 import { googleEventDisplayTitle } from '../google-event-display-title';
 import {
   stripRelatedCompanyDescriptionBlock,
-  ensureRelatedCompanyDescription
+  stripRelatedContactDescriptionBlock,
+  ensureAllRelatedVisitDescriptions
 } from '../event-modal-related-company';
 
 const PRESET_COLORS = [
@@ -93,12 +94,12 @@ function googleEventToForm(ev, titleMeta = {}) {
     } else {
       endDate = startDate;
     }
-    return { title: displayTitle, description: ev.description || '', color: '', allDay: true, startDate, startTime: defaultTime(), endDate, endTime: '10:00', visibility: 'private', participants: [], relatedCustomerCompany: null };
+    return { title: displayTitle, description: ev.description || '', color: '', allDay: true, startDate, startTime: defaultTime(), endDate, endTime: '10:00', visibility: 'private', participants: [], relatedCustomerCompany: null, relatedContactPerson: null };
   }
 
   const startDt = start.dateTime ? new Date(start.dateTime) : new Date();
   const endDt = end.dateTime ? new Date(end.dateTime) : new Date(startDt.getTime() + 3600000);
-  return { title: displayTitle, description: ev.description || '', color: '', allDay: false, startDate: startDt.toISOString().slice(0, 10), startTime: startDt.toTimeString().slice(0, 5), endDate: endDt.toISOString().slice(0, 10), endTime: endDt.toTimeString().slice(0, 5), visibility: 'private', participants: [], relatedCustomerCompany: null };
+  return { title: displayTitle, description: ev.description || '', color: '', allDay: false, startDate: startDt.toISOString().slice(0, 10), startTime: startDt.toTimeString().slice(0, 5), endDate: endDt.toISOString().slice(0, 10), endTime: endDt.toTimeString().slice(0, 5), visibility: 'private', participants: [], relatedCustomerCompany: null, relatedContactPerson: null };
 }
 
 /** CRM 이벤트 → 폼 값 */
@@ -111,6 +112,17 @@ function crmEventToForm(ev) {
         _id: String(ev.relatedCustomerCompanyId),
         name: ev.relatedCustomerCompanyName || '',
         address: ev.relatedCustomerCompanyAddress || ''
+      }
+    : null;
+
+  const relatedContactPerson = ev.relatedCustomerCompanyEmployeeId
+    ? {
+        _id: String(ev.relatedCustomerCompanyEmployeeId),
+        name: ev.relatedContactName || '',
+        phone: ev.relatedContactPhone || '',
+        email: ev.relatedContactEmail || '',
+        companyName: ev.relatedContactCompanyName || '',
+        companyAddress: ev.relatedContactCompanyAddress || ''
       }
     : null;
 
@@ -128,7 +140,8 @@ function crmEventToForm(ev) {
       endTime: '10:00',
       visibility: ev.visibility || 'company',
       participants: ev.participants || [],
-      relatedCustomerCompany
+      relatedCustomerCompany,
+      relatedContactPerson
     };
   }
 
@@ -143,14 +156,19 @@ function crmEventToForm(ev) {
     endTime: endDate.toTimeString().slice(0, 5),
     visibility: ev.visibility || 'company',
     participants: ev.participants || [],
-    relatedCustomerCompany
+    relatedCustomerCompany,
+    relatedContactPerson
   };
 }
 
 /** 폼 → CRM API body */
 function formToCrmBody(form) {
   const title = (form.title || '').trim() || '(제목 없음)';
-  const descriptionRaw = ensureRelatedCompanyDescription(form.description || '', form.relatedCustomerCompany || null);
+  const descriptionRaw = ensureAllRelatedVisitDescriptions(
+    form.description || '',
+    form.relatedCustomerCompany || null,
+    form.relatedContactPerson || null
+  );
   const description = descriptionRaw.trim() || undefined;
   const color = form.color || undefined;
   let start, end;
@@ -177,7 +195,8 @@ function formToCrmBody(form) {
     allDay: !!form.allDay,
     visibility: form.visibility || 'company',
     participants: form.participants || [],
-    relatedCustomerCompanyId: form.relatedCustomerCompany?._id || null
+    relatedCustomerCompanyId: form.relatedCustomerCompany?._id || null,
+    relatedCustomerCompanyEmployeeId: form.relatedContactPerson?._id || null
   };
 }
 
@@ -246,7 +265,8 @@ export default function EventModal({ eventId, isEdit, initialDate, calendarType,
     startDate: todayStr(), startTime: defaultTime(),
     endDate: todayStr(), endTime: '10:00',
     visibility: 'company', participants: [],
-    relatedCustomerCompany: null
+    relatedCustomerCompany: null,
+    relatedContactPerson: null
   }));
   const [loading, setLoading] = useState(!isAdd);
   const [saving, setSaving] = useState(false);
@@ -258,6 +278,10 @@ export default function EventModal({ eventId, isEdit, initialDate, calendarType,
   const [companySearch, setCompanySearch] = useState('');
   const [companySearchResults, setCompanySearchResults] = useState([]);
   const [companySearchLoading, setCompanySearchLoading] = useState(false);
+  const [showEmployeePicker, setShowEmployeePicker] = useState(false);
+  const [employeeSearch, setEmployeeSearch] = useState('');
+  const [employeeSearchResults, setEmployeeSearchResults] = useState([]);
+  const [employeeSearchLoading, setEmployeeSearchLoading] = useState(false);
 
   const isOwner = isGoogle
     ? true
@@ -327,13 +351,14 @@ export default function EventModal({ eventId, isEdit, initialDate, calendarType,
   useEffect(() => {
     const onKey = (e) => {
       if (e.key !== 'Escape') return;
-      if (showCompanyPicker) setShowCompanyPicker(false);
+      if (showEmployeePicker) setShowEmployeePicker(false);
+      else if (showCompanyPicker) setShowCompanyPicker(false);
       else if (showParticipantModal) setShowParticipantModal(false);
       else onClose?.();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, showParticipantModal, showCompanyPicker]);
+  }, [onClose, showParticipantModal, showCompanyPicker, showEmployeePicker]);
 
   useEffect(() => {
     if (!showCompanyPicker) return undefined;
@@ -360,13 +385,38 @@ export default function EventModal({ eventId, isEdit, initialDate, calendarType,
     return () => window.clearTimeout(timer);
   }, [showCompanyPicker, companySearch]);
 
+  useEffect(() => {
+    if (!showEmployeePicker) return undefined;
+    const q = employeeSearch.trim();
+    if (q.length < 1) {
+      setEmployeeSearchResults([]);
+      return undefined;
+    }
+    const timer = window.setTimeout(async () => {
+      setEmployeeSearchLoading(true);
+      try {
+        const res = await fetch(
+          `${API_BASE}/customer-company-employees?search=${encodeURIComponent(q)}&limit=40`,
+          { headers: getAuthHeader() }
+        );
+        const data = await res.json().catch(() => ({}));
+        setEmployeeSearchResults(res.ok && Array.isArray(data.items) ? data.items : []);
+      } catch {
+        setEmployeeSearchResults([]);
+      } finally {
+        setEmployeeSearchLoading(false);
+      }
+    }, 320);
+    return () => window.clearTimeout(timer);
+  }, [showEmployeePicker, employeeSearch]);
+
   const pickRelatedCompany = useCallback((row) => {
     if (!row?._id) return;
     const rel = { _id: String(row._id), name: row.name || '', address: row.address || '' };
     setForm((prev) => ({
       ...prev,
       relatedCustomerCompany: rel,
-      description: ensureRelatedCompanyDescription(prev.description, rel)
+      description: ensureAllRelatedVisitDescriptions(prev.description, rel, prev.relatedContactPerson || null)
     }));
     setShowCompanyPicker(false);
     setError('');
@@ -376,7 +426,11 @@ export default function EventModal({ eventId, isEdit, initialDate, calendarType,
     setForm((prev) => ({
       ...prev,
       relatedCustomerCompany: null,
-      description: stripRelatedCompanyDescriptionBlock(prev.description)
+      description: ensureAllRelatedVisitDescriptions(
+        stripRelatedCompanyDescriptionBlock(prev.description),
+        null,
+        prev.relatedContactPerson || null
+      )
     }));
   }, []);
 
@@ -384,6 +438,66 @@ export default function EventModal({ eventId, isEdit, initialDate, calendarType,
     setCompanySearch('');
     setCompanySearchResults([]);
     setShowCompanyPicker(true);
+  }, []);
+
+  const buildRelatedContactFromEmployeeRow = useCallback((row) => {
+    if (!row?._id) return null;
+    const cc = row.customerCompanyId && typeof row.customerCompanyId === 'object' ? row.customerCompanyId : null;
+    const hasRegisteredCc = !!(cc && cc._id);
+    return {
+      _id: String(row._id),
+      name: row.name || '',
+      phone: row.phone || '',
+      email: row.email || '',
+      companyName: hasRegisteredCc ? (cc.name || '').trim() : '',
+      companyAddress: hasRegisteredCc ? (cc.address || '').trim() : ''
+    };
+  }, []);
+
+  const pickRelatedContact = useCallback((row) => {
+    const rel = buildRelatedContactFromEmployeeRow(row);
+    if (!rel) return;
+    /** 직원의 customerCompanyId → CRM 고객사(CustomerCompany) 문서. companyId는 테넌트(소속 회사)용이라 매칭에 쓰지 않음. */
+    const ccPopulated = row.customerCompanyId && typeof row.customerCompanyId === 'object' && row.customerCompanyId._id != null
+      ? row.customerCompanyId
+      : null;
+    const relatedCompanyFromEmployee = ccPopulated
+      ? {
+          _id: String(ccPopulated._id),
+          name: (ccPopulated.name || '').trim(),
+          address: (ccPopulated.address || '').trim()
+        }
+      : null;
+
+    setForm((prev) => {
+      const nextRelatedCompany = relatedCompanyFromEmployee || prev.relatedCustomerCompany || null;
+      return {
+        ...prev,
+        relatedContactPerson: rel,
+        relatedCustomerCompany: nextRelatedCompany,
+        description: ensureAllRelatedVisitDescriptions(prev.description, nextRelatedCompany, rel)
+      };
+    });
+    setShowEmployeePicker(false);
+    setError('');
+  }, [buildRelatedContactFromEmployeeRow]);
+
+  const removeRelatedContact = useCallback(() => {
+    setForm((prev) => ({
+      ...prev,
+      relatedContactPerson: null,
+      description: ensureAllRelatedVisitDescriptions(
+        stripRelatedContactDescriptionBlock(prev.description),
+        prev.relatedCustomerCompany || null,
+        null
+      )
+    }));
+  }, []);
+
+  const openEmployeePicker = useCallback(() => {
+    setEmployeeSearch('');
+    setEmployeeSearchResults([]);
+    setShowEmployeePicker(true);
   }, []);
 
   const handleChange = (e) => {
@@ -568,6 +682,22 @@ export default function EventModal({ eventId, isEdit, initialDate, calendarType,
                   </dd>
                 </>
               )}
+              {!isGoogle && event.relatedCustomerCompanyEmployeeId && (
+                <>
+                  <dt>관련 연락처</dt>
+                  <dd className="event-modal-related-contact-view">
+                    <div><strong>{event.relatedContactName || '—'}</strong></div>
+                    <div className="event-modal-related-contact-view-line">연락처: {event.relatedContactPhone || '—'}</div>
+                    <div className="event-modal-related-contact-view-line">이메일: {event.relatedContactEmail || '—'}</div>
+                    {(event.relatedContactCompanyName || '').trim() ? (
+                      <>
+                        <div className="event-modal-related-contact-view-line">고객사: {event.relatedContactCompanyName}</div>
+                        <div className="event-modal-related-contact-view-line">주소: {(event.relatedContactCompanyAddress || '').trim() || '주소 미등록'}</div>
+                      </>
+                    ) : null}
+                  </dd>
+                </>
+              )}
               {eventDesc && (
                 <>
                   <dt>설명</dt>
@@ -590,144 +720,194 @@ export default function EventModal({ eventId, isEdit, initialDate, calendarType,
         )}
 
         {!loading && (mode === 'add' || mode === 'edit') && (
-          <form onSubmit={handleSubmit} className="event-modal-body">
+          <form onSubmit={handleSubmit} className="event-modal-body event-modal-form-modern">
             {error && <p className="event-modal-error">{error}</p>}
-
-            <div className="event-modal-field">
-              <label htmlFor="event-title">제목 <span className="required">*</span></label>
-              {!isGoogle ? (
-                <div className="event-modal-title-wrap">
-                  <span className="event-modal-title-prefix">[{currentUser?.name || '이름'}]_</span>
-                  <input id="event-title" name="title" type="text" value={form.title} onChange={handleChange} placeholder="일정 제목" required />
-                </div>
-              ) : (
-                <input id="event-title" name="title" type="text" value={form.title} onChange={handleChange} placeholder="일정 제목" required />
-              )}
+            <div className="event-modal-modern-hero">
+              <h1>{isAdd ? '새로운 일정 만들기' : '일정 수정하기'}</h1>
+              <p>비즈니스 성공을 위한 다음 단계를 계획하세요. 세부 사항을 입력하고 팀원들과 공유할 수 있습니다.</p>
             </div>
 
-            {!isGoogle && (
-              <div className="event-modal-field">
-                <label>색상</label>
-                <div className="event-modal-colors">
-                  <button type="button" className={`event-modal-color-swatch ${!form.color ? 'selected' : ''}`} onClick={() => setForm((p) => ({ ...p, color: '' }))} title="기본" aria-label="기본 색상">
-                    <span className="event-modal-color-default" />
-                  </button>
-                  {PRESET_COLORS.map((c) => (
-                    <button key={c.hex} type="button" className={`event-modal-color-swatch ${form.color === c.hex ? 'selected' : ''}`} onClick={() => setForm((p) => ({ ...p, color: c.hex }))} title={c.label} style={{ background: c.hex }} aria-label={c.label} />
-                  ))}
-                </div>
+            <div className="event-modal-modern-grid">
+              <div className="event-modal-modern-left">
+                <section className="event-modal-modern-card">
+                  <div className="event-modal-field">
+                    <label htmlFor="event-title">일정 제목 <span className="required">*</span></label>
+                    {!isGoogle ? (
+                      <div className="event-modal-title-wrap">
+                        <span className="event-modal-title-prefix">[{currentUser?.name || '이름'}]_</span>
+                        <input id="event-title" name="title" type="text" value={form.title} onChange={handleChange} placeholder="예: 전략 기획 회의" required />
+                      </div>
+                    ) : (
+                      <input id="event-title" name="title" type="text" value={form.title} onChange={handleChange} placeholder="예: 전략 기획 회의" required />
+                    )}
+                  </div>
+
+                  {!isGoogle && (
+                    <div className="event-modal-field">
+                      <label>색상 라벨</label>
+                      <div className="event-modal-colors">
+                        <button type="button" className={`event-modal-color-swatch ${!form.color ? 'selected' : ''}`} onClick={() => setForm((p) => ({ ...p, color: '' }))} title="기본" aria-label="기본 색상">
+                          <span className="event-modal-color-default" />
+                        </button>
+                        {PRESET_COLORS.map((c) => (
+                          <button key={c.hex} type="button" className={`event-modal-color-swatch ${form.color === c.hex ? 'selected' : ''}`} onClick={() => setForm((p) => ({ ...p, color: c.hex }))} title={c.label} style={{ background: c.hex }} aria-label={c.label} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </section>
+
+                <section className="event-modal-modern-card">
+                  <div className="event-modal-modern-card-head">
+                    <h3>시간 및 일정</h3>
+                    <label className="event-modal-checkbox">
+                      <span>종일 여부</span>
+                      <input type="checkbox" name="allDay" checked={form.allDay} onChange={handleChange} />
+                    </label>
+                  </div>
+                  {form.allDay ? (
+                    <div className="event-modal-row">
+                      <div className="event-modal-field"><label>시작일</label><input type="date" name="startDate" value={form.startDate} onChange={handleChange} /></div>
+                      <div className="event-modal-field"><label>종료일</label><input type="date" name="endDate" value={form.endDate} onChange={handleChange} min={form.startDate} /></div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="event-modal-field"><label>시작 일시</label><div className="event-modal-row"><input type="date" name="startDate" value={form.startDate} onChange={handleChange} /><input type="time" name="startTime" value={form.startTime} onChange={handleChange} /></div></div>
+                      <div className="event-modal-field"><label>종료 일시</label><div className="event-modal-row"><input type="date" name="endDate" value={form.endDate || form.startDate} onChange={handleChange} min={form.startDate} /><input type="time" name="endTime" value={form.endTime} onChange={handleChange} /></div></div>
+                    </>
+                  )}
+                </section>
+
+                <section className="event-modal-modern-card">
+                  <div className="event-modal-field">
+                    <label htmlFor="event-description">상세 설명</label>
+                    <textarea id="event-description" name="description" value={form.description} onChange={handleChange} placeholder="회의 아젠다 또는 필요한 준비물을 입력하세요..." rows={5} />
+                  </div>
+                </section>
               </div>
-            )}
 
-            <div className="event-modal-field event-modal-checkbox-wrap">
-              <label className="event-modal-checkbox">
-                <input type="checkbox" name="allDay" checked={form.allDay} onChange={handleChange} />
-                <span>종일</span>
-              </label>
-            </div>
-
-            {form.allDay ? (
-              <div className="event-modal-row">
-                <div className="event-modal-field"><label>시작일</label><input type="date" name="startDate" value={form.startDate} onChange={handleChange} /></div>
-                <div className="event-modal-field"><label>종료일</label><input type="date" name="endDate" value={form.endDate} onChange={handleChange} min={form.startDate} /></div>
-              </div>
-            ) : (
-              <>
-                <div className="event-modal-field"><label>시작일시</label><div className="event-modal-row"><input type="date" name="startDate" value={form.startDate} onChange={handleChange} /><input type="time" name="startTime" value={form.startTime} onChange={handleChange} /></div></div>
-                <div className="event-modal-field"><label>종료일시</label><div className="event-modal-row"><input type="date" name="endDate" value={form.endDate || form.startDate} onChange={handleChange} min={form.startDate} /><input type="time" name="endTime" value={form.endTime} onChange={handleChange} /></div></div>
-              </>
-            )}
-
-            {!isGoogle && (
-              <div className="event-modal-field">
-                <label>공개범위</label>
-                <div className="event-modal-vis-options">
-                  {VISIBILITY_OPTIONS.map((opt) => (
-                    <button key={opt.value} type="button" className={`event-modal-vis-option ${form.visibility === opt.value ? 'active' : ''}`} onClick={() => setForm((p) => ({ ...p, visibility: opt.value }))}>
-                      <span className="material-symbols-outlined">{opt.icon}</span>
-                      <span className="event-modal-vis-label">{opt.label}</span>
-                    </button>
-                  ))}
-                </div>
-                <p className="event-modal-vis-desc">{VISIBILITY_OPTIONS.find((v) => v.value === form.visibility)?.desc}</p>
-              </div>
-            )}
-
-            {!isGoogle && form.visibility === 'team' && (
-              <div className="event-modal-field">
-                <label>참여자</label>
-                <button
-                  type="button"
-                  className="event-modal-btn event-modal-participant-trigger"
-                  onClick={() => setShowParticipantModal(true)}
-                >
-                  <span className="material-symbols-outlined">group_add</span>
-                  참여자 선택 ({form.participants.length}명)
-                </button>
-                {form.participants.length > 0 && (
-                  <div className="event-modal-selected-chips">
-                    {form.participants.map((p) => {
-                      const dept = participantDeptLabel(p.userId);
-                      return (
-                        <span key={p.userId} className="event-modal-participant-chip removable">
-                          <span className="event-modal-participant-chip-label">
-                            {p.name || '(이름 없음)'}
-                            {dept ? <span className="event-modal-participant-dept"> · {dept}</span> : null}
+              <div className="event-modal-modern-right">
+                {!isGoogle && (
+                  <section className="event-modal-modern-card">
+                    <h3 className="event-modal-modern-side-title"><span className="material-symbols-outlined">visibility</span>공개범위 설정</h3>
+                    <div className="event-modal-vis-options event-modal-vis-options-vertical">
+                      {VISIBILITY_OPTIONS.map((opt) => (
+                        <button key={opt.value} type="button" className={`event-modal-vis-option ${form.visibility === opt.value ? 'active' : ''}`} onClick={() => setForm((p) => ({ ...p, visibility: opt.value }))}>
+                          <span className="event-modal-vis-option-main">
+                            <span className="event-modal-vis-label">{opt.label}</span>
+                            <span className="event-modal-vis-sub">{opt.desc}</span>
                           </span>
-                          <button
-                            type="button"
-                            className="event-modal-participant-chip-remove"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setForm((prev) => ({ ...prev, participants: prev.participants.filter((x) => x.userId !== p.userId) }));
-                            }}
-                            aria-label={`${p.name || '참여자'} 제거`}
-                          >
+                          <span className="material-symbols-outlined">{opt.icon}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                )}
+
+                {!isGoogle && (
+                  <section className="event-modal-modern-card">
+                    <h3 className="event-modal-modern-side-title"><span className="material-symbols-outlined">hub</span>고객사 및 연락처</h3>
+
+                    {form.visibility === 'team' && (
+                      <div className="event-modal-field">
+                        <label>참여자</label>
+                        <button
+                          type="button"
+                          className="event-modal-btn event-modal-participant-trigger"
+                          onClick={() => setShowParticipantModal(true)}
+                        >
+                          <span className="material-symbols-outlined">group_add</span>
+                          참여자 선택 ({form.participants.length}명)
+                        </button>
+                        {form.participants.length > 0 && (
+                          <div className="event-modal-selected-chips">
+                            {form.participants.map((p) => {
+                              const dept = participantDeptLabel(p.userId);
+                              return (
+                                <span key={p.userId} className="event-modal-participant-chip removable">
+                                  <span className="event-modal-participant-chip-label">
+                                    {p.name || '(이름 없음)'}
+                                    {dept ? <span className="event-modal-participant-dept"> · {dept}</span> : null}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="event-modal-participant-chip-remove"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setForm((prev) => ({ ...prev, participants: prev.participants.filter((x) => x.userId !== p.userId) }));
+                                    }}
+                                    aria-label={`${p.name || '참여자'} 제거`}
+                                  >
+                                    ✕
+                                  </button>
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="event-modal-field">
+                      <label>관련 고객사</label>
+                      <button type="button" className="event-modal-btn event-modal-company-trigger" onClick={openCompanyPicker}>
+                        <span className="material-symbols-outlined">storefront</span>
+                        {form.relatedCustomerCompany ? '고객사 변경' : '고객사 선택'}
+                      </button>
+                      {form.relatedCustomerCompany ? (
+                        <div className="event-modal-related-company-chip">
+                          <span className="event-modal-related-company-chip-main">
+                            {form.relatedCustomerCompany.name || '고객사'}
+                            {(form.relatedCustomerCompany.address || '').trim() ? (
+                              <span className="event-modal-related-company-chip-addr"> · {form.relatedCustomerCompany.address}</span>
+                            ) : null}
+                          </span>
+                          <button type="button" className="event-modal-related-company-remove" onClick={removeRelatedCompany} aria-label="고객사 연결 제거">
                             ✕
                           </button>
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {!isGoogle && (
-              <div className="event-modal-field">
-                <label>관련 고객사</label>
-                <button type="button" className="event-modal-btn event-modal-company-trigger" onClick={openCompanyPicker}>
-                  <span className="material-symbols-outlined">storefront</span>
-                  {form.relatedCustomerCompany ? '고객사 변경' : '고객사 선택'}
-                </button>
-                {form.relatedCustomerCompany ? (
-                  <div className="event-modal-related-company-chip">
-                    <span className="event-modal-related-company-chip-main">
-                      {form.relatedCustomerCompany.name || '고객사'}
-                      {(form.relatedCustomerCompany.address || '').trim() ? (
-                        <span className="event-modal-related-company-chip-addr"> · {form.relatedCustomerCompany.address}</span>
+                        </div>
                       ) : null}
-                    </span>
-                    <button type="button" className="event-modal-related-company-remove" onClick={removeRelatedCompany} aria-label="고객사 연결 제거">
-                      ✕
-                    </button>
-                  </div>
-                ) : null}
-                <p className="event-modal-related-company-hint">선택하면 설명 맨 아래에 방문 안내(고객사명·장소)가 자동으로 붙고, 제거 시 해당 구간만 삭제됩니다.</p>
+                      <p className="event-modal-related-company-hint">선택하면 설명 맨 아래에 방문 안내(고객사명·장소)가 자동으로 붙고, 제거 시 해당 구간만 삭제됩니다.</p>
+                    </div>
+
+                    <div className="event-modal-field">
+                      <label>관련 연락처 (고객사 회원)</label>
+                      <button type="button" className="event-modal-btn event-modal-company-trigger" onClick={openEmployeePicker}>
+                        <span className="material-symbols-outlined">person_search</span>
+                        {form.relatedContactPerson ? '연락처 변경' : '연락처 선택'}
+                      </button>
+                      {form.relatedContactPerson ? (
+                        <div className="event-modal-related-company-chip event-modal-related-contact-chip">
+                          <span className="event-modal-related-company-chip-main">
+                            <span className="event-modal-related-contact-chip-name">{form.relatedContactPerson.name || '연락처'}</span>
+                            <span className="event-modal-related-company-chip-addr"> · {form.relatedContactPerson.phone || '—'} · {form.relatedContactPerson.email || '—'}</span>
+                            {(form.relatedContactPerson.companyName || '').trim() ? (
+                              <span className="event-modal-related-contact-chip-company">
+                                {' '}· {form.relatedContactPerson.companyName}
+                                {(form.relatedContactPerson.companyAddress || '').trim() ? ` (${form.relatedContactPerson.companyAddress})` : ''}
+                              </span>
+                            ) : null}
+                          </span>
+                          <button type="button" className="event-modal-related-company-remove" onClick={removeRelatedContact} aria-label="연락처 연결 제거">
+                            ✕
+                          </button>
+                        </div>
+                      ) : null}
+                      <p className="event-modal-related-company-hint">
+                        등록 고객사 소속이면 고객사명·주소까지 설명에 포함되고, 미등록(개인)이면 이름·연락처·이메일만 붙습니다.
+                      </p>
+                    </div>
+                  </section>
+                )}
+
+                <div className="event-modal-modern-actions">
+                  <button type="submit" className="event-modal-btn event-modal-save" disabled={saving}>
+                    {saving ? '저장 중…' : (isAdd ? '일정 저장하기' : '변경사항 저장')}
+                  </button>
+                  <button type="button" className="event-modal-btn event-modal-cancel" onClick={() => (eventId ? setMode('view') : onClose?.())}>취소</button>
+                </div>
               </div>
-            )}
-
-            <div className="event-modal-field">
-              <label htmlFor="event-description">설명</label>
-              <textarea id="event-description" name="description" value={form.description} onChange={handleChange} placeholder="설명 (선택)" rows={3} />
-            </div>
-
-            <div className="event-modal-footer">
-              <button type="button" className="event-modal-btn event-modal-cancel" onClick={() => (eventId ? setMode('view') : onClose?.())}>취소</button>
-              <button type="submit" className="event-modal-btn event-modal-save" disabled={saving}>
-                {saving ? '저장 중…' : (isAdd ? '일정 추가' : '저장')}
-              </button>
             </div>
           </form>
         )}
@@ -797,6 +977,63 @@ export default function EventModal({ eventId, isEdit, initialDate, calendarType,
             </div>
             <div className="event-modal-company-picker-footer">
               <button type="button" className="event-modal-btn event-modal-cancel" onClick={() => setShowCompanyPicker(false)}>
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showEmployeePicker ? (
+        <div
+          className="event-modal-company-picker-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="event-modal-employee-picker-title"
+          onClick={() => setShowEmployeePicker(false)}
+        >
+          <div className="event-modal-company-picker" onClick={(e) => e.stopPropagation()}>
+            <div className="event-modal-company-picker-head">
+              <h4 id="event-modal-employee-picker-title">관련 연락처 선택</h4>
+              <button type="button" className="event-modal-company-picker-close" onClick={() => setShowEmployeePicker(false)} aria-label="닫기">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <input
+              type="search"
+              className="event-modal-company-picker-search"
+              placeholder="이름·회사·이메일·전화 검색…"
+              value={employeeSearch}
+              onChange={(e) => setEmployeeSearch(e.target.value)}
+              autoFocus
+              aria-label="연락처 검색"
+            />
+            <div className="event-modal-company-picker-list" role="listbox">
+              {employeeSearchLoading ? <p className="event-modal-company-picker-msg">검색 중…</p> : null}
+              {!employeeSearchLoading && employeeSearch.trim().length < 1 ? (
+                <p className="event-modal-company-picker-msg">검색어를 입력하세요.</p>
+              ) : null}
+              {!employeeSearchLoading && employeeSearch.trim().length >= 1 && employeeSearchResults.length === 0 ? (
+                <p className="event-modal-company-picker-msg">검색 결과가 없습니다.</p>
+              ) : null}
+              {employeeSearchResults.map((row) => (
+                <button
+                  key={String(row._id)}
+                  type="button"
+                  role="option"
+                  className="event-modal-company-picker-item"
+                  onClick={() => pickRelatedContact(row)}
+                >
+                  <span className="event-modal-company-picker-item-name">{row.name || '—'}</span>
+                  <span className="event-modal-company-picker-item-addr">
+                    {[row.phone, row.email].filter(Boolean).join(' · ') || '—'}
+                    {row.company ? ` · ${row.company}` : ''}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <div className="event-modal-company-picker-footer">
+              <button type="button" className="event-modal-btn event-modal-cancel" onClick={() => setShowEmployeePicker(false)}>
                 취소
               </button>
             </div>

@@ -21,6 +21,13 @@ function formatHistoryDate(d) {
   return date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' }) + ' • ' + date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
 }
 
+function formatCalendarVisitWhen(ev) {
+  if (!ev?.start) return '—';
+  const s = new Date(ev.start);
+  if (ev.allDay) return s.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
+  return s.toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
 /** 업무 기록 내용을 문단·문장 단위로 나눠서 렌더용 배열로 반환 */
 function splitContentIntoBlocks(text) {
   if (!text || typeof text !== 'string') return [];
@@ -1200,6 +1207,25 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                         {summaryNotice.text}
                       </p>
                     )}
+                    {Array.isArray(contactToShow.relatedCalendarVisits) && contactToShow.relatedCalendarVisits.length > 0 ? (
+                      <div className="customer-company-detail-summary-calendar" aria-label="연결된 캘린더 방문">
+                        <div className="customer-company-detail-summary-calendar-title">
+                          <span className="material-symbols-outlined" aria-hidden>calendar_month</span>
+                          예정된 방문 (캘린더)
+                        </div>
+                        <ul className="customer-company-detail-summary-calendar-list">
+                          {contactToShow.relatedCalendarVisits.map((v) => (
+                            <li key={String(v._id)}>
+                              <span className="customer-company-detail-summary-calendar-when">{formatCalendarVisitWhen(v)}</span>
+                              <span className="customer-company-detail-summary-calendar-event">{v.title || '일정'}</span>
+                              {v.assigneeLine ? (
+                                <span className="customer-company-detail-summary-calendar-who"> · {v.assigneeLine}</span>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
                   </div>
                   <div className="contact-detail-journal-input-wrap">
                     {error && <p className="contact-detail-journal-error">{error}</p>}
