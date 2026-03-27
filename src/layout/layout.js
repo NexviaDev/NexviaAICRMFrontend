@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE } from '@/config';
 import { getPendingExcelImportJobs, removePendingExcelImportJob } from '@/lib/cc-excel-import-jobs';
+import { initNexviaPushNotifications } from '@/lib/nexvia-push-init';
 import Sidebar from './sidebar';
 import './layout.css';
 
@@ -19,6 +20,7 @@ export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const isSalesPipeline = location.pathname === '/sales-pipeline';
+  const isMessenger = location.pathname === '/messenger';
 
   useEffect(() => {
     const token = localStorage.getItem('crm_token');
@@ -92,6 +94,12 @@ export default function Layout() {
     };
   }, []);
 
+  useEffect(() => {
+    const token = localStorage.getItem('crm_token');
+    if (!token) return;
+    void initNexviaPushNotifications();
+  }, [location.pathname]);
+
   return (
     <div className={`app-layout ${sidebarDrawerOpen ? 'sidebar-drawer-open' : ''}`}>
       <div
@@ -126,7 +134,7 @@ export default function Layout() {
             <span className="material-symbols-outlined">menu</span>
           </button>
         </header>
-        <div className={`app-main-content ${isSalesPipeline ? 'app-main-content--fullheight' : ''}`}>
+        <div className={`app-main-content ${isSalesPipeline || isMessenger ? 'app-main-content--fullheight' : ''}`}>
           <Outlet />
         </div>
       </main>

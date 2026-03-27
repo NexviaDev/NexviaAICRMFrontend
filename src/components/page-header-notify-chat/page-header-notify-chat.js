@@ -5,14 +5,13 @@ import { hasUnreadNotifications } from '@/lib/notification-read-state';
 import './page-header-notify-chat.css';
 
 /**
- * 상단 우측: 공지(/notification) · 채팅(/chat) · 할 일(/todo-list) — 사이드바와 동일 이동.
+ * 상단 우측: 공지(/notification) · 캘린더(/calendar) · 할 일(/todo-list) — 사이드바와 동일 이동.
  * 공지는 API 목록과 로컬 읽음 시각을 비교해 미읽음이면 빨간 점 표시.
  */
 export default function PageHeaderNotifyChat({
   wrapperClassName = 'header-actions',
   buttonClassName = 'icon-btn',
   notificationTitle = '공지사항',
-  chatTitle = '채팅',
   calendarTitle = '캘린더',
   todoTitle = '할 일',
   showTodo = true,
@@ -72,15 +71,6 @@ export default function PageHeaderNotifyChat({
       >
         <span className="material-symbols-outlined">notifications</span>
         {notifyUnread ? <span className="page-header-notify-dot" aria-hidden /> : null}
-      </button>
-      <button
-        type="button"
-        className={buttonClassName}
-        aria-label={chatTitle}
-        title={chatTitle}
-        onClick={() => navigate('/chat')}
-      >
-        <span className="material-symbols-outlined">chat_bubble</span>
       </button>
       <button
         type="button"

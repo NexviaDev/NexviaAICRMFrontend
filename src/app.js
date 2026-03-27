@@ -17,7 +17,6 @@ import AiVoice from './ai-voice/ai-voice';
 import Email from './email/email';
 import Map from './map/map';
 import TodoList from './todo-list/todo-list';
-import GoogleChat from './chat/chat';
 import LeadCapture from './lead-capture/lead-capture';
 import LegalPublicPage from './legal/LegalPublicPage';
 import Subscription from './subscription/subscription';
@@ -26,6 +25,7 @@ import AdminLayout from './admin/adminlayout';
 import AdminNotices from './admin/adminnotices';
 import AdminUsers from './admin/adminusers';
 import NotificationPage from './notification/notification';
+import Messenger from './messenger/messenger';
 
 function getStoredUser() {
   try {
@@ -76,9 +76,9 @@ function App() {
         <Route path="meeting-minutes" element={<PendingRestrictedRoute><MeetingMinutes /></PendingRestrictedRoute>} />
         <Route path="ai-voice" element={<PendingRestrictedRoute><AiVoice /></PendingRestrictedRoute>} />
         <Route path="email" element={<PendingRestrictedRoute><Email /></PendingRestrictedRoute>} />
+        <Route path="messenger" element={<PendingRestrictedRoute><Messenger /></PendingRestrictedRoute>} />
         <Route path="map" element={<PendingRestrictedRoute><Map /></PendingRestrictedRoute>} />
         <Route path="todo-list" element={<PendingRestrictedRoute><TodoList /></PendingRestrictedRoute>} />
-        <Route path="chat" element={<PendingRestrictedRoute><GoogleChat /></PendingRestrictedRoute>} />
         <Route path="notification" element={<PendingRestrictedRoute><NotificationPage /></PendingRestrictedRoute>} />
         <Route path="reports/sales" element={<PendingRestrictedRoute><SalesReport /></PendingRestrictedRoute>} />
         <Route path="reports/performance" element={<PendingRestrictedRoute><EmployeePerformance /></PendingRestrictedRoute>} />

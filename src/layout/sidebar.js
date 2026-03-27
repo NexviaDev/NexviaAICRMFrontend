@@ -25,6 +25,7 @@ const MENU_ITEMS = [
   { to: '/meeting-minutes', icon: 'event_note', label: '회의 일지' },
   { to: '/ai-voice', icon: 'mic', label: 'AI 음성 기록' },
   { to: '/email', icon: 'mail', label: '이메일' },
+  { to: '/messenger', icon: 'chat_bubble', label: '메신저' },
   { to: '/map', icon: 'map', label: '지도' },
   { to: '/sales-pipeline', icon: 'view_kanban', label: '세일즈 현황' },
   { to: '/lead-capture', icon: 'ads_click', label: '리드 캡처' },

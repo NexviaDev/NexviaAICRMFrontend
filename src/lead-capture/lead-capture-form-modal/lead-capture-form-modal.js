@@ -140,11 +140,15 @@ export default function LeadCaptureFormModal({ form, onClose, onSaved }) {
     setSaving(true);
     try {
       const headers = { ...getAuthHeader(), 'Content-Type': 'application/json' };
+      const myId = readCrmUserId();
+      const normalizedAssignees = Array.isArray(assigneeUserIds)
+        ? [...new Set(assigneeUserIds.map((id) => String(id || '').trim()).filter(Boolean))]
+        : [];
       const payload = {
         name: trimmedName,
         source: source.trim(),
         status,
-        assigneeUserIds
+        assigneeUserIds: normalizedAssignees.length > 0 ? normalizedAssignees : (myId ? [myId] : [])
       };
       if (isEdit) {
         const res = await fetch(`${API_BASE}/lead-capture-forms/${form._id}`, {
