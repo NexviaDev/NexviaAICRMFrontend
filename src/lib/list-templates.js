@@ -131,6 +131,39 @@ export async function patchListTemplate(listId, { columnOrder, visible, assignee
 export const DEFAULT_SIDEBAR_OVERFLOW_ROUTES = ['/lead-capture', '/map', '/ai-voice'];
 
 /**
+ * 사이드바 라우트 목록이 바뀔 때마다 1씩 올리면, Sidebar가 저장값을 다시 병합합니다.
+ * (신규 메뉴 누락·PWA 구버전 번들 이슈 완화)
+ */
+export const SIDEBAR_MENU_EPOCH = 2;
+
+function dedupeRoutesPreserveOrder(paths) {
+  const seen = new Set();
+  return paths.filter((t) => {
+    if (seen.has(t)) return false;
+    seen.add(t);
+    return true;
+  });
+}
+
+/**
+ * 메인/overflow 각각·교집합을 정리하고, 정의된 모든 메뉴 경로가 한 번씩만 나타나게 합니다.
+ */
+function finalizeSidebarOrders(mainOrder, overflowOrder, allTos, defaultOv) {
+  let m = dedupeRoutesPreserveOrder(mainOrder);
+  let o = dedupeRoutesPreserveOrder(overflowOrder);
+  const mainSet = new Set(m);
+  o = o.filter((t) => !mainSet.has(t));
+  const seen = new Set([...m, ...o]);
+  for (const t of allTos) {
+    if (seen.has(t)) continue;
+    seen.add(t);
+    if (defaultOv.includes(t)) o.push(t);
+    else m.push(t);
+  }
+  return { mainOrder: m, overflowOrder: o };
+}
+
+/**
  * 메인 사이드바 순서(order)와 더보기(overflow)를 정규화.
  * - order만 있고 overflow 키가 없으면(레거시) DEFAULT_SIDEBAR_OVERFLOW_ROUTES 에 해당하는 항목을 overflow로 분리.
  * - 양쪽에 없는 신규 메뉴는 기본 overflow 목록에 있으면 overflow 끝에, 아니면 메인 끝에 추가.
@@ -140,10 +173,14 @@ export const DEFAULT_SIDEBAR_OVERFLOW_ROUTES = ['/lead-capture', '/map', '/ai-vo
 export function normalizeSidebarOrders(menuItems, saved) {
   const allTos = menuItems.map((i) => i.to);
   const defaultOv = DEFAULT_SIDEBAR_OVERFLOW_ROUTES.filter((t) => allTos.includes(t));
-  const rawOrder = Array.isArray(saved?.order) ? saved.order.filter((t) => allTos.includes(t)) : [];
+  const rawOrder = dedupeRoutesPreserveOrder(
+    Array.isArray(saved?.order) ? saved.order.filter((t) => allTos.includes(t)) : []
+  );
   const hasExplicitOverflow =
     saved != null && Object.prototype.hasOwnProperty.call(saved, 'overflow') && Array.isArray(saved.overflow);
-  const rawOverflow = hasExplicitOverflow ? saved.overflow.filter((t) => allTos.includes(t)) : null;
+  const rawOverflow = hasExplicitOverflow
+    ? dedupeRoutesPreserveOrder(saved.overflow.filter((t) => allTos.includes(t)))
+    : null;
 
   let mainOrder;
   let overflowOrder;
@@ -151,7 +188,7 @@ export function normalizeSidebarOrders(menuItems, saved) {
   if (rawOrder.length === 0) {
     mainOrder = allTos.filter((t) => !defaultOv.includes(t));
     overflowOrder = defaultOv.slice();
-    return { mainOrder, overflowOrder };
+    return finalizeSidebarOrders(mainOrder, overflowOrder, allTos, defaultOv);
   }
 
   if (!hasExplicitOverflow) {
@@ -164,7 +201,7 @@ export function normalizeSidebarOrders(menuItems, saved) {
         else mainOrder.push(t);
       }
     }
-    return { mainOrder, overflowOrder };
+    return finalizeSidebarOrders(mainOrder, overflowOrder, allTos, defaultOv);
   }
 
   mainOrder = rawOrder.slice();
@@ -178,7 +215,7 @@ export function normalizeSidebarOrders(menuItems, saved) {
       else mainOrder.push(t);
     }
   }
-  return { mainOrder, overflowOrder };
+  return finalizeSidebarOrders(mainOrder, overflowOrder, allTos, defaultOv);
 }
 
 /** 현재 유저의 listTemplates.sidebar.order 가져오기 (사이드바 메뉴 순서) */

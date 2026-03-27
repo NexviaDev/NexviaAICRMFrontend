@@ -4,7 +4,8 @@ import {
   getSavedSidebarConfig,
   patchSidebarOrder,
   setSavedSidebarConfigLocally,
-  normalizeSidebarOrders
+  normalizeSidebarOrders,
+  SIDEBAR_MENU_EPOCH
 } from '@/lib/list-templates';
 import './sidebar.css';
 
@@ -145,7 +146,18 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
     const { mainOrder: m, overflowOrder: o } = normalizeSidebarOrders(MENU_ITEMS, saved);
     setMainOrder(m);
     setOverflowOrder(o);
-  }, [userSyncKey]);
+
+    const allTos = MENU_ITEMS.map((i) => i.to);
+    const union = new Set([
+      ...(Array.isArray(saved?.order) ? saved.order : []),
+      ...(Array.isArray(saved?.overflow) ? saved.overflow : [])
+    ]);
+    const hadEveryMenu = allTos.every((t) => union.has(t));
+    if (!hadEveryMenu) {
+      setSavedSidebarConfigLocally({ order: m, overflow: o });
+      patchSidebarOrder(m, o).catch(() => {});
+    }
+  }, [userSyncKey, SIDEBAR_MENU_EPOCH]);
 
   const mainItems = useMemo(
     () => orderToVisibleItems(mainOrder, user),
