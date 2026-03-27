@@ -1,5 +1,12 @@
-# Netlify 설정: SPA 클라이언트 라우팅 지원
-# /login, /login?token=... 등 모든 경로를 index.html로 전달해 404 방지
+# Netlify: Node 22.x npm optional-deps 버그로 Rollup 네이티브(@rollup/rollup-linux-x64-gnu) 누락 시 빌드 실패 방지 → LTS 20 사용
+[build]
+  command = "CI=false npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# SPA 클라이언트 라우팅: /login 등 모든 경로를 index.html로 전달해 404 방지
 [[redirects]]
   from = "/*"
   to = "/index.html"
