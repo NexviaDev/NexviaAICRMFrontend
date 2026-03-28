@@ -160,6 +160,7 @@ export default function LeadCaptureFormModal({ form, onClose, onSaved }) {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || '수정에 실패했습니다.');
         onSaved(data);
+        onClose();
       } else {
         const res = await fetch(`${API_BASE}/lead-capture-forms`, {
           method: 'POST',
@@ -170,8 +171,8 @@ export default function LeadCaptureFormModal({ form, onClose, onSaved }) {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || '생성에 실패했습니다.');
         onSaved(data);
+        onClose();
       }
-      onClose();
     } catch (err) {
       setError(err.message || '저장에 실패했습니다.');
     } finally {

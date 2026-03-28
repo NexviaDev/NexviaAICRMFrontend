@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { API_BASE } from '@/config';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
+import ParticipantModal from '@/shared/participant-modal/participant-modal';
+import NewChatModal from './new-chat-modal/new-chat-modal';
+import { GoogleWorkspaceChatPolicyHint } from '@/lib/google-workspace-chat-hint';
 import './messenger.css';
 
 const CHAT_API_DOCS = 'https://developers.google.com/workspace/chat/api/reference/rest?apix=true&hl=ko';
@@ -113,73 +117,46 @@ function defaultSpaceTitle(s) {
   return `${spaceTypeKo(st)} 대화`;
 }
 
-function NewChatModal({ open, loading, onClose, onSubmit }) {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-
-  useEffect(() => {
-    if (!open) return undefined;
-    setName('');
-    setEmail('');
-    return undefined;
-  }, [open]);
-
-  if (!open) return null;
-
-  return (
-    <div className="messenger-modal-root" role="dialog" aria-modal="true" aria-labelledby="messenger-new-chat-title">
-      <div className="messenger-modal-backdrop" aria-hidden />
-      <div className="messenger-modal-panel">
-        <h3 id="messenger-new-chat-title">새 채팅방</h3>
-        <p className="messenger-top-meta" style={{ marginBottom: '0.75rem' }}>
-          Google Chat API로 스페이스를 만듭니다. 참여자는 Workspace 계정 이메일이어야 합니다.
-        </p>
-        <div className="messenger-modal-field">
-          <label htmlFor="messenger-new-name">방 이름</label>
-          <input
-            id="messenger-new-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="예: 영업 전략"
-            autoComplete="off"
-          />
-        </div>
-        <div className="messenger-modal-field">
-          <label htmlFor="messenger-new-email">초대 이메일 (선택)</label>
-          <input
-            id="messenger-new-email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="user@company.com"
-            autoComplete="email"
-          />
-        </div>
-        <div className="messenger-modal-actions">
-          <button type="button" className="messenger-modal-cancel" onClick={onClose}>
-            취소
-          </button>
-          <button
-            type="button"
-            className="messenger-modal-submit"
-            disabled={loading || !name.trim()}
-            onClick={() => onSubmit({ displayName: name.trim(), inviteEmail: email.trim() })}
-          >
-            {loading ? '처리 중…' : '만들기'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+/**
+ * Google Chat sender는 displayName이 비어 있는 경우가 많습니다.
+ * 순서: 메시지 sender.displayName → People API/DB 보강 맵 → 멤버십 displayName → users/… 일부 표시
+ */
+function getSenderDisplayName(message, memberships, resolvedByRn) {
+  const s = message?.sender;
+  if (!s) return '';
+  const rn = s.name || '';
+  const direct = (s.displayName || '').trim();
+  if (direct) return direct;
+  if (resolvedByRn && rn && resolvedByRn[rn]) return resolvedByRn[rn];
+  const hit = (memberships || []).find((x) => x?.member?.name === rn);
+  const fromMember = (hit?.member?.displayName || '').trim();
+  if (fromMember) return fromMember;
+  if (rn.startsWith('users/')) {
+    const rest = rn.slice('users/'.length);
+    return rest || '';
+  }
+  return rn;
 }
 
+const MOBILE_MQ = '(max-width: 768px)';
+
 export default function Messenger() {
+  const navigate = useNavigate();
+  const listSearchRef = useRef(null);
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(MOBILE_MQ).matches
+  );
+  const [mobileThreadOpen, setMobileThreadOpen] = useState(false);
+
   const [spaces, setSpaces] = useState([]);
   const [spacesLoading, setSpacesLoading] = useState(true);
   const [selectedName, setSelectedName] = useState(null);
   const [messages, setMessages] = useState([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [members, setMembers] = useState([]);
+  /** Chat 메시지 sender만으로 부족할 때 People API·UserChatContact로 보강한 표시명 */
+  const [senderNamesByResource, setSenderNamesByResource] = useState(() => ({}));
+  const senderNamesRef = useRef({});
   const [myResourceName, setMyResourceName] = useState('');
   const [compose, setCompose] = useState('');
   const [sendLoading, setSendLoading] = useState(false);
@@ -188,8 +165,150 @@ export default function Messenger() {
   const [listFilter, setListFilter] = useState('');
   const [newChatOpen, setNewChatOpen] = useState(false);
   const [newChatLoading, setNewChatLoading] = useState(false);
+  const [newChatInviteEmails, setNewChatInviteEmails] = useState([]);
+  const [participantPickerOpen, setParticipantPickerOpen] = useState(false);
+  const [teamMembers, setTeamMembers] = useState([]);
   const [previews, setPreviews] = useState(() => ({}));
   const msgsEndRef = useRef(null);
+
+  const currentUser = useMemo(() => {
+    try {
+      const raw = localStorage.getItem('crm_user');
+      const u = raw ? JSON.parse(raw) : null;
+      if (!u) return null;
+      return { ...u, _id: u._id || u.id };
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const fetchTeamMembers = useCallback(() => {
+    const headers = getAuthHeader();
+    Promise.all([
+      fetch(`${API_BASE}/calendar-events/team-members`, { headers }).then((r) => r.json().catch(() => ({}))).catch(() => ({})),
+      fetch(`${API_BASE}/companies/overview`, { headers }).then((r) => r.json().catch(() => ({}))).catch(() => ({}))
+    ])
+      .then(([teamData, overviewData]) => {
+        const fromTeam = Array.isArray(teamData?.members) ? teamData.members : [];
+        const fromOverview = Array.isArray(overviewData?.employees) ? overviewData.employees : [];
+        const overviewMap = new Map(fromOverview.map((e) => [String(e.id), e]));
+        const merged = fromTeam.map((m) => {
+          const o = overviewMap.get(String(m._id));
+          return {
+            ...m,
+            phone: m.phone || o?.phone || '',
+            department: m.department || m.companyDepartment || o?.department || ''
+          };
+        });
+        setTeamMembers(merged);
+      })
+      .catch(() => {});
+  }, []);
+
+  const participantPickerInitialSelection = useMemo(() => {
+    if (!newChatInviteEmails.length || !teamMembers.length) return [];
+    const set = new Set(newChatInviteEmails.map((e) => String(e).trim().toLowerCase()));
+    return teamMembers
+      .filter((m) => m.email && set.has(String(m.email).trim().toLowerCase()))
+      .map((m) => ({ userId: m._id, name: m.name || m.email }));
+  }, [newChatInviteEmails, teamMembers]);
+
+  useEffect(() => {
+    const mq = window.matchMedia(MOBILE_MQ);
+    const onChange = () => setIsMobile(mq.matches);
+    mq.addEventListener('change', onChange);
+    setIsMobile(mq.matches);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  useEffect(() => {
+    if (!isMobile) setMobileThreadOpen(false);
+  }, [isMobile]);
+
+  useEffect(() => {
+    if (!selectedName) setMobileThreadOpen(false);
+  }, [selectedName]);
+
+  useEffect(() => {
+    senderNamesRef.current = senderNamesByResource;
+  }, [senderNamesByResource]);
+
+  /** 메시지에 등장한 발신자 resourceName에 대해 People API(백엔드 resolve-user-names)로 표시명 보강 */
+  useEffect(() => {
+    if (!messages.length) return;
+    const prev = senderNamesRef.current;
+    const need = new Set();
+    for (const m of messages) {
+      const rn = m.sender?.name;
+      if (rn && rn !== myResourceName) need.add(rn);
+    }
+    const missing = [...need].filter((rn) => !prev[rn]);
+    if (missing.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetchWithColdStartRetry(`${API_BASE}/google-chat/resolve-user-names`, {
+          method: 'POST',
+          headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ resourceNames: missing })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (cancelled || !res.ok) return;
+        const next = {};
+        Object.entries(data).forEach(([k, v]) => {
+          if (k.startsWith('_')) return;
+          if (typeof v === 'string' && v.trim()) next[k] = v.trim();
+        });
+        if (Object.keys(next).length === 0) return;
+        setSenderNamesByResource((p) => {
+          const merged = { ...p, ...next };
+          senderNamesRef.current = merged;
+          return merged;
+        });
+      } catch (_) {
+        /* 조용히 실패 — 말풍선은 users/… 폴백 유지 */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [messages, myResourceName]);
+
+  useEffect(() => {
+    if (!newChatOpen) return;
+    setNewChatInviteEmails([]);
+    fetchTeamMembers();
+  }, [newChatOpen, fetchTeamMembers]);
+
+  const handleNewChatParticipantConfirm = useCallback(
+    (selected) => {
+      const emails = selected
+        .map((s) => teamMembers.find((t) => String(t._id) === String(s.userId)))
+        .filter(Boolean)
+        .map((m) => m.email)
+        .filter(Boolean);
+      setNewChatInviteEmails((prev) => {
+        const seen = new Set(prev.map((e) => String(e).trim().toLowerCase()));
+        const merged = [...prev];
+        for (const em of emails) {
+          const k = em.trim().toLowerCase();
+          if (!seen.has(k)) {
+            seen.add(k);
+            merged.push(em.trim());
+          }
+        }
+        return merged;
+      });
+      setParticipantPickerOpen(false);
+    },
+    [teamMembers]
+  );
+
+  const openNewChatParticipantPicker = useCallback(() => {
+    if (teamMembers.length === 0) fetchTeamMembers();
+    setParticipantPickerOpen(true);
+  }, [teamMembers.length, fetchTeamMembers]);
 
   const selectedSpace = useMemo(
     () => spaces.find((s) => s.name === selectedName) || null,
@@ -423,10 +542,14 @@ export default function Messenger() {
     }
   };
 
-  const handleNewChat = async ({ displayName, inviteEmail }) => {
+  const handleNewChat = async ({ displayName, inviteEmails: rawInviteEmails }) => {
     setNewChatLoading(true);
     setError('');
     setNeedsReauth(false);
+    const myEmail = String(currentUser?.email || '').trim().toLowerCase();
+    const inviteEmails = [
+      ...new Set((rawInviteEmails || []).map((e) => String(e).trim()).filter(Boolean))
+    ].filter((e) => e.toLowerCase() !== myEmail);
     try {
       const res = await fetch(`${ API_BASE }/google-chat/spaces`, {
         method: 'POST',
@@ -440,22 +563,30 @@ export default function Messenger() {
         return;
       }
       const createdName = data.name;
-      if (inviteEmail && createdName) {
+      if (inviteEmails.length > 0 && createdName) {
         const sid = encodeURIComponent(spaceIdFromName(createdName));
-        const inv = await fetch(`${ API_BASE }/google-chat/spaces/${ sid }/members`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-          body: JSON.stringify({ email: inviteEmail })
-        });
-        const invData = await inv.json().catch(() => ({}));
-        if (!inv.ok) {
+        const failures = [];
+        for (const email of inviteEmails) {
+          const inv = await fetch(`${ API_BASE }/google-chat/spaces/${ sid }/members`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+            body: JSON.stringify({ email })
+          });
+          const invData = await inv.json().catch(() => ({}));
+          if (!inv.ok) {
+            failures.push(`${email}: ${invData.error || '실패'}`);
+          }
+        }
+        if (failures.length > 0) {
           setError(
-            (invData.error || '멤버 초대에 실패했습니다.') +
-              ' (방은 생성되었습니다. 권한·이메일을 확인해 주세요.)'
+            `일부 초대에 실패했습니다. (${failures.length}건) ${failures.slice(0, 3).join(' · ')}` +
+              (failures.length > 3 ? ' …' : '') +
+              ' 방은 생성되었습니다. 권한·이메일을 확인해 주세요.'
           );
         }
       }
       setNewChatOpen(false);
+      setParticipantPickerOpen(false);
       await loadSpaces();
       if (createdName) setSelectedName(createdName);
     } catch (_) {
@@ -474,21 +605,62 @@ export default function Messenger() {
     });
   }, [spaces, listFilter]);
 
+  const showMobileListChrome = isMobile && !mobileThreadOpen;
+
   return (
-    <div className="messenger-page">
-      <header className="messenger-top">
-        <div>
-          <h1 className="messenger-top-title">내부 메신저</h1>
-          <p className="messenger-top-meta">
-            Google 계정 OAuth로{' '}
-            <a href={CHAT_API_DOCS} target="_blank" rel="noreferrer">
-              Chat API
-            </a>
-            를 사용합니다.
-          </p>
-        </div>
-        <PageHeaderNotifyChat buttonClassName="email-header-icon-btn" wrapperClassName="email-header-notify-chat" />
-      </header>
+    <div className={`messenger-page ${isMobile ? 'messenger-page--mobile' : ''}`}>
+      {!isMobile ? (
+        <header className="messenger-top">
+          <div>
+            <h1 className="messenger-top-title">내부 메신저</h1>
+            <p className="messenger-top-meta">
+              Google 계정 OAuth로{' '}
+              <a href={CHAT_API_DOCS} target="_blank" rel="noreferrer">
+                Chat API
+              </a>
+              를 사용합니다.
+            </p>
+          </div>
+          <PageHeaderNotifyChat buttonClassName="email-header-icon-btn" wrapperClassName="email-header-notify-chat" />
+        </header>
+      ) : null}
+
+      {!isMobile ? (
+        <p className="messenger-workspace-hint" role="note">
+          <GoogleWorkspaceChatPolicyHint />
+        </p>
+      ) : null}
+
+      {showMobileListChrome ? (
+        <header className="messenger-mobile-appbar">
+          <button
+            type="button"
+            className="messenger-mobile-appbar-btn"
+            aria-label="홈으로"
+            onClick={() => navigate('/')}
+          >
+            <span className="material-symbols-outlined">menu</span>
+          </button>
+          <h1 className="messenger-mobile-appbar-title">메시지</h1>
+          <div className="messenger-mobile-appbar-actions">
+            <button
+              type="button"
+              className="messenger-mobile-appbar-btn"
+              aria-label="검색"
+              onClick={() => listSearchRef.current?.focus()}
+            >
+              <span className="material-symbols-outlined">search</span>
+            </button>
+            <PageHeaderNotifyChat buttonClassName="messenger-mobile-appbar-btn" wrapperClassName="messenger-mobile-notify-wrap" />
+          </div>
+        </header>
+      ) : null}
+
+      {showMobileListChrome ? (
+        <p className="messenger-workspace-hint messenger-workspace-hint--mobile" role="note">
+          <GoogleWorkspaceChatPolicyHint />
+        </p>
+      ) : null}
 
       {(error || needsReauth) && (
         <div className="messenger-banner-error">
@@ -507,22 +679,85 @@ export default function Messenger() {
         </div>
       )}
 
-      <div className="messenger-layout">
-        <aside className="messenger-list-panel">
-          <div className="messenger-list-head">
-            <h2>대화</h2>
-            <button
-              type="button"
-              className="messenger-new-chat-btn"
-              onClick={() => setNewChatOpen(true)}
-              disabled={needsReauth}
-            >
-              <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
-                add
+      <div className={`messenger-layout ${isMobile ? 'messenger-layout--mobile' : ''}`}>
+        <aside
+          className={`messenger-list-panel ${isMobile ? 'messenger-list-panel--mobile' : ''} ${
+            isMobile && mobileThreadOpen ? 'messenger-list-panel--mobile-hidden' : ''
+          }`}
+        >
+          {isMobile && !mobileThreadOpen ? (
+            <div className="messenger-mobile-editorial">
+              <h2 className="messenger-mobile-recent-title">최근</h2>
+              <p className="messenger-mobile-recent-sub">대화를 선택하거나 새 채팅을 시작하세요.</p>
+            </div>
+          ) : null}
+
+          {isMobile && !mobileThreadOpen ? (
+            <div className="messenger-mobile-search-wrap">
+              <span className="material-symbols-outlined messenger-mobile-search-icon" aria-hidden>
+                search
               </span>
-              새 채팅
-            </button>
-          </div>
+              <input
+                ref={listSearchRef}
+                type="search"
+                value={listFilter}
+                onChange={(e) => setListFilter(e.target.value)}
+                placeholder="대화 검색…"
+                aria-label="대화 검색"
+                className="messenger-mobile-search-input"
+              />
+            </div>
+          ) : null}
+
+          {isMobile && !mobileThreadOpen && filteredSpaces.length > 0 ? (
+            <div className="messenger-mobile-stories" aria-label="대화 바로가기">
+              {filteredSpaces.slice(0, 12).map((s) => {
+                const isGroup =
+                  (s.spaceType || s.type) === 'GROUP_CHAT' || (s.spaceType || s.type) === 'SPACE';
+                const title = (s.displayName?.trim() || defaultSpaceTitle(s)).slice(0, 8);
+                const active = s.name === selectedName;
+                return (
+                  <button
+                    key={`story-${s.name}`}
+                    type="button"
+                    className={`messenger-mobile-story ${active ? 'messenger-mobile-story--active' : ''}`}
+                    onClick={() => {
+                      setSelectedName(s.name);
+                      setMobileThreadOpen(true);
+                    }}
+                  >
+                    <div
+                      className={`messenger-mobile-story-avatar ${
+                        isGroup ? 'messenger-mobile-story-avatar--group' : ''
+                      }`}
+                    >
+                      <span className="material-symbols-outlined">
+                        {isGroup ? 'groups' : 'person'}
+                      </span>
+                    </div>
+                    <span className="messenger-mobile-story-label">{title}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+
+          {!isMobile ? (
+            <div className="messenger-list-head">
+              <h2>대화</h2>
+              <button
+                type="button"
+                className="messenger-new-chat-btn"
+                onClick={() => setNewChatOpen(true)}
+                disabled={needsReauth}
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
+                  add
+                </span>
+                새 채팅
+              </button>
+            </div>
+          ) : null}
           <div className="messenger-list-search">
             <input
               type="search"
@@ -553,7 +788,10 @@ export default function Messenger() {
                     key={s.name}
                     type="button"
                     className={`messenger-list-item ${active ? 'messenger-list-item--active' : ''}`}
-                    onClick={() => setSelectedName(s.name)}
+                    onClick={() => {
+                      setSelectedName(s.name);
+                      if (isMobile) setMobileThreadOpen(true);
+                    }}
                   >
                     <div
                       className={`messenger-list-avatar ${isGroup ? 'messenger-list-avatar--group' : ''}`}
@@ -582,59 +820,144 @@ export default function Messenger() {
           </div>
         </aside>
 
-        <section className="messenger-thread">
+        {showMobileListChrome ? (
+          <>
+            <button
+              type="button"
+              className="messenger-mobile-fab"
+              aria-label="새 채팅"
+              disabled={needsReauth}
+              onClick={() => setNewChatOpen(true)}
+            >
+              <span className="material-symbols-outlined">add_comment</span>
+            </button>
+            <nav className="messenger-mobile-bottomnav" aria-label="메신저 하단 메뉴">
+              <Link
+                to="/messenger"
+                className="messenger-mobile-bottomnav-item messenger-mobile-bottomnav-item--active"
+                aria-current="page"
+              >
+                <span className="material-symbols-outlined">forum</span>
+                <span>채팅</span>
+              </Link>
+              <Link to="/customer-company-employees" className="messenger-mobile-bottomnav-item">
+                <span className="material-symbols-outlined">contacts</span>
+                <span>연락처</span>
+              </Link>
+              <Link to="/company-overview" className="messenger-mobile-bottomnav-item">
+                <span className="material-symbols-outlined">settings</span>
+                <span>설정</span>
+              </Link>
+            </nav>
+          </>
+        ) : null}
+
+        <section
+          className={`messenger-thread ${isMobile ? 'messenger-thread--mobile' : ''} ${
+            isMobile && !mobileThreadOpen ? 'messenger-thread--mobile-hidden' : ''
+          }`}
+        >
           {!selectedSpace ? (
-            <div className="messenger-placeholder">왼쪽에서 대화를 선택하세요.</div>
+            <div className="messenger-placeholder">
+              {isMobile ? '대화를 선택하세요.' : '왼쪽에서 대화를 선택하세요.'}
+            </div>
           ) : (
             <>
-              <header className="messenger-thread-header">
-                <div className="messenger-thread-peer">
-                  <div
-                    className={`messenger-thread-peer-avatar ${
-                      (selectedSpace.spaceType || selectedSpace.type) !== 'DIRECT_MESSAGE'
-                        ? 'messenger-thread-peer-avatar--group'
-                        : ''
-                    }`}
+              {isMobile && mobileThreadOpen ? (
+                <header className="messenger-mobile-thread-appbar">
+                  <button
+                    type="button"
+                    className="messenger-mobile-thread-back"
+                    aria-label="목록으로"
+                    onClick={() => setMobileThreadOpen(false)}
                   >
-                    {(selectedSpace.spaceType || selectedSpace.type) !== 'DIRECT_MESSAGE' ? (
-                      <span className="material-symbols-outlined">groups</span>
-                    ) : null}
+                    <span className="material-symbols-outlined">arrow_back</span>
+                  </button>
+                  <div className="messenger-mobile-thread-appbar-center">
+                    <div
+                      className={`messenger-mobile-thread-avatar ${
+                        (selectedSpace.spaceType || selectedSpace.type) !== 'DIRECT_MESSAGE'
+                          ? 'messenger-mobile-thread-avatar--group'
+                          : ''
+                      }`}
+                    >
+                      {(selectedSpace.spaceType || selectedSpace.type) !== 'DIRECT_MESSAGE' ? (
+                        <span className="material-symbols-outlined">groups</span>
+                      ) : (
+                        <span className="material-symbols-outlined">person</span>
+                      )}
+                    </div>
+                    <div className="messenger-mobile-thread-titles">
+                      <h3>{headerTitle}</h3>
+                      <p>{headerSubtitle}</p>
+                    </div>
                   </div>
-                  <div className="messenger-thread-peer-text">
-                    <h3>{headerTitle}</h3>
-                    <p>{headerSubtitle}</p>
+                  <div className="messenger-mobile-thread-appbar-actions">
+                    <button
+                      type="button"
+                      title="목록 새로고침"
+                      aria-label="새로고침"
+                      onClick={() => {
+                        void loadSpaces();
+                        void loadThread(selectedName);
+                      }}
+                    >
+                      <span className="material-symbols-outlined">refresh</span>
+                    </button>
+                    <button
+                      type="button"
+                      title="Google Chat 웹"
+                      aria-label="Google Chat 열기"
+                      onClick={() => window.open('https://chat.google.com', '_blank', 'noopener,noreferrer')}
+                    >
+                      <span className="material-symbols-outlined">open_in_new</span>
+                    </button>
                   </div>
-                </div>
-                <div className="messenger-thread-actions">
-                  <button
-                    type="button"
-                    title="목록 새로고침"
-                    aria-label="새로고침"
-                    onClick={() => {
-                      void loadSpaces();
-                      void loadThread(selectedName);
-                    }}
-                  >
-                    <span className="material-symbols-outlined">refresh</span>
-                  </button>
-                  <button
-                    type="button"
-                    title="Google Chat 웹"
-                    aria-label="Google Chat 열기"
-                    onClick={() => window.open('https://chat.google.com', '_blank', 'noopener,noreferrer')}
-                  >
-                    <span className="material-symbols-outlined">open_in_new</span>
-                  </button>
-                  <button
-                    type="button"
-                    title="API 문서"
-                    aria-label="API 문서"
-                    onClick={() => window.open(CHAT_API_DOCS, '_blank', 'noopener,noreferrer')}
-                  >
-                    <span className="material-symbols-outlined">menu_book</span>
-                  </button>
-                </div>
-              </header>
+                </header>
+              ) : null}
+
+              {!isMobile ? (
+                <header className="messenger-thread-header">
+                  <div className="messenger-thread-peer">
+                    <div
+                      className={`messenger-thread-peer-avatar ${
+                        (selectedSpace.spaceType || selectedSpace.type) !== 'DIRECT_MESSAGE'
+                          ? 'messenger-thread-peer-avatar--group'
+                          : ''
+                      }`}
+                    >
+                      {(selectedSpace.spaceType || selectedSpace.type) !== 'DIRECT_MESSAGE' ? (
+                        <span className="material-symbols-outlined">groups</span>
+                      ) : null}
+                    </div>
+                    <div className="messenger-thread-peer-text">
+                      <h3>{headerTitle}</h3>
+                      <p>{headerSubtitle}</p>
+                    </div>
+                  </div>
+                  <div className="messenger-thread-actions">
+                    <button
+                      type="button"
+                      title="목록 새로고침"
+                      aria-label="새로고침"
+                      onClick={() => {
+                        void loadSpaces();
+                        void loadThread(selectedName);
+                      }}
+                    >
+                      <span className="material-symbols-outlined">refresh</span>
+                    </button>
+                    <button
+                      type="button"
+                      title="Google Chat 웹"
+                      aria-label="Google Chat 열기"
+                      onClick={() => window.open('https://chat.google.com', '_blank', 'noopener,noreferrer')}
+                    >
+                      <span className="material-symbols-outlined">open_in_new</span>
+                    </button>
+                  </div>
+                </header>
+              ) : null}
 
               <div className="messenger-msgs">
                 {messagesLoading ? (
@@ -649,6 +972,14 @@ export default function Messenger() {
                     const showDay =
                       !!dayKey(m.createTime) &&
                       (!prev || dayKey(m.createTime) !== dayKey(prev.createTime));
+                    const senderDisplay = getSenderDisplayName(m, members, senderNamesByResource);
+                    const prevSenderRn = prev?.sender?.name || '';
+                    const showIncomingSender =
+                      !isOut &&
+                      senderDisplay &&
+                      (i === 0 || prevSenderRn !== senderRn);
+                    const avatarInitial =
+                      !isOut && senderDisplay ? senderDisplay.charAt(0).toUpperCase() : '';
                     return (
                       <div key={m.name || m.createTime + (m.text || '')}>
                         {showDay ? (
@@ -657,8 +988,18 @@ export default function Messenger() {
                           </div>
                         ) : null}
                         <div className={`messenger-row ${isOut ? 'messenger-row--out' : ''}`}>
-                          {!isOut ? <div className="messenger-msg-avatar" aria-hidden /> : null}
-                          <div>
+                          {!isOut ? (
+                            <div
+                              className={`messenger-msg-avatar${avatarInitial ? '' : ' messenger-msg-avatar--empty'}`}
+                              aria-hidden
+                            >
+                              {avatarInitial || null}
+                            </div>
+                          ) : null}
+                          <div className="messenger-msg-col">
+                            {showIncomingSender ? (
+                              <div className="messenger-sender-label">{senderDisplay}</div>
+                            ) : null}
                             <div className="messenger-bubble">
                               {body || (atts.length ? '' : '(내용 없음)')}
                               {atts.length > 0 ? (
@@ -733,9 +1074,34 @@ export default function Messenger() {
       <NewChatModal
         open={newChatOpen}
         loading={newChatLoading}
-        onClose={() => !newChatLoading && setNewChatOpen(false)}
+        inviteEmails={newChatInviteEmails}
+        onInviteEmailsChange={setNewChatInviteEmails}
+        onRequestParticipantPicker={openNewChatParticipantPicker}
+        onClose={() => {
+          if (newChatLoading) return;
+          if (participantPickerOpen) {
+            setParticipantPickerOpen(false);
+            return;
+          }
+          setNewChatOpen(false);
+        }}
         onSubmit={handleNewChat}
       />
+
+      {participantPickerOpen ? (
+        <div className="messenger-new-chat-participant-layer">
+          <ParticipantModal
+            key={`new-chat-picker-${newChatInviteEmails.join('|')}`}
+            teamMembers={teamMembers}
+            selected={participantPickerInitialSelection}
+            currentUser={currentUser}
+            title="초대할 팀원 선택"
+            bulkAddLabel="표시된 인원 모두 초대 목록에 추가"
+            onConfirm={handleNewChatParticipantConfirm}
+            onClose={() => setParticipantPickerOpen(false)}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

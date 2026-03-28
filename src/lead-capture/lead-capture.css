@@ -161,6 +161,12 @@
 
 .lead-capture-table-wrap {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/** 캡처 채널 표: 모바일에서도 담당자·수정·삭제 열까지 스크롤로 보도록 최소 너비 확보 */
+.lead-capture-channels-table {
+  min-width: 720px;
 }
 
 .lead-capture-action-wrap {
@@ -337,11 +343,31 @@
 
 .lead-capture-th-action,
 .lead-capture-cell-action {
-  text-align: right;
+  text-align: center;
+}
+
+.lead-capture-th-action-col {
+  width: 4.75rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-muted);
 }
 
 .lead-capture-cell-action {
   white-space: nowrap;
+  vertical-align: middle;
+}
+
+.lead-capture-row-inline-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.lead-capture-row-btn-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 .lead-capture-cell-name {
@@ -411,7 +437,8 @@
 
 .lead-capture-delete-btn {
   display: inline-flex;
-  padding: 0.35rem;
+  align-items: center;
+  padding: 0.35rem 0.45rem;
   border: none;
   background: none;
   color: var(--text-muted);
@@ -430,13 +457,13 @@
 
 .lead-capture-edit-btn {
   display: inline-flex;
-  padding: 0.35rem;
+  align-items: center;
+  padding: 0.35rem 0.45rem;
   border: none;
   background: none;
   color: var(--text-muted);
   border-radius: 0.35rem;
   cursor: pointer;
-  margin-right: 0.2rem;
 }
 
 .lead-capture-edit-btn:hover {
@@ -1138,8 +1165,9 @@
   .lead-capture-page .page-content {
     padding: 1rem;
   }
-  .lead-capture-table th:nth-child(n+4),
-  .lead-capture-table td:nth-child(n+4) {
+  /** 수신 리드 미리보기 표만 열 축약 (캡처 채널 표는 제외 — 수정/삭제 열이 숨겨지지 않도록) */
+  .lead-capture-leads-table th:nth-child(n+4),
+  .lead-capture-leads-table td:nth-child(n+4) {
     display: none;
   }
 }

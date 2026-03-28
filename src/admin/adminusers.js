@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { API_BASE } from '@/config';
 import { getAdminSiteFetchHeaders } from '@/lib/admin-site-headers';
 import './adminsubscription.css';
 
 const ADMIN_TOKEN_KEY = 'admin_site_token';
 const ADMIN_BOUND_USER_KEY = 'admin_site_bound_user_id';
+const NEXVIA_STAFF_SUFFIX = '@nexvia.co.kr';
 
 function clearAdminSession() {
   localStorage.removeItem(ADMIN_TOKEN_KEY);
@@ -27,13 +28,26 @@ function roleLabel(role) {
   return '권한 대기';
 }
 
+function getCrmEmail() {
+  try {
+    const raw = localStorage.getItem('crm_user');
+    const u = raw ? JSON.parse(raw) : null;
+    return String(u?.email || '').trim().toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
 export default function AdminUsers() {
   const [adminToken, setAdminToken] = useState(() => localStorage.getItem(ADMIN_TOKEN_KEY) || '');
   const loggedIn = !!adminToken;
+  const canGrantAdminSite = getCrmEmail().endsWith(NEXVIA_STAFF_SUFFIX);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
   const [rows, setRows] = useState([]);
+  const [grantLoadingId, setGrantLoadingId] = useState(null);
   const [summary, setSummary] = useState({
     totalUsers: 0,
     owners: 0,
@@ -46,46 +60,84 @@ export default function AdminUsers() {
 
   const query = useMemo(() => search.trim(), [search]);
 
+  const loadUsers = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const url = query
+        ? `${API_BASE}/admin/users?search=${encodeURIComponent(query)}`
+        : `${API_BASE}/admin/users`;
+      const res = await fetch(url, { headers: getAdminSiteFetchHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status === 401) {
+          clearAdminSession();
+          setAdminToken('');
+        }
+        throw new Error(data.error || '유저 현황을 불러오지 못했습니다.');
+      }
+      setRows(Array.isArray(data.rows) ? data.rows : []);
+      setSummary(data.summary || {});
+    } catch (e) {
+      setError(e.message || '유저 현황을 불러오지 못했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  }, [query]);
+
   useEffect(() => {
     if (!loggedIn) return;
     let cancelled = false;
-    const timer = setTimeout(async () => {
-      setLoading(true);
-      setError('');
-      try {
-        const url = query
-          ? `${API_BASE}/admin/users?search=${encodeURIComponent(query)}`
-          : `${API_BASE}/admin/users`;
-        const res = await fetch(url, { headers: getAdminSiteFetchHeaders() });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          if (res.status === 401) {
-            clearAdminSession();
-            setAdminToken('');
-          }
-          throw new Error(data.error || '유저 현황을 불러오지 못했습니다.');
-        }
-        if (cancelled) return;
-        setRows(Array.isArray(data.rows) ? data.rows : []);
-        setSummary(data.summary || {});
-      } catch (e) {
-        if (!cancelled) setError(e.message || '유저 현황을 불러오지 못했습니다.');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+    const timer = setTimeout(() => {
+      if (cancelled) return;
+      void loadUsers();
     }, 250);
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [loggedIn, query]);
+  }, [loggedIn, query, loadUsers]);
+
+  const grantAdminSite = async (userId, emailLabel) => {
+    if (!canGrantAdminSite) return;
+    setGrantLoadingId(userId);
+    setError('');
+    setSuccessMsg('');
+    try {
+      const res = await fetch(`${API_BASE}/admin/users/${encodeURIComponent(userId)}/grant-site-access`, {
+        method: 'POST',
+        headers: getAdminSiteFetchHeaders()
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (res.status === 401) {
+          clearAdminSession();
+          setAdminToken('');
+        }
+        throw new Error(data.error || '권한 부여에 실패했습니다.');
+      }
+      setRows((prev) =>
+        prev.map((r) => (r.userId === userId ? { ...r, adminSiteAccess: true } : r))
+      );
+      setSuccessMsg(`${emailLabel || '해당 사용자'}에게 관리자 사이트(/admin) 접근을 부여했습니다.`);
+    } catch (e) {
+      setError(e.message || '권한 부여에 실패했습니다.');
+    } finally {
+      setGrantLoadingId(null);
+    }
+  };
 
   return (
     <div className="admin-sub-page">
       <header className="admin-sub-header">
         <div>
           <h1 className="admin-sub-title">유저 현황</h1>
-          <p className="admin-sub-sub">전체 사용자, 권한, 회사 연결 상태를 한 번에 확인합니다.</p>
+          <p className="admin-sub-sub">
+            전체 사용자, 권한, 회사 연결 상태를 한 번에 확인합니다.
+            {canGrantAdminSite
+              ? ' `관리자 부여`는 @nexvia.co.kr 로만 실행할 수 있으며, 대상은 구독 비밀번호로 /admin에 들어올 수 있습니다.'
+              : null}
+          </p>
         </div>
       </header>
 
@@ -117,6 +169,7 @@ export default function AdminUsers() {
             <div className="admin-sub-users-stat"><strong>{summary.verifiedEmails || 0}</strong><span>이메일 인증</span></div>
           </div>
 
+          {successMsg ? <p className="admin-sub-hint" style={{ marginBottom: '12px' }}>{successMsg}</p> : null}
           {error && <p className="admin-sub-error admin-sub-error-banner">{error}</p>}
 
           <div className="admin-sub-table-wrap">
@@ -133,6 +186,7 @@ export default function AdminUsers() {
                     <th>사업자번호</th>
                     <th>생성일</th>
                     <th>수정일</th>
+                    <th>관리자 사이트</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -152,6 +206,28 @@ export default function AdminUsers() {
                       <td>{row.companyBusinessNumber || '—'}</td>
                       <td>{formatDateTime(row.createdAt)}</td>
                       <td>{formatDateTime(row.updatedAt)}</td>
+                      <td>
+                        {String(row.email || '')
+                          .toLowerCase()
+                          .endsWith(NEXVIA_STAFF_SUFFIX) ? (
+                          <span className="admin-sub-badge admin-sub-badge--on" title="@nexvia.co.kr">
+                            기본
+                          </span>
+                        ) : row.adminSiteAccess ? (
+                          <span className="admin-sub-badge admin-sub-badge--on">접근 허용</span>
+                        ) : canGrantAdminSite ? (
+                          <button
+                            type="button"
+                            className="admin-sub-btn admin-sub-btn-primary admin-sub-btn--compact"
+                            disabled={grantLoadingId === row.userId}
+                            onClick={() => void grantAdminSite(row.userId, row.email)}
+                          >
+                            {grantLoadingId === row.userId ? '처리 중…' : '관리자 부여'}
+                          </button>
+                        ) : (
+                          <span className="admin-sub-dash">—</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

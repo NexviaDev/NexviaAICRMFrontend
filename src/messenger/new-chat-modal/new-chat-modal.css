@@ -1,0 +1,196 @@
+/* 새 채팅방 모달 — 오버레이 클릭으로 닫지 않음 */
+.new-chat-modal-meta {
+  font-size: 0.7rem;
+  color: #64748b;
+  margin: 0 0 0.75rem;
+  line-height: 1.45;
+}
+
+.messenger-modal-root {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.messenger-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.messenger-modal-panel {
+  position: relative;
+  width: 100%;
+  max-width: 26rem;
+  background: #fff;
+  border-radius: 1rem;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.18);
+  padding: 1.25rem 1.35rem;
+}
+
+.messenger-modal-panel--wide {
+  max-width: 30rem;
+}
+
+.messenger-modal-panel h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+  color: #1e293b;
+}
+
+.messenger-modal-field {
+  margin-bottom: 0.85rem;
+}
+
+.messenger-modal-field label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 0.3rem;
+}
+
+.messenger-modal-field input {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.messenger-modal-field input:focus {
+  outline: none;
+  border-color: #93b4d4;
+}
+
+.messenger-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.messenger-modal-actions button {
+  padding: 0.45rem 0.9rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.messenger-modal-cancel {
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #475569;
+}
+
+.messenger-modal-submit {
+  border: none;
+  background: linear-gradient(135deg, #5b7fa8 0%, #4a6d94 100%);
+  color: #fff;
+  font-weight: 600;
+}
+
+.messenger-modal-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.messenger-modal-field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.3rem;
+}
+
+.messenger-modal-field-label-row label {
+  margin-bottom: 0;
+}
+
+.new-chat-modal-pick-team {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid #c5d4e3;
+  border-radius: 0.5rem;
+  background: #f0f6fb;
+  color: #3d5a78;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.new-chat-modal-pick-team:hover {
+  background: #e2edf5;
+}
+
+.new-chat-modal-pick-team .material-symbols-outlined {
+  font-size: 1rem;
+}
+
+.new-chat-modal-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+
+.new-chat-modal-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  max-width: 100%;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #f8fafc;
+  font-size: 0.75rem;
+  color: #334155;
+  cursor: pointer;
+}
+
+.new-chat-modal-chip:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.new-chat-modal-chip-x {
+  font-weight: 700;
+  color: #64748b;
+  margin-left: 0.1rem;
+}
+
+.new-chat-modal-email-input {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  margin-bottom: 0.35rem;
+}
+
+.new-chat-modal-email-input:focus {
+  outline: none;
+  border-color: #93b4d4;
+}
+
+.new-chat-modal-add-email {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.8125rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.45rem;
+  background: #fff;
+  color: #475569;
+  cursor: pointer;
+}
+
+.new-chat-modal-add-email:hover {
+  background: #f8fafc;
+}

@@ -13,6 +13,7 @@ import {
   CO_ORG_SCALE_MAX,
   coOrgPn
 } from '@/lib/org-chart-mind-shared';
+import { GoogleWorkspaceChatPolicyHint } from '@/lib/google-workspace-chat-hint';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -446,6 +447,9 @@ export default function CompanyOverview() {
         </div>
       </header>
       <div className="page-content company-overview-content">
+        <p className="company-overview-workspace-hint" role="note">
+          <GoogleWorkspaceChatPolicyHint />
+        </p>
         {actionError && <p className="company-overview-error company-overview-inline-error">{actionError}</p>}
         <section className="company-overview-card company-info-card">
           <h2 className="company-overview-section-title">

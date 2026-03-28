@@ -116,6 +116,12 @@
   filter: brightness(1.06);
 }
 
+.admin-sub-btn--compact {
+  padding: 7px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
 .admin-sub-error {
   margin: 0;
   font-size: 0.88rem;

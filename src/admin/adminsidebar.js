@@ -1,11 +1,13 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import '../layout/sidebar.css';
 
-const ADMIN_MENU_ITEMS = [
-  { to: '/admin/subscription', icon: 'subscriptions', label: '구독 결제 현황' },
-  { to: '/admin/notices', icon: 'campaign', label: '공지 사항' },
-  { to: '/admin/users', icon: 'groups', label: '유저 현황' }
-];
+function buildAdminMenuItems() {
+  return [
+    { to: '/admin/subscription', icon: 'subscriptions', label: '구독 결제 현황' },
+    { to: '/admin/notices', icon: 'campaign', label: '공지 사항' },
+    { to: '/admin/users', icon: 'groups', label: '유저 현황' }
+  ];
+}
 
 function getStoredUser() {
   try {
@@ -24,6 +26,7 @@ function formatAdminRole(user) {
 export default function AdminSidebar({ drawerOpen, onCloseDrawer }) {
   const navigate = useNavigate();
   const user = getStoredUser();
+  const menuItems = buildAdminMenuItems();
 
   return (
     <aside className={`sidebar ${drawerOpen ? 'sidebar-drawer-open' : ''}`}>
@@ -48,7 +51,7 @@ export default function AdminSidebar({ drawerOpen, onCloseDrawer }) {
       </div>
 
       <nav className="sidebar-nav">
-        {ADMIN_MENU_ITEMS.map((item) => (
+        {menuItems.map((item) => (
           <div key={item.to} data-to={item.to} className="sidebar-nav-item">
             <NavLink
               to={item.to}

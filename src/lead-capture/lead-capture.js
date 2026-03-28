@@ -783,7 +783,7 @@ ${customInputs}
             {loading ? (
               <p className="lead-capture-loading">불러오는 중…</p>
             ) : (
-              <table className="lead-capture-table">
+              <table className="lead-capture-table lead-capture-channels-table">
                 <thead>
                   <tr>
                     <th>유입 경로</th>
@@ -792,14 +792,17 @@ ${customInputs}
                     <th>최근 활동</th>
                     <th>담당자</th>
                     {canManageCaptureChannels ? (
-                      <th className="lead-capture-th-action">관리</th>
+                      <>
+                        <th className="lead-capture-th-action lead-capture-th-action-col">수정</th>
+                        <th className="lead-capture-th-action lead-capture-th-action-col">삭제</th>
+                      </>
                     ) : null}
                   </tr>
                 </thead>
                 <tbody>
                   {items.length === 0 ? (
                     <tr>
-                      <td colSpan={canManageCaptureChannels ? 6 : 5} className="lead-capture-empty-cell">
+                      <td colSpan={canManageCaptureChannels ? 7 : 5} className="lead-capture-empty-cell">
                         등록된 캡처 폼이 없습니다. 새 캡처 폼 만들기를 눌러 추가하세요.
                       </td>
                     </tr>
@@ -826,24 +829,34 @@ ${customInputs}
                           {formatFormAssigneeLabels(row)}
                         </td>
                         {canManageCaptureChannels ? (
-                          <td className="lead-capture-cell-action">
-                            <button
-                              type="button"
-                              className="lead-capture-edit-btn"
-                              aria-label="수정"
-                              onClick={(e) => { e.stopPropagation(); openEdit(row); }}
-                            >
-                              <span className="material-symbols-outlined">edit</span>
-                            </button>
-                            <button
-                              type="button"
-                              className="lead-capture-delete-btn"
-                              aria-label="삭제"
-                              onClick={(e) => { e.stopPropagation(); handleDelete(row); }}
-                            >
-                              <span className="material-symbols-outlined">delete</span>
-                            </button>
-                          </td>
+                          <>
+                            <td className="lead-capture-cell-action">
+                              <button
+                                type="button"
+                                className="lead-capture-edit-btn lead-capture-row-inline-btn"
+                                aria-label="수정"
+                                onClick={(e) => { e.stopPropagation(); openEdit(row); }}
+                              >
+                                <span className="material-symbols-outlined" aria-hidden>
+                                  edit
+                                </span>
+                                <span className="lead-capture-row-btn-label">수정</span>
+                              </button>
+                            </td>
+                            <td className="lead-capture-cell-action">
+                              <button
+                                type="button"
+                                className="lead-capture-delete-btn lead-capture-row-inline-btn"
+                                aria-label="삭제"
+                                onClick={(e) => { e.stopPropagation(); handleDelete(row); }}
+                              >
+                                <span className="material-symbols-outlined" aria-hidden>
+                                  delete
+                                </span>
+                                <span className="lead-capture-row-btn-label">삭제</span>
+                              </button>
+                            </td>
+                          </>
                         ) : null}
                       </tr>
                     ))

@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE } from '@/config';
 import { getPendingExcelImportJobs, removePendingExcelImportJob } from '@/lib/cc-excel-import-jobs';
-import { initNexviaPushNotifications } from '@/lib/nexvia-push-init';
 import Sidebar from './sidebar';
 import './layout.css';
 
@@ -93,12 +92,6 @@ export default function Layout() {
       clearInterval(id);
     };
   }, []);
-
-  useEffect(() => {
-    const token = localStorage.getItem('crm_token');
-    if (!token) return;
-    void initNexviaPushNotifications();
-  }, [location.pathname]);
 
   return (
     <div className={`app-layout ${sidebarDrawerOpen ? 'sidebar-drawer-open' : ''}`}>

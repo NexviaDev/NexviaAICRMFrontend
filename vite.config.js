@@ -1,27 +1,20 @@
-import { defineConfig } from 'vite';
+import { defineConfig, transformWithEsbuild } from 'vite';
 import path from 'path';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
-import * as esbuild from 'esbuild';
 
-// .js 파일 내 JSX를 빌드 전에 변환 (import analysis가 파싱하기 전에 실행)
+// .js 파일 내 JSX — 확장자가 .js라 Vite/rollup이 loader를 js로 두면 실패하므로 loader: 'jsx'로 명시
 function jsxInJs() {
   return {
     name: 'jsx-in-js',
     enforce: 'pre',
-    transform(code, id) {
+    async transform(code, id) {
       if (!id.endsWith('.js') || id.includes('node_modules') || !id.replace(/\\/g, '/').includes('/src/')) return null;
       if (!code.includes('<') || !code.includes('>')) return null;
-      try {
-        const result = esbuild.transformSync(code, {
-          loader: 'jsx',
-          jsx: 'automatic',
-          format: 'esm'
-        });
-        return { code: result.code };
-      } catch {
-        return null;
-      }
+      return transformWithEsbuild(code, id, {
+        loader: 'jsx',
+        jsx: 'automatic'
+      });
     }
   };
 }
