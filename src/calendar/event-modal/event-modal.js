@@ -9,6 +9,11 @@ import {
   stripRelatedContactDescriptionBlock,
   ensureAllRelatedVisitDescriptions
 } from '../event-modal-related-company';
+import {
+  formatDateInSeoulYmd,
+  ymdMinusOneDay,
+  crmAllDayInclusiveEndYmd
+} from '../calendar-date-utils';
 
 const PRESET_COLORS = [
   { hex: '#7986cb', label: '라벤더' },
@@ -88,9 +93,7 @@ function googleEventToForm(ev, titleMeta = {}) {
     const startDate = start.date || todayStr();
     let endDate = end.date || startDate;
     if (endDate > startDate) {
-      const last = new Date(endDate);
-      last.setDate(last.getDate() - 1);
-      endDate = last.toISOString().slice(0, 10);
+      endDate = ymdMinusOneDay(endDate);
     } else {
       endDate = startDate;
     }
@@ -127,16 +130,17 @@ function crmEventToForm(ev) {
     : null;
 
   if (ev.allDay) {
-    const endForForm = new Date(endDate);
-    if (endForForm > startDate) endForForm.setDate(endForForm.getDate() - 1);
+    const startYmd = formatDateInSeoulYmd(startDate);
+    const endExclusiveYmd = formatDateInSeoulYmd(endDate);
+    const endInclusiveYmd = crmAllDayInclusiveEndYmd(startYmd, endExclusiveYmd);
     return {
       title: ev.title || '',
       description: ev.description || '',
       color: ev.color || '',
       allDay: true,
-      startDate: startDate.toISOString().slice(0, 10),
+      startDate: startYmd,
       startTime: defaultTime(),
-      endDate: endForForm.toISOString().slice(0, 10),
+      endDate: endInclusiveYmd,
       endTime: '10:00',
       visibility: ev.visibility || 'company',
       participants: ev.participants || [],
@@ -209,7 +213,10 @@ function formToGoogleBody(form) {
     const lastDay = form.endDate || startDate;
     const endExclusive = new Date(lastDay + 'T00:00:00');
     endExclusive.setDate(endExclusive.getDate() + 1);
-    return { summary, description, start: { date: startDate }, end: { date: endExclusive.toISOString().slice(0, 10) } };
+    const ey = endExclusive.getFullYear();
+    const em = String(endExclusive.getMonth() + 1).padStart(2, '0');
+    const ed = String(endExclusive.getDate()).padStart(2, '0');
+    return { summary, description, start: { date: startDate }, end: { date: `${ey}-${em}-${ed}` } };
   }
   const startDt = new Date(form.startDate + 'T' + (form.startTime || '09:00') + ':00');
   const endDt = new Date((form.endDate || form.startDate) + 'T' + (form.endTime || '10:00') + ':00');
@@ -237,11 +244,11 @@ function formatEventWhen(ev, source) {
   const s = new Date(ev.start);
   const e = ev.end ? new Date(ev.end) : null;
   if (ev.allDay) {
-    const sStr = s.toISOString().slice(0, 10);
-    if (!e || e.getTime() - s.getTime() <= 86400000) return sStr;
-    const eLast = new Date(e);
-    eLast.setDate(eLast.getDate() - 1);
-    return `${sStr} ~ ${eLast.toISOString().slice(0, 10)}`;
+    const sStr = formatDateInSeoulYmd(s);
+    if (!e || Number.isNaN(e.getTime())) return sStr;
+    const lastIncl = crmAllDayInclusiveEndYmd(sStr, formatDateInSeoulYmd(e));
+    if (lastIncl <= sStr) return sStr;
+    return `${sStr} ~ ${lastIncl}`;
   }
   const opts = { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' };
   return s.toLocaleString('ko-KR', opts) + (e ? ' ~ ' + e.toLocaleString('ko-KR', opts) : '');

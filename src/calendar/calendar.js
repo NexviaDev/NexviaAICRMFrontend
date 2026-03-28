@@ -6,6 +6,11 @@ import { googleEventDisplayTitle } from './google-event-display-title';
 import './calendar.css';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import { API_BASE } from '@/config';
+import {
+  formatDateInSeoulYmd,
+  ymdAddOneDay,
+  crmAllDayInclusiveEndYmd
+} from './calendar-date-utils';
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 const MODAL_PARAM = 'modal';
@@ -69,6 +74,15 @@ function normalizeGoogleEvent(gev, currentUserId, meta = {}) {
 
 function getEventDaysInMonth(event, year, month) {
   if (!event.start) return [];
+
+  /** CRM 종일: 브라우저 로컬 날짜로 빼면 시작·끝 순서가 뒤집혀 칸이 비는 경우가 있어 서울 달력으로 집계 */
+  if (event.allDay && event._source === 'crm') {
+    const startYmd = formatDateInSeoulYmd(new Date(event.start));
+    const endExclusiveYmd = formatDateInSeoulYmd(new Date(event.end || event.start));
+    const endInclusiveYmd = crmAllDayInclusiveEndYmd(startYmd, endExclusiveYmd);
+    return getCrmAllDayDaysInMonthRange(startYmd, endInclusiveYmd, year, month);
+  }
+
   const startDate = new Date(event.start);
   let endDate = event.end ? new Date(event.end) : new Date(startDate);
 
@@ -77,12 +91,14 @@ function getEventDaysInMonth(event, year, month) {
     endDate.setDate(endDate.getDate() - 1);
   }
 
-  const monthStart = new Date(year, month, 1);
-  const monthEnd = new Date(year, month + 1, 0);
-  if (endDate < monthStart || startDate > monthEnd) return [];
+  /** monthEnd = 마지막 날 00:00만 쓰면 같은 날 오전 일정이 start > monthEnd로 잘못 걸러짐 → 다음 달 1일 0시로 상한 비교 */
+  const monthStart = new Date(year, month, 1, 0, 0, 0, 0);
+  const nextMonthStart = new Date(year, month + 1, 1, 0, 0, 0, 0);
+  if (endDate < monthStart || startDate >= nextMonthStart) return [];
 
+  const monthLastDayEnd = new Date(year, month + 1, 0, 23, 59, 59, 999);
   const from = startDate < monthStart ? new Date(monthStart) : new Date(startDate);
-  const to = endDate > monthEnd ? new Date(monthEnd) : new Date(endDate);
+  const to = endDate > monthLastDayEnd ? new Date(monthLastDayEnd) : new Date(endDate);
   from.setHours(0, 0, 0, 0);
   to.setHours(23, 59, 59, 999);
 
@@ -91,6 +107,23 @@ function getEventDaysInMonth(event, year, month) {
   while (d <= to) {
     if (d.getFullYear() === year && d.getMonth() === month) days.push(d.getDate());
     d.setDate(d.getDate() + 1);
+  }
+  return days;
+}
+
+function getCrmAllDayDaysInMonthRange(startYmd, endInclusiveYmd, year, month) {
+  if (!startYmd || !endInclusiveYmd) return [];
+  const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}-`;
+  const days = [];
+  let cur = startYmd;
+  const end = endInclusiveYmd < startYmd ? startYmd : endInclusiveYmd;
+  if (cur > end) return [];
+  while (cur <= end) {
+    if (cur.startsWith(monthPrefix)) {
+      days.push(parseInt(cur.slice(monthPrefix.length), 10));
+    }
+    if (cur >= end) break;
+    cur = ymdAddOneDay(cur);
   }
   return days;
 }
