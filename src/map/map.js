@@ -37,11 +37,22 @@ function getAuthHeader() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-/** 실시간 추적: 최신 픽스 우선(캐시 거의 안 씀), 타임아웃은 너무 길면 첫 갱신이 느려질 수 있어 짧게 */
+/**
+ * 실시간 추적 옵션
+ * - enableHighAccuracy: false → Wi‑Fi/기지국 위치가 먼저 잡혀 첫 점이 훨씬 빠름(GPS는 수십 초 걸릴 수 있음). 정밀도는 다소 낮을 수 있음.
+ * - maximumAge > 0 → 직전에 받은 좌표 재사용 허용으로 첫 콜백 지연 완화
+ */
 const GEOLOCATION_OPTIONS_WATCH = {
-  enableHighAccuracy: true,
-  maximumAge: 0,
-  timeout: 20000
+  enableHighAccuracy: false,
+  maximumAge: 15000,
+  timeout: 12000
+};
+
+/** 내 위치 켤 때 한 번: 캐시 허용·짧은 타임아웃으로 가능한 빨리 첫 마커 표시 → 이후 watch가 보정 */
+const GEOLOCATION_OPTIONS_QUICK_PRIME = {
+  enableHighAccuracy: false,
+  maximumAge: 300000,
+  timeout: 5000
 };
 
 /** 실시간 내 위치 반투명 원 — 지표 기준 고정 반경(m). 화면 픽셀 크기와 무관하게 지상 거리는 동일 */
@@ -399,17 +410,22 @@ export default function Map({
     if (watchIdRef.current != null) return;
     locationSamplesRef.current = [];
     lastRefinedLocationRef.current = null;
-    const watchId = geo.watchPosition(
-      (pos) => {
-        const w = pushGeolocationSample(locationSamplesRef, pos);
-        if (!w) return;
-        const damped = dampLargeJump(lastRefinedLocationRef.current, w);
-        lastRefinedLocationRef.current = damped;
-        setMyLocation({ lat: damped.lat, lng: damped.lng, accuracy: damped.accuracy });
-      },
-      () => {},
-      GEOLOCATION_OPTIONS_WATCH
-    );
+
+    const applyPos = (pos) => {
+      const w = pushGeolocationSample(locationSamplesRef, pos);
+      if (!w) return;
+      const damped = dampLargeJump(lastRefinedLocationRef.current, w);
+      lastRefinedLocationRef.current = damped;
+      setMyLocation({ lat: damped.lat, lng: damped.lng, accuracy: damped.accuracy });
+    };
+
+    try {
+      geo.getCurrentPosition(applyPos, () => {}, GEOLOCATION_OPTIONS_QUICK_PRIME);
+    } catch {
+      /* 일부 환경에서 동기 throw */
+    }
+
+    const watchId = geo.watchPosition(applyPos, () => {}, GEOLOCATION_OPTIONS_WATCH);
     watchIdRef.current = watchId;
     setLiveLocationOn(true);
   }, []);
