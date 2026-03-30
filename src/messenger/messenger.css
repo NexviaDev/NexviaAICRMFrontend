@@ -7,8 +7,10 @@
 .messenger-page {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1 1 0;
   min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
   background: var(--ms-bg, #f4f7fb);
   color: #334155;
 }
@@ -112,6 +114,7 @@
 .messenger-list-panel {
   width: 18rem;
   flex-shrink: 0;
+  min-height: 0;
   background: #fff;
   border-right: 1px solid #e2e8f0;
   display: flex;
@@ -192,8 +195,10 @@
 }
 
 .messenger-list-scroll {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 0.35rem;
   background: #fff;
 }
@@ -291,7 +296,8 @@
 
 /* 스레드 */
 .messenger-thread {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -367,9 +373,22 @@
   color: #4a6d94;
 }
 
+.messenger-thread-actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.messenger-thread-actions button:disabled:hover {
+  background: transparent;
+  color: #64748b;
+}
+
 .messenger-msgs {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
   padding: 1rem 1.1rem;
   background: linear-gradient(180deg, #f8fafc 0%, #f4f7fb 100%);
 }
@@ -473,8 +492,15 @@
   justify-content: flex-end;
 }
 
-.messenger-attach {
+.messenger-attach-list {
   margin-top: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.messenger-attach {
+  margin-top: 0;
   padding: 0.5rem 0.65rem;
   border-radius: 0.6rem;
   background: rgba(255, 255, 255, 0.7);
@@ -483,10 +509,121 @@
   color: #475569;
 }
 
-.messenger-row--out .messenger-attach {
+.messenger-attach-img-wrap {
+  display: block;
+  line-height: 0;
+  border-radius: 0.45rem;
+  overflow: hidden;
+  max-width: 220px;
+}
+
+.messenger-attach-img {
+  max-width: 100%;
+  max-height: 160px;
+  width: auto;
+  height: auto;
+  display: block;
+  object-fit: contain;
+  vertical-align: middle;
+}
+
+.messenger-attach-link {
+  color: #3d6a8a;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-all;
+}
+
+.messenger-attach-muted {
+  color: #64748b;
+}
+
+.messenger-row--out .messenger-attach,
+.messenger-attach-list--out .messenger-attach {
   background: rgba(255, 255, 255, 0.2);
   border-color: rgba(255, 255, 255, 0.35);
   color: #f1f5f9;
+}
+
+.messenger-row--out .messenger-attach-link,
+.messenger-attach-list--out .messenger-attach-link {
+  color: #e0f2fe;
+}
+
+.messenger-bubble-text + .messenger-attach-list {
+  margin-top: 0.45rem;
+}
+
+.messenger-file-input-hidden {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.messenger-pending-attach {
+  max-width: 56rem;
+  margin: 0 auto 0.4rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.65rem;
+  background: #f0f7fc;
+  border: 1px solid #cfe0f0;
+  border-radius: 0.75rem;
+  font-size: 0.78rem;
+  color: #475569;
+}
+
+.messenger-pending-thumb {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: 0.4rem;
+  flex-shrink: 0;
+}
+
+.messenger-pending-icon {
+  font-size: 28px;
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+.messenger-pending-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.messenger-pending-clear {
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  padding: 0.2rem;
+  border-radius: 0.35rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.messenger-pending-clear:hover {
+  color: #64748b;
+  background: rgba(148, 163, 184, 0.2);
+}
+
+.messenger-input-tools button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.messenger-input-tools button:disabled:hover {
+  color: #94a3b8;
+  background: transparent;
 }
 
 .messenger-input-wrap {
@@ -571,8 +708,20 @@
   text-transform: uppercase;
 }
 
+.messenger-input-capability {
+  text-align: center;
+  font-size: 0.68rem;
+  line-height: 1.45;
+  color: #64748b;
+  margin: 0.35rem 0 0;
+  padding: 0 0.5rem;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
 .messenger-placeholder {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -611,10 +760,28 @@
   color: #64748b;
 }
 
+/* 스레드 최초 진입 시에만 짧게 표시(전송·폴링 시에는 목록을 가리지 않음) */
+.messenger-loading-inline--thread {
+  padding: 0.5rem 0.75rem 0.65rem;
+  font-size: 0.75rem;
+  color: #94a3b8;
+  animation: messenger-thread-load-fade 0.35s ease-out;
+}
+
+@keyframes messenger-thread-load-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 /* ---------- ChatForMobile.html 스타일: 좁은 화면 전용 (목록 ↔ 대화 전체 화면) ---------- */
 .messenger-page--mobile {
-  min-height: 100%;
-  min-height: 100dvh;
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
@@ -1020,6 +1187,11 @@
   padding: 0.4rem;
   border-radius: 0.45rem;
   cursor: pointer;
+}
+
+.messenger-mobile-thread-appbar-actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .messenger-thread--mobile .messenger-msgs {

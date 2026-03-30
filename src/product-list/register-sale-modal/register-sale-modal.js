@@ -38,7 +38,7 @@ function formatNumInput(v) {
  * - saleId: 있으면 수정 모드 (기존 데이터 로드 후 PATCH)
  * - initialCustomerCompany: 고객사 세부에서 열 때 → 고객사 자동, 고객명(선택)
  * - initialContact: 연락처 세부에서 열 때 → 고객명으로 표시, 해당 연락처로 저장
- * - 증서/자료: 구글 드라이브 [고객사]_[사업자번호] 폴더에 저장
+ * - 증서/자료: 구글 드라이브 [고객사]_[사업자번호] 폴더에 저장 (이름 규칙은 customer-company-detail-modal과 동일 → ensure 시 동일 폴더 재사용)
  */
 const DRIVE_FOLDER_MIME = 'application/vnd.google-apps.folder';
 
@@ -221,9 +221,13 @@ export default function RegisterSaleModal({
     return () => { cancelled = true; };
   }, [saleId]);
 
+  /** 고객사 상세와 동일: 사업자번호는 숫자만. POST /drive/folders/ensure 가 부모 하위에서 동일 이름 폴더를 먼저 찾고 없을 때만 생성 */
   const driveFolderName = (() => {
     const namePart = sanitizeFolderNamePart(customerCompanyName || '미소속');
-    const numPart = sanitizeFolderNamePart(businessNumber) || '미등록';
+    const numPart =
+      sanitizeFolderNamePart(
+        businessNumber != null ? String(businessNumber).replace(/\D/g, '') : ''
+      ) || '미등록';
     return `${namePart}_${numPart}`;
   })();
 

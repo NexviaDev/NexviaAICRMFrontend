@@ -8,6 +8,7 @@ import LeadCaptureLeadsModal from './lead-capture-leads-modal/lead-capture-leads
 import LeadCaptureCrmMappingModal from './lead-capture-crm-mapping/lead-capture-crm-mapping-modal';
 import CustomFieldsManageModal from '../shared/custom-fields-manage-modal/custom-fields-manage-modal';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
+import HomeLeadDetailModal from '@/home/home-lead-detail-modal';
 import './lead-capture.css';
 
 function getAuthHeader() {
@@ -117,7 +118,10 @@ async function imageUrlToBlob(url) {
   return null;
 }
 
-/** 연락처 숫자만 있을 때 하이픈 포맷 (한국 형식) */
+/**
+ * 연락처 숫자만 있을 때 하이픈 포맷 (한국 형식)
+ * 담당자 알림 메일 제목의 연락처 표기는 백엔드 `lib/email.js`에서 동일 규칙으로 맞춥니다.
+ */
 function formatPhoneForSave(value) {
   if (value == null || value === '') return '';
   const digits = String(value).replace(/\D/g, '');
@@ -160,6 +164,8 @@ export default function LeadCapture() {
   const [saveContactsFeedback, setSaveContactsFeedback] = useState(null);
   const [pushingMapped, setPushingMapped] = useState(false);
   const [pushMappedFeedback, setPushMappedFeedback] = useState(null);
+  const [leadDetailOpen, setLeadDetailOpen] = useState(false);
+  const [leadDetailContext, setLeadDetailContext] = useState(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const [embedCodeText, setEmbedCodeText] = useState('');
   const [previewHtml, setPreviewHtml] = useState('');
@@ -224,7 +230,10 @@ export default function LeadCapture() {
     if (!formId) { setChannelLeads([]); return; }
     setChannelLeadsLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/lead-capture-forms/${formId}/leads`, { headers: getAuthHeader(), credentials: 'include' });
+      const res = await fetch(`${API_BASE}/lead-capture-forms/${formId}/leads?limit=500&page=1`, {
+        headers: getAuthHeader(),
+        credentials: 'include'
+      });
       const data = await res.json().catch(() => ({}));
       if (res.ok && Array.isArray(data.items)) setChannelLeads(data.items);
       else setChannelLeads([]);
@@ -312,6 +321,22 @@ export default function LeadCapture() {
     }
     setLastClickedLeadIndex(null);
   }, [channelLeads]);
+
+  const openLeadDetail = useCallback((lead) => {
+    if (!selectedFormId || !lead?._id) return;
+    setLeadDetailContext({
+      formId: String(selectedFormId),
+      leadId: String(lead._id),
+      channelLabel: (selectedForm?.name && String(selectedForm.name).trim()) || '캡처 채널',
+      channelSource: (selectedForm?.source && String(selectedForm.source).trim()) || '기타 채널'
+    });
+    setLeadDetailOpen(true);
+  }, [selectedFormId, selectedForm?.name, selectedForm?.source]);
+
+  const closeLeadDetail = useCallback(() => {
+    setLeadDetailOpen(false);
+    setLeadDetailContext(null);
+  }, []);
 
   const handleSaveSelectedAsContacts = useCallback(async () => {
     const ids = selectedLeadIds.map(String);
@@ -1150,13 +1175,18 @@ ${customInputs}
                       const isImageUrl = typeof businessCard === 'string' && (businessCard.startsWith('data:image') || businessCard.startsWith('http'));
                       const isSelected = selectedLeadIds.includes(String(lead._id));
                       return (
-                        <tr key={lead._id}>
-                          <td className="lead-capture-td-checkbox">
+                        <tr
+                          key={lead._id}
+                          className="lead-capture-leads-row--clickable"
+                          onClick={() => openLeadDetail(lead)}
+                        >
+                          <td className="lead-capture-td-checkbox" onClick={(e) => e.stopPropagation()}>
                             <input
                               type="checkbox"
                               checked={isSelected}
                               onChange={() => handleLeadCheckboxChange(lead._id, idx, false)}
                               onClick={(e) => {
+                                e.stopPropagation();
                                 if (e.shiftKey) {
                                   e.preventDefault();
                                   handleLeadCheckboxChange(lead._id, idx, true);
@@ -1169,7 +1199,7 @@ ${customInputs}
                           <td className="lead-capture-cell-name">{lead.name}</td>
                           <td>{cf.phone || '—'}</td>
                           <td>{lead.email}</td>
-                          <td>
+                          <td onClick={(e) => e.stopPropagation()}>
                             {businessCard ? (
                               isImageUrl ? (
                                 <button type="button" className="lead-capture-view-image-btn" onClick={() => setLeadImagePreview(businessCard)} aria-label="보기">
@@ -1285,7 +1315,17 @@ ${customInputs}
         onPushComplete={handleCrmMappingPushComplete}
       />
 
-      
+      <HomeLeadDetailModal
+        open={leadDetailOpen}
+        formId={leadDetailContext?.formId}
+        leadId={leadDetailContext?.leadId}
+        channelLabel={leadDetailContext?.channelLabel}
+        channelSource={leadDetailContext?.channelSource}
+        onClose={closeLeadDetail}
+        onUpdated={() => {
+          if (selectedFormId) fetchChannelLeads(selectedFormId);
+        }}
+      />
     </div>
   );
 }

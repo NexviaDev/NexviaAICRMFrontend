@@ -13,6 +13,8 @@ import {
   isLeadVisibleInHome,
   SNOOZE_MS
 } from '@/lib/home-capture-leads-visibility';
+import { formatPhone } from '@/register/phoneFormat';
+import HomeLeadDetailModal from './home-lead-detail-modal';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -59,7 +61,7 @@ function formatLeadReceivedAt(iso) {
   }
 }
 
-/** 리드 연락처 — customFields.phone (리드 캡처 폼과 동일), 없으면 상위 phone */
+/** 리드 연락처 — customFields.phone (리드 캡처 폼과 동일), 없으면 상위 phone. 한국 번호는 하이픈 표기 (register/phoneFormat.js와 동일 규칙) */
 function formatLeadContact(lead) {
   const cf = lead?.customFields;
   const raw =
@@ -69,7 +71,12 @@ function formatLeadContact(lead) {
         ? lead.phone
         : '';
   if (raw === '' || raw == null) return '—';
-  return String(raw);
+  let digits = String(raw).replace(/\D/g, '');
+  if (digits.startsWith('82') && digits.length >= 11) {
+    digits = `0${digits.slice(2)}`;
+  }
+  if (digits.length === 0) return '—';
+  return formatPhone(digits);
 }
 
 function formatWonRevenue(w) {
@@ -95,16 +102,162 @@ function prepareChartSeries(series) {
   });
 }
 
-function buildLinePath(series) {
-  if (!Array.isArray(series) || series.length === 0) return '';
-  if (series.length === 1) return 'M0,100 L400,100';
-  const maxAbs = Math.max(1, ...series.map((item) => Math.abs(Number(item?.value) || 0)));
-  return series.map((item, idx) => {
-    const x = Math.round((idx / (series.length - 1)) * 400);
-    const y = Math.round(180 - ((Number(item?.value) || 0) / maxAbs) * 130);
-    return `${idx === 0 ? 'M' : 'L'}${x},${y}`;
-  }).join(' ');
+/** 홈 인사이트 차트 — 막대·라인 구간·포인트 공용 파스텔 (단색, 그라데이션 없음) */
+const CHART_PASTEL_COLORS = [
+  '#b8d4f0',
+  '#d8c8f0',
+  '#a8e8d4',
+  '#ffe0c0',
+  '#f5c8dc',
+  '#c4e0fa'
+];
+const CHART_PASTEL_NEGATIVE = '#f0b8c8';
+
+function chartPastelAt(index) {
+  return CHART_PASTEL_COLORS[((index % CHART_PASTEL_COLORS.length) + CHART_PASTEL_COLORS.length) % CHART_PASTEL_COLORS.length];
 }
+
+/** 순마진: 올해·작년 동일 Y축 스케일 */
+const MARGIN_LINE_CURRENT = '#5a9e82';
+const MARGIN_LINE_PREV = '#b8d4c8';
+/** 소비자가 단일 꺾은선 */
+const CONSUMER_LINE_COLOR = '#5a8ec4';
+
+function lineChartMaxAbs(seriesA, seriesB) {
+  const a = Array.isArray(seriesA) ? seriesA : [];
+  const b = Array.isArray(seriesB) ? seriesB : [];
+  const vals = [...a, ...b].map((x) => Math.abs(Number(x?.value) || 0));
+  return Math.max(1, ...vals);
+}
+
+/** viewBox 400×200 — 좌우 끝 포인트(반지름·선 두께)가 잘리지 않게 플롯 영역만 사용 */
+const LINE_CHART_VB = { w: 400, h: 200, padX: 28, padYTop: 14, padYBottom: 18 };
+
+function lineChartX(idx, len) {
+  if (len <= 1) return LINE_CHART_VB.w / 2;
+  const inner = LINE_CHART_VB.w - 2 * LINE_CHART_VB.padX;
+  return Math.round(LINE_CHART_VB.padX + (idx / (len - 1)) * inner);
+}
+
+function lineChartY(value, maxAbs) {
+  const { h, padYTop, padYBottom } = LINE_CHART_VB;
+  const plotH = h - padYTop - padYBottom;
+  const v = Number(value) || 0;
+  return Math.round(h - padYBottom - (v / maxAbs) * plotH);
+}
+
+function buildLinePathD(series, maxAbs) {
+  if (!Array.isArray(series) || series.length === 0) return '';
+  const n = series.length;
+  if (n === 1) {
+    const v = Number(series[0]?.value) || 0;
+    const x = lineChartX(0, 1);
+    const y = lineChartY(v, maxAbs);
+    return `M${x},${y}L${x},${y}`;
+  }
+  return series
+    .map((item, idx) => {
+      const x = lineChartX(idx, n);
+      const y = lineChartY(Number(item?.value) || 0, maxAbs);
+      return `${idx === 0 ? 'M' : 'L'}${x},${y}`;
+    })
+    .join(' ');
+}
+
+function chartSeriesAllZero(raw) {
+  const arr = Array.isArray(raw) ? raw : [];
+  return arr.length === 0 || arr.every((x) => Number(x?.value) === 0);
+}
+
+/** 올해·전년 이중 꺾은선 (순마진·소비자가 공용) */
+function MarginLineChartWithTooltips({
+  marginLineCurrent,
+  marginLinePrev,
+  currency,
+  title,
+  strokeCurrent = MARGIN_LINE_CURRENT,
+  strokePrev = MARGIN_LINE_PREV
+}) {
+  const [hoverIdx, setHoverIdx] = useState(null);
+  const cur = marginLineCurrent;
+  const prev = marginLinePrev;
+  const maxAbs = lineChartMaxAbs(cur, prev);
+  const dPrev = buildLinePathD(prev, maxAbs);
+  const dCur = buildLinePathD(cur, maxAbs);
+
+  return (
+    <div className="home-line-chart-chart-block">
+      <svg
+        className="home-line-chart"
+        viewBox={`0 0 ${LINE_CHART_VB.w} ${LINE_CHART_VB.h}`}
+        preserveAspectRatio="none"
+        aria-hidden
+      >
+        {dPrev ? (
+          <path
+            d={dPrev}
+            fill="none"
+            stroke={strokePrev}
+            strokeWidth="2.5"
+            strokeDasharray="7 5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ) : null}
+        {dCur ? (
+          <path
+            d={dCur}
+            fill="none"
+            stroke={strokeCurrent}
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ) : null}
+        {cur.map((item, idx) => {
+          const x = lineChartX(idx, cur.length);
+          const y = lineChartY(Number(item?.value) || 0, maxAbs);
+          return (
+            <circle
+              key={`${title}-dot-${item.label}-${idx}`}
+              cx={x}
+              cy={y}
+              r="5"
+              fill={strokeCurrent}
+              stroke="#fff"
+              strokeWidth="1.5"
+            />
+          );
+        })}
+      </svg>
+      <div className="home-line-chart-hover-zones" role="presentation">
+        {cur.map((item, idx) => {
+          const prevItem = prev[idx];
+          const prevVal = prevItem != null ? Number(prevItem.value) : 0;
+          return (
+            <div
+              key={`${title}-hz-${item.label}-${idx}`}
+              className="home-line-chart-hover-zone"
+              onMouseEnter={() => setHoverIdx(idx)}
+              onMouseLeave={() => setHoverIdx(null)}
+            >
+              {hoverIdx === idx ? (
+                <div className="home-chart-tooltip-fly home-chart-tooltip-fly--line" role="tooltip">
+                  <strong>{item.label}</strong>
+                  <div>올해: {formatCurrency(Number(item.value) || 0, currency)}</div>
+                  <div>전년: {formatCurrency(prevVal, currency)}</div>
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** 소비자가 전년 점선 — 순마진 전년과 동일 톤 */
+const CONSUMER_LINE_PREV = MARGIN_LINE_PREV;
 
 export default function Home() {
   const [data, setData] = useState(null);
@@ -118,11 +271,15 @@ export default function Home() {
   const [stageDefinitions, setStageDefinitions] = useState([]);
   const [pipelineLoading, setPipelineLoading] = useState(true);
   const [healthPinged, setHealthPinged] = useState(false);
-  const [selectedGraphCurrency, setSelectedGraphCurrency] = useState('KRW');
+  /** 인사이트 그래프: 막대 | 꺾은선 (기본 소비자=막대, 순마진=꺾은선) */
+  const [consumerChartMode, setConsumerChartMode] = useState('bar');
+  const [marginChartMode, setMarginChartMode] = useState('line');
   /** 홈 수신 리드: 완료 숨김(permanent) · 1주 스누즈(snoozed ISO) */
   const [leadHomeVisibility, setLeadHomeVisibility] = useState(() =>
     loadHomeCaptureLeadVisibility(getLeadVisibilityUserKey())
   );
+  const [leadDetailOpen, setLeadDetailOpen] = useState(false);
+  const [leadDetailContext, setLeadDetailContext] = useState(null);
   const pipelineMounted = useRef(true);
 
   useEffect(() => {
@@ -140,7 +297,9 @@ export default function Home() {
           salesGraphs: {
             currencies: ['KRW'],
             consumerByCurrency: { KRW: [] },
-            netMarginByCurrency: { KRW: [] }
+            consumerPrevYearByCurrency: { KRW: [] },
+            netMarginByCurrency: { KRW: [] },
+            netMarginPrevYearByCurrency: { KRW: [] }
           },
           activeDeals: 128,
           newLeads: 45,
@@ -176,10 +335,10 @@ export default function Home() {
           const leadBatches = await Promise.all(
             items.map(async (form) => {
               try {
-                const lr = await fetch(`${API_BASE}/lead-capture-forms/${form._id}/leads`, {
-                  headers: getAuthHeader(),
-                  credentials: 'include'
-                });
+                const lr = await fetch(
+                  `${API_BASE}/lead-capture-forms/${form._id}/leads?limit=120&page=1`,
+                  { headers: getAuthHeader(), credentials: 'include' }
+                );
                 const lj = await lr.json().catch(() => ({}));
                 if (!lr.ok) return [];
                 const list = Array.isArray(lj.items) ? lj.items : [];
@@ -314,6 +473,23 @@ export default function Home() {
     });
   }, []);
 
+  const openLeadDetail = useCallback((lead) => {
+    const fid = lead.leadCaptureFormId?._id ?? lead.leadCaptureFormId;
+    if (!fid || lead._id == null) return;
+    setLeadDetailContext({
+      formId: String(fid),
+      leadId: String(lead._id),
+      channelLabel: lead._channelLabel,
+      channelSource: lead._channelSource
+    });
+    setLeadDetailOpen(true);
+  }, []);
+
+  const closeLeadDetail = useCallback(() => {
+    setLeadDetailOpen(false);
+    setLeadDetailContext(null);
+  }, []);
+
   const snoozeLeadHomeOneWeek = useCallback((leadId) => {
     const key = getLeadVisibilityUserKey();
     const until = new Date(Date.now() + SNOOZE_MS).toISOString();
@@ -335,11 +511,8 @@ export default function Home() {
     return currencies.length > 0 ? currencies : ['KRW'];
   }, [stats.salesGraphs]);
 
-  useEffect(() => {
-    if (!graphCurrencies.includes(selectedGraphCurrency)) {
-      setSelectedGraphCurrency(graphCurrencies[0] || 'KRW');
-    }
-  }, [graphCurrencies, selectedGraphCurrency]);
+  /** 통화 선택 UI 제거 — API 통화 목록의 첫 통화로 그래프 표시 */
+  const selectedGraphCurrency = graphCurrencies[0] || 'KRW';
 
   const cards = [
     {
@@ -393,108 +566,182 @@ export default function Home() {
     }));
   }, [pipelineMainStages, grouped, totals, stageLabels]);
 
-  const consumerSeries = useMemo(
-    () => prepareChartSeries(stats.salesGraphs?.consumerByCurrency?.[selectedGraphCurrency] || []),
+  const consumerRaw = useMemo(
+    () => stats.salesGraphs?.consumerByCurrency?.[selectedGraphCurrency] || [],
     [stats.salesGraphs, selectedGraphCurrency]
   );
-  const netMarginSeries = useMemo(
-    () => prepareChartSeries(stats.salesGraphs?.netMarginByCurrency?.[selectedGraphCurrency] || []),
+  const consumerPrevRaw = useMemo(
+    () => stats.salesGraphs?.consumerPrevYearByCurrency?.[selectedGraphCurrency] || [],
     [stats.salesGraphs, selectedGraphCurrency]
   );
-  const consumerTotal = useMemo(
-    () => consumerSeries.reduce((sum, item) => sum + item.value, 0),
-    [consumerSeries]
+  const consumerSeries = useMemo(() => prepareChartSeries(consumerRaw), [consumerRaw]);
+  const netMarginRaw = useMemo(
+    () => stats.salesGraphs?.netMarginByCurrency?.[selectedGraphCurrency] || [],
+    [stats.salesGraphs, selectedGraphCurrency]
   );
-  const netMarginTotal = useMemo(
-    () => netMarginSeries.reduce((sum, item) => sum + item.value, 0),
-    [netMarginSeries]
+  const netMarginPrevRaw = useMemo(
+    () => stats.salesGraphs?.netMarginPrevYearByCurrency?.[selectedGraphCurrency] || [],
+    [stats.salesGraphs, selectedGraphCurrency]
   );
+  const netMarginSeries = useMemo(() => prepareChartSeries(netMarginRaw), [netMarginRaw]);
+  const renderChartPanel = (title, subtitle, series, tone, emptyText, chartOptions = {}) => {
+    const {
+      marginLineCurrent = [],
+      marginLinePrev = [],
+      consumerLineCurrent = [],
+      consumerLinePrev = [],
+      chartMode = 'bar',
+      onChartModeChange
+    } = chartOptions;
+    const isMargin = tone === 'margin';
+    const marginEmpty = isMargin && chartSeriesAllZero(marginLineCurrent);
+    const consumerEmpty =
+      !isMargin &&
+      (chartMode === 'line'
+        ? chartSeriesAllZero(consumerLineCurrent) && chartSeriesAllZero(consumerLinePrev)
+        : series.length === 0 || series.every((item) => item.value === 0));
 
-  const renderChartPanel = (title, subtitle, total, series, tone, emptyText) => (
-    <div className="panel home-chart-panel">
-      <div className="panel-head home-chart-head">
-        <div>
-          <h2>{title}</h2>
-          <p className="home-chart-subtitle">{subtitle}</p>
-        </div>
-        <div className="home-chart-actions">
-          <span className={`panel-badge home-chart-total tone-${tone}`}>{formatCurrency(total, selectedGraphCurrency)}</span>
-          {graphCurrencies.length > 0 && (
-            <div className="panel-actions">
-              {graphCurrencies.map((currency) => (
-                <button
-                  key={currency}
-                  type="button"
-                  className={`chip ${selectedGraphCurrency === currency ? 'active' : ''}`}
-                  onClick={() => setSelectedGraphCurrency(currency)}
-                >
-                  {currency}
-                </button>
-              ))}
+    const renderBarBlock = (barSeries) => (
+      <div className="home-bar-chart-wrap">
+        <div className="home-mini-chart">
+          {barSeries.map((item, idx) => (
+            <div key={`${title}-${item.label}-${idx}`} className="home-mini-chart-col home-mini-chart-col--tip">
+              <div className="home-mini-chart-track">
+                <div className="home-mini-chart-bar-hit">
+                  <div
+                    className={`home-mini-chart-bar ${item.value < 0 ? 'negative' : ''}`}
+                    style={{
+                      height: `${Math.max(12, item.height * 2)}%`,
+                      backgroundColor: item.value < 0 ? CHART_PASTEL_NEGATIVE : chartPastelAt(idx)
+                    }}
+                  />
+                  <div className="home-chart-tooltip-fly home-chart-tooltip-fly--bar" role="tooltip">
+                    <strong>{item.label}</strong>
+                    <span>{formatCurrency(item.value, selectedGraphCurrency)}</span>
+                  </div>
+                </div>
+              </div>
             </div>
+          ))}
+        </div>
+        <div className="home-bar-chart-labels">
+          {barSeries.map((item) => (
+            <span key={`${title}-x-${item.label}`}>{item.label}</span>
+          ))}
+        </div>
+      </div>
+    );
+
+    return (
+      <div className="panel home-chart-panel">
+        <div className="panel-head home-chart-head">
+          <div>
+            <h2>{title}</h2>
+            <p className="home-chart-subtitle">{subtitle}</p>
+          </div>
+          <div className="home-chart-actions">
+            {typeof onChartModeChange === 'function' ? (
+              <div className="home-chart-view-toggle">
+                <button
+                  type="button"
+                  className="home-chart-type-icon active"
+                  onClick={() => onChartModeChange(chartMode === 'bar' ? 'line' : 'bar')}
+                  aria-label={
+                    chartMode === 'bar'
+                      ? '막대 그래프로 보는 중입니다. 꺾은선으로 전환합니다.'
+                      : '꺾은선 그래프로 보는 중입니다. 막대로 전환합니다.'
+                  }
+                  title={chartMode === 'bar' ? '꺾은선 그래프로 전환' : '막대 그래프로 전환'}
+                >
+                  <span className="material-symbols-outlined" aria-hidden>
+                    {chartMode === 'bar' ? 'bar_chart' : 'show_chart'}
+                  </span>
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+        <div className="home-chart-body">
+          {loading ? (
+            <p className="home-chart-empty">그래프 불러오는 중…</p>
+          ) : isMargin ? (
+            marginEmpty ? (
+              <p className="home-chart-empty">{emptyText}</p>
+            ) : chartMode === 'line' ? (
+              <div className="home-line-chart-wrap">
+                <MarginLineChartWithTooltips
+                  marginLineCurrent={marginLineCurrent}
+                  marginLinePrev={marginLinePrev}
+                  currency={selectedGraphCurrency}
+                  title={title}
+                />
+                <div className="home-line-chart-legend" aria-hidden>
+                  <span>
+                    <span className="home-line-legend-swatch current" /> 올해(최근 6개월)
+                  </span>
+                  <span>
+                    <span className="home-line-legend-swatch prev" /> 전년 동월
+                  </span>
+                </div>
+                <div className="home-line-chart-labels">
+                  {marginLineCurrent.map((item) => (
+                    <span key={`${title}-label-${item.label}`}>{item.label}</span>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              renderBarBlock(series)
+            )
+          ) : consumerEmpty ? (
+            <p className="home-chart-empty">{emptyText}</p>
+          ) : chartMode === 'line' ? (
+            <div className="home-line-chart-wrap">
+              <MarginLineChartWithTooltips
+                marginLineCurrent={consumerLineCurrent}
+                marginLinePrev={consumerLinePrev}
+                currency={selectedGraphCurrency}
+                title={title}
+                strokeCurrent={CONSUMER_LINE_COLOR}
+                strokePrev={CONSUMER_LINE_PREV}
+              />
+              <div className="home-line-chart-legend" aria-hidden>
+                <span>
+                  <span className="home-line-legend-swatch current consumer" /> 올해(최근 6개월)
+                </span>
+                <span>
+                  <span className="home-line-legend-swatch prev consumer" /> 전년 동월
+                </span>
+              </div>
+              <div className="home-line-chart-labels">
+                {consumerLineCurrent.map((item) => (
+                  <span key={`${title}-cline-${item.label}`}>{item.label}</span>
+                ))}
+              </div>
+            </div>
+          ) : (
+            renderBarBlock(series)
           )}
         </div>
       </div>
-      <div className="home-chart-body">
-        {loading ? (
-          <p className="home-chart-empty">그래프 불러오는 중…</p>
-        ) : series.length === 0 || series.every((item) => item.value === 0) ? (
-          <p className="home-chart-empty">{emptyText}</p>
-        ) : tone === 'margin' ? (
-          <div className="home-line-chart-wrap">
-            <svg className="home-line-chart" viewBox="0 0 400 200" preserveAspectRatio="none" aria-hidden>
-              <path d={buildLinePath(series)} fill="none" />
-              {series.map((item, idx) => {
-                const maxAbs = Math.max(1, ...series.map((s) => Math.abs(Number(s?.value) || 0)));
-                const x = series.length === 1 ? 0 : Math.round((idx / (series.length - 1)) * 400);
-                const y = Math.round(180 - ((Number(item?.value) || 0) / maxAbs) * 130);
-                return <circle key={`${title}-dot-${item.label}`} cx={x} cy={y} r="4" />;
-              })}
-            </svg>
-            <div className="home-line-chart-labels">
-              {series.map((item) => (
-                <span key={`${title}-label-${item.label}`}>{item.label}</span>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="home-bar-chart-wrap">
-            <div className="home-mini-chart">
-              {series.map((item) => (
-                <div key={`${title}-${item.label}`} className="home-mini-chart-col">
-                  <div className="home-mini-chart-track">
-                    <div
-                      className={`home-mini-chart-bar tone-${tone} ${item.value < 0 ? 'negative' : ''}`}
-                      style={{ height: `${Math.max(12, item.height * 2)}%` }}
-                      title={`${item.label} ${formatCurrency(item.value, selectedGraphCurrency)}`}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="home-bar-chart-labels">
-              {series.map((item) => (
-                <span key={`${title}-x-${item.label}`}>{item.label}</span>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="page home-page">
+      <HomeLeadDetailModal
+        open={leadDetailOpen}
+        formId={leadDetailContext?.formId}
+        leadId={leadDetailContext?.leadId}
+        channelLabel={leadDetailContext?.channelLabel}
+        channelSource={leadDetailContext?.channelSource}
+        onClose={closeLeadDetail}
+        onUpdated={() => {}}
+      />
       <header className="page-header">
         <PageHeaderNotifyChat />
       </header>
 
       <div className="page-content">
-        <header className="home-overview-header">
-          <h1>대시보드 개요</h1>
-          <p>환영합니다! 오늘 당신의 성과를 확인해보세요.</p>
-        </header>
-
         <div className="home-top-grid">
           <div className="panel home-lead-channel-panel">
             <div className="panel-head">
@@ -569,11 +816,18 @@ export default function Home() {
                   <>
                     <ul className="home-todo-leads-list">
                       {visibleHomeCaptureLeads.slice(0, HOME_CAPTURE_LEADS_DISPLAY_MAX).map((lead) => (
-                        <li key={String(lead._id)} className="home-todo-leads-item">
+                        <li
+                          key={String(lead._id)}
+                          className="home-todo-leads-item home-todo-leads-item--clickable"
+                          onClick={() => openLeadDetail(lead)}
+                        >
                           <button
                             type="button"
                             className="home-lead-check"
-                            onClick={() => dismissLeadFromHome(lead._id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              dismissLeadFromHome(lead._id);
+                            }}
                             aria-label="처리 완료·목록에서 숨기기"
                             title="처리 완료·목록에서 숨기기"
                           >
@@ -598,7 +852,10 @@ export default function Home() {
                             <button
                               type="button"
                               className="home-lead-snooze-btn"
-                              onClick={() => snoozeLeadHomeOneWeek(lead._id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                snoozeLeadHomeOneWeek(lead._id);
+                              }}
                               aria-label="일주일 뒤에 다시 표시"
                               title="일주일 뒤에 다시 표시"
                             >
@@ -637,19 +894,29 @@ export default function Home() {
         <div className="home-insights-grid">
           {renderChartPanel(
             '소비자가 기준 그래프',
-            '수주 성공 건의 최근 6개월 소비자가 합계입니다.',
-            consumerTotal,
+            '수주 성공 건의 최근 6개월 소비자가 합계입니다. 꺾은선에서는 전년 동월과 같은 눈금으로 비교합니다.',
             consumerSeries,
             'consumer',
-            '최근 6개월 소비자가 데이터가 없습니다.'
+            '최근 6개월·전년 동월 소비자가 데이터가 없습니다.',
+            {
+              chartMode: consumerChartMode,
+              onChartModeChange: setConsumerChartMode,
+              consumerLineCurrent: consumerRaw,
+              consumerLinePrev: consumerPrevRaw
+            }
           )}
           {renderChartPanel(
             '순마진 그래프',
-            '수주 금액에서 원가와 유통가를 제외한 최근 6개월 순마진입니다.',
-            netMarginTotal,
+            '수주 금액에서 원가×수량을 뺀 금액입니다. 최근 6개월과 전년 동월 6개월을 같은 눈금으로 비교합니다.',
             netMarginSeries,
             'margin',
-            '최근 6개월 순마진 데이터가 없습니다.'
+            '최근 6개월·전년 동월 순마진 데이터가 없습니다.',
+            {
+              chartMode: marginChartMode,
+              onChartModeChange: setMarginChartMode,
+              marginLineCurrent: netMarginRaw,
+              marginLinePrev: netMarginPrevRaw
+            }
           )}
         </div>
 

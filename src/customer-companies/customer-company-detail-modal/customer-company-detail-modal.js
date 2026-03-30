@@ -12,6 +12,8 @@ import './customer-company-detail-modal.css';
 
 import { API_BASE } from '@/config';
 import { getStoredCrmUser, isSeniorOrAboveRole } from '@/lib/crm-role-utils';
+import { pingBackendHealth, BACKEND_KEEPALIVE_INTERVAL_MS, BACKEND_KEEPALIVE_INTERVAL_ENABLED } from '@/lib/backend-wake';
+import { pollJournalFromAudioJob } from '@/lib/journal-from-audio-poll';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -174,6 +176,15 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
   useEffect(() => {
     if (showRegisteredNamePopover) setCertificateImageError(false);
   }, [showRegisteredNamePopover]);
+
+  /** 음성 전사 등 장시간 요청 중 Railway 슬립 방지 — VITE_BACKEND_KEEPALIVE_INTERVAL_MS=0 이면 주기 핑 생략 */
+  useEffect(() => {
+    if (!audioUploading || !BACKEND_KEEPALIVE_INTERVAL_ENABLED) return;
+    const id = setInterval(() => {
+      pingBackendHealth(getAuthHeader);
+    }, BACKEND_KEEPALIVE_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [audioUploading]);
 
   const driveFolderName = (() => {
     if (!companyToShow?._id) return '미소속_미등록';
@@ -565,8 +576,10 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
     setJournalError('');
     setSummaryNotice({
       type: 'info',
-      text: '음성 파일을 처리 중입니다. AssemblyAI 전사 후 Gemini가 분류/요약합니다.'
+      text:
+        '음성 파일을 올렸습니다. 전사·요약은 서버에서 진행하며, 진행 중에도 연결이 끊기지 않도록 짧게 상태를 확인합니다.'
     });
+    await pingBackendHealth(getAuthHeader);
     setAudioUploading(true);
     try {
       const form = new FormData();
@@ -574,16 +587,27 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
       const res = await fetch(`${API_BASE}/customer-companies/${companyId}/history/from-audio`, {
         method: 'POST',
         headers: getAuthHeader(),
+        credentials: 'include',
         body: form
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '음성 업로드 처리에 실패했습니다.');
-      setJournalText(data.content || '');
-      setJournalDateTime(toDatetimeLocalValue(new Date()));
-      setSummaryNotice({
-        type: 'info',
-        text: '요약이 입력창에 채워졌습니다. 내용 확인 후 "메모 저장"을 눌러 등록해 주세요. 개인정보 보호를 위해 AssemblyAI 전사 데이터는 삭제 요청되었습니다.'
-      });
+      if (res.status === 202 && data.jobId) {
+        setSummaryNotice({
+          type: 'info',
+          text: 'AssemblyAI 전사 및 Gemini 요약 진행 중입니다. 잠시만 기다려 주세요…'
+        });
+        const pollUrl = `${API_BASE}/customer-companies/${companyId}/history/from-audio/jobs/${encodeURIComponent(data.jobId)}`;
+        const result = await pollJournalFromAudioJob(pollUrl, getAuthHeader);
+        setJournalText(result.content || '');
+        setJournalDateTime(toDatetimeLocalValue(new Date()));
+        setSummaryNotice({
+          type: 'info',
+          text: '요약이 입력창에 채워졌습니다. 내용 확인 후 "메모 저장"을 눌러 등록해 주세요. 개인정보 보호를 위해 AssemblyAI 전사 데이터는 삭제 요청되었습니다.'
+        });
+      } else {
+        throw new Error(data.error || '서버 응답 형식을 알 수 없습니다.');
+      }
     } catch (e) {
       setJournalError(e.message || '음성 업로드 처리에 실패했습니다.');
     } finally {

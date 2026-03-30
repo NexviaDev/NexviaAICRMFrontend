@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { API_BASE } from '@/config';
 import { getPendingExcelImportJobs, removePendingExcelImportJob } from '@/lib/cc-excel-import-jobs';
+import { LAYOUT_EXCEL_IMPORT_POLL_MS } from '@/lib/polling-intervals';
 import Sidebar from './sidebar';
 import './layout.css';
 
@@ -85,7 +86,7 @@ export default function Layout() {
       }
     };
 
-    const id = setInterval(poll, 12000);
+    const id = setInterval(poll, LAYOUT_EXCEL_IMPORT_POLL_MS);
     void poll();
     return () => {
       cancelled = true;

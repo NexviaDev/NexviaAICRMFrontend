@@ -255,6 +255,17 @@
   gap: 12px;
 }
 
+/* 회사·직원 등: 검색/안내 카드 폭을 헤더·테이블(1100px)과 동일하게 */
+.admin-sub-toolbar-wrap {
+  max-width: 1100px;
+  margin: 0 auto 18px;
+}
+
+.admin-sub-notice-wide {
+  max-width: 1100px;
+  margin: 48px auto 0;
+}
+
 .admin-sub-users-summary {
   max-width: 1100px;
   margin: 0 auto 18px;

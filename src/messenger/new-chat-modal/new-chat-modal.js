@@ -32,7 +32,9 @@ export default function NewChatModal({
   /** 모달 제목 */
   title,
   /** 확인 버튼 라벨 */
-  submitLabel
+  submitLabel,
+  /** 방 이름 없이 초대만 — 기존 대화에 멤버 추가용 */
+  inviteOnly
 }) {
   const [name, setName] = useState('');
   const [emailInput, setEmailInput] = useState('');
@@ -41,12 +43,12 @@ export default function NewChatModal({
 
   useEffect(() => {
     if (!open) return undefined;
-    setName(String(initialDisplayName || '').trim());
+    if (!inviteOnly) setName(String(initialDisplayName || '').trim());
     setEmailInput('');
     const next = normalizeEmailList(initialInviteRef.current || []);
     if (next.length) onInviteEmailsChange?.(next);
     return undefined;
-  }, [open, initialDisplayName, onInviteEmailsChange]);
+  }, [open, initialDisplayName, onInviteEmailsChange, inviteOnly]);
 
   const addEmailFromInput = useCallback(() => {
     const raw = emailInput.trim();
@@ -79,29 +81,35 @@ export default function NewChatModal({
   if (!open) return null;
 
   const list = inviteEmails || [];
+  const isInviteOnly = inviteOnly === true;
+  const titleId = isInviteOnly ? 'messenger-add-members-title' : 'messenger-new-chat-title';
 
   return (
-    <div className="messenger-modal-root" role="dialog" aria-modal="true" aria-labelledby="messenger-new-chat-title">
+    <div className="messenger-modal-root" role="dialog" aria-modal="true" aria-labelledby={titleId}>
       <div className="messenger-modal-backdrop" aria-hidden />
       <div className="messenger-modal-panel messenger-modal-panel--wide">
-        <h3 id="messenger-new-chat-title">{title || '새 채팅방'}</h3>
+        <h3 id={titleId}>{title || (isInviteOnly ? '대화상대 추가' : '새 채팅방')}</h3>
         <p className="new-chat-modal-meta">
           {description ||
-            'Google Chat API로 스페이스를 만듭니다. 멤버 초대가 되면 Google이 Gmail·Workspace 계정으로 알림을 보냅니다. 외부 초대는 서버에서 외부 사용자 허용을 시도합니다.'}
+            (isInviteOnly
+              ? '이 대화방에 Google Chat 멤버로 초대합니다. Workspace·Gmail 계정 이메일이어야 하며, Google이 초대 알림을 보냅니다.'
+              : 'Google Chat API로 스페이스를 만듭니다. 멤버 초대가 되면 Google이 Gmail·Workspace 계정으로 알림을 보냅니다. 외부 초대는 서버에서 외부 사용자 허용을 시도합니다.')}
         </p>
-        <div className="messenger-modal-field">
-          <label htmlFor="messenger-new-name">방 이름</label>
-          <input
-            id="messenger-new-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="예: 영업 전략"
-            autoComplete="off"
-          />
-        </div>
+        {!isInviteOnly ? (
+          <div className="messenger-modal-field">
+            <label htmlFor="messenger-new-name">방 이름</label>
+            <input
+              id="messenger-new-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="예: 영업 전략"
+              autoComplete="off"
+            />
+          </div>
+        ) : null}
         <div className="messenger-modal-field">
           <span className="messenger-modal-field-label-row">
-            <label htmlFor="messenger-new-email-input">초대 이메일 (선택)</label>
+            <label htmlFor="messenger-new-email-input">{isInviteOnly ? '초대 이메일 (필수)' : '초대 이메일 (선택)'}</label>
             {onRequestParticipantPicker ? (
               <button
                 type="button"
@@ -154,15 +162,25 @@ export default function NewChatModal({
           <button
             type="button"
             className="messenger-modal-submit"
-            disabled={loading || !name.trim()}
-            onClick={() =>
-              onSubmit({
-                displayName: name.trim(),
-                inviteEmails: normalizeEmailList(inviteEmails || [])
-              })
+            disabled={
+              loading ||
+              (isInviteOnly
+                ? normalizeEmailList(inviteEmails || []).length === 0
+                : !name.trim())
             }
+            onClick={() => {
+              const emails = normalizeEmailList(inviteEmails || []);
+              if (isInviteOnly) {
+                onSubmit?.({ inviteEmails: emails });
+              } else {
+                onSubmit?.({
+                  displayName: name.trim(),
+                  inviteEmails: emails
+                });
+              }
+            }}
           >
-            {loading ? '처리 중…' : submitLabel || '만들기'}
+            {loading ? '처리 중…' : submitLabel || (isInviteOnly ? '초대하기' : '만들기')}
           </button>
         </div>
       </div>

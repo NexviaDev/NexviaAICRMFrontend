@@ -270,6 +270,15 @@
   margin-top: 0;
 }
 
+.lead-capture-leads-table tbody tr.lead-capture-leads-row--clickable {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.lead-capture-leads-table tbody tr.lead-capture-leads-row--clickable:hover {
+  background: rgba(99, 102, 241, 0.06);
+}
+
 .lead-capture-cell-custom {
   max-width: 12rem;
   overflow: hidden;

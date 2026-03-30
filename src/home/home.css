@@ -102,24 +102,6 @@
   background: #f3f5f8;
 }
 
-.home-overview-header {
-  margin-bottom: 1.5rem;
-}
-
-.home-overview-header h1 {
-  margin: 0;
-  font-size: 2rem;
-  font-weight: 800;
-  letter-spacing: -0.01em;
-  color: #26323d;
-}
-
-.home-overview-header p {
-  margin: 0.45rem 0 0;
-  color: var(--text-muted);
-  font-size: 0.95rem;
-}
-
 .cards-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -323,28 +305,52 @@
   gap: 0.65rem;
 }
 
-.home-chart-total {
-  font-size: 0.8125rem;
-  font-weight: 700;
-  text-transform: none;
+.home-chart-view-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  justify-content: flex-end;
+  align-items: center;
 }
 
-.home-chart-total.tone-consumer {
-  background: #eef5ff;
-  color: #40618a;
+.home-chart-type-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.5rem;
+  background: var(--bg-light);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
-.home-chart-total.tone-margin {
-  background: #eefbf4;
-  color: #2b7a58;
+.home-chart-type-icon:hover {
+  background: #eef2f6;
+  color: var(--primary);
+}
+
+.home-chart-type-icon.active {
+  background: var(--pastel-lavender);
+  color: var(--primary);
+}
+
+.home-chart-type-icon .material-symbols-outlined {
+  font-size: 1.25rem;
+  font-variation-settings: 'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 24;
 }
 
 .home-chart-body {
   padding: 1.5rem;
+  overflow: visible;
 }
 
 .home-chart-panel {
   background: #f9fbfd;
+  overflow: visible;
 }
 
 .home-bar-chart-wrap {
@@ -370,22 +376,100 @@
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+  padding: 0 0.35rem;
+}
+
+.home-line-chart-chart-block {
+  position: relative;
+  width: 100%;
+  height: 14rem;
+}
+
+.home-line-chart-chart-block .home-line-chart {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.home-line-chart-hover-zones {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  z-index: 2;
+}
+
+.home-line-chart-hover-zone {
+  flex: 1 1 0;
+  min-width: 0;
+  position: relative;
+  cursor: crosshair;
+}
+
+.home-chart-tooltip-fly {
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  transform: translateX(-50%);
+  margin-bottom: 6px;
+  padding: 0.45rem 0.65rem;
+  border-radius: 0.45rem;
+  background: #f4faf7;
+  border: 1px solid rgba(90, 158, 130, 0.35);
+  box-shadow: 0 4px 14px rgba(40, 70, 60, 0.12);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #3d5348;
+  white-space: nowrap;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.home-chart-tooltip-fly strong {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.72rem;
+  color: #5a6b78;
+}
+
+.home-chart-tooltip-fly--line div {
+  margin-top: 0.15rem;
+  font-weight: 600;
+}
+
+.home-chart-tooltip-fly--bar {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.16s ease, visibility 0.16s ease;
+}
+
+.home-mini-chart-col--tip:hover .home-chart-tooltip-fly--bar {
+  opacity: 1;
+  visibility: visible;
+}
+
+.home-mini-chart-bar-hit {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
 }
 
 .home-line-chart {
   width: 100%;
   height: 14rem;
+  overflow: visible;
 }
 
+/* 라인 구간·포인트 색은 SVG 속성으로 지정 (파스텔 팔레트) */
 .home-line-chart path {
-  stroke: #2e678f;
-  stroke-width: 4;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  fill: none;
 }
 
 .home-line-chart circle {
-  fill: #2e678f;
+  vector-effect: non-scaling-stroke;
 }
 
 .home-line-chart-labels {
@@ -399,6 +483,60 @@
   font-weight: 700;
   color: #8191a0;
   text-align: center;
+}
+
+.home-line-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.25rem;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #6b7a88;
+}
+
+.home-line-chart-legend > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.home-line-legend-swatch {
+  display: inline-block;
+  width: 1.35rem;
+  height: 0.28rem;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.home-line-legend-swatch.current {
+  background: #5a9e82;
+}
+
+.home-line-legend-swatch.prev {
+  background: repeating-linear-gradient(
+    90deg,
+    #b8d4c8 0,
+    #b8d4c8 4px,
+    transparent 4px,
+    transparent 7px
+  );
+  height: 3px;
+  border-radius: 1px;
+}
+
+.home-line-legend-swatch.current.consumer {
+  background: #5a8ec4;
+}
+
+.home-line-legend-swatch.prev.consumer {
+  background: repeating-linear-gradient(
+    90deg,
+    #b8d4c8 0,
+    #b8d4c8 4px,
+    transparent 4px,
+    transparent 7px
+  );
 }
 
 .home-chart-empty {
@@ -466,16 +604,10 @@
   transition: height 0.25s ease;
 }
 
-.home-mini-chart-bar.tone-consumer {
-  background: linear-gradient(180deg, #b9d5ec 0%, #6fa6cf 100%);
-}
-
-.home-mini-chart-bar.tone-margin {
-  background: linear-gradient(180deg, #bce9d0 0%, #6bbd96 100%);
-}
-
+/* 막대 색상은 home.js 인라인 backgroundColor (파스텔 단색) */
 .home-mini-chart-bar.negative {
-  background: linear-gradient(180deg, #f8c9d2 0%, #e294a6 100%);
+  /* 음수는 인라인으로 덮어씀; 폴백만 */
+  background-color: #f0b8c8;
 }
 
 .home-mini-chart-label {
@@ -797,6 +929,15 @@
 
 .home-leads-panel .home-todo-leads-item:hover {
   background: #eef3f8;
+}
+
+.home-leads-panel .home-todo-leads-item--clickable {
+  cursor: pointer;
+}
+
+.home-leads-panel .home-todo-leads-item--clickable:focus-visible {
+  outline: 2px solid rgba(99, 102, 241, 0.45);
+  outline-offset: 2px;
 }
 
 .home-todo-leads-item-main {

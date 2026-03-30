@@ -48,6 +48,7 @@ export default function SalesPipeline() {
   const [expandedZone, setExpandedZone] = useState(null);
   const searchTimer = useRef(null);
   const [healthPinged, setHealthPinged] = useState(false);
+  const [listMeta, setListMeta] = useState(null);
   const [stageDefinitions, setStageDefinitions] = useState([]);
   const [showStagesModal, setShowStagesModal] = useState(false);
 
@@ -88,9 +89,11 @@ export default function SalesPipeline() {
       const data = await res.json();
       setGrouped(data.grouped || {});
       setTotals(data.totals || {});
+      setListMeta(data.meta || null);
     } catch {
       setGrouped({});
       setTotals({});
+      setListMeta(null);
     } finally {
       setLoading(false);
     }
@@ -237,6 +240,13 @@ export default function SalesPipeline() {
           <PageHeaderNotifyChat buttonClassName="sp-quick-icon-btn" wrapperClassName="sp-header-quick" />
         </div>
       </header>
+
+      {listMeta?.listCapped ? (
+        <div className="sp-list-cap-notice" role="status">
+          전체 {Number(listMeta.totalOpportunities || 0).toLocaleString()}건 중 최신{' '}
+          {Number(listMeta.displayedOpportunities || 0).toLocaleString()}건만 표시됩니다. 검색으로 범위를 좁혀 주세요.
+        </div>
+      ) : null}
 
       {/* Kanban Board */}
       {loading ? (

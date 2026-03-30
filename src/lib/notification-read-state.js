@@ -24,10 +24,12 @@ export function getLastSeenPublishedAtMs() {
  */
 export function markNotificationsAsSeen(notifications) {
   const max = maxPublishedAtMs(notifications);
+  const prev = getLastSeenPublishedAtMs();
   if (max == null) {
-    localStorage.setItem(STORAGE_KEY, new Date().toISOString());
+    if (prev == null) localStorage.setItem(STORAGE_KEY, new Date().toISOString());
   } else {
-    localStorage.setItem(STORAGE_KEY, new Date(max).toISOString());
+    const nextMs = prev == null ? max : Math.max(prev, max);
+    localStorage.setItem(STORAGE_KEY, new Date(nextMs).toISOString());
   }
   try {
     window.dispatchEvent(new CustomEvent('crm-notifications-seen'));
@@ -46,4 +48,17 @@ export function hasUnreadNotifications(notifications) {
   const lastSeen = getLastSeenPublishedAtMs();
   if (lastSeen == null) return true;
   return max > lastSeen;
+}
+
+/**
+ * GET /notifications/badge 의 latestPublishedAt(ISO)과 로컬 읽음 시각 비교.
+ * @param {string | null | undefined} iso
+ */
+export function hasUnreadFromLatestPublishedAt(iso) {
+  if (iso == null || iso === '') return false;
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return false;
+  const lastSeen = getLastSeenPublishedAtMs();
+  if (lastSeen == null) return true;
+  return t > lastSeen;
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import CustomerCompanySearchModal from '../../customer-companies/customer-company-search-modal/customer-company-search-modal';
 import CustomerCompanyEmployeesSearchModal from '../../customer-company-employees/customer-company-employees-search-modal/customer-company-employees-search-modal';
 import ProductSearchModal from '../product-search-modal/product-search-modal';
@@ -41,6 +41,58 @@ function parseNumber(val) {
   return Number(String(val).replace(/[^0-9]/g, '')) || 0;
 }
 
+function getCurrentUserId() {
+  try {
+    const raw = localStorage.getItem('crm_user');
+    const u = raw ? JSON.parse(raw) : null;
+    return u?._id || u?.id || null;
+  } catch {
+    return null;
+  }
+}
+
+function formatCommentDate(iso) {
+  if (!iso) return '';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' });
+  } catch {
+    return '';
+  }
+}
+
+function isCommentAuthor(comment, userId) {
+  if (userId == null || !comment?.userId) return false;
+  return String(comment.userId) === String(userId);
+}
+
+/** 평면 코멘트 배열 → 루트 목록 + 부모 id → 자식 배열 맵 */
+function organizeComments(comments) {
+  const list = Array.isArray(comments) ? [...comments] : [];
+  const byId = new Map();
+  list.forEach((c) => {
+    const id = c?._id != null ? String(c._id) : c?.id != null ? String(c.id) : '';
+    if (id) byId.set(id, c);
+  });
+  const sortByDate = (a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0);
+  const childrenMap = new Map();
+  const roots = [];
+  list.forEach((c) => {
+    const id = c?._id != null ? String(c._id) : c?.id != null ? String(c.id) : '';
+    if (!id) return;
+    const pid = c.parentCommentId != null ? String(c.parentCommentId) : '';
+    if (!pid || !byId.has(pid)) {
+      roots.push(c);
+    } else {
+      if (!childrenMap.has(pid)) childrenMap.set(pid, []);
+      childrenMap.get(pid).push(c);
+    }
+  });
+  roots.sort(sortByDate);
+  childrenMap.forEach((arr) => arr.sort(sortByDate));
+  return { roots, childrenMap };
+}
+
 export default function OpportunityModal({ mode, oppId, defaultStage, stageOptions, onClose, onSaved }) {
   const isEdit = mode === 'edit';
   const stageSelectOptions = Array.isArray(stageOptions) && stageOptions.length > 0 ? stageOptions : STAGE_OPTIONS;
@@ -69,6 +121,16 @@ export default function OpportunityModal({ mode, oppId, defaultStage, stageOptio
   const [error, setError] = useState('');
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [showProductFields, setShowProductFields] = useState(false);
+  const [comments, setComments] = useState([]);
+  const [newComment, setNewComment] = useState('');
+  const [commentBusy, setCommentBusy] = useState(false);
+  const [commentError, setCommentError] = useState('');
+  const [editingCommentId, setEditingCommentId] = useState(null);
+  const [editDraft, setEditDraft] = useState('');
+  const [replyingToId, setReplyingToId] = useState(null);
+  const [replyText, setReplyText] = useState('');
+
+  const currentUserId = useMemo(() => getCurrentUserId(), []);
 
   const fetchOpp = useCallback(async () => {
     if (!isEdit || !oppId) return;
@@ -102,6 +164,13 @@ export default function OpportunityModal({ mode, oppId, defaultStage, stageOptio
       });
       setSelectedProduct(null);
       setShowProductFields(false);
+      setComments(Array.isArray(data.comments) ? data.comments : []);
+      setNewComment('');
+      setCommentError('');
+      setEditingCommentId(null);
+      setEditDraft('');
+      setReplyingToId(null);
+      setReplyText('');
     } catch {
       setError('기회 정보를 불러올 수 없습니다.');
     } finally {
@@ -232,6 +301,227 @@ export default function OpportunityModal({ mode, oppId, defaultStage, stageOptio
       onClose();
     } catch { /* ignore */ }
   };
+
+  const { roots, childrenMap } = useMemo(() => organizeComments(comments), [comments]);
+  const commentById = useMemo(() => {
+    const m = new Map();
+    (Array.isArray(comments) ? comments : []).forEach((c) => {
+      const cid = c?._id != null ? String(c._id) : c?.id != null ? String(c.id) : '';
+      if (cid) m.set(cid, c);
+    });
+    return m;
+  }, [comments]);
+
+  const handleAddComment = async (parentCommentId = null) => {
+    const text = (parentCommentId ? replyText : newComment).trim();
+    if (!text || !oppId) return;
+    setCommentBusy(true);
+    setCommentError('');
+    try {
+      const res = await fetch(`${API_BASE}/sales-opportunities/${oppId}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+        body: JSON.stringify({
+          text,
+          ...(parentCommentId ? { parentCommentId } : {})
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || '코멘트를 등록할 수 없습니다.');
+      setComments(Array.isArray(data.comments) ? data.comments : []);
+      if (parentCommentId) {
+        setReplyText('');
+        setReplyingToId(null);
+      } else {
+        setNewComment('');
+      }
+    } catch (err) {
+      setCommentError(err.message || '코멘트 등록에 실패했습니다.');
+    } finally {
+      setCommentBusy(false);
+    }
+  };
+
+  const handleSaveEditComment = async (commentId) => {
+    const text = editDraft.trim();
+    if (!text || !oppId || !commentId) return;
+    setCommentBusy(true);
+    setCommentError('');
+    try {
+      const res = await fetch(`${API_BASE}/sales-opportunities/${oppId}/comments/${commentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+        body: JSON.stringify({ text })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || '코멘트를 수정할 수 없습니다.');
+      setComments(Array.isArray(data.comments) ? data.comments : []);
+      setEditingCommentId(null);
+      setEditDraft('');
+    } catch (err) {
+      setCommentError(err.message || '코멘트 수정에 실패했습니다.');
+    } finally {
+      setCommentBusy(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId) => {
+    if (!oppId || !commentId) return;
+    if (!window.confirm('이 코멘트를 삭제하시겠습니까?')) return;
+    setCommentBusy(true);
+    setCommentError('');
+    try {
+      const res = await fetch(`${API_BASE}/sales-opportunities/${oppId}/comments/${commentId}`, {
+        method: 'DELETE',
+        headers: getAuthHeader()
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || '코멘트를 삭제할 수 없습니다.');
+      setComments(Array.isArray(data.comments) ? data.comments : []);
+      if (editingCommentId === commentId) {
+        setEditingCommentId(null);
+        setEditDraft('');
+      }
+      if (replyingToId === commentId) {
+        setReplyingToId(null);
+        setReplyText('');
+      }
+    } catch (err) {
+      setCommentError(err.message || '코멘트 삭제에 실패했습니다.');
+    } finally {
+      setCommentBusy(false);
+    }
+  };
+
+  function renderCommentItem(c) {
+    const id = String(c._id || c.id);
+    const mine = isCommentAuthor(c, currentUserId);
+    const isEditing = editingCommentId === id;
+    const replies = childrenMap.get(id) || [];
+    const parentId = c.parentCommentId != null ? String(c.parentCommentId) : null;
+    const parentComment = parentId ? commentById.get(parentId) : null;
+
+    return (
+      <li key={id} className="opp-comment-item">
+        {parentComment ? (
+          <p className="opp-comment-reply-hint">
+            <span className="material-symbols-outlined" aria-hidden>subdirectory_arrow_right</span>
+            {parentComment.authorName || '사용자'}님에게 답글
+          </p>
+        ) : null}
+        <div className="opp-comment-meta">
+          <span className="opp-comment-author">{c.authorName || '사용자'}</span>
+          <span className="opp-comment-date">
+            {formatCommentDate(c.createdAt)}
+            {c.updatedAt && c.createdAt && new Date(c.updatedAt) > new Date(c.createdAt) ? ' · 수정됨' : ''}
+          </span>
+          {!isEditing ? (
+            <span className="opp-comment-actions">
+              <button
+                type="button"
+                className="opp-comment-action-btn"
+                disabled={commentBusy}
+                onClick={() => {
+                  if (replyingToId === id) {
+                    setReplyingToId(null);
+                    setReplyText('');
+                  } else {
+                    setReplyingToId(id);
+                    setReplyText('');
+                    setEditingCommentId(null);
+                    setEditDraft('');
+                  }
+                }}
+              >
+                답글
+              </button>
+              {mine ? (
+                <>
+                  <button
+                    type="button"
+                    className="opp-comment-action-btn"
+                    disabled={commentBusy}
+                    onClick={() => {
+                      setEditingCommentId(id);
+                      setEditDraft(c.text || '');
+                      setReplyingToId(null);
+                      setReplyText('');
+                    }}
+                  >
+                    수정
+                  </button>
+                  <button
+                    type="button"
+                    className="opp-comment-action-btn opp-comment-action-btn--danger"
+                    disabled={commentBusy}
+                    onClick={() => handleDeleteComment(id)}
+                  >
+                    삭제
+                  </button>
+                </>
+              ) : null}
+            </span>
+          ) : null}
+        </div>
+        {isEditing ? (
+          <div className="opp-comment-edit">
+            <textarea
+              className="opp-textarea opp-comment-edit-input"
+              value={editDraft}
+              onChange={(e) => setEditDraft(e.target.value)}
+              rows={3}
+              maxLength={5000}
+            />
+            <div className="opp-comment-edit-btns">
+              <button type="button" className="opp-comment-cancel-btn" disabled={commentBusy} onClick={() => { setEditingCommentId(null); setEditDraft(''); }}>
+                취소
+              </button>
+              <button type="button" className="opp-comment-save-btn" disabled={commentBusy || !editDraft.trim()} onClick={() => handleSaveEditComment(id)}>
+                {commentBusy ? '저장 중…' : '저장'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="opp-comment-text">{c.text}</p>
+        )}
+        {replyingToId === id && !isEditing ? (
+          <div className="opp-comment-reply-compose">
+            <textarea
+              className="opp-textarea"
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+              placeholder={`${c.authorName || '사용자'}님에게 답글 작성...`}
+              rows={2}
+              maxLength={5000}
+              disabled={commentBusy}
+            />
+            <div className="opp-comment-reply-compose-row">
+              <button type="button" className="opp-comment-cancel-btn" disabled={commentBusy} onClick={() => { setReplyingToId(null); setReplyText(''); }}>
+                취소
+              </button>
+              <button
+                type="button"
+                className="opp-comment-add-btn"
+                disabled={commentBusy || !replyText.trim()}
+                onClick={() => handleAddComment(id)}
+                aria-label="답글 등록"
+                title="답글 등록"
+              >
+                <span className={'material-symbols-outlined' + (commentBusy ? ' opp-comment-add-btn-icon--spin' : '')} aria-hidden>
+                  {commentBusy ? 'progress_activity' : 'send'}
+                </span>
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {replies.length > 0 ? (
+          <ul className="opp-comment-replies">
+            {replies.map((r) => renderCommentItem(r))}
+          </ul>
+        ) : null}
+      </li>
+    );
+  }
 
   return (
     <div className="opp-modal-overlay">
@@ -436,6 +726,42 @@ export default function OpportunityModal({ mode, oppId, defaultStage, stageOptio
                   rows={3}
                 />
               </label>
+
+              {isEdit && oppId ? (
+                <div className="opp-comments-section">
+                  <div className="opp-comments-heading">코멘트</div>
+                  <p className="opp-comments-hint">기회에 대한 메모와 답글을 남깁니다. 본인이 작성한 코멘트만 수정·삭제할 수 있습니다.</p>
+                  <ul className="opp-comments-list">
+                    {roots.map((c) => renderCommentItem(c))}
+                  </ul>
+                  <div className="opp-comment-compose">
+                    <div className="opp-comment-compose-wrap">
+                      <textarea
+                        className="opp-textarea opp-comment-compose-textarea"
+                        value={newComment}
+                        onChange={(e) => setNewComment(e.target.value)}
+                        placeholder="코멘트를 입력하세요."
+                        rows={2}
+                        maxLength={5000}
+                        disabled={commentBusy}
+                      />
+                      <button
+                        type="button"
+                        className="opp-comment-add-btn opp-comment-add-btn--inset"
+                        disabled={commentBusy || !newComment.trim()}
+                        onClick={() => handleAddComment()}
+                        aria-label={commentBusy ? '등록 중' : '코멘트 등록'}
+                        title={commentBusy ? '등록 중' : '코멘트 등록'}
+                      >
+                        <span className={'material-symbols-outlined' + (commentBusy ? ' opp-comment-add-btn-icon--spin' : '')} aria-hidden>
+                          {commentBusy ? 'progress_activity' : 'send'}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                  {commentError ? <p className="opp-comment-error">{commentError}</p> : null}
+                </div>
+              ) : null}
 
               {error && <p className="opp-error">{error}</p>}
             </form>

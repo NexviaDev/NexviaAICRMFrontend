@@ -7,7 +7,14 @@ import {
   normalizeSidebarOrders,
   SIDEBAR_MENU_EPOCH
 } from '@/lib/list-templates';
+import { API_BASE } from '@/config';
+import { resolveDepartmentDisplayFromChart } from '@/lib/org-chart-tree-utils';
 import './sidebar.css';
+
+function getAuthHeader() {
+  const token = localStorage.getItem('crm_token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 /** 사이드바 상단 로고 (Cloudinary CDN) */
 const NEXVIA_LOGO_CDN_URL =
@@ -39,12 +46,13 @@ function pathMatchesMenuItem(to, pathname) {
   return pathname === to || pathname.startsWith(`${to}/`);
 }
 
-function formatCompanyRole(user) {
-  if (user?.role === 'owner') return '대표 (Owner)';
-  if (user?.role === 'senior') return '책임 (Senior)';
-  if (user?.role === 'pending') return '권한 대기';
-  if (user?.role === 'staff') return '직원 (Staff)';
-  return user?.role || '계정';
+/** 조직도 노드 id 또는 자유 텍스트 → 사이드바 표시명 */
+function getSidebarDepartmentLabel(user, orgChartRoot) {
+  const raw = String(user?.companyDepartment || user?.department || '').trim();
+  if (!raw) return '—';
+  const explicit = String(user?.companyDepartmentDisplay || user?.departmentDisplay || '').trim();
+  if (explicit) return explicit;
+  return resolveDepartmentDisplayFromChart(orgChartRoot, raw) || raw;
 }
 
 function isPendingBlockedMenu(user, to) {
@@ -117,6 +125,34 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
   }, []);
   const user = currentUser || storedUser;
   const userSyncKey = user?._id || user?.id || user?.email || '';
+
+  const [organizationChart, setOrganizationChart] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/companies/organization-chart`, {
+          headers: getAuthHeader(),
+          credentials: 'include'
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!cancelled && res.ok) {
+          setOrganizationChart(json.organizationChart ?? null);
+        }
+      } catch {
+        /* 조직도 없어도 사이드바는 동작 */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const departmentLabel = useMemo(
+    () => getSidebarDepartmentLabel(user, organizationChart),
+    [user, organizationChart]
+  );
 
   const [mainOrder, setMainOrder] = useState(() => {
     const { mainOrder: m } = normalizeSidebarOrders(MENU_ITEMS, getSavedSidebarConfig());
@@ -524,7 +560,7 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
           <div className="sidebar-avatar" />
           <div className="sidebar-user-info">
             <p className="sidebar-user-name">{user?.name || '사용자'}</p>
-            <p className="sidebar-user-role">{formatCompanyRole(user)}</p>
+            <p className="sidebar-user-role">{departmentLabel}</p>
           </div>
         </Link>
         <button type="button" className="sidebar-logout" onClick={() => { localStorage.removeItem('crm_token'); localStorage.removeItem('crm_user'); navigate('/login', { replace: true }); }}>

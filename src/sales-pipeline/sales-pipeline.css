@@ -23,6 +23,15 @@
   flex-wrap: wrap;
 }
 
+.sp-list-cap-notice {
+  flex-shrink: 0;
+  padding: 0.5rem 1.5rem;
+  font-size: 0.85rem;
+  background: #e8f4fc;
+  color: #3d5a73;
+  border-bottom: 1px solid #c5dff0;
+}
+
 .sp-header-left {
   display: flex;
   align-items: center;

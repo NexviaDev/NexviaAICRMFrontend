@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { API_BASE } from '@/config';
-import { hasUnreadNotifications } from '@/lib/notification-read-state';
+import { hasUnreadFromLatestPublishedAt } from '@/lib/notification-read-state';
+import { NOTIFICATION_BADGE_POLL_MS } from '@/lib/polling-intervals';
 import './page-header-notify-chat.css';
 
 /**
@@ -30,7 +31,7 @@ export default function PageHeaderNotifyChat({
       return;
     }
     try {
-      const res = await fetch(`${API_BASE}/notifications`, {
+      const res = await fetch(`${API_BASE}/notifications/badge`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json().catch(() => ({}));
@@ -38,8 +39,7 @@ export default function PageHeaderNotifyChat({
         setNotifyUnread(false);
         return;
       }
-      const list = Array.isArray(data.notifications) ? data.notifications : [];
-      setNotifyUnread(hasUnreadNotifications(list));
+      setNotifyUnread(hasUnreadFromLatestPublishedAt(data.latestPublishedAt));
     } catch {
       setNotifyUnread(false);
     }
@@ -47,8 +47,7 @@ export default function PageHeaderNotifyChat({
 
   useEffect(() => {
     void checkUnread();
-    const intervalMs = 90000;
-    const id = setInterval(() => void checkUnread(), intervalMs);
+    const id = setInterval(() => void checkUnread(), NOTIFICATION_BADGE_POLL_MS);
     const onFocus = () => void checkUnread();
     const onSeen = () => void checkUnread();
     window.addEventListener('focus', onFocus);

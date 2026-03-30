@@ -317,6 +317,36 @@
   padding: 14px 18px 18px;
 }
 
+.notification-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 1.25rem 0 0.5rem;
+}
+
+.notification-page-btn {
+  padding: 0.45rem 0.9rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--card-border);
+  background: #eef5ff;
+  color: var(--primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.notification-page-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.notification-page-info {
+  font-size: 0.85rem;
+  color: #5a6b7d;
+}
+
 @media (max-width: 768px) {
   .notification-page .notification-header.page-header {
     padding: 0.875rem 1rem;

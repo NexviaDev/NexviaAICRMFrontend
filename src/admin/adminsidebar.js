@@ -4,6 +4,7 @@ import '../layout/sidebar.css';
 function buildAdminMenuItems() {
   return [
     { to: '/admin/subscription', icon: 'subscriptions', label: '구독 결제 현황' },
+    { to: '/admin/companies', icon: 'apartment', label: '회사·직원' },
     { to: '/admin/notices', icon: 'campaign', label: '공지 사항' },
     { to: '/admin/users', icon: 'groups', label: '유저 현황' }
   ];

@@ -210,7 +210,7 @@ export default function LeadCaptureCrmMappingModal({
 
       if (!ids.length) {
         setSaveMsg('매핑 저장 완료. 리드 목록을 불러오는 중…');
-        const leadsRes = await fetch(`${API_BASE}/lead-capture-forms/${formId}/leads`, {
+        const leadsRes = await fetch(`${API_BASE}/lead-capture-forms/${formId}/leads?limit=500&page=1`, {
           headers: getAuthHeader(),
           credentials: 'include'
         });

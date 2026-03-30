@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import CustomerCompanySearchModal from '../customer-companies/customer-company-search-modal/customer-company-search-modal';
 import CustomerCompanyEmployeesSearchModal from '../customer-company-employees/customer-company-employees-search-modal/customer-company-employees-search-modal';
@@ -6,6 +6,8 @@ import './ai-voice.css';
 
 import { API_BASE } from '@/config';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
+import { pingBackendHealth } from '@/lib/backend-wake';
+import { AI_VOICE_LIST_POLL_MS } from '@/lib/polling-intervals';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -81,9 +83,12 @@ export default function AiVoice() {
     });
   }
 
-  const fetchList = useCallback(async () => {
-    setLoadingList(true);
-    setListError('');
+  const fetchList = useCallback(async (opts = {}) => {
+    const silent = opts.silent === true;
+    if (!silent) {
+      setLoadingList(true);
+      setListError('');
+    }
     try {
       const q = new URLSearchParams();
       if (searchQuery.trim()) q.set('search', searchQuery.trim());
@@ -92,14 +97,19 @@ export default function AiVoice() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '목록 조회 실패');
       setItems(data.items || []);
-      if (!(data.items?.length)) setSelectedId(null);
-      else if (!selectedId) setSelectedId(data.items[0]._id);
-      else if (!data.items.find((i) => i._id === selectedId)) setSelectedId(data.items[0]._id);
+      setSelectedId((prev) => {
+        if (!(data.items?.length)) return null;
+        if (!prev) return data.items[0]._id;
+        if (!data.items.find((i) => String(i._id) === String(prev))) return data.items[0]._id;
+        return prev;
+      });
     } catch (e) {
-      setListError(e.message);
-      setItems([]);
+      if (!silent) {
+        setListError(e.message);
+        setItems([]);
+      }
     } finally {
-      setLoadingList(false);
+      if (!silent) setLoadingList(false);
     }
   }, [searchQuery]);
 
@@ -107,22 +117,50 @@ export default function AiVoice() {
     fetchList();
   }, [fetchList]);
 
-  const fetchDetail = useCallback(async (id) => {
+  /** 브라우저·탭을 껐다 켠 뒤에도 목록/상세가 서버·AssemblyAI 반영 상태와 맞도록 */
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState !== 'visible') return;
+      void fetchList({ silent: true });
+      if (selectedId) void fetchDetail(selectedId, { silent: true });
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [fetchList, fetchDetail, selectedId]);
+
+  const listHasPendingTranscription = useMemo(
+    () => items.some((i) => i.status === 'processing' || i.status === 'queued'),
+    [items]
+  );
+
+  /** 화면을 유지한 채 전사가 끝나도 목록이 갱신되도록(백엔드 목록 동기화와 함께) */
+  useEffect(() => {
+    if (!listHasPendingTranscription) return undefined;
+    const t = setInterval(() => void fetchList({ silent: true }), AI_VOICE_LIST_POLL_MS);
+    return () => clearInterval(t);
+  }, [listHasPendingTranscription, fetchList]);
+
+  const fetchDetail = useCallback(async (id, opts = {}) => {
+    const silent = opts.silent === true;
     if (!id) {
       setSelectedDetail(null);
       return;
     }
-    setLoadingDetail(true);
+    if (!silent) setLoadingDetail(true);
     try {
       const res = await fetch(`${API_BASE}/voice-recordings/${id}`, { headers: getAuthHeader() });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '조회 실패');
       setSelectedDetail(data);
+      /** 상세에서 AssemblyAI 동기화된 status가 목록 행과 어긋나지 않도록 병합 */
+      setItems((prev) =>
+        prev.map((i) => (String(i._id) === String(id) ? { ...i, ...data } : i))
+      );
       return data;
     } catch (e) {
       setSelectedDetail(null);
     } finally {
-      setLoadingDetail(false);
+      if (!silent) setLoadingDetail(false);
     }
   }, []);
 
@@ -142,7 +180,9 @@ export default function AiVoice() {
           setSelectedDetail(data);
           if (data.status === 'completed' || data.status === 'error') {
             if (pollRef.current) clearInterval(pollRef.current);
-            setItems((prev) => prev.map((i) => (i._id === id ? data : i)));
+            setItems((prev) =>
+              prev.map((i) => (String(i._id) === String(id) ? { ...i, ...data } : i))
+            );
           }
         })
         .catch(() => {});
@@ -167,6 +207,7 @@ export default function AiVoice() {
     setUploadError('');
     setUploading(true);
     try {
+      await pingBackendHealth(getAuthHeader);
       for (const file of allowed) {
         const form = new FormData();
         form.append('audio', file);

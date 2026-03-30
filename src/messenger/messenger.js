@@ -5,12 +5,11 @@ import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-head
 import ParticipantModal from '@/shared/participant-modal/participant-modal';
 import NewChatModal from './new-chat-modal/new-chat-modal';
 import { GoogleWorkspaceChatPolicyHint } from '@/lib/google-workspace-chat-hint';
+import { MESSENGER_MESSAGE_POLL_MS } from '@/lib/polling-intervals';
 import './messenger.css';
 
-const CHAT_API_DOCS = 'https://developers.google.com/workspace/chat/api/reference/rest?apix=true&hl=ko';
-
-/** 열린 대화 메시지 자동 갱신(초) — 수동 새로고침 없이 상대 메시지 반영 */
-const MESSAGE_POLL_MS = 10000;
+/** Google Chat REST 문서 URL — JSX에서 링크로 쓰일 때 미정의 오류 방지 */
+const CHAT_API_DOCS = 'https://developers.google.com/workspace/chat/api/reference/rest';
 /** 대화 목록·미리보기 갱신: N회 메시지 폴링마다 1번 (백엔드 부하 완화) */
 const SPACES_POLL_EVERY_N_MESSAGE_TICKS = 3;
 /** 메시지 폴링 시 멤버 API는 N회에 1번만(헤더·표시명 최신화) */
@@ -51,6 +50,40 @@ function attachmentsOf(m) {
   const a = m.attachment;
   if (!a) return [];
   return Array.isArray(a) ? a : [a];
+}
+
+function AttachmentList({ attachments, isOut }) {
+  const list = Array.isArray(attachments) ? attachments : [];
+  if (!list.length) return null;
+  return (
+    <div className={`messenger-attach-list${isOut ? ' messenger-attach-list--out' : ''}`}>
+      {list.map((att, i) => {
+        const thumb = att.thumbnailUri;
+        const dl = att.downloadUri;
+        const name = (att.contentName || att.name || '').trim() || '첨부';
+        return (
+          <div key={att.name || `${i}-${name}`} className="messenger-attach messenger-attach--item">
+            {thumb ? (
+              <a
+                href={dl || thumb}
+                target="_blank"
+                rel="noreferrer"
+                className="messenger-attach-img-wrap"
+              >
+                <img src={thumb} alt="" className="messenger-attach-img" />
+              </a>
+            ) : dl ? (
+              <a href={dl} target="_blank" rel="noreferrer" className="messenger-attach-link">
+                {name}
+              </a>
+            ) : (
+              <span className="messenger-attach-muted">{name}</span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function formatListTime(iso) {
@@ -166,7 +199,12 @@ export default function Messenger() {
   const [newChatOpen, setNewChatOpen] = useState(false);
   const [newChatLoading, setNewChatLoading] = useState(false);
   const [newChatInviteEmails, setNewChatInviteEmails] = useState([]);
+  const [addMembersOpen, setAddMembersOpen] = useState(false);
+  const [addMembersInviteEmails, setAddMembersInviteEmails] = useState([]);
+  const [addMembersLoading, setAddMembersLoading] = useState(false);
   const [participantPickerOpen, setParticipantPickerOpen] = useState(false);
+  /** 팀원 선택 모달이 어느 흐름인지 (새 채팅 vs 대화상대 추가) */
+  const [participantPickerMode, setParticipantPickerMode] = useState(null);
   const [teamMembers, setTeamMembers] = useState([]);
   const [previews, setPreviews] = useState(() => ({}));
   const msgsEndRef = useRef(null);
@@ -206,12 +244,14 @@ export default function Messenger() {
   }, []);
 
   const participantPickerInitialSelection = useMemo(() => {
-    if (!newChatInviteEmails.length || !teamMembers.length) return [];
-    const set = new Set(newChatInviteEmails.map((e) => String(e).trim().toLowerCase()));
+    const src =
+      participantPickerMode === 'addMembers' ? addMembersInviteEmails : newChatInviteEmails;
+    if (!src.length || !teamMembers.length) return [];
+    const set = new Set(src.map((e) => String(e).trim().toLowerCase()));
     return teamMembers
       .filter((m) => m.email && set.has(String(m.email).trim().toLowerCase()))
       .map((m) => ({ userId: m._id, name: m.name || m.email }));
-  }, [newChatInviteEmails, teamMembers]);
+  }, [participantPickerMode, newChatInviteEmails, addMembersInviteEmails, teamMembers]);
 
   useEffect(() => {
     const mq = window.matchMedia(MOBILE_MQ);
@@ -281,14 +321,20 @@ export default function Messenger() {
     fetchTeamMembers();
   }, [newChatOpen, fetchTeamMembers]);
 
-  const handleNewChatParticipantConfirm = useCallback(
+  useEffect(() => {
+    if (!addMembersOpen) return;
+    setAddMembersInviteEmails([]);
+    fetchTeamMembers();
+  }, [addMembersOpen, fetchTeamMembers]);
+
+  const handleParticipantPickerConfirm = useCallback(
     (selected) => {
       const emails = selected
         .map((s) => teamMembers.find((t) => String(t._id) === String(s.userId)))
         .filter(Boolean)
         .map((m) => m.email)
         .filter(Boolean);
-      setNewChatInviteEmails((prev) => {
+      const merge = (prev) => {
         const seen = new Set(prev.map((e) => String(e).trim().toLowerCase()));
         const merged = [...prev];
         for (const em of emails) {
@@ -299,16 +345,32 @@ export default function Messenger() {
           }
         }
         return merged;
-      });
+      };
+      if (participantPickerMode === 'addMembers') {
+        setAddMembersInviteEmails(merge);
+      } else {
+        setNewChatInviteEmails(merge);
+      }
       setParticipantPickerOpen(false);
+      setParticipantPickerMode(null);
     },
-    [teamMembers]
+    [teamMembers, participantPickerMode]
   );
 
-  const openNewChatParticipantPicker = useCallback(() => {
-    if (teamMembers.length === 0) fetchTeamMembers();
-    setParticipantPickerOpen(true);
-  }, [teamMembers.length, fetchTeamMembers]);
+  const openParticipantPicker = useCallback(
+    (mode) => {
+      if (teamMembers.length === 0) fetchTeamMembers();
+      setParticipantPickerMode(mode);
+      setParticipantPickerOpen(true);
+    },
+    [teamMembers.length, fetchTeamMembers]
+  );
+
+  /** 새 채팅 모달 등에서 잘못된 핸들러 이름으로 참조될 때 대비 */
+  const openNewChatParticipantPicker = useCallback(
+    () => openParticipantPicker('newChat'),
+    [openParticipantPicker]
+  );
 
   const selectedSpace = useMemo(
     () => spaces.find((s) => s.name === selectedName) || null,
@@ -336,6 +398,13 @@ export default function Messenger() {
     const st = selectedSpace.spaceType || selectedSpace.type;
     if (st === 'SPACE' || st === 'GROUP_CHAT') return spaceTypeKo(st);
     return 'Google Chat · Direct';
+  }, [selectedSpace]);
+
+  /** Google Chat 1:1(DM)은 멤버 추가 API 대상이 아님 — 그룹/스페이스만 */
+  const canInviteToCurrentSpace = useMemo(() => {
+    if (!selectedSpace) return false;
+    const st = selectedSpace.spaceType || selectedSpace.type;
+    return st === 'GROUP_CHAT' || st === 'SPACE';
   }, [selectedSpace]);
 
   const loadMe = useCallback(async () => {
@@ -461,7 +530,15 @@ export default function Messenger() {
   }, [loadMe, loadSpaces]);
 
   useEffect(() => {
+    if (!selectedName) {
+      setMessages([]);
+      setMembers([]);
+      return undefined;
+    }
+    setMessages([]);
+    setMembers([]);
     void loadThread(selectedName);
+    return undefined;
   }, [selectedName, loadThread]);
 
   useEffect(() => {
@@ -490,7 +567,7 @@ export default function Messenger() {
       void loadThread(selectedName, { silent: true, skipMembers: true });
     };
 
-    const id = window.setInterval(pollMessages, MESSAGE_POLL_MS);
+    const id = window.setInterval(pollMessages, MESSENGER_MESSAGE_POLL_MS);
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onFocus);
 
@@ -526,7 +603,7 @@ export default function Messenger() {
         return;
       }
       setCompose('');
-      void loadThread(selectedName);
+      void loadThread(selectedName, { silent: true });
       void loadSpaces();
     } catch (_) {
       setError('전송할 수 없습니다.');
@@ -587,12 +664,61 @@ export default function Messenger() {
       }
       setNewChatOpen(false);
       setParticipantPickerOpen(false);
+      setParticipantPickerMode(null);
       await loadSpaces();
       if (createdName) setSelectedName(createdName);
     } catch (_) {
       setError('채팅방 생성 요청에 실패했습니다.');
     } finally {
       setNewChatLoading(false);
+    }
+  };
+
+  const handleAddMembersToThread = async ({ inviteEmails: rawInviteEmails }) => {
+    if (!selectedName) return;
+    setAddMembersLoading(true);
+    setError('');
+    setNeedsReauth(false);
+    const myEmail = String(currentUser?.email || '').trim().toLowerCase();
+    const inviteEmails = [
+      ...new Set((rawInviteEmails || []).map((e) => String(e).trim()).filter(Boolean))
+    ].filter((e) => e.toLowerCase() !== myEmail);
+    if (inviteEmails.length === 0) {
+      setAddMembersLoading(false);
+      setError('초대할 이메일을 한 명 이상 입력해 주세요.');
+      return;
+    }
+    const sid = encodeURIComponent(spaceIdFromName(selectedName));
+    try {
+      const failures = [];
+      for (const email of inviteEmails) {
+        const inv = await fetch(`${API_BASE}/google-chat/spaces/${sid}/members`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+          body: JSON.stringify({ email })
+        });
+        const invData = await inv.json().catch(() => ({}));
+        if (!inv.ok) {
+          if (invData.needsReauth) setNeedsReauth(true);
+          failures.push(`${email}: ${invData.error || '실패'}`);
+        }
+      }
+      if (failures.length > 0) {
+        setError(
+          `일부 초대에 실패했습니다. (${failures.length}건) ${failures.slice(0, 3).join(' · ')}` +
+            (failures.length > 3 ? ' …' : '')
+        );
+      }
+      setAddMembersOpen(false);
+      setAddMembersInviteEmails([]);
+      setParticipantPickerOpen(false);
+      setParticipantPickerMode(null);
+      await loadThread(selectedName, { silent: true, skipMembers: false });
+      await loadSpaces({ silent: true });
+    } catch (_) {
+      setError('대화상대 초대 요청에 실패했습니다.');
+    } finally {
+      setAddMembersLoading(false);
     }
   };
 
@@ -613,13 +739,6 @@ export default function Messenger() {
         <header className="messenger-top">
           <div>
             <h1 className="messenger-top-title">내부 메신저</h1>
-            <p className="messenger-top-meta">
-              Google 계정 OAuth로{' '}
-              <a href={CHAT_API_DOCS} target="_blank" rel="noreferrer">
-                Chat API
-              </a>
-              를 사용합니다.
-            </p>
           </div>
           <PageHeaderNotifyChat buttonClassName="email-header-icon-btn" wrapperClassName="email-header-notify-chat" />
         </header>
@@ -895,11 +1014,27 @@ export default function Messenger() {
                   <div className="messenger-mobile-thread-appbar-actions">
                     <button
                       type="button"
+                      title={
+                        canInviteToCurrentSpace
+                          ? '대화상대 초대'
+                          : '1:1 대화에는 추가할 수 없습니다. 그룹 채팅에서 사용하세요.'
+                      }
+                      aria-label="대화상대 추가"
+                      disabled={needsReauth || !canInviteToCurrentSpace}
+                      onClick={() => {
+                        if (!canInviteToCurrentSpace) return;
+                        setAddMembersOpen(true);
+                      }}
+                    >
+                      <span className="material-symbols-outlined">person_add</span>
+                    </button>
+                    <button
+                      type="button"
                       title="목록 새로고침"
                       aria-label="새로고침"
                       onClick={() => {
                         void loadSpaces();
-                        void loadThread(selectedName);
+                        void loadThread(selectedName, { silent: true });
                       }}
                     >
                       <span className="material-symbols-outlined">refresh</span>
@@ -938,11 +1073,27 @@ export default function Messenger() {
                   <div className="messenger-thread-actions">
                     <button
                       type="button"
+                      title={
+                        canInviteToCurrentSpace
+                          ? '대화상대 초대'
+                          : '1:1 대화에는 추가할 수 없습니다. 그룹 채팅에서 사용하세요.'
+                      }
+                      aria-label="대화상대 추가"
+                      disabled={needsReauth || !canInviteToCurrentSpace}
+                      onClick={() => {
+                        if (!canInviteToCurrentSpace) return;
+                        setAddMembersOpen(true);
+                      }}
+                    >
+                      <span className="material-symbols-outlined">person_add</span>
+                    </button>
+                    <button
+                      type="button"
                       title="목록 새로고침"
                       aria-label="새로고침"
                       onClick={() => {
                         void loadSpaces();
-                        void loadThread(selectedName);
+                        void loadThread(selectedName, { silent: true });
                       }}
                     >
                       <span className="material-symbols-outlined">refresh</span>
@@ -960,10 +1111,12 @@ export default function Messenger() {
               ) : null}
 
               <div className="messenger-msgs">
-                {messagesLoading ? (
-                  <div className="messenger-loading-inline">메시지 불러오는 중…</div>
-                ) : (
-                  messages.map((m, i) => {
+                {messagesLoading && messages.length === 0 ? (
+                  <div className="messenger-loading-inline messenger-loading-inline--thread">
+                    메시지 불러오는 중…
+                  </div>
+                ) : null}
+                {messages.map((m, i) => {
                     const body = extractMessageText(m);
                     const atts = attachmentsOf(m);
                     const senderRn = m.sender?.name || '';
@@ -1001,12 +1154,9 @@ export default function Messenger() {
                               <div className="messenger-sender-label">{senderDisplay}</div>
                             ) : null}
                             <div className="messenger-bubble">
-                              {body || (atts.length ? '' : '(내용 없음)')}
-                              {atts.length > 0 ? (
-                                <div className="messenger-attach">
-                                  첨부 {atts.length}건 (Google Chat에서 미리보기)
-                                </div>
-                              ) : null}
+                              {body ? <span className="messenger-bubble-text">{body}</span> : null}
+                              {!body && !atts.length ? '(내용 없음)' : null}
+                              <AttachmentList attachments={atts} isOut={isOut} />
                             </div>
                             <div className="messenger-msg-meta">
                               {formatMsgTime(m.createTime)}
@@ -1020,24 +1170,12 @@ export default function Messenger() {
                         </div>
                       </div>
                     );
-                  })
-                )}
+                })}
                 <div ref={msgsEndRef} />
               </div>
 
               <footer className="messenger-input-wrap">
                 <div className="messenger-input-shell">
-                  <div className="messenger-input-tools">
-                    <button type="button" disabled title="첨부는 Google Chat에서 지원합니다" aria-label="추가">
-                      <span className="material-symbols-outlined">add_circle</span>
-                    </button>
-                    <button type="button" disabled title="이미지는 API 업로드 별도" aria-label="이미지">
-                      <span className="material-symbols-outlined">image</span>
-                    </button>
-                    <button type="button" disabled title="파일 첨부는 chat.googleapis.com media API" aria-label="첨부">
-                      <span className="material-symbols-outlined">attach_file</span>
-                    </button>
-                  </div>
                   <textarea
                     className="messenger-input-field"
                     rows={1}
@@ -1048,9 +1186,6 @@ export default function Messenger() {
                     disabled={needsReauth || sendLoading}
                   />
                   <div className="messenger-input-tools">
-                    <button type="button" disabled title="이모지" aria-label="이모지">
-                      <span className="material-symbols-outlined">sentiment_satisfied</span>
-                    </button>
                     <button
                       type="button"
                       className="messenger-send-btn"
@@ -1065,6 +1200,9 @@ export default function Messenger() {
                   </div>
                 </div>
                 <p className="messenger-input-hint">Enter로 전송 · Shift+Enter로 줄 바꿈</p>
+                <p className="messenger-input-capability">
+                  이모티콘은 입력란에 직접 입력하거나 붙여넣을 수 있습니다. 이 화면에서는 텍스트만 전송됩니다. 그림·파일은 Google Chat 웹에서 보내 주세요.
+                </p>
               </footer>
             </>
           )}
@@ -1076,11 +1214,12 @@ export default function Messenger() {
         loading={newChatLoading}
         inviteEmails={newChatInviteEmails}
         onInviteEmailsChange={setNewChatInviteEmails}
-        onRequestParticipantPicker={openNewChatParticipantPicker}
+        onRequestParticipantPicker={() => openParticipantPicker('newChat')}
         onClose={() => {
           if (newChatLoading) return;
           if (participantPickerOpen) {
             setParticipantPickerOpen(false);
+            setParticipantPickerMode(null);
             return;
           }
           setNewChatOpen(false);
@@ -1088,17 +1227,39 @@ export default function Messenger() {
         onSubmit={handleNewChat}
       />
 
+      <NewChatModal
+        open={addMembersOpen}
+        inviteOnly
+        loading={addMembersLoading}
+        inviteEmails={addMembersInviteEmails}
+        onInviteEmailsChange={setAddMembersInviteEmails}
+        onRequestParticipantPicker={() => openParticipantPicker('addMembers')}
+        onClose={() => {
+          if (addMembersLoading) return;
+          if (participantPickerOpen) {
+            setParticipantPickerOpen(false);
+            setParticipantPickerMode(null);
+            return;
+          }
+          setAddMembersOpen(false);
+        }}
+        onSubmit={handleAddMembersToThread}
+      />
+
       {participantPickerOpen ? (
         <div className="messenger-new-chat-participant-layer">
           <ParticipantModal
-            key={`new-chat-picker-${newChatInviteEmails.join('|')}`}
+            key={`picker-${participantPickerMode || 'x'}-${newChatInviteEmails.join('|')}-${addMembersInviteEmails.join('|')}`}
             teamMembers={teamMembers}
             selected={participantPickerInitialSelection}
             currentUser={currentUser}
             title="초대할 팀원 선택"
             bulkAddLabel="표시된 인원 모두 초대 목록에 추가"
-            onConfirm={handleNewChatParticipantConfirm}
-            onClose={() => setParticipantPickerOpen(false)}
+            onConfirm={handleParticipantPickerConfirm}
+            onClose={() => {
+              setParticipantPickerOpen(false);
+              setParticipantPickerMode(null);
+            }}
           />
         </div>
       ) : null}
