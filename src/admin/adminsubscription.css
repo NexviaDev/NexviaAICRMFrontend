@@ -238,6 +238,16 @@
   color: #64748b;
 }
 
+.admin-sub-badge-button {
+  border: none;
+  cursor: pointer;
+}
+
+.admin-sub-badge-button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
 .admin-sub-dash {
   color: #cbd5e1;
 }

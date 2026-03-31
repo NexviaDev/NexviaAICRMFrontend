@@ -116,12 +116,17 @@ export default function AdminUsers() {
         }
         throw new Error(data.error || '권한 부여에 실패했습니다.');
       }
+      const nextAccess = !!data.adminSiteAccess;
       setRows((prev) =>
-        prev.map((r) => (r.userId === userId ? { ...r, adminSiteAccess: true } : r))
+        prev.map((r) => (r.userId === userId ? { ...r, adminSiteAccess: nextAccess } : r))
       );
-      setSuccessMsg(`${emailLabel || '해당 사용자'}에게 관리자 사이트(/admin) 접근을 부여했습니다.`);
+      setSuccessMsg(
+        nextAccess
+          ? `${emailLabel || '해당 사용자'}에게 관리자 사이트(/admin) 접근을 부여했습니다.`
+          : `${emailLabel || '해당 사용자'}의 관리자 사이트(/admin) 접근을 해제했습니다.`
+      );
     } catch (e) {
-      setError(e.message || '권한 부여에 실패했습니다.');
+      setError(e.message || '권한 변경에 실패했습니다.');
     } finally {
       setGrantLoadingId(null);
     }
@@ -213,17 +218,27 @@ export default function AdminUsers() {
                           <span className="admin-sub-badge admin-sub-badge--on" title="@nexvia.co.kr">
                             기본
                           </span>
-                        ) : row.adminSiteAccess ? (
-                          <span className="admin-sub-badge admin-sub-badge--on">접근 허용</span>
                         ) : canGrantAdminSite ? (
-                          <button
-                            type="button"
-                            className="admin-sub-btn admin-sub-btn-primary admin-sub-btn--compact"
-                            disabled={grantLoadingId === row.userId}
-                            onClick={() => void grantAdminSite(row.userId, row.email)}
-                          >
-                            {grantLoadingId === row.userId ? '처리 중…' : '관리자 부여'}
-                          </button>
+                          row.adminSiteAccess ? (
+                            <button
+                              type="button"
+                              className="admin-sub-badge admin-sub-badge--on admin-sub-badge-button"
+                              disabled={grantLoadingId === row.userId}
+                              onClick={() => void grantAdminSite(row.userId, row.email)}
+                              title="클릭하면 관리자 권한 해제"
+                            >
+                              {grantLoadingId === row.userId ? '처리 중…' : '접근 허용'}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="admin-sub-btn admin-sub-btn-primary admin-sub-btn--compact"
+                              disabled={grantLoadingId === row.userId}
+                              onClick={() => void grantAdminSite(row.userId, row.email)}
+                            >
+                              {grantLoadingId === row.userId ? '처리 중…' : '관리자 부여'}
+                            </button>
+                          )
                         ) : (
                           <span className="admin-sub-dash">—</span>
                         )}
