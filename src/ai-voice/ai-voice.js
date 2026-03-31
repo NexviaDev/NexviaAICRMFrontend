@@ -117,17 +117,6 @@ export default function AiVoice() {
     fetchList();
   }, [fetchList]);
 
-  /** 브라우저·탭을 껐다 켠 뒤에도 목록/상세가 서버·AssemblyAI 반영 상태와 맞도록 */
-  useEffect(() => {
-    const onVis = () => {
-      if (document.visibilityState !== 'visible') return;
-      void fetchList({ silent: true });
-      if (selectedId) void fetchDetail(selectedId, { silent: true });
-    };
-    document.addEventListener('visibilitychange', onVis);
-    return () => document.removeEventListener('visibilitychange', onVis);
-  }, [fetchList, fetchDetail, selectedId]);
-
   const listHasPendingTranscription = useMemo(
     () => items.some((i) => i.status === 'processing' || i.status === 'queued'),
     [items]
@@ -163,6 +152,17 @@ export default function AiVoice() {
       if (!silent) setLoadingDetail(false);
     }
   }, []);
+
+  /** 브라우저·탭을 껐다 켠 뒤에도 목록/상세가 서버·AssemblyAI 반영 상태와 맞도록 */
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState !== 'visible') return;
+      void fetchList({ silent: true });
+      if (selectedId) void fetchDetail(selectedId, { silent: true });
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [fetchList, fetchDetail, selectedId]);
 
   useEffect(() => {
     setSummaryError('');
