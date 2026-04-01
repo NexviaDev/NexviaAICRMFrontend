@@ -6,7 +6,9 @@ import TermsOfServiceModal from './legal-modals/TermsOfServiceModal';
 import GoogleApiTermsModal from './legal-modals/GoogleApiTermsModal';
 import './login.css';
 
-const SUPPORT_MAIL = 'develop@nexvia.co.kr';
+/** Login.html — minimalist workspace header (same asset as sample design) */
+const LOGIN_HEADER_IMAGE =
+  'https://lh3.googleusercontent.com/aida-public/AB6AXuCLAPf7mgJCRxfncK1ByeOSnIUgTscHJJ_Z1Y5pAV7m0W4RZPu_ZgMUSDbkm6_DV9ue4bcDlg-8a1qJ47_5rJ5YZY3jZVbV9We-00c_pNrPXrUwXipEXyps8PaKmB5SiY8KdeWaew9bAqtvP1FpRQmHWQXNZ7ILnGBLZMA_kDBVlkponveSuY61imHvxkdTZx9Y18VQhjso5Ehb6TJDCEyofsQyXDDSzbGbO_gAc_v51yiyiMwNGV9B-D89h_cr_wdQx2Gs7aLM_MA';
 
 /** 로그인 화면 법적 문서 모달 — URL: /login?legal=privacy | terms | google */
 const LEGAL_QUERY = 'legal';
@@ -19,21 +21,14 @@ function parseLegalModal(searchParams) {
   return LEGAL_VALUES.includes(v) ? v : null;
 }
 
-/** Sample Design/CDN ref.txt — Cloudinary */
-const FEATURE_BG = {
-  gmailCalendar:
-    'https://res.cloudinary.com/djcsvvhly/image/upload/v1773987515/Perfect_integration_of_Gmail_Calendar_saxql4.png',
-  aiVoice:
-    'https://res.cloudinary.com/djcsvvhly/image/upload/v1773987510/AI_Voice_Summary_tmnrm5.png',
-  map: 'https://res.cloudinary.com/djcsvvhly/image/upload/v1773987510/Map-based_Management_mbxueh.png',
-  dataMapping:
-    'https://res.cloudinary.com/djcsvvhly/image/upload/v1773987509/Data_Mapping_xksvxp.png',
-  businessCards:
-    'https://res.cloudinary.com/djcsvvhly/image/upload/v1773987526/Business_Cards_Company_Management_nbrymi.png'
-};
-
-const NEXVIA_LOGIN_LOGO_CDN_URL =
-  'https://res.cloudinary.com/djcsvvhly/image/upload/v1774254065/NexviaLogo3_lzwlwq.png';
+const ECOSYSTEM_ICONS = [
+  { icon: 'mail', title: 'Gmail Integration' },
+  { icon: 'calendar_today', title: 'Calendar Sync' },
+  { icon: 'mic', title: 'Voice Notes & Summaries' },
+  { icon: 'map', title: 'Location Mapping' },
+  { icon: 'person_add', title: 'Automated Lead Capture' },
+  { icon: 'hub', title: 'Data Visualization' }
+];
 
 export default function Login() {
   const navigate = useNavigate();
@@ -90,123 +85,89 @@ export default function Login() {
 
   return (
     <div className="login-page">
-      <div className="login-top-logo">
-        <img
-          src={NEXVIA_LOGIN_LOGO_CDN_URL}
-          alt="Nexvia"
-          className="login-top-logo-img"
-          decoding="async"
-        />
+      <div className="login-bg-decor" aria-hidden>
+        <div className="login-bg-decor-blob login-bg-decor-blob--tr" />
+        <div className="login-bg-decor-blob login-bg-decor-blob--bl" />
       </div>
 
-      <main className="login-site-main">
-        <section className="login-hero" id="login-hero" aria-labelledby="login-hero-title">
-          <h1 id="login-hero-title" className="login-hero-title">
-            가장 선명한 워크스페이스
-          </h1>
-          <p className="login-hero-lead">
-            Google 계정 하나로 시작하는 데이터 중심의 고객 관리. Nexvia CRM으로 비즈니스를 동기화하세요.
-          </p>
-          <div className="login-card" id="login-card">
-            <div className="login-card-inner">
-              {error && <p className="login-error">{error}</p>}
-              <button
-                type="button"
-                className="login-google"
-                onClick={() => {
-                  window.location.href = getGoogleAuthUrl();
-                }}
-              >
-                <svg className="google-icon" viewBox="0 0 24 24" aria-hidden>
-                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" />
-                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.66l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 12-4.53z" />
-                </svg>
-                <span>Google 계정으로 로그인</span>
-              </button>
-              <p className="login-google-note">Nexvia CRM은 Google Workspace 전용 서비스입니다.</p>
+      <main className="login-main-wrap">
+        <section className="login-card-shell">
+          <div className="login-card-visual">
+            <img
+              className="login-card-visual-img"
+              src={LOGIN_HEADER_IMAGE}
+              alt=""
+              decoding="async"
+            />
+          </div>
+          <div className="login-card-body">
+            <div className="login-brand">
+              <h1 className="login-brand-title">Nexvia CRM</h1>
+              <p className="login-brand-sub">Integrated Sanctuary</p>
+            </div>
+
+            {error && <p className="login-error">{error}</p>}
+
+            <button
+              type="button"
+              className="login-google"
+              onClick={() => {
+                window.location.href = getGoogleAuthUrl();
+              }}
+            >
+              <svg className="login-google-icon" viewBox="0 0 24 24" aria-hidden>
+                <path
+                  fill="#4285F4"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+                />
+              </svg>
+              <span className="login-google-label">Google 계정으로 로그인</span>
+            </button>
+
+            <div className="login-ecosystem">
+              <p className="login-ecosystem-heading">Seamlessly Connected Ecosystem</p>
+              <div className="login-ecosystem-grid">
+                {ECOSYSTEM_ICONS.map(({ icon, title }) => (
+                  <div key={icon} className="login-ecosystem-cell" title={title}>
+                    <div className="login-ecosystem-icon-wrap">
+                      <span className="material-symbols-outlined login-ecosystem-icon">{icon}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </section>
 
-        <section className="login-features" id="features" aria-label="주요 기능">
-          <div className="login-features-grid">
-            <article
-              className="login-feature login-feature-bg login-feature-wide"
-              style={{ backgroundImage: `url(${FEATURE_BG.gmailCalendar})` }}
-            >
-              <span className="material-symbols-outlined login-feature-icon">calendar_today</span>
-              <h3 className="login-feature-title">Gmail &amp; Calendar 완벽 통합</h3>
-              <p className="login-feature-desc">
-                이메일 대화 내역과 캘린더 일정이 자동으로 고객 데이터와 연결됩니다. 스위칭 없이 모든 소통을 한 곳에서 관리하세요.
-              </p>
-            </article>
-
-            <article
-              className="login-feature login-feature-bg login-feature-voice"
-              style={{ backgroundImage: `url(${FEATURE_BG.aiVoice})` }}
-            >
-              <span className="material-symbols-outlined login-feature-icon">mic</span>
-              <h3 className="login-feature-title">AI 보이스 요약</h3>
-              <p className="login-feature-desc">
-                회의 녹음 파일을 업로드하면 핵심 내용을 요약하고 다음 행동을 제안합니다.
-              </p>
-            </article>
-
-            <article
-              className="login-feature login-feature-bg login-feature-map"
-              style={{ backgroundImage: `url(${FEATURE_BG.map})` }}
-            >
-              <span className="material-symbols-outlined login-feature-icon">map</span>
-              <h3 className="login-feature-title">지도 기반 관리</h3>
-              <p className="login-feature-desc">
-                지역별 고객 밀집도와 방문 경로를 지도로 시각화하여 영업 효율을 극대화합니다.
-              </p>
-            </article>
-
-            <article
-              className="login-feature login-feature-bg login-feature-data"
-              style={{ backgroundImage: `url(${FEATURE_BG.dataMapping})` }}
-            >
-              <span className="material-symbols-outlined login-feature-icon">database</span>
-              <h3 className="login-feature-title">데이터 매핑</h3>
-              <p className="login-feature-desc">
-                기존 레거시 DB와 손쉽게 연결하여 복잡한 데이터 구조를 직관적인 UI로 변환합니다.
-              </p>
-            </article>
-
-            <article
-              className="login-feature login-feature-bg login-feature-cardscan"
-              style={{ backgroundImage: `url(${FEATURE_BG.businessCards})` }}
-            >
-              <span className="material-symbols-outlined login-feature-icon">contact_page</span>
-              <h3 className="login-feature-title">명함 &amp; 회사 관리</h3>
-              <p className="login-feature-desc">
-                스캔 한 번으로 기업 정보를 자동 업데이트하고 AI가 담당자 정보를 최신화합니다.
-              </p>
-            </article>
+        <footer className="login-footer">
+          <div className="login-footer-links">
+            <Link to="/login?legal=privacy" replace className="login-footer-link">
+              Privacy Policy
+            </Link>
+            <Link to="/login?legal=terms" replace className="login-footer-link">
+              Terms of Service
+            </Link>
+            <Link to="/login?legal=google" replace className="login-footer-link">
+              Security
+            </Link>
           </div>
-        </section>
+          <p className="login-footer-copy">
+            © {new Date().getFullYear()} Nexvia CRM. All services integrated via Google Cloud.
+          </p>
+        </footer>
       </main>
-
-      <footer className="login-site-footer">
-        <p className="login-site-footer-copy">© 2026 Nexvia CRM. All rights reserved.</p>
-        <div className="login-site-footer-links">
-          <Link to="/login?legal=privacy" replace className="login-footer-legal-btn">
-            개인정보 보호정책
-          </Link>
-          <Link to="/login?legal=terms" replace className="login-footer-legal-btn">
-            이용약관
-          </Link>
-          <Link to="/login?legal=google" replace className="login-footer-legal-btn">
-            Google API·연동 고지
-          </Link>
-          <a href={`mailto:${SUPPORT_MAIL}`} className="login-footer-mailto">
-            문의
-          </a>
-        </div>
-      </footer>
 
       <PrivacyPolicyModal open={legalModal === 'privacy'} onClose={() => setLegalQuery(null)} />
       <TermsOfServiceModal open={legalModal === 'terms'} onClose={() => setLegalQuery(null)} />
