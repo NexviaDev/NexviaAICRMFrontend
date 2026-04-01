@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import './register.css';
 import { formatPhone, phoneDigitsOnly } from './phoneFormat';
@@ -8,15 +8,35 @@ import SearchCompany from './search-company';
 import { API_BASE } from '@/config';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PASSWORD_HINT = '대문자, 소문자, 숫자, 특수문자 각 1개 이상, 6자 이상';
 
+/** 비밀번호가 있을 때만 규칙 검사. 빈 문자열은 통과(선택 입력). */
 function validatePasswordFront(password) {
-  if (!password || password.length < 6) return { ok: false, error: '비밀번호는 6자 이상이어야 합니다.' };
-  if (!/[A-Z]/.test(password)) return { ok: false, error: '비밀번호에 대문자를 1개 이상 포함해 주세요.' };
-  if (!/[a-z]/.test(password)) return { ok: false, error: '비밀번호에 소문자를 1개 이상 포함해 주세요.' };
-  if (!/\d/.test(password)) return { ok: false, error: '비밀번호에 숫자를 1개 이상 포함해 주세요.' };
-  if (!/[^A-Za-z0-9]/.test(password)) return { ok: false, error: '비밀번호에 특수문자를 1개 이상 포함해 주세요.' };
+  const p = String(password || '').trim();
+  if (!p) return { ok: true };
+  if (p.length < 6) return { ok: false, error: '비밀번호는 6자 이상이어야 합니다.' };
+  if (!/[A-Z]/.test(p)) return { ok: false, error: '비밀번호에 대문자를 1개 이상 포함해 주세요.' };
+  if (!/[a-z]/.test(p)) return { ok: false, error: '비밀번호에 소문자를 1개 이상 포함해 주세요.' };
+  if (!/\d/.test(p)) return { ok: false, error: '비밀번호에 숫자를 1개 이상 포함해 주세요.' };
+  if (!/[^A-Za-z0-9]/.test(p)) return { ok: false, error: '비밀번호에 특수문자를 1개 이상 포함해 주세요.' };
   return { ok: true };
+}
+
+/** 비밀번호·확인 둘 다 비우면 통과. 하나만 있거나 둘 다 있으면 일치 + 규칙 검사. */
+function validatePasswordPairOptional(password, passwordConfirm) {
+  const p = String(password || '').trim();
+  const c = String(passwordConfirm || '').trim();
+  if (!p && !c) return { ok: true };
+  if (p !== c) return { ok: false, error: '비밀번호가 일치하지 않습니다.' };
+  return validatePasswordFront(p);
+}
+
+/** 생략 가능 / 일치 여부 (목록 마지막 줄) */
+function getPasswordMatchRowState(password, passwordConfirm) {
+  const p = String(password || '').trim();
+  const c = String(passwordConfirm || '').trim();
+  if (!p && !c) return { ok: true, label: '비밀번호 생략 가능' };
+  if (p && p === String(passwordConfirm || '')) return { ok: true, label: '비밀번호 일치' };
+  return { ok: false, label: '비밀번호 일치' };
 }
 
 /** 비밀번호 조건 목록 (밑에 표시용) */
@@ -63,6 +83,8 @@ export default function Register() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const passwordMatchRow = useMemo(() => getPasswordMatchRowState(password, passwordConfirm), [password, passwordConfirm]);
 
   const authHeader = () => {
     const t = tokenFromUrl || localStorage.getItem('crm_token');
@@ -296,14 +318,9 @@ export default function Register() {
       setLoading(false);
       return;
     }
-    const pwdCheck = validatePasswordFront(password);
-    if (!pwdCheck.ok) {
-      setError(pwdCheck.error);
-      setLoading(false);
-      return;
-    }
-    if (password !== passwordConfirm) {
-      setError('비밀번호가 일치하지 않습니다.');
+    const pwdPair = validatePasswordPairOptional(password, passwordConfirm);
+    if (!pwdPair.ok) {
+      setError(pwdPair.error);
       setLoading(false);
       return;
     }
@@ -355,7 +372,7 @@ export default function Register() {
         body: JSON.stringify({
           email: eVal,
           verificationCode: verificationCode.trim(),
-          password,
+          ...(String(password || '').trim() ? { password: String(password).trim() } : {}),
           name: name.trim(),
           phone: phone.trim(),
           companyName: companyName.trim(),
@@ -387,26 +404,16 @@ export default function Register() {
     setError('');
     setLoading(true);
     if (!isEditMode) {
-      const pwdCheckComplete = validatePasswordFront(password);
-      if (!pwdCheckComplete.ok) {
-        setError(pwdCheckComplete.error);
-        setLoading(false);
-        return;
-      }
-      if (password !== passwordConfirm) {
-        setError('비밀번호가 일치하지 않습니다.');
+      const pwdPair = validatePasswordPairOptional(password, passwordConfirm);
+      if (!pwdPair.ok) {
+        setError(pwdPair.error);
         setLoading(false);
         return;
       }
     } else if (password || passwordConfirm) {
-      const pwdCheckComplete = validatePasswordFront(password);
-      if (!pwdCheckComplete.ok) {
-        setError(pwdCheckComplete.error);
-        setLoading(false);
-        return;
-      }
-      if (password !== passwordConfirm) {
-        setError('비밀번호가 일치하지 않습니다.');
+      const pwdPair = validatePasswordPairOptional(password, passwordConfirm);
+      if (!pwdPair.ok) {
+        setError(pwdPair.error);
         setLoading(false);
         return;
       }
@@ -505,20 +512,23 @@ export default function Register() {
                   <input type="email" value={email} readOnly />
                 </div>
                 <div className="register-field">
-                  <label htmlFor="reg-password">{isEditMode ? '비밀번호 (변경 시에만 입력)' : '비밀번호 *'}</label>
-                  <input id="reg-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={isEditMode ? '변경할 경우에만 입력' : '비밀번호 입력'} required={!isEditMode} />
+                  <label htmlFor="reg-password">{isEditMode ? '비밀번호 (변경 시에만 입력)' : '비밀번호 (선택)'}</label>
+                  <input id="reg-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={isEditMode ? '변경할 경우에만 입력' : '미입력 시 비밀번호 없이 가입'} autoComplete="new-password" />
                 </div>
                 <div className="register-field">
-                  <label htmlFor="reg-password-confirm">{isEditMode ? '비밀번호 확인' : '비밀번호 확인 *'}</label>
-                  <input id="reg-password-confirm" type="password" value={passwordConfirm} onChange={(e) => setPasswordConfirm(e.target.value)} placeholder={isEditMode ? '변경할 경우에만 입력' : '비밀번호 다시 입력'} required={!isEditMode} />
+                  <label htmlFor="reg-password-confirm">{isEditMode ? '비밀번호 확인' : '비밀번호 확인 (선택)'}</label>
+                  <input id="reg-password-confirm" type="password" value={passwordConfirm} onChange={(e) => setPasswordConfirm(e.target.value)} placeholder={isEditMode ? '변경할 경우에만 입력' : '비밀번호를 설정한 경우에만 입력'} autoComplete="new-password" />
                 </div>
                 <div className="register-password-conditions">
-                  <p className="register-conditions-title">비밀번호 조건</p>
+                  <p className="register-conditions-title">비밀번호 조건 {isEditMode ? '' : '(입력하는 경우에만 적용)'}</p>
                   <ul className="register-conditions-list">
                     {getPasswordConditions(password).map((c, i) => (
                       <li key={i} className={c.ok ? 'ok' : ''}><span className="material-symbols-outlined">{c.ok ? 'check_circle' : 'cancel'}</span>{c.label}</li>
                     ))}
-                    <li className={passwordConfirm && password === passwordConfirm ? 'ok' : ''}><span className="material-symbols-outlined">{passwordConfirm && password === passwordConfirm ? 'check_circle' : 'cancel'}</span>비밀번호 일치</li>
+                    <li className={passwordMatchRow.ok ? 'ok' : ''}>
+                      <span className="material-symbols-outlined">{passwordMatchRow.ok ? 'check_circle' : 'cancel'}</span>
+                      {passwordMatchRow.label}
+                    </li>
                   </ul>
                 </div>
                 <div className="register-field">
@@ -636,20 +646,23 @@ export default function Register() {
                   <input id="form-code" type="text" value={verificationCode} onChange={(e) => setVerificationCode(e.target.value)} placeholder="6자리 인증 번호" maxLength={6} required />
                 </div>
                 <div className="register-field">
-                  <label htmlFor="form-password">비밀번호 *</label>
-                  <input id="form-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="비밀번호 입력" required />
+                  <label htmlFor="form-password">비밀번호 (선택)</label>
+                  <input id="form-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="미입력 시 비밀번호 없이 가입" autoComplete="new-password" />
                 </div>
                 <div className="register-field">
-                  <label htmlFor="form-password-confirm">비밀번호 확인 *</label>
-                  <input id="form-password-confirm" type="password" value={passwordConfirm} onChange={(e) => setPasswordConfirm(e.target.value)} placeholder="비밀번호 다시 입력" required />
+                  <label htmlFor="form-password-confirm">비밀번호 확인 (선택)</label>
+                  <input id="form-password-confirm" type="password" value={passwordConfirm} onChange={(e) => setPasswordConfirm(e.target.value)} placeholder="비밀번호를 설정한 경우에만 입력" autoComplete="new-password" />
                 </div>
                 <div className="register-password-conditions">
-                  <p className="register-conditions-title">비밀번호 조건</p>
+                  <p className="register-conditions-title">비밀번호 조건 (입력하는 경우에만 적용)</p>
                   <ul className="register-conditions-list">
                     {getPasswordConditions(password).map((c, i) => (
                       <li key={i} className={c.ok ? 'ok' : ''}><span className="material-symbols-outlined">{c.ok ? 'check_circle' : 'cancel'}</span>{c.label}</li>
                     ))}
-                    <li className={passwordConfirm && password === passwordConfirm ? 'ok' : ''}><span className="material-symbols-outlined">{passwordConfirm && password === passwordConfirm ? 'check_circle' : 'cancel'}</span>비밀번호 일치</li>
+                    <li className={passwordMatchRow.ok ? 'ok' : ''}>
+                      <span className="material-symbols-outlined">{passwordMatchRow.ok ? 'check_circle' : 'cancel'}</span>
+                      {passwordMatchRow.label}
+                    </li>
                   </ul>
                 </div>
                 <div className="register-field">
