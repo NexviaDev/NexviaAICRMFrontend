@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import CustomFieldsDisplay from '../../shared/custom-fields-display';
 import CustomFieldsSection from '../../shared/custom-fields-section';
 import ProductSalesModal from '../../shared/product-sales-modal/product-sales-modal';
-import RegisterSaleModal from '../../product-list/register-sale-modal/register-sale-modal';
+import OpportunityModal from '../../sales-pipeline/opportunity-modal/opportunity-modal';
 import AddContactModal from '../add-customer-company-employees-modal/add-customer-company-employees-modal';
 import DriveLargeFileWarningModal from '../../shared/drive-large-file-warning-modal/drive-large-file-warning-modal';
 import './customer-company-employees-detail-modal.css';
@@ -1393,8 +1393,9 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
         />
       )}
       {selectedSaleForEdit && (
-        <RegisterSaleModal
-          saleId={selectedSaleForEdit._id}
+        <OpportunityModal
+          mode="edit"
+          oppId={selectedSaleForEdit._id}
           initialContact={{
             _id: contactId,
             name: contactToShow?.name,
@@ -1411,7 +1412,9 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
         />
       )}
       {showRegisterSaleModal && (
-        <RegisterSaleModal
+        <OpportunityModal
+          mode="create"
+          defaultStage="Won"
           initialContact={{
             _id: contactId,
             name: contactToShow?.name,

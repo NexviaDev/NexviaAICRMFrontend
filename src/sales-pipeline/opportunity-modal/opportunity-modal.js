@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import CustomerCompanySearchModal from '../../customer-companies/customer-company-search-modal/customer-company-search-modal';
 import CustomerCompanyEmployeesSearchModal from '../../customer-company-employees/customer-company-employees-search-modal/customer-company-employees-search-modal';
 import ProductSearchModal from '../product-search-modal/product-search-modal';
+import '../../customer-companies/customer-company-detail-modal/customer-company-detail-modal.css';
 import './opportunity-modal.css';
 
 import { API_BASE } from '@/config';
@@ -66,6 +67,32 @@ function isCommentAuthor(comment, userId) {
   return String(comment.userId) === String(userId);
 }
 
+function sanitizeFolderNamePart(s) {
+  return String(s ?? '')
+    .replace(/[/\\*?:<>"|]/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getDriveFolderIdFromLink(url) {
+  if (!url || typeof url !== 'string') return null;
+  const s = url.trim();
+  const m = s.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : null;
+}
+
+function fileToBase64(file) {
+  return file.arrayBuffer().then((buf) => {
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    const chunk = 8192;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+    }
+    return btoa(binary);
+  });
+}
+
 /** 평면 코멘트 배열 → 루트 목록 + 부모 id → 자식 배열 맵 */
 function organizeComments(comments) {
   const list = Array.isArray(comments) ? [...comments] : [];
@@ -93,12 +120,14 @@ function organizeComments(comments) {
   return { roots, childrenMap };
 }
 
-export default function OpportunityModal({ mode, oppId, defaultStage, stageOptions, onClose, onSaved }) {
+export default function OpportunityModal({
+  mode, oppId, defaultStage, stageOptions, onClose, onSaved,
+  initialCustomerCompany = null, initialContact = null
+}) {
   const isEdit = mode === 'edit';
   const stageSelectOptions = Array.isArray(stageOptions) && stageOptions.length > 0 ? stageOptions : STAGE_OPTIONS;
   const firstStageValue = stageSelectOptions[0]?.value || 'NewLead';
   const [form, setForm] = useState({
-    title: '',
     customerCompanyId: '',
     customerCompanyName: '',
     contactName: '',
@@ -113,6 +142,18 @@ export default function OpportunityModal({ mode, oppId, defaultStage, stageOptio
     stage: defaultStage || 'NewLead',
     description: ''
   });
+  const [businessNumber, setBusinessNumber] = useState(
+    String(initialCustomerCompany?.businessNumber ?? initialContact?.customerCompanyBusinessNumber ?? '')
+  );
+  const [driveFolderLink, setDriveFolderLink] = useState('');
+  const [driveFolderId, setDriveFolderId] = useState(null);
+  const [driveUploading, setDriveUploading] = useState(false);
+  const [docsDropActive, setDocsDropActive] = useState(false);
+  const [documentRefs, setDocumentRefs] = useState([]);
+  const [driveError, setDriveError] = useState('');
+  const [driveEmbedRevision, setDriveEmbedRevision] = useState(0);
+  const fileInputRef = useRef(null);
+  const lastEnsuredFolderKeyRef = useRef('');
   const [showCompanySearchModal, setShowCompanySearchModal] = useState(false);
   const [showContactSearchModal, setShowContactSearchModal] = useState(false);
   const [showProductSearchModal, setShowProductSearchModal] = useState(false);
@@ -147,7 +188,6 @@ export default function OpportunityModal({ mode, oppId, defaultStage, stageOptio
       const rate = data.discountRate ?? (data.discountType === 'rate' ? data.discountValue : 0);
       const amt = data.discountAmount ?? (data.discountType === 'amount' ? data.discountValue : 0);
       setForm({
-        title: data.title || '',
         customerCompanyId: cc?._id || cc || '',
         customerCompanyName: cc?.name || '',
         contactName: data.contactName || '',
@@ -162,6 +202,12 @@ export default function OpportunityModal({ mode, oppId, defaultStage, stageOptio
         stage: data.stage || 'NewLead',
         description: data.description || ''
       });
+      setBusinessNumber(String(cc?.businessNumber ?? ''));
+      setDriveFolderLink(String(data.driveFolderLink || ''));
+      setDriveFolderId(getDriveFolderIdFromLink(String(data.driveFolderLink || '')));
+      setDocumentRefs(Array.isArray(data.documentRefs)
+        ? data.documentRefs.map((url) => (typeof url === 'string' ? { url, name: '파일' } : { url: url?.url, name: url?.name || '파일' })).filter((d) => d?.url)
+        : []);
       setSelectedProduct(null);
       setShowProductFields(false);
       setComments(Array.isArray(data.comments) ? data.comments : []);
@@ -181,6 +227,26 @@ export default function OpportunityModal({ mode, oppId, defaultStage, stageOptio
   useEffect(() => {
     fetchOpp();
   }, [fetchOpp]);
+
+  useEffect(() => {
+    if (isEdit) return;
+    if (initialCustomerCompany?._id || initialCustomerCompany?.name) {
+      setForm((f) => ({
+        ...f,
+        customerCompanyId: initialCustomerCompany?._id || f.customerCompanyId,
+        customerCompanyName: initialCustomerCompany?.name || f.customerCompanyName
+      }));
+      setBusinessNumber(String(initialCustomerCompany?.businessNumber ?? ''));
+    } else if (initialContact?._id || initialContact?.name) {
+      setForm((f) => ({
+        ...f,
+        contactName: initialContact?.name || f.contactName,
+        customerCompanyId: initialContact?.customerCompanyId || f.customerCompanyId,
+        customerCompanyName: initialContact?.customerCompanyName || f.customerCompanyName
+      }));
+      setBusinessNumber(String(initialContact?.customerCompanyBusinessNumber ?? ''));
+    }
+  }, [isEdit, initialCustomerCompany, initialContact]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -207,6 +273,147 @@ export default function OpportunityModal({ mode, oppId, defaultStage, stageOptio
     setForm((f) => ({ ...f, [key]: val }));
     setError('');
   };
+
+  const driveFolderName = useMemo(() => {
+    const namePart = sanitizeFolderNamePart(form.customerCompanyName || '미소속');
+    const numPart = sanitizeFolderNamePart(String(businessNumber || '').replace(/\D/g, '')) || '미등록';
+    return `${namePart}_${numPart}`;
+  }, [form.customerCompanyName, businessNumber]);
+
+  const productFolderName = useMemo(() => {
+    const name = sanitizeFolderNamePart(form.productName || '');
+    return name || '';
+  }, [form.productName]);
+
+  const ensureTargetDriveFolder = useCallback(async () => {
+    if (!form.customerCompanyName?.trim()) {
+      return { ok: false, error: '고객사를 먼저 선택해 주세요.' };
+    }
+    const r1 = await fetch(`${API_BASE}/drive/folders/ensure`, {
+      method: 'POST',
+      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ folderName: driveFolderName })
+    });
+    const data1 = await r1.json().catch(() => ({}));
+    if (!r1.ok) return { ok: false, error: data1.error || '폴더를 준비할 수 없습니다.' };
+    const companyId = data1.id;
+    let targetId = companyId;
+    let targetLink = data1.webViewLink || `https://drive.google.com/drive/folders/${companyId}`;
+    if (productFolderName) {
+      const r2 = await fetch(`${API_BASE}/drive/folders/ensure`, {
+        method: 'POST',
+        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ folderName: productFolderName, parentFolderId: companyId })
+      });
+      const data2 = await r2.json().catch(() => ({}));
+      if (!r2.ok) return { ok: false, error: data2.error || '제품 폴더를 준비할 수 없습니다.' };
+      targetId = data2.id;
+      targetLink = data2.webViewLink || `https://drive.google.com/drive/folders/${data2.id}`;
+    }
+    return { ok: true, id: targetId, webViewLink: targetLink };
+  }, [form.customerCompanyName, driveFolderName, productFolderName]);
+
+  useEffect(() => {
+    if (!form.customerCompanyName?.trim()) return;
+    const key = `${driveFolderName}|${productFolderName}`;
+    if (lastEnsuredFolderKeyRef.current === key) return;
+    let cancelled = false;
+    (async () => {
+      const result = await ensureTargetDriveFolder();
+      if (cancelled || !result.ok) return;
+      lastEnsuredFolderKeyRef.current = key;
+      setDriveFolderId(result.id);
+      setDriveFolderLink(result.webViewLink);
+      setDriveError('');
+    })();
+    return () => { cancelled = true; };
+  }, [form.customerCompanyName, driveFolderName, productFolderName, ensureTargetDriveFolder]);
+
+  const addDocumentRef = useCallback((url, name) => {
+    const link = (url || '').trim();
+    if (!link) return;
+    setDocumentRefs((prev) => (prev.some((r) => (typeof r === 'string' ? r : r?.url) === link) ? prev : [...prev, { url: link, name: name || '파일' }]));
+  }, []);
+
+  const handleDirectFileUpload = useCallback(async (files) => {
+    const filesArray = Array.from(files || []);
+    if (!filesArray.length) return;
+    setDriveUploading(true);
+    setDriveError('');
+    try {
+      const result = await ensureTargetDriveFolder();
+      if (!result.ok) {
+        setDriveError(result.error);
+        return;
+      }
+      setDriveFolderId(result.id);
+      setDriveFolderLink(result.webViewLink);
+      let uploadedOkCount = 0;
+      for (const file of filesArray) {
+        try {
+          const contentBase64 = await fileToBase64(file);
+          if (!contentBase64) {
+            setDriveError(`"${file.name}" 변환 실패`);
+            continue;
+          }
+          const up = await fetch(`${API_BASE}/drive/upload`, {
+            method: 'POST',
+            headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              name: file.name,
+              mimeType: file.type || 'application/octet-stream',
+              contentBase64,
+              parentFolderId: result.id
+            })
+          });
+          const upData = await up.json().catch(() => ({}));
+          if (up.ok && upData.webViewLink) {
+            addDocumentRef(upData.webViewLink, upData.name || file.name);
+            uploadedOkCount += 1;
+          } else setDriveError(upData.error || upData.details || '업로드 실패');
+        } catch (err) {
+          setDriveError(err?.message || '업로드 중 오류가 났습니다.');
+        }
+      }
+      if (uploadedOkCount > 0) setDriveEmbedRevision((n) => n + 1);
+    } catch (err) {
+      setDriveError(err?.message || 'Drive에 연결할 수 없습니다.');
+    } finally {
+      setDriveUploading(false);
+    }
+  }, [ensureTargetDriveFolder, addDocumentRef]);
+
+  const canDocsUpload = Boolean(form.customerCompanyName?.trim()) && !driveUploading;
+
+  const handleDocsDragOver = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (canDocsUpload) setDocsDropActive(true);
+  }, [canDocsUpload]);
+
+  const handleDocsDragEnter = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (canDocsUpload) setDocsDropActive(true);
+  }, [canDocsUpload]);
+
+  const handleDocsDragLeave = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const rel = e.relatedTarget;
+    if (rel && e.currentTarget.contains(rel)) return;
+    setDocsDropActive(false);
+  }, []);
+
+  const handleDocsDrop = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDocsDropActive(false);
+    if (canDocsUpload && e.dataTransfer?.files?.length) handleDirectFileUpload(e.dataTransfer.files);
+  }, [canDocsUpload, handleDirectFileUpload]);
 
   const handleUnitPriceChange = (e) => {
     handleChange('unitPrice', formatNumberInput(e.target.value));
@@ -246,9 +453,9 @@ export default function OpportunityModal({ mode, oppId, defaultStage, stageOptio
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const titleToUse = form.title.trim() || form.productName?.trim() || '';
+    const titleToUse = form.productName?.trim() || form.customerCompanyName?.trim() || '';
     if (!titleToUse) {
-      setError('제목을 입력하거나 제품을 선택해 주세요.');
+      setError('고객사 또는 제품을 선택해 주세요.');
       return;
     }
     setSaving(true);
@@ -268,7 +475,9 @@ export default function OpportunityModal({ mode, oppId, defaultStage, stageOptio
         discountAmount: parseNumber(form.discountAmount) || 0,
         currency: form.currency,
         stage: selectedStage,
-        description: form.description.trim()
+        description: form.description.trim(),
+        documentRefs: documentRefs.filter((d) => d?.url),
+        driveFolderLink: (driveFolderLink || '').trim() || undefined
       };
       const url = isEdit
         ? `${API_BASE}/sales-opportunities/${oppId}`
@@ -538,21 +747,6 @@ export default function OpportunityModal({ mode, oppId, defaultStage, stageOptio
         ) : (
           <>
             <form className="opp-modal-form" onSubmit={handleSubmit} id="opp-form">
-              {/* 제목 */}
-              <div>
-                <label className="opp-label">
-                  <span>제목 <em>*</em></span>
-                  <input
-                    type="text"
-                    className="opp-input"
-                    value={form.title}
-                    onChange={(e) => handleChange('title', e.target.value)}
-                    placeholder="거래 또는 기회 이름"
-                    autoFocus
-                  />
-                </label>
-              </div>
-
               {/* 고객사 / 담당자 2열 */}
               <div className="opp-form-grid-2">
                 <div className="opp-label">
@@ -727,6 +921,90 @@ export default function OpportunityModal({ mode, oppId, defaultStage, stageOptio
                 />
               </label>
 
+              {/* 증서 · 자료 (Google Drive) — customer-company-detail-modal register-sale-docs 와 동일 UI */}
+              <section className="customer-company-detail-section register-sale-docs opp-modal-register-sale-docs">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  style={{ display: 'none' }}
+                  onChange={(e) => { handleDirectFileUpload(e.target.files); e.target.value = ''; }}
+                  disabled={driveUploading || !form.customerCompanyName?.trim()}
+                  aria-hidden="true"
+                />
+                <div className="customer-company-detail-section-head">
+                  <h3 className="customer-company-detail-section-title">
+                    <span className="material-symbols-outlined">folder</span>
+                    증서 · 자료
+                  </h3>
+                  <button
+                    type="button"
+                    className="customer-company-detail-btn-all"
+                    onClick={() => { if (form.customerCompanyName?.trim() && !driveUploading && fileInputRef.current) fileInputRef.current.click(); }}
+                    disabled={driveUploading || !form.customerCompanyName?.trim()}
+                    title={!form.customerCompanyName?.trim() ? '고객사 선택 후 업로드 가능' : '파일 추가'}
+                    aria-label="파일 추가"
+                  >
+                    <span className="material-symbols-outlined">add</span>
+                  </button>
+                </div>
+                <p className="opp-modal-docs-folder-hint">
+                  폴더: {driveFolderName}{productFolderName ? ` / ${productFolderName}` : ''}
+                </p>
+                {driveFolderLink && getDriveFolderIdFromLink(driveFolderLink) ? (
+                  <div
+                    className={`register-sale-docs-embed-wrap register-sale-docs-drag-in-modal ${docsDropActive && canDocsUpload ? 'register-sale-docs-dropzone-active' : ''} ${driveUploading || !canDocsUpload ? 'register-sale-docs-dropzone-disabled' : ''}`}
+                    onDragEnter={handleDocsDragEnter}
+                    onDragOver={handleDocsDragOver}
+                    onDragLeave={handleDocsDragLeave}
+                    onDrop={handleDocsDrop}
+                    aria-label="Drive 폴더 (드래그하여 파일 추가)"
+                  >
+                    <iframe
+                      key={`${getDriveFolderIdFromLink(driveFolderLink)}-${driveEmbedRevision}`}
+                      title="Google Drive 폴더 현황"
+                      src={`https://drive.google.com/embeddedfolderview?id=${getDriveFolderIdFromLink(driveFolderLink)}#list`}
+                      className="register-sale-docs-embed"
+                    />
+                    {!form.customerCompanyName?.trim() ? (
+                      <div className="register-sale-docs-embed-overlay opp-modal-docs-embed-overlay--blocking">고객사 선택 후 파일 등록 가능</div>
+                    ) : driveUploading ? (
+                      <div className="register-sale-docs-embed-overlay opp-modal-docs-embed-overlay--blocking">업로드 중…</div>
+                    ) : docsDropActive && canDocsUpload ? (
+                      <div className="register-sale-docs-embed-overlay">여기에 놓기</div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div
+                    className={`register-sale-docs-dropzone ${docsDropActive && canDocsUpload ? 'register-sale-docs-dropzone-active' : ''} ${!canDocsUpload ? 'register-sale-docs-dropzone-disabled' : ''}`}
+                    onDragEnter={handleDocsDragEnter}
+                    onDragOver={handleDocsDragOver}
+                    onDragLeave={handleDocsDragLeave}
+                    onDrop={handleDocsDrop}
+                    onClick={() => { if (canDocsUpload && fileInputRef.current) fileInputRef.current.click(); }}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if ((e.key === 'Enter' || e.key === ' ') && canDocsUpload && fileInputRef.current) {
+                        e.preventDefault();
+                        fileInputRef.current.click();
+                      }
+                    }}
+                    aria-label="파일 업로드 (드래그 앤 드롭 또는 클릭)"
+                  >
+                    <span className="material-symbols-outlined register-sale-docs-dropzone-icon">upload_file</span>
+                    <span>
+                      {!form.customerCompanyName?.trim()
+                        ? '고객사 선택 후 업로드 가능'
+                        : driveUploading
+                          ? '업로드 중…'
+                          : '파일을 여기에 놓거나 클릭하여 선택'}
+                    </span>
+                  </div>
+                )}
+                {driveError ? <p className="register-sale-docs-error">{driveError}</p> : null}
+              </section>
+
               {isEdit && oppId ? (
                 <div className="opp-comments-section">
                   <div className="opp-comments-heading">코멘트</div>
@@ -785,6 +1063,7 @@ export default function OpportunityModal({ mode, oppId, defaultStage, stageOptio
             onClose={() => setShowCompanySearchModal(false)}
             onSelect={(company) => {
               setForm((f) => ({ ...f, customerCompanyId: company._id, customerCompanyName: company.name || '' }));
+              setBusinessNumber(String(company?.businessNumber ?? ''));
               setShowCompanySearchModal(false);
             }}
           />
@@ -802,6 +1081,7 @@ export default function OpportunityModal({ mode, oppId, defaultStage, stageOptio
                   customerCompanyName: contact.customerCompanyId?.name || contact.company || ''
                 })
               }));
+              setBusinessNumber(String(contact?.customerCompanyId?.businessNumber ?? businessNumber ?? ''));
               setShowContactSearchModal(false);
             }}
           />

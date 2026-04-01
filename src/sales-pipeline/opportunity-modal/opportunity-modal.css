@@ -250,6 +250,25 @@
   font-size: 1rem;
 }
 
+/* 증서 · 자료: customer-company-detail-modal.css 의 register-sale-docs 클래스 사용, 모달 내 여백·오버레이만 보조 */
+.opp-modal .customer-company-detail-section.register-sale-docs.opp-modal-register-sale-docs {
+  margin-bottom: 1rem;
+}
+
+.opp-modal-docs-folder-hint {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-muted, #64748b);
+}
+
+/* 상세 모달 embed-overlay 는 pointer-events: none 이라, 비활성/업로드 중만 클릭 차단 */
+.opp-modal .register-sale-docs-embed-overlay.opp-modal-docs-embed-overlay--blocking {
+  pointer-events: auto;
+  background: rgba(30, 41, 59, 0.4);
+  color: #fff;
+  z-index: 2;
+}
+
 /* ========== 제품 pills (sample: tags + 제품 추가 버튼) ========== */
 .opp-product-pills {
   display: flex;

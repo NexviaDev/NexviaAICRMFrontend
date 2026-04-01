@@ -305,6 +305,22 @@
   cursor: pointer;
 }
 
+.cc-th-check,
+.cc-td-check {
+  width: 3rem;
+  text-align: center !important;
+  vertical-align: middle;
+  padding-left: 0.5rem !important;
+  padding-right: 0.5rem !important;
+}
+
+.cc-th-check input,
+.cc-td-check input {
+  width: 1rem;
+  height: 1rem;
+  cursor: pointer;
+}
+
 /* 페이지네이션 (연락처와 동일) */
 .pagination-bar {
   padding: 1rem 1.5rem;

@@ -196,6 +196,20 @@
     gap: 0.5rem;
   }
 
+  .customer-companies-page .cc-mobile-check-wrap {
+    flex-shrink: 0;
+    width: 1.5rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .customer-companies-page .cc-mobile-check-wrap input[type='checkbox'] {
+    width: 1rem;
+    height: 1rem;
+    cursor: pointer;
+  }
+
   .customer-companies-page .customer-companies-mobile-card-name {
     flex: 1;
     min-width: 0;

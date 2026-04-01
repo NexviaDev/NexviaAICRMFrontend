@@ -13,6 +13,8 @@ import {
 import './customer-companies.css';
 import './customer-companies-responsive.css';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
+import * as XLSX from 'xlsx';
+import { getStoredCrmUser, isSeniorOrAboveRole } from '@/lib/crm-role-utils';
 
 import { API_BASE } from '@/config';
 const MODAL_PARAM = 'modal';
@@ -89,6 +91,12 @@ export default function CustomerCompanies() {
   const [companyEmployeesLoaded, setCompanyEmployeesLoaded] = useState(false);
   const [searchField, setSearchField] = useState('');
   const [pagination, setPagination] = useState({ page: 1, limit: LIMIT, total: 0, totalPages: 0 });
+  const [selectedCompanyIds, setSelectedCompanyIds] = useState(new Set());
+  const [selectedCompanyMap, setSelectedCompanyMap] = useState({});
+  const [exportExcelLoading, setExportExcelLoading] = useState(false);
+  const [lastCheckedIndex, setLastCheckedIndex] = useState(null);
+  const me = useMemo(() => getStoredCrmUser(), []);
+  const canExportExcel = isSeniorOrAboveRole(me?.role);
   const SEARCH_FIELD_OPTIONS = [
     { key: 'name', label: '고객사명' },
     { key: 'representativeName', label: '대표자' },
@@ -324,6 +332,207 @@ export default function CustomerCompanies() {
     });
   }, [items, sortKey, sortDir, getSortValue]);
 
+  useEffect(() => {
+    if (!sortedItems.length) return;
+    setSelectedCompanyMap((prev) => {
+      const next = { ...prev };
+      for (const row of sortedItems) {
+        const id = String(row?._id || '');
+        if (!id || !selectedCompanyIds.has(id)) continue;
+        next[id] = row;
+      }
+      return next;
+    });
+  }, [sortedItems, selectedCompanyIds]);
+
+  useEffect(() => {
+    setLastCheckedIndex(null);
+  }, [pagination.page]);
+
+  const currentPageIds = useMemo(
+    () => sortedItems.map((r) => String(r?._id || '')).filter(Boolean),
+    [sortedItems]
+  );
+  const selectedOnCurrentPageCount = useMemo(
+    () => currentPageIds.filter((id) => selectedCompanyIds.has(id)).length,
+    [currentPageIds, selectedCompanyIds]
+  );
+  const allCurrentPageSelected = currentPageIds.length > 0 && selectedOnCurrentPageCount === currentPageIds.length;
+  const hasPartialCurrentSelection = selectedOnCurrentPageCount > 0 && selectedOnCurrentPageCount < currentPageIds.length;
+
+  const toggleCompanySelection = useCallback((idx, shiftKey = false) => {
+    const row = sortedItems[idx];
+    if (!row?._id) return;
+    const rowId = String(row._id);
+    const rowWillBeChecked = !selectedCompanyIds.has(rowId);
+    setSelectedCompanyIds((prev) => {
+      const next = new Set(prev);
+      if (shiftKey && lastCheckedIndex !== null) {
+        const start = Math.min(lastCheckedIndex, idx);
+        const end = Math.max(lastCheckedIndex, idx);
+        for (let i = start; i <= end; i++) {
+          const targetId = String(sortedItems[i]?._id || '');
+          if (!targetId) continue;
+          if (rowWillBeChecked) next.add(targetId);
+          else next.delete(targetId);
+        }
+      } else if (rowWillBeChecked) next.add(rowId);
+      else next.delete(rowId);
+      return next;
+    });
+    setSelectedCompanyMap((prev) => {
+      const next = { ...prev };
+      if (shiftKey && lastCheckedIndex !== null) {
+        const start = Math.min(lastCheckedIndex, idx);
+        const end = Math.max(lastCheckedIndex, idx);
+        for (let i = start; i <= end; i++) {
+          const target = sortedItems[i];
+          const targetId = String(target?._id || '');
+          if (!targetId) continue;
+          if (rowWillBeChecked) next[targetId] = target;
+          else delete next[targetId];
+        }
+      } else if (rowWillBeChecked) next[rowId] = row;
+      else delete next[rowId];
+      return next;
+    });
+    setLastCheckedIndex(idx);
+  }, [sortedItems, selectedCompanyIds, lastCheckedIndex]);
+
+  const toggleSelectCurrentPage = useCallback(() => {
+    setSelectedCompanyIds((prev) => {
+      const next = new Set(prev);
+      if (allCurrentPageSelected) {
+        currentPageIds.forEach((id) => next.delete(id));
+      } else {
+        currentPageIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+    setSelectedCompanyMap((prev) => {
+      const next = { ...prev };
+      if (allCurrentPageSelected) {
+        currentPageIds.forEach((id) => { delete next[id]; });
+      } else {
+        sortedItems.forEach((row) => {
+          const id = String(row?._id || '');
+          if (id) next[id] = row;
+        });
+      }
+      return next;
+    });
+    setLastCheckedIndex(null);
+  }, [allCurrentPageSelected, currentPageIds, sortedItems]);
+
+  const fetchAllEmployeesForCompany = useCallback(async (companyId) => {
+    const all = [];
+    let page = 1;
+    let totalPages = 1;
+    do {
+      const params = new URLSearchParams({
+        customerCompanyId: String(companyId),
+        page: String(page),
+        limit: '200'
+      });
+      const res = await fetch(`${API_BASE}/customer-company-employees?${params.toString()}`, { headers: getAuthHeader() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || '고객사 직원 목록 조회 실패');
+      const batch = Array.isArray(data.items) ? data.items : [];
+      all.push(...batch);
+      totalPages = Math.max(1, Number(data.pagination?.totalPages) || 1);
+      page += 1;
+    } while (page <= totalPages);
+    return all;
+  }, []);
+
+  const handleExportSelectedCompanies = useCallback(async () => {
+    if (!canExportExcel) {
+      alert('엑셀 내보내기는 Owner / Senior만 가능합니다.');
+      return;
+    }
+    const selectedIds = [...selectedCompanyIds];
+    if (selectedIds.length === 0) {
+      alert('내보낼 고객사를 먼저 선택해 주세요.');
+      return;
+    }
+    const includeEmployees = window.confirm('선택 고객사의 직원 목록도 함께 내보낼까요?\n확인: 예 / 취소: 아니오');
+    setExportExcelLoading(true);
+    try {
+      const customKeys = new Set();
+      const selectedRows = selectedIds
+        .map((id) => selectedCompanyMap[id])
+        .filter(Boolean);
+      if (selectedRows.length === 0) {
+        alert('선택 고객사 정보를 찾을 수 없습니다. 다시 선택해 주세요.');
+        return;
+      }
+      selectedRows.forEach((r) => {
+        if (r.customFields && typeof r.customFields === 'object') {
+          Object.keys(r.customFields).forEach((k) => customKeys.add(k));
+        }
+      });
+      const sortedCustomKeys = [...customKeys].sort();
+      const companyRows = selectedRows.map((row) => {
+        const ids = Array.isArray(row.assigneeUserIds) ? row.assigneeUserIds : [];
+        const assignees = ids.map((id) => assigneeIdToName[String(id)] || String(id)).filter(Boolean).join(', ');
+        const out = {
+          고객사명: row.name || '',
+          대표자: row.representativeName || '',
+          사업자번호: formatBusinessNumber(row.businessNumber),
+          주소: row.address || '',
+          담당자: assignees,
+          즐겨찾기: row.isFavorite ? 'Y' : '',
+          메모: row.memo || '',
+          수정일: row.updatedAt ? new Date(row.updatedAt).toLocaleString('ko-KR') : ''
+        };
+        sortedCustomKeys.forEach((fk) => {
+          const label = customFieldColumns.find((c) => c.key === `${CUSTOM_FIELDS_PREFIX}${fk}`)?.label || `커스텀_${fk}`;
+          const v = row.customFields?.[fk];
+          out[label] = v !== undefined && v !== null && v !== '' ? String(v) : '';
+        });
+        return out;
+      });
+
+      const wb = XLSX.utils.book_new();
+      const wsCompanies = XLSX.utils.json_to_sheet(companyRows);
+      XLSX.utils.book_append_sheet(wb, wsCompanies, '고객사');
+
+      if (includeEmployees) {
+        const employeeRows = [];
+        for (const row of selectedRows) {
+          const employees = await fetchAllEmployeesForCompany(row._id);
+          employees.forEach((emp) => {
+            const empAssignees = (Array.isArray(emp.assigneeUserIds) ? emp.assigneeUserIds : [])
+              .map((id) => assigneeIdToName[String(id)] || String(id))
+              .filter(Boolean)
+              .join(', ');
+            employeeRows.push({
+              고객사명: row.name || '',
+              이름: emp.name || '',
+              이메일: emp.email || '',
+              전화: emp.phone || '',
+              직책: emp.position || '',
+              주소: emp.address || '',
+              담당자: empAssignees,
+              상태: emp.status || '',
+              메모: emp.memo || '',
+              수정일: emp.updatedAt ? new Date(emp.updatedAt).toLocaleString('ko-KR') : ''
+            });
+          });
+        }
+        const wsEmployees = XLSX.utils.json_to_sheet(employeeRows);
+        XLSX.utils.book_append_sheet(wb, wsEmployees, '고객사직원');
+      }
+
+      const stamp = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(wb, `고객사목록_${stamp}.xlsx`);
+    } catch (e) {
+      alert(e?.message || '엑셀 내보내기에 실패했습니다.');
+    } finally {
+      setExportExcelLoading(false);
+    }
+  }, [canExportExcel, selectedCompanyIds, selectedCompanyMap, assigneeIdToName, customFieldColumns, fetchAllEmployeesForCompany]);
+
   const handleSortColumn = useCallback((key) => {
     if (key === '_favorite') return;
     setSort((prev) => {
@@ -405,7 +614,18 @@ export default function CustomerCompanies() {
               <span className="material-symbols-outlined">upload_file</span>
               <span className="cc-filter-label">엑셀 매핑 가져오기</span>
             </button>
-            <button type="button" className="btn-outline"><span className="material-symbols-outlined">file_download</span> 내보내기</button>
+            {canExportExcel ? (
+              <button
+                type="button"
+                className="btn-outline"
+                onClick={handleExportSelectedCompanies}
+                disabled={exportExcelLoading}
+                title="선택한 고객사만 엑셀(.xlsx)로 내보냅니다. (Owner / Senior 전용)"
+              >
+                <span className="material-symbols-outlined">file_download</span>
+                {exportExcelLoading ? '내보내는 중…' : `내보내기${selectedCompanyIds.size ? ` (${selectedCompanyIds.size})` : ''}`}
+              </button>
+            ) : null}
             <button type="button" className="btn-primary" onClick={openAddModal}><span className="material-symbols-outlined">add</span> 고객사 추가</button>
           </div>
         </div>
@@ -418,7 +638,7 @@ export default function CustomerCompanies() {
               <p className="customer-companies-mobile-cards-message">등록된 고객사가 없습니다.</p>
             ) : (
               <div className="customer-companies-mobile-cards-list">
-                {sortedItems.map((row) => (
+                {sortedItems.map((row, idx) => (
                   <div
                     key={row._id}
                     className="customer-companies-mobile-card"
@@ -432,6 +652,21 @@ export default function CustomerCompanies() {
                     </div>
                     <div className="customer-companies-mobile-card-body">
                       <div className="customer-companies-mobile-card-head">
+                        <label
+                          className="cc-mobile-check-wrap"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleCompanySelection(idx, e.shiftKey);
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedCompanyIds.has(String(row._id))}
+                            onChange={() => {}}
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label={`${row.name || '고객사'} 선택`}
+                          />
+                        </label>
                         <h3 className="customer-companies-mobile-card-name">{row.name || '—'}</h3>
                         <button
                           type="button"
@@ -460,12 +695,25 @@ export default function CustomerCompanies() {
           <div className="table-wrap">
             <table className="data-table">
               <colgroup>
+                <col style={{ width: '3rem' }} />
                 {displayColumns.map((col) => (
                   <col key={col.key} style={col.key === '_favorite' ? { width: '3.25rem' } : undefined} />
                 ))}
               </colgroup>
               <thead>
                 <tr>
+                  <th className="cc-th-check">
+                    <input
+                      type="checkbox"
+                      checked={allCurrentPageSelected}
+                      ref={(el) => {
+                        if (!el) return;
+                        el.indeterminate = hasPartialCurrentSelection;
+                      }}
+                      onChange={toggleSelectCurrentPage}
+                      aria-label="현재 페이지 전체 선택"
+                    />
+                  </th>
                   {displayColumns.map((col) => (
                     <th
                       key={col.key}
@@ -496,12 +744,27 @@ export default function CustomerCompanies() {
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={colSpan} className="text-center">불러오는 중...</td></tr>
+                  <tr><td colSpan={colSpan + 1} className="text-center">불러오는 중...</td></tr>
                 ) : sortedItems.length === 0 ? (
-                  <tr><td colSpan={colSpan} className="text-center">등록된 고객사가 없습니다.</td></tr>
+                  <tr><td colSpan={colSpan + 1} className="text-center">등록된 고객사가 없습니다.</td></tr>
                 ) : (
-                  sortedItems.map((row) => (
+                  sortedItems.map((row, idx) => (
                     <tr key={row._id} className="customer-companies-row-clickable" onClick={() => openDetailModal(row)}>
+                      <td
+                        className="cc-td-check"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedCompanyIds.has(String(row._id))}
+                          onChange={() => {}}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleCompanySelection(idx, e.shiftKey);
+                          }}
+                          aria-label={`${row.name || '고객사'} 선택`}
+                        />
+                      </td>
                       {displayColumns.map((col) => (
                         <td
                           key={col.key}

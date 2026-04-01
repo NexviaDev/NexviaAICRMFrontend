@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import AllEmployeesModal from './all-employees-modal/all-employees-modal';
 import AllHistoryModal from './all-history-modal/all-history-modal';
 import ProductSalesModal from '../../shared/product-sales-modal/product-sales-modal';
-import RegisterSaleModal from '../../product-list/register-sale-modal/register-sale-modal';
+import OpportunityModal from '../../sales-pipeline/opportunity-modal/opportunity-modal';
 import ContactDetailModal from '../../customer-company-employees/customer-company-employees-detail-modal/customer-company-employees-detail-modal';
 import AddCompanyModal from '../add-company-modal/add-company-modal';
 import CustomFieldsDisplay from '../../shared/custom-fields-display';
@@ -1065,15 +1065,18 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
               />
             )}
             {showRegisterSaleModal && (
-              <RegisterSaleModal
+              <OpportunityModal
+                mode="create"
+                defaultStage="Won"
                 initialCustomerCompany={{ _id: companyId, name: companyToShow.name, businessNumber: companyToShow.businessNumber }}
                 onClose={() => setShowRegisterSaleModal(false)}
                 onSaved={() => { setShowRegisterSaleModal(false); fetchProductSales(); }}
               />
             )}
             {selectedSaleForEdit && (
-              <RegisterSaleModal
-                saleId={selectedSaleForEdit._id}
+              <OpportunityModal
+                mode="edit"
+                oppId={selectedSaleForEdit._id}
                 initialCustomerCompany={{ _id: companyId, name: companyToShow.name, businessNumber: companyToShow.businessNumber }}
                 onClose={() => setSelectedSaleForEdit(null)}
                 onSaved={() => { setSelectedSaleForEdit(null); fetchProductSales(); }}
