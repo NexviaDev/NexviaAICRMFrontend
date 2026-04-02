@@ -5,6 +5,7 @@ import { listPriceFromProduct } from '@/lib/product-price-utils';
 import './add-product-modal.css';
 
 import { API_BASE } from '@/config';
+import { getStoredCrmUser, isSeniorOrAboveRole } from '@/lib/crm-role-utils';
 const STATUS_OPTIONS = [
   { value: 'Active', label: '활성' },
   { value: 'EndOfLife', label: 'End of Life' },
@@ -58,6 +59,7 @@ function formatPriceWhileTyping(raw) {
 
 export default function AddProductModal({ product, onClose, onSaved, presentation = 'centered' }) {
   const isEdit = !!product?._id;
+  const canManageCustomFieldDefinitions = isSeniorOrAboveRole(getStoredCrmUser()?.role);
   const isSlidePanel = isEdit && presentation === 'slide';
   const [form, setForm] = useState({
     name: product?.name ?? '',
@@ -360,10 +362,12 @@ export default function AddProductModal({ product, onClose, onSaved, presentatio
             />
           </div>
           <div className="add-product-modal-footer">
-            <button type="button" className="add-product-modal-extra" onClick={() => setShowCustomFieldsModal(true)}>
-              <span className="material-symbols-outlined">add_circle</span>
-              추가 필드
-            </button>
+            {canManageCustomFieldDefinitions ? (
+              <button type="button" className="add-product-modal-extra" onClick={() => setShowCustomFieldsModal(true)}>
+                <span className="material-symbols-outlined">add_circle</span>
+                추가 필드
+              </button>
+            ) : null}
             <div className="add-product-modal-footer-actions">
               <button type="button" className="add-product-modal-cancel" onClick={onClose}>취소</button>
               <button type="submit" className="add-product-modal-save" disabled={saving}>
@@ -374,7 +378,7 @@ export default function AddProductModal({ product, onClose, onSaved, presentatio
           </div>
         </form>
       </div>
-      {showCustomFieldsModal && (
+      {showCustomFieldsModal && canManageCustomFieldDefinitions && (
         <CustomFieldsManageModal
           entityType="product"
           onClose={() => setShowCustomFieldsModal(false)}

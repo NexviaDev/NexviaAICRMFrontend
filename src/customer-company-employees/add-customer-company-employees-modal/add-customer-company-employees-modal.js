@@ -9,6 +9,7 @@ import './add-customer-company-employees-modal.css';
 import ContactImportPreviewModal from './contact-import-preview-modal';
 
 import { API_BASE } from '@/config';
+import { getStoredCrmUser, isSeniorOrAboveRole } from '@/lib/crm-role-utils';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -173,6 +174,7 @@ function buildInitialForm(contact, initialCustomerCompany) {
 }
 
 export default function AddContactModal({ onClose, onSaved, onUpdated, initialCustomerCompany, contact }) {
+  const canManageCustomFieldDefinitions = isSeniorOrAboveRole(getStoredCrmUser()?.role);
   const isEditMode = Boolean(contact && (contact._id || contact.id));
   const effectiveInitialCompany = isEditMode && (contact?.customerCompanyId || contact?.company)
     ? { _id: contact.customerCompanyId?._id ?? contact.customerCompanyId, name: typeof contact.company === 'string' ? contact.company : (contact.company?.name ?? '') }
@@ -1122,17 +1124,19 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
             />
           </div>
           <div className="add-contact-modal-footer">
-            <button type="button" className="add-contact-modal-extra" onClick={() => setShowCustomFieldsModal(true)}>
-              <span className="material-symbols-outlined">add_circle</span>
-              추가 필드
-            </button>
+            {canManageCustomFieldDefinitions ? (
+              <button type="button" className="add-contact-modal-extra" onClick={() => setShowCustomFieldsModal(true)}>
+                <span className="material-symbols-outlined">add_circle</span>
+                추가 필드
+              </button>
+            ) : null}
             <div className="add-contact-modal-footer-actions">
               <button type="button" className="add-contact-modal-cancel" onClick={onClose}>취소</button>
               <button type="submit" className="add-contact-modal-save" disabled={saving || extractingBusinessCard || importPreviewLoading}>{saving ? '저장 중...' : isEditMode ? '저장' : '연락처 저장'}</button>
             </div>
           </div>
         </form>
-        {showCustomFieldsModal && (
+        {showCustomFieldsModal && canManageCustomFieldDefinitions && (
           <CustomFieldsManageModal
             entityType="contact"
             onClose={() => setShowCustomFieldsModal(false)}

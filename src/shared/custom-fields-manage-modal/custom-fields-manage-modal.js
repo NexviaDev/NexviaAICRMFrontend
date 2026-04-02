@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { API_BASE } from '@/config';
+import { getStoredCrmUser, isSeniorOrAboveRole } from '@/lib/crm-role-utils';
 import './custom-fields-manage-modal.css';
 
 const FIELD_TYPES = [
@@ -21,6 +22,7 @@ export default function CustomFieldsManageModal({
   apiBase = API_BASE,
   getAuthHeader = () => ({})
 }) {
+  const allowed = isSeniorOrAboveRole(getStoredCrmUser()?.role);
   const [definitions, setDefinitions] = useState([]);
   const [newLabel, setNewLabel] = useState('');
   const [newType, setNewType] = useState('text');
@@ -118,6 +120,30 @@ export default function CustomFieldsManageModal({
       setDeletingId(null);
     }
   };
+
+  if (!allowed) {
+    return (
+      <>
+        <div className="custom-fields-manage-overlay" onClick={onClose} aria-hidden="true" />
+        <div className="custom-fields-manage-modal" role="alertdialog" aria-labelledby="custom-fields-denied-title">
+          <div className="custom-fields-manage-inner">
+            <header className="custom-fields-manage-header">
+              <h3 id="custom-fields-denied-title">권한 필요</h3>
+              <button type="button" className="custom-fields-manage-close" onClick={onClose} aria-label="닫기">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </header>
+            <div className="custom-fields-manage-body">
+              <p className="custom-fields-manage-denied-msg">
+                추가 필드 정의는 대표(Owner) 또는 책임(Senior)만 사용할 수 있습니다.
+              </p>
+              <button type="button" className="custom-fields-manage-add-btn" onClick={onClose}>닫기</button>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>

@@ -1,3 +1,10 @@
+.custom-fields-manage-denied-msg {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
 .custom-fields-manage-overlay {
   position: fixed;
   inset: 0;

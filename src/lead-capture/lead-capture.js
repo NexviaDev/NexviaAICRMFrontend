@@ -906,10 +906,12 @@ ${customInputs}
                   <h2 className="lead-capture-card-title">리드 캡처 빌더</h2>
                   <p className="lead-capture-card-desc">이 채널 전용 수집 필드를 설정합니다.</p>
                 </div>
-                <button type="button" className="lead-capture-outline-btn lead-capture-add-field-btn" onClick={() => setShowCustomFieldsModal(true)}>
-                  <span className="material-symbols-outlined">add</span>
-                  커스텀 필드 추가
-                </button>
+                {canManageCaptureChannels ? (
+                  <button type="button" className="lead-capture-outline-btn lead-capture-add-field-btn" onClick={() => setShowCustomFieldsModal(true)}>
+                    <span className="material-symbols-outlined">add</span>
+                    커스텀 필드 추가
+                  </button>
+                ) : null}
               </div>
               <div className="lead-capture-fields-grid">
                 {DEFAULT_FIELDS.map((field, idx) => (
@@ -934,16 +936,18 @@ ${customInputs}
                       <p className="lead-capture-field-meta">{typeToMeta(def.type, def.required)}</p>
                     </div>
                     <span className="material-symbols-outlined lead-capture-drag-icon">drag_indicator</span>
-                    <button
-                      type="button"
-                      className="lead-capture-field-remove-btn"
-                      onClick={() => handleRemoveCustomField(def)}
-                      disabled={removingFieldId === def._id}
-                      aria-label={`${def.label} 제거`}
-                      title={removingFieldId === def._id ? '제거 중…' : '제거하기'}
-                    >
-                      <span className="material-symbols-outlined">{removingFieldId === def._id ? 'hourglass_empty' : 'delete'}</span>
-                    </button>
+                    {canManageCaptureChannels ? (
+                      <button
+                        type="button"
+                        className="lead-capture-field-remove-btn"
+                        onClick={() => handleRemoveCustomField(def)}
+                        disabled={removingFieldId === def._id}
+                        aria-label={`${def.label} 제거`}
+                        title={removingFieldId === def._id ? '제거 중…' : '제거하기'}
+                      >
+                        <span className="material-symbols-outlined">{removingFieldId === def._id ? 'hourglass_empty' : 'delete'}</span>
+                      </button>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -1261,7 +1265,7 @@ ${customInputs}
         </div>
       )}
 
-      {showCustomFieldsModal && selectedFormId && (
+      {showCustomFieldsModal && selectedFormId && canManageCaptureChannels && (
         <CustomFieldsManageModal
           entityType="leadCapture"
           leadCaptureFormId={selectedFormId}

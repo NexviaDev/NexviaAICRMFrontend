@@ -7,6 +7,7 @@ import CompanyImportPreviewModal from './company-import-preview-modal';
 import './add-company-modal.css';
 
 import { API_BASE } from '@/config';
+import { getStoredCrmUser, isSeniorOrAboveRole } from '@/lib/crm-role-utils';
 import {
   getGoogleMapsApiKey,
   loadGoogleMaps,
@@ -159,6 +160,7 @@ const MAX_DRIVE_API_UPLOAD_SIZE = 5 * 1024 * 1024;
 
 export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }) {
   const isEdit = Boolean(company);
+  const canManageCustomFieldDefinitions = isSeniorOrAboveRole(getStoredCrmUser()?.role);
   const [form, setForm] = useState({
     name: '',
     representativeName: '',
@@ -1463,10 +1465,12 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
         <section className="add-company-section add-company-section-custom">
           <div className="add-company-custom-head">
             <h3 className="add-company-section-title">사용자 정의 필드</h3>
-            <button type="button" className="add-company-btn-field-add" onClick={() => setShowCustomFieldsModal(true)}>
-              <span className="material-symbols-outlined">add</span>
-              필드 추가
-            </button>
+            {canManageCustomFieldDefinitions ? (
+              <button type="button" className="add-company-btn-field-add" onClick={() => setShowCustomFieldsModal(true)}>
+                <span className="material-symbols-outlined">add</span>
+                필드 추가
+              </button>
+            ) : null}
           </div>
           <CustomFieldsSection
             definitions={customDefinitions}
@@ -1518,7 +1522,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
               }}
             />
           )}
-          {showCustomFieldsModal && (
+          {showCustomFieldsModal && canManageCustomFieldDefinitions && (
             <CustomFieldsManageModal
               entityType="customerCompany"
               onClose={() => setShowCustomFieldsModal(false)}
@@ -1609,7 +1613,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
         </header>
         {formContent}
       </div>
-      {showCustomFieldsModal && (
+      {showCustomFieldsModal && canManageCustomFieldDefinitions && (
         <CustomFieldsManageModal
           entityType="customerCompany"
           onClose={() => setShowCustomFieldsModal(false)}
