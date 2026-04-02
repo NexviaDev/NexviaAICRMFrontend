@@ -83,6 +83,20 @@ function getEventDaysInMonth(event, year, month) {
     return getCrmAllDayDaysInMonthRange(startYmd, endInclusiveYmd, year, month);
   }
 
+  /**
+   * CRM 시간 지정(회사 일정): 백엔드가 Asia/Seoul 슬롯으로 저장하므로 격자도 서울 날짜 기준.
+   * 브라우저 로컬만 쓰면 해외/UTC 환경에서 해당 월 그리드에서 사라지거나 날짜가 하루 어긋남.
+   */
+  if (event._source === 'crm' && !event.allDay) {
+    const s = new Date(event.start);
+    if (Number.isNaN(s.getTime())) return [];
+    const startYmd = formatDateInSeoulYmd(s);
+    const endYmd = formatDateInSeoulYmd(new Date(event.end || event.start));
+    if (!startYmd) return [];
+    const endInclusive = endYmd < startYmd ? startYmd : endYmd;
+    return getCrmAllDayDaysInMonthRange(startYmd, endInclusive, year, month);
+  }
+
   const startDate = new Date(event.start);
   let endDate = event.end ? new Date(event.end) : new Date(startDate);
 
@@ -168,6 +182,21 @@ function compareCalendarEvents(a, b) {
 function compareEventsForDayList(a, b) {
   if (a.isMultiDay !== b.isMultiDay) return a.isMultiDay ? -1 : 1;
   return compareCalendarEvents(a.event, b.event);
+}
+
+/** API(JSON) → 그리드용 필드 정규화 */
+function normalizeCrmEventFromApi(ev) {
+  if (!ev || typeof ev !== 'object') return ev;
+  const out = { ...ev };
+  if (out.start != null && typeof out.start === 'object' && out.start.$date != null) {
+    out.start = out.start.$date;
+  }
+  if (out.end != null && typeof out.end === 'object' && out.end.$date != null) {
+    out.end = out.end.$date;
+  }
+  if (out._id != null) out._id = String(out._id);
+  if (out.userId != null) out.userId = String(out.userId);
+  return out;
 }
 
 const FILTER_OPTIONS = [
@@ -336,6 +365,13 @@ export default function Calendar() {
   };
   const refreshEvents = () => setRefreshKey((k) => k + 1);
 
+  /** 세일즈 파이프라인 등 다른 화면에서 수주 후 캘린더 목록 갱신 */
+  useEffect(() => {
+    const onExternalRefresh = () => setRefreshKey((k) => k + 1);
+    window.addEventListener('nexvia-crm-calendar-refresh', onExternalRefresh);
+    return () => window.removeEventListener('nexvia-crm-calendar-refresh', onExternalRefresh);
+  }, []);
+
   const firstDay = new Date(current.year, current.month, 1);
   const lastDay = new Date(current.year, current.month + 1, 0);
   const startPad = firstDay.getDay();
@@ -429,14 +465,20 @@ export default function Calendar() {
     if (activeFilter === 'all') {
       const crmParams = new URLSearchParams({ start: timeMin, end: timeMax });
       fetch(`${API_BASE}/calendar-events?${crmParams}`, { headers: getAuthHeader() })
-        .then((r) => r.json())
-        .then((data) => {
+        .then(async (r) => {
+          const data = await r.json().catch(() => ({}));
           if (cancelled) return;
+          if (!r.ok) {
+            setError(data.error || `회사 일정을 불러올 수 없습니다. (${r.status})`);
+            setCrmEvents([]);
+            return;
+          }
           if (data.error && !data.items) {
             setError(data.error);
             setCrmEvents([]);
           } else {
-            setCrmEvents(data.items || []);
+            const raw = Array.isArray(data.items) ? data.items : [];
+            setCrmEvents(raw.map(normalizeCrmEventFromApi));
           }
           setGoogleEvents([]);
         })
@@ -663,7 +705,8 @@ export default function Calendar() {
 
   const isMyEvent = useCallback((ev) => {
     if (ev._source === 'google') return true;
-    return currentUser && ev.userId === currentUser._id;
+    if (!currentUser?._id) return false;
+    return String(ev.userId || '') === String(currentUser._id);
   }, [currentUser]);
 
   const prevMonth = useCallback(() => {

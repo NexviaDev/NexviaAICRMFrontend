@@ -6,6 +6,7 @@ import CustomFieldsManageModal from '../../shared/custom-fields-manage-modal/cus
 import AssigneePickerModal from '../../company-overview/assignee-picker-modal/assignee-picker-modal';
 import '../../customer-companies/add-company-modal/add-company-modal.css';
 import './add-customer-company-employees-modal.css';
+import ContactImportPreviewModal from './contact-import-preview-modal';
 
 import { API_BASE } from '@/config';
 
@@ -76,6 +77,24 @@ function fileToBase64(file) {
     }
     return btoa(binary);
   });
+}
+
+function isTxtFile(file) {
+  if (!file) return false;
+  const n = (file.name || '').toLowerCase();
+  return file.type === 'text/plain' || n.endsWith('.txt');
+}
+
+function isBusinessCardLikeFile(file) {
+  if (!file) return false;
+  if (isTxtFile(file)) return true;
+  return (file.type || '').startsWith('image/');
+}
+
+/** 파일 2개 이상일 때만 배치 미리보기 (TXT 1개는 명함 이미지 1개와 동일하게 폼 기입) */
+function shouldUseContactBatchPreview(files) {
+  const arr = Array.from(files || []);
+  return arr.length >= 2;
 }
 
 /** 연락처 담당자 초기값: 수정 시 = 저장된 값만(없으면 빈 배열), 등록 시 = 현재 사용자 1명 */
@@ -184,6 +203,10 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
   const [businessCardFile, setBusinessCardFile] = useState(null);
   const [businessCardDropActive, setBusinessCardDropActive] = useState(false);
   const [extractingBusinessCard, setExtractingBusinessCard] = useState(false);
+  const [showImportPreview, setShowImportPreview] = useState(false);
+  const [importPreviewItems, setImportPreviewItems] = useState([]);
+  const [importPreviewLoading, setImportPreviewLoading] = useState(false);
+  const [importBulkSaving, setImportBulkSaving] = useState(false);
 
   const [bcDriveFolderId, setBcDriveFolderId] = useState(null);
   const [bcDriveFiles, setBcDriveFiles] = useState([]);
@@ -294,11 +317,12 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
       else if (showAssigneePicker) setShowAssigneePicker(false);
       else if (showCompanySearchModal) setShowCompanySearchModal(false);
       else if (showCustomFieldsModal) setShowCustomFieldsModal(false);
+      else if (showImportPreview) setShowImportPreview(false);
       else onClose?.();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, showAssigneePicker, showBulkGoogle, showCompanySearchModal, showCustomFieldsModal]);
+  }, [onClose, showAssigneePicker, showBulkGoogle, showCompanySearchModal, showCustomFieldsModal, showImportPreview]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -359,6 +383,200 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
       setExtractingBusinessCard(false);
     }
   };
+
+  /** TXT 1개 → preview-import 후 연락처 1건이면 명함 단건과 동일하게 폼 반영, 2건 이상이면 배치 미리보기 */
+  const extractFromTxtAndFillForm = async (file) => {
+    if (!file || isEditMode) return;
+    setExtractingBusinessCard(true);
+    setError('');
+    try {
+      const fd = new FormData();
+      fd.append('files', file);
+      const res = await fetch(`${API_BASE}/customer-company-employees/preview-import`, {
+        method: 'POST',
+        headers: getAuthHeader(),
+        body: fd
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || '텍스트에서 정보를 읽지 못했습니다.');
+        return;
+      }
+      const items = Array.isArray(data.items) ? data.items : [];
+      const valid = items.filter(
+        (r) => !r.error && ((r.name || '').trim() || (r.email || '').trim() || (r.phone || '').trim())
+      );
+      if (!valid.length) {
+        const firstErr = items.find((r) => r.error);
+        setError(firstErr?.error || '추출된 연락처가 없습니다.');
+        return;
+      }
+      if (valid.length > 1) {
+        setImportPreviewItems(items);
+        setShowImportPreview(true);
+        return;
+      }
+      const row = valid[0];
+      const nameNoSpace = (s) => String(s || '').replace(/\s/g, '');
+      setForm((prev) => {
+        const cn = (row.companyName && String(row.companyName).trim()) || '';
+        const next = {
+          ...prev,
+          name: nameNoSpace(row.name && String(row.name).trim()) || nameNoSpace(prev.name),
+          email: (row.email && String(row.email).trim()) || prev.email,
+          phone: row.phone ? formatPhoneInput(String(row.phone)) : prev.phone,
+          position: (row.position && String(row.position).trim()) || prev.position,
+          address: (row.address && String(row.address).trim()) || prev.address
+        };
+        if (!fixedCompany && cn) {
+          next.company = cn;
+          next.customerCompanyId = '';
+        }
+        return next;
+      });
+    } catch (_) {
+      setError('서버에 연결할 수 없습니다.');
+    } finally {
+      setExtractingBusinessCard(false);
+    }
+  };
+
+  const runContactPreviewImport = useCallback(async (files) => {
+    const arr = Array.from(files || []).filter((f) => isBusinessCardLikeFile(f));
+    if (!arr.length) {
+      setError('파일을 추가해 주세요.');
+      return;
+    }
+    setImportPreviewLoading(true);
+    setError('');
+    try {
+      const fd = new FormData();
+      arr.forEach((f) => fd.append('files', f));
+      const res = await fetch(`${API_BASE}/customer-company-employees/preview-import`, {
+        method: 'POST',
+        headers: getAuthHeader(),
+        body: fd
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || '미리보기에 실패했습니다.');
+        return;
+      }
+      const items = Array.isArray(data.items) ? data.items : [];
+      if (!items.length) {
+        setError('추출된 연락처가 없습니다.');
+        return;
+      }
+      setImportPreviewItems(items);
+      setShowImportPreview(true);
+    } catch (_) {
+      setError('서버에 연결할 수 없습니다.');
+    } finally {
+      setImportPreviewLoading(false);
+    }
+  }, []);
+
+  const confirmBulkContactImport = async () => {
+    const rows = importPreviewItems.filter(
+      (r) => !r.error && ((r.name || '').trim() || (r.email || '').trim() || (r.phone || '').trim())
+    );
+    if (!rows.length) {
+      setError('등록할 유효한 행이 없습니다.');
+      return;
+    }
+    setImportBulkSaving(true);
+    setError('');
+    let ok = 0;
+    let fail = 0;
+    const assigneeUserIds = Array.isArray(form.assigneeUserIds) ? form.assigneeUserIds : [];
+    for (const row of rows) {
+      try {
+        const payload = {
+          name: String(row.name || '').replace(/\s/g, '').trim(),
+          email: (row.email || '').trim(),
+          phone: row.phone ? formatPhoneInput(String(row.phone)) : '',
+          position: (row.position || '').trim() || undefined,
+          address: (row.address || '').trim() || undefined,
+          status: 'Lead',
+          assigneeUserIds
+        };
+        if (fixedCompany && effectiveInitialCompany?._id) {
+          payload.customerCompanyId = String(effectiveInitialCompany._id);
+          if ((form.company || '').trim()) payload.companyName = (form.company || '').trim();
+        } else {
+          const cn = (row.companyName || '').trim();
+          if (cn) {
+            payload.customerCompanyId = null;
+            payload.companyName = cn;
+          } else {
+            payload.isIndividual = true;
+            payload.customerCompanyId = null;
+            payload.companyName = '';
+          }
+        }
+        if (form.customFields && Object.keys(form.customFields).length) {
+          payload.customFields = form.customFields;
+        }
+        if (!payload.name && !payload.email && !payload.phone) {
+          fail += 1;
+          continue;
+        }
+        const res = await fetch(`${API_BASE}/customer-company-employees`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) ok += 1;
+        else fail += 1;
+      } catch {
+        fail += 1;
+      }
+    }
+    setImportBulkSaving(false);
+    setShowImportPreview(false);
+    setImportPreviewItems([]);
+    if (ok > 0) {
+      window.alert(`등록 완료: ${ok}건${fail ? `, 실패 ${fail}건` : ''}.`);
+      onSaved?.();
+      onClose?.();
+    } else {
+      setError(`등록에 실패했습니다. (${fail}건)`);
+    }
+  };
+
+  const processBusinessCardFileSelection = useCallback(
+    (fileList) => {
+      const arr = Array.from(fileList || []).filter((f) => isBusinessCardLikeFile(f));
+      if (!arr.length) {
+        setError('지원 형식: 이미지, TXT 메모');
+        return;
+      }
+      if (isEditMode) {
+        if (arr.length === 1 && !isTxtFile(arr[0]) && (arr[0].type || '').startsWith('image/')) {
+          setBusinessCardFile(arr[0]);
+          extractFromBusinessCardAndFillForm(arr[0]);
+        } else if (arr.length > 1) {
+          setError('수정 모드에서는 명함 파일을 하나만 선택해 주세요.');
+        } else {
+          setError('수정 모드에서는 이미지 한 개만 선택할 수 있습니다.');
+        }
+        return;
+      }
+      if (shouldUseContactBatchPreview(arr)) {
+        runContactPreviewImport(arr);
+        return;
+      }
+      if (arr.length === 1) {
+        if (isTxtFile(arr[0])) {
+          extractFromTxtAndFillForm(arr[0]);
+        } else {
+          setBusinessCardFile(arr[0]);
+          extractFromBusinessCardAndFillForm(arr[0]);
+        }
+      }
+    },
+    [isEditMode, runContactPreviewImport, fixedCompany]
+  );
 
   /**
    * 연락처 저장 후 명함 업로드:
@@ -751,58 +969,57 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
             </section>
           ) : (
             <section className="add-company-section" aria-label="명함 등록">
-              <h3 className="add-company-section-title">명함 업로드</h3>
+              <h3 className="add-company-section-title">명함 일괄</h3>
+              <p className="add-company-upload-hint" style={{ marginBottom: '0.5rem' }}>
+                아래 영역에 명함 이미지·TXT를 드래그 앤 드롭하거나 클릭하여 선택하세요. 여러 장 또는 TXT 한 개면 Gemini로 분류 후 표에서 확인하고 등록합니다. 이미지 한 장만 올리면 폼에 바로 채웁니다.
+              </p>
               <input
                 ref={cardInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,.txt,text/plain"
+                multiple
                 style={{ display: 'none' }}
                 onChange={(e) => {
-                  const file = e.target.files?.[0] ?? null;
+                  const list = e.target.files;
+                  if (list?.length) processBusinessCardFileSelection(list);
                   e.target.value = '';
-                  if (file) {
-                    setBusinessCardFile(file);
-                    extractFromBusinessCardAndFillForm(file);
-                  }
                 }}
                 aria-hidden="true"
               />
               <div
-                className={`add-company-upload-zone ${businessCardDropActive ? 'add-company-upload-zone-active' : ''} ${extractingBusinessCard ? 'add-company-upload-zone-disabled' : ''}`}
-                onDragOver={(ev) => { ev.preventDefault(); ev.stopPropagation(); if (!extractingBusinessCard) setBusinessCardDropActive(true); }}
+                className={`add-company-upload-zone ${businessCardDropActive ? 'add-company-upload-zone-active' : ''} ${extractingBusinessCard || importPreviewLoading ? 'add-company-upload-zone-disabled' : ''}`}
+                onDragOver={(ev) => { ev.preventDefault(); ev.stopPropagation(); if (!extractingBusinessCard && !importPreviewLoading) setBusinessCardDropActive(true); }}
                 onDragLeave={(ev) => { ev.preventDefault(); ev.stopPropagation(); setBusinessCardDropActive(false); }}
                 onDrop={(ev) => {
                   ev.preventDefault();
                   ev.stopPropagation();
                   setBusinessCardDropActive(false);
-                  const file = ev.dataTransfer?.files?.[0];
-                  if (file) {
-                    setBusinessCardFile(file);
-                    extractFromBusinessCardAndFillForm(file);
+                  if (ev.dataTransfer?.files?.length) {
+                    processBusinessCardFileSelection(ev.dataTransfer.files);
                   }
                 }}
-                onClick={() => { if (!extractingBusinessCard && cardInputRef.current) cardInputRef.current.click(); }}
+                onClick={() => { if (!extractingBusinessCard && !importPreviewLoading && cardInputRef.current) cardInputRef.current.click(); }}
                 role="button"
                 tabIndex={0}
                 onKeyDown={(ev) => {
-                  if ((ev.key === 'Enter' || ev.key === ' ') && !extractingBusinessCard && cardInputRef.current) {
+                  if ((ev.key === 'Enter' || ev.key === ' ') && !extractingBusinessCard && !importPreviewLoading && cardInputRef.current) {
                     ev.preventDefault();
                     cardInputRef.current.click();
                   }
                 }}
-                aria-label="명함 이미지 첨부 (드래그 앤 드롭 또는 클릭)"
+                aria-label="명함 이미지·TXT 첨부 (드래그 앤 드롭 또는 클릭)"
               >
                 <div className="add-company-upload-icon-wrap">
                   <span className="material-symbols-outlined add-company-upload-icon">upload_file</span>
                 </div>
-                {extractingBusinessCard ? (
-                  <p className="add-company-upload-title">명함에서 정보를 읽는 중…</p>
+                {extractingBusinessCard || importPreviewLoading ? (
+                  <p className="add-company-upload-title">{importPreviewLoading ? '일괄 분석 중…' : '명함에서 정보를 읽는 중…'}</p>
                 ) : businessCardFile ? (
                   <p className="add-company-upload-title add-company-upload-filename">{businessCardFile.name}</p>
                 ) : (
                   <>
                     <p className="add-company-upload-title">파일을 드래그하거나 클릭하여 업로드하세요</p>
-                    <p className="add-company-upload-hint">명함을 올리면 정보를 자동으로 입력합니다. 저장 시 Google Drive business card 폴더에만 등록됩니다.</p>
+                    <p className="add-company-upload-hint">명함을 올리면 정보를 자동으로 입력합니다. 여러 장·TXT 파일은 미리보기 후 등록합니다. 저장 시 Google Drive business card 폴더에만 등록됩니다.</p>
                   </>
                 )}
               </div>
@@ -911,7 +1128,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
             </button>
             <div className="add-contact-modal-footer-actions">
               <button type="button" className="add-contact-modal-cancel" onClick={onClose}>취소</button>
-              <button type="submit" className="add-contact-modal-save" disabled={saving || extractingBusinessCard}>{saving ? '저장 중...' : isEditMode ? '저장' : '연락처 저장'}</button>
+              <button type="submit" className="add-contact-modal-save" disabled={saving || extractingBusinessCard || importPreviewLoading}>{saving ? '저장 중...' : isEditMode ? '저장' : '연락처 저장'}</button>
             </div>
           </div>
         </form>
@@ -941,6 +1158,14 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
             }}
           />
         )}
+        <ContactImportPreviewModal
+          open={showImportPreview}
+          items={importPreviewItems}
+          bulkSaving={importBulkSaving}
+          fixedCompany={fixedCompany}
+          onClose={() => !importBulkSaving && setShowImportPreview(false)}
+          onConfirm={confirmBulkContactImport}
+        />
       </div>
     </div>
   );

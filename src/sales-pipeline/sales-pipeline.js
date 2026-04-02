@@ -6,6 +6,7 @@ import './sales-pipeline.css';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 
 import { API_BASE } from '@/config';
+import { getStoredCrmUser, isSeniorOrAboveRole } from '@/lib/crm-role-utils';
 const MODAL_PARAM = 'oppModal';
 const MODAL_ADD = 'add';
 const MODAL_EDIT = 'edit';
@@ -79,8 +80,9 @@ export default function SalesPipeline() {
     setSearchParams(p, { replace: true });
   };
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
+  const fetchData = useCallback(async (opts) => {
+    const silent = opts?.silent === true;
+    if (!silent) setLoading(true);
     try {
       const params = new URLSearchParams();
       if (search) params.set('search', search);
@@ -95,7 +97,7 @@ export default function SalesPipeline() {
       setTotals({});
       setListMeta(null);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [search]);
 
@@ -121,6 +123,14 @@ export default function SalesPipeline() {
     }
     fetchData();
   }, [fetchData, healthPinged]);
+
+  useEffect(() => {
+    const onPipelineRefresh = () => {
+      fetchData({ silent: true });
+    };
+    window.addEventListener('nexvia-crm-pipeline-refresh', onPipelineRefresh);
+    return () => window.removeEventListener('nexvia-crm-pipeline-refresh', onPipelineRefresh);
+  }, [fetchData]);
 
   const onSearchInput = (e) => {
     const val = e.target.value;
@@ -155,16 +165,22 @@ export default function SalesPipeline() {
   const handleDrop = async (e, targetStage) => {
     e.preventDefault();
     e.currentTarget.classList.remove('sp-drop-hover');
-    const id = e.dataTransfer.getData('text/plain') || dragId;
+    const rawId = e.dataTransfer.getData('text/plain') || dragId;
+    const id = rawId != null ? String(rawId) : '';
     if (!id) return;
 
-    // optimistic update
+    // optimistic update (Mongo _id는 문자열/ObjectId 혼재 가능 — 엄격 비교 방지)
     const prev = { ...grouped };
     const newGrouped = {};
     let movedItem = null;
+    let fromStage = null;
     for (const [stage, items] of Object.entries(prev)) {
       newGrouped[stage] = items.filter((i) => {
-        if (i._id === id) { movedItem = { ...i, stage: targetStage }; return false; }
+        if (String(i._id) === id) {
+          fromStage = stage;
+          movedItem = { ...i, stage: targetStage };
+          return false;
+        }
         return true;
       });
     }
@@ -187,6 +203,57 @@ export default function SalesPipeline() {
         body: JSON.stringify({ stage: targetStage })
       });
       if (!res.ok) throw new Error();
+      const data = await res.json().catch(() => ({}));
+      fetchData({ silent: true });
+      if (fromStage === 'Won' && targetStage !== 'Won') {
+        try {
+          window.dispatchEvent(new CustomEvent('nexvia-crm-calendar-refresh'));
+        } catch {
+          /* ignore */
+        }
+      }
+      if (targetStage === 'Won' && data.renewalCalendar) {
+        const rc = data.renewalCalendar;
+        if (rc.scheduled && (rc.eventStart || rc.noticeEventStart || rc.preReminderEventStart)) {
+          try {
+            window.dispatchEvent(new CustomEvent('nexvia-crm-calendar-refresh'));
+          } catch {
+            /* ignore */
+          }
+          const fmt = (iso) =>
+            new Date(iso).toLocaleString('ko-KR', { dateStyle: 'long', timeStyle: 'short' });
+          let msg = '회사 캘린더에 일정이 등록되었습니다.\n\n';
+          if (rc.noticeEventStart) {
+            msg += `· 수주 당일 안내(지금 보는 달에 표시): ${fmt(rc.noticeEventStart)}\n`;
+          }
+          if (rc.preReminderEventStart) {
+            msg += `· 사전 알림(월간=갱신 2주 전 / 연간=갱신 1개월 전): ${fmt(rc.preReminderEventStart)}\n`;
+          }
+          if (rc.eventStart) {
+            msg += `· 실제 갱신 알림(월간=1개월 후 / 연간=1년 후): ${fmt(rc.eventStart)}\n`;
+          }
+          msg += '\n캘린더는 «회사 일정» 탭에서 확인하세요. 열려 있으면 목록이 갱신됩니다.';
+          window.alert(msg);
+        } else if (rc.skipReason === 'no_product_id') {
+          window.alert(
+            '기회에 제품이 연결되어 있지 않아 갱신 일정을 등록하지 않았습니다. 기회 상세에서 제품을 선택한 뒤 다시 수주 성공으로 옮겨 주세요.'
+          );
+        } else if (rc.skipReason === 'not_subscription') {
+          window.alert(
+            '선택한 제품의 결제 주기가 월간/연간이 아니어 갱신 일정을 만들지 않았습니다. (영구 등은 제외)'
+          );
+        } else if (rc.skipReason === 'product_not_found') {
+          window.alert('연결된 제품 정보를 찾을 수 없어 갱신 일정을 등록하지 못했습니다.');
+        } else if (rc.skipReason === 'calendar_create_failed' || rc.skipReason === 'invalid_anchor') {
+          window.alert(
+            '갱신 일정 생성에 실패했습니다. 잠시 후 기회 상세에서 «갱신 캘린더» 확인을 눌러 다시 시도해 주세요.'
+          );
+        } else if (rc.skipReason === 'error' && rc.message) {
+          window.alert(`갱신 일정 처리 중 오류: ${rc.message}`);
+        } else if (!rc.scheduled && rc.skipReason) {
+          window.alert(`갱신 일정이 등록되지 않았습니다. (${rc.skipReason})`);
+        }
+      }
     } catch {
       setGrouped(prev);
       fetchData();
@@ -217,16 +284,26 @@ export default function SalesPipeline() {
     return tone;
   }, [boardStages]);
 
+  /** Senior·대표: 금액·단계 관리 등 민감 UI (백엔드 requireSeniorOrAbove 와 동일 기준) */
+  const canViewSeniorContent = isSeniorOrAboveRole(getStoredCrmUser()?.role);
+
+  const formatOppValue = (opp) => {
+    if (!canViewSeniorContent) return '—';
+    return formatCurrency(opp.value, opp.currency);
+  };
+
   return (
     <div className="sp-container">
       {/* Header */}
       <header className="sp-header">
         <div className="sp-header-left">
           <h2 className="sp-title">세일즈 현황</h2>
-          <button type="button" className="sp-stages-manage-btn" onClick={() => setShowStagesModal(true)} title="파이프라인 단계 관리">
-            <span className="material-symbols-outlined">tune</span>
-            단계 관리
-          </button>
+          {canViewSeniorContent ? (
+            <button type="button" className="sp-stages-manage-btn" onClick={() => setShowStagesModal(true)} title="파이프라인 단계 관리">
+              <span className="material-symbols-outlined">tune</span>
+              단계 관리
+            </button>
+          ) : null}
         </div>
         <div className="sp-header-right">
           <div className="sp-search-wrap">
@@ -245,6 +322,11 @@ export default function SalesPipeline() {
         <div className="sp-list-cap-notice" role="status">
           전체 {Number(listMeta.totalOpportunities || 0).toLocaleString()}건 중 최신{' '}
           {Number(listMeta.displayedOpportunities || 0).toLocaleString()}건만 표시됩니다. 검색으로 범위를 좁혀 주세요.
+        </div>
+      ) : null}
+      {!canViewSeniorContent ? (
+        <div className="sp-senior-only-notice" role="status">
+          기회 금액은 Senior·대표만 표시됩니다.
         </div>
       ) : null}
 
@@ -297,7 +379,7 @@ export default function SalesPipeline() {
                         <div className="sp-card-top">
                           <h4 className="sp-card-title">{opp.customerCompanyName || '\u00A0'}-{opp.title || '\u00A0'}</h4>
                           <div className="sp-card-top-right">
-                            <span className="sp-card-value">{formatCurrency(opp.value, opp.currency)}</span>
+                            <span className="sp-card-value">{formatOppValue(opp)}</span>
                             <button className="sp-card-delete" title="삭제" onClick={(e) => { e.stopPropagation(); handleDelete(opp._id); }}>
                               <span className="material-symbols-outlined">close</span>
                             </button>
@@ -365,7 +447,7 @@ export default function SalesPipeline() {
                             </div>
                             <p className="sp-card-contact">{opp.contactName || '\u00A0'}</p>
                             <div className="sp-card-meta">
-                              <span className="sp-card-value">{formatCurrency(opp.value, opp.currency)}</span>
+                              <span className="sp-card-value">{formatOppValue(opp)}</span>
                             </div>
                           </div>
                         ))}

@@ -32,6 +32,15 @@
   border-bottom: 1px solid #c5dff0;
 }
 
+.sp-senior-only-notice {
+  flex-shrink: 0;
+  padding: 0.45rem 1.5rem;
+  font-size: 0.8125rem;
+  background: rgba(184, 212, 240, 0.2);
+  color: var(--text-muted, #64748b);
+  border-bottom: 1px solid var(--card-border);
+}
+
 .sp-header-left {
   display: flex;
   align-items: center;

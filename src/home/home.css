@@ -259,6 +259,41 @@
   gap: 1.5rem;
 }
 
+/* Senior 미만: 인사이트 그래프 대체 안내 (한 줄 전체 폭) */
+.home-insights-grid > .home-insights-restricted-panel,
+.home-insights-grid > .home-insights-role-loading {
+  grid-column: 1 / -1;
+}
+
+.home-insights-role-loading {
+  min-height: 5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.home-insights-restricted-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem 1.5rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  background: rgba(184, 212, 240, 0.12);
+}
+
+.home-insights-restricted-body p {
+  margin: 0;
+}
+
+.home-insights-restricted-icon {
+  flex-shrink: 0;
+  font-size: 1.35rem;
+  color: #93a4c7;
+  margin-top: 0.1rem;
+}
+
 @media (max-width: 1024px) {
   .home-top-grid {
     grid-template-columns: 1fr;
@@ -1148,6 +1183,42 @@
 .home-reps-switch button.active {
   background: #2e698f;
   color: #fff;
+}
+
+.reps-panel-head {
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.reps-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.home-reps-source-hint {
+  margin: 0 1.5rem 0.75rem;
+  padding: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.home-reps-source-hint strong {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.home-reps-loading,
+.home-reps-empty {
+  padding: 1.25rem 1.5rem;
+  margin: 0;
+}
+
+.home-reps-panel-restricted .home-reps-restricted-inner {
+  border-top: 1px solid var(--card-border);
 }
 
 .table-wrap { overflow-x: auto; }

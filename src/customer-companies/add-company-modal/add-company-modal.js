@@ -3,12 +3,14 @@ import CustomFieldsSection from '../../shared/custom-fields-section';
 import CustomFieldsManageModal from '../../shared/custom-fields-manage-modal/custom-fields-manage-modal';
 import AssigneePickerModal from '../../company-overview/assignee-picker-modal/assignee-picker-modal';
 import DriveLargeFileWarningModal from '../../shared/drive-large-file-warning-modal/drive-large-file-warning-modal';
+import CompanyImportPreviewModal from './company-import-preview-modal';
 import './add-company-modal.css';
 
 import { API_BASE } from '@/config';
 import {
   getGoogleMapsApiKey,
   loadGoogleMaps,
+  loadGoogleMapsPromise,
   geocodeAddressWithGoogleMaps
 } from '@/lib/google-maps-client';
 
@@ -30,6 +32,36 @@ function getPickerMarkerIcon(google) {
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+/**
+ * 저장 시 주소만 있고 위·경도가 비었을 때 사용. 서버 geocode → 실패 시 클라이언트 Maps Geocoder.
+ * @returns {Promise<{ latitude: number, longitude: number } | null>}
+ */
+async function geocodeAddressForCompanySave(addressText) {
+  const address = (addressText || '').trim();
+  if (!address) return null;
+  try {
+    const geoRes = await fetch(`${API_BASE}/customer-companies/geocode`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify({ address })
+    });
+    const geoData = await geoRes.json().catch(() => ({}));
+    if (geoRes.ok && geoData.latitude != null && geoData.longitude != null) {
+      const latitude = Number(geoData.latitude);
+      const longitude = Number(geoData.longitude);
+      if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+        return { latitude, longitude };
+      }
+    }
+  } catch (_) {}
+  if (!GOOGLE_MAPS_API_KEY) return null;
+  const google = await loadGoogleMapsPromise();
+  if (!google?.maps?.Geocoder) return null;
+  const coords = await geocodeAddressWithGoogleMaps(google, address);
+  if (coords?.latitude != null && coords?.longitude != null) return coords;
+  return null;
 }
 
 /** 사업자번호: 숫자만 허용, 10자리까지 입력 시 123-45-67890 형식으로 자동 구분 */
@@ -81,10 +113,26 @@ function getDriveFileIdFromUrl(url) {
   return m ? m[1] : null;
 }
 
+function isTxtFile(file) {
+  const n = String(file?.name || '').toLowerCase();
+  return String(file?.type || '').toLowerCase() === 'text/plain' || n.endsWith('.txt');
+}
+
 function isCertificateLikeFile(file) {
   const mime = String(file?.type || '').toLowerCase();
   const name = String(file?.name || '').toLowerCase();
-  return mime.startsWith('image/') || mime === 'application/pdf' || name.endsWith('.pdf');
+  return (
+    mime.startsWith('image/')
+    || mime === 'application/pdf'
+    || name.endsWith('.pdf')
+    || isTxtFile(file)
+  );
+}
+
+/** 2개 이상 파일이면 배치 미리보기 (TXT 1개는 단건 PDF와 동일하게 폼 기입) */
+function shouldUseCompanyBatchPreview(fileList) {
+  const arr = Array.from(fileList || []);
+  return arr.length >= 2;
 }
 
 /** Drive 저장 시 파일명: 사업자등록증_고객사명_사업자번호.확장자 */
@@ -140,6 +188,10 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
   const [certificateFile, setCertificateFile] = useState(null);
   const [certificateDropActive, setCertificateDropActive] = useState(false);
   const [extractingCertificate, setExtractingCertificate] = useState(false);
+  const [showImportPreview, setShowImportPreview] = useState(false);
+  const [importPreviewItems, setImportPreviewItems] = useState([]);
+  const [importPreviewLoading, setImportPreviewLoading] = useState(false);
+  const [bulkSaving, setBulkSaving] = useState(false);
 
   const [driveFolderLink, setDriveFolderLink] = useState('');
   const [driveFolderId, setDriveFolderId] = useState(null);
@@ -692,6 +744,17 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
         const geoData = await geoRes.json().catch(() => ({}));
         if (geoRes.ok && geoData.latitude != null && geoData.longitude != null) {
           setForm((prev) => ({ ...prev, latitude: geoData.latitude, longitude: geoData.longitude }));
+        } else if (GOOGLE_MAPS_API_KEY) {
+          loadGoogleMaps(async (google) => {
+            const coords = await geocodeAddressWithGoogleMaps(google, addressTrimmed);
+            if (coords?.latitude != null && coords?.longitude != null) {
+              setForm((prev) => ({
+                ...prev,
+                latitude: coords.latitude,
+                longitude: coords.longitude
+              }));
+            }
+          });
         }
       }
     } catch (_) {
@@ -700,6 +763,203 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
       setExtractingCertificate(false);
     }
   };
+
+  /** TXT 1개 → preview-import로 추출 후, 고객사 1건이면 PDF 단건과 동일하게 폼·위경도 반영 (2건 이상이면 배치 미리보기) */
+  const extractFromTxtAndFillForm = async (file) => {
+    if (!file || isEdit) return;
+    setExtractingCertificate(true);
+    setError('');
+    try {
+      const fd = new FormData();
+      fd.append('files', file);
+      const res = await fetch(`${API_BASE}/customer-companies/preview-import`, {
+        method: 'POST',
+        headers: getAuthHeader(),
+        body: fd
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || '텍스트에서 정보를 읽지 못했습니다.');
+        return;
+      }
+      const items = Array.isArray(data.items) ? data.items : [];
+      const valid = items.filter((r) => !r.error && (r.name || '').trim());
+      if (!valid.length) {
+        const firstErr = items.find((r) => r.error);
+        setError(firstErr?.error || '추출된 고객사가 없습니다.');
+        return;
+      }
+      if (valid.length > 1) {
+        setImportPreviewItems(items);
+        setShowImportPreview(true);
+        return;
+      }
+      const row = valid[0];
+      const bn = row.businessNumber ? formatBusinessNumberInput(String(row.businessNumber)) : '';
+      let latitudeNum =
+        row.latitude != null && Number.isFinite(Number(row.latitude)) ? Number(row.latitude) : null;
+      let longitudeNum =
+        row.longitude != null && Number.isFinite(Number(row.longitude)) ? Number(row.longitude) : null;
+      const addressTrimmed = row.address ? String(row.address).trim() : '';
+      setForm((prev) => ({
+        ...prev,
+        name: (row.name && String(row.name).trim()) || prev.name,
+        businessNumber: bn || prev.businessNumber,
+        representativeName: (row.representativeName && String(row.representativeName).trim()) || prev.representativeName,
+        address: addressTrimmed || prev.address,
+        latitude: latitudeNum,
+        longitude: longitudeNum
+      }));
+      if (addressTrimmed && (latitudeNum == null || longitudeNum == null)) {
+        const coords = await geocodeAddressForCompanySave(addressTrimmed);
+        if (coords) {
+          setForm((prev) => ({
+            ...prev,
+            latitude: coords.latitude,
+            longitude: coords.longitude
+          }));
+        }
+      }
+    } catch (_) {
+      setError('서버에 연결할 수 없습니다.');
+    } finally {
+      setExtractingCertificate(false);
+    }
+  };
+
+  const runCompanyPreviewImport = useCallback(async (files) => {
+    const arr = Array.from(files || []).filter((f) => isCertificateLikeFile(f));
+    if (!arr.length) {
+      setError('파일을 추가해 주세요.');
+      return;
+    }
+    setImportPreviewLoading(true);
+    setError('');
+    try {
+      const fd = new FormData();
+      arr.forEach((f) => fd.append('files', f));
+      const res = await fetch(`${API_BASE}/customer-companies/preview-import`, {
+        method: 'POST',
+        headers: getAuthHeader(),
+        body: fd
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || '미리보기에 실패했습니다.');
+        return;
+      }
+      const items = Array.isArray(data.items) ? data.items : [];
+      if (!items.length) {
+        setError('추출된 고객사가 없습니다.');
+        return;
+      }
+      setImportPreviewItems(items);
+      setShowImportPreview(true);
+    } catch (_) {
+      setError('서버에 연결할 수 없습니다.');
+    } finally {
+      setImportPreviewLoading(false);
+    }
+  }, []);
+
+  const confirmBulkCompanyImport = async () => {
+    const rows = importPreviewItems.filter((r) => !r.error && (r.name || '').trim());
+    if (!rows.length) {
+      setError('등록할 유효한 행이 없습니다.');
+      return;
+    }
+    setBulkSaving(true);
+    setError('');
+    let ok = 0;
+    let fail = 0;
+    const assigneeUserIds = Array.isArray(form.assigneeUserIds) ? form.assigneeUserIds : [];
+    for (const row of rows) {
+      try {
+        const bn = row.businessNumber ? String(row.businessNumber).replace(/\D/g, '').slice(0, 10) : '';
+        const addressTrimmed = row.address ? String(row.address).trim() : '';
+        let latitudeNum =
+          row.latitude != null && Number.isFinite(Number(row.latitude)) ? Number(row.latitude) : null;
+        let longitudeNum =
+          row.longitude != null && Number.isFinite(Number(row.longitude)) ? Number(row.longitude) : null;
+        // 단건 저장(handleSubmit)과 동일: 주소는 있는데 위·경도가 비었으면 서버/클라이언트 지오코딩 보완
+        if (addressTrimmed && (latitudeNum == null || longitudeNum == null)) {
+          const coords = await geocodeAddressForCompanySave(addressTrimmed);
+          if (coords) {
+            latitudeNum = coords.latitude;
+            longitudeNum = coords.longitude;
+          }
+        }
+        const body = {
+          name: String(row.name || '').trim(),
+          representativeName: row.representativeName ? String(row.representativeName).trim() : undefined,
+          businessNumber: bn || undefined,
+          address: addressTrimmed || undefined,
+          latitude: latitudeNum != null ? latitudeNum : undefined,
+          longitude: longitudeNum != null ? longitudeNum : undefined,
+          assigneeUserIds
+        };
+        const res = await fetch(`${API_BASE}/customer-companies`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+          body: JSON.stringify(body)
+        });
+        if (res.ok) ok += 1;
+        else fail += 1;
+      } catch {
+        fail += 1;
+      }
+    }
+    setBulkSaving(false);
+    setShowImportPreview(false);
+    setImportPreviewItems([]);
+    if (ok > 0) {
+      window.alert(`등록 완료: ${ok}건${fail ? `, 실패 ${fail}건` : ''}.`);
+      onSaved?.();
+      onClose?.();
+    } else {
+      setError(`등록에 실패했습니다. (${fail}건)`);
+    }
+  };
+
+  const queueCertificateFile = useCallback((file) => {
+    if (!file) return;
+    setCertificateFile(file);
+    setError('');
+  }, []);
+
+  const processCertificateFileSelection = useCallback(
+    (fileList) => {
+      const arr = Array.from(fileList || []).filter((f) => isCertificateLikeFile(f));
+      if (!arr.length) {
+        setError('지원 형식: 이미지, PDF, TXT 메모');
+        return;
+      }
+      if (isEdit) {
+        if (arr.length === 1 && !isTxtFile(arr[0])) {
+          queueCertificateFile(arr[0]);
+          extractFromCertificateAndFillForm(arr[0]);
+        } else if (arr.length > 1) {
+          setError('수정 모드에서는 증빙 파일을 하나만 선택해 주세요.');
+        } else {
+          setError('수정 모드에서는 이미지 또는 PDF 한 개만 선택할 수 있습니다.');
+        }
+        return;
+      }
+      if (shouldUseCompanyBatchPreview(arr)) {
+        runCompanyPreviewImport(arr);
+        return;
+      }
+      if (arr.length === 1) {
+        if (isTxtFile(arr[0])) {
+          extractFromTxtAndFillForm(arr[0]);
+        } else {
+          queueCertificateFile(arr[0]);
+          extractFromCertificateAndFillForm(arr[0]);
+        }
+      }
+    },
+    [isEdit, queueCertificateFile, runCompanyPreviewImport]
+  );
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -714,16 +974,14 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
     setError('');
   };
 
-  const queueCertificateFile = useCallback((file) => {
-    if (!file) return;
-    setCertificateFile(file);
-    setError('');
-  }, []);
-
   const handleEditModeDrop = useCallback((files) => {
     const filesArray = Array.from(files || []);
     if (!filesArray.length) return;
-    if (filesArray.length === 1 && isCertificateLikeFile(filesArray[0])) {
+    if (
+      filesArray.length === 1
+      && isCertificateLikeFile(filesArray[0])
+      && !isTxtFile(filesArray[0])
+    ) {
       queueCertificateFile(filesArray[0]);
       return;
     }
@@ -741,13 +999,26 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
     }
     submittingRef.current = true;
     setSaving(true);
+    const addressTrimmed = form.address.trim();
+    let latitudeNum =
+      form.latitude != null && Number.isFinite(Number(form.latitude)) ? Number(form.latitude) : null;
+    let longitudeNum =
+      form.longitude != null && Number.isFinite(Number(form.longitude)) ? Number(form.longitude) : null;
+    if (addressTrimmed && (latitudeNum == null || longitudeNum == null)) {
+      const coords = await geocodeAddressForCompanySave(addressTrimmed);
+      if (coords) {
+        latitudeNum = coords.latitude;
+        longitudeNum = coords.longitude;
+        setForm((prev) => ({ ...prev, latitude: coords.latitude, longitude: coords.longitude }));
+      }
+    }
     const body = {
       name: form.name.trim(),
       representativeName: form.representativeName.trim() || undefined,
       businessNumber: (form.businessNumber || '').replace(/-/g, '').trim() || undefined,
-      address: form.address.trim() || undefined,
-      latitude: form.latitude != null && Number.isFinite(Number(form.latitude)) ? Number(form.latitude) : undefined,
-      longitude: form.longitude != null && Number.isFinite(Number(form.longitude)) ? Number(form.longitude) : undefined,
+      address: addressTrimmed || undefined,
+      latitude: latitudeNum != null ? latitudeNum : undefined,
+      longitude: longitudeNum != null ? longitudeNum : undefined,
       memo: form.memo.trim() || undefined,
       customFields: form.customFields && Object.keys(form.customFields).length ? form.customFields : undefined,
       assigneeUserIds: Array.isArray(form.assigneeUserIds) ? form.assigneeUserIds : []
@@ -1024,51 +1295,52 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
           </section>
         ) : (
           <section className="add-company-section">
-            <h3 className="add-company-section-title">사업자등록증 업로드</h3>
+            <h3 className="add-company-section-title">사업자등록증 일괄</h3>
+            <p className="add-company-upload-hint" style={{ marginBottom: '0.5rem' }}>
+              아래 영역에 이미지·PDF·TXT를 드래그 앤 드롭하거나 클릭하여 선택하세요. 여러 개 또는 TXT 한 개면 Gemini로 분류 후 표에서 확인하고 등록합니다. 이미지·PDF 한 개만 올리면 폼에 바로 채웁니다.
+            </p>
             <input
               ref={certificateInputRef}
               type="file"
-              accept="image/*,.pdf"
+              accept="image/*,.pdf,.txt,text/plain"
+              multiple
               style={{ display: 'none' }}
               onChange={(e) => {
-                const file = e.target.files?.[0] ?? null;
-                queueCertificateFile(file);
+                const list = e.target.files;
+                if (list?.length) processCertificateFileSelection(list);
                 e.target.value = '';
-                if (file) extractFromCertificateAndFillForm(file);
               }}
               aria-hidden="true"
             />
             <div
-              className={`add-company-upload-zone ${certificateDropActive ? 'add-company-upload-zone-active' : ''} ${extractingCertificate ? 'add-company-upload-zone-disabled' : ''}`}
-              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); if (!extractingCertificate) setCertificateDropActive(true); }}
+              className={`add-company-upload-zone ${certificateDropActive ? 'add-company-upload-zone-active' : ''} ${extractingCertificate || importPreviewLoading ? 'add-company-upload-zone-disabled' : ''}`}
+              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); if (!extractingCertificate && !importPreviewLoading) setCertificateDropActive(true); }}
               onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setCertificateDropActive(false); }}
               onDrop={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 setCertificateDropActive(false);
-                const file = e.dataTransfer?.files?.[0];
-                if (file) {
-                  setCertificateFile(file);
-                  extractFromCertificateAndFillForm(file);
+                if (e.dataTransfer?.files?.length) {
+                  processCertificateFileSelection(e.dataTransfer.files);
                 }
               }}
-              onClick={() => { if (!extractingCertificate && certificateInputRef.current) certificateInputRef.current.click(); }}
+              onClick={() => { if (!extractingCertificate && !importPreviewLoading && certificateInputRef.current) certificateInputRef.current.click(); }}
               role="button"
               tabIndex={0}
-              onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !extractingCertificate && certificateInputRef.current) { e.preventDefault(); certificateInputRef.current.click(); } }}
-              aria-label="사업자 등록증 첨부 (드래그 앤 드롭 또는 클릭)"
+              onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !extractingCertificate && !importPreviewLoading && certificateInputRef.current) { e.preventDefault(); certificateInputRef.current.click(); } }}
+              aria-label="사업자 등록증 파일 첨부 (드래그 앤 드롭 또는 클릭)"
             >
               <div className="add-company-upload-icon-wrap">
                 <span className="material-symbols-outlined add-company-upload-icon">upload_file</span>
               </div>
-              {extractingCertificate ? (
-                <p className="add-company-upload-title">증빙에서 정보를 읽는 중…</p>
+              {extractingCertificate || importPreviewLoading ? (
+                <p className="add-company-upload-title">{importPreviewLoading ? '일괄 분석 중…' : '증빙에서 정보를 읽는 중…'}</p>
               ) : certificateFile ? (
                 <p className="add-company-upload-title add-company-upload-filename">{certificateFile.name}</p>
               ) : (
                 <>
-                  <p className="add-company-upload-title">파일을 드래그하거나 클릭하여 업로드하세요</p>
-                  <p className="add-company-upload-hint">사업자등록증을 업로드하면 정보를 자동으로 입력합니다.</p>
+                  <p className="add-company-upload-title">파일을 드래그하거나 클릭 (여러 개 가능)</p>
+                  <p className="add-company-upload-hint">이미지·PDF·TXT. 2개 이상 또는 TXT 한 개는 미리보기 후 등록.</p>
                 </>
               )}
             </div>
@@ -1301,6 +1573,13 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
               </div>
             </div>
           )}
+          <CompanyImportPreviewModal
+            open={showImportPreview}
+            items={importPreviewItems}
+            bulkSaving={bulkSaving}
+            onClose={() => !bulkSaving && setShowImportPreview(false)}
+            onConfirm={confirmBulkCompanyImport}
+          />
           <DriveLargeFileWarningModal
             open={largeFileWarning.open}
             files={largeFileWarning.files}
@@ -1399,6 +1678,13 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
           </div>
         </div>
       )}
+      <CompanyImportPreviewModal
+        open={showImportPreview}
+        items={importPreviewItems}
+        bulkSaving={bulkSaving}
+        onClose={() => !bulkSaving && setShowImportPreview(false)}
+        onConfirm={confirmBulkCompanyImport}
+      />
       <DriveLargeFileWarningModal
         open={largeFileWarning.open}
         files={largeFileWarning.files}

@@ -1611,3 +1611,75 @@
   color: var(--danger, #c53030);
   background: rgba(197, 48, 48, 0.08);
 }
+
+/* ── 일괄 가져오기: 미리보기 오버레이 (고객사·연락처 공통 클래스) ── */
+.add-company-import-preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(4px);
+}
+
+.add-company-import-preview-panel {
+  width: 100%;
+  max-width: min(56rem, 96vw);
+  max-height: 88vh;
+  overflow: auto;
+  background: var(--card, #fff);
+  border: 1px solid var(--card-border, #e5e7eb);
+  border-radius: 0.75rem;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.2);
+  padding: 1rem 1.25rem 1.25rem;
+}
+
+.add-company-import-preview-table-wrap {
+  overflow-x: auto;
+  margin: 0.75rem 0 0;
+  border-radius: 0.5rem;
+  border: 1px solid var(--card-border, #e5e7eb);
+  background: rgba(248, 250, 252, 0.85);
+}
+
+.add-company-import-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.add-company-import-preview-table th,
+.add-company-import-preview-table td {
+  padding: 0.5rem 0.65rem;
+  text-align: left;
+  border-bottom: 1px solid var(--card-border, #e5e7eb);
+  vertical-align: top;
+  word-break: break-word;
+}
+
+.add-company-import-preview-table th {
+  font-weight: 600;
+  color: var(--text-muted, #64748b);
+  background: rgba(226, 232, 240, 0.45);
+  white-space: nowrap;
+}
+
+.add-company-import-preview-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.add-company-import-preview-err {
+  color: var(--danger, #c53030);
+  font-size: 0.78rem;
+}
+
+.add-company-import-preview-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}

@@ -14,6 +14,7 @@ import {
   SNOOZE_MS
 } from '@/lib/home-capture-leads-visibility';
 import { formatPhone } from '@/register/phoneFormat';
+import { getStoredCrmUser, isSeniorOrAboveRole } from '@/lib/crm-role-utils';
 import HomeLeadDetailModal from './home-lead-detail-modal';
 
 function getAuthHeader() {
@@ -87,6 +88,81 @@ function formatWonRevenue(w) {
     parts.push(formatCurrency(amount, currency));
   }
   return parts.join(' · ');
+}
+
+/** 세일즈 파이프라인 수주(Won) 집계용 시점: 판매일 우선, 없으면 수정일 */
+function getWonOpportunityDate(opp) {
+  if (opp?.saleDate) {
+    const t = new Date(opp.saleDate).getTime();
+    if (!Number.isNaN(t)) return new Date(opp.saleDate);
+  }
+  if (opp?.updatedAt) return new Date(opp.updatedAt);
+  if (opp?.createdAt) return new Date(opp.createdAt);
+  return new Date(0);
+}
+
+/** 주간(최근 7일)·월간(당월) — 수주 성공 건만 넘긴 뒤 필터 */
+function isWonOpportunityInPeriod(opp, mode) {
+  const d = getWonOpportunityDate(opp);
+  const now = new Date();
+  if (mode === 'week') {
+    const start = new Date(now);
+    start.setDate(start.getDate() - 7);
+    start.setHours(0, 0, 0, 0);
+    return d >= start && d <= now;
+  }
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  start.setHours(0, 0, 0, 0);
+  return d >= start && d <= now;
+}
+
+function nameToInitials(name) {
+  const s = String(name || '').trim();
+  if (!s || s === '미지정') return '?';
+  const noSpace = s.replace(/\s/g, '');
+  if (noSpace.length <= 2) return noSpace.toUpperCase();
+  return (noSpace[0] + noSpace[noSpace.length - 1]).toUpperCase();
+}
+
+/**
+ * sales-opportunities API의 grouped.Won 배열 → 담당자별 매출·건수 (sales-pipeline과 동일 데이터 소스)
+ */
+function aggregateWonLeaderboard(wonOpportunities, mode) {
+  const filtered = (wonOpportunities || []).filter((o) => isWonOpportunityInPeriod(o, mode));
+  const totalDeals = filtered.length;
+  const byAssignee = new Map();
+  for (const opp of filtered) {
+    const displayName = (opp.assignedToName || '').trim() || '미지정';
+    if (!byAssignee.has(displayName)) {
+      byAssignee.set(displayName, { name: displayName, deals: 0, KRW: 0, USD: 0, JPY: 0 });
+    }
+    const row = byAssignee.get(displayName);
+    row.deals += 1;
+    const cur = String(opp.currency || 'KRW').toUpperCase();
+    const v = Number(opp.value) || 0;
+    if (cur === 'USD') row.USD += v;
+    else if (cur === 'JPY') row.JPY += v;
+    else row.KRW += v;
+  }
+  const sortedBuckets = Array.from(byAssignee.values()).sort(
+    (a, b) => b.deals - a.deals || b.KRW - a.KRW || String(a.name).localeCompare(String(b.name), 'ko')
+  );
+  const rows = sortedBuckets.map((r) => {
+    const parts = [];
+    if (r.KRW > 0) parts.push(formatCurrency(r.KRW, 'KRW'));
+    if (r.USD > 0) parts.push(formatCurrency(r.USD, 'USD'));
+    if (r.JPY > 0) parts.push(formatCurrency(r.JPY, 'JPY'));
+    const revenueDisplay = parts.length ? parts.join(' · ') : '—';
+    const sharePct = totalDeals > 0 ? Math.round((r.deals / totalDeals) * 100) : 0;
+    return {
+      name: r.name,
+      initials: nameToInitials(r.name),
+      deals: r.deals,
+      revenueDisplay,
+      sharePct
+    };
+  });
+  return { rows: rows.slice(0, 20), totalDeals };
 }
 
 function prepareChartSeries(series) {
@@ -281,6 +357,81 @@ export default function Home() {
   const [leadDetailOpen, setLeadDetailOpen] = useState(false);
   const [leadDetailContext, setLeadDetailContext] = useState(null);
   const pipelineMounted = useRef(true);
+  /** 인사이트 그래프: 서버 /auth/me 기준 (localStorage만 쓰면 DB 역할 변경·오래된 캐시와 어긋날 수 있음) */
+  const [insightAccess, setInsightAccess] = useState({ checked: false, seniorPlus: false });
+  /** 우수 영업 담당자: sales-opportunities의 수주 성공(Won) — Senior·대표만 표시 */
+  const [wonLeaderboardMode, setWonLeaderboardMode] = useState('month');
+  const [wonLeaderboardRows, setWonLeaderboardRows] = useState([]);
+  const [wonLeaderboardLoading, setWonLeaderboardLoading] = useState(false);
+  const [wonLeaderboardRefreshTick, setWonLeaderboardRefreshTick] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const token = localStorage.getItem('crm_token');
+    if (!token) {
+      setInsightAccess({ checked: true, seniorPlus: false });
+      return undefined;
+    }
+    fetch(`${API_BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((r) => r.json().catch(() => ({})))
+      .then((data) => {
+        if (cancelled) return;
+        if (data?.user) {
+          try {
+            localStorage.setItem('crm_user', JSON.stringify(data.user));
+          } catch (_) {}
+          setInsightAccess({
+            checked: true,
+            seniorPlus: isSeniorOrAboveRole(data.user.role)
+          });
+        } else {
+          setInsightAccess({
+            checked: true,
+            seniorPlus: isSeniorOrAboveRole(getStoredCrmUser()?.role)
+          });
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setInsightAccess({
+          checked: true,
+          seniorPlus: isSeniorOrAboveRole(getStoredCrmUser()?.role)
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!insightAccess.checked || !insightAccess.seniorPlus) return undefined;
+    let cancelled = false;
+    setWonLeaderboardLoading(true);
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/sales-opportunities`, { headers: getAuthHeader() });
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        const won = Array.isArray(data.grouped?.Won) ? data.grouped.Won : [];
+        const { rows } = aggregateWonLeaderboard(won, wonLeaderboardMode);
+        setWonLeaderboardRows(rows);
+      } catch {
+        if (!cancelled) setWonLeaderboardRows([]);
+      } finally {
+        if (!cancelled) setWonLeaderboardLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [insightAccess.checked, insightAccess.seniorPlus, wonLeaderboardMode, wonLeaderboardRefreshTick]);
+
+  useEffect(() => {
+    if (!insightAccess.checked || !insightAccess.seniorPlus) return undefined;
+    const handler = () => setWonLeaderboardRefreshTick((t) => t + 1);
+    window.addEventListener('nexvia-crm-pipeline-refresh', handler);
+    return () => window.removeEventListener('nexvia-crm-pipeline-refresh', handler);
+  }, [insightAccess.checked, insightAccess.seniorPlus]);
 
   useEffect(() => {
     let cancelled = false;
@@ -584,6 +735,10 @@ export default function Home() {
     [stats.salesGraphs, selectedGraphCurrency]
   );
   const netMarginSeries = useMemo(() => prepareChartSeries(netMarginRaw), [netMarginRaw]);
+
+  /** 소비자가·순마진 인사이트 그래프: Senior·대표만 (위 insightAccess = /auth/me 반영 후) */
+  const canViewInsightCharts = insightAccess.checked && insightAccess.seniorPlus;
+
   const renderChartPanel = (title, subtitle, series, tone, emptyText, chartOptions = {}) => {
     const {
       marginLineCurrent = [],
@@ -892,31 +1047,56 @@ export default function Home() {
         </div>
 
         <div className="home-insights-grid">
-          {renderChartPanel(
-            '소비자가 기준 그래프',
-            '수주 성공 건의 최근 6개월 소비자가 합계입니다. 꺾은선에서는 전년 동월과 같은 눈금으로 비교합니다.',
-            consumerSeries,
-            'consumer',
-            '최근 6개월·전년 동월 소비자가 데이터가 없습니다.',
-            {
-              chartMode: consumerChartMode,
-              onChartModeChange: setConsumerChartMode,
-              consumerLineCurrent: consumerRaw,
-              consumerLinePrev: consumerPrevRaw
-            }
-          )}
-          {renderChartPanel(
-            '순마진 그래프',
-            '수주 금액에서 원가×수량을 뺀 금액입니다. 최근 6개월과 전년 동월 6개월을 같은 눈금으로 비교합니다.',
-            netMarginSeries,
-            'margin',
-            '최근 6개월·전년 동월 순마진 데이터가 없습니다.',
-            {
-              chartMode: marginChartMode,
-              onChartModeChange: setMarginChartMode,
-              marginLineCurrent: netMarginRaw,
-              marginLinePrev: netMarginPrevRaw
-            }
+          {!insightAccess.checked ? (
+            <div className="panel home-chart-panel home-insights-role-loading" aria-busy="true">
+              <p className="home-chart-empty">권한 확인 중…</p>
+            </div>
+          ) : canViewInsightCharts ? (
+            <>
+              {renderChartPanel(
+                '소비자가 기준 그래프',
+                '수주 성공 건의 최근 6개월 소비자가 합계입니다. 꺾은선에서는 전년 동월과 같은 눈금으로 비교합니다.',
+                consumerSeries,
+                'consumer',
+                '최근 6개월·전년 동월 소비자가 데이터가 없습니다.',
+                {
+                  chartMode: consumerChartMode,
+                  onChartModeChange: setConsumerChartMode,
+                  consumerLineCurrent: consumerRaw,
+                  consumerLinePrev: consumerPrevRaw
+                }
+              )}
+              {renderChartPanel(
+                '순마진 그래프',
+                '수주 금액에서 원가×수량을 뺀 금액입니다. 최근 6개월과 전년 동월 6개월을 같은 눈금으로 비교합니다.',
+                netMarginSeries,
+                'margin',
+                '최근 6개월·전년 동월 순마진 데이터가 없습니다.',
+                {
+                  chartMode: marginChartMode,
+                  onChartModeChange: setMarginChartMode,
+                  marginLineCurrent: netMarginRaw,
+                  marginLinePrev: netMarginPrevRaw
+                }
+              )}
+            </>
+          ) : (
+            <div className="panel home-chart-panel home-insights-restricted-panel" aria-live="polite">
+              <div className="panel-head home-chart-head">
+                <div>
+                  <h2>매출 인사이트 그래프</h2>
+                  <p className="home-chart-subtitle">소비자가·순마진 추이</p>
+                </div>
+              </div>
+              <div className="home-insights-restricted-body">
+                <span className="material-symbols-outlined home-insights-restricted-icon" aria-hidden>
+                  lock
+                </span>
+                <p>
+                  이 영역은 <strong>Senior·대표</strong> 권한에서만 열람할 수 있습니다. (Staff·권한 대기 계정은 표시되지 않습니다.)
+                </p>
+              </div>
+            </div>
           )}
         </div>
 
@@ -954,53 +1134,100 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="home-bottom">
-          <div className="panel reps-panel">
-            <div className="panel-head">
-              <h2>우수 영업 담당자</h2>
-              <div className="home-reps-switch">
-                <button type="button">주간</button>
-                <button type="button" className="active">월간</button>
+        {insightAccess.checked && (
+          insightAccess.seniorPlus ? (
+            <div className="home-bottom">
+              <div className="panel reps-panel">
+                <div className="panel-head reps-panel-head">
+                  <h2>우수 영업 담당자</h2>
+                  <div className="panel-actions reps-panel-actions">
+                    <div className="home-reps-switch">
+                      <button
+                        type="button"
+                        className={wonLeaderboardMode === 'week' ? 'active' : ''}
+                        onClick={() => setWonLeaderboardMode('week')}
+                      >
+                        주간
+                      </button>
+                      <button
+                        type="button"
+                        className={wonLeaderboardMode === 'month' ? 'active' : ''}
+                        onClick={() => setWonLeaderboardMode('month')}
+                      >
+                        월간
+                      </button>
+                    </div>
+                    <Link to="/sales-pipeline" className="home-pipeline-link">
+                      세일즈 현황
+                      <span className="material-symbols-outlined" aria-hidden>arrow_forward</span>
+                    </Link>
+                  </div>
+                </div>
+                <p className="home-reps-source-hint">
+                  세일즈 현황과 동일한 데이터입니다. <strong>수주 성공(Won)</strong>만 집계합니다. 기간은 판매일(없으면 수정일) 기준 — {wonLeaderboardMode === 'week' ? '최근 7일' : '당월'}.
+                </p>
+                <div className="table-wrap">
+                  {wonLeaderboardLoading ? (
+                    <p className="home-chart-empty home-reps-loading">불러오는 중…</p>
+                  ) : wonLeaderboardRows.length === 0 ? (
+                    <p className="home-chart-empty home-reps-empty">
+                      해당 기간에 수주 성공 건이 없거나, 담당자 정보가 없습니다.
+                    </p>
+                  ) : (
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>담당자</th>
+                          <th>매출액</th>
+                          <th>수주 성공 건수</th>
+                          <th>비중(건수)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {wonLeaderboardRows.map((row) => (
+                          <tr key={row.name}>
+                            <td>
+                              <div className="cell-user">
+                                <span className="avatar-initials">{row.initials}</span>
+                                {row.name}
+                              </div>
+                            </td>
+                            <td className="font-semibold">{row.revenueDisplay}</td>
+                            <td>{row.deals}</td>
+                            <td>
+                              <div className="quota-cell">
+                                <div className="quota-bar">
+                                  <div className="quota-fill" style={{ width: `${row.sharePct}%` }} />
+                                </div>
+                                <span>{row.sharePct}%</span>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
               </div>
             </div>
-            <div className="table-wrap">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>담당자</th>
-                    <th>매출액</th>
-                    <th>딜 클로징</th>
-                    <th>목표 달성률</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[
-                    { name: '이지은', init: 'EJ', deals: 12, value: '₩24,500k', quota: 95 },
-                    { name: '김지우', init: 'KJ', deals: 9, value: '₩18,200k', quota: 82 },
-                    { name: '박도윤', init: 'PD', deals: 7, value: '₩15,900k', quota: 70 }
-                  ].map((row) => (
-                    <tr key={row.name}>
-                      <td>
-                        <div className="cell-user">
-                          <span className="avatar-initials">{row.init}</span>
-                          {row.name}
-                        </div>
-                      </td>
-                      <td className="font-semibold">{row.value}</td>
-                      <td>{row.deals}</td>
-                      <td>
-                        <div className="quota-cell">
-                          <div className="quota-bar"><div className="quota-fill" style={{ width: row.quota + '%' }} /></div>
-                          <span>{row.quota}%</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          ) : (
+            <div className="home-bottom">
+              <div className="panel reps-panel home-reps-panel-restricted">
+                <div className="panel-head">
+                  <h2>우수 영업 담당자</h2>
+                </div>
+                <div className="home-insights-restricted-body home-reps-restricted-inner">
+                  <span className="material-symbols-outlined home-insights-restricted-icon" aria-hidden>
+                    lock
+                  </span>
+                  <p>
+                    이 표는 <strong>Senior·대표</strong>만 열람할 수 있습니다. (수주 성공 실적은 세일즈 현황과 연동됩니다.)
+                  </p>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+          )
+        )}
       </div>
     </div>
   );

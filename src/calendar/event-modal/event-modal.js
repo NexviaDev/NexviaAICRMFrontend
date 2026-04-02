@@ -82,6 +82,12 @@ function renderDescriptionWithLinks(text) {
 function isGoogleEventId(id) { return typeof id === 'string' && id.startsWith('g:'); }
 function extractGoogleId(id) { return id.slice(2); }
 
+/** 월간/연간 제품·구독 갱신 자동 일정(productRenewalCalendar) — 제목 입력란 옆 [이름]_ 접두 미표시 */
+function isCrmProductRenewalAutoEvent(description) {
+  const d = String(description || '');
+  return d.includes('[제품·구독 갱신 알림]') || d.includes('[수주 직후 안내]');
+}
+
 /** Google Calendar 이벤트 → 폼 값 */
 function googleEventToForm(ev, titleMeta = {}) {
   const start = ev.start || {};
@@ -741,7 +747,9 @@ export default function EventModal({ eventId, isEdit, initialDate, calendarType,
                     <label htmlFor="event-title">일정 제목 <span className="required">*</span></label>
                     {!isGoogle ? (
                       <div className="event-modal-title-wrap">
-                        <span className="event-modal-title-prefix">[{currentUser?.name || '이름'}]_</span>
+                        {!isCrmProductRenewalAutoEvent(form.description) && (
+                          <span className="event-modal-title-prefix">[{currentUser?.name || '이름'}]_</span>
+                        )}
                         <input id="event-title" name="title" type="text" value={form.title} onChange={handleChange} placeholder="예: 전략 기획 회의" required />
                       </div>
                     ) : (

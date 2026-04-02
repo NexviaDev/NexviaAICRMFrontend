@@ -170,6 +170,9 @@ export default function OpportunityModal({
   const [editDraft, setEditDraft] = useState('');
   const [replyingToId, setReplyingToId] = useState(null);
   const [replyText, setReplyText] = useState('');
+  const [renewalCalBusy, setRenewalCalBusy] = useState(false);
+  /** 서버에서 불러온 직후 단계 — 저장 시 Won→다른 단계면 갱신 캘린더 삭제 반영용 */
+  const stageAtLoadRef = useRef(null);
 
   const currentUserId = useMemo(() => getCurrentUserId(), []);
 
@@ -187,6 +190,8 @@ export default function OpportunityModal({
       const unitForDisplay = unit > 0 ? unit : (data.value && qty >= 1 ? Math.round(data.value / qty) : 0);
       const rate = data.discountRate ?? (data.discountType === 'rate' ? data.discountValue : 0);
       const amt = data.discountAmount ?? (data.discountType === 'amount' ? data.discountValue : 0);
+      const loadedStage = data.stage || 'NewLead';
+      stageAtLoadRef.current = loadedStage;
       setForm({
         customerCompanyId: cc?._id || cc || '',
         customerCompanyName: cc?.name || '',
@@ -199,7 +204,7 @@ export default function OpportunityModal({
         discountRate: rate > 0 ? String(rate) : '',
         discountAmount: amt > 0 ? amt.toLocaleString() : '',
         currency: data.currency || 'KRW',
-        stage: data.stage || 'NewLead',
+        stage: loadedStage,
         description: data.description || ''
       });
       setBusinessNumber(String(cc?.businessNumber ?? ''));
@@ -488,9 +493,23 @@ export default function OpportunityModal({
         headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         body: JSON.stringify(body)
       });
+      const savedPayload = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || '저장 실패');
+        throw new Error(savedPayload.error || '저장 실패');
+      }
+      if (savedPayload.renewalCalendar?.followUpOpportunityId) {
+        try {
+          window.dispatchEvent(new CustomEvent('nexvia-crm-pipeline-refresh'));
+        } catch {
+          /* ignore */
+        }
+      }
+      if (isEdit && stageAtLoadRef.current === 'Won' && selectedStage !== 'Won') {
+        try {
+          window.dispatchEvent(new CustomEvent('nexvia-crm-calendar-refresh'));
+        } catch {
+          /* ignore */
+        }
       }
       onSaved();
       onClose();
@@ -506,10 +525,62 @@ export default function OpportunityModal({
     if (!window.confirm('이 기회를 삭제하시겠습니까?')) return;
     try {
       await fetch(`${API_BASE}/sales-opportunities/${oppId}`, { method: 'DELETE', headers: getAuthHeader() });
+      try {
+        window.dispatchEvent(new CustomEvent('nexvia-crm-calendar-refresh'));
+      } catch {
+        /* ignore */
+      }
       onSaved();
       onClose();
     } catch { /* ignore */ }
   };
+
+  const handleEnsureRenewalCalendar = useCallback(async () => {
+    if (!isEdit || !oppId || form.stage !== 'Won' || !form.productId) return;
+    setRenewalCalBusy(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE}/sales-opportunities/${oppId}/renewal-calendar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() }
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || '갱신 일정을 처리할 수 없습니다.');
+      const rc = data.renewalCalendar;
+      if (rc?.scheduled && (rc.eventStart || rc.noticeEventStart || rc.preReminderEventStart)) {
+        try {
+          window.dispatchEvent(new CustomEvent('nexvia-crm-calendar-refresh'));
+        } catch {
+          /* ignore */
+        }
+        const fmt = (iso) =>
+          new Date(iso).toLocaleString('ko-KR', { dateStyle: 'long', timeStyle: 'short' });
+        let msg = (rc.alreadyHad ? '이미 등록된 일정이 있습니다.\n\n' : '') +
+          '회사 캘린더에 일정이 등록되었습니다.\n\n';
+        if (rc.noticeEventStart) msg += `· 수주 당일 안내: ${fmt(rc.noticeEventStart)}\n`;
+        if (rc.preReminderEventStart) {
+          msg += `· 사전 알림(월간=갱신 2주 전 / 연간=갱신 1개월 전): ${fmt(rc.preReminderEventStart)}\n`;
+        }
+        if (rc.eventStart) msg += `· 실제 갱신(1개월/1년 후): ${fmt(rc.eventStart)}\n`;
+        msg += '\n«회사 일정» 탭에서 확인하세요.';
+        window.alert(msg);
+      } else if (rc?.skipReason === 'not_subscription') {
+        window.alert(
+          '제품 결제 주기가 월간/연간이 아니면 갱신 일정이 만들어지지 않습니다. 제품 목록에서 해당 제품의 결제 주기를 확인하세요.'
+        );
+      } else if (rc?.skipReason === 'no_product_id') {
+        window.alert('제품이 연결되어 있지 않습니다.');
+      } else if (rc?.skipReason === 'product_not_found') {
+        window.alert('제품 정보를 찾을 수 없습니다.');
+      } else {
+        window.alert(rc?.skipReason ? `일정을 만들 수 없습니다: ${rc.skipReason}` : '일정을 만들 수 없습니다.');
+      }
+    } catch (e) {
+      setError(e.message || '갱신 일정 처리에 실패했습니다.');
+    } finally {
+      setRenewalCalBusy(false);
+    }
+  }, [isEdit, oppId, form.stage, form.productId]);
 
   const { roots, childrenMap } = useMemo(() => organizeComments(comments), [comments]);
   const commentById = useMemo(() => {
@@ -831,6 +902,21 @@ export default function OpportunityModal({
                   ))}
                 </div>
               </div>
+              {isEdit && form.stage === 'Won' && form.productId ? (
+                <div className="opp-renewal-cal-row">
+                  <button
+                    type="button"
+                    className="opp-renewal-cal-btn"
+                    disabled={renewalCalBusy}
+                    onClick={handleEnsureRenewalCalendar}
+                  >
+                    {renewalCalBusy ? '처리 중…' : '갱신 캘린더 일정 등록·확인'}
+                  </button>
+                  <p className="opp-renewal-cal-hint">
+                    월간·연간 제품만 해당합니다. 수주 당일 안내 일정(이번 달에 표시)과 실제 갱신 일정(1개월 또는 1년 뒤) 두 가지가 «회사 일정»에 등록됩니다. «개인 일정» 탭에는 표시되지 않습니다.
+                  </p>
+                </div>
+              ) : null}
 
               {/* 가격 기준(제품 목록: 소비자 마진 / 유통 마진 축) */}
               <div className="opp-label">
