@@ -189,6 +189,7 @@ export default function AdminSubscription() {
                 <th>상태</th>
                 <th>인원</th>
                 <th>월 요금(안내)</th>
+                <th>파트너 구매</th>
                 <th>다음 정기 결제</th>
                 <th>마지막 결제</th>
                 <th>연체(일)</th>
@@ -209,6 +210,15 @@ export default function AdminSubscription() {
                   </td>
                   <td>{r.seatCount}명</td>
                   <td>{r.planAmount?.toLocaleString('ko-KR')}원</td>
+                  <td>
+                    {r.partnerSellerCompanyName ? (
+                      <span className="admin-sub-id" title={r.partnerSellerCompanyName}>
+                        {r.partnerSellerCompanyName}
+                      </span>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
                   <td>{formatDt(r.nextBillingAt)}</td>
                   <td>{formatDt(r.lastBillingAt)}</td>
                   <td>{r.overdueDays > 0 ? `${r.overdueDays}일` : '—'}</td>

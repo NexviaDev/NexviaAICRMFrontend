@@ -29,6 +29,7 @@ export default function AdminCompanies() {
   const [usersLoading, setUsersLoading] = useState(false);
   const [grantSeatInput, setGrantSeatInput] = useState('');
   const [savingGrant, setSavingGrant] = useState(false);
+  const [savingPartner, setSavingPartner] = useState(false);
   const [roleSavingId, setRoleSavingId] = useState(null);
 
   const loadCompanies = useCallback(async () => {
@@ -114,6 +115,32 @@ export default function AdminCompanies() {
       setError(e.message || '저장에 실패했습니다.');
     } finally {
       setSavingGrant(false);
+    }
+  };
+
+  const savePartnerReseller = async (partnerReseller) => {
+    if (!selectedId) return;
+    setSavingPartner(true);
+    setError('');
+    setSuccessMsg('');
+    try {
+      const res = await fetch(`${API_BASE}/admin/companies/${encodeURIComponent(selectedId)}`, {
+        method: 'PATCH',
+        headers: getAdminSiteFetchHeaders(),
+        body: JSON.stringify({ partnerReseller })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || '저장에 실패했습니다.');
+      setSuccessMsg(
+        partnerReseller
+          ? '파트너사로 설정했습니다. 발급된 쿠폰 번호를 파트너에 전달해 주세요.'
+          : '일반 회사로 변경했습니다. 쿠폰 번호는 해제되었습니다.'
+      );
+      void loadCompanies();
+    } catch (e) {
+      setError(e.message || '저장에 실패했습니다.');
+    } finally {
+      setSavingPartner(false);
     }
   };
 
@@ -210,6 +237,8 @@ export default function AdminCompanies() {
                     <th>회사명</th>
                     <th>사업자번호</th>
                     <th>DB</th>
+                    <th>파트너</th>
+                    <th>쿠폰</th>
                     <th>Owner / Sr / St / 대기</th>
                     <th>구독 시트</th>
                     <th>선택</th>
@@ -227,6 +256,16 @@ export default function AdminCompanies() {
                       </td>
                       <td>{row.businessNumber || '—'}</td>
                       <td>{row.dbName ? <span className="admin-sub-id">{row.dbName}</span> : '—'}</td>
+                      <td>{row.partnerReseller ? 'O' : 'X'}</td>
+                      <td>
+                        {row.partnerReseller && row.partnerCouponCode ? (
+                          <span className="admin-sub-id" style={{ fontSize: '0.8rem', wordBreak: 'break-all' }}>
+                            {row.partnerCouponCode}
+                          </span>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
                       <td>
                         {row.roleCounts
                           ? `${row.roleCounts.owner} / ${row.roleCounts.senior} / ${row.roleCounts.staff} / ${row.roleCounts.pending}`
@@ -263,6 +302,42 @@ export default function AdminCompanies() {
                 <h2 style={{ margin: '0 0 12px', fontSize: '1.05rem', color: '#1e3a4c' }}>
                   {selectedRow.name} — 관리자 무료 구독(전체 시트)
                 </h2>
+                <div
+                  style={{
+                    marginBottom: '16px',
+                    padding: '12px 14px',
+                    background: 'rgba(107, 157, 184, 0.1)',
+                    borderRadius: '10px',
+                    border: '1px solid rgba(107, 157, 184, 0.25)'
+                  }}
+                >
+                  <p style={{ margin: '0 0 8px', fontWeight: 600, color: '#334155' }}>협업 판매 파트너</p>
+                  <p className="admin-sub-lead" style={{ marginBottom: '10px' }}>
+                    파트너사로 지정하면 할인 쿠폰 번호가 자동 발급됩니다. 고객이 구독 결제 시 입력하면 요금표에 파트너 할인이 적용됩니다.
+                  </p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+                    <label className="admin-sub-label" style={{ margin: 0 }}>
+                      파트너 여부
+                      <select
+                        className="admin-sub-input"
+                        style={{ minWidth: '100px', marginTop: '6px' }}
+                        value={selectedRow.partnerReseller ? 'O' : 'X'}
+                        disabled={savingPartner}
+                        onChange={(e) => void savePartnerReseller(e.target.value === 'O')}
+                      >
+                        <option value="X">X (일반)</option>
+                        <option value="O">O (파트너)</option>
+                      </select>
+                    </label>
+                    {selectedRow.partnerReseller && selectedRow.partnerCouponCode ? (
+                      <div>
+                        <span className="admin-sub-id" style={{ fontSize: '0.85rem' }}>
+                          쿠폰: <strong>{selectedRow.partnerCouponCode}</strong>
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
                 <p className="admin-sub-lead" style={{ marginBottom: '14px' }}>
                   결제·카드 등록 없이 <strong>구독 및 인원</strong> 화면과 동일하게 <strong>활성 구독</strong>으로 보이게 합니다. 인원 상한은
                   Owner·Senior·Staff 합계 기준 <strong>한 가지 숫자(시트)</strong>입니다.

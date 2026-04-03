@@ -59,25 +59,39 @@ function clampSeat(n) {
   return Math.min(x, 500);
 }
 
-/** 서버 subscriptionPricing.js 와 동일한 월 요금(원) */
-function monthlyKrwForSeats(seatCount) {
+function monthlyKrwForSeats(seatCount, usePartnerCoupon, pricing) {
+  const p = pricing || {};
+  const base = usePartnerCoupon
+    ? Number(p.baseMonthlyKrwWithPartnerCoupon ?? 260000)
+    : Number(p.baseMonthlyKrw ?? 300000);
+  const extraUnit = usePartnerCoupon
+    ? Number(p.extraSeatMonthlyKrwWithPartnerCoupon ?? 40000)
+    : Number(p.extraSeatMonthlyKrw ?? 60000);
   const s = clampSeat(seatCount);
-  if (s <= 3) return 240000;
-  return 240000 + (s - 3) * 40000;
+  if (s <= 3) return base;
+  return base + (s - 3) * extraUnit;
 }
 
-function seatBreakdown(seatCount) {
+function seatBreakdown(seatCount, usePartnerCoupon, pricing) {
+  const p = pricing || {};
+  const baseKrw = usePartnerCoupon
+    ? Number(p.baseMonthlyKrwWithPartnerCoupon ?? 260000)
+    : Number(p.baseMonthlyKrw ?? 300000);
+  const extraUnit = usePartnerCoupon
+    ? Number(p.extraSeatMonthlyKrwWithPartnerCoupon ?? 40000)
+    : Number(p.extraSeatMonthlyKrw ?? 60000);
   const s = clampSeat(seatCount);
   const extra = Math.max(0, s - 3);
   return {
-    baseKrw: 240000,
+    baseKrw,
     extraSeats: extra,
-    additionalKrw: extra * 40000,
-    totalKrw: monthlyKrwForSeats(s)
+    additionalKrw: extra * extraUnit,
+    totalKrw: monthlyKrwForSeats(s, usePartnerCoupon, p)
   };
 }
 
 const PENDING_SEAT_KEY = 'sub_pending_seat_count';
+const PENDING_PARTNER_COUPON_KEY = 'sub_pending_partner_coupon';
 
 export default function Subscription() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -90,6 +104,10 @@ export default function Subscription() {
   const [confirming, setConfirming] = useState(false);
   const [seatsInput, setSeatsInput] = useState(MIN_SEATS);
   const [seatApplyLoading, setSeatApplyLoading] = useState(false);
+  const [partnerCouponInput, setPartnerCouponInput] = useState('');
+  const [partnerCouponInfo, setPartnerCouponInfo] = useState(null);
+  const [partnerCouponLoading, setPartnerCouponLoading] = useState(false);
+  const [partnerCouponMsg, setPartnerCouponMsg] = useState('');
 
   const refresh = useCallback(async () => {
     const res = await fetch(`${API_BASE}/subscription/status`, { headers: { ...getAuthHeader(), 'Content-Type': 'application/json' } });
@@ -128,6 +146,32 @@ export default function Subscription() {
   }, []);
 
   useEffect(() => {
+    const active = status?.hasSubscription && status?.status === 'active';
+    if (!config || active) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(PENDING_PARTNER_COUPON_KEY) : '';
+        const code = String(raw || '').trim();
+        if (!code) return;
+        setPartnerCouponInput(code);
+        const res = await fetch(`${API_BASE}/subscription/validate-partner-coupon`, {
+          method: 'POST',
+          headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ partnerCouponCode: code })
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || cancelled) return;
+        setPartnerCouponInfo({ partnerName: json.partnerName || '파트너', code });
+        setPartnerCouponMsg(`적용됨: ${json.partnerName || '파트너'} 협업 판매`);
+      } catch (_) {}
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [config, status?.hasSubscription, status?.status, status?.partnerCouponApplied]);
+
+  useEffect(() => {
     const billing = searchParams.get('billing');
     const authKey = searchParams.get('authKey');
     const customerKey = searchParams.get('customerKey');
@@ -160,10 +204,14 @@ export default function Subscription() {
           const raw = sessionStorage.getItem(PENDING_SEAT_KEY);
           if (raw) seatCount = clampSeat(parseInt(raw, 10));
         } catch (_) {}
+        let partnerCouponCode = '';
+        try {
+          partnerCouponCode = String(sessionStorage.getItem(PENDING_PARTNER_COUPON_KEY) || '').trim();
+        } catch (_) {}
         const res = await fetch(`${API_BASE}/subscription/confirm-billing`, {
           method: 'POST',
           headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-          body: JSON.stringify({ authKey, customerKey, seatCount })
+          body: JSON.stringify({ authKey, customerKey, seatCount, partnerCouponCode: partnerCouponCode || undefined })
         });
         const json = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(json.error || '빌링 등록에 실패했습니다.');
@@ -172,7 +220,9 @@ export default function Subscription() {
         } catch (_) {}
         try {
           sessionStorage.removeItem(PENDING_SEAT_KEY);
+          sessionStorage.removeItem(PENDING_PARTNER_COUPON_KEY);
         } catch (_) {}
+        setPartnerCouponInfo(null);
         setActionMsg(`첫 구독 결제가 완료되었습니다. (이용 ${seatCount}명, 결제키: ${json.subscription?.paymentKey || '—'})`);
         await refresh();
       } catch (e) {
@@ -189,6 +239,47 @@ export default function Subscription() {
     })();
     return () => { cancelled = true; };
   }, [searchParams, setSearchParams, refresh]);
+
+  const handleApplyPartnerCoupon = async () => {
+    const code = String(partnerCouponInput || '').trim();
+    if (!code) {
+      setPartnerCouponMsg('쿠폰 번호를 입력해 주세요.');
+      return;
+    }
+    setPartnerCouponLoading(true);
+    setPartnerCouponMsg('');
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE}/subscription/validate-partner-coupon`, {
+        method: 'POST',
+        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ partnerCouponCode: code })
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || '쿠폰을 확인하지 못했습니다.');
+      try {
+        sessionStorage.setItem(PENDING_PARTNER_COUPON_KEY, code);
+      } catch (_) {}
+      setPartnerCouponInfo({ partnerName: json.partnerName || '파트너', code });
+      setPartnerCouponMsg(`적용됨: ${json.partnerName || '파트너'} 협업 판매`);
+    } catch (e) {
+      setPartnerCouponMsg(e.message || '확인에 실패했습니다.');
+      try {
+        sessionStorage.removeItem(PENDING_PARTNER_COUPON_KEY);
+      } catch (_) {}
+      setPartnerCouponInfo(null);
+    } finally {
+      setPartnerCouponLoading(false);
+    }
+  };
+
+  const handleClearPartnerCoupon = () => {
+    try {
+      sessionStorage.removeItem(PENDING_PARTNER_COUPON_KEY);
+    } catch (_) {}
+    setPartnerCouponInfo(null);
+    setPartnerCouponMsg('');
+  };
 
   const handleRequestBillingAuth = async () => {
     if (!config?.clientKey || !config?.customerKey) return;
@@ -343,8 +434,14 @@ export default function Subscription() {
   }
 
   const hasActive = status?.hasSubscription && status?.status === 'active';
-  const previewMonthly = monthlyKrwForSeats(seatsInput);
-  const breakdown = seatBreakdown(seatsInput);
+  const pricing = config?.pricing || {};
+  const usePartnerCoupon =
+    (hasActive && !!status?.partnerCouponApplied) || (!hasActive && !!partnerCouponInfo);
+  const previewMonthly = monthlyKrwForSeats(seatsInput, usePartnerCoupon, pricing);
+  const breakdown = seatBreakdown(seatsInput, usePartnerCoupon, pricing);
+  const prorationTiers = usePartnerCoupon
+    ? pricing.prorationTiersWithPartnerCoupon || []
+    : pricing.prorationTiersStandard || [];
   const autoOn = config?.autoBillingEnabled === true || status?.autoBillingEnabled === true;
   const currentSeats = clampSeat(status?.seatCount ?? MIN_SEATS);
   const seatsDirty = hasActive && clampSeat(seatsInput) !== currentSeats;
@@ -414,6 +511,14 @@ export default function Subscription() {
                       : `${previewMonthly.toLocaleString('ko-KR')}원`}
                   </p>
                 </div>
+                {hasActive && status?.partnerSellerCompanyName ? (
+                  <div style={{ gridColumn: '1 / -1' }}>
+                    <p className="subscription-stat-label">파트너 구매</p>
+                    <p className="subscription-stat-value" style={{ fontSize: '0.95rem' }}>
+                      {status.partnerSellerCompanyName}
+                    </p>
+                  </div>
+                ) : null}
                 <div>
                   <p className="subscription-stat-label">등록 인원</p>
                   <p className="subscription-stat-value">
@@ -422,6 +527,57 @@ export default function Subscription() {
                 </div>
               </div>
             </section>
+
+            {!hasActive ? (
+              <section className="subscription-seat-card" aria-labelledby="partner-coupon-title">
+                <div className="subscription-seat-card-header">
+                  <div>
+                    <h3 id="partner-coupon-title">파트너 쿠폰 (선택)</h3>
+                    <p className="sub">
+                      협업 판매 파트너사에서 안내받은 번호가 있으면 입력 후 적용하세요. 첫 결제 및 이후 요금에 할인이 반영됩니다.
+                    </p>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'flex-end', marginBottom: '8px' }}>
+                  <label className="subscription-stat-label" style={{ flex: '1 1 200px', margin: 0 }}>
+                    쿠폰 번호
+                    <input
+                      type="text"
+                      style={{
+                        width: '100%',
+                        marginTop: '6px',
+                        padding: '10px 12px',
+                        borderRadius: '10px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '0.95rem'
+                      }}
+                      value={partnerCouponInput}
+                      onChange={(e) => setPartnerCouponInput(e.target.value)}
+                      placeholder="예: NEX-PART-…"
+                      autoComplete="off"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="subscription-btn-outline"
+                    onClick={() => void handleApplyPartnerCoupon()}
+                    disabled={partnerCouponLoading}
+                  >
+                    {partnerCouponLoading ? '확인 중…' : '적용'}
+                  </button>
+                  {partnerCouponInfo ? (
+                    <button type="button" className="subscription-btn-ghost" onClick={handleClearPartnerCoupon}>
+                      쿠폰 해제
+                    </button>
+                  ) : null}
+                </div>
+                {partnerCouponMsg ? (
+                  <p className={partnerCouponInfo ? 'subscription-toast-note' : 'subscription-error'} style={{ marginTop: 0 }}>
+                    {partnerCouponMsg}
+                  </p>
+                ) : null}
+              </section>
+            ) : null}
 
             <section className="subscription-seat-card" aria-labelledby="seat-widget-title">
               <div className="subscription-seat-card-header">
@@ -513,37 +669,32 @@ export default function Subscription() {
 
             <section className="subscription-prorate-section" aria-labelledby="prorate-heading">
               <h3 id="prorate-heading">비례 요금표 (월 중 인원 추가)</h3>
+              <p className="sub" style={{ marginBottom: '12px' }}>
+                {usePartnerCoupon
+                  ? '파트너 쿠폰이 적용된 경우 구간별 금액(기존 안내). 쿠폰 없이 가입 시 각 구간이 2만원씩 높습니다.'
+                  : '쿠폰 미적용(표준) 기준입니다. 파트너 쿠폰 적용 시 각 구간이 2만원 낮아집니다.'}
+              </p>
               <div className="subscription-prorate-table-wrap">
                 <table className="subscription-prorate-table">
-                  <caption>마지막 정기 결제 이후 경과 기간별 인당 일회 요금</caption>
+                  <caption>
+                    마지막 정기 결제 이후 경과 기간별 인당 일회 요금 —{' '}
+                    {usePartnerCoupon ? '파트너 쿠폰 적용' : '표준'}
+                  </caption>
                   <thead>
                     <tr>
-                      <th scope="col">남은 기간(정기 결제 기준)</th>
+                      <th scope="col">구간</th>
                       <th scope="col">인당 요금</th>
                       <th scope="col">비고</th>
                     </tr>
                   </thead>
                   <tbody>
-                    <tr>
-                      <td>7일 이내</td>
-                      <td>40,000원</td>
-                      <td className="muted">마지막 정기 결제 직후 구간</td>
-                    </tr>
-                    <tr>
-                      <td>7일 초과 ~ 14일 이하</td>
-                      <td>30,000원</td>
-                      <td className="muted">중간 구간</td>
-                    </tr>
-                    <tr>
-                      <td>14일 초과 ~ 21일 이하</td>
-                      <td>20,000원</td>
-                      <td className="muted">중간 구간</td>
-                    </tr>
-                    <tr>
-                      <td>21일 초과</td>
-                      <td>10,000원</td>
-                      <td className="muted">갱신 직전 구간</td>
-                    </tr>
+                    {(prorationTiers.length ? prorationTiers : []).map((row, idx) => (
+                      <tr key={idx}>
+                        <td>{row.label || '—'}</td>
+                        <td>{Number(row.unitKrw || 0).toLocaleString('ko-KR')}원</td>
+                        <td className="muted">{idx === 0 ? '마지막 정기 결제 직후' : idx === 3 ? '갱신 직전' : '중간 구간'}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
