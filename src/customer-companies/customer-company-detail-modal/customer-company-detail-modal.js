@@ -807,6 +807,12 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                       <span>대표: {companyToShow.representativeName}</span>
                     </div>
                   )}
+                  {companyToShow.industry && (
+                    <div className="customer-company-detail-meta-item">
+                      <span className="material-symbols-outlined">domain</span>
+                      <span>업종: {companyToShow.industry}</span>
+                    </div>
+                  )}
                   {companyToShow.address && (
                     <div className="customer-company-detail-meta-item full">
                       <span className="material-symbols-outlined">location_on</span>
@@ -899,9 +905,6 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                   <ul className="customer-company-detail-product-sales-preview-list">
                     {productSalesList.slice(0, 3).map((row) => (
                       <li key={row._id} className="customer-company-detail-product-sales-preview-item">
-                        <span className="customer-company-detail-product-sales-preview-product">
-                          {row.productName || '—'}
-                        </span>
                         <span className="customer-company-detail-product-sales-preview-title">{row.title || '—'}</span>
                       </li>
                     ))}

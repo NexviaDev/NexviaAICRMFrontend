@@ -18,6 +18,7 @@ export const DEFAULT_COLUMNS = {
     { key: 'name', label: '고객사명' },
     { key: 'representativeName', label: '대표자' },
     { key: 'businessNumber', label: '사업자 번호' },
+    { key: 'industry', label: '업종' },
     { key: 'address', label: '주소' },
     { key: 'assigneeUserIds', label: '담당자' }
   ],

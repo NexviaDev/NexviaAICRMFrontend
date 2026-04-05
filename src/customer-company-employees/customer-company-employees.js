@@ -70,6 +70,7 @@ export default function CustomerCompanyEmployees() {
   const sortKey = sort.key;
   const sortDir = sort.dir;
   const [companyEmployees, setCompanyEmployees] = useState([]);
+  const [companyEmployeesLoaded, setCompanyEmployeesLoaded] = useState(false);
   const [searchField, setSearchField] = useState('');
   const SEARCH_FIELD_OPTIONS = [
     { key: 'name', label: '이름' },
@@ -113,10 +114,17 @@ export default function CustomerCompanyEmployees() {
   /** 사내 직원 목록 (담당자 열 이름 표시용) */
   useEffect(() => {
     let cancelled = false;
+    setCompanyEmployeesLoaded(false);
     fetch(`${API_BASE}/companies/overview`, { headers: getAuthHeader() })
       .then((r) => r.json().catch(() => ({})))
       .then((data) => {
         if (!cancelled && Array.isArray(data?.employees)) setCompanyEmployees(data.employees);
+      })
+      .catch(() => {
+        if (!cancelled) setCompanyEmployees([]);
+      })
+      .finally(() => {
+        if (!cancelled) setCompanyEmployeesLoaded(true);
       });
     return () => { cancelled = true; };
   }, []);
@@ -784,8 +792,10 @@ export default function CustomerCompanyEmployees() {
                             )}
                             {col.key === 'assigneeUserIds' && (() => {
                               const ids = Array.isArray(row.assigneeUserIds) ? row.assigneeUserIds : [];
-                              const names = ids.map((id) => assigneeIdToName[String(id)] || id).filter(Boolean);
-                              return names.length ? names.join(', ') : '—';
+                              const names = ids.map((id) => assigneeIdToName[String(id)] || '').filter(Boolean);
+                              if (names.length) return names.join(', ');
+                              if (ids.length === 0) return '—';
+                              return companyEmployeesLoaded ? '—' : '담당자 불러오는 중...';
                             })()}
                             {col.key === 'lastSupportedAt' && (row.lastSupportedAt ? formatDate(row.lastSupportedAt) : '—')}
                             {col.key.startsWith(CUSTOM_FIELDS_PREFIX) && (() => {

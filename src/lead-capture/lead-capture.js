@@ -56,6 +56,13 @@ function webhookUrlForDisplay(url, productionBase) {
   }
 }
 
+/** 웹훅 URL에서 `/lead-capture-webhook/` 뒤 시크릿(공개 폼 경로용) */
+function extractWebhookSecretFromUrl(webhookUrl) {
+  if (!webhookUrl || typeof webhookUrl !== 'string') return '';
+  const m = webhookUrl.match(/\/lead-capture-webhook\/([^/?#]+)/);
+  return m ? decodeURIComponent(m[1]) : '';
+}
+
 function formatLastActivity(date) {
   if (!date) return '—';
   const d = new Date(date);
@@ -146,7 +153,15 @@ export default function LeadCapture() {
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
   const [newApiKey, setNewApiKey] = useState('');
-  const [copyFeedback, setCopyFeedback] = useState({ apiKey: false, webhook: false, newKey: false, formId: null, embedCode: false });
+  const [copyFeedback, setCopyFeedback] = useState({
+    apiKey: false,
+    webhook: false,
+    newKey: false,
+    formId: null,
+    embedCode: false,
+    publicLink: false
+  });
+  const [publicLinkSaving, setPublicLinkSaving] = useState(false);
   const [apiKeyCopyHint, setApiKeyCopyHint] = useState(false);
   const [customFields, setCustomFields] = useState([]);
   const [showCustomFieldsModal, setShowCustomFieldsModal] = useState(false);
@@ -524,6 +539,42 @@ export default function LeadCapture() {
     }
   }
 
+  function getPublicFormPageUrl() {
+    const wUrl = selectedForm?.webhookUrl;
+    if (!wUrl || typeof window === 'undefined') return '';
+    const sec = extractWebhookSecretFromUrl(wUrl);
+    if (!sec) return '';
+    return `${window.location.origin}/lead-form/${encodeURIComponent(sec)}`;
+  }
+
+  function handleCopyPublicLink() {
+    const text = getPublicFormPageUrl();
+    if (!text || !copyToClipboard(text)) return;
+    setCopyFeedback((f) => ({ ...f, publicLink: true }));
+    setTimeout(() => setCopyFeedback((f) => ({ ...f, publicLink: false })), 1500);
+  }
+
+  async function handleSetPublicLinkEnabled(enabled) {
+    if (!selectedFormId || !canManageCaptureChannels) return;
+    setPublicLinkSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/lead-capture-forms/${selectedFormId}`, {
+        method: 'PATCH',
+        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ publicLinkEnabled: enabled })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || '저장에 실패했습니다.');
+      setSelectedForm((prev) => (prev && prev._id === selectedFormId ? { ...prev, publicLinkEnabled: enabled, ...data } : prev));
+      fetchList();
+    } catch (err) {
+      setError(err.message || '저장 실패');
+    } finally {
+      setPublicLinkSaving(false);
+    }
+  }
+
   function handleCopyNewApiKey() {
     if (copyToClipboard(newApiKey)) {
       setCopyFeedback((f) => ({ ...f, newKey: true }));
@@ -578,23 +629,163 @@ export default function LeadCapture() {
     flex-direction: column;
     gap: 12px;
   }
-  .lead-form input {
+  .lead-form input:not(.lead-form-file-hidden) {
     padding: 12px 14px;
     border-radius: 10px;
     border: 1px solid #e2e8f0;
     font-size: 14px;
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
   }
-  .lead-form input:focus {
+  .lead-form input:not(.lead-form-file-hidden):focus {
     outline: none;
     border-color: #9aacd4;
     box-shadow: 0 0 0 3px rgba(154, 172, 212, 0.22);
   }
-  .lead-form input[type="file"] {
-    padding: 8px;
-    background: #f8fafc;
+  .lead-form-file-caption {
+    font-size: 13px;
+    font-weight: 600;
+    color: #5a6b86;
+    margin-bottom: 2px;
   }
-  .lead-form button {
+  .lead-form-file-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .lead-form-file-zone {
+    position: relative;
+    border-radius: 12px;
+    border: 1.5px dashed #c8d4e8;
+    background: linear-gradient(180deg, #fafbfd 0%, #f4f6fb 100%);
+    transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+  }
+  .lead-form-file-zone:focus-within:not(.lead-form-file-zone--filled) {
+    border-color: #9aacd4;
+    box-shadow: 0 0 0 3px rgba(154, 172, 212, 0.2);
+  }
+  .lead-form-file-zone--drag {
+    border-color: #9aacd4;
+    background: #eef2fb;
+    box-shadow: 0 0 0 3px rgba(154, 172, 212, 0.25);
+  }
+  .lead-form-file-zone--filled {
+    border-style: solid;
+    border-color: #c5d4ec;
+    background: #f8f9fd;
+  }
+  .lead-form-file-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 18px 16px 19px;
+    cursor: pointer;
+    text-align: center;
+    border-radius: 12px;
+    margin: 0;
+  }
+  .lead-form-file-empty:hover {
+    background: rgba(255, 255, 255, 0.65);
+  }
+  .lead-form-file-illu {
+    display: flex;
+    color: #a8b8da;
+    margin-bottom: 2px;
+  }
+  .lead-form-file-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #4a5d78;
+  }
+  .lead-form-file-hint {
+    font-size: 12px;
+    color: #8899b5;
+    line-height: 1.35;
+  }
+  .lead-form-file-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+    margin-top: 6px;
+  }
+  .lead-form-file-badges span {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    padding: 3px 7px;
+    border-radius: 6px;
+    background: #e8ecf6;
+    color: #6b7c99;
+  }
+  .lead-form-file-filled {
+    display: none;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 14px;
+  }
+  .lead-form-file-check {
+    flex-shrink: 0;
+    color: #7aab8f;
+    display: flex;
+  }
+  .lead-form-file-info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .lead-form-file-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #3d4f6f;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .lead-form-file-meta {
+    font-size: 11px;
+    color: #8b9bb5;
+  }
+  .lead-form-file-actions {
+    display: flex;
+    flex-shrink: 0;
+    gap: 6px;
+    margin-left: auto;
+  }
+  .lead-form-file-btn {
+    padding: 6px 11px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 8px;
+    border: 1px solid #c8d4e8;
+    background: #fff;
+    color: #5a6b86;
+    cursor: pointer;
+  }
+  .lead-form-file-btn:hover {
+    background: #f4f6fb;
+    border-color: #9aacd4;
+  }
+  .lead-form-file-btn-muted {
+    border-color: #e2e8f0;
+    color: #8b9bb5;
+  }
+  .lead-form-file-btn-muted:hover {
+    background: #fff5f5;
+    border-color: #e8c4c8;
+    color: #b85c6a;
+  }
+  .lead-form > button[type="submit"] {
     margin-top: 10px;
     padding: 14px;
     border-radius: 12px;
@@ -606,11 +797,11 @@ export default function LeadCapture() {
     cursor: pointer;
     transition: transform 0.2s ease, box-shadow 0.2s ease;
   }
-  .lead-form button:hover {
+  .lead-form > button[type="submit"]:hover {
     transform: translateY(-1px);
     box-shadow: 0 6px 18px rgba(139, 157, 201, 0.35);
   }
-  .lead-form button:active {
+  .lead-form > button[type="submit"]:active {
     transform: scale(0.98);
   }
 </style>
@@ -622,7 +813,40 @@ export default function LeadCapture() {
     <input type="email" name="email" placeholder="이메일" required />
     <input type="text" name="company" placeholder="회사명" />
     <input type="text" name="address" placeholder="회사 주소" />
-    <input type="file" name="business_card" accept="image/*,.pdf" aria-label="명함" />
+    <div class="lead-form-file-wrap">
+      <div class="lead-form-file-caption">명함 (이미지)</div>
+      <div class="lead-form-file-zone">
+        <input type="file" name="business_card" accept="image/*,.pdf" class="lead-form-file-hidden" id="lead-bc-${formId}" />
+        <label for="lead-bc-${formId}" class="lead-form-file-empty">
+          <span class="lead-form-file-illu" aria-hidden="true">
+            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="3" y="3" width="18" height="18" rx="2.5" stroke="currentColor" stroke-width="1.4" />
+              <circle cx="8.5" cy="8.5" r="1.6" fill="currentColor" />
+              <path d="M3 17l5.5-5.5a1.2 1.2 0 011.7 0L14 15l3.5-3.5a1.2 1.2 0 011.7 0L21 14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </span>
+          <span class="lead-form-file-title">명함 이미지 첨부</span>
+          <span class="lead-form-file-hint">눌러서 선택하거나 파일을 여기에 놓기</span>
+          <span class="lead-form-file-badges"><span>JPG</span><span>PNG</span><span>PDF</span></span>
+        </label>
+        <div class="lead-form-file-filled">
+          <span class="lead-form-file-check" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.5" />
+              <path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </span>
+          <div class="lead-form-file-info">
+            <span class="lead-form-file-name"></span>
+            <span class="lead-form-file-meta"></span>
+          </div>
+          <div class="lead-form-file-actions">
+            <button type="button" class="lead-form-file-btn lead-form-file-btn-change">변경</button>
+            <button type="button" class="lead-form-file-btn lead-form-file-btn-muted">제거</button>
+          </div>
+        </div>
+      </div>
+    </div>
 ${customInputs}
     <button type="submit">문의 보내기</button>
   </form>
@@ -632,6 +856,57 @@ ${customInputs}
   var form = document.getElementById('lead-capture-form');
   if (!form) return;
   var customKeys = ${customKeysJson};
+  var fileInput = form.querySelector('input[name="business_card"]');
+  var fileZone = form.querySelector('.lead-form-file-zone');
+  var fileEmpty = form.querySelector('.lead-form-file-empty');
+  var fileFilled = form.querySelector('.lead-form-file-filled');
+  var fileNameEl = fileFilled ? fileFilled.querySelector('.lead-form-file-name') : null;
+  var fileMetaEl = fileFilled ? fileFilled.querySelector('.lead-form-file-meta') : null;
+  var btnChange = form.querySelector('.lead-form-file-btn-change');
+  var btnClear = form.querySelector('.lead-form-file-btn-muted');
+  function syncLeadFormFile() {
+    if (!fileInput || !fileEmpty || !fileFilled || !fileZone) return;
+    if (fileInput.files && fileInput.files[0]) {
+      var f = fileInput.files[0];
+      fileEmpty.style.display = 'none';
+      fileFilled.style.display = 'flex';
+      fileZone.classList.add('lead-form-file-zone--filled');
+      if (fileNameEl) fileNameEl.textContent = f.name;
+      if (fileMetaEl) fileMetaEl.textContent = f.size >= 1048576 ? (f.size / 1048576).toFixed(2) + ' MB' : (f.size / 1024).toFixed(1) + ' KB';
+    } else {
+      fileEmpty.style.display = 'flex';
+      fileFilled.style.display = 'none';
+      fileZone.classList.remove('lead-form-file-zone--filled');
+    }
+  }
+  function acceptLeadFile(file) {
+    if (!file || !fileInput) return;
+    var ok = (file.type && file.type.indexOf('image/') === 0) || (/\\.pdf$/i).test(file.name);
+    if (!ok) { alert('이미지 또는 PDF만 첨부할 수 있습니다.'); return; }
+    try {
+      var dt = new DataTransfer();
+      dt.items.add(file);
+      fileInput.files = dt.files;
+    } catch (e) { return; }
+    syncLeadFormFile();
+  }
+  if (fileInput) fileInput.addEventListener('change', syncLeadFormFile);
+  if (btnChange) btnChange.addEventListener('click', function(e) { e.preventDefault(); fileInput.click(); });
+  if (btnClear) btnClear.addEventListener('click', function(e) { e.preventDefault(); fileInput.value = ''; syncLeadFormFile(); });
+  if (fileZone) {
+    ['dragenter','dragleave','dragover','drop'].forEach(function(ev) {
+      fileZone.addEventListener(ev, function(e) { e.preventDefault(); e.stopPropagation(); });
+    });
+    fileZone.addEventListener('dragenter', function() { fileZone.classList.add('lead-form-file-zone--drag'); });
+    fileZone.addEventListener('dragleave', function(e) {
+      if (!fileZone.contains(e.relatedTarget)) fileZone.classList.remove('lead-form-file-zone--drag');
+    });
+    fileZone.addEventListener('drop', function(e) {
+      fileZone.classList.remove('lead-form-file-zone--drag');
+      var f = e.dataTransfer.files && e.dataTransfer.files[0];
+      acceptLeadFile(f);
+    });
+  }
   form.addEventListener('submit', function(e) {
     e.preventDefault();
     var fd = new FormData(form);
@@ -958,7 +1233,7 @@ ${customInputs}
               </div>
               <div className="lead-capture-cta-text">
                 <h3 className="lead-capture-cta-title">커스텀 폼 UI를 만들까요?</h3>
-                <p className="lead-capture-cta-desc">아래 API 문서의 웹훅 URL과 formId는 이 채널에 맞게 자동 입력됩니다. 리드 캡처 빌더에 추가한 커스텀 필드도 임베드 코드에 포함되어 복사됩니다.</p>
+                <p className="lead-capture-cta-desc">아래 API 문서의 웹훅 URL과 formId는 이 채널에 맞게 자동 입력됩니다. 리드 캡처 빌더에 추가한 커스텀 필드도 임베드 코드에 포함되어 복사됩니다. YouTube 댓글처럼 임베드를 붙일 수 없는 곳은 오른쪽 외부 연동에서 공개 링크를 켜고 URL만 공유하세요.</p>
               </div>
               <button
                 type="button"
@@ -1071,6 +1346,36 @@ ${customInputs}
                 </div>
                 <p className="lead-capture-hint">백엔드: {BACKEND_BASE_URL}</p>
                 <p className="lead-capture-hint">Typeform, Facebook 리드 등 서드파티에 이 URL을 설정하세요.</p>
+                <label className="lead-capture-public-link-row">
+                  <input
+                    type="checkbox"
+                    checked={!!selectedForm?.publicLinkEnabled}
+                    disabled={!selectedFormId || !canManageCaptureChannels || publicLinkSaving}
+                    onChange={(e) => handleSetPublicLinkEnabled(e.target.checked)}
+                  />
+                  <span>공개 링크 사용 (YouTube 댓글 등 HTML 없이 링크만 공유)</span>
+                </label>
+                <p className="lead-capture-hint">
+                  켜면 아래 주소로 열리는 페이지에서 문의를 받을 수 있습니다. API 키 없이 접속 가능하므로 링크는 필요한 곳에만 공유하세요.
+                </p>
+                {selectedForm?.publicLinkEnabled && getPublicFormPageUrl() ? (
+                  <div className="lead-capture-input-wrap">
+                    <input
+                      type="text"
+                      className="lead-capture-input"
+                      readOnly
+                      value={getPublicFormPageUrl()}
+                    />
+                    <button
+                      type="button"
+                      className="lead-capture-copy-btn"
+                      aria-label="공개 링크 복사"
+                      onClick={handleCopyPublicLink}
+                    >
+                      <span className="material-symbols-outlined">{copyFeedback.publicLink ? 'check' : 'content_copy'}</span>
+                    </button>
+                  </div>
+                ) : null}
                 <button type="button" className="lead-capture-test-btn">연동 테스트</button>
               </div>
             </div>

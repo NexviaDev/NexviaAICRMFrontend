@@ -34,6 +34,7 @@ export default function CompanyImportPreviewModal({
                 <th>고객사명</th>
                 <th>사업자번호</th>
                 <th>대표</th>
+                <th>업종</th>
                 <th>주소</th>
                 <th>위도</th>
                 <th>경도</th>
@@ -47,6 +48,7 @@ export default function CompanyImportPreviewModal({
                   <td>{row.name || '-'}</td>
                   <td>{row.businessNumber || '-'}</td>
                   <td>{row.representativeName || '-'}</td>
+                  <td>{row.industry || '-'}</td>
                   <td>{row.address || '-'}</td>
                   <td>{row.latitude != null ? String(row.latitude).slice(0, 12) : '-'}</td>
                   <td>{row.longitude != null ? String(row.longitude).slice(0, 12) : '-'}</td>

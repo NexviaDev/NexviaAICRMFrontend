@@ -164,6 +164,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
   const [form, setForm] = useState({
     name: '',
     representativeName: '',
+    industry: '',
     businessNumber: '',
     address: '',
     latitude: null,
@@ -246,6 +247,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
       ...prev,
       name: company.name ?? '',
       representativeName: company.representativeName ?? '',
+      industry: company.industry ?? '',
       businessNumber: company.businessNumber != null ? formatBusinessNumberInput(String(company.businessNumber)) : '',
       address: company.address ?? '',
       latitude: company.latitude ?? null,
@@ -734,6 +736,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
         name: (data.name && String(data.name).trim()) || prev.name,
         businessNumber: data.businessNumber ? formatBusinessNumberInput(String(data.businessNumber)) : prev.businessNumber,
         representativeName: (data.representativeName && String(data.representativeName).trim()) || prev.representativeName,
+        industry: (data.industry && String(data.industry).trim()) || prev.industry,
         address: (data.address && String(data.address).trim()) || prev.address
       }));
       const addressTrimmed = data.address && String(data.address).trim();
@@ -808,6 +811,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
         name: (row.name && String(row.name).trim()) || prev.name,
         businessNumber: bn || prev.businessNumber,
         representativeName: (row.representativeName && String(row.representativeName).trim()) || prev.representativeName,
+        industry: (row.industry && String(row.industry).trim()) || prev.industry,
         address: addressTrimmed || prev.address,
         latitude: latitudeNum,
         longitude: longitudeNum
@@ -894,6 +898,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
         const body = {
           name: String(row.name || '').trim(),
           representativeName: row.representativeName ? String(row.representativeName).trim() : undefined,
+          industry: row.industry ? String(row.industry).trim() : undefined,
           businessNumber: bn || undefined,
           address: addressTrimmed || undefined,
           latitude: latitudeNum != null ? latitudeNum : undefined,
@@ -1017,6 +1022,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
     const body = {
       name: form.name.trim(),
       representativeName: form.representativeName.trim() || undefined,
+      industry: form.industry.trim() || undefined,
       businessNumber: (form.businessNumber || '').replace(/-/g, '').trim() || undefined,
       address: addressTrimmed || undefined,
       latitude: latitudeNum != null ? latitudeNum : undefined,
@@ -1357,6 +1363,10 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
           <div className="add-company-field">
             <label className="add-company-label" htmlFor="add-company-business-number">사업자등록번호</label>
             <input id="add-company-business-number" name="businessNumber" type="text" inputMode="numeric" autoComplete="off" value={form.businessNumber} onChange={handleChange} className="add-company-input" placeholder="000-00-00000" maxLength={12} />
+          </div>
+          <div className="add-company-field" style={{ gridColumn: '1 / -1' }}>
+            <label className="add-company-label" htmlFor="add-company-industry">업종</label>
+            <input id="add-company-industry" name="industry" type="text" value={form.industry} onChange={handleChange} className="add-company-input" placeholder="예: 제조업, 도소매, IT 서비스" autoComplete="organization-title" />
           </div>
           <div className="add-company-row-representative-assignee">
             <div className="add-company-field add-company-field-representative">

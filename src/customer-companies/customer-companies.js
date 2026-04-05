@@ -58,6 +58,7 @@ const CUSTOM_FIELDS_PREFIX = 'customFields.';
 function cellValue(row, key, assigneeIdToName = {}, assigneeNamesReady = false) {
   if (key === 'name') return row.name || '—';
   if (key === 'representativeName') return row.representativeName || '—';
+  if (key === 'industry') return row.industry || '—';
   if (key === 'businessNumber') return formatBusinessNumber(row.businessNumber);
   if (key === 'address') return row.address || '—';
   if (key === 'assigneeUserIds') {
@@ -101,6 +102,7 @@ export default function CustomerCompanies() {
     { key: 'name', label: '고객사명' },
     { key: 'representativeName', label: '대표자' },
     { key: 'businessNumber', label: '사업자 번호' },
+    { key: 'industry', label: '업종' },
     { key: 'address', label: '주소' },
     { key: 'status', label: '상태' },
     { key: 'assigneeUserIds', label: '담당자' },
@@ -261,7 +263,6 @@ export default function CustomerCompanies() {
       if (!res.ok) return;
       setItems((prev) => prev.map((row) => (row._id === rowId ? { ...row, isFavorite: !!data.isFavorite } : row)));
       setDetailCompanyById((prev) => (prev?._id === rowId ? { ...prev, isFavorite: !!data.isFavorite } : prev));
-      fetchList(pagination.page);
     } catch (_) {}
   };
 
@@ -303,6 +304,7 @@ export default function CustomerCompanies() {
   const getSortValue = useCallback((row, key) => {
     if (key === 'name') return (row.name || '').toLowerCase();
     if (key === 'representativeName') return (row.representativeName || '').toLowerCase();
+    if (key === 'industry') return (row.industry || '').toLowerCase();
     if (key === 'businessNumber') return String(row.businessNumber || '').replace(/\D/g, '');
     if (key === 'address') return (row.address || '').toLowerCase();
     if (key === 'assigneeUserIds') {
@@ -479,6 +481,7 @@ export default function CustomerCompanies() {
           고객사명: row.name || '',
           대표자: row.representativeName || '',
           사업자번호: formatBusinessNumber(row.businessNumber),
+          업종: row.industry || '',
           주소: row.address || '',
           담당자: assignees,
           즐겨찾기: row.isFavorite ? 'Y' : '',
@@ -683,6 +686,9 @@ export default function CustomerCompanies() {
                       </div>
                       <p className="customer-companies-mobile-card-sub">{row.representativeName || '—'}</p>
                       <div className="customer-companies-mobile-card-details">
+                        {row.industry ? (
+                          <p className="customer-companies-mobile-card-meta">업종 {row.industry}</p>
+                        ) : null}
                         <p className="customer-companies-mobile-card-meta">사업자번호 {formatBusinessNumber(row.businessNumber)}</p>
                         <p className="customer-companies-mobile-card-address">{row.address || '—'}</p>
                       </div>

@@ -20,6 +20,7 @@ const Email = lazy(() => import('./email/email'));
 const Map = lazy(() => import('./map/map'));
 const TodoList = lazy(() => import('./todo-list/todo-list'));
 const LeadCapture = lazy(() => import('./lead-capture/lead-capture'));
+const LeadCapturePublic = lazy(() => import('./lead-capture-public/lead-capture-public'));
 const LegalPublicPage = lazy(() => import('./legal/LegalPublicPage'));
 const Subscription = lazy(() => import('./subscription/subscription'));
 const AdminSubscription = lazy(() => import('./admin/adminsubscription'));
@@ -84,6 +85,7 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/legal/:doc" element={<LegalPublicPage />} />
+        <Route path="/lead-form/:secret" element={<LeadCapturePublic />} />
         <Route path="/admin" element={<ProtectedRoute><AdminLayout /></ProtectedRoute>}>
           <Route index element={<Navigate to="subscription" replace />} />
           <Route path="subscription" element={<AdminSubscription />} />

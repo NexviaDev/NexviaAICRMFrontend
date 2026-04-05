@@ -1046,9 +1046,6 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                       <ul className="customer-company-detail-product-sales-preview-list">
                         {productSalesList.slice(0, 3).map((row) => (
                           <li key={row._id} className="customer-company-detail-product-sales-preview-item">
-                            <span className="customer-company-detail-product-sales-preview-product">
-                              {row.productName || '—'}
-                            </span>
                             <span className="customer-company-detail-product-sales-preview-title">{row.title || '—'}</span>
                           </li>
                         ))}
