@@ -1355,6 +1355,11 @@ ${customInputs}
                   />
                   <span>공개 링크 사용 (YouTube 댓글 등 HTML 없이 링크만 공유)</span>
                 </label>
+                {selectedFormId && !canManageCaptureChannels && !publicLinkSaving ? (
+                  <p className="lead-capture-hint lead-capture-hint-emphasis">
+                    공개 링크 설정은 대표·Senior만 변경할 수 있습니다.
+                  </p>
+                ) : null}
                 <p className="lead-capture-hint">
                   켜면 아래 주소로 열리는 페이지에서 문의를 받을 수 있습니다. API 키 없이 접속 가능하므로 링크는 필요한 곳에만 공유하세요.
                 </p>
