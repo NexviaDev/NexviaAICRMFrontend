@@ -1,5 +1,6 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useMemo } from 'react';
 import { API_BASE } from '@/config';
+import { getEmailSignatureHtmlFromUser, patchEmailSignatureHtml } from '@/lib/list-templates';
 import './email-compose-modal.css';
 
 const FONT_OPTIONS = [
@@ -23,6 +24,16 @@ const SIZE_OPTIONS = [
 ];
 
 const EMOJI_LIST = ['😀', '😊', '👍', '❤️', '🙏', '😅', '😂', '😍', '🤔', '✨', '🔥', '💯', '📌', '✅', '❌', '⚠️', '📧', '📎', '💼', '🎉'];
+
+function copyTextToClipboard(text) {
+  if (!text) return false;
+  try {
+    navigator.clipboard.writeText(text);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
 
 /** 에디터 내 선택 영역에서 TABLE 요소 찾기 */
 function getTableFromSelection(editorEl) {
@@ -85,10 +96,153 @@ function getTableGrid(table) {
   return grid;
 }
 
-export default function EmailComposeModal({ onClose, onSent, inline = false }) {
+/** 답장 제목: 이미 Re: 가 있으면 유지, 없으면 Re: 접두 */
+export function buildReplyEmailSubject(originalSubject) {
+  const s = (originalSubject || '').trim();
+  if (!s) return 'Re: ';
+  if (/^re:\s*/i.test(s)) return s;
+  return `Re: ${s}`;
+}
+
+function escapeHtmlQuote(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** 인용 영역에 넣을 HTML 본문 — 스크립트 등 제거 */
+function sanitizeHtmlForQuote(html) {
+  if (!html || typeof html !== 'string') return '';
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    doc.querySelectorAll('script,style,iframe,object,embed,link,meta').forEach((el) => el.remove());
+    doc.querySelectorAll('*').forEach((el) => {
+      [...el.attributes].forEach((attr) => {
+        const n = attr.name.toLowerCase();
+        if (
+          n.startsWith('on') ||
+          n === 'srcdoc' ||
+          (n === 'href' && /^\s*javascript:/i.test(attr.value))
+        ) {
+          el.removeAttribute(attr.name);
+        }
+      });
+    });
+    return doc.body ? doc.body.innerHTML : '';
+  } catch {
+    return escapeHtmlQuote(html);
+  }
+}
+
+/** 메일 명함·원문 인용 경계 (DOM/innerHTML 기준) */
+export const NEXVIA_EMAIL_SIG_MARK = '<!--nexvia-email-sig-->';
+export const NEXVIA_REPLY_QUOTE_MARK = '<!--nexvia-reply-quote-->';
+
+/** 저장된 HTML로 명함 블록 생성 (마커 포함) */
+export function buildSignatureBlockHtml(signatureHtml) {
+  if (!signatureHtml || !String(signatureHtml).trim()) return '';
+  const inner = sanitizeHtmlForQuote(String(signatureHtml).trim());
+  return `${NEXVIA_EMAIL_SIG_MARK}<div class="nexvia-email-signature" style="margin-top:12px;padding-top:12px;border-top:1px solid #e2e8f0;">${inner}</div>`;
+}
+
+/** 새 메일: 본문 위 + 하단 명함 */
+export function buildNewMailEditorHtml(signatureHtml) {
+  const sig = buildSignatureBlockHtml(signatureHtml);
+  if (!sig) return '<p><br></p><p><br></p>';
+  return `<p><br></p><p><br></p>${sig}`;
+}
+
+/** 작성란 HTML만 (명함·원문 인용 제외) — AI·치환용 */
+export function getComposeDraftHtml(fullHtml) {
+  if (!fullHtml) return '';
+  const sigAt = fullHtml.indexOf(NEXVIA_EMAIL_SIG_MARK);
+  const quoteAt = fullHtml.indexOf(NEXVIA_REPLY_QUOTE_MARK);
+  const cuts = [sigAt, quoteAt].filter((i) => i >= 0);
+  if (!cuts.length) return fullHtml;
+  return fullHtml.slice(0, Math.min(...cuts));
+}
+
+/** 명함·원문 인용 HTML (마커부터 끝까지) */
+export function getComposeTailHtml(fullHtml) {
+  if (!fullHtml) return '';
+  const sigAt = fullHtml.indexOf(NEXVIA_EMAIL_SIG_MARK);
+  const quoteAt = fullHtml.indexOf(NEXVIA_REPLY_QUOTE_MARK);
+  const cuts = [sigAt, quoteAt].filter((i) => i >= 0);
+  if (!cuts.length) return '';
+  return fullHtml.slice(Math.min(...cuts));
+}
+
+/**
+ * 답장: 작성란 → (명함) → 원문 인용 (일반 메일처럼 명함은 원문 바로 위)
+ * @param {{ from?: string, to?: string, subject?: string, date?: string, bodyPlain?: string, bodyHtml?: string }} src
+ * @param {string} [signatureHtml] 저장된 명함 HTML 소스
+ */
+export function buildReplyQuotedEditorHtml(src, signatureHtml) {
+  const from = src?.from || '';
+  const to = src?.to || '';
+  const subject = src?.subject || '';
+  const date = src?.date || '';
+  const bodyPlain = src?.bodyPlain != null ? String(src.bodyPlain) : '';
+  const bodyHtml = src?.bodyHtml != null ? String(src.bodyHtml) : '';
+
+  const metaRows = [
+    ['보낸 사람', from || '—'],
+    ['받는 사람', to || '—'],
+    ['제목', subject || '—'],
+    ['일시', date || '—']
+  ];
+  const metaHtml = metaRows
+    .map(
+      ([k, v]) =>
+        `<p style="margin:4px 0;font-size:13px;color:#334155;line-height:1.5;"><strong style="color:#475569;">${escapeHtmlQuote(k)}:</strong> ${escapeHtmlQuote(v)}</p>`
+    )
+    .join('');
+
+  let inner = '';
+  if (bodyHtml.trim()) {
+    inner = sanitizeHtmlForQuote(bodyHtml);
+  } else if (bodyPlain.trim()) {
+    inner = escapeHtmlQuote(bodyPlain).replace(/\r\n|\r|\n/g, '<br/>');
+  } else {
+    inner = '<p style="color:#94a3b8;font-size:13px;margin:0;">(본문 없음)</p>';
+  }
+
+  const quoteWrap = `<div class="email-reply-quote-block" style="margin-top:10px;padding:12px 14px;border-left:4px solid #c7d2fe;background:#f8fafc;border-radius:0 8px 8px 0;font-size:13px;color:#1e293b;line-height:1.55;">${inner}</div>`;
+
+  const quoteSection = `${NEXVIA_REPLY_QUOTE_MARK}<hr style="border:none;border-top:1px solid #e2e8f0;margin:16px 0;" /><p style="color:#64748b;font-size:12px;margin:0 0 10px;">----- 원본 메일 -----</p>${metaHtml}${quoteWrap}`;
+  const sigBlock = buildSignatureBlockHtml(signatureHtml);
+  return `<p><br></p><p><br></p>${sigBlock}${quoteSection}`;
+}
+
+/** 명함 패널 HTML 미리보기 — iframe srcDoc (sandbox로 스크립트 실행 차단) */
+function buildEmailSignaturePreviewSrcDoc(rawHtml) {
+  const body = rawHtml != null ? String(rawHtml) : '';
+  return `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><style>
+    html,body{margin:0;padding:10px 12px;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;font-size:13px;line-height:1.55;color:#1e293b;background:#f8fafc;}
+    a{color:#2563eb;} img{max-width:100%;height:auto;} table{border-collapse:collapse;max-width:100%;}
+  </style></head><body>${body}</body></html>`;
+}
+
+export default function EmailComposeModal({
+  onClose,
+  onSent,
+  inline = false,
+  composeMode = 'new',
+  initialTo = '',
+  initialCc = '',
+  initialSubject = '',
+  replyThreadId = null,
+  /** 답장 시 원문 인용에 사용 (from, to, subject, date, bodyPlain, bodyHtml) */
+  replyQuoteSource = null,
+  /** 같은 메일 재오픈 시에만 인용 갱신 — 부모 리렌더로 인용이 덮어쓰이지 않게 id로 구분 */
+  replyQuoteMessageId = null
+}) {
   const editorRef = useRef(null);
-  const [to, setTo] = useState('');
-  const [subject, setSubject] = useState('');
+  const [to, setTo] = useState(initialTo || '');
+  const [cc, setCc] = useState(initialCc || '');
+  const [subject, setSubject] = useState(initialSubject || '');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [showEmoji, setShowEmoji] = useState(false);
@@ -112,14 +266,149 @@ export default function EmailComposeModal({ onClose, onSent, inline = false }) {
   const [resizing, setResizing] = useState({ type: null, index: null, start: 0 });
   const TABLE_GRID_ROWS = 10;
   const TABLE_GRID_COLS = 8;
+
+  const [showAiPanel, setShowAiPanel] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
+  const [aiMode, setAiMode] = useState('proofread');
+  const [aiTone, setAiTone] = useState('polite');
+  const [aiKeyword, setAiKeyword] = useState('');
+  const [aiReceived, setAiReceived] = useState('');
+  const [aiReplyIntent, setAiReplyIntent] = useState('approve');
+  const [aiTargetLang, setAiTargetLang] = useState('en');
+  const [aiRecipientName, setAiRecipientName] = useState('');
+  const [aiCompanyName, setAiCompanyName] = useState('');
+  const [aiPurpose, setAiPurpose] = useState('');
+  const [aiJsonResult, setAiJsonResult] = useState('');
+
+  const [emailSignatureHtml, setEmailSignatureHtml] = useState('');
+  const [signatureMetaLoaded, setSignatureMetaLoaded] = useState(false);
+  const [showSignaturePanel, setShowSignaturePanel] = useState(false);
+  const [signaturePanelText, setSignaturePanelText] = useState('');
+  const [signatureSaving, setSignatureSaving] = useState(false);
+  const [signatureSaveError, setSignatureSaveError] = useState('');
+
+  const signaturePreviewSrcDoc = useMemo(
+    () => buildEmailSignaturePreviewSrcDoc(signaturePanelText),
+    [signaturePanelText]
+  );
+
   function getAuthHeader() {
     const token = localStorage.getItem('crm_token');
     return token ? { Authorization: `Bearer ${token}` } : {};
   }
 
   useEffect(() => {
-    editorRef.current?.focus();
+    setTo(initialTo || '');
+    setCc(initialCc || '');
+    setSubject(initialSubject || '');
+    setError('');
+    setAttachedFiles([]);
+    setShowAiPanel(false);
+    setShowSignaturePanel(false);
+  }, [composeMode, initialTo, initialCc, initialSubject, replyThreadId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE}/auth/me`, { headers: getAuthHeader(), credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : {}))
+      .then((data) => {
+        if (cancelled) return;
+        const sig = getEmailSignatureHtmlFromUser(data.user);
+        setEmailSignatureHtml(sig);
+        setSignatureMetaLoaded(true);
+      })
+      .catch(() => {
+        if (!cancelled) setSignatureMetaLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  /** 답장 인용 본문은 메일 id·인용 데이터가 바뀔 때만 주입 (명함은 /auth/me 로드 후 한 번; 저장 시에는 replaceSignatureInEditor로 갱신) */
+  useEffect(() => {
+    if (!editorRef.current || !signatureMetaLoaded) return;
+    if (composeMode === 'reply' && replyQuoteMessageId && replyQuoteSource) {
+      editorRef.current.innerHTML = buildReplyQuotedEditorHtml(replyQuoteSource, emailSignatureHtml);
+    } else if (composeMode !== 'reply') {
+      editorRef.current.innerHTML = buildNewMailEditorHtml(emailSignatureHtml);
+    }
+    // emailSignatureHtml 의존 제외: 저장 시 전체 HTML을 덮어쓰지 않고 마커 구간만 교체
+  }, [composeMode, replyQuoteMessageId, replyQuoteSource, signatureMetaLoaded]);
+
+  function replaceSignatureInEditor(editor, newSignatureHtml) {
+    if (!editor) return;
+    const full = editor.innerHTML;
+    const sigAt = full.indexOf(NEXVIA_EMAIL_SIG_MARK);
+    const quoteAt = full.indexOf(NEXVIA_REPLY_QUOTE_MARK);
+    const newSig = buildSignatureBlockHtml(newSignatureHtml);
+    if (sigAt !== -1) {
+      const tail = quoteAt !== -1 && quoteAt > sigAt ? full.slice(quoteAt) : '';
+      const before = full.slice(0, sigAt);
+      editor.innerHTML = before + (newSig || '') + tail;
+      return;
+    }
+    if (quoteAt !== -1) {
+      editor.innerHTML = full.slice(0, quoteAt) + (newSig || '') + full.slice(quoteAt);
+      return;
+    }
+    if (newSig) editor.innerHTML = full + newSig;
+  }
+
+  async function saveEmailSignature() {
+    setSignatureSaveError('');
+    setSignatureSaving(true);
+    try {
+      const data = await patchEmailSignatureHtml(signaturePanelText);
+      const cleaned = data.emailSignatureHtml != null ? String(data.emailSignatureHtml) : signaturePanelText;
+      setEmailSignatureHtml(cleaned);
+      replaceSignatureInEditor(editorRef.current, cleaned);
+      setShowSignaturePanel(false);
+    } catch (e) {
+      setSignatureSaveError(e.message || '저장에 실패했습니다.');
+    } finally {
+      setSignatureSaving(false);
+    }
+  }
+
+  /** textarea는 기본 붙여넣기가 text/plain만 받음 — Gmail 등에서 복사한 HTML은 text/html로 넣어 태그 유지 */
+  function handleSignatureHtmlPaste(e) {
+    const html = e.clipboardData?.getData('text/html');
+    if (html == null || !String(html).trim()) return;
+    e.preventDefault();
+    const ta = e.currentTarget;
+    const start = typeof ta.selectionStart === 'number' ? ta.selectionStart : 0;
+    const end = typeof ta.selectionEnd === 'number' ? ta.selectionEnd : start;
+    const pasted = String(html);
+    setSignaturePanelText((prev) => String(prev).slice(0, start) + pasted + String(prev).slice(end));
+    const caret = start + pasted.length;
+    window.requestAnimationFrame(() => {
+      ta.focus();
+      try {
+        ta.setSelectionRange(caret, caret);
+      } catch {
+        /* ignore */
+      }
+    });
+  }
+
+  function handleSignaturePreviewFrameLoad(e) {
+    const iframe = e.currentTarget;
+    try {
+      const h = iframe.contentDocument?.body?.scrollHeight;
+      if (h != null && h > 0) {
+        iframe.style.height = `${Math.min(Math.max(h + 24, 88), 520)}px`;
+      }
+    } catch {
+      iframe.style.minHeight = '120px';
+    }
+  }
+
+  useEffect(() => {
+    const id = window.setTimeout(() => editorRef.current?.focus(), 0);
+    return () => window.clearTimeout(id);
+  }, [composeMode, initialTo, initialCc, initialSubject, replyThreadId, replyQuoteMessageId]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -129,11 +418,13 @@ export default function EmailComposeModal({ onClose, onSent, inline = false }) {
       else if (showTablePicker) setShowTablePicker(false);
       else if (showColorPicker) setShowColorPicker(false);
       else if (showEmoji) setShowEmoji(false);
+      else if (showAiPanel) setShowAiPanel(false);
+      else if (showSignaturePanel) setShowSignaturePanel(false);
       else onClose?.();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, showEmoji, showColorPicker, showTablePicker, showDrivePicker, sizeWarningModal]);
+  }, [onClose, showEmoji, showColorPicker, showTablePicker, showDrivePicker, sizeWarningModal, showAiPanel, showSignaturePanel]);
 
   useEffect(() => {
     const editor = editorRef.current;
@@ -186,6 +477,125 @@ export default function EmailComposeModal({ onClose, onSent, inline = false }) {
       window.removeEventListener('resize', update);
     };
   }, [inTable]);
+
+  function escapeHtmlPlain(s) {
+    return String(s || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  /** AI용: 선택 영역이 있으면 그 텍스트, 없으면 작성란만(명함·원문 인용 제외) */
+  function getEditorTextForAi() {
+    const editor = editorRef.current;
+    if (!editor) return '';
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0 && editor.contains(sel.anchorNode)) {
+      const t = sel.toString();
+      if (t.trim()) return t.trim();
+    }
+    const draftHtml = getComposeDraftHtml(editor.innerHTML);
+    const wrap = document.createElement('div');
+    wrap.innerHTML = draftHtml || '';
+    return (wrap.innerText || '').trim();
+  }
+
+  function hasTextSelectionInEditor() {
+    const editor = editorRef.current;
+    const sel = window.getSelection();
+    if (!editor || !sel || sel.rangeCount === 0) return false;
+    if (!editor.contains(sel.anchorNode)) return false;
+    return sel.toString().trim().length > 0;
+  }
+
+  function applyAiTextToEditor(resultText) {
+    const editor = editorRef.current;
+    if (!editor || resultText == null) return;
+    const raw = String(resultText);
+    if (hasTextSelectionInEditor()) {
+      const sel = window.getSelection();
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+      const html = escapeHtmlPlain(raw).replace(/\r\n|\r|\n/g, '<br/>');
+      document.execCommand('insertHTML', false, html);
+    } else {
+      const tail = getComposeTailHtml(editor.innerHTML);
+      const parts = raw.split(/\n+/).filter((p) => p.length > 0);
+      const newDraft = parts.length
+        ? `<p>${parts.map((p) => escapeHtmlPlain(p)).join('</p><p>')}</p>`
+        : '<p><br></p>';
+      editor.innerHTML = tail ? newDraft + tail : newDraft;
+    }
+    editor.focus();
+  }
+
+  async function runEmailAiAssist() {
+    setAiError('');
+    setAiJsonResult('');
+    const text = getEditorTextForAi();
+    const modesNeedingEditorText = new Set([
+      'proofread',
+      'tone',
+      'rewrite',
+      'summarize',
+      'classify',
+      'priority',
+      'actions',
+      'translate',
+      'style_us',
+      'personalize',
+      'sentiment',
+      'risk'
+    ]);
+    const needsEditorText = modesNeedingEditorText.has(aiMode);
+    if (needsEditorText && !text) {
+      setAiError('본문을 입력하거나, 적용할 문장을 드래그로 선택해 주세요.');
+      return;
+    }
+    if (aiMode === 'auto_draft' && !aiKeyword.trim()) {
+      setAiError('키워드(요청 한 줄)를 입력해 주세요.');
+      return;
+    }
+    if (aiMode === 'smart_reply' && !aiReceived.trim()) {
+      setAiError('받은 메일 내용을 입력해 주세요.');
+      return;
+    }
+    setAiLoading(true);
+    try {
+      const body = {
+        mode: aiMode,
+        text: needsEditorText ? text : undefined,
+        subject: subject.trim() || undefined,
+        tone: aiMode === 'tone' ? aiTone : undefined,
+        keyword: aiMode === 'auto_draft' ? aiKeyword.trim() : undefined,
+        receivedText: aiMode === 'smart_reply' ? aiReceived.trim() : undefined,
+        replyIntent: aiMode === 'smart_reply' ? aiReplyIntent : undefined,
+        targetLang: aiMode === 'translate' ? aiTargetLang : undefined,
+        recipientName: aiMode === 'personalize' ? aiRecipientName.trim() : undefined,
+        companyName: aiMode === 'personalize' ? aiCompanyName.trim() : undefined,
+        purpose: ['auto_draft', 'personalize'].includes(aiMode) ? (aiPurpose.trim() || undefined) : undefined
+      };
+      const res = await fetch(`${API_BASE}/gmail/ai-assist`, {
+        method: 'POST',
+        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(body)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'AI 요청에 실패했습니다.');
+      if (data.json != null) {
+        setAiJsonResult(JSON.stringify(data.json, null, 2));
+        return;
+      }
+      if (data.text != null && String(data.text).length > 0) {
+        applyAiTextToEditor(data.text);
+      }
+    } catch (e) {
+      setAiError(e.message || '오류가 발생했습니다.');
+    } finally {
+      setAiLoading(false);
+    }
+  }
 
   const exec = (cmd, value = null) => {
     document.execCommand(cmd, false, value);
@@ -679,16 +1089,19 @@ export default function EmailComposeModal({ onClose, onSent, inline = false }) {
           })
         );
       }
+      const payload = {
+        to: to.trim(),
+        subject: subject.trim() || '(제목 없음)',
+        body: editorRef.current?.innerText ?? '',
+        bodyHtml: html || undefined,
+        ...(cc.trim() ? { cc: cc.trim() } : {}),
+        ...(composeMode === 'reply' && replyThreadId ? { threadId: replyThreadId } : {}),
+        ...(attachments.length ? { attachments } : {})
+      };
       const res = await fetch(`${API_BASE}/gmail/messages/send`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: to.trim(),
-          subject: subject.trim() || '(제목 없음)',
-          body: editorRef.current?.innerText ?? '',
-          bodyHtml: html || undefined,
-          ...(attachments.length ? { attachments } : {})
-        })
+        body: JSON.stringify(payload)
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -709,7 +1122,7 @@ export default function EmailComposeModal({ onClose, onSent, inline = false }) {
   const formContent = (
     <>
       <header className="email-compose-header">
-        <h2 className="email-compose-title">새 메일 작성</h2>
+        <h2 className="email-compose-title">{composeMode === 'reply' ? '답장 작성' : '새 메일 작성'}</h2>
         <button type="button" className="email-compose-close" onClick={onClose} aria-label="닫기">
           <span className="material-symbols-outlined">close</span>
         </button>
@@ -719,6 +1132,16 @@ export default function EmailComposeModal({ onClose, onSent, inline = false }) {
           <div className="email-compose-field">
             <label>받는 사람</label>
             <input type="text" value={to} onChange={(e) => setTo(e.target.value)} placeholder="이메일 주소" required />
+          </div>
+          <div className="email-compose-field">
+            <label>참조 (Cc)</label>
+            <input
+              type="text"
+              value={cc}
+              onChange={(e) => setCc(e.target.value)}
+              placeholder="참조 이메일 (쉼표로 구분)"
+              autoComplete="off"
+            />
           </div>
           <div className="email-compose-field">
             <label>제목</label>
@@ -832,10 +1255,248 @@ export default function EmailComposeModal({ onClose, onSent, inline = false }) {
               )}
             </div>
             <span className="email-compose-tb-sep" />
+            <button
+              type="button"
+              className="email-compose-tb-btn email-compose-tb-sig"
+              onClick={() => {
+                setShowAiPanel(false);
+                setShowSignaturePanel((v) => {
+                  const next = !v;
+                  if (next) {
+                    setSignaturePanelText(emailSignatureHtml);
+                    setSignatureSaveError('');
+                  }
+                  return next;
+                });
+              }}
+              title="메일 명함 (HTML)"
+            >
+              <span className="material-symbols-outlined">badge</span>
+            </button>
+            <button
+              type="button"
+              className="email-compose-tb-btn email-compose-tb-ai"
+              onClick={() => {
+                setShowSignaturePanel(false);
+                setShowAiPanel((v) => !v);
+              }}
+              title="AI 문장 다듬기 (Gemini)"
+            >
+              <span className="material-symbols-outlined">auto_awesome</span>
+            </button>
             <button type="button" className="email-compose-tb-btn" onClick={openDriveModal} title="Google Drive에서 삽입">
               <span className="material-symbols-outlined">folder</span>
             </button>
           </div>
+
+          {showSignaturePanel && (
+            <div className="email-compose-sig-panel" role="region" aria-label="메일 명함">
+              <div className="email-compose-sig-panel-head">
+                <span className="material-symbols-outlined" aria-hidden>
+                  badge
+                </span>
+                <span>메일 명함</span>
+                <button
+                  type="button"
+                  className="email-compose-sig-close"
+                  onClick={() => setShowSignaturePanel(false)}
+                  aria-label="명함 패널 닫기"
+                >
+                  <span className="material-symbols-outlined">expand_less</span>
+                </button>
+              </div>
+              <p className="email-compose-sig-hint">
+                HTML 소스를 넣으면 발송 본문 하단에 표시됩니다. 답장 시에는 원본 메일 인용 <strong>바로 위</strong>에 붙습니다. 저장 시 계정의 <strong>listTemplates.emailSignature</strong>에 반영되며, 다른 기기에서도 동일하게 불러옵니다. Gmail 등에서 복사한 블록은{' '}
+                <strong>태그가 포함된 HTML</strong>로 붙여넣기됩니다(일반 textarea와 달리 처리).
+              </p>
+              <label className="email-compose-sig-label" htmlFor="email-compose-sig-html">
+                명함 HTML
+              </label>
+              <textarea
+                id="email-compose-sig-html"
+                className="email-compose-sig-textarea"
+                rows={8}
+                value={signaturePanelText}
+                onChange={(e) => setSignaturePanelText(e.target.value)}
+                onPaste={handleSignatureHtmlPaste}
+                placeholder="예: &lt;div&gt;…&lt;/div&gt; 또는 &lt;table&gt;…&lt;/table&gt;"
+                spellCheck={false}
+              />
+              <div className="email-compose-sig-preview-block">
+                <span className="email-compose-sig-preview-title" id="email-compose-sig-preview-label">
+                  미리보기
+                </span>
+                <div
+                  className="email-compose-sig-preview-wrap"
+                  role="region"
+                  aria-labelledby="email-compose-sig-preview-label"
+                >
+                  {signaturePanelText.trim() ? (
+                    <iframe
+                      className="email-compose-sig-preview-frame"
+                      title="명함 HTML 미리보기"
+                      sandbox=""
+                      srcDoc={signaturePreviewSrcDoc}
+                      onLoad={handleSignaturePreviewFrameLoad}
+                    />
+                  ) : (
+                    <p className="email-compose-sig-preview-empty">HTML을 입력하면 발송 시와 비슷하게 여기에 표시됩니다. 저장 전에 확인해 보세요.</p>
+                  )}
+                </div>
+              </div>
+              {signatureSaveError ? <p className="email-compose-sig-err">{signatureSaveError}</p> : null}
+              <div className="email-compose-sig-actions">
+                <button type="button" className="email-compose-sig-save" onClick={saveEmailSignature} disabled={signatureSaving}>
+                  {signatureSaving ? '저장 중…' : '저장'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {showAiPanel && (
+            <div className="email-compose-ai-panel" role="region" aria-label="AI 문장 다듬기">
+              <div className="email-compose-ai-panel-head">
+                <span className="material-symbols-outlined" aria-hidden>auto_awesome</span>
+                <span>AI 문장 다듬기</span>
+                <button type="button" className="email-compose-ai-close" onClick={() => setShowAiPanel(false)} aria-label="AI 패널 닫기">
+                  <span className="material-symbols-outlined">expand_less</span>
+                </button>
+              </div>
+              <p className="email-compose-ai-hint">
+                교정·톤·요약 등은 본문을 입력하거나 <strong>적용할 문장만 선택</strong>한 뒤 실행하세요. JSON 결과는 본문에 넣지 않고 아래에 표시됩니다.
+              </p>
+              <label className="email-compose-ai-label" htmlFor="email-compose-ai-mode">기능</label>
+              <select
+                id="email-compose-ai-mode"
+                className="email-compose-ai-select"
+                value={aiMode}
+                onChange={(e) => setAiMode(e.target.value)}
+              >
+                <optgroup label="기본 품질">
+                  <option value="proofread">맞춤법·문법 교정</option>
+                  <option value="tone">어조 변환</option>
+                  <option value="rewrite">문장 다듬기 (간결하게)</option>
+                </optgroup>
+                <optgroup label="생산성">
+                  <option value="auto_draft">이메일 자동 작성 (키워드)</option>
+                  <option value="smart_reply">답장 자동 생성</option>
+                  <option value="summarize">요약 (핵심 3줄)</option>
+                </optgroup>
+                <optgroup label="업무 자동화">
+                  <option value="classify">이메일 분류·태깅</option>
+                  <option value="priority">중요도·긴급도 판단</option>
+                  <option value="actions">할 일 추출</option>
+                </optgroup>
+                <optgroup label="글로벌">
+                  <option value="translate">번역 (한↔영)</option>
+                  <option value="style_us">미국식 비즈니스 스타일 (영문)</option>
+                </optgroup>
+                <optgroup label="고급">
+                  <option value="personalize">개인화 (이름·회사 반영)</option>
+                  <option value="sentiment">감정 분석</option>
+                  <option value="risk">스팸·위험 신호 점검</option>
+                </optgroup>
+              </select>
+
+              {aiMode === 'tone' && (
+                <div className="email-compose-ai-row">
+                  <label htmlFor="email-compose-ai-tone">어조</label>
+                  <select id="email-compose-ai-tone" className="email-compose-ai-select" value={aiTone} onChange={(e) => setAiTone(e.target.value)}>
+                    <option value="polite">공손 (비즈니스)</option>
+                    <option value="casual">캐주얼</option>
+                    <option value="firm">단호 (정중)</option>
+                    <option value="persuasive">설득형</option>
+                  </select>
+                </div>
+              )}
+
+              {aiMode === 'translate' && (
+                <div className="email-compose-ai-row">
+                  <label htmlFor="email-compose-ai-lang">번역 방향</label>
+                  <select id="email-compose-ai-lang" className="email-compose-ai-select" value={aiTargetLang} onChange={(e) => setAiTargetLang(e.target.value)}>
+                    <option value="en">→ 영어</option>
+                    <option value="ko">→ 한국어</option>
+                  </select>
+                </div>
+              )}
+
+              {aiMode === 'auto_draft' && (
+                <>
+                  <label className="email-compose-ai-label" htmlFor="email-compose-ai-keyword">키워드·상황 한 줄</label>
+                  <input
+                    id="email-compose-ai-keyword"
+                    className="email-compose-ai-input"
+                    value={aiKeyword}
+                    onChange={(e) => setAiKeyword(e.target.value)}
+                    placeholder="예: 거래처 일정 변경 요청"
+                  />
+                  <label className="email-compose-ai-label" htmlFor="email-compose-ai-purpose">추가 맥락 (선택)</label>
+                  <input
+                    id="email-compose-ai-purpose"
+                    className="email-compose-ai-input"
+                    value={aiPurpose}
+                    onChange={(e) => setAiPurpose(e.target.value)}
+                    placeholder="날짜, 상대방, 부탁 내용 등"
+                  />
+                </>
+              )}
+
+              {aiMode === 'smart_reply' && (
+                <>
+                  <label className="email-compose-ai-label" htmlFor="email-compose-ai-received">받은 메일 본문</label>
+                  <textarea
+                    id="email-compose-ai-received"
+                    className="email-compose-ai-textarea"
+                    rows={5}
+                    value={aiReceived}
+                    onChange={(e) => setAiReceived(e.target.value)}
+                    placeholder="답장할 원문을 붙여 넣으세요."
+                  />
+                  <div className="email-compose-ai-row">
+                    <label htmlFor="email-compose-ai-intent">답장 유형</label>
+                    <select id="email-compose-ai-intent" className="email-compose-ai-select" value={aiReplyIntent} onChange={(e) => setAiReplyIntent(e.target.value)}>
+                      <option value="approve">승인·긍정</option>
+                      <option value="reject">거절·정중 거절</option>
+                      <option value="more">추가 정보 요청</option>
+                    </select>
+                  </div>
+                </>
+              )}
+
+              {aiMode === 'personalize' && (
+                <>
+                  <label className="email-compose-ai-label" htmlFor="email-compose-ai-rn">수신자 이름 (선택)</label>
+                  <input id="email-compose-ai-rn" className="email-compose-ai-input" value={aiRecipientName} onChange={(e) => setAiRecipientName(e.target.value)} placeholder="홍길동" />
+                  <label className="email-compose-ai-label" htmlFor="email-compose-ai-cn">회사명 (선택)</label>
+                  <input id="email-compose-ai-cn" className="email-compose-ai-input" value={aiCompanyName} onChange={(e) => setAiCompanyName(e.target.value)} placeholder="(주)예시" />
+                  <label className="email-compose-ai-label" htmlFor="email-compose-ai-purpose2">목적·상황 (선택)</label>
+                  <input id="email-compose-ai-purpose2" className="email-compose-ai-input" value={aiPurpose} onChange={(e) => setAiPurpose(e.target.value)} placeholder="견적 후속 안내 등" />
+                </>
+              )}
+
+              {aiError ? <p className="email-compose-ai-err">{aiError}</p> : null}
+              <div className="email-compose-ai-actions">
+                <button type="button" className="email-compose-ai-run" onClick={runEmailAiAssist} disabled={aiLoading}>
+                  {aiLoading ? '처리 중…' : '실행'}
+                </button>
+              </div>
+              {aiJsonResult ? (
+                <div className="email-compose-ai-json-wrap">
+                  <div className="email-compose-ai-json-head">
+                    <span>분석 결과 (JSON)</span>
+                    <button
+                      type="button"
+                      className="email-compose-ai-copy-json"
+                      onClick={() => copyTextToClipboard(aiJsonResult)}
+                    >
+                      복사
+                    </button>
+                  </div>
+                  <pre className="email-compose-ai-json">{aiJsonResult}</pre>
+                </div>
+              ) : null}
+            </div>
+          )}
 
           {inTable && (
             <div className="email-compose-table-toolbar">

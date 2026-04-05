@@ -102,6 +102,46 @@ export function getSavedTemplate(listId) {
   return null;
 }
 
+/**
+ * 메일 명함 HTML: `listTemplates.emailSignature.html` 우선, 없으면 구버전 최상위 `emailSignatureHtml`
+ * @param {object | null | undefined} user — crm_user 또는 GET /auth/me 의 user
+ */
+export function getEmailSignatureHtmlFromUser(user) {
+  if (!user || typeof user !== 'object') return '';
+  const lt = user.listTemplates;
+  if (lt && typeof lt === 'object' && lt.emailSignature != null && typeof lt.emailSignature === 'object') {
+    const h = lt.emailSignature.html;
+    if (h != null && String(h).trim() !== '') return String(h);
+  }
+  if (user.emailSignatureHtml != null && String(user.emailSignatureHtml).trim() !== '') {
+    return String(user.emailSignatureHtml);
+  }
+  return '';
+}
+
+/**
+ * PATCH /api/auth/email-signature — 명함을 user.listTemplates.emailSignature 에 저장 후 crm_user 동기화
+ * @param {string} html — 원본 HTML (서버에서 sanitize)
+ */
+export async function patchEmailSignatureHtml(html) {
+  const res = await fetch(`${API_BASE}/auth/email-signature`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    credentials: 'include',
+    body: JSON.stringify({ emailSignatureHtml: html })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || data.message || '저장에 실패했습니다.');
+  const userRaw = localStorage.getItem('crm_user');
+  const user = userRaw ? JSON.parse(userRaw) : {};
+  if (data.listTemplates && typeof data.listTemplates === 'object') {
+    user.listTemplates = data.listTemplates;
+  }
+  if (data.emailSignatureHtml != null) user.emailSignatureHtml = data.emailSignatureHtml;
+  localStorage.setItem('crm_user', JSON.stringify(user));
+  return data;
+}
+
 /** PATCH /api/auth/list-templates 호출 후 응답의 listTemplates로 crm_user 갱신 (columnOrder, visible, assigneeMeOnly) */
 export async function patchListTemplate(listId, { columnOrder, visible, assigneeMeOnly }) {
   const payload = { listId };

@@ -854,3 +854,335 @@
   opacity: 0.7;
   cursor: not-allowed;
 }
+
+/* —— AI 문장 다듬기 (Gemini) —— */
+.email-compose-tb-ai {
+  color: #7c6fad;
+  background: rgba(183, 180, 224, 0.2);
+  border-radius: 0.5rem;
+}
+
+.email-compose-tb-ai:hover {
+  background: rgba(183, 180, 224, 0.35);
+}
+
+.email-compose-tb-sig {
+  color: #5a8f9a;
+  background: rgba(167, 214, 220, 0.22);
+  border-radius: 0.5rem;
+}
+
+.email-compose-tb-sig:hover {
+  background: rgba(167, 214, 220, 0.4);
+}
+
+.email-compose-sig-panel {
+  margin: 0 1rem 0.75rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(167, 214, 220, 0.5);
+  background: linear-gradient(145deg, rgba(240, 252, 254, 0.95), rgba(245, 250, 255, 0.9));
+  font-size: 0.8125rem;
+}
+
+.email-compose-sig-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 700;
+  color: #4a6670;
+  margin-bottom: 0.5rem;
+}
+
+.email-compose-sig-panel-head .material-symbols-outlined {
+  font-size: 1.15rem;
+  color: #5a9aaa;
+}
+
+.email-compose-sig-close {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0.2rem;
+  border-radius: 0.35rem;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+}
+
+.email-compose-sig-close:hover {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.email-compose-sig-hint {
+  margin: 0 0 0.65rem;
+  color: #64748b;
+  line-height: 1.45;
+  font-size: 0.78rem;
+}
+
+.email-compose-sig-label {
+  display: block;
+  margin: 0.25rem 0 0.25rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.email-compose-sig-textarea {
+  width: 100%;
+  max-width: 100%;
+  padding: 0.5rem;
+  border-radius: 0.45rem;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: #fff;
+  font-size: 0.75rem;
+  resize: vertical;
+  min-height: 6rem;
+  font-family: ui-monospace, 'Cascadia Code', 'Segoe UI Mono', monospace;
+  line-height: 1.4;
+}
+
+.email-compose-sig-preview-block {
+  margin-top: 0.65rem;
+}
+
+.email-compose-sig-preview-title {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-weight: 600;
+  color: #475569;
+  font-size: 0.8125rem;
+}
+
+.email-compose-sig-preview-wrap {
+  border-radius: 0.45rem;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: #fff;
+  overflow: hidden;
+  min-height: 4.5rem;
+}
+
+.email-compose-sig-preview-frame {
+  display: block;
+  width: 100%;
+  min-height: 5.5rem;
+  max-height: 32rem;
+  border: none;
+  background: #f8fafc;
+}
+
+.email-compose-sig-preview-empty {
+  margin: 0;
+  padding: 1.1rem 0.85rem;
+  text-align: center;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: #94a3b8;
+}
+
+.email-compose-sig-err {
+  margin: 0.5rem 0 0;
+  color: #c45c6a;
+  font-size: 0.8rem;
+}
+
+.email-compose-sig-actions {
+  margin-top: 0.65rem;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.email-compose-sig-save {
+  padding: 0.45rem 1.1rem;
+  border: none;
+  border-radius: 0.45rem;
+  font-weight: 600;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  color: #fff;
+  background: linear-gradient(135deg, #7eb8c4, #6a9fb0);
+}
+
+.email-compose-sig-save:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.email-compose-sig-save:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.email-compose-ai-panel {
+  margin: 0 1rem 0.75rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(183, 180, 224, 0.45);
+  background: linear-gradient(145deg, rgba(245, 243, 255, 0.95), rgba(236, 252, 247, 0.85));
+  font-size: 0.8125rem;
+}
+
+.email-compose-ai-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 700;
+  color: #5b5678;
+  margin-bottom: 0.5rem;
+}
+
+.email-compose-ai-panel-head .material-symbols-outlined {
+  font-size: 1.15rem;
+  color: #8b7ec8;
+}
+
+.email-compose-ai-close {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 0.2rem;
+  border-radius: 0.35rem;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+}
+
+.email-compose-ai-close:hover {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.email-compose-ai-hint {
+  margin: 0 0 0.65rem;
+  color: #64748b;
+  line-height: 1.45;
+  font-size: 0.78rem;
+}
+
+.email-compose-ai-label {
+  display: block;
+  margin: 0.5rem 0 0.25rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.email-compose-ai-select,
+.email-compose-ai-input {
+  width: 100%;
+  max-width: 100%;
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.45rem;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: #fff;
+  font-size: 0.8125rem;
+  color: var(--text);
+}
+
+.email-compose-ai-textarea {
+  width: 100%;
+  max-width: 100%;
+  padding: 0.5rem;
+  border-radius: 0.45rem;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: #fff;
+  font-size: 0.8125rem;
+  resize: vertical;
+  min-height: 5rem;
+  font-family: inherit;
+}
+
+.email-compose-ai-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.email-compose-ai-row label {
+  font-weight: 600;
+  color: #475569;
+  min-width: 4.5rem;
+}
+
+.email-compose-ai-row .email-compose-ai-select {
+  flex: 1;
+  min-width: 8rem;
+}
+
+.email-compose-ai-err {
+  margin: 0.5rem 0 0;
+  color: #c45c6a;
+  font-size: 0.8rem;
+}
+
+.email-compose-ai-actions {
+  margin-top: 0.65rem;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.email-compose-ai-run {
+  padding: 0.45rem 1.1rem;
+  border: none;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  background: linear-gradient(135deg, #a8a4e0, #8ec5b6);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(139, 126, 200, 0.25);
+}
+
+.email-compose-ai-run:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.email-compose-ai-run:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.email-compose-ai-json-wrap {
+  margin-top: 0.75rem;
+  padding-top: 0.65rem;
+  border-top: 1px dashed rgba(148, 163, 184, 0.4);
+}
+
+.email-compose-ai-json-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.35rem;
+  font-weight: 600;
+  color: #475569;
+  font-size: 0.78rem;
+}
+
+.email-compose-ai-copy-json {
+  border: none;
+  background: rgba(255, 255, 255, 0.8);
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.35rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  color: #64748b;
+}
+
+.email-compose-ai-copy-json:hover {
+  background: #fff;
+}
+
+.email-compose-ai-json {
+  margin: 0;
+  padding: 0.5rem 0.6rem;
+  max-height: 10rem;
+  overflow: auto;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  background: rgba(255, 255, 255, 0.75);
+  border-radius: 0.4rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  white-space: pre-wrap;
+  word-break: break-word;
+}

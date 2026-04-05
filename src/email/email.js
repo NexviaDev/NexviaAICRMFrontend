@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import EmailComposeModal from './email-compose-modal.jsx';
+import EmailComposeModal, { buildReplyEmailSubject } from './email-compose-modal.jsx';
 import './email.css';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 
@@ -80,7 +80,6 @@ export default function Email() {
   const [pageTokenUsed, setPageTokenUsed] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [selectedEmail, setSelectedEmail] = useState(null);
-  const [replyText, setReplyText] = useState('');
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [sendLoading, setSendLoading] = useState(false);
@@ -90,7 +89,8 @@ export default function Email() {
   const [showLabelPicker, setShowLabelPicker] = useState(false);
   const [labelPickerLoading, setLabelPickerLoading] = useState(false);
   const [selectedLabelId, setSelectedLabelId] = useState(null);
-  const [showCompose, setShowCompose] = useState(false);
+  /** null | 'new' | 'reply' — 상세 패널에서 작성 모달 */
+  const [detailCompose, setDetailCompose] = useState(null);
 
   const fetchList = useCallback(async (pageToken = '') => {
     setLoading(true);
@@ -190,38 +190,9 @@ export default function Email() {
       }
       setSelectedId(null);
       setSelectedEmail(null);
-      setReplyText('');
       fetchList();
     } catch (_) {
       setError('요청을 처리할 수 없습니다.');
-    } finally {
-      setSendLoading(false);
-    }
-  };
-
-  const handleSendReply = async () => {
-    if (!selectedEmail || !replyText.trim()) return;
-    const fromParsed = parseFromHeader(selectedEmail.from);
-    const to = fromParsed.email || selectedEmail.from;
-    const subject = (selectedEmail.subject || '').startsWith('Re:') ? selectedEmail.subject : `Re: ${selectedEmail.subject || ''}`;
-    setSendLoading(true);
-    setError('');
-    try {
-      const res = await fetch(`${API_BASE}/gmail/messages/send`, {
-        method: 'POST',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to, subject, body: replyText.trim() })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        if (data.needsReauth) setNeedsReauth(true);
-        setError(data.error || '전송에 실패했습니다.');
-        return;
-      }
-      setReplyText('');
-      fetchList();
-    } catch (_) {
-      setError('전송할 수 없습니다.');
     } finally {
       setSendLoading(false);
     }
@@ -278,6 +249,27 @@ export default function Email() {
     CATEGORY_FORUMS: '포럼'
   };
 
+  /** 답장 인용용 — 동일 메일에서 리렌더 시 객체 참조만 바뀌어 에디터가 덮어쓰이지 않도록 */
+  const replyQuoteSourceMemo = useMemo(() => {
+    if (!selectedEmail) return null;
+    return {
+      from: selectedEmail.from,
+      to: selectedEmail.to,
+      subject: selectedEmail.subject,
+      date: selectedEmail.date,
+      bodyPlain: selectedEmail.body,
+      bodyHtml: selectedEmail.bodyHtml
+    };
+  }, [
+    selectedEmail?.id,
+    selectedEmail?.from,
+    selectedEmail?.to,
+    selectedEmail?.subject,
+    selectedEmail?.date,
+    selectedEmail?.body,
+    selectedEmail?.bodyHtml
+  ]);
+
   return (
     <div className="email-page">
       <header className="email-header">
@@ -310,7 +302,7 @@ export default function Email() {
 
       <div className="email-body">
         <aside className="email-sidebar">
-          <button type="button" className="email-compose-btn" onClick={() => setShowCompose(true)}>
+          <button type="button" className="email-compose-btn" onClick={() => setDetailCompose('new')}>
             <span className="material-symbols-outlined">edit</span>
             새 메일 작성
           </button>
@@ -413,11 +405,30 @@ export default function Email() {
         </section>
 
         <section className="email-detail-panel">
-          {showCompose ? (
+          {detailCompose ? (
             <EmailComposeModal
+              key={detailCompose === 'reply' && selectedEmail?.id ? `reply-${selectedEmail.id}` : 'compose-new'}
               inline
-              onClose={() => setShowCompose(false)}
-              onSent={() => { setShowCompose(false); fetchList(); }}
+              composeMode={detailCompose === 'reply' ? 'reply' : 'new'}
+              initialTo={
+                detailCompose === 'reply' && selectedEmail
+                  ? (parseFromHeader(selectedEmail.from).email || selectedEmail.from).trim()
+                  : ''
+              }
+              initialCc={detailCompose === 'reply' && selectedEmail?.cc ? String(selectedEmail.cc) : ''}
+              initialSubject={
+                detailCompose === 'reply' && selectedEmail
+                  ? buildReplyEmailSubject(selectedEmail.subject)
+                  : ''
+              }
+              replyThreadId={detailCompose === 'reply' && selectedEmail?.threadId ? selectedEmail.threadId : null}
+              replyQuoteSource={detailCompose === 'reply' ? replyQuoteSourceMemo : null}
+              replyQuoteMessageId={detailCompose === 'reply' && selectedEmail?.id ? selectedEmail.id : null}
+              onClose={() => setDetailCompose(null)}
+              onSent={() => {
+                setDetailCompose(null);
+                fetchList();
+              }}
             />
           ) : detailLoading && selectedId ? (
             <div className="email-detail-empty">
@@ -428,11 +439,11 @@ export default function Email() {
             <>
               <div className="email-detail-toolbar">
                 <div className="email-detail-toolbar-left">
-                  <button type="button" className="email-detail-btn" onClick={() => setShowCompose(true)}>
+                  <button type="button" className="email-detail-btn" onClick={() => setDetailCompose('new')}>
                     <span className="material-symbols-outlined">edit</span>
                     새 메일
                   </button>
-                  <button type="button" className="email-detail-btn">
+                  <button type="button" className="email-detail-btn" onClick={() => setDetailCompose('reply')} disabled={!selectedEmail}>
                     <span className="material-symbols-outlined">reply</span>
                     답장
                   </button>
@@ -532,6 +543,9 @@ export default function Email() {
                     {selectedEmail.to && (
                       <p className="email-detail-to">받는 사람: {selectedEmail.to}</p>
                     )}
+                    {selectedEmail.cc && (
+                      <p className="email-detail-to">참조: {selectedEmail.cc}</p>
+                    )}
                   </div>
                 </div>
                 <div className="email-detail-body">
@@ -580,36 +594,14 @@ export default function Email() {
                 )}
               </div>
               <div className="email-detail-reply">
-                <div className="email-detail-reply-inner">
-                  <textarea
-                    className="email-detail-reply-textarea"
-                    placeholder="답장 또는 전달 내용을 입력하세요..."
-                    value={replyText}
-                    onChange={(e) => setReplyText(e.target.value)}
-                    rows={3}
-                  />
-                  <div className="email-detail-reply-actions">
-                    <div className="email-detail-reply-tools">
-                      <button type="button" className="email-detail-reply-tool-btn" title="첨부">
-                        <span className="material-symbols-outlined">attach_file</span>
-                      </button>
-                      <button type="button" className="email-detail-reply-tool-btn" title="이모지">
-                        <span className="material-symbols-outlined">sentiment_satisfied</span>
-                      </button>
-                      <button type="button" className="email-detail-reply-tool-btn" title="이미지">
-                        <span className="material-symbols-outlined">image</span>
-                      </button>
-                    </div>
-                    <button
-                      type="button"
-                      className="email-detail-reply-send"
-                      onClick={handleSendReply}
-                      disabled={sendLoading || !replyText.trim()}
-                    >
-                      {sendLoading ? '전송 중…' : '보내기'}
-                    </button>
-                  </div>
-                </div>
+                <button
+                  type="button"
+                  className="email-detail-reply-open-compose"
+                  onClick={() => setDetailCompose('reply')}
+                >
+                  <span className="material-symbols-outlined">reply</span>
+                  답장 작성
+                </button>
               </div>
             </>
           ) : (
