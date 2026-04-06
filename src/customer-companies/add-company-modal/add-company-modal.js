@@ -1453,14 +1453,14 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
               )}
             </div>
           </div>
-          <div className="add-company-lat-row">
+          <div className="add-company-lat-row add-company-lat-row--hidden" aria-hidden="true">
             <div className="add-company-field">
               <label className="add-company-label add-company-label-muted" htmlFor="add-company-latitude">위도 (Latitude)</label>
-              <input id="add-company-latitude" name="latitude" type="text" inputMode="decimal" value={form.latitude != null ? String(form.latitude) : ''} onChange={handleChange} className="add-company-input" placeholder="37.5665" />
+              <input id="add-company-latitude" name="latitude" type="text" inputMode="decimal" value={form.latitude != null ? String(form.latitude) : ''} onChange={handleChange} className="add-company-input" placeholder="37.5665" tabIndex={-1} />
             </div>
             <div className="add-company-field">
               <label className="add-company-label add-company-label-muted" htmlFor="add-company-longitude">경도 (Longitude)</label>
-              <input id="add-company-longitude" name="longitude" type="text" inputMode="decimal" value={form.longitude != null ? String(form.longitude) : ''} onChange={handleChange} className="add-company-input" placeholder="126.9780" />
+              <input id="add-company-longitude" name="longitude" type="text" inputMode="decimal" value={form.longitude != null ? String(form.longitude) : ''} onChange={handleChange} className="add-company-input" placeholder="126.9780" tabIndex={-1} />
             </div>
           </div>
         </section>

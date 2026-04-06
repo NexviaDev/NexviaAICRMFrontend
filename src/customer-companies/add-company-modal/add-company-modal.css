@@ -556,6 +556,11 @@
   margin-top: 1rem;
 }
 
+/* 입력란은 state·저장용으로 유지, 화면에는 표시하지 않음 (자동 지오코딩·지도 반영) */
+.add-company-lat-row.add-company-lat-row--hidden {
+  display: none !important;
+}
+
 .add-company-btn-sync {
   display: inline-flex;
   align-items: center;

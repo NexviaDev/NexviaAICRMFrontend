@@ -38,6 +38,16 @@ function getPageNumbers(current, total) {
   return result;
 }
 
+/** 리스트에서 `tel:` 로 모바일 전화·데스크톱 기본 전화 앱 연결 */
+function phoneToTelHref(phone) {
+  if (phone == null) return '';
+  const s = String(phone).trim();
+  if (!s) return '';
+  const cleaned = s.replace(/[^\d+]/g, '');
+  if (!cleaned || !cleaned.replace(/\+/g, '')) return '';
+  return `tel:${cleaned}`;
+}
+
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -786,7 +796,25 @@ export default function CustomerCompanyEmployees() {
                               </div>
                             )}
                             {col.key === 'email' && (row.email || '—')}
-                            {col.key === 'phone' && (row.phone || '—')}
+                            {col.key === 'phone' && (() => {
+                              const telHref = phoneToTelHref(row.phone);
+                              const display = row.phone || '—';
+                              if (!row.phone?.trim() || !telHref) return display;
+                              return (
+                                <span className="cce-phone-cell">
+                                  <span className="cce-phone-text">{display}</span>
+                                  <a
+                                    href={telHref}
+                                    className="cce-phone-call-btn"
+                                    title="전화 걸기"
+                                    aria-label={`전화 걸기 ${display}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <span className="material-symbols-outlined" aria-hidden>call</span>
+                                  </a>
+                                </span>
+                              );
+                            })()}
                             {col.key === 'status' && (
                               <span className={`status-badge ${statusClass[row.status] || ''}`}>{statusLabel[row.status] || row.status || '—'}</span>
                             )}
