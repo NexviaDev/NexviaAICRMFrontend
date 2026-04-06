@@ -272,6 +272,44 @@
     white-space: nowrap;
   }
 
+  .customer-company-employees-page .cce-mobile-card-phone {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.75rem;
+    color: var(--text-muted, #64748b);
+    min-width: 0;
+  }
+
+  .customer-company-employees-page .cce-mobile-card-phone > .material-symbols-outlined:first-child {
+    font-size: 0.875rem;
+    flex-shrink: 0;
+  }
+
+  .customer-company-employees-page .cce-mobile-card-phone-content {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .customer-company-employees-page .cce-mobile-card-phone-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+
+  /* 터치 영역 확보 — 작은 화면에서도 전화 아이콘 버튼이 잘 보이게 */
+  .customer-company-employees-page .cce-mobile-card-call-btn.cce-phone-call-btn {
+    flex-shrink: 0;
+    width: 2.35rem;
+    height: 2.35rem;
+    min-width: 2.35rem;
+    min-height: 2.35rem;
+  }
+
   .customer-company-employees-page .cce-mobile-card-meta {
     margin: 0;
     font-size: 0.6875rem;

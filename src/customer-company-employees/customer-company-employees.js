@@ -671,6 +671,33 @@ export default function CustomerCompanyEmployees() {
                           <span className="material-symbols-outlined" aria-hidden>mail</span>
                           <span>{row.email || '—'}</span>
                         </div>
+                        {(() => {
+                          const telHref = phoneToTelHref(row.phone);
+                          const display = row.phone || '—';
+                          return (
+                            <div className="cce-mobile-card-phone">
+                              <span className="material-symbols-outlined" aria-hidden>call</span>
+                              <div className="cce-mobile-card-phone-content">
+                                {!row.phone?.trim() || !telHref ? (
+                                  <span className="cce-mobile-card-phone-text">{display}</span>
+                                ) : (
+                                  <>
+                                    <span className="cce-mobile-card-phone-text">{display}</span>
+                                    <a
+                                      href={telHref}
+                                      className="cce-phone-call-btn cce-mobile-card-call-btn"
+                                      title="전화 걸기"
+                                      aria-label={`전화 걸기 ${display}`}
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <span className="material-symbols-outlined" aria-hidden>call</span>
+                                    </a>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
                         <p className="cce-mobile-card-meta">
                           최근 지원: {row.lastSupportedAt ? formatDate(row.lastSupportedAt) : '—'}
                         </p>
