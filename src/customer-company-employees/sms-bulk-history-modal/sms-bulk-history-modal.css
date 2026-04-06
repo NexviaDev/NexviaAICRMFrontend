@@ -1,0 +1,248 @@
+.cce-sms-history-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1280;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.38);
+  backdrop-filter: blur(2px);
+}
+
+.cce-sms-history-modal {
+  width: 100%;
+  max-width: 32rem;
+  max-height: min(90vh, 36rem);
+  display: flex;
+  flex-direction: column;
+  background: var(--card, #fff);
+  border-radius: 0.85rem;
+  border: 1px solid var(--card-border, #e2e8f0);
+  box-shadow: 0 22px 50px rgba(15, 23, 42, 0.12);
+  overflow: hidden;
+}
+
+.cce-sms-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1rem;
+  background: linear-gradient(135deg, #f3e8ff 0%, #e8f4fc 100%);
+  border-bottom: 1px solid var(--card-border, #e2e8f0);
+}
+
+.cce-sms-history-head h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text, #334155);
+}
+
+.cce-sms-history-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--text-muted, #64748b);
+  cursor: pointer;
+}
+
+.cce-sms-history-close:hover {
+  background: rgba(148, 163, 184, 0.2);
+  color: var(--text, #334155);
+}
+
+.cce-sms-history-hint {
+  margin: 0;
+  padding: 0.65rem 1rem 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text-muted, #64748b);
+  border-bottom: 1px solid var(--bg-light, #f1f5f9);
+}
+
+.cce-sms-history-empty {
+  margin: 0;
+  padding: 2rem 1rem;
+  text-align: center;
+  font-size: 0.9rem;
+  color: var(--text-muted, #94a3b8);
+}
+
+.cce-sms-history-list {
+  margin: 0;
+  padding: 0.5rem 0.65rem 0.85rem;
+  list-style: none;
+  overflow-y: auto;
+  max-height: min(56vh, 26rem);
+}
+
+.cce-sms-history-item {
+  padding: 0.75rem 0.65rem;
+  margin-bottom: 0.35rem;
+  border-radius: 0.65rem;
+  background: var(--bg-light, #f8fafc);
+  border: 1px solid var(--card-border, #e8edf3);
+}
+
+.cce-sms-history-item:last-child {
+  margin-bottom: 0;
+}
+
+.cce-sms-history-item-top {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.cce-sms-history-item-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text, #334155);
+}
+
+.cce-sms-history-item-meta {
+  font-size: 0.72rem;
+  color: var(--text-muted, #64748b);
+}
+
+.cce-sms-history-participants {
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.cce-sms-history-chip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.5rem;
+  background: rgba(199, 210, 254, 0.35);
+  border: 1px solid rgba(165, 180, 252, 0.45);
+  font-size: 0.78rem;
+  color: var(--text, #334155);
+}
+
+.cce-sms-history-chip-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.cce-sms-history-chip-name {
+  font-weight: 600;
+}
+
+.cce-sms-history-chip-company {
+  font-weight: 400;
+  color: var(--text-muted, #64748b);
+}
+
+.cce-sms-history-chip-phone {
+  font-size: 0.72rem;
+  color: var(--text-muted, #64748b);
+}
+
+.cce-sms-history-chip-remove {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.4rem;
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.cce-sms-history-chip-remove:hover {
+  background: rgba(239, 68, 68, 0.22);
+}
+
+.cce-sms-history-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.45rem;
+}
+
+.cce-sms-history-add-select {
+  flex: 1;
+  min-width: 10rem;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.78rem;
+  border: 1px solid var(--card-border, #d8e0f0);
+  border-radius: 0.45rem;
+  background: var(--card, #fff);
+  color: var(--text, #334155);
+}
+
+.cce-sms-history-add-hint {
+  margin: 0.25rem 0 0;
+  font-size: 0.68rem;
+  color: var(--text-muted, #94a3b8);
+  width: 100%;
+}
+
+.cce-sms-history-item-preview {
+  margin: 0.45rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--text-muted, #64748b);
+  word-break: break-word;
+}
+
+.cce-sms-history-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+}
+
+.cce-sms-history-item-actions .cce-sms-history-resend {
+  flex: 1;
+  font-size: 0.82rem;
+  padding: 0.4rem 0.75rem;
+}
+
+.cce-sms-history-delete {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.5rem;
+  background: rgba(239, 68, 68, 0.12);
+  color: #b91c1c;
+  cursor: pointer;
+}
+
+.cce-sms-history-delete:hover {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+.cce-sms-history-delete .material-symbols-outlined {
+  font-size: 1.15rem;
+}

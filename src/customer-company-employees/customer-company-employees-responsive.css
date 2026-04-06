@@ -259,6 +259,7 @@
     gap: 0.35rem;
     font-size: 0.75rem;
     color: var(--text-muted, #64748b);
+    min-width: 0;
   }
 
   .customer-company-employees-page .cce-mobile-card-email .material-symbols-outlined {
@@ -266,7 +267,9 @@
     flex-shrink: 0;
   }
 
-  .customer-company-employees-page .cce-mobile-card-email span:last-child {
+  .customer-company-employees-page .cce-mobile-card-email-text {
+    flex: 1;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -301,8 +304,9 @@
     min-width: 0;
   }
 
-  /* 터치 영역 확보 — 작은 화면에서도 전화 아이콘 버튼이 잘 보이게 */
-  .customer-company-employees-page .cce-mobile-card-call-btn.cce-phone-call-btn {
+  /* 터치 영역 확보 — 작은 화면에서도 전화·문자 아이콘 버튼이 잘 보이게 */
+  .customer-company-employees-page .cce-mobile-card-call-btn.cce-phone-call-btn,
+  .customer-company-employees-page .cce-mobile-card-call-btn.cce-phone-sms-btn {
     flex-shrink: 0;
     width: 2.35rem;
     height: 2.35rem;

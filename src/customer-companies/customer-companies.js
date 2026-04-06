@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AddCompanyModal from './add-company-modal/add-company-modal';
 import CustomerCompanyDetailModal from './customer-company-detail-modal/customer-company-detail-modal';
@@ -23,6 +23,7 @@ const MODAL_EXCEL_IMPORT = 'excel-import';
 const MODAL_DETAIL = 'detail';
 const DETAIL_ID_PARAM = 'id';
 const LIMIT = 10;
+const EXPORT_PAGE_LIMIT = 100;
 
 /** 페이지네이션에 표시할 번호 목록 (현재 페이지 주변 + 첫/끝, 생략은 '...') */
 function getPageNumbers(current, total) {
@@ -95,7 +96,9 @@ export default function CustomerCompanies() {
   const [selectedCompanyIds, setSelectedCompanyIds] = useState(new Set());
   const [selectedCompanyMap, setSelectedCompanyMap] = useState({});
   const [exportExcelLoading, setExportExcelLoading] = useState(false);
+  const [selectAllLoading, setSelectAllLoading] = useState(false);
   const [lastCheckedIndex, setLastCheckedIndex] = useState(null);
+  const headerSelectAllRef = useRef(null);
   const me = useMemo(() => getStoredCrmUser(), []);
   const canExportExcel = isSeniorOrAboveRole(me?.role);
   const SEARCH_FIELD_OPTIONS = [
@@ -195,6 +198,31 @@ export default function CustomerCompanies() {
     }
   }, [searchApplied, searchField, assigneeMeOnly]);
 
+  /** 검색·필터와 동일 조건으로 전체 고객사 목록 (전체 선택용) */
+  const fetchAllCustomerCompaniesForSelection = useCallback(async () => {
+    let page = 1;
+    let totalPages = 1;
+    const all = [];
+    do {
+      const params = new URLSearchParams({ page: String(page), limit: String(EXPORT_PAGE_LIMIT) });
+      if (searchApplied) {
+        params.set('search', searchApplied);
+        if (searchField) params.set('searchField', searchField);
+      }
+      if (assigneeMeOnly) params.set('assigneeMe', '1');
+      const res = await fetch(`${API_BASE}/customer-companies?${params.toString()}`, { headers: getAuthHeader() });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || '목록을 가져오지 못했습니다.');
+      }
+      const data = await res.json();
+      all.push(...(data.items || []));
+      totalPages = Math.max(1, Number(data.pagination?.totalPages) || 1);
+      page += 1;
+    } while (page <= totalPages);
+    return all;
+  }, [searchApplied, searchField, assigneeMeOnly]);
+
   useEffect(() => { fetchList(pagination.page); }, [pagination.page, fetchList]);
   useEffect(() => {
     const onExcelImportDone = () => { fetchList(pagination.page); };
@@ -247,6 +275,8 @@ export default function CustomerCompanies() {
 
   const runSearch = (e) => {
     e?.preventDefault();
+    setSelectedCompanyIds(new Set());
+    setSelectedCompanyMap({});
     setSearchApplied(searchInput.trim());
     setPagination((p) => ({ ...p, page: 1 }));
   };
@@ -351,16 +381,45 @@ export default function CustomerCompanies() {
     setLastCheckedIndex(null);
   }, [pagination.page]);
 
-  const currentPageIds = useMemo(
-    () => sortedItems.map((r) => String(r?._id || '')).filter(Boolean),
-    [sortedItems]
-  );
-  const selectedOnCurrentPageCount = useMemo(
-    () => currentPageIds.filter((id) => selectedCompanyIds.has(id)).length,
-    [currentPageIds, selectedCompanyIds]
-  );
-  const allCurrentPageSelected = currentPageIds.length > 0 && selectedOnCurrentPageCount === currentPageIds.length;
-  const hasPartialCurrentSelection = selectedOnCurrentPageCount > 0 && selectedOnCurrentPageCount < currentPageIds.length;
+  /** 검색·필터 결과 전체가 선택됐는지 (헤더 체크박스) */
+  const allCompaniesChecked =
+    (pagination.total || 0) > 0 && selectedCompanyIds.size === pagination.total;
+
+  const handleSelectAllCompanies = useCallback(async () => {
+    const total = pagination.total || 0;
+    if (total === 0) return;
+    if (selectedCompanyIds.size === total) {
+      setSelectedCompanyIds(new Set());
+      setSelectedCompanyMap({});
+      setLastCheckedIndex(null);
+      return;
+    }
+    setSelectAllLoading(true);
+    try {
+      const rows = await fetchAllCustomerCompaniesForSelection();
+      const nextIds = new Set();
+      const nextMap = {};
+      for (const r of rows) {
+        const id = String(r?._id || '');
+        if (!id) continue;
+        nextIds.add(id);
+        nextMap[id] = r;
+      }
+      setSelectedCompanyIds(nextIds);
+      setSelectedCompanyMap(nextMap);
+    } catch (e) {
+      window.alert(e?.message || '전체 선택에 실패했습니다.');
+    } finally {
+      setSelectAllLoading(false);
+    }
+  }, [pagination.total, selectedCompanyIds.size, fetchAllCustomerCompaniesForSelection]);
+
+  useEffect(() => {
+    const el = headerSelectAllRef.current;
+    if (!el) return;
+    const total = pagination.total || 0;
+    el.indeterminate = total > 0 && selectedCompanyIds.size > 0 && selectedCompanyIds.size < total;
+  }, [selectedCompanyIds.size, pagination.total]);
 
   const toggleCompanySelection = useCallback((idx, shiftKey = false) => {
     const row = sortedItems[idx];
@@ -400,31 +459,6 @@ export default function CustomerCompanies() {
     });
     setLastCheckedIndex(idx);
   }, [sortedItems, selectedCompanyIds, lastCheckedIndex]);
-
-  const toggleSelectCurrentPage = useCallback(() => {
-    setSelectedCompanyIds((prev) => {
-      const next = new Set(prev);
-      if (allCurrentPageSelected) {
-        currentPageIds.forEach((id) => next.delete(id));
-      } else {
-        currentPageIds.forEach((id) => next.add(id));
-      }
-      return next;
-    });
-    setSelectedCompanyMap((prev) => {
-      const next = { ...prev };
-      if (allCurrentPageSelected) {
-        currentPageIds.forEach((id) => { delete next[id]; });
-      } else {
-        sortedItems.forEach((row) => {
-          const id = String(row?._id || '');
-          if (id) next[id] = row;
-        });
-      }
-      return next;
-    });
-    setLastCheckedIndex(null);
-  }, [allCurrentPageSelected, currentPageIds, sortedItems]);
 
   const fetchAllEmployeesForCompany = useCallback(async (companyId) => {
     const all = [];
@@ -595,6 +629,8 @@ export default function CustomerCompanies() {
               className={`icon-btn cc-assignee-filter-btn ${assigneeMeOnly ? 'active' : ''}`}
               onClick={() => {
                 const next = !assigneeMeOnly;
+                setSelectedCompanyIds(new Set());
+                setSelectedCompanyMap({});
                 setAssigneeMeOnly(next);
                 patchListTemplate(LIST_ID, { assigneeMeOnly: next }).catch((err) => {
                   alert(err?.message || '저장에 실패했습니다.');
@@ -710,14 +746,21 @@ export default function CustomerCompanies() {
                 <tr>
                   <th className="cc-th-check">
                     <input
+                      ref={headerSelectAllRef}
                       type="checkbox"
-                      checked={allCurrentPageSelected}
-                      ref={(el) => {
-                        if (!el) return;
-                        el.indeterminate = hasPartialCurrentSelection;
-                      }}
-                      onChange={toggleSelectCurrentPage}
-                      aria-label="현재 페이지 전체 선택"
+                      checked={allCompaniesChecked}
+                      disabled={selectAllLoading || loading || (pagination.total || 0) === 0}
+                      onChange={handleSelectAllCompanies}
+                      aria-label={
+                        selectAllLoading
+                          ? '전체 고객사 불러오는 중'
+                          : '검색·필터 결과 전체 선택'
+                      }
+                      title={
+                        selectAllLoading
+                          ? '목록을 불러오는 중…'
+                          : '현재 검색·내 담당 필터에 맞는 고객사 전부를 선택합니다. 다시 누르면 전체 해제합니다.'
+                      }
                     />
                   </th>
                   {displayColumns.map((col) => (

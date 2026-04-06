@@ -1,3 +1,25 @@
+/**
+ * 직원 업무 보고 — .panel-head 스타일이 home.css(lazy)에만 있으면
+ * 이 페이지에서 헤더·표 제목이 카드 좌상단에 붙어 보임 → 페이지 내에서 여백 정의
+ */
+.work-report-page .page-content {
+  padding: 1.75rem clamp(1rem, 4vw, 2rem) 2.5rem;
+}
+
+.work-report-page .panel-head {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--card-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.work-report-page .work-report-timeline-head {
+  margin-bottom: 0;
+}
+
 .work-report-header {
   flex-wrap: wrap;
   gap: 1rem;
@@ -235,14 +257,19 @@
   display: grid;
   grid-template-columns: 2fr 1fr;
   gap: 1.5rem;
+  margin-top: 0.25rem;
 }
 
 @media (max-width: 1024px) {
   .insights-grid { grid-template-columns: 1fr; }
 }
 
-.workload-panel .panel-head { display: flex; justify-content: space-between; align-items: center; }
-.workload-panel h4 { margin: 0; }
+.workload-panel h4 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--primary);
+}
 .text-muted { color: var(--text-muted); }
 
 .work-report-timeline-head {

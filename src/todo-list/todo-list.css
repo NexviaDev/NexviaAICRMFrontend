@@ -312,6 +312,24 @@
   min-width: 0;
 }
 
+.todo-list-content--open-detail {
+  cursor: pointer;
+  border-radius: 0.375rem;
+  padding: 0.125rem 0.25rem;
+  margin: -0.125rem -0.25rem;
+  transition: background 0.15s;
+  text-align: left;
+}
+
+.todo-list-content--open-detail:hover {
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.todo-list-content--open-detail:focus-visible {
+  outline: 2px solid var(--todo-blue-700);
+  outline-offset: 1px;
+}
+
 .todo-list-title {
   display: block;
   font-size: 0.9375rem;

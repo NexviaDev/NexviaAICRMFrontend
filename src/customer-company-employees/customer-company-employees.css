@@ -190,6 +190,25 @@
   cursor: pointer;
 }
 
+/**
+ * 이름 열: 아바타 + 텍스트 가로 배치 (home.css 미로드 시에도 동일)
+ * — .cell-user에 flex가 없으면 avatar(div)가 블록이라 이름이 아래로 내려감
+ */
+.customer-company-employees-page .cell-user {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.customer-company-employees-page .cell-user .font-semibold {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .avatar-img {
   width: 2.25rem;
   height: 2.25rem;
@@ -419,6 +438,86 @@
   font-size: 1.1rem;
 }
 
+.cce-phone-action-btns {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.cce-phone-sms-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  border: none;
+  border-radius: 999px;
+  background: rgba(212, 196, 232, 0.38);
+  color: #6f5a8f;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+  padding: 0;
+}
+
+.cce-phone-sms-btn:hover {
+  background: rgba(212, 196, 232, 0.58);
+  color: #4f3d6b;
+  transform: scale(1.05);
+}
+
+.cce-phone-sms-btn .material-symbols-outlined {
+  font-size: 1.1rem;
+}
+
+/* 이메일 + 작성 (Gmail 새 메일) */
+.cce-email-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.cce-email-icon {
+  flex-shrink: 0;
+  font-size: 1.05rem;
+  color: #7b8cae;
+  opacity: 0.92;
+}
+
+.cce-email-text {
+  min-width: 0;
+  word-break: break-all;
+}
+
+.cce-email-compose-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: rgba(187, 210, 247, 0.45);
+  color: #4a6fa5;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.cce-email-compose-btn:hover {
+  background: rgba(187, 210, 247, 0.72);
+  color: #3d5a87;
+  transform: scale(1.05);
+}
+
+.cce-email-compose-btn .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
 .cce-row-checkbox {
   width: 1rem;
   height: 1rem;
@@ -470,7 +569,55 @@
 
 .cce-action-bar-btns {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
+  align-items: center;
+}
+
+.cce-action-bar-sms-bulk {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.95rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #3d6b5c;
+  background: linear-gradient(135deg, #d8f5e8 0%, #c8e8f5 100%);
+  border: 1px solid #9dd4c4;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: filter 0.15s, transform 0.12s;
+}
+
+.cce-action-bar-sms-bulk:hover {
+  filter: brightness(0.97);
+}
+
+.cce-action-bar-sms-bulk .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
+.cce-action-bar-email-bulk {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.95rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #4a5d8c;
+  background: linear-gradient(135deg, #e3ebfb 0%, #dde8f8 100%);
+  border: 1px solid #b8c9eb;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: filter 0.15s, transform 0.12s;
+}
+
+.cce-action-bar-email-bulk:hover {
+  filter: brightness(0.98);
+}
+
+.cce-action-bar-email-bulk .material-symbols-outlined {
+  font-size: 1.05rem;
 }
 
 .cce-action-bar-google {
@@ -634,4 +781,26 @@
 
 .cce-mobile-card-controls {
   display: none;
+}
+
+/* 단체 문자 기록 (헤더 버튼 + 모달) */
+.customer-company-employees-page .header-actions .cce-sms-history-header-btn {
+  position: relative;
+}
+
+.cce-sms-history-badge {
+  position: absolute;
+  top: -0.15rem;
+  right: -0.15rem;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  padding: 0 0.25rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1.1rem;
+  text-align: center;
+  background: #c5cae8;
+  color: #3949ab;
+  border: 1px solid rgba(255, 255, 255, 0.9);
 }

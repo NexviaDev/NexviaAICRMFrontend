@@ -1062,7 +1062,7 @@ export default function EmailComposeModal({
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
     setError('');
     if (!to.trim()) {
       setError('받는 사람을 입력해 주세요.');
@@ -1123,9 +1123,27 @@ export default function EmailComposeModal({
     <>
       <header className="email-compose-header">
         <h2 className="email-compose-title">{composeMode === 'reply' ? '답장 작성' : '새 메일 작성'}</h2>
-        <button type="button" className="email-compose-close" onClick={onClose} aria-label="닫기">
-          <span className="material-symbols-outlined">close</span>
-        </button>
+        <div className="email-compose-header-actions">
+          <button
+            type="button"
+            className="email-compose-send-icon"
+            disabled={sending}
+            onClick={() => void handleSubmit()}
+            aria-label={sending ? '전송 중' : '보내기'}
+            title={sending ? '전송 중…' : '보내기'}
+          >
+            <span
+              className={'material-symbols-outlined' + (sending ? ' email-compose-send-icon--spin' : '')}
+              style={sending ? undefined : { fontVariationSettings: "'FILL' 1" }}
+              aria-hidden
+            >
+              {sending ? 'progress_activity' : 'send'}
+            </span>
+          </button>
+          <button type="button" className="email-compose-close" onClick={onClose} aria-label="닫기">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
       </header>
       <form onSubmit={handleSubmit} className="email-compose-form">
         <div className="email-compose-fields">
@@ -1363,7 +1381,7 @@ export default function EmailComposeModal({
                 </button>
               </div>
               <p className="email-compose-ai-hint">
-                교정·톤·요약 등은 본문을 입력하거나 <strong>적용할 문장만 선택</strong>한 뒤 실행하세요. JSON 결과는 본문에 넣지 않고 아래에 표시됩니다.
+                교정·톤·요약 등은 본문을 입력하거나 <strong>적용할 문장만 선택</strong>한 뒤 실행하세요. 긴 본문도 그대로 반영됩니다. JSON 분석 결과는 아래에만 표시됩니다.
               </p>
               <label className="email-compose-ai-label" htmlFor="email-compose-ai-mode">기능</label>
               <select

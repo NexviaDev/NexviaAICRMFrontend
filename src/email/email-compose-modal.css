@@ -94,6 +94,52 @@
   font-size: 1.25rem;
 }
 
+.email-compose-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.email-compose-send-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #3d6b8c;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, opacity 0.2s;
+}
+
+.email-compose-send-icon:hover:not(:disabled) {
+  background: rgba(160, 213, 251, 0.35);
+  color: #2c6485;
+}
+
+.email-compose-send-icon:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.email-compose-send-icon .material-symbols-outlined {
+  font-size: 1.25rem;
+}
+
+.email-compose-send-icon--spin {
+  animation: email-compose-send-spin 0.75s linear infinite;
+}
+
+@keyframes email-compose-send-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .email-compose-form {
   display: flex;
   flex-direction: column;

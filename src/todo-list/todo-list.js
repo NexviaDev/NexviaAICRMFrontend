@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { API_BASE } from '@/config';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import AddTodoModal from './add-todo-modal/add-todo-modal';
+import TodoDetailModal from './todo-detail-modal/todo-detail-modal';
 import './todo-list.css';
 
 function getAuthHeader() {
@@ -46,6 +47,7 @@ export default function TodoList({ embedded = false }) {
   const [currentUserId, setCurrentUserId] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [detailTask, setDetailTask] = useState(null);
 
   const fetchTaskLists = useCallback(async () => {
     try {
@@ -66,9 +68,11 @@ export default function TodoList({ embedded = false }) {
     }
   }, []);
 
-  const fetchTasks = useCallback(async () => {
+  /** @param {{ silent?: boolean }} [options] — silent: 완료/삭제 등 이후에는 목록을 숨기지 않고 갱신만 함 */
+  const fetchTasks = useCallback(async (options = {}) => {
+    const silent = options.silent === true;
     if (!taskListId) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError('');
     try {
       const res = await fetch(`${API_BASE}/google-tasks/lists/${encodeURIComponent(taskListId)}/tasks`, {
@@ -85,13 +89,28 @@ export default function TodoList({ embedded = false }) {
       setError(err.message || '할 일 조회 실패');
       setTasks([]);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [taskListId]);
 
   useEffect(() => {
     fetchTaskLists();
   }, [fetchTaskLists]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const meRes = await fetch(`${API_BASE}/auth/me`, { headers: getAuthHeader(), credentials: 'include' });
+        if (!meRes.ok || cancelled) return;
+        const me = await meRes.json();
+        setCurrentUserId(me.user?._id || me._id);
+      } catch (_) {}
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (taskListId) fetchTasks();
@@ -149,7 +168,7 @@ export default function TodoList({ embedded = false }) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || '상태 변경 실패');
       }
-      await fetchTasks();
+      await fetchTasks({ silent: true });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -169,7 +188,7 @@ export default function TodoList({ embedded = false }) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || '삭제 실패');
       }
-      await fetchTasks();
+      await fetchTasks({ silent: true });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -232,7 +251,7 @@ export default function TodoList({ embedded = false }) {
       }
       setForm({ title: '', description: '', dueDate: '', dueTime: '', allDay: true, listId: '', participantIds: [] });
       setShowAddModal(false);
-      if (listId === taskListId) await fetchTasks();
+      if (listId === taskListId) await fetchTasks({ silent: true });
     } catch (err) {
       setError(err.message);
     }
@@ -305,7 +324,10 @@ export default function TodoList({ embedded = false }) {
                   <button
                     type="button"
                     className="todo-list-check"
-                    onClick={() => handleToggleComplete(task)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleToggleComplete(task);
+                    }}
                     disabled={togglingId === task.id}
                     aria-label={task.status === STATUS_COMPLETED ? '완료 해제' : '완료'}
                   >
@@ -313,7 +335,19 @@ export default function TodoList({ embedded = false }) {
                       {task.status === STATUS_COMPLETED ? 'check_circle' : 'radio_button_unchecked'}
                     </span>
                   </button>
-                  <div className="todo-list-content">
+                  <div
+                    className="todo-list-content todo-list-content--open-detail"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setDetailTask(task)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setDetailTask(task);
+                      }
+                    }}
+                    aria-label="상세 보기"
+                  >
                     <span className="todo-list-title">{task.title || '(제목 없음)'}</span>
                     {(task.notes || task.due) && (
                       <div className="todo-list-meta">
@@ -325,7 +359,10 @@ export default function TodoList({ embedded = false }) {
                   <button
                     type="button"
                     className="todo-list-delete"
-                    onClick={() => handleDelete(task.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDelete(task.id);
+                    }}
                     disabled={deletingId === task.id}
                     aria-label="삭제"
                   >
@@ -337,6 +374,17 @@ export default function TodoList({ embedded = false }) {
           </ul>
         )}
       </div>
+
+      {detailTask && taskListId && (
+        <TodoDetailModal
+          taskListId={taskListId}
+          task={detailTask}
+          onClose={() => setDetailTask(null)}
+          currentUserId={currentUserId}
+          onMarkComplete={handleToggleComplete}
+          markCompleteBusy={togglingId === detailTask?.id}
+        />
+      )}
 
       {!embedded && showAddModal && (
         <AddTodoModal

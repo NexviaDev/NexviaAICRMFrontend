@@ -2,6 +2,10 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AddContactModal from './add-customer-company-employees-modal/add-customer-company-employees-modal';
 import ContactDetailModal from './customer-company-employees-detail-modal/customer-company-employees-detail-modal';
+import SmsDraftModal, { phoneToSmsHref } from './sms-draft-modal/sms-draft-modal';
+import { loadSmsBulkHistory, removeSmsBulkHistoryEntry, saveBulkSmsAfterSend, updateSmsBulkHistoryEntry } from './sms-bulk-history';
+import SmsBulkHistoryModal from './sms-bulk-history-modal/sms-bulk-history-modal.jsx';
+import EmailComposeModal from '../email/email-compose-modal.jsx';
 import ListTemplateModal from '../components/list-template-modal/list-template-modal';
 import {
   LIST_IDS,
@@ -68,7 +72,16 @@ export default function CustomerCompanyEmployees() {
   const [loading, setLoading] = useState(true);
 
   const [selected, setSelected] = useState(new Set());
+  /** 선택 ID별 행 스냅샷 — 페이지를 넘겨도 단체 문자·메일·구글 저장에 사용 */
+  const selectedRowsRef = useRef(new Map());
   const lastClickedIdx = useRef(null);
+  const headerSelectAllRef = useRef(null);
+
+  const clearSelection = useCallback(() => {
+    setSelected(new Set());
+    selectedRowsRef.current.clear();
+    lastClickedIdx.current = null;
+  }, []);
   const [googleSaving, setGoogleSaving] = useState(false);
   const [googleResult, setGoogleResult] = useState(null);
   const [customFieldColumns, setCustomFieldColumns] = useState([]);
@@ -77,6 +90,18 @@ export default function CustomerCompanyEmployees() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sort, setSort] = useState({ key: null, dir: 'asc' });
   const [exportExcelLoading, setExportExcelLoading] = useState(false);
+  const [selectAllLoading, setSelectAllLoading] = useState(false);
+  const [smsModal, setSmsModal] = useState(null);
+  /** `null` = 닫힘, 배열 = 선택 행(전화 있는 사람만) */
+  const [bulkSmsRows, setBulkSmsRows] = useState(null);
+  /** 기록에서 다시 보내기 시 단체 모달에 넣을 제목·본문 */
+  const [bulkSmsPrefill, setBulkSmsPrefill] = useState(null);
+  /** 기록에서 연 경우 문자 앱 열 때 같은 기록만 갱신 */
+  const [bulkSmsHistoryEntryId, setBulkSmsHistoryEntryId] = useState(null);
+  const [smsHistoryOpen, setSmsHistoryOpen] = useState(false);
+  const [smsHistoryTick, setSmsHistoryTick] = useState(0);
+  /** `{ initialTo }` — 단체 시 쉼표로 구분된 수신자 */
+  const [emailCompose, setEmailCompose] = useState(null);
   const sortKey = sort.key;
   const sortDir = sort.dir;
   const [companyEmployees, setCompanyEmployees] = useState([]);
@@ -208,11 +233,6 @@ export default function CustomerCompanyEmployees() {
 
   useEffect(() => { fetchContacts(pagination.page); }, [pagination.page, fetchContacts]);
 
-  useEffect(() => {
-    setSelected(new Set());
-    lastClickedIdx.current = null;
-  }, [items]);
-
   /** 새 연락처 추가 시 정의된 커스텀 필드를 리스트 템플릿에 반영 */
   useEffect(() => {
     let cancelled = false;
@@ -231,6 +251,7 @@ export default function CustomerCompanyEmployees() {
 
   const onSearch = (e) => {
     e?.preventDefault();
+    clearSelection();
     setPagination((p) => ({ ...p, page: 1 }));
     fetchContacts(1);
   };
@@ -255,43 +276,9 @@ export default function CustomerCompanyEmployees() {
     } catch (_) {}
   };
 
-  const handleCheckboxClick = (idx, e) => {
-    e.stopPropagation();
-    setGoogleResult(null);
-
-    if (e.shiftKey && lastClickedIdx.current !== null) {
-      const start = Math.min(lastClickedIdx.current, idx);
-      const end = Math.max(lastClickedIdx.current, idx);
-      setSelected((prev) => {
-        const next = new Set(prev);
-        for (let i = start; i <= end; i++) {
-          if (items[i]) next.add(items[i]._id);
-        }
-        return next;
-      });
-    } else {
-      setSelected((prev) => {
-        const next = new Set(prev);
-        const id = items[idx]._id;
-        if (next.has(id)) next.delete(id);
-        else next.add(id);
-        return next;
-      });
-    }
-    lastClickedIdx.current = idx;
-  };
-
-  const handleSelectAll = () => {
-    if (selected.size === items.length) {
-      setSelected(new Set());
-    } else {
-      setSelected(new Set(items.map((r) => r._id)));
-    }
-    setGoogleResult(null);
-  };
-
   const handleSaveToGoogle = async () => {
-    const contacts = items.filter((r) => selected.has(r._id)).map((r) => ({
+    const rows = [...selected].map((id) => selectedRowsRef.current.get(id)).filter(Boolean);
+    const contacts = rows.map((r) => ({
       name: r.name || '',
       email: r.email || '',
       phone: r.phone || '',
@@ -309,7 +296,7 @@ export default function CustomerCompanyEmployees() {
       const data = await res.json();
       if (res.ok) {
         setGoogleResult({ success: data.success, fail: data.fail, total: data.total, errors: data.errors });
-        if (data.success > 0) setSelected(new Set());
+        if (data.success > 0) clearSelection();
       } else {
         setGoogleResult({ error: data.error || 'Google 주소록 저장에 실패했습니다.', needsReauth: data.needsReauth });
       }
@@ -336,7 +323,34 @@ export default function CustomerCompanyEmployees() {
     return date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' });
   };
 
-  const allChecked = items.length > 0 && selected.size === items.length;
+  const smsBulkHistoryList = useMemo(() => loadSmsBulkHistory(), [smsHistoryTick]);
+
+  const handleBulkSmsOpened = useCallback((payload) => {
+    saveBulkSmsAfterSend(payload);
+    setSmsHistoryTick((t) => t + 1);
+  }, []);
+
+  const resendBulkSmsFromHistory = useCallback((entry) => {
+    const withPhone = (entry.contacts || []).filter((r) => phoneToSmsHref(r?.phone, ''));
+    if (withPhone.length === 0) {
+      window.alert('저장된 연락처에 전화번호가 있는 사람이 없어 다시 보낼 수 없습니다.');
+      return;
+    }
+    setBulkSmsPrefill({ title: entry.title || '', body: entry.body ?? '' });
+    setBulkSmsRows(withPhone);
+    setBulkSmsHistoryEntryId(entry.id);
+    setSmsHistoryOpen(false);
+  }, []);
+
+  const handleHistoryContactsUpdate = useCallback((entryId, contacts) => {
+    updateSmsBulkHistoryEntry(entryId, { contacts });
+    setSmsHistoryTick((t) => t + 1);
+  }, []);
+
+  const deleteSmsBulkHistoryEntryCb = useCallback((id) => {
+    removeSmsBulkHistoryEntry(id);
+    setSmsHistoryTick((t) => t + 1);
+  }, []);
 
   const saveTemplate = useCallback(async (payload) => {
     try {
@@ -408,6 +422,43 @@ export default function CustomerCompanyEmployees() {
     return base;
   }, [items, sortKey, sortDir, getSortValue]);
 
+  const handleCheckboxClick = useCallback((idx, e) => {
+    e.stopPropagation();
+    setGoogleResult(null);
+
+    if (e.shiftKey && lastClickedIdx.current !== null) {
+      const start = Math.min(lastClickedIdx.current, idx);
+      const end = Math.max(lastClickedIdx.current, idx);
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (let i = start; i <= end; i++) {
+          const row = sortedItems[i];
+          if (row) {
+            next.add(row._id);
+            selectedRowsRef.current.set(row._id, row);
+          }
+        }
+        return next;
+      });
+    } else {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        const row = sortedItems[idx];
+        if (!row) return next;
+        const id = row._id;
+        if (next.has(id)) {
+          next.delete(id);
+          selectedRowsRef.current.delete(id);
+        } else {
+          next.add(id);
+          selectedRowsRef.current.set(id, row);
+        }
+        return next;
+      });
+    }
+    lastClickedIdx.current = idx;
+  }, [sortedItems]);
+
   const handleSortColumn = useCallback((key) => {
     if (key === '_check' || key === '_favorite') return;
     setSort((prev) => {
@@ -442,6 +493,47 @@ export default function CustomerCompanyEmployees() {
     } while (page <= totalPages);
     return all;
   }, [search, searchField, assigneeMeOnly]);
+
+  /** 검색·필터 결과 전체가 선택됐는지 (헤더 체크박스) */
+  const allChecked =
+    (pagination.total || 0) > 0 && selected.size === pagination.total;
+
+  /** 헤더 체크: 현재 조건의 전체 연락처 선택 / 이미 전체면 전체 해제 */
+  const handleSelectAll = useCallback(async () => {
+    setGoogleResult(null);
+    const total = pagination.total || 0;
+    if (total === 0) return;
+
+    if (selected.size === total) {
+      clearSelection();
+      return;
+    }
+
+    setSelectAllLoading(true);
+    try {
+      const rows = await fetchAllContactsForExport();
+      const next = new Set();
+      selectedRowsRef.current.clear();
+      for (const r of rows) {
+        if (r?._id) {
+          next.add(r._id);
+          selectedRowsRef.current.set(r._id, r);
+        }
+      }
+      setSelected(next);
+    } catch (e) {
+      window.alert(e?.message || '전체 선택에 실패했습니다.');
+    } finally {
+      setSelectAllLoading(false);
+    }
+  }, [pagination.total, selected.size, fetchAllContactsForExport, clearSelection]);
+
+  useEffect(() => {
+    const el = headerSelectAllRef.current;
+    if (!el) return;
+    const total = pagination.total || 0;
+    el.indeterminate = total > 0 && selected.size > 0 && selected.size < total;
+  }, [selected.size, pagination.total]);
 
   const handleDownloadExcel = useCallback(async () => {
     setExportExcelLoading(true);
@@ -499,6 +591,37 @@ export default function CustomerCompanyEmployees() {
     }
   }, [fetchAllContactsForExport, assigneeIdToName, customFieldLabelByKey]);
 
+  const openBulkSmsFromSelection = useCallback(() => {
+    const rows = [...selected].map((id) => selectedRowsRef.current.get(id)).filter(Boolean);
+    const withPhone = rows.filter((r) => phoneToSmsHref(r.phone, ''));
+    const skipped = rows.length - withPhone.length;
+    if (withPhone.length === 0) {
+      window.alert('선택한 연락처에 전화번호가 있는 사람이 없습니다.');
+      return;
+    }
+    if (skipped > 0) {
+      window.alert(`전화번호가 없는 ${skipped}명은 제외하고 ${withPhone.length}명에게 단체 문자를 준비합니다.`);
+    }
+    setBulkSmsPrefill(null);
+    setBulkSmsHistoryEntryId(null);
+    setBulkSmsRows(withPhone);
+  }, [selected]);
+
+  const openBulkEmailFromSelection = useCallback(() => {
+    const rows = [...selected].map((id) => selectedRowsRef.current.get(id)).filter(Boolean);
+    const withEmail = rows.filter((r) => String(r.email || '').trim());
+    const skipped = rows.length - withEmail.length;
+    if (withEmail.length === 0) {
+      window.alert('선택한 연락처에 이메일이 있는 사람이 없습니다.');
+      return;
+    }
+    if (skipped > 0) {
+      window.alert(`이메일이 없는 ${skipped}명은 제외하고 ${withEmail.length}명의 주소로 메일 작성 화면을 엽니다.`);
+    }
+    const unique = [...new Set(withEmail.map((r) => String(r.email).trim()))];
+    setEmailCompose({ initialTo: unique.join(', ') });
+  }, [selected]);
+
   return (
     <div className="page customer-company-employees-page">
       <header className="page-header">
@@ -527,6 +650,20 @@ export default function CustomerCompanyEmployees() {
           </select>
         </div>
         <div className="header-actions">
+          <button
+            type="button"
+            className="icon-btn cce-sms-history-header-btn"
+            aria-label="단체 문자 기록"
+            title="문자 앱으로 열었던 단체 문자 기록 (이 브라우저에만 저장)"
+            onClick={() => setSmsHistoryOpen(true)}
+          >
+            <span className="material-symbols-outlined">chat</span>
+            {smsBulkHistoryList.length > 0 ? (
+              <span className="cce-sms-history-badge" aria-hidden>
+                {smsBulkHistoryList.length > 99 ? '99+' : smsBulkHistoryList.length}
+              </span>
+            ) : null}
+          </button>
           <button type="button" className="icon-btn" aria-label="리스트 열 설정" onClick={() => { setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), customFieldColumns)); setSettingsOpen(true); }} title="리스트 열 설정">
             <span className="material-symbols-outlined">settings</span>
           </button>
@@ -545,6 +682,7 @@ export default function CustomerCompanyEmployees() {
               className={`icon-btn cce-assignee-filter-btn ${assigneeMeOnly ? 'active' : ''}`}
               onClick={() => {
                 const next = !assigneeMeOnly;
+                clearSelection();
                 setAssigneeMeOnly(next);
                 patchListTemplate(LIST_ID, { assigneeMeOnly: next }).catch((err) => {
                   alert(err?.message || '저장에 실패했습니다.');
@@ -581,6 +719,24 @@ export default function CustomerCompanyEmployees() {
             <div className="cce-action-bar-btns">
               <button
                 type="button"
+                className="cce-action-bar-sms-bulk"
+                onClick={openBulkSmsFromSelection}
+                title="동일 본문으로 문자 앱에 수신자를 한꺼번에 넣습니다 (기기·앱에 따라 다를 수 있음). 연락처마다 이름이 필요하면 모달에서 개별 발송을 선택하세요."
+              >
+                <span className="material-symbols-outlined" aria-hidden>sms</span>
+                선택 {selected.size}명에게 문자 (단체)
+              </button>
+              <button
+                type="button"
+                className="cce-action-bar-email-bulk"
+                onClick={openBulkEmailFromSelection}
+                title="이메일이 있는 연락처만 받는 사람 칸에 넣고 새 메일 작성을 엽니다 (중복 주소는 한 번만)."
+              >
+                <span className="material-symbols-outlined" aria-hidden>mail</span>
+                선택 {selected.size}명에게 메일 (단체)
+              </button>
+              <button
+                type="button"
                 className="cce-action-bar-google"
                 onClick={handleSaveToGoogle}
                 disabled={googleSaving}
@@ -588,7 +744,7 @@ export default function CustomerCompanyEmployees() {
                 <img src="https://www.gstatic.com/images/branding/product/1x/contacts_2022_48dp.png" alt="" className="cce-action-google-icon" />
                 {googleSaving ? '저장 중...' : `구글 주소록에 저장 (${selected.size}명)`}
               </button>
-              <button type="button" className="cce-action-bar-cancel" onClick={() => setSelected(new Set())}>선택 해제</button>
+              <button type="button" className="cce-action-bar-cancel" onClick={clearSelection}>선택 해제</button>
             </div>
           </div>
         )}
@@ -668,8 +824,22 @@ export default function CustomerCompanyEmployees() {
                       <p className="cce-mobile-card-company">{row.company || '—'}</p>
                       <div className="cce-mobile-card-details">
                         <div className="cce-mobile-card-email">
-                          <span className="material-symbols-outlined" aria-hidden>mail</span>
-                          <span>{row.email || '—'}</span>
+                          <span className="material-symbols-outlined cce-email-icon" aria-hidden>mail</span>
+                          <span className="cce-mobile-card-email-text">{row.email || '—'}</span>
+                          {String(row.email || '').trim() ? (
+                            <button
+                              type="button"
+                              className="cce-email-compose-btn"
+                              title="메일 작성"
+                              aria-label={`${String(row.email).trim()}에게 메일 작성`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEmailCompose({ initialTo: String(row.email).trim() });
+                              }}
+                            >
+                              <span className="material-symbols-outlined" aria-hidden>edit</span>
+                            </button>
+                          ) : null}
                         </div>
                         {(() => {
                           const telHref = phoneToTelHref(row.phone);
@@ -683,15 +853,33 @@ export default function CustomerCompanyEmployees() {
                                 ) : (
                                   <>
                                     <span className="cce-mobile-card-phone-text">{display}</span>
-                                    <a
-                                      href={telHref}
-                                      className="cce-phone-call-btn cce-mobile-card-call-btn"
-                                      title="전화 걸기"
-                                      aria-label={`전화 걸기 ${display}`}
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      <span className="material-symbols-outlined" aria-hidden>call</span>
-                                    </a>
+                                    <div className="cce-phone-action-btns">
+                                      <a
+                                        href={telHref}
+                                        className="cce-phone-call-btn cce-mobile-card-call-btn"
+                                        title="전화 걸기"
+                                        aria-label={`전화 걸기 ${display}`}
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <span className="material-symbols-outlined" aria-hidden>call</span>
+                                      </a>
+                                      <button
+                                        type="button"
+                                        className="cce-phone-sms-btn cce-mobile-card-call-btn"
+                                        title="문자 (AI 초안 후 전송)"
+                                        aria-label={`문자 보내기 ${display}`}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSmsModal({
+                                            phone: row.phone,
+                                            recipientName: row.name || '',
+                                            companyName: row.company || ''
+                                          });
+                                        }}
+                                      >
+                                        <span className="material-symbols-outlined" aria-hidden>sms</span>
+                                      </button>
+                                    </div>
                                   </>
                                 )}
                               </div>
@@ -739,10 +927,22 @@ export default function CustomerCompanyEmployees() {
                     >
                       {col.key === '_check' ? (
                         <input
+                          ref={headerSelectAllRef}
                           type="checkbox"
                           className="cce-row-checkbox"
                           checked={allChecked}
+                          disabled={selectAllLoading || loading || (pagination.total || 0) === 0}
                           onChange={handleSelectAll}
+                          aria-label={
+                            selectAllLoading
+                              ? '전체 연락처 불러오는 중'
+                              : '검색·필터 결과 전체 선택'
+                          }
+                          title={
+                            selectAllLoading
+                              ? '목록을 불러오는 중…'
+                              : '현재 검색·내 담당 필터에 맞는 연락처 전부를 선택합니다. 다시 누르면 전체 해제합니다.'
+                          }
                         />
                       ) : col.key === '_favorite' ? (
                         <span className="cce-th-favorite-icon material-symbols-outlined" aria-hidden>star</span>
@@ -822,7 +1022,32 @@ export default function CustomerCompanyEmployees() {
                                 <span className="font-semibold">{row.name || '—'}</span>
                               </div>
                             )}
-                            {col.key === 'email' && (row.email || '—')}
+                            {col.key === 'email' &&
+                              (() => {
+                                const em = String(row.email || '').trim();
+                                return (
+                                  <span className="cce-email-cell">
+                                    <span className="material-symbols-outlined cce-email-icon" aria-hidden>
+                                      mail
+                                    </span>
+                                    <span className="cce-email-text">{em || '—'}</span>
+                                    {em ? (
+                                      <button
+                                        type="button"
+                                        className="cce-email-compose-btn"
+                                        title="메일 작성"
+                                        aria-label={`${em}에게 메일 작성`}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setEmailCompose({ initialTo: em });
+                                        }}
+                                      >
+                                        <span className="material-symbols-outlined" aria-hidden>edit</span>
+                                      </button>
+                                    ) : null}
+                                  </span>
+                                );
+                              })()}
                             {col.key === 'phone' && (() => {
                               const telHref = phoneToTelHref(row.phone);
                               const display = row.phone || '—';
@@ -830,15 +1055,33 @@ export default function CustomerCompanyEmployees() {
                               return (
                                 <span className="cce-phone-cell">
                                   <span className="cce-phone-text">{display}</span>
-                                  <a
-                                    href={telHref}
-                                    className="cce-phone-call-btn"
-                                    title="전화 걸기"
-                                    aria-label={`전화 걸기 ${display}`}
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <span className="material-symbols-outlined" aria-hidden>call</span>
-                                  </a>
+                                  <span className="cce-phone-action-btns">
+                                    <a
+                                      href={telHref}
+                                      className="cce-phone-call-btn"
+                                      title="전화 걸기"
+                                      aria-label={`전화 걸기 ${display}`}
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <span className="material-symbols-outlined" aria-hidden>call</span>
+                                    </a>
+                                    <button
+                                      type="button"
+                                      className="cce-phone-sms-btn"
+                                      title="문자 (AI 초안 후 전송)"
+                                      aria-label={`문자 보내기 ${display}`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSmsModal({
+                                          phone: row.phone,
+                                          recipientName: row.name || '',
+                                          companyName: row.company || ''
+                                        });
+                                      }}
+                                    >
+                                      <span className="material-symbols-outlined" aria-hidden>sms</span>
+                                    </button>
+                                  </span>
                                 </span>
                               );
                             })()}
@@ -896,6 +1139,40 @@ export default function CustomerCompanyEmployees() {
           </div>
         </div>
       </div>
+      <SmsDraftModal
+        open={!!smsModal || bulkSmsRows !== null}
+        onClose={() => {
+          setSmsModal(null);
+          setBulkSmsRows(null);
+          setBulkSmsPrefill(null);
+          setBulkSmsHistoryEntryId(null);
+        }}
+        phone={smsModal?.phone}
+        recipientName={smsModal?.recipientName}
+        companyName={smsModal?.companyName}
+        bulkContacts={bulkSmsRows || undefined}
+        initialBulkTitle={bulkSmsPrefill?.title ?? ''}
+        initialBulkBody={bulkSmsPrefill?.body}
+        onBulkSmsOpened={bulkSmsRows ? handleBulkSmsOpened : undefined}
+        bulkHistoryEntryId={bulkSmsHistoryEntryId}
+      />
+      <SmsBulkHistoryModal
+        open={smsHistoryOpen}
+        onClose={() => setSmsHistoryOpen(false)}
+        entries={smsBulkHistoryList}
+        pickableContacts={items}
+        onResend={resendBulkSmsFromHistory}
+        onDeleteEntry={deleteSmsBulkHistoryEntryCb}
+        onUpdateEntryContacts={handleHistoryContactsUpdate}
+      />
+      {emailCompose ? (
+        <EmailComposeModal
+          key={emailCompose.initialTo}
+          initialTo={emailCompose.initialTo}
+          onClose={() => setEmailCompose(null)}
+          onSent={() => setEmailCompose(null)}
+        />
+      ) : null}
       {isAddModalOpen && (
         <AddContactModal
           onClose={closeAddModal}
