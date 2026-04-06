@@ -1364,22 +1364,27 @@ ${customInputs}
                   켜면 아래 주소로 열리는 페이지에서 문의를 받을 수 있습니다. API 키 없이 접속 가능하므로 링크는 필요한 곳에만 공유하세요.
                 </p>
                 {selectedForm?.publicLinkEnabled && getPublicFormPageUrl() ? (
-                  <div className="lead-capture-input-wrap">
-                    <input
-                      type="text"
-                      className="lead-capture-input"
-                      readOnly
-                      value={getPublicFormPageUrl()}
-                    />
-                    <button
-                      type="button"
-                      className="lead-capture-copy-btn"
-                      aria-label="공개 링크 복사"
-                      onClick={handleCopyPublicLink}
-                    >
-                      <span className="material-symbols-outlined">{copyFeedback.publicLink ? 'check' : 'content_copy'}</span>
-                    </button>
-                  </div>
+                  <>
+                    <div className="lead-capture-input-wrap">
+                      <input
+                        type="text"
+                        className="lead-capture-input"
+                        readOnly
+                        value={getPublicFormPageUrl()}
+                      />
+                      <button
+                        type="button"
+                        className="lead-capture-copy-btn"
+                        aria-label="공개 링크 복사"
+                        onClick={handleCopyPublicLink}
+                      >
+                        <span className="material-symbols-outlined">{copyFeedback.publicLink ? 'check' : 'content_copy'}</span>
+                      </button>
+                    </div>
+                    <p className="lead-capture-hint">
+                      이 페이지에서 보내는 제출도 임베드·미리보기와 <strong>같은 웹훅 URL(POST)</strong>으로 처리됩니다. 담당자에게 가는 알림은 <strong>Gmail 앱에서 보내는 것이 아니라</strong> 서버에 설정한 SMTP로 Nodemailer가 보내며, 폼에 <strong>담당자</strong>가 있고 SMTP가 설정된 경우에만 발송됩니다.
+                    </p>
+                  </>
                 ) : null}
                 <button type="button" className="lead-capture-test-btn">연동 테스트</button>
               </div>
