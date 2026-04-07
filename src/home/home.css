@@ -1256,3 +1256,381 @@
 .quota-bar { width: 6rem; height: 6px; background: var(--bg-light); border-radius: 9999px; overflow: hidden; }
 .quota-fill { height: 100%; background: var(--success); border-radius: 9999px; }
 .font-semibold { font-weight: 600; }
+
+/* ── Lucid / Ethereal-style — 모바일 전용 (≤768px, 레이아웃 햄버거와 동일 구간) ── */
+.home-mobile-hero {
+  display: none;
+}
+
+.home-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.home-page-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.home-page-header-notify-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.home-schedule-date {
+  display: none;
+}
+
+.home-todo-title-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+}
+
+.home-todo-leads-chevron {
+  display: none;
+}
+
+.home-mobile-fab {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .home-page {
+    background: #f8fafa;
+    color: #2c3435;
+  }
+
+  .home-page > .page-header {
+    position: sticky;
+    top: 0;
+    z-index: 25;
+    height: auto;
+    min-height: 3.25rem;
+    padding: 0.65rem 1rem;
+    justify-content: flex-end;
+    align-items: center;
+    /* frosted 반투명은 모바일에서 거의 흰색으로 보여 본문(#f8fafa)과 동일 톤의 불투명 배경으로 통일 */
+    background: #f8fafa;
+    border-bottom: 1px solid rgba(91, 124, 153, 0.2);
+    box-shadow: none;
+  }
+
+  .home-page-content.page-content {
+    padding: 1rem 1.25rem 5.5rem;
+    background: #f8fafa;
+  }
+
+  .home-mobile-hero {
+    display: block;
+    margin-bottom: 1.25rem;
+  }
+
+  .home-mobile-greet {
+    margin: 0 0 0.35rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #596061;
+  }
+
+  .home-mobile-dashboard-title {
+    margin: 0;
+    font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+    font-size: 1.75rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: #2c3435;
+    line-height: 1.15;
+  }
+
+  .home-mobile-fab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    right: 1.25rem;
+    bottom: 1.35rem;
+    width: 3.5rem;
+    height: 3.5rem;
+    border-radius: 999px;
+    z-index: 40;
+    background: #006c53;
+    color: #e5fff2;
+    box-shadow: 0 4px 24px rgba(0, 108, 83, 0.35);
+    text-decoration: none;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .home-mobile-fab:active {
+    transform: scale(0.94);
+  }
+
+  .home-mobile-fab .material-symbols-outlined {
+    font-size: 2rem;
+    font-variation-settings: 'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+  }
+
+  .home-top-grid {
+    gap: 1rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .home-metrics-bento.cards-grid-compact {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.85rem;
+    margin-bottom: 0;
+  }
+
+  .home-metrics-bento .stat-card--bento-0 {
+    grid-column: 1 / -1;
+    padding: 1.15rem 1.15rem 1.25rem;
+    background: #ffffff;
+    border: none;
+    box-shadow: 0 4px 20px rgba(44, 52, 53, 0.06);
+  }
+
+  .home-metrics-bento .stat-card--bento-0 .stat-value {
+    font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+    font-size: 1.85rem;
+    font-weight: 800;
+    color: #006c53;
+  }
+
+  .home-metrics-bento .stat-card--bento-1 {
+    background: #e1e1f5;
+    border: none;
+  }
+
+  .home-metrics-bento .stat-card--bento-2 {
+    background: #fed9b8;
+    border: none;
+  }
+
+  .home-metrics-bento .stat-card--bento-3 {
+    grid-column: 1 / -1;
+    background: #eaefef;
+    border: none;
+  }
+
+  .home-metrics-bento .stat-card {
+    box-shadow: none;
+  }
+
+  .home-metrics-bento .stat-label {
+    color: #596061;
+  }
+
+  .home-metrics-bento .stat-subtext {
+    color: rgba(89, 96, 97, 0.85);
+  }
+
+  .home-lead-channel-panel.panel {
+    background: #f0f4f4;
+    border: none;
+    box-shadow: none;
+    border-radius: 0.75rem;
+  }
+
+  .home-lead-channel-panel .panel-head {
+    border-bottom: none;
+    background: transparent;
+  }
+
+  .home-lead-channel-item {
+    background: #ffffff;
+    border: none;
+    box-shadow: 0 2px 10px rgba(44, 52, 53, 0.04);
+  }
+
+  .panel {
+    border: none;
+    box-shadow: 0 4px 20px rgba(44, 52, 53, 0.05);
+    background: #ffffff;
+    border-radius: 0.75rem;
+  }
+
+  .panel-head {
+    border-bottom: none;
+    padding: 1rem 1.1rem;
+  }
+
+  .home-todo-panel-head.panel-head {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: flex-start;
+  }
+
+  .home-todo-title-row {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    width: 100%;
+    gap: 0.5rem;
+  }
+
+  .home-todo-panel-head .home-todo-title-row h2 {
+    margin: 0;
+    font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: #2c3435;
+  }
+
+  .home-schedule-date {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #596061;
+  }
+
+  .home-leads-panel-head.panel-head h2 {
+    font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: #2c3435;
+  }
+
+  .home-leads-panel .home-todo-leads-scroll {
+    padding: 0.5rem;
+    background: #f0f4f4;
+    border-radius: 0.75rem;
+  }
+
+  .home-leads-panel .home-todo-leads-item {
+    background: #ffffff;
+    border: none;
+    box-shadow: 0 2px 10px rgba(44, 52, 53, 0.04);
+    border-radius: 0.65rem;
+    align-items: center;
+  }
+
+  .home-leads-panel .home-todo-leads-item:nth-child(3n + 1) .home-lead-check {
+    color: #755a40;
+  }
+
+  .home-leads-panel .home-todo-leads-item:nth-child(3n + 2) .home-lead-check {
+    color: #5c5e6e;
+  }
+
+  .home-leads-panel .home-todo-leads-item:nth-child(3n + 3) .home-lead-check {
+    color: #006c53;
+  }
+
+  .home-todo-leads-chevron {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    color: rgba(172, 179, 180, 0.9);
+  }
+
+  .home-todo-leads-chevron .material-symbols-outlined {
+    font-size: 1.35rem;
+  }
+
+  .home-schedule-split > .panel,
+  .home-schedule-split > .home-schedule-left-stack {
+    margin-bottom: 1.25rem;
+  }
+
+  .home-dashboard-calendar-panel {
+    min-height: auto;
+  }
+
+  .home-schedule-left-stack {
+    min-height: 0;
+  }
+
+  .home-insights-grid {
+    gap: 1rem;
+  }
+
+  .home-chart-panel .panel-head {
+    background: transparent;
+  }
+
+  .sales-pipeline.panel {
+    background: #f0f4f4;
+  }
+
+  .sales-pipeline .panel-head {
+    background: transparent;
+  }
+
+  .sales-pipeline .pipeline-steps {
+    padding: 1rem;
+  }
+
+  .home-bottom .reps-panel {
+    border: none;
+    box-shadow: 0 4px 20px rgba(44, 52, 53, 0.05);
+  }
+
+  /* 우수 영업 담당자: 모바일은 담당자·매출액만 */
+  .home-reps-table .home-reps-col-extra {
+    display: none;
+  }
+
+  .home-reps-source-hint {
+    display: none;
+  }
+
+  /* 홈 패널: 페이지 스크롤만 쓰고 패널 내부 스크롤 제거 */
+  .home-todo-upcoming .todo-list-single {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .home-todo-leads-scroll {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  .home-lead-channel-body {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+
+  .home-page--full-view-open .home-mobile-fab {
+    display: none !important;
+  }
+}
+
+.home-pipeline-link--btn {
+  font: inherit;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  text-decoration: none;
+  color: var(--primary);
+}
+
+.home-pipeline-link--btn:hover {
+  opacity: 0.88;
+  text-decoration: underline;
+}
+
+.home-leads-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.home-modal-leads .home-todo-leads-scroll,
+.home-modal-leads-list {
+  padding: 0;
+}
+
+.home-modal-leads .home-todo-leads-item {
+  margin-bottom: 0.35rem;
+}
+

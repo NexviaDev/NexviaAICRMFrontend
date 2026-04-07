@@ -113,13 +113,50 @@
     margin-left: 0;
   }
 
+  /* 모바일 상단 바: 사이드바와 동일 네이비 (sidebar.css .sidebar --sidebar-bg) */
   .app-main-header {
+    position: relative;
     display: flex;
     justify-content: flex-end;
     align-items: center;
     padding: 0.5rem 1rem;
-    background: var(--card);
-    border-bottom: 1px solid var(--card-border);
+    background: #1a365d;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  }
+
+  /* 사이드바와 동일 이미지 — 햄버거 폭을 남기고 뷰포트 정중앙 */
+  .app-main-header-logo {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    max-width: calc(100% - 5.5rem);
+    text-decoration: none;
+    color: inherit;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .app-main-header-logo img {
+    max-height: 2rem;
+    width: auto;
+    max-width: 100%;
+    object-fit: contain;
+    object-position: center;
+    display: block;
+  }
+
+  .app-hamburger {
+    position: relative;
+    z-index: 2;
+    color: #fff;
+  }
+
+  .app-hamburger:hover {
+    background: rgba(255, 255, 255, 0.12);
   }
 
   .app-layout.sidebar-drawer-open .sidebar-backdrop {

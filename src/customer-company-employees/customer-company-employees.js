@@ -28,6 +28,17 @@ const MODAL_DETAIL = 'detail';
 const DETAIL_ID_PARAM = 'id';
 const LIMIT = 10;
 
+/** 모바일 카드 아바타 이니셜 */
+function getNameInitials(name) {
+  const s = (name || '?').trim();
+  if (!s) return '?';
+  const parts = s.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase().slice(0, 2);
+  }
+  return s.slice(0, 2).toUpperCase();
+}
+
 /** 페이지네이션에 표시할 번호 목록 (현재 페이지 주변 + 첫/끝, 생략은 '...') */
 function getPageNumbers(current, total) {
   if (total <= 0) return [];
@@ -325,6 +336,11 @@ export default function CustomerCompanyEmployees() {
 
   const smsBulkHistoryList = useMemo(() => loadSmsBulkHistory(), [smsHistoryTick]);
 
+  /** 모바일 Ethereal 스타일: 전체 / 즐겨찾기 / 내 담당 칩 */
+  const [mobileChipFilter, setMobileChipFilter] = useState(() =>
+    getSavedTemplate(LIST_ID)?.assigneeMeOnly === true ? 'assignee' : 'all'
+  );
+
   const handleBulkSmsOpened = useCallback((payload) => {
     saveBulkSmsAfterSend(payload);
     setSmsHistoryTick((t) => t + 1);
@@ -421,6 +437,20 @@ export default function CustomerCompanyEmployees() {
     });
     return base;
   }, [items, sortKey, sortDir, getSortValue]);
+
+  const mobileListItems = useMemo(() => {
+    if (mobileChipFilter === 'favorite') return sortedItems.filter((r) => r.isFavorite);
+    return sortedItems;
+  }, [sortedItems, mobileChipFilter]);
+
+  const mobileFavoriteSection = useMemo(
+    () => mobileListItems.filter((r) => r.isFavorite),
+    [mobileListItems]
+  );
+  const mobileRestSection = useMemo(
+    () => mobileListItems.filter((r) => !r.isFavorite),
+    [mobileListItems]
+  );
 
   const handleCheckboxClick = useCallback((idx, e) => {
     e.stopPropagation();
@@ -622,6 +652,131 @@ export default function CustomerCompanyEmployees() {
     setEmailCompose({ initialTo: unique.join(', ') });
   }, [selected]);
 
+  const renderMobileCard = (row, idxInMobileList) => {
+    const sortedIdx = sortedItems.findIndex((r) => r._id === row._id);
+    const idx = sortedIdx >= 0 ? sortedIdx : idxInMobileList;
+    const telHref = phoneToTelHref(row.phone);
+    const displayPhone = row.phone || '—';
+    const tone = idxInMobileList % 3;
+    return (
+      <div
+        key={row._id}
+        className={`cce-mobile-card cce-mobile-card--tone-${tone}`}
+        role="button"
+        tabIndex={0}
+        onClick={() => openDetailModal(row)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            openDetailModal(row);
+          }
+        }}
+      >
+        <div className="cce-mobile-card-main-row">
+          <div className="cce-mobile-card-select-col">
+            <input
+              type="checkbox"
+              className="cce-row-checkbox cce-mobile-card-checkbox"
+              checked={selected.has(row._id)}
+              aria-label={`${row.name || '연락처'} 선택`}
+              onChange={() => {}}
+              onClick={(e) => handleCheckboxClick(idx, e)}
+            />
+          </div>
+          <div className={`cce-mobile-card-avatar cce-mobile-card-avatar--${tone}`} aria-hidden>
+            <span className="cce-mobile-card-initials">{getNameInitials(row.name)}</span>
+          </div>
+          <div className="cce-mobile-card-body">
+            <button
+              type="button"
+              className={`cce-favorite-btn cce-mobile-favorite-btn cce-mobile-favorite-corner ${row.isFavorite ? 'is-active' : ''}`}
+              aria-label={row.isFavorite ? '즐겨찾기 해제' : '즐겨찾기 등록'}
+              title={row.isFavorite ? '즐겨찾기 해제' : '즐겨찾기 등록'}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleToggleFavorite(row._id, !row.isFavorite);
+              }}
+            >
+              <span className="material-symbols-outlined" aria-hidden>star</span>
+            </button>
+            <h3 className="cce-mobile-card-name">{row.name || '—'}</h3>
+            <p className="cce-mobile-card-company">{row.company || '—'}</p>
+          </div>
+          <span className="cce-mobile-card-chevron material-symbols-outlined" aria-hidden>chevron_right</span>
+        </div>
+        <div
+          className="cce-mobile-card-quick-row"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+          role="presentation"
+        >
+          <div className="cce-mobile-card-quick">
+            {telHref ? (
+              <a
+                href={telHref}
+                className="cce-mobile-quick-btn"
+                title="전화 걸기"
+                aria-label={`전화 걸기 ${displayPhone}`}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <span className="material-symbols-outlined" aria-hidden>call</span>
+              </a>
+            ) : (
+              <span className="cce-mobile-quick-btn cce-mobile-quick-btn--disabled" aria-hidden>
+                <span className="material-symbols-outlined">call</span>
+              </span>
+            )}
+            {row.phone?.trim() ? (
+              <button
+                type="button"
+                className="cce-mobile-quick-btn"
+                title="문자 (AI 초안 후 전송)"
+                aria-label={`문자 보내기 ${displayPhone}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSmsModal({
+                    phone: row.phone,
+                    recipientName: row.name || '',
+                    companyName: row.company || ''
+                  });
+                }}
+              >
+                <span className="material-symbols-outlined" aria-hidden>chat_bubble</span>
+              </button>
+            ) : (
+              <span className="cce-mobile-quick-btn cce-mobile-quick-btn--disabled" aria-hidden>
+                <span className="material-symbols-outlined">chat_bubble</span>
+              </span>
+            )}
+            {String(row.email || '').trim() ? (
+              <button
+                type="button"
+                className="cce-mobile-quick-btn"
+                title="메일 작성"
+                aria-label={`${String(row.email).trim()}에게 메일 작성`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEmailCompose({ initialTo: String(row.email).trim() });
+                }}
+              >
+                <span className="material-symbols-outlined" aria-hidden>mail</span>
+              </button>
+            ) : (
+              <span className="cce-mobile-quick-btn cce-mobile-quick-btn--disabled" aria-hidden>
+                <span className="material-symbols-outlined">mail</span>
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="cce-mobile-card-details">
+          <p className="cce-mobile-card-meta">
+            최근 지원: {row.lastSupportedAt ? formatDate(row.lastSupportedAt) : '—'}
+          </p>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="page customer-company-employees-page">
       <header className="page-header">
@@ -684,9 +839,11 @@ export default function CustomerCompanyEmployees() {
                 const next = !assigneeMeOnly;
                 clearSelection();
                 setAssigneeMeOnly(next);
+                setMobileChipFilter(next ? 'assignee' : 'all');
                 patchListTemplate(LIST_ID, { assigneeMeOnly: next }).catch((err) => {
                   alert(err?.message || '저장에 실패했습니다.');
                   setAssigneeMeOnly(assigneeMeOnly);
+                  setMobileChipFilter(assigneeMeOnly ? 'assignee' : 'all');
                 });
               }}
               title={assigneeMeOnly ? '전체 연락처 보기' : '내 담당 직원 보기'}
@@ -777,123 +934,105 @@ export default function CustomerCompanyEmployees() {
             ) : sortedItems.length === 0 ? (
               <p className="cce-mobile-cards-message">등록된 연락처가 없습니다.</p>
             ) : (
-              <div className="cce-mobile-cards-list">
-                {sortedItems.map((row, idx) => (
-                  <div
-                    key={row._id}
-                    className="cce-mobile-card"
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => openDetailModal(row)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetailModal(row); } }}
+              <>
+                <div className="cce-mobile-filter-chips" role="tablist" aria-label="목록 필터">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={mobileChipFilter === 'all'}
+                    className={`cce-mobile-chip ${mobileChipFilter === 'all' ? 'is-active' : ''}`}
+                    onClick={() => {
+                      setMobileChipFilter('all');
+                      if (assigneeMeOnly) {
+                        clearSelection();
+                        setAssigneeMeOnly(false);
+                        patchListTemplate(LIST_ID, { assigneeMeOnly: false }).catch((err) => {
+                          alert(err?.message || '저장에 실패했습니다.');
+                          setAssigneeMeOnly(true);
+                          setMobileChipFilter('assignee');
+                        });
+                      }
+                    }}
                   >
-                    <div className="cce-mobile-card-avatar">
-                      <div className="avatar-img" aria-hidden />
-                    </div>
-                    <div className="cce-mobile-card-body">
-                      <div className="cce-mobile-card-controls">
-                        <input
-                          type="checkbox"
-                          className="cce-row-checkbox cce-mobile-card-checkbox"
-                          checked={selected.has(row._id)}
-                          aria-label={`${row.name || '연락처'} 선택`}
-                          onChange={() => {}}
-                          onClick={(e) => handleCheckboxClick(idx, e)}
-                        />
-                        <button
-                          type="button"
-                          className={`cce-favorite-btn cce-mobile-favorite-btn ${row.isFavorite ? 'is-active' : ''}`}
-                          aria-label={row.isFavorite ? '즐겨찾기 해제' : '즐겨찾기 등록'}
-                          title={row.isFavorite ? '즐겨찾기 해제' : '즐겨찾기 등록'}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleToggleFavorite(row._id, !row.isFavorite);
-                          }}
-                        >
-                          <span className="material-symbols-outlined" aria-hidden>star</span>
-                        </button>
-                      </div>
-                      <div className="cce-mobile-card-head">
-                        <h3 className="cce-mobile-card-name">{row.name || '—'}</h3>
-                        <div className="cce-mobile-card-head-actions">
-                          <span className={`cce-mobile-card-status status-badge ${statusClass[row.status] || ''}`}>
-                            {statusLabel[row.status] || row.status || '—'}
-                          </span>
-                        </div>
-                      </div>
-                      <p className="cce-mobile-card-company">{row.company || '—'}</p>
-                      <div className="cce-mobile-card-details">
-                        <div className="cce-mobile-card-email">
-                          <span className="material-symbols-outlined cce-email-icon" aria-hidden>mail</span>
-                          <span className="cce-mobile-card-email-text">{row.email || '—'}</span>
-                          {String(row.email || '').trim() ? (
-                            <button
-                              type="button"
-                              className="cce-email-compose-btn"
-                              title="메일 작성"
-                              aria-label={`${String(row.email).trim()}에게 메일 작성`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setEmailCompose({ initialTo: String(row.email).trim() });
-                              }}
-                            >
-                              <span className="material-symbols-outlined" aria-hidden>edit</span>
-                            </button>
-                          ) : null}
-                        </div>
-                        {(() => {
-                          const telHref = phoneToTelHref(row.phone);
-                          const display = row.phone || '—';
-                          return (
-                            <div className="cce-mobile-card-phone">
-                              <span className="material-symbols-outlined" aria-hidden>call</span>
-                              <div className="cce-mobile-card-phone-content">
-                                {!row.phone?.trim() || !telHref ? (
-                                  <span className="cce-mobile-card-phone-text">{display}</span>
-                                ) : (
-                                  <>
-                                    <span className="cce-mobile-card-phone-text">{display}</span>
-                                    <div className="cce-phone-action-btns">
-                                      <a
-                                        href={telHref}
-                                        className="cce-phone-call-btn cce-mobile-card-call-btn"
-                                        title="전화 걸기"
-                                        aria-label={`전화 걸기 ${display}`}
-                                        onClick={(e) => e.stopPropagation()}
-                                      >
-                                        <span className="material-symbols-outlined" aria-hidden>call</span>
-                                      </a>
-                                      <button
-                                        type="button"
-                                        className="cce-phone-sms-btn cce-mobile-card-call-btn"
-                                        title="문자 (AI 초안 후 전송)"
-                                        aria-label={`문자 보내기 ${display}`}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setSmsModal({
-                                            phone: row.phone,
-                                            recipientName: row.name || '',
-                                            companyName: row.company || ''
-                                          });
-                                        }}
-                                      >
-                                        <span className="material-symbols-outlined" aria-hidden>sms</span>
-                                      </button>
-                                    </div>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })()}
-                        <p className="cce-mobile-card-meta">
-                          최근 지원: {row.lastSupportedAt ? formatDate(row.lastSupportedAt) : '—'}
-                        </p>
-                      </div>
+                    전체
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={mobileChipFilter === 'favorite'}
+                    className={`cce-mobile-chip ${mobileChipFilter === 'favorite' ? 'is-active' : ''}`}
+                    onClick={() => setMobileChipFilter('favorite')}
+                  >
+                    즐겨찾기
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={mobileChipFilter === 'assignee'}
+                    className={`cce-mobile-chip ${mobileChipFilter === 'assignee' ? 'is-active' : ''}`}
+                    onClick={() => {
+                      setMobileChipFilter('assignee');
+                      if (!assigneeMeOnly) {
+                        clearSelection();
+                        setAssigneeMeOnly(true);
+                        patchListTemplate(LIST_ID, { assigneeMeOnly: true }).catch((err) => {
+                          alert(err?.message || '저장에 실패했습니다.');
+                          setAssigneeMeOnly(false);
+                          setMobileChipFilter('all');
+                        });
+                      }
+                    }}
+                  >
+                    내 담당
+                  </button>
+                </div>
+                <div className="cce-mobile-activity-bento" aria-hidden={false}>
+                  <div className="cce-mobile-activity-card cce-mobile-activity-card--lavender">
+                    <span className="material-symbols-outlined cce-mobile-activity-icon" aria-hidden>history</span>
+                    <div>
+                      <p className="cce-mobile-activity-value">{pagination.total ?? 0}</p>
+                      <p className="cce-mobile-activity-label">전체 연락처</p>
                     </div>
                   </div>
-                ))}
-              </div>
+                  <div className="cce-mobile-activity-card cce-mobile-activity-card--peach">
+                    <span className="material-symbols-outlined cce-mobile-activity-icon" aria-hidden>sms</span>
+                    <div>
+                      <p className="cce-mobile-activity-value">{smsBulkHistoryList.length}</p>
+                      <p className="cce-mobile-activity-label">단체 문자 기록</p>
+                    </div>
+                  </div>
+                </div>
+                {mobileChipFilter === 'favorite' && mobileListItems.length === 0 ? (
+                  <p className="cce-mobile-cards-message">즐겨찾기 연락처가 없습니다.</p>
+                ) : (
+                  <div className="cce-mobile-cards-list">
+                    {mobileChipFilter === 'favorite' ? (
+                      mobileListItems.map((row, i) => renderMobileCard(row, i))
+                    ) : (
+                      <>
+                        {mobileFavoriteSection.length > 0 && (
+                          <div className="cce-mobile-list-section">
+                            <h3 className="cce-mobile-section-title">즐겨찾기 연락처</h3>
+                            <div className="cce-mobile-cards-list-inner">
+                              {mobileFavoriteSection.map((row, i) => renderMobileCard(row, i))}
+                            </div>
+                          </div>
+                        )}
+                        {mobileRestSection.length > 0 && (
+                          <div className={`cce-mobile-list-section ${mobileFavoriteSection.length ? 'cce-mobile-list-section--spaced' : ''}`}>
+                            <h3 className="cce-mobile-section-title">
+                              {mobileFavoriteSection.length ? '연락처' : '연락처'}
+                            </h3>
+                            <div className="cce-mobile-cards-list-inner">
+                              {mobileRestSection.map((row, i) => renderMobileCard(row, mobileFavoriteSection.length + i))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </div>
           <div className="table-wrap">
@@ -1027,9 +1166,6 @@ export default function CustomerCompanyEmployees() {
                                 const em = String(row.email || '').trim();
                                 return (
                                   <span className="cce-email-cell">
-                                    <span className="material-symbols-outlined cce-email-icon" aria-hidden>
-                                      mail
-                                    </span>
                                     <span className="cce-email-text">{em || '—'}</span>
                                     {em ? (
                                       <button
@@ -1139,6 +1275,9 @@ export default function CustomerCompanyEmployees() {
           </div>
         </div>
       </div>
+      <button type="button" className="cce-mobile-fab" onClick={openAddModal} aria-label="새 연락처 추가">
+        <span className="material-symbols-outlined">add</span>
+      </button>
       <SmsDraftModal
         open={!!smsModal || bulkSmsRows !== null}
         onClose={() => {

@@ -24,24 +24,40 @@
 }
 
 .sms-draft-modal--wide {
-  max-width: 28rem;
-  max-height: min(92vh, 44rem);
+  max-width: min(42rem, 100%);
+  max-height: min(92vh, 46rem);
+  font-family: 'Manrope', 'Inter', system-ui, sans-serif;
 }
 
 .sms-draft-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  padding: 0.9rem 1.1rem;
-  background: linear-gradient(135deg, #f5f0ff 0%, #eef6ff 100%);
-  border-bottom: 1px solid #e2e8f0;
+  gap: 0.75rem;
+  padding: 1rem 1.15rem 0.95rem;
+  background: linear-gradient(145deg, #e8f2f7 0%, #f2f6fa 55%, #eef3f8 100%);
+  border-bottom: 1px solid rgba(44, 100, 133, 0.12);
+}
+
+.sms-draft-header-text {
+  min-width: 0;
+  flex: 1;
 }
 
 .sms-draft-header h3 {
   margin: 0;
-  font-size: 1.05rem;
+  font-size: 1.125rem;
   font-weight: 700;
-  color: #4c5568;
+  letter-spacing: -0.02em;
+  color: #2c6485;
+}
+
+.sms-draft-header-sub {
+  margin: 0.35rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: #64748b;
+  font-weight: 500;
 }
 
 .sms-draft-close {
@@ -194,48 +210,154 @@
 }
 
 .sms-draft-btn-primary {
-  background: linear-gradient(135deg, #c5e8d6 0%, #b8e0f0 100%);
-  color: #2d6a5c;
-  border: 1px solid #9dc9b8;
+  background: linear-gradient(180deg, #3a7aa3 0%, #2c6485 100%);
+  color: #fff;
+  border: 1px solid rgba(44, 100, 133, 0.45);
+  box-shadow: 0 2px 8px rgba(44, 100, 133, 0.22);
   text-decoration: none;
 }
 
 .sms-draft-btn-primary:hover:not(:disabled) {
-  filter: brightness(0.97);
+  filter: brightness(1.03);
+  box-shadow: 0 3px 12px rgba(44, 100, 133, 0.28);
 }
 
 .sms-draft-btn-primary:disabled {
   background: #e2e8f0;
   color: #94a3b8;
   border-color: #e2e8f0;
+  box-shadow: none;
+}
+
+.sms-draft-btn-tertiary {
+  background: transparent;
+  color: #64748b;
+  border: none;
+  padding-left: 0.65rem;
+  padding-right: 0.65rem;
+}
+
+.sms-draft-btn-tertiary:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.15);
+  color: #475569;
 }
 
 .sms-draft-btn-primary .material-symbols-outlined {
   font-size: 1.05rem;
 }
 
-/* 이메일 작성 AI 패널과 동일 구성 (문자용) */
+.sms-draft-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* 이메일 작성 AI 패널과 동일 구성 (문자용) — Lucid secondary-container 톤 */
 .sms-draft-ai-panel {
-  margin-bottom: 0.75rem;
-  padding: 0.75rem 0.85rem;
-  border-radius: 0.65rem;
-  background: linear-gradient(145deg, #f8fafc 0%, #f0f4ff 100%);
-  border: 1px solid #e2e8f0;
+  margin-bottom: 0.85rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.75rem;
+  background: linear-gradient(160deg, #e3eef5 0%, #eef4f8 45%, #f5f8fb 100%);
+  border: 1px solid rgba(44, 100, 133, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
 }
 
 .sms-draft-ai-head {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
-  margin-bottom: 0.35rem;
-  font-size: 0.82rem;
-  font-weight: 700;
-  color: #475569;
+  gap: 0.4rem;
+  margin-bottom: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #3d5a73;
 }
 
-.sms-draft-ai-head .material-symbols-outlined {
+.sms-draft-ai-sparkle {
+  font-size: 1.15rem;
+  color: #2c6485;
+  font-variation-settings: 'FILL' 1;
+}
+
+.sms-draft-ai-title-label {
+  font-size: 0.75rem;
+}
+
+.sms-draft-ai-toolbar {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+  margin-top: 0.55rem;
+}
+
+.sms-draft-ai-select-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.sms-draft-ai-select--toolbar {
+  width: 100%;
+  padding: 0.5rem 2rem 0.5rem 0.65rem;
+  appearance: none;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(44, 100, 133, 0.2);
+  background: rgba(255, 255, 255, 0.92);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.sms-draft-ai-select-chevron {
+  position: absolute;
+  right: 0.45rem;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  font-size: 1.25rem;
+  color: #64748b;
+}
+
+.sms-draft-ai-run-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+  padding: 0.5rem 0.95rem;
+  border: none;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  color: #fff;
+  background: linear-gradient(180deg, #3a7aa3 0%, #2c6485 100%);
+  border: 1px solid rgba(44, 100, 133, 0.35);
+  box-shadow: 0 2px 6px rgba(44, 100, 133, 0.2);
+  transition: filter 0.15s, box-shadow 0.15s;
+}
+
+.sms-draft-ai-run-inline:hover:not(:disabled) {
+  filter: brightness(1.04);
+}
+
+.sms-draft-ai-run-inline:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.sms-draft-ai-bolt {
   font-size: 1.1rem;
-  color: #6366f1;
+  font-variation-settings: 'FILL' 1;
 }
 
 .sms-draft-ai-mini {
@@ -379,4 +501,91 @@
   white-space: pre-wrap;
   word-break: break-word;
   color: #334155;
+}
+
+.sms-draft-message-block {
+  margin-top: 0.25rem;
+}
+
+.sms-draft-textarea-wrap {
+  position: relative;
+}
+
+.sms-draft-body-input {
+  display: block;
+  width: 100%;
+  min-height: 8.5rem;
+  padding: 0.65rem 0.75rem 1.85rem;
+  border: 1px solid rgba(44, 100, 133, 0.16);
+  border-radius: 0.6rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: #334155;
+  background: #f1f5f9;
+  resize: vertical;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.sms-draft-body-input::placeholder {
+  color: #94a3b8;
+}
+
+.sms-draft-body-input:focus {
+  outline: none;
+  border-color: rgba(44, 100, 133, 0.45);
+  background: #f8fafc;
+  box-shadow: 0 0 0 3px rgba(44, 100, 133, 0.12);
+}
+
+.sms-draft-body-input:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.sms-draft-char-count {
+  position: absolute;
+  right: 0.65rem;
+  bottom: 0.45rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.sms-draft-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  padding: 0.85rem 0 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.sms-draft-footer-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  max-width: 16rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: #64748b;
+}
+
+.sms-draft-footer-info-icon {
+  flex-shrink: 0;
+  font-size: 1rem;
+  color: #2c6485;
+  margin-top: 0.05rem;
+}
+
+.sms-draft-footer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-left: auto;
 }

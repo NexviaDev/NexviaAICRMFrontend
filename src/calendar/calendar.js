@@ -272,7 +272,7 @@ function formatEventListWhen(ev) {
   }
 }
 
-export default function Calendar() {
+export default function Calendar({ embedded = false, hideBottomSection = false } = {}) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [current, setCurrent] = useState(() => {
     const d = new Date();
@@ -734,7 +734,8 @@ export default function Calendar() {
   const dayTitle = formatDayViewTitle(current.year, current.month, selectedDay);
 
   return (
-    <div className="page calendar-page">
+    <div className={`page calendar-page${embedded ? ' calendar-page--embedded' : ''}`}>
+      {!embedded && (
       <header className="page-header">
         <div className="header-search">
           <span className="material-symbols-outlined">search</span>
@@ -744,8 +745,9 @@ export default function Calendar() {
           <PageHeaderNotifyChat noWrapper buttonClassName="icon-btn" />
         </div>
       </header>
+      )}
 
-      <div className="page-content calendar-page-content">
+      <div className={`page-content calendar-page-content${embedded ? ' calendar-page-content--embedded' : ''}`}>
         <div className="calendar-shell">
           <div className="calendar-hero">
             <div className="calendar-hero-main">
@@ -863,7 +865,7 @@ export default function Calendar() {
 
           {error && <p className="calendar-google-hint" role="status">{error}</p>}
 
-          <div className="calendar-panel-card">
+          <div className={`calendar-panel-card${embedded ? ' calendar-panel-card--embedded' : ''}`}>
             {viewMode === 'month' ? (
             <div className="calendar-grid">
             <div className="calendar-weekday-row">
@@ -1081,6 +1083,7 @@ export default function Calendar() {
             )}
           </div>
 
+          {!hideBottomSection && (
           <div className="calendar-bottom-grid">
             <section className="calendar-upcoming-panel" aria-labelledby="calendar-upcoming-title">
               <h2 id="calendar-upcoming-title" className="calendar-upcoming-title">
@@ -1128,6 +1131,7 @@ export default function Calendar() {
               </button>
             </aside>
           </div>
+          )}
         </div>
       </div>
 

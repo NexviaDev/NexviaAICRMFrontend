@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import EmailComposeModal, { buildReplyEmailSubject } from './email-compose-modal.jsx';
+import EmailComposeModal, { buildReplyEmailSubject, buildForwardEmailSubject } from './email-compose-modal.jsx';
 import './email.css';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 
@@ -17,6 +17,55 @@ function parseFromHeader(from) {
   if (match) return { name: match[1].trim(), email: match[2].trim() };
   if (from.includes('@')) return { name: '', email: from.trim() };
   return { name: from.trim(), email: '' };
+}
+
+/** 목록 아바타용 이니셜 (최대 2글자) */
+function getSenderInitials(displayName) {
+  const s = (displayName || '?').trim();
+  if (!s) return '?';
+  const parts = s.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    const a = (parts[0][0] || '') + (parts[1][0] || '');
+    return a.toUpperCase().slice(0, 2);
+  }
+  return s.slice(0, 2).toUpperCase();
+}
+
+/** 모바일 날짜 구간 헤더 (오늘 / 어제 / 이전) */
+function getDateBucket(dateStr) {
+  const d = dateStr ? new Date(dateStr) : null;
+  if (!d || Number.isNaN(d.getTime())) return 'older';
+  const now = new Date();
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startMsg = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diffDays = Math.round((startToday - startMsg) / (24 * 60 * 60 * 1000));
+  if (diffDays === 0) return 'today';
+  if (diffDays === 1) return 'yesterday';
+  return 'older';
+}
+
+const DATE_BUCKET_LABELS = { today: '오늘', yesterday: '어제', older: '이전' };
+
+function avatarVariantFromId(id) {
+  if (!id || typeof id !== 'string') return 0;
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h + id.charCodeAt(i)) % 3;
+  return h;
+}
+
+function buildEmailListSections(items) {
+  if (!items?.length) return [];
+  const out = [];
+  let last = null;
+  for (const mail of items) {
+    const bucket = getDateBucket(mail.date);
+    if (bucket !== last) {
+      out.push({ type: 'header', key: `hdr-${bucket}-${mail.id}`, label: DATE_BUCKET_LABELS[bucket] });
+      last = bucket;
+    }
+    out.push({ type: 'row', key: mail.id, mail });
+  }
+  return out;
 }
 
 const FOLDERS = [
@@ -89,7 +138,7 @@ export default function Email() {
   const [showLabelPicker, setShowLabelPicker] = useState(false);
   const [labelPickerLoading, setLabelPickerLoading] = useState(false);
   const [selectedLabelId, setSelectedLabelId] = useState(null);
-  /** null | 'new' | 'reply' — 상세 패널에서 작성 모달 */
+  /** null | 'new' | 'reply' | 'forward' — 상세 패널에서 작성 모달 */
   const [detailCompose, setDetailCompose] = useState(null);
 
   const fetchList = useCallback(async (pageToken = '') => {
@@ -270,8 +319,11 @@ export default function Email() {
     selectedEmail?.bodyHtml
   ]);
 
+  const listSections = useMemo(() => buildEmailListSections(listItems), [listItems]);
+  const detailChromeOpen = Boolean(selectedId || detailCompose);
+
   return (
-    <div className="email-page">
+    <div className={`email-page${detailChromeOpen ? ' email-page--detail-open' : ''}`}>
       <header className="email-header">
         <form className="email-header-search-wrap" onSubmit={handleSearch}>
           <span className="material-symbols-outlined email-header-search-icon">search</span>
@@ -366,9 +418,18 @@ export default function Email() {
               <div className="email-list-empty">메일이 없습니다.</div>
             ) : (
               <>
-                {listItems.map((mail) => {
+                {listSections.map((section, idx) => {
+                  if (section.type === 'header') {
+                    return (
+                      <div key={section.key} className="email-list-date-header">
+                        {section.label}
+                      </div>
+                    );
+                  }
+                  const mail = section.mail;
                   const fromParsed = parseFromHeader(mail.from);
                   const fromDisplay = fromParsed.name || fromParsed.email || mail.from || '—';
+                  const avatarClass = `email-list-item-avatar email-list-item-avatar--${avatarVariantFromId(mail.id)}`;
                   return (
                     <div
                       key={mail.id}
@@ -378,12 +439,19 @@ export default function Email() {
                       onClick={() => setSelectedId(mail.id)}
                       onKeyDown={(e) => e.key === 'Enter' && setSelectedId(mail.id)}
                     >
-                      <div className="email-list-item-top">
-                        <span className="email-list-item-from">{fromDisplay}</span>
-                        <span className="email-list-item-time">{mail.date}</span>
+                      <div className="email-list-item-inner">
+                        <div className={avatarClass} aria-hidden>
+                          {getSenderInitials(fromDisplay)}
+                        </div>
+                        <div className="email-list-item-main">
+                          <div className="email-list-item-top">
+                            <span className="email-list-item-from">{fromDisplay}</span>
+                            <span className={`email-list-item-time ${!mail.isRead ? 'email-list-item-time--unread' : ''}`}>{mail.date}</span>
+                          </div>
+                          <h3 className="email-list-item-subject">{mail.subject || '(제목 없음)'}</h3>
+                          <p className="email-list-item-snippet">{mail.snippet || ''}</p>
+                        </div>
                       </div>
-                      <h3 className="email-list-item-subject">{mail.subject || '(제목 없음)'}</h3>
-                      <p className="email-list-item-snippet">{mail.snippet || ''}</p>
                     </div>
                   );
                 })}
@@ -407,9 +475,15 @@ export default function Email() {
         <section className="email-detail-panel">
           {detailCompose ? (
             <EmailComposeModal
-              key={detailCompose === 'reply' && selectedEmail?.id ? `reply-${selectedEmail.id}` : 'compose-new'}
+              key={
+                detailCompose === 'new'
+                  ? 'compose-new'
+                  : `${detailCompose}-${selectedEmail?.id ?? 'mail'}`
+              }
               inline
-              composeMode={detailCompose === 'reply' ? 'reply' : 'new'}
+              composeMode={
+                detailCompose === 'reply' ? 'reply' : detailCompose === 'forward' ? 'forward' : 'new'
+              }
               initialTo={
                 detailCompose === 'reply' && selectedEmail
                   ? (parseFromHeader(selectedEmail.from).email || selectedEmail.from).trim()
@@ -419,11 +493,19 @@ export default function Email() {
               initialSubject={
                 detailCompose === 'reply' && selectedEmail
                   ? buildReplyEmailSubject(selectedEmail.subject)
-                  : ''
+                  : detailCompose === 'forward' && selectedEmail
+                    ? buildForwardEmailSubject(selectedEmail.subject)
+                    : ''
               }
               replyThreadId={detailCompose === 'reply' && selectedEmail?.threadId ? selectedEmail.threadId : null}
-              replyQuoteSource={detailCompose === 'reply' ? replyQuoteSourceMemo : null}
-              replyQuoteMessageId={detailCompose === 'reply' && selectedEmail?.id ? selectedEmail.id : null}
+              replyQuoteSource={
+                detailCompose === 'reply' || detailCompose === 'forward' ? replyQuoteSourceMemo : null
+              }
+              replyQuoteMessageId={
+                (detailCompose === 'reply' || detailCompose === 'forward') && selectedEmail?.id
+                  ? selectedEmail.id
+                  : null
+              }
               onClose={() => setDetailCompose(null)}
               onSent={() => {
                 setDetailCompose(null);
@@ -439,6 +521,14 @@ export default function Email() {
             <>
               <div className="email-detail-toolbar">
                 <div className="email-detail-toolbar-left">
+                  <button
+                    type="button"
+                    className="email-detail-back-mobile"
+                    onClick={() => setSelectedId(null)}
+                    aria-label="목록으로"
+                  >
+                    <span className="material-symbols-outlined">arrow_back</span>
+                  </button>
                   <button type="button" className="email-detail-btn" onClick={() => setDetailCompose('new')}>
                     <span className="material-symbols-outlined">edit</span>
                     새 메일
@@ -447,7 +537,12 @@ export default function Email() {
                     <span className="material-symbols-outlined">reply</span>
                     답장
                   </button>
-                  <button type="button" className="email-detail-btn">
+                  <button
+                    type="button"
+                    className="email-detail-btn"
+                    onClick={() => setDetailCompose('forward')}
+                    disabled={!selectedEmail}
+                  >
                     <span className="material-symbols-outlined">forward</span>
                     전달
                   </button>
@@ -612,6 +707,15 @@ export default function Email() {
           )}
         </section>
       </div>
+
+      <button
+        type="button"
+        className="email-mobile-fab-compose"
+        onClick={() => setDetailCompose('new')}
+        aria-label="새 메일 작성"
+      >
+        <span className="material-symbols-outlined">edit</span>
+      </button>
     </div>
   );
 }

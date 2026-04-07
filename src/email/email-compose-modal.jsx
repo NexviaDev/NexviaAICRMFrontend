@@ -104,6 +104,14 @@ export function buildReplyEmailSubject(originalSubject) {
   return `Re: ${s}`;
 }
 
+/** 전달 제목: Fwd: 접두 (이미 Fwd: 이면 유지) */
+export function buildForwardEmailSubject(originalSubject) {
+  const s = (originalSubject || '').trim();
+  if (!s) return 'Fwd: ';
+  if (/^fwd:\s*/i.test(s)) return s;
+  return `Fwd: ${s}`;
+}
+
 function escapeHtmlQuote(s) {
   return String(s ?? '')
     .replace(/&/g, '&amp;')
@@ -212,6 +220,47 @@ export function buildReplyQuotedEditorHtml(src, signatureHtml) {
   const quoteWrap = `<div class="email-reply-quote-block" style="margin-top:10px;padding:12px 14px;border-left:4px solid #c7d2fe;background:#f8fafc;border-radius:0 8px 8px 0;font-size:13px;color:#1e293b;line-height:1.55;">${inner}</div>`;
 
   const quoteSection = `${NEXVIA_REPLY_QUOTE_MARK}<hr style="border:none;border-top:1px solid #e2e8f0;margin:16px 0;" /><p style="color:#64748b;font-size:12px;margin:0 0 10px;">----- 원본 메일 -----</p>${metaHtml}${quoteWrap}`;
+  const sigBlock = buildSignatureBlockHtml(signatureHtml);
+  return `<p><br></p><p><br></p>${sigBlock}${quoteSection}`;
+}
+
+/**
+ * 전달: 받는 사람은 비워 두고, 원문 인용 블록은 답장과 동일 구조(제목만 다름)
+ * — 새 스레드로 발송(threadId 없음)
+ */
+export function buildForwardQuotedEditorHtml(src, signatureHtml) {
+  const from = src?.from || '';
+  const to = src?.to || '';
+  const subject = src?.subject || '';
+  const date = src?.date || '';
+  const bodyPlain = src?.bodyPlain != null ? String(src.bodyPlain) : '';
+  const bodyHtml = src?.bodyHtml != null ? String(src.bodyHtml) : '';
+
+  const metaRows = [
+    ['보낸 사람', from || '—'],
+    ['받는 사람', to || '—'],
+    ['제목', subject || '—'],
+    ['일시', date || '—']
+  ];
+  const metaHtml = metaRows
+    .map(
+      ([k, v]) =>
+        `<p style="margin:4px 0;font-size:13px;color:#334155;line-height:1.5;"><strong style="color:#475569;">${escapeHtmlQuote(k)}:</strong> ${escapeHtmlQuote(v)}</p>`
+    )
+    .join('');
+
+  let inner = '';
+  if (bodyHtml.trim()) {
+    inner = sanitizeHtmlForQuote(bodyHtml);
+  } else if (bodyPlain.trim()) {
+    inner = escapeHtmlQuote(bodyPlain).replace(/\r\n|\r|\n/g, '<br/>');
+  } else {
+    inner = '<p style="color:#94a3b8;font-size:13px;margin:0;">(본문 없음)</p>';
+  }
+
+  const quoteWrap = `<div class="email-forward-quote-block" style="margin-top:10px;padding:12px 14px;border-left:4px solid #94a3b8;background:#f8fafc;border-radius:0 8px 8px 0;font-size:13px;color:#1e293b;line-height:1.55;">${inner}</div>`;
+
+  const quoteSection = `${NEXVIA_REPLY_QUOTE_MARK}<hr style="border:none;border-top:1px solid #e2e8f0;margin:16px 0;" /><p style="color:#64748b;font-size:12px;margin:0 0 10px;">----- 전달 메일 -----</p>${metaHtml}${quoteWrap}`;
   const sigBlock = buildSignatureBlockHtml(signatureHtml);
   return `<p><br></p><p><br></p>${sigBlock}${quoteSection}`;
 }
@@ -326,12 +375,14 @@ export default function EmailComposeModal({
     };
   }, []);
 
-  /** 답장 인용 본문은 메일 id·인용 데이터가 바뀔 때만 주입 (명함은 /auth/me 로드 후 한 번; 저장 시에는 replaceSignatureInEditor로 갱신) */
+  /** 답장·전달 인용 본문은 메일 id·인용 데이터가 바뀔 때만 주입 (명함은 /auth/me 로드 후 한 번; 저장 시에는 replaceSignatureInEditor로 갱신) */
   useEffect(() => {
     if (!editorRef.current || !signatureMetaLoaded) return;
     if (composeMode === 'reply' && replyQuoteMessageId && replyQuoteSource) {
       editorRef.current.innerHTML = buildReplyQuotedEditorHtml(replyQuoteSource, emailSignatureHtml);
-    } else if (composeMode !== 'reply') {
+    } else if (composeMode === 'forward' && replyQuoteMessageId && replyQuoteSource) {
+      editorRef.current.innerHTML = buildForwardQuotedEditorHtml(replyQuoteSource, emailSignatureHtml);
+    } else if (composeMode !== 'reply' && composeMode !== 'forward') {
       editorRef.current.innerHTML = buildNewMailEditorHtml(emailSignatureHtml);
     }
     // emailSignatureHtml 의존 제외: 저장 시 전체 HTML을 덮어쓰지 않고 마커 구간만 교체
@@ -1122,7 +1173,9 @@ export default function EmailComposeModal({
   const formContent = (
     <>
       <header className="email-compose-header">
-        <h2 className="email-compose-title">{composeMode === 'reply' ? '답장 작성' : '새 메일 작성'}</h2>
+        <h2 className="email-compose-title">
+          {composeMode === 'reply' ? '답장 작성' : composeMode === 'forward' ? '전달 작성' : '새 메일 작성'}
+        </h2>
         <div className="email-compose-header-actions">
           <button
             type="button"

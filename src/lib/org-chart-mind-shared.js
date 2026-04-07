@@ -38,6 +38,13 @@ export function mindOrgGenerateSubBranch({ pT: e, pL: t, pW: n, pH: o, cT: s, cL
 export const CO_ORG_FIT_PAD = 16;
 export const CO_ORG_SCALE_MIN = 0.06;
 export const CO_ORG_SCALE_MAX = 1;
+/** 좁은 화면: 가로 트리에서 vw/cw만으로 과축소되는 것을 막기 위한 하한(대략 읽기 가능한 크기) */
+export const CO_ORG_MOBILE_MIN_READABLE_SCALE = 0.38;
+
+function coOrgIsNarrowViewport() {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia('(max-width: 768px)').matches;
+}
 
 export function mindOrgFitToView(mind) {
   const { map, nodes, container } = mind;
@@ -49,13 +56,26 @@ export function mindOrgFitToView(mind) {
   const cw = Math.max(nodes.scrollWidth, nodes.offsetWidth, 1);
   const ch = Math.max(nodes.scrollHeight, nodes.offsetHeight, 1);
 
-  const raw = Math.min(CO_ORG_SCALE_MAX, vw / cw, vh / ch);
-  const scale = Math.max(raw, CO_ORG_SCALE_MIN);
+  const narrow = coOrgIsNarrowViewport();
+  /** 모바일: 세로 기준 스케일 + 최소 확대(가로는 컨테이너 스크롤·패닝) — 가로만 맞추면 글자가 너무 작아짐 */
+  let raw;
+  if (narrow) {
+    raw = Math.max(CO_ORG_MOBILE_MIN_READABLE_SCALE, Math.min(CO_ORG_SCALE_MAX, vh / ch));
+  } else {
+    raw = Math.min(CO_ORG_SCALE_MAX, vw / cw, vh / ch);
+  }
+  const scale = narrow ? raw : Math.max(raw, CO_ORG_SCALE_MIN);
   mind.scaleVal = scale;
 
   map.style.transformOrigin = '0 0';
-  const ox = CO_ORG_FIT_PAD + (vw - scale * cw) / 2;
-  const oy = CO_ORG_FIT_PAD + (vh - scale * ch) / 2;
+  const scaledW = scale * cw;
+  const scaledH = scale * ch;
+  let ox = CO_ORG_FIT_PAD + (vw - scaledW) / 2;
+  let oy = CO_ORG_FIT_PAD + (vh - scaledH) / 2;
+  if (narrow) {
+    ox = CO_ORG_FIT_PAD;
+    oy = CO_ORG_FIT_PAD + Math.max(0, (vh - scaledH) / 2);
+  }
   map.style.transform = `translate3d(${ox}px, ${oy}px, 0) scale(${scale})`;
 }
 

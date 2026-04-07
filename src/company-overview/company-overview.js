@@ -245,7 +245,10 @@ export default function CompanyOverview() {
         mindForCleanup = null;
         return;
       }
-      mind.dragMoveHelper.onMove = () => {};
+      /** 데스크톱만 드래그 무력화(실수 이동 방지). 모바일은 확대된 조직도를 손가락으로 패닝 */
+      if (typeof window !== 'undefined' && window.innerWidth > 768) {
+        mind.dragMoveHelper.onMove = () => {};
+      }
       mindInstanceRef.current = mind;
       mind.bus.addListener('operation', onOperation);
       mind.bus.addListener('expandNode', onExpandNode);

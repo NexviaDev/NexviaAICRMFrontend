@@ -565,4 +565,26 @@
   .company-overview-table td:nth-child(n+3) {
     display: none;
   }
+
+  /* 조직도: 좁은 화면에서 fit이 과축소되지 않도록(공용 mindOrgFitToView) + 스크롤·패닝으로 탐색 */
+  .co-org-mind {
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    min-height: min(22rem, 52vh);
+    height: min(44rem, 68vh);
+    max-height: 72vh;
+    touch-action: pan-x pan-y;
+  }
+
+  .co-org-mind .map-container {
+    overflow: auto !important;
+    min-height: 12rem;
+  }
+
+  .co-org-mind me-tpc,
+  .co-org-mind me-root me-tpc,
+  .co-org-mind me-parent > me-tpc {
+    font-size: 0.92rem !important;
+    line-height: 1.38 !important;
+  }
 }

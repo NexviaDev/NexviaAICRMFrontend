@@ -1,0 +1,89 @@
+.home-full-view-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  padding: 0;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.home-full-view-dialog {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  min-height: 0;
+  max-height: 100%;
+  margin: 0;
+  background: #f8fafa;
+  color: #2c3435;
+  box-shadow: 0 -8px 40px rgba(44, 52, 53, 0.12);
+}
+
+.home-full-view-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  padding-top: max(0.85rem, env(safe-area-inset-top));
+  background: rgba(255, 255, 255, 0.92);
+  border-bottom: 1px solid rgba(172, 179, 180, 0.25);
+}
+
+.home-full-view-head h2 {
+  margin: 0;
+  font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #006c53;
+  letter-spacing: -0.02em;
+}
+
+.home-full-view-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.65rem;
+  background: rgba(0, 108, 83, 0.08);
+  color: #006c53;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.home-full-view-close:hover {
+  background: rgba(0, 108, 83, 0.14);
+}
+
+.home-full-view-close .material-symbols-outlined {
+  font-size: 1.5rem;
+}
+
+/* 본문만 세로 스크롤 — 페이지·패널과 이중 스크롤 방지 */
+.home-full-view-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.75rem 1rem 1.25rem;
+  padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+}
+
+/* 모달 안 임베드: 바깥 페이지 헤더 숨김 */
+.home-full-view-body .todo-page-embedded .todo-list-container {
+  max-height: none !important;
+}
+
+.home-full-view-body .calendar-page--embedded .calendar-page-content--embedded {
+  padding-bottom: 0;
+}

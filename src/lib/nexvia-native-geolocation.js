@@ -38,12 +38,13 @@ function toCapOptions(options) {
   const o = options || {};
   const timeout = typeof o.timeout === 'number' && o.timeout > 0 ? o.timeout : 60000;
   return {
-    enableHighAccuracy: o.enableHighAccuracy !== false,
+    /** 웹 Geolocation 기본값과 동일: 명시할 때만 GPS 우선(느림). 생략 시 네트워크·퓨즈 우선으로 첫 위치가 빨라짐 */
+    enableHighAccuracy: o.enableHighAccuracy === true,
     timeout,
     maximumAge: typeof o.maximumAge === 'number' ? o.maximumAge : 0,
     interval: timeout,
     /** 지도 실시간 위치 반응 — 너무 낮으면 배터리·발열 증가 (Android/iOS 플러그인 동작에 따름) */
-    minimumUpdateInterval: 250,
+    minimumUpdateInterval: 200,
     enableLocationFallback: true
   };
 }

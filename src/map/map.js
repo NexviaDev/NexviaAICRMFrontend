@@ -38,22 +38,47 @@ function getAuthHeader() {
 }
 
 /**
- * 실시간 추적 옵션
- * - enableHighAccuracy: false → Wi‑Fi/기지국 위치가 먼저 잡혀 첫 점이 훨씬 빠름(GPS는 수십 초 걸릴 수 있음). 정밀도는 다소 낮을 수 있음.
- * - maximumAge > 0 → 직전에 받은 좌표 재사용 허용으로 첫 콜백 지연 완화
+ * 실시간 내 위치 — 체감 속도·정확도 균형
+ * - 첫 표시: 캐시 허용(getCurrentPosition) → 재방문·탭 복귀 시 거의 즉시 마커
+ * - 캐시 없음: 짧은 타임아웃 후 네트워크 기반 신규 좌표 1회(여전히 enableHighAccuracy:false → GPS 냉시작 대기 최소화)
+ * - 연속: watchPosition으로 갱신
+ * - 정밀 보정: 모바일 등에서만 지연 1회 enableHighAccuracy:true (GPS, 느릴 수 있음 — UI는 이미 위 옵션으로 먼저 그림)
  */
-const GEOLOCATION_OPTIONS_WATCH = {
+const GEOLOCATION_OPTIONS_CACHE_FIRST = {
   enableHighAccuracy: false,
-  maximumAge: 15000,
-  timeout: 12000
+  maximumAge: 10 * 60 * 1000,
+  timeout: 2200
 };
 
-/** 내 위치 켤 때 한 번: 캐시 허용·짧은 타임아웃으로 가능한 빨리 첫 마커 표시 → 이후 watch가 보정 */
-const GEOLOCATION_OPTIONS_QUICK_PRIME = {
+const GEOLOCATION_OPTIONS_FRESH_NETWORK = {
   enableHighAccuracy: false,
-  maximumAge: 300000,
-  timeout: 5000
+  maximumAge: 0,
+  timeout: 14000
 };
+
+const GEOLOCATION_OPTIONS_WATCH = {
+  enableHighAccuracy: false,
+  maximumAge: 20000,
+  timeout: 22000
+};
+
+/** GPS 안테나 — 첫 네트워크 위치 후에만 1회(모바일 위주) */
+const GEOLOCATION_OPTIONS_GPS_REFINE = {
+  enableHighAccuracy: true,
+  maximumAge: 0,
+  timeout: 30000
+};
+
+function shouldTryGpsRefinement() {
+  if (typeof navigator === 'undefined' || typeof window === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  if (/Mobi|Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(ua)) return true;
+  try {
+    return window.matchMedia?.('(pointer: coarse)')?.matches === true;
+  } catch {
+    return false;
+  }
+}
 
 /** 실시간 내 위치 반투명 원 — 지표 기준 고정 반경(m). 화면 픽셀 크기와 무관하게 지상 거리는 동일 */
 const MY_LOCATION_CIRCLE_RADIUS_M = 2000;
@@ -357,6 +382,7 @@ export default function Map({
   const [myLocation, setMyLocation] = useState(null);
   const [liveLocationOn, setLiveLocationOn] = useState(false);
   const watchIdRef = useRef(null);
+  const gpsRefineTimeoutRef = useRef(null);
   const locationSamplesRef = useRef([]);
   const myLocationAccuracyCircleRef = useRef(null);
   const lastRefinedLocationRef = useRef(null);
@@ -411,6 +437,11 @@ export default function Map({
     locationSamplesRef.current = [];
     lastRefinedLocationRef.current = null;
 
+    if (gpsRefineTimeoutRef.current != null) {
+      clearTimeout(gpsRefineTimeoutRef.current);
+      gpsRefineTimeoutRef.current = null;
+    }
+
     const applyPos = (pos) => {
       const w = pushGeolocationSample(locationSamplesRef, pos);
       if (!w) return;
@@ -419,18 +450,45 @@ export default function Map({
       setMyLocation({ lat: damped.lat, lng: damped.lng, accuracy: damped.accuracy });
     };
 
+    const noop = () => {};
+
+    /** 캐시 없음·타임아웃 시에만 네트워크 신규 좌표 1회 (watch와 병행) */
+    const onCacheMiss = () => {
+      try {
+        geo.getCurrentPosition(applyPos, noop, GEOLOCATION_OPTIONS_FRESH_NETWORK);
+      } catch {
+        /* 동기 throw */
+      }
+    };
+
     try {
-      geo.getCurrentPosition(applyPos, () => {}, GEOLOCATION_OPTIONS_QUICK_PRIME);
+      geo.getCurrentPosition(applyPos, onCacheMiss, GEOLOCATION_OPTIONS_CACHE_FIRST);
     } catch {
       /* 일부 환경에서 동기 throw */
     }
 
-    const watchId = geo.watchPosition(applyPos, () => {}, GEOLOCATION_OPTIONS_WATCH);
+    const watchId = geo.watchPosition(applyPos, noop, GEOLOCATION_OPTIONS_WATCH);
     watchIdRef.current = watchId;
+
+    if (shouldTryGpsRefinement()) {
+      gpsRefineTimeoutRef.current = window.setTimeout(() => {
+        gpsRefineTimeoutRef.current = null;
+        try {
+          geo.getCurrentPosition(applyPos, noop, GEOLOCATION_OPTIONS_GPS_REFINE);
+        } catch {
+          /* 동기 throw */
+        }
+      }, 480);
+    }
+
     setLiveLocationOn(true);
   }, []);
 
   const stopLiveLocation = useCallback(() => {
+    if (gpsRefineTimeoutRef.current != null) {
+      clearTimeout(gpsRefineTimeoutRef.current);
+      gpsRefineTimeoutRef.current = null;
+    }
     if (watchIdRef.current != null) {
       getGeolocationService()?.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
@@ -534,6 +592,10 @@ export default function Map({
 
   useEffect(() => {
     return () => {
+      if (gpsRefineTimeoutRef.current != null) {
+        clearTimeout(gpsRefineTimeoutRef.current);
+        gpsRefineTimeoutRef.current = null;
+      }
       if (watchIdRef.current != null) {
         getGeolocationService()?.clearWatch(watchIdRef.current);
       }

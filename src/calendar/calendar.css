@@ -16,6 +16,35 @@
   padding-bottom: 1.5rem;
 }
 
+/* 홈 대시보드 임베드: 이중 카드·헤더 제거 */
+.calendar-page--embedded .calendar-page-content--embedded {
+  padding: 0;
+  padding-bottom: 0.5rem;
+}
+
+.calendar-page--embedded .calendar-shell {
+  max-width: none;
+  margin: 0;
+}
+
+.calendar-page--embedded .calendar-hero {
+  margin-bottom: 0.65rem;
+  gap: 0.65rem;
+}
+
+.calendar-page--embedded .calendar-month-headline {
+  font-size: clamp(1.15rem, 4vw, 1.45rem);
+}
+
+.calendar-panel-card--embedded {
+  box-shadow: none;
+  border: none;
+  padding: 0.15rem 0;
+  margin-bottom: 0;
+  background: transparent;
+  border-radius: 0.5rem;
+}
+
 .calendar-shell {
   max-width: 1200px;
   margin: 0 auto;

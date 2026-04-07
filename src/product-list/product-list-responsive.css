@@ -1,0 +1,433 @@
+/**
+ * 제품 리스트 — 모바일 (Sample Design product-list.html / Ethereal Organizer)
+ */
+.product-list-page .pl-mobile-cards-wrap {
+  display: none;
+}
+
+.pl-mobile-only {
+  display: none;
+}
+
+.pl-mobile-fab {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .product-list-page.page {
+    min-height: 100%;
+    background: #f8fafa;
+  }
+
+  .product-list-page .page-header {
+    height: auto;
+    min-height: 3.5rem;
+    padding: 0.5rem 1rem;
+    background: #f8fafa;
+    border-bottom: none;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .product-list-page .header-search {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+
+  .product-list-page .header-search-form input {
+    background: #e3e9ea;
+    border: none;
+    border-radius: 0.75rem;
+    padding: 0.65rem 0.85rem 0.65rem 2.5rem;
+    font-size: 0.8125rem;
+  }
+
+  .product-list-page .header-search-form input:focus {
+    background: #fff;
+    box-shadow: 0 0 0 2px rgba(0, 108, 83, 0.12);
+    outline: none;
+  }
+
+  .product-list-page .header-actions {
+    margin-left: auto;
+    gap: 0.35rem;
+  }
+
+  .product-list-page .page-content {
+    padding: 1rem 1rem 5.5rem;
+  }
+
+  .product-list-page .pl-desktop-only {
+    display: none !important;
+  }
+
+  .product-list-page .pl-mobile-only {
+    display: block;
+  }
+
+  .product-list-page .pl-mobile-only.pl-mobile-only--flex {
+    display: flex;
+  }
+
+  /* 히어로 */
+  .product-list-page .pl-mobile-hero {
+    margin-bottom: 1rem;
+  }
+
+  .product-list-page .pl-mobile-kicker {
+    margin: 0 0 0.25rem;
+    font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #006c53;
+  }
+
+  .product-list-page .pl-mobile-title {
+    margin: 0 0 1rem;
+    font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+    font-size: 1.65rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: #2c3435;
+    line-height: 1.15;
+  }
+
+  /* 요약 카드 */
+  .product-list-page .pl-mobile-bento {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .product-list-page .pl-mobile-bento-card {
+    border-radius: 0.75rem;
+    padding: 1rem;
+    border: none;
+  }
+
+  .product-list-page .pl-mobile-bento-card--lavender {
+    background: #e1e1f5;
+  }
+
+  .product-list-page .pl-mobile-bento-card--peach {
+    background: #fed9b8;
+  }
+
+  .product-list-page .pl-mobile-bento-label {
+    margin: 0 0 0.35rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: #5c5e6e;
+  }
+
+  .product-list-page .pl-mobile-bento-card--peach .pl-mobile-bento-label {
+    color: #755a40;
+  }
+
+  .product-list-page .pl-mobile-bento-value {
+    margin: 0;
+    font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+    font-size: 1.35rem;
+    font-weight: 800;
+    color: #2c3435;
+  }
+
+  .product-list-page .pl-mobile-bento-card--lavender .pl-mobile-bento-value {
+    color: #4f5161;
+  }
+
+  .product-list-page .pl-mobile-bento-card--peach .pl-mobile-bento-value {
+    color: #644b32;
+  }
+
+  /* 필터 칩 */
+  .product-list-page .pl-mobile-chips-block {
+    margin-bottom: 1rem;
+  }
+
+  .product-list-page .pl-mobile-chips-label {
+    margin: 0 0 0.35rem;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #757c7d;
+  }
+
+  .product-list-page .pl-mobile-chips-label--spaced {
+    margin-top: 0.65rem;
+  }
+
+  .product-list-page .pl-mobile-chips-row {
+    display: flex;
+    gap: 0.5rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.25rem;
+    scrollbar-width: none;
+  }
+
+  .product-list-page .pl-mobile-chips-row::-webkit-scrollbar {
+    display: none;
+  }
+
+  .product-list-page .pl-mobile-chip {
+    flex-shrink: 0;
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 9999px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+    background: #eaefef;
+    color: #596061;
+  }
+
+  .product-list-page .pl-mobile-chip.is-active {
+    background: #8ff6d0;
+    color: #005d47;
+  }
+
+  /* 패널 / 테이블 */
+  .product-list-page .panel.table-panel {
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    margin-bottom: 0;
+  }
+
+  .product-list-page .table-wrap {
+    display: none;
+  }
+
+  .product-list-page .pl-mobile-cards-wrap {
+    display: block;
+  }
+
+  .product-list-page .pl-mobile-cards-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .product-list-page .pl-mobile-cards-message {
+    text-align: center;
+    padding: 2rem 1rem;
+    color: #64748b;
+    font-size: 0.875rem;
+  }
+
+  /* 제품 카드 */
+  .product-list-page .pl-mcard {
+    background: #fff;
+    border-radius: 0.75rem;
+    padding: 1.15rem;
+    border: none;
+    box-shadow: 0 4px 24px rgba(44, 52, 53, 0.04);
+    cursor: pointer;
+    text-align: left;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    transition: filter 0.15s ease;
+  }
+
+  .product-list-page .pl-mcard:active {
+    filter: brightness(0.98);
+  }
+
+  .product-list-page .pl-mcard--eol {
+    background: #eaefef;
+    opacity: 0.92;
+  }
+
+  .product-list-page .pl-mcard-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .product-list-page .pl-mcard-id {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    min-width: 0;
+  }
+
+  .product-list-page .pl-mcard-icon {
+    width: 3rem;
+    height: 3rem;
+    border-radius: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .product-list-page .pl-mcard-icon--0 {
+    background: #8ff6d0;
+    color: #006c53;
+  }
+
+  .product-list-page .pl-mcard-icon--1 {
+    background: #e1e1f5;
+    color: #5c5e6e;
+  }
+
+  .product-list-page .pl-mcard-icon--2 {
+    background: #fed9b8;
+    color: #755a40;
+  }
+
+  .product-list-page .pl-mcard-icon--3 {
+    background: #dde4e4;
+    color: #596061;
+  }
+
+  .product-list-page .pl-mcard-icon .material-symbols-outlined {
+    font-size: 1.45rem;
+  }
+
+  .product-list-page .pl-mcard-text {
+    min-width: 0;
+  }
+
+  .product-list-page .pl-mcard-name {
+    margin: 0;
+    font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #2c3435;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .product-list-page .pl-mcard-sub {
+    margin: 0.2rem 0 0;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #596061;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .product-list-page .pl-mcard-badge {
+    flex-shrink: 0;
+    font-size: 0.625rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 0.3rem 0.55rem;
+    border-radius: 9999px;
+  }
+
+  .product-list-page .pl-mcard-badge--active {
+    background: rgba(143, 246, 208, 0.45);
+    color: #006c53;
+  }
+
+  .product-list-page .pl-mcard-badge--eol {
+    background: rgba(172, 179, 180, 0.22);
+    color: #596061;
+  }
+
+  .product-list-page .pl-mcard-badge--draft {
+    background: rgba(254, 217, 184, 0.65);
+    color: #755a40;
+  }
+
+  .product-list-page .pl-mcard-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0.5rem;
+    padding-top: 0.15rem;
+  }
+
+  .product-list-page .pl-mcard-grid--muted {
+    opacity: 0.62;
+  }
+
+  .product-list-page .pl-mcard-metric-label {
+    display: block;
+    font-size: 0.625rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #596061;
+    margin-bottom: 0.2rem;
+  }
+
+  .product-list-page .pl-mcard-metric-val {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: #2c3435;
+  }
+
+  .product-list-page .pl-mcard-metric:last-child {
+    text-align: right;
+  }
+
+  .product-list-page .pl-mcard-metric-val--margin {
+    font-weight: 800;
+    color: #006c53;
+  }
+
+  .product-list-page .pl-mcard--eol .pl-mcard-metric-val--margin {
+    color: #596061;
+  }
+
+  /* 페이지네이션 */
+  .product-list-page .pagination-bar {
+    padding: 1rem 0 0;
+    border-top: none;
+    margin-top: 0.5rem;
+  }
+
+  .product-list-page .pagination-info {
+    font-size: 0.8125rem;
+  }
+
+  /* FAB */
+  .product-list-page .pl-mobile-fab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    right: 1.25rem;
+    bottom: calc(1.25rem + env(safe-area-inset-bottom, 0));
+    z-index: 35;
+    width: 3.5rem;
+    height: 3.5rem;
+    padding: 0;
+    border: none;
+    border-radius: 0.75rem;
+    background: #006c53;
+    color: #e5fff2;
+    cursor: pointer;
+    box-shadow: 0 8px 28px rgba(44, 52, 53, 0.16);
+    transition: transform 0.15s ease, filter 0.15s ease;
+  }
+
+  .product-list-page .pl-mobile-fab:active {
+    transform: scale(0.96);
+  }
+
+  .product-list-page .pl-mobile-fab .material-symbols-outlined {
+    font-size: 1.65rem;
+    font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  }
+}
+
+@media (min-width: 769px) {
+  .product-list-page .pl-mobile-cards-wrap {
+    display: none;
+  }
+}

@@ -10,6 +10,7 @@ import {
   patchListTemplate
 } from '../lib/list-templates';
 import './product-list.css';
+import './product-list-responsive.css';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 
 import * as XLSX from 'xlsx';
@@ -62,6 +63,15 @@ function getChannelMargin(row) {
 function getConsumerMargin(row) {
   return (Number(listPriceFromProduct(row)) || 0) - (Number(row.costPrice) || 0);
 }
+
+/** 소비자가 대비 마진율(%) — 모바일 카드 표시용 */
+function getConsumerMarginPercent(row) {
+  const lp = Number(listPriceFromProduct(row)) || 0;
+  if (lp <= 0) return null;
+  return (getConsumerMargin(row) / lp) * 100;
+}
+
+const MOBILE_CARD_ICONS = ['category', 'architecture', 'rocket_launch', 'drafts'];
 
 export default function ProductList() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -245,6 +255,14 @@ export default function ProductList() {
     });
   }, [items, sortKey, sortDir, getSortValue]);
 
+  /** 현재 페이지에 표시된 제품만으로 평균 소비자 마진율(%) — 모바일 요약 카드 */
+  const avgMarginPercent = useMemo(() => {
+    const rows = items.filter((r) => (Number(listPriceFromProduct(r)) || 0) > 0);
+    if (rows.length === 0) return null;
+    const sum = rows.reduce((acc, r) => acc + (getConsumerMarginPercent(r) || 0), 0);
+    return sum / rows.length;
+  }, [items]);
+
   const handleSortColumn = useCallback((key) => {
     setSort((prev) => {
       if (prev.key === key) {
@@ -332,6 +350,63 @@ export default function ProductList() {
     }
   }, [fetchAllProductsForExport, customFieldLabelByKey]);
 
+  const renderMobileCard = (row, idx) => {
+    const tone = idx % 4;
+    const mp = getConsumerMarginPercent(row);
+    const isEol = row.status === 'EndOfLife';
+    const iconName = MOBILE_CARD_ICONS[tone];
+    const badgeClass =
+      row.status === 'Active' ? 'pl-mcard-badge--active' : row.status === 'EndOfLife' ? 'pl-mcard-badge--eol' : 'pl-mcard-badge--draft';
+    const sub =
+      (row.category && String(row.category).trim()) ||
+      (row.code && String(row.code).trim() && `코드 ${row.code}`) ||
+      '—';
+    return (
+      <div
+        key={row._id}
+        role="button"
+        tabIndex={0}
+        className={`pl-mcard ${isEol ? 'pl-mcard--eol' : ''}`}
+        onClick={() => openDetail(row)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            openDetail(row);
+          }
+        }}
+      >
+        <div className="pl-mcard-top">
+          <div className="pl-mcard-id">
+            <div className={`pl-mcard-icon pl-mcard-icon--${tone}`} aria-hidden>
+              <span className="material-symbols-outlined">{iconName}</span>
+            </div>
+            <div className="pl-mcard-text">
+              <h3 className="pl-mcard-name">{row.name || '—'}</h3>
+              <p className="pl-mcard-sub">{sub}</p>
+            </div>
+          </div>
+          <span className={`pl-mcard-badge ${badgeClass}`}>{STATUS_LABELS[row.status] || row.status || '—'}</span>
+        </div>
+        <div className={`pl-mcard-grid ${isEol ? 'pl-mcard-grid--muted' : ''}`}>
+          <div className="pl-mcard-metric">
+            <span className="pl-mcard-metric-label">원가</span>
+            <span className="pl-mcard-metric-val">{formatPrice(row.costPrice, row.currency)}</span>
+          </div>
+          <div className="pl-mcard-metric">
+            <span className="pl-mcard-metric-label">소비자가</span>
+            <span className="pl-mcard-metric-val">{formatPrice(listPriceFromProduct(row), row.currency)}</span>
+          </div>
+          <div className="pl-mcard-metric">
+            <span className="pl-mcard-metric-label">마진</span>
+            <span className="pl-mcard-metric-val pl-mcard-metric-val--margin">
+              {mp != null ? `${mp.toFixed(1)}%` : '—'}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="page product-list-page">
       <header className="page-header">
@@ -366,7 +441,23 @@ export default function ProductList() {
         </div>
       </header>
       <div className="page-content">
-        <div className="product-list-top">
+        <section className="pl-mobile-hero pl-mobile-only" aria-label="포트폴리오 요약">
+          <p className="pl-mobile-kicker">제품 개요</p>
+          <h2 className="pl-mobile-title">현재 포트폴리오</h2>
+          <div className="pl-mobile-bento">
+            <div className="pl-mobile-bento-card pl-mobile-bento-card--lavender">
+              <p className="pl-mobile-bento-label">등록 제품</p>
+              <p className="pl-mobile-bento-value">{pagination.total != null ? `${pagination.total.toLocaleString()}개` : '—'}</p>
+            </div>
+            <div className="pl-mobile-bento-card pl-mobile-bento-card--peach">
+              <p className="pl-mobile-bento-label">목록 평균 마진</p>
+              <p className="pl-mobile-bento-value">
+                {avgMarginPercent != null ? `${avgMarginPercent.toFixed(1)}%` : '—'}
+              </p>
+            </div>
+          </div>
+        </section>
+        <div className="product-list-top pl-desktop-only">
           <div>
             <h2>제품 리스트</h2>
             <p className="page-desc">총 {pagination.total}개 제품</p>
@@ -390,7 +481,7 @@ export default function ProductList() {
           </div>
         </div>
         <div className="product-list-toolbar">
-          <div className="product-list-filters">
+          <div className="product-list-filters pl-desktop-only">
             <select
               className="product-list-filter-select"
               value={filterStatus}
@@ -414,8 +505,57 @@ export default function ProductList() {
               <option value="Perpetual">영구</option>
             </select>
           </div>
+          <div className="pl-mobile-chips-block pl-mobile-only">
+            <p className="pl-mobile-chips-label">상태</p>
+            <div className="pl-mobile-chips-row">
+              {[
+                { value: '', label: '전체' },
+                { value: 'Active', label: '활성' },
+                { value: 'EndOfLife', label: 'EOL' },
+                { value: 'Draft', label: '초안' }
+              ].map((opt) => (
+                <button
+                  key={`st-${opt.value || 'all'}`}
+                  type="button"
+                  className={`pl-mobile-chip ${filterStatus === opt.value ? 'is-active' : ''}`}
+                  onClick={() => setFilterStatus(opt.value)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="pl-mobile-chips-label pl-mobile-chips-label--spaced">결제</p>
+            <div className="pl-mobile-chips-row">
+              {[
+                { value: '', label: '전체' },
+                { value: 'Monthly', label: '월간' },
+                { value: 'Annual', label: '연간' },
+                { value: 'Perpetual', label: '영구' }
+              ].map((opt) => (
+                <button
+                  key={`bl-${opt.value || 'all'}`}
+                  type="button"
+                  className={`pl-mobile-chip ${filterBilling === opt.value ? 'is-active' : ''}`}
+                  onClick={() => setFilterBilling(opt.value)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
         <div className="panel table-panel">
+          <div className="pl-mobile-cards-wrap">
+            {loading ? (
+              <p className="pl-mobile-cards-message">불러오는 중...</p>
+            ) : sortedItems.length === 0 ? (
+              <p className="pl-mobile-cards-message">등록된 제품이 없습니다.</p>
+            ) : (
+              <div className="pl-mobile-cards-list">
+                {sortedItems.map((row, idx) => renderMobileCard(row, idx))}
+              </div>
+            )}
+          </div>
           <div className="table-wrap">
             <table className="data-table product-list-table">
               <thead>
@@ -549,6 +689,9 @@ export default function ProductList() {
           </div>
         </div>
       </div>
+      <button type="button" className="pl-mobile-fab" aria-label="제품 추가" onClick={openAdd}>
+        <span className="material-symbols-outlined">add</span>
+      </button>
       {addModalOpen && (
         <AddProductModal
           product={null}

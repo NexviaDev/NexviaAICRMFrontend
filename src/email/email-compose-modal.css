@@ -1232,3 +1232,92 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* ── Mobile: Sample Design — 풀스크린·파스텔 (email for mobile.html) ── */
+@media (max-width: 768px) {
+  .email-compose-overlay {
+    padding: 0;
+    align-items: stretch;
+    background: rgba(15, 23, 42, 0.45);
+  }
+
+  .email-compose-modal {
+    max-width: none;
+    width: 100%;
+    height: 100%;
+    max-height: 100dvh;
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+  }
+
+  .email-compose-inline {
+    background: #f8fafa;
+  }
+
+  .email-compose-inline .email-compose-header,
+  .email-compose-modal .email-compose-header {
+    position: sticky;
+    top: 0;
+    z-index: 6;
+    background: rgba(248, 250, 250, 0.94);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid rgba(172, 179, 180, 0.18);
+    padding: 0.75rem 1rem;
+  }
+
+  .email-compose-title {
+    font-family: 'Manrope', 'Inter', sans-serif;
+    font-size: 1.125rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: #006c53;
+  }
+
+  .email-compose-fields {
+    background: #f8fafa;
+    border-bottom-color: rgba(172, 179, 180, 0.15);
+  }
+
+  .email-compose-field input {
+    background: #e3e9ea;
+    border: none;
+    border-radius: 0.75rem;
+    padding: 0.6rem 0.85rem;
+  }
+
+  .email-compose-field input:focus {
+    background: #fff;
+    box-shadow: 0 0 0 2px rgba(0, 108, 83, 0.12);
+  }
+
+  .email-compose-toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    gap: 0.25rem;
+    padding: 0.5rem 0.75rem;
+    background: #eaefef;
+    border-bottom: 1px solid rgba(172, 179, 180, 0.12);
+  }
+
+  .email-compose-toolbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .email-compose-send-icon {
+    color: #006c53;
+  }
+
+  .email-compose-send-icon:hover:not(:disabled) {
+    background: rgba(0, 108, 83, 0.1);
+    color: #005f48;
+  }
+
+  .email-compose-inline .email-compose-form,
+  .email-compose-modal .email-compose-form {
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+}

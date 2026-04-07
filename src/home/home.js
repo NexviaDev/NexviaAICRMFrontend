@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import './home.css';
 
 import { API_BASE } from '@/config';
@@ -16,6 +16,14 @@ import {
 import { formatPhone } from '@/register/phoneFormat';
 import { getStoredCrmUser, isSeniorOrAboveRole } from '@/lib/crm-role-utils';
 import HomeLeadDetailModal from './home-lead-detail-modal';
+import HomeFullViewModal from './home-full-view-modal';
+
+function getGreetingForHome() {
+  const h = new Date().getHours();
+  if (h < 12) return '좋은 아침입니다';
+  if (h < 18) return '안녕하세요';
+  return '좋은 저녁입니다';
+}
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -24,6 +32,19 @@ function getAuthHeader() {
 
 /** 홈 패널에 표시할 캡처 리드 최대 건수 (오래된 순 정렬 후 앞쪽) */
 const HOME_CAPTURE_LEADS_DISPLAY_MAX = 120;
+
+/** 모바일 홈 「전체 보기」 모달 — URL `?homeView=todo|leads|calendar|channels` */
+const HOME_VIEW_PARAM = 'homeView';
+const HOME_VIEW_VALUES = new Set(['todo', 'leads', 'calendar', 'channels']);
+const HOME_VIEW_TITLES = {
+  todo: '예정 업무',
+  leads: '수신 리드',
+  calendar: '캘린더',
+  channels: '캡처 채널별 리드 수신'
+};
+/** 모바일 미리보기 줄 수 — 나머지는 모달에서만 스크롤 */
+const HOME_MOBILE_PREVIEW_LEADS = 5;
+const HOME_MOBILE_PREVIEW_TODO = 5;
 
 const DEFAULT_STAGE_LABELS = {
   NewLead: '신규 리드',
@@ -595,6 +616,71 @@ export default function Home() {
     [pipelineMainStages, grouped]
   );
 
+  const homeUserDisplay = useMemo(() => {
+    const u = getStoredCrmUser();
+    const n = (u?.name && String(u.name).trim()) || (u?.email && String(u.email).split('@')[0]) || '사용자';
+    return n;
+  }, []);
+
+  const scheduleTodayLabel = useMemo(() => {
+    try {
+      return new Date().toLocaleDateString('ko-KR', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        weekday: 'short'
+      });
+    } catch {
+      return '';
+    }
+  }, []);
+
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)');
+    const fn = () => setIsMobile(mq.matches);
+    fn();
+    mq.addEventListener('change', fn);
+    return () => mq.removeEventListener('change', fn);
+  }, []);
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeHomeView = useMemo(() => {
+    const v = searchParams.get(HOME_VIEW_PARAM);
+    return HOME_VIEW_VALUES.has(v) ? v : null;
+  }, [searchParams]);
+
+  const closeHomeView = useCallback(() => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete(HOME_VIEW_PARAM);
+        return next;
+      },
+      { replace: true }
+    );
+  }, [setSearchParams]);
+
+  const openHomeView = useCallback(
+    (view) => {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.set(HOME_VIEW_PARAM, view);
+        return next;
+      });
+    },
+    [setSearchParams]
+  );
+
+  useEffect(() => {
+    if (!activeHomeView) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') closeHomeView();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [activeHomeView, closeHomeView]);
+
   /** 파이프라인 첫 컬럼 = 세일즈 현황 좌측 첫 단계(기본 NewLead) */
   const firstPipelineStageKey = pipelineMainStages[0] || 'NewLead';
   const newLeadStageCount = grouped[firstPipelineStageKey]?.length ?? 0;
@@ -611,6 +697,16 @@ export default function Home() {
     [recentCaptureLeads, leadHomeVisibility]
   );
 
+  const leadsCappedForHome = useMemo(
+    () => visibleHomeCaptureLeads.slice(0, HOME_CAPTURE_LEADS_DISPLAY_MAX),
+    [visibleHomeCaptureLeads]
+  );
+
+  const leadsForHomePanel = useMemo(() => {
+    if (isMobile) return leadsCappedForHome.slice(0, HOME_MOBILE_PREVIEW_LEADS);
+    return leadsCappedForHome;
+  }, [isMobile, leadsCappedForHome]);
+
   const dismissLeadFromHome = useCallback((leadId) => {
     const key = getLeadVisibilityUserKey();
     setLeadHomeVisibility((prev) => {
@@ -624,17 +720,21 @@ export default function Home() {
     });
   }, []);
 
-  const openLeadDetail = useCallback((lead) => {
-    const fid = lead.leadCaptureFormId?._id ?? lead.leadCaptureFormId;
-    if (!fid || lead._id == null) return;
-    setLeadDetailContext({
-      formId: String(fid),
-      leadId: String(lead._id),
-      channelLabel: lead._channelLabel,
-      channelSource: lead._channelSource
-    });
-    setLeadDetailOpen(true);
-  }, []);
+  const openLeadDetail = useCallback(
+    (lead) => {
+      const fid = lead.leadCaptureFormId?._id ?? lead.leadCaptureFormId;
+      if (!fid || lead._id == null) return;
+      if (activeHomeView) closeHomeView();
+      setLeadDetailContext({
+        formId: String(fid),
+        leadId: String(lead._id),
+        channelLabel: lead._channelLabel,
+        channelSource: lead._channelSource
+      });
+      setLeadDetailOpen(true);
+    },
+    [activeHomeView, closeHomeView]
+  );
 
   const closeLeadDetail = useCallback(() => {
     setLeadDetailOpen(false);
@@ -881,8 +981,65 @@ export default function Home() {
     );
   };
 
+  const renderCaptureLeadRow = (lead) => (
+    <li
+      key={String(lead._id)}
+      className="home-todo-leads-item home-todo-leads-item--clickable"
+      onClick={() => openLeadDetail(lead)}
+    >
+      <button
+        type="button"
+        className="home-lead-check"
+        onClick={(e) => {
+          e.stopPropagation();
+          dismissLeadFromHome(lead._id);
+        }}
+        aria-label="처리 완료·목록에서 숨기기"
+        title="처리 완료·목록에서 숨기기"
+      >
+        <span className="material-symbols-outlined" aria-hidden>radio_button_unchecked</span>
+      </button>
+      <div className="home-todo-leads-item-stack">
+        <div className="home-todo-leads-item-main">
+          <span className="home-todo-leads-channel" title={lead._channelLabel}>
+            {lead._channelLabel}
+          </span>
+          <span className="home-todo-leads-meta">{lead._channelSource}</span>
+        </div>
+        <div className="home-todo-leads-item-body">
+          <strong className="home-todo-leads-name">{lead.name || '(이름 없음)'}</strong>
+          <span className="home-todo-leads-email">{lead.email || '—'}</span>
+          <span className="home-todo-leads-phone">{formatLeadContact(lead)}</span>
+        </div>
+      </div>
+      <span className="home-todo-leads-chevron" aria-hidden>
+        <span className="material-symbols-outlined">chevron_right</span>
+      </span>
+      <div className="home-todo-leads-item-trailing">
+        <button
+          type="button"
+          className="home-lead-snooze-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            snoozeLeadHomeOneWeek(lead._id);
+          }}
+          aria-label="일주일 뒤에 다시 표시"
+          title="일주일 뒤에 다시 표시"
+        >
+          1주 보류
+        </button>
+        <time
+          className="home-todo-leads-time"
+          dateTime={lead.receivedAt ? new Date(lead.receivedAt).toISOString() : undefined}
+        >
+          {formatLeadReceivedAt(lead.receivedAt)}
+        </time>
+      </div>
+    </li>
+  );
+
   return (
-    <div className="page home-page">
+    <div className={`page home-page${activeHomeView ? ' home-page--full-view-open' : ''}`}>
       <HomeLeadDetailModal
         open={leadDetailOpen}
         formId={leadDetailContext?.formId}
@@ -892,16 +1049,37 @@ export default function Home() {
         onClose={closeLeadDetail}
         onUpdated={() => {}}
       />
-      <header className="page-header">
-        <PageHeaderNotifyChat />
+      <header className="page-header home-page-header">
+        <div className="home-page-header-actions">
+          <PageHeaderNotifyChat wrapperClassName="home-page-header-notify-wrap" />
+        </div>
       </header>
 
-      <div className="page-content">
+      <div className="page-content home-page-content">
+        <section className="home-mobile-hero" aria-label="대시보드 인사">
+          <p className="home-mobile-greet">
+            {getGreetingForHome()}, {homeUserDisplay}
+          </p>
+          <h2 className="home-mobile-dashboard-title">일일 대시보드</h2>
+        </section>
+
         <div className="home-top-grid">
           <div className="panel home-lead-channel-panel">
             <div className="panel-head">
               <h2>캡처 채널별 리드 수신</h2>
-              <Link to="/lead-capture" className="home-pipeline-link">채널 관리</Link>
+              {isMobile ? (
+                <button
+                  type="button"
+                  className="home-pipeline-link home-pipeline-link--btn"
+                  onClick={() => openHomeView('channels')}
+                >
+                  전체 보기
+                </button>
+              ) : (
+                <Link to="/lead-capture" className="home-pipeline-link">
+                  채널 관리
+                </Link>
+              )}
             </div>
             <div className="home-lead-channel-body">
               {leadChannelsLoading ? (
@@ -924,9 +1102,9 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="cards-grid cards-grid-compact">
-            {cards.map((card) => (
-              <div key={card.label} className="stat-card">
+          <div className="cards-grid cards-grid-compact home-metrics-bento">
+            {cards.map((card, idx) => (
+              <div key={card.label} className={`stat-card stat-card--bento stat-card--bento-${idx}`}>
                 <div className="stat-card-top">
                   <p className="stat-label">{card.label}</p>
                   <span className="material-symbols-outlined stat-card-icon" aria-hidden>{card.icon}</span>
@@ -946,18 +1124,48 @@ export default function Home() {
         <div className="home-schedule-split">
           <div className="home-schedule-left-stack">
             <div className="panel tasks-panel home-todo-panel">
-              <div className="panel-head">
-                <h2>예정 업무</h2>
-                <Link to="/todo-list" className="home-pipeline-link">모두 보기</Link>
+              <div className="panel-head home-todo-panel-head">
+                <div className="home-todo-title-row">
+                  <h2>예정 업무</h2>
+                  <time className="home-schedule-date" dateTime={new Date().toISOString().slice(0, 10)}>
+                    {scheduleTodayLabel}
+                  </time>
+                </div>
+                {isMobile ? (
+                  <button
+                    type="button"
+                    className="home-pipeline-link home-pipeline-link--btn"
+                    onClick={() => openHomeView('todo')}
+                  >
+                    전체 보기
+                  </button>
+                ) : (
+                  <Link to="/todo-list" className="home-pipeline-link">
+                    모두 보기
+                  </Link>
+                )}
               </div>
               <section className="home-todo-upcoming" aria-label="예정 업무">
-                <TodoList embedded />
+                <TodoList embedded previewMax={isMobile ? HOME_MOBILE_PREVIEW_TODO : null} />
               </section>
             </div>
             <div className="panel tasks-panel home-leads-panel">
-              <div className="panel-head">
+              <div className="panel-head home-leads-panel-head">
                 <h2>수신 리드</h2>
-                <Link to="/lead-capture" className="home-pipeline-link">리드 캡처</Link>
+                <div className="home-leads-panel-actions">
+                  {isMobile ? (
+                    <button
+                      type="button"
+                      className="home-pipeline-link home-pipeline-link--btn"
+                      onClick={() => openHomeView('leads')}
+                    >
+                      전체 보기
+                    </button>
+                  ) : null}
+                  <Link to="/lead-capture" className="home-pipeline-link">
+                    리드 캡처
+                  </Link>
+                </div>
               </div>
 
               <div className="home-todo-leads-scroll" aria-label="캡처 채널 수신 리드 목록">
@@ -970,60 +1178,14 @@ export default function Home() {
                 ) : (
                   <>
                     <ul className="home-todo-leads-list">
-                      {visibleHomeCaptureLeads.slice(0, HOME_CAPTURE_LEADS_DISPLAY_MAX).map((lead) => (
-                        <li
-                          key={String(lead._id)}
-                          className="home-todo-leads-item home-todo-leads-item--clickable"
-                          onClick={() => openLeadDetail(lead)}
-                        >
-                          <button
-                            type="button"
-                            className="home-lead-check"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              dismissLeadFromHome(lead._id);
-                            }}
-                            aria-label="처리 완료·목록에서 숨기기"
-                            title="처리 완료·목록에서 숨기기"
-                          >
-                            <span className="material-symbols-outlined" aria-hidden>radio_button_unchecked</span>
-                          </button>
-                          <div className="home-todo-leads-item-stack">
-                            <div className="home-todo-leads-item-main">
-                              <span className="home-todo-leads-channel" title={lead._channelLabel}>
-                                {lead._channelLabel}
-                              </span>
-                              <span className="home-todo-leads-meta">
-                                {lead._channelSource}
-                              </span>
-                            </div>
-                            <div className="home-todo-leads-item-body">
-                              <strong className="home-todo-leads-name">{lead.name || '(이름 없음)'}</strong>
-                              <span className="home-todo-leads-email">{lead.email || '—'}</span>
-                              <span className="home-todo-leads-phone">{formatLeadContact(lead)}</span>
-                            </div>
-                          </div>
-                          <div className="home-todo-leads-item-trailing">
-                            <button
-                              type="button"
-                              className="home-lead-snooze-btn"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                snoozeLeadHomeOneWeek(lead._id);
-                              }}
-                              aria-label="일주일 뒤에 다시 표시"
-                              title="일주일 뒤에 다시 표시"
-                            >
-                              1주 보류
-                            </button>
-                            <time className="home-todo-leads-time" dateTime={lead.receivedAt ? new Date(lead.receivedAt).toISOString() : undefined}>
-                              {formatLeadReceivedAt(lead.receivedAt)}
-                            </time>
-                          </div>
-                        </li>
-                      ))}
+                      {leadsForHomePanel.map(renderCaptureLeadRow)}
                     </ul>
-                    {visibleHomeCaptureLeads.length > HOME_CAPTURE_LEADS_DISPLAY_MAX ? (
+                    {isMobile && leadsCappedForHome.length > HOME_MOBILE_PREVIEW_LEADS ? (
+                      <p className="home-todo-leads-more">
+                        상위 {HOME_MOBILE_PREVIEW_LEADS}건만 미리 보여 줍니다. 나머지는 「전체 보기」에서
+                        확인하세요. (숨김 제외 {visibleHomeCaptureLeads.length.toLocaleString()}건)
+                      </p>
+                    ) : !isMobile && visibleHomeCaptureLeads.length > HOME_CAPTURE_LEADS_DISPLAY_MAX ? (
                       <p className="home-todo-leads-more">
                         오래된 순 상위 {HOME_CAPTURE_LEADS_DISPLAY_MAX}건만 표시합니다. 전체는{' '}
                         <Link to="/lead-capture">리드 캡처</Link>에서 확인하세요. (숨김 제외{' '}
@@ -1039,9 +1201,21 @@ export default function Home() {
           <div className="panel home-dashboard-calendar-panel">
             <div className="home-dashboard-calendar-embed">
               <div className="home-dashboard-calendar-top-link-wrap">
-                <Link to="/calendar" className="home-pipeline-link">캘린더 전체 보기</Link>
+                {isMobile ? (
+                  <button
+                    type="button"
+                    className="home-pipeline-link home-pipeline-link--btn"
+                    onClick={() => openHomeView('calendar')}
+                  >
+                    전체 보기
+                  </button>
+                ) : (
+                  <Link to="/calendar" className="home-pipeline-link">
+                    캘린더 전체 보기
+                  </Link>
+                )}
               </div>
-              <Calendar />
+              <Calendar embedded hideBottomSection />
             </div>
           </div>
         </div>
@@ -1174,13 +1348,13 @@ export default function Home() {
                       해당 기간에 수주 성공 건이 없거나, 담당자 정보가 없습니다.
                     </p>
                   ) : (
-                    <table className="data-table">
+                    <table className="data-table home-reps-table">
                       <thead>
                         <tr>
                           <th>담당자</th>
                           <th>매출액</th>
-                          <th>수주 성공 건수</th>
-                          <th>비중(건수)</th>
+                          <th className="home-reps-col-extra">수주 성공 건수</th>
+                          <th className="home-reps-col-extra">비중(건수)</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1193,8 +1367,8 @@ export default function Home() {
                               </div>
                             </td>
                             <td className="font-semibold">{row.revenueDisplay}</td>
-                            <td>{row.deals}</td>
-                            <td>
+                            <td className="home-reps-col-extra">{row.deals}</td>
+                            <td className="home-reps-col-extra">
                               <div className="quota-cell">
                                 <div className="quota-bar">
                                   <div className="quota-fill" style={{ width: `${row.sharePct}%` }} />
@@ -1229,6 +1403,57 @@ export default function Home() {
           )
         )}
       </div>
+
+      <HomeFullViewModal
+        open={Boolean(activeHomeView)}
+        title={activeHomeView ? HOME_VIEW_TITLES[activeHomeView] : ''}
+        onClose={closeHomeView}
+      >
+        {activeHomeView === 'todo' ? <TodoList embedded /> : null}
+        {activeHomeView === 'leads' ? (
+          <div className="home-modal-leads" aria-label="수신 리드 전체">
+            {leadChannelsLoading ? (
+              <p className="home-todo-leads-empty">불러오는 중…</p>
+            ) : recentCaptureLeads.length === 0 ? (
+              <p className="home-todo-leads-empty">수신된 리드가 없습니다.</p>
+            ) : visibleHomeCaptureLeads.length === 0 ? (
+              <p className="home-todo-leads-empty">
+                표시할 리드가 없습니다. (완료·1주 미표시 항목은 숨겨져 있습니다.)
+              </p>
+            ) : (
+              <ul className="home-todo-leads-list home-modal-leads-list">{leadsCappedForHome.map(renderCaptureLeadRow)}</ul>
+            )}
+          </div>
+        ) : null}
+        {activeHomeView === 'calendar' ? <Calendar embedded hideBottomSection={false} /> : null}
+        {activeHomeView === 'channels' ? (
+          <div className="home-modal-channels" aria-label="캡처 채널 전체">
+            {leadChannelsLoading ? (
+              <p className="home-chart-empty">채널 데이터 불러오는 중…</p>
+            ) : leadChannels.length === 0 ? (
+              <p className="home-chart-empty">표시할 캡처 채널 데이터가 없습니다.</p>
+            ) : (
+              <ul className="home-lead-channel-list">
+                {leadChannels.map((channel) => (
+                  <li key={channel.source} className="home-lead-channel-item">
+                    <div className="home-lead-channel-source">
+                      <span className="home-lead-channel-dot" />
+                      <span>{channel.source}</span>
+                    </div>
+                    <strong>{channel.count.toLocaleString()}건</strong>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ) : null}
+      </HomeFullViewModal>
+
+      <Link to="/lead-capture" className="home-mobile-fab" title="리드 캡처" aria-label="리드 캡처로 이동">
+        <span className="material-symbols-outlined" aria-hidden>
+          add
+        </span>
+      </Link>
     </div>
   );
 }

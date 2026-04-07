@@ -72,6 +72,13 @@ input, select, textarea {
   border-bottom: 1px solid var(--card-border);
 }
 
+@media (max-width: 768px) {
+  .page-header {
+    background: var(--bg-light);
+    border-bottom: 1px solid rgba(91, 124, 153, 0.2);
+  }
+}
+
 .header-search {
   flex: 1;
   min-width: 0;

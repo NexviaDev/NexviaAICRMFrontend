@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import OpportunityModal from './opportunity-modal/opportunity-modal';
 import PipelineStagesManageModal from './pipeline-stages-manage-modal/pipeline-stages-manage-modal';
 import './sales-pipeline.css';
+import './sales-pipeline-responsive.css';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 
 import { API_BASE } from '@/config';
@@ -39,6 +40,14 @@ function formatCurrency(value, currency) {
   return '₩' + value.toLocaleString();
 }
 
+function nameInitials(name) {
+  const s = String(name || '').trim();
+  if (!s) return '?';
+  const parts = s.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return s.slice(0, 2).toUpperCase();
+}
+
 export default function SalesPipeline() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [grouped, setGrouped] = useState({});
@@ -52,6 +61,8 @@ export default function SalesPipeline() {
   const [listMeta, setListMeta] = useState(null);
   const [stageDefinitions, setStageDefinitions] = useState([]);
   const [showStagesModal, setShowStagesModal] = useState(false);
+  /** 모바일: 칩으로 선택한 파이프라인 단계(해당 단계 카드만 목록 표시) */
+  const [mobileListStage, setMobileListStage] = useState(null);
 
   const modalMode = searchParams.get(MODAL_PARAM);
   const editOppId = searchParams.get(OPP_ID_PARAM);
@@ -284,6 +295,23 @@ export default function SalesPipeline() {
     return tone;
   }, [boardStages]);
 
+  useEffect(() => {
+    if (!boardStages.length) return;
+    setMobileListStage((prev) => (prev && boardStages.includes(prev) ? prev : boardStages[0]));
+  }, [boardStages]);
+
+  const totalPipelineValue = useMemo(
+    () => boardStages.reduce((sum, st) => sum + (Number(totals[st]) || 0), 0),
+    [boardStages, totals]
+  );
+
+  const winRatePercent = useMemo(() => {
+    const w = (grouped.Won || []).length;
+    const l = (grouped.Lost || []).length;
+    if (w + l === 0) return null;
+    return Math.round((100 * w) / (w + l));
+  }, [grouped]);
+
   /** Senior·대표: 금액·단계 관리 등 민감 UI (백엔드 requireSeniorOrAbove 와 동일 기준) */
   const canViewSeniorContent = isSeniorOrAboveRole(getStoredCrmUser()?.role);
 
@@ -291,6 +319,10 @@ export default function SalesPipeline() {
     if (!canViewSeniorContent) return '—';
     return formatCurrency(opp.value, opp.currency);
   };
+
+  const activeMobileStage =
+    mobileListStage && boardStages.includes(mobileListStage) ? mobileListStage : boardStages[0];
+  const mobileStageItems = activeMobileStage ? grouped[activeMobileStage] || [] : [];
 
   return (
     <div className="sp-container">
@@ -337,8 +369,119 @@ export default function SalesPipeline() {
           로딩 중...
         </div>
       ) : (
-        <div className="sp-board">
-          <div className="sp-stage-overview">
+        <>
+          <section className="sp-mobile-hero sp-mobile-only" aria-label="파이프라인 요약">
+            <h2 className="sp-mobile-hero-title">세일즈 파이프라인</h2>
+            <p className="sp-mobile-hero-desc">진행 중인 기회를 단계별로 관리합니다</p>
+            <div className="sp-mobile-bento">
+              <div className="sp-mobile-bento-card sp-mobile-bento-card--mint">
+                <span className="material-symbols-outlined" aria-hidden>payments</span>
+                <div>
+                  <p className="sp-mobile-bento-label">파이프라인 합계</p>
+                  <p className="sp-mobile-bento-value">
+                    {canViewSeniorContent
+                      ? formatCurrency(totalPipelineValue, (grouped[boardStages[0]] || [])[0]?.currency || 'KRW')
+                      : '—'}
+                  </p>
+                </div>
+              </div>
+              <div className="sp-mobile-bento-card sp-mobile-bento-card--lavender">
+                <span className="material-symbols-outlined" aria-hidden>trending_up</span>
+                <div>
+                  <p className="sp-mobile-bento-label">수주 승률</p>
+                  <p className="sp-mobile-bento-value">
+                    {winRatePercent != null ? `${winRatePercent}%` : '—'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="sp-mobile-chips-wrap sp-mobile-only" aria-label="단계 필터">
+            <div className="sp-mobile-chips" role="tablist">
+              {boardStages.map((stage) => (
+                <button
+                  key={`mchip-${stage}`}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeMobileStage === stage}
+                  className={`sp-mobile-chip ${activeMobileStage === stage ? 'is-active' : ''}`}
+                  onClick={() => setMobileListStage(stage)}
+                >
+                  {stageLabels[stage] ?? stage}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="sp-mobile-deals sp-mobile-only" aria-live="polite">
+            <div className="sp-mobile-deals-head">
+              <p className="sp-mobile-deals-head-label">
+                {stageLabels[activeMobileStage] ?? activeMobileStage} ({mobileStageItems.length})
+              </p>
+              <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: '#acb3b4' }} aria-hidden>
+                sort
+              </span>
+            </div>
+            {mobileStageItems.length === 0 ? (
+              <p className="sp-mobile-empty">이 단계에 표시할 기회가 없습니다.</p>
+            ) : (
+              <div className="sp-mobile-deals-list">
+                {mobileStageItems.map((opp, i) => {
+                  const pillClass = `sp-mobile-deal-pill--${i % 3}`;
+                  const pillText = (opp.productName && String(opp.productName).trim()) || '기회';
+                  const sub =
+                    (opp.contactName && String(opp.contactName).trim()) ||
+                    (opp.title && String(opp.title).trim()) ||
+                    '—';
+                  return (
+                    <div
+                      key={opp._id}
+                      className="sp-card sp-mobile-deal-card"
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, opp._id)}
+                      onDragEnd={handleDragEnd}
+                      onClick={() => openEditModal(opp._id)}
+                    >
+                      <div className="sp-mobile-deal-top">
+                        <div>
+                          <h3 className="sp-mobile-deal-title">
+                            {[opp.customerCompanyName, opp.title].filter(Boolean).join(' · ') || '—'}
+                          </h3>
+                          <p className="sp-mobile-deal-sub">{sub}</p>
+                        </div>
+                        <span className={`sp-mobile-deal-pill ${pillClass}`}>{pillText}</span>
+                      </div>
+                      <div className="sp-mobile-deal-bottom">
+                        <div className="sp-mobile-deal-owner">
+                          <span className="sp-mobile-deal-avatar" aria-hidden>
+                            {nameInitials(opp.assignedToName)}
+                          </span>
+                          <span className="sp-mobile-deal-owner-name">{opp.assignedToName || '담당 미지정'}</span>
+                        </div>
+                        <p className="sp-mobile-deal-value">{formatOppValue(opp)}</p>
+                      </div>
+                      <button
+                        type="button"
+                        className="sp-card-delete sp-mobile-deal-delete"
+                        title="삭제"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(opp._id);
+                        }}
+                      >
+                        <span className="material-symbols-outlined">close</span>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          <div className="sp-board">
+            <div className="sp-board-desktop">
+              <div className="sp-stage-overview">
             {boardStages.map((stage, idx) => {
               const items = grouped[stage] || [];
               const total = totals[stage] || 0;
@@ -398,11 +541,15 @@ export default function SalesPipeline() {
                 </div>
               );
             })}
-          </div>
+              </div>
+            </div>
 
           {/* Drop Zones - 항상 화면 하단에 고정 표시 */}
           <div className="sp-dropzones-section">
-            <h3 className="sp-dropzones-title">Quick Actions / Drop Zones</h3>
+            <h3 className="sp-dropzones-title">
+              <span className="sp-dz-title-desktop">Quick Actions / Drop Zones</span>
+              <span className="sp-dz-title-mobile">빠른 처리 · 드롭 영역</span>
+            </h3>
             <div className="sp-dropzones">
               {Object.entries(DROP_ZONE_CONFIG).map(([stage, cfg]) => {
                 const items = grouped[stage] || [];
@@ -459,6 +606,18 @@ export default function SalesPipeline() {
             </div>
           </div>
         </div>
+        </>
+      )}
+
+      {!loading && (
+        <button
+          type="button"
+          className="sp-mobile-fab"
+          aria-label="기회 추가"
+          onClick={() => openAddModal(activeMobileStage || undefined)}
+        >
+          <span className="material-symbols-outlined">add</span>
+        </button>
       )}
 
       {/* 기회 모달 */}

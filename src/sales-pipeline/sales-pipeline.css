@@ -548,6 +548,10 @@
   padding: 0 0.25rem;
 }
 
+.sp-dz-title-mobile {
+  display: none;
+}
+
 .sp-dropzones {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

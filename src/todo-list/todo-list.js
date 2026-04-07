@@ -24,7 +24,7 @@ function toDueRfc3339(dateStr) {
   return d.toISOString().slice(0, 10) + 'T00:00:00.000Z';
 }
 
-export default function TodoList({ embedded = false }) {
+export default function TodoList({ embedded = false, previewMax = null }) {
   const [taskLists, setTaskLists] = useState([]);
   const [taskListId, setTaskListId] = useState(null);
   const [tasks, setTasks] = useState([]);
@@ -147,6 +147,9 @@ export default function TodoList({ embedded = false }) {
       )
     : tasks;
 
+  const previewLimit = embedded && typeof previewMax === 'number' && previewMax > 0 ? previewMax : null;
+  const tasksForDisplay = previewLimit != null ? filteredTasks.slice(0, previewLimit) : filteredTasks;
+
   const handleToggleComplete = async (task) => {
     if (!taskListId || togglingId) return;
     const newStatus = task.status === STATUS_COMPLETED ? STATUS_NEEDS_ACTION : STATUS_COMPLETED;
@@ -268,7 +271,9 @@ export default function TodoList({ embedded = false }) {
   };
 
   return (
-    <div className={`todo-page ${embedded ? 'todo-page-embedded' : ''}`}>
+    <div
+      className={`todo-page ${embedded ? 'todo-page-embedded' : ''}${previewLimit != null ? ' todo-page--preview' : ''}`}
+    >
       {!embedded && (
       <header className="todo-header">
         <div className="todo-header-left">
@@ -316,7 +321,7 @@ export default function TodoList({ embedded = false }) {
             {filteredTasks.length === 0 ? (
               <li className="todo-list-empty">할 일이 없습니다. 새 할 일을 추가해 보세요.</li>
             ) : (
-              filteredTasks.map((task) => (
+              tasksForDisplay.map((task) => (
                 <li
                   key={task.id}
                   className={`todo-list-row ${task.status === STATUS_COMPLETED ? 'todo-list-row-done' : ''}`}
@@ -373,6 +378,11 @@ export default function TodoList({ embedded = false }) {
             )}
           </ul>
         )}
+        {previewLimit != null && filteredTasks.length > previewLimit ? (
+          <p className="todo-preview-more-hint" role="status">
+            외 {filteredTasks.length - previewLimit}건은 「전체 보기」에서 확인할 수 있습니다.
+          </p>
+        ) : null}
       </div>
 
       {detailTask && taskListId && (

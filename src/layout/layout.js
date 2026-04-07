@@ -1,10 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate, Link } from 'react-router-dom';
 import { API_BASE } from '@/config';
 import { getPendingExcelImportJobs, removePendingExcelImportJob } from '@/lib/cc-excel-import-jobs';
 import { LAYOUT_EXCEL_IMPORT_POLL_MS } from '@/lib/polling-intervals';
 import Sidebar from './sidebar';
 import './layout.css';
+
+/** 사이드바 상단과 동일 로고 (sidebar.js NEXVIA_LOGO_CDN_URL) */
+const NEXVIA_LOGO_CDN_URL =
+  'https://res.cloudinary.com/djcsvvhly/image/upload/v1774253552/NexviaLogo_pid8kz.png';
 
 export default function Layout() {
   const [sidebarDrawerOpen, setSidebarDrawerOpen] = useState(false);
@@ -119,6 +123,14 @@ export default function Layout() {
           </div>
         )}
         <header className="app-main-header">
+          <Link
+            to="/"
+            className="app-main-header-logo"
+            aria-label="대시보드(홈)으로 이동"
+            onClick={() => setSidebarDrawerOpen(false)}
+          >
+            <img src={NEXVIA_LOGO_CDN_URL} alt="" decoding="async" />
+          </Link>
           <button
             type="button"
             className="app-hamburger"

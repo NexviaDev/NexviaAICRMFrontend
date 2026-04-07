@@ -2,6 +2,9 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { API_BASE } from '@/config';
 import './sms-draft-modal.css';
 
+/** 본문 글자 수 표시 상한 (디자인 시안 기준) */
+const SMS_BODY_MAX_LEN = 1000;
+
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -114,7 +117,7 @@ export default function SmsDraftModal({
     if (isBulk) {
       setBulkTitle(String(initialBulkTitle ?? '').trim());
       if (initialBulkBody !== undefined && initialBulkBody !== null) {
-        setDraft(String(initialBulkBody));
+        setDraft(String(initialBulkBody).slice(0, SMS_BODY_MAX_LEN));
       } else {
         setDraft('');
       }
@@ -193,7 +196,7 @@ export default function SmsDraftModal({
         return;
       }
       if (data.text != null && String(data.text).length > 0) {
-        setDraft(String(data.text).trim());
+        setDraft(String(data.text).trim().slice(0, SMS_BODY_MAX_LEN));
       }
     } catch (e) {
       setAiError(e.message || '오류가 발생했습니다.');
@@ -229,23 +232,19 @@ export default function SmsDraftModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="sms-draft-header">
-          <h3 id="sms-draft-title">{title}</h3>
+          <div className="sms-draft-header-text">
+            <h3 id="sms-draft-title">{title}</h3>
+            <p className="sms-draft-header-sub">
+              {isBulk
+                ? '동일 본문으로 수신 번호를 문자 앱에 넣습니다. 기기·앱마다 다를 수 있습니다.'
+                : 'AI를 사용하여 더 전문적이고 명확한 메시지를 작성해보세요.'}
+            </p>
+          </div>
           <button type="button" className="sms-draft-close" onClick={onClose} aria-label="닫기">
             <span className="material-symbols-outlined">close</span>
           </button>
         </div>
         <div className="sms-draft-body">
-          <p className="sms-draft-hint">
-            {isBulk ? (
-              <>
-                동일 본문으로 수신 번호를 한꺼번에 문자 앱에 넣습니다. 기기·앱마다 동작이 다를 수 있습니다.
-              </>
-            ) : (
-              <>
-                이메일 작성 화면과 <strong>같은 AI 기능</strong>을 씁니다. 교정·요약 등은 <strong>보낼 문자</strong> 칸에 넣은 뒤 실행하세요.
-              </>
-            )}
-          </p>
           {isBulk && bulkPhones.length === 0 ? (
             <p className="sms-draft-error">문자를 보낼 수 있는 전화번호가 없습니다.</p>
           ) : null}
@@ -268,48 +267,68 @@ export default function SmsDraftModal({
             </>
           ) : null}
 
-          <div className="sms-draft-ai-panel" role="region" aria-label="AI 문자 보조">
+          <section className="sms-draft-ai-panel" role="region" aria-label="AI 문자 보조">
             <div className="sms-draft-ai-head">
-              <span className="material-symbols-outlined" aria-hidden>auto_awesome</span>
-              <span>AI 문장 다듬기</span>
+              <span className="material-symbols-outlined sms-draft-ai-sparkle" aria-hidden>
+                auto_awesome
+              </span>
+              <span className="sms-draft-ai-title-label">AI 문장 다듬기</span>
             </div>
             <p className="sms-draft-ai-mini">
               분류·감정 분석 등은 JSON으로만 표시되며 본문에 넣지 않습니다.
             </p>
-            <label className="sms-draft-ai-label" htmlFor="sms-draft-ai-mode">
-              기능
-            </label>
-            <select
-              id="sms-draft-ai-mode"
-              className="sms-draft-ai-select"
-              value={aiMode}
-              onChange={(e) => setAiMode(e.target.value)}
-            >
-              <optgroup label="기본 품질">
-                <option value="proofread">맞춤법·문법 교정</option>
-                <option value="tone">어조 변환</option>
-                <option value="rewrite">문장 다듬기 (간결하게)</option>
-              </optgroup>
-              <optgroup label="생산성">
-                <option value="auto_draft">문자 자동 작성 (키워드)</option>
-                <option value="smart_reply">답장 자동 생성</option>
-                <option value="summarize">요약 (핵심 3줄)</option>
-              </optgroup>
-              <optgroup label="업무 자동화">
-                <option value="classify">문자 분류·태깅</option>
-                <option value="priority">중요도·긴급도 판단</option>
-                <option value="actions">할 일 추출</option>
-              </optgroup>
-              <optgroup label="글로벌">
-                <option value="translate">번역 (한↔영)</option>
-                <option value="style_us">미국식 비즈니스 스타일 (영문)</option>
-              </optgroup>
-              <optgroup label="고급">
-                <option value="personalize">개인화 (이름·회사 반영)</option>
-                <option value="sentiment">감정 분석</option>
-                <option value="risk">스팸·위험 신호 점검</option>
-              </optgroup>
-            </select>
+            <div className="sms-draft-ai-toolbar">
+              <div className="sms-draft-ai-select-wrap">
+                <label className="sms-draft-sr-only" htmlFor="sms-draft-ai-mode">
+                  AI 기능
+                </label>
+                <select
+                  id="sms-draft-ai-mode"
+                  className="sms-draft-ai-select sms-draft-ai-select--toolbar"
+                  value={aiMode}
+                  onChange={(e) => setAiMode(e.target.value)}
+                >
+                  <optgroup label="기본 품질">
+                    <option value="proofread">맞춤법·문법 교정</option>
+                    <option value="tone">어조 변환</option>
+                    <option value="rewrite">문장 다듬기 (간결하게)</option>
+                  </optgroup>
+                  <optgroup label="생산성">
+                    <option value="auto_draft">문자 자동 작성 (키워드)</option>
+                    <option value="smart_reply">답장 자동 생성</option>
+                    <option value="summarize">요약 (핵심 3줄)</option>
+                  </optgroup>
+                  <optgroup label="업무 자동화">
+                    <option value="classify">문자 분류·태깅</option>
+                    <option value="priority">중요도·긴급도 판단</option>
+                    <option value="actions">할 일 추출</option>
+                  </optgroup>
+                  <optgroup label="글로벌">
+                    <option value="translate">번역 (한↔영)</option>
+                    <option value="style_us">미국식 비즈니스 스타일 (영문)</option>
+                  </optgroup>
+                  <optgroup label="고급">
+                    <option value="personalize">개인화 (이름·회사 반영)</option>
+                    <option value="sentiment">감정 분석</option>
+                    <option value="risk">스팸·위험 신호 점검</option>
+                  </optgroup>
+                </select>
+                <span className="material-symbols-outlined sms-draft-ai-select-chevron" aria-hidden>
+                  expand_more
+                </span>
+              </div>
+              <button
+                type="button"
+                className="sms-draft-ai-run-inline"
+                onClick={runSmsAiAssist}
+                disabled={aiLoading || (isBulk && bulkPhones.length === 0)}
+              >
+                <span className="material-symbols-outlined sms-draft-ai-bolt" aria-hidden>
+                  bolt
+                </span>
+                {aiLoading ? '처리 중…' : '실행'}
+              </button>
+            </div>
 
             {aiMode === 'tone' && (
               <div className="sms-draft-ai-row">
@@ -433,16 +452,6 @@ export default function SmsDraftModal({
             )}
 
             {aiError ? <p className="sms-draft-ai-err">{aiError}</p> : null}
-            <div className="sms-draft-ai-actions">
-              <button
-                type="button"
-                className="sms-draft-ai-run"
-                onClick={runSmsAiAssist}
-                disabled={aiLoading || (isBulk && bulkPhones.length === 0)}
-              >
-                {aiLoading ? '처리 중…' : '실행'}
-              </button>
-            </div>
             {aiJsonResult ? (
               <div className="sms-draft-ai-json-wrap">
                 <div className="sms-draft-ai-json-head">
@@ -454,56 +463,76 @@ export default function SmsDraftModal({
                 <pre className="sms-draft-ai-json">{aiJsonResult}</pre>
               </div>
             ) : null}
+          </section>
+
+          <div className="sms-draft-message-block">
+            <label className="sms-draft-label" htmlFor="sms-draft-body">
+              보낼 문자 (수정 가능)
+            </label>
+            <div className="sms-draft-textarea-wrap">
+              <textarea
+                id="sms-draft-body"
+                className="sms-draft-body-input"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                placeholder="고객님께 보낼 메시지를 입력하거나 AI 기능을 활용해 보세요…"
+                maxLength={SMS_BODY_MAX_LEN}
+                rows={isBulk ? 7 : 6}
+                disabled={isBulk && bulkPhones.length === 0}
+              />
+              <div className="sms-draft-char-count" aria-live="polite">
+                {String(draft || '').length} / {SMS_BODY_MAX_LEN}
+              </div>
+            </div>
           </div>
 
-          <label className="sms-draft-label sms-draft-label-mt" htmlFor="sms-draft-body">
-            보낼 문자 (수정 가능)
-          </label>
-          <textarea
-            id="sms-draft-body"
-            className="sms-draft-input sms-draft-body"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            placeholder="위에서 AI 실행 후 여기에 결과가 들어갑니다. 직접 입력해도 됩니다."
-            rows={isBulk ? 7 : 6}
-            disabled={isBulk && bulkPhones.length === 0}
-          />
-
-          <div className="sms-draft-footer-btns">
-            <button type="button" className="sms-draft-btn sms-draft-btn-secondary" onClick={onClose}>
-              취소
-            </button>
-            {canOpenSms ? (
-              <a
-                href={smsHref}
-                className="sms-draft-btn sms-draft-btn-primary"
-                onClick={() => {
-                  if (isBulk && typeof onBulkSmsOpened === 'function' && bulkContacts?.length) {
-                    onBulkSmsOpened({
-                      title: bulkTitle.trim() || '(제목 없음)',
-                      body: String(draft ?? '').trim(),
-                      contacts: bulkContacts.map((c) => ({
-                        _id: c?._id,
-                        name: c?.name,
-                        company: c?.company,
-                        phone: c?.phone
-                      })),
-                      existingId: bulkHistoryEntryId || undefined
-                    });
-                  }
-                  onClose();
-                }}
-              >
-                <span className="material-symbols-outlined" aria-hidden>sms</span>
-                {isBulk ? '문자 앱으로 열기 (단체)' : '문자 앱으로 보내기'}
-              </a>
-            ) : (
-              <button type="button" className="sms-draft-btn sms-draft-btn-primary" disabled>
-                <span className="material-symbols-outlined" aria-hidden>sms</span>
-                {isBulk ? '문자 앱으로 열기 (단체)' : '문자 앱으로 보내기'}
+          <footer className="sms-draft-footer">
+            <div className="sms-draft-footer-hint">
+              <span className="material-symbols-outlined sms-draft-footer-info-icon" aria-hidden>
+                info
+              </span>
+              <span>전송 전 내용을 반드시 확인해주세요.</span>
+            </div>
+            <div className="sms-draft-footer-actions">
+              <button type="button" className="sms-draft-btn sms-draft-btn-tertiary" onClick={onClose}>
+                취소
               </button>
-            )}
-          </div>
+              {canOpenSms ? (
+                <a
+                  href={smsHref}
+                  className="sms-draft-btn sms-draft-btn-primary"
+                  onClick={() => {
+                    if (isBulk && typeof onBulkSmsOpened === 'function' && bulkContacts?.length) {
+                      onBulkSmsOpened({
+                        title: bulkTitle.trim() || '(제목 없음)',
+                        body: String(draft ?? '').trim(),
+                        contacts: bulkContacts.map((c) => ({
+                          _id: c?._id,
+                          name: c?.name,
+                          company: c?.company,
+                          phone: c?.phone
+                        })),
+                        existingId: bulkHistoryEntryId || undefined
+                      });
+                    }
+                    onClose();
+                  }}
+                >
+                  {isBulk ? '문자 앱으로 열기 (단체)' : '문자 앱으로 보내기'}
+                  <span className="material-symbols-outlined" aria-hidden>
+                    send
+                  </span>
+                </a>
+              ) : (
+                <button type="button" className="sms-draft-btn sms-draft-btn-primary" disabled>
+                  {isBulk ? '문자 앱으로 열기 (단체)' : '문자 앱으로 보내기'}
+                  <span className="material-symbols-outlined" aria-hidden>
+                    send
+                  </span>
+                </button>
+              )}
+            </div>
+          </footer>
         </div>
       </div>
     </div>
