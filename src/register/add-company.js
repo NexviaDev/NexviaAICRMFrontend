@@ -1,6 +1,14 @@
 import { useState } from 'react';
 import './add-company.css';
 
+/** 입력 중 사업자등록번호: 숫자만 받아 XXX-XX-XXXXX 형태로 표시 (최대 10자리) */
+function formatBusinessNumberInput(value) {
+  const digits = String(value || '').replace(/\D/g, '').slice(0, 10);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 5) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  return `${digits.slice(0, 3)}-${digits.slice(3, 5)}-${digits.slice(5, 10)}`;
+}
+
 /**
  * 회사 추가 모달 (회원가입 등에서 사용)
  * 회사명, 주소, 상세주소, 사업자 번호, 대표자 성함 필수
@@ -32,9 +40,14 @@ export default function AddCompany({ isOpen, onClose, onSuccess, setError }) {
     const a = address.trim();
     const ad = addressDetail.trim();
     const bn = businessNumber.trim();
+    const bnDigits = bn.replace(/\D/g, '');
     const rn = representativeName.trim();
     if (!n || !a || !ad || !bn || !rn) {
       if (setError) setError('회사명, 주소, 상세주소, 사업자 번호, 대표자 성함을 모두 입력해 주세요.');
+      return;
+    }
+    if (bnDigits.length !== 10) {
+      if (setError) setError('사업자 번호는 숫자 10자리를 입력해 주세요.');
       return;
     }
     if (setError) setError('');
@@ -77,7 +90,17 @@ export default function AddCompany({ isOpen, onClose, onSuccess, setError }) {
           </div>
           <div className="add-company-field">
             <label htmlFor="ac-business-number">사업자 번호 *</label>
-            <input id="ac-business-number" type="text" value={businessNumber} onChange={(e) => setBusinessNumber(e.target.value)} placeholder="사업자 번호 (숫자 10자리)" required />
+            <input
+              id="ac-business-number"
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength={12}
+              value={businessNumber}
+              onChange={(e) => setBusinessNumber(formatBusinessNumberInput(e.target.value))}
+              placeholder="000-00-00000"
+              required
+            />
           </div>
           <div className="add-company-field">
             <label htmlFor="ac-representative">대표자 성함 *</label>
