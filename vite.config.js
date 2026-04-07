@@ -27,7 +27,8 @@ export default defineConfig({
     jsxInJs(),
     react({ include: /\.(jsx|js|tsx|ts)$/ }),
     VitePWA({
-      registerType: 'autoUpdate',
+      /** prompt: 새 SW 설치 시 사용자가 «새로고침»할 때까지 옛 캐시 유지 → 안내 배너로 해결 (PC·모바일 동일) */
+      registerType: 'prompt',
       includeAssets: ['nexvia-app-icon.png'],
       manifest: {
         name: '넥스비아 CRM',
@@ -57,6 +58,9 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,svg,png,woff2}'],
+        /** 새 SW 활성화 직후 클라이언트에 즉시 적용, 오래된 프리캐시 정리 */
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
