@@ -492,6 +492,59 @@
     white-space: nowrap;
   }
 
+  .customer-company-employees-page .cce-mobile-name-phone-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-top: 0.2rem;
+    max-width: 100%;
+  }
+
+  .customer-company-employees-page .cce-mobile-name-phone-num {
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: #7a8a8c;
+    line-height: 1.35;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1 1 auto;
+  }
+
+  .customer-company-employees-page .cce-mobile-name-phone-icon {
+    flex-shrink: 0;
+    width: 1.85rem;
+    height: 1.85rem;
+  }
+
+  .customer-company-employees-page .cce-mobile-name-email-row {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-top: 0.2rem;
+    max-width: 100%;
+  }
+
+  .customer-company-employees-page .cce-mobile-name-email-text {
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: #7a8a8c;
+    line-height: 1.35;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1 1 auto;
+  }
+
+  .customer-company-employees-page .cce-mobile-name-email-icon {
+    flex-shrink: 0;
+    width: 1.85rem;
+    height: 1.85rem;
+  }
+
   .customer-company-employees-page .cce-mobile-card-company {
     margin: 0.25rem 0 0;
     font-size: 0.8125rem;

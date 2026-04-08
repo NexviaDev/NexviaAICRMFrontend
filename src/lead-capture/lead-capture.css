@@ -1052,23 +1052,6 @@
   border-top: 1px solid var(--card-border);
 }
 
-.lead-capture-test-btn {
-  width: 100%;
-  padding: 0.75rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--text);
-  background: var(--bg-light);
-  border: none;
-  border-radius: 0.5rem;
-  cursor: pointer;
-  margin-top: 0.5rem;
-}
-
-.lead-capture-test-btn:hover {
-  background: var(--card-border);
-}
-
 .lead-capture-stats {
   display: flex;
   flex-direction: column;

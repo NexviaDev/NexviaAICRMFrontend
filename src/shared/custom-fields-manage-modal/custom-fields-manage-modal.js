@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { API_BASE } from '@/config';
-import { getStoredCrmUser, isSeniorOrAboveRole } from '@/lib/crm-role-utils';
+import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import './custom-fields-manage-modal.css';
 
 const FIELD_TYPES = [
@@ -22,7 +22,7 @@ export default function CustomFieldsManageModal({
   apiBase = API_BASE,
   getAuthHeader = () => ({})
 }) {
-  const allowed = isSeniorOrAboveRole(getStoredCrmUser()?.role);
+  const allowed = isAdminOrAboveRole(getStoredCrmUser()?.role);
   const [definitions, setDefinitions] = useState([]);
   const [newLabel, setNewLabel] = useState('');
   const [newType, setNewType] = useState('text');
@@ -135,7 +135,7 @@ export default function CustomFieldsManageModal({
             </header>
             <div className="custom-fields-manage-body">
               <p className="custom-fields-manage-denied-msg">
-                추가 필드 정의는 대표(Owner) 또는 책임(Senior)만 사용할 수 있습니다.
+                추가 필드 정의는 대표(Owner) 또는 관리자(Admin)만 사용할 수 있습니다.
               </p>
               <button type="button" className="custom-fields-manage-add-btn" onClick={onClose}>닫기</button>
             </div>

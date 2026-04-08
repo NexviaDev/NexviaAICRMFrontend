@@ -69,6 +69,92 @@ function formatSubscriptionDate(iso) {
   }
 }
 
+/** 구독 카드용 — 백엔드 정책(역할 정규화·미들웨어)과 맞춘 안내 문구 */
+const CRM_ROLE_PERMISSION_GUIDE = [
+  {
+    id: 'owner',
+    title: '대표 (Owner)',
+    usesSeat: true,
+    bullets: [
+      '구독 시트 1명분을 사용합니다.',
+      '직원 역할·부서 변경, 조직도 편집, 권한 승인 요청 수신 등 인사·조직을 총괄합니다.',
+      '다른 계정을 관리자(Admin)로 올리는 것은 대표만 할 수 있습니다.',
+      '고객사·연락처·제품 삭제, 커스텀 필드 정의, 리드 캡처 채널 관리, 전체 엑셀보내기 등 관리자 전용(Admin 이상) 작업을 포함해 넓은 범위의 CRM 설정이 가능합니다.'
+    ]
+  },
+  {
+    id: 'admin',
+    title: '관리자 (Admin, 구 Senior)',
+    usesSeat: true,
+    bullets: [
+      '구독 시트 1명분을 사용합니다.',
+      '대표를 제외한 구성원을 권한 대기·직원·실무자·관리자까지 변경하고, 부서를 배정하며 조직도를 편집할 수 있습니다.',
+      '「관리자」로 승격시키는 작업은 대표만 가능합니다.',
+      '삭제·민감 API, 리드 캡처 채널 관리, 알림 관리, 전체 엑셀보내기 등 Admin 이상이 필요한 기능을 사용할 수 있습니다.'
+    ]
+  },
+  {
+    id: 'manager',
+    title: '실무자 (Manager, 구 Practitioner / Contributor)',
+    usesSeat: true,
+    bullets: [
+      '구독 시트 1명분을 사용합니다.',
+      '고객사·연락처·제품·일정 등 데이터를 등록·수정·삭제하는 API 대부분(실무자 이상)에 해당합니다.',
+      '단, 회사·연락처·제품 단건 삭제, 히스토리 삭제, 커스텀 필드 정의 변경 등은 관리자(Admin) 이상만 가능한 항목이 따로 있습니다.'
+    ]
+  },
+  {
+    id: 'staff',
+    title: '직원 (Staff)',
+    usesSeat: true,
+    bullets: [
+      '구독 시트 1명분을 사용합니다.',
+      '목록 조회·신규 등록(POST) 등은 가능하지만, 서버에서는 수정(PATCH)·삭제(DELETE)를 실무자(Manager) 이상에만 허용하는 경우가 많습니다.',
+      '본인 리스트 열 설정·사이드바 순서, 할 일 코멘트 등 일부 개인 설정은 직원도 저장할 수 있습니다.'
+    ]
+  },
+  {
+    id: 'pending',
+    title: '권한 대기 (Pending)',
+    usesSeat: false,
+    bullets: [
+      '구독 시트를 쓰지 않습니다.',
+      '회사 동의 전 상태라 CRM 데이터에 접근할 수 없습니다. 아래 직원 목록에서 대표·관리자에게 승인 요청 메일을 보낼 수 있습니다.',
+      '승인 후에는 보통 직원(Staff)으로 시작하며, 이후 대표·관리자가 역할을 올려 줄 수 있습니다.'
+    ]
+  }
+];
+
+function SubscriptionRolePermissionGuide() {
+  return (
+    <div className="company-subscription-role-guide" role="region" aria-label="역할별 권한 안내">
+      <h3 className="company-subscription-role-guide-title">역할별로 할 수 있는 일</h3>
+      <p className="company-subscription-role-guide-lead">
+        아래는 이 CRM의 서버 권한 기준 요약입니다. 화면에서 보이는 메뉴는 추가로 숨김 처리될 수 있습니다.
+      </p>
+      <div className="company-subscription-role-guide-list">
+        {CRM_ROLE_PERMISSION_GUIDE.map((block) => (
+          <div key={block.id} className="company-subscription-role-block">
+            <div className="company-subscription-role-block-head">
+              <span className="company-subscription-role-name">{block.title}</span>
+              {block.usesSeat ? (
+                <span className="company-subscription-role-badge">시트 사용</span>
+              ) : (
+                <span className="company-subscription-role-badge company-subscription-role-badge-muted">시트 미사용</span>
+              )}
+            </div>
+            <ul className="company-subscription-role-ul">
+              {block.bullets.map((line, i) => (
+                <li key={i}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function CompanyOverview() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -86,9 +172,10 @@ export default function CompanyOverview() {
   const mindInstanceRef = useRef(null);
 
   const roleLabel = (role) => {
-    if (role === 'owner') return '대표 (Owner / CEO)';
-    if (role === 'senior') return '책임 (Senior)';
-    if (role === 'pending') return '권한 대기 (Pending Approval)';
+    if (role === 'owner') return '대표 (Owner)';
+    if (role === 'admin' || role === 'senior') return '관리자 (Admin)';
+    if (role === 'manager' || role === 'practitioner' || role === 'contributor') return '실무자 (Manager)';
+    if (role === 'pending') return '권한 대기 (Pending)';
     return '직원 (Staff)';
   };
 
@@ -115,7 +202,7 @@ export default function CompanyOverview() {
 
   const { company = {}, employees = [], subscription = {} } = data || {};
   const me = data?.me || {};
-  const canManageRoles = ['owner', 'senior'].includes(me.role);
+  const canManageRoles = ['owner', 'admin', 'senior'].includes(me.role);
   const orgDeptOptions = useMemo(() => {
     if (!orgChart || typeof orgChart !== 'object') return [];
     return flattenOrgChartOptions(orgChart);
@@ -211,10 +298,10 @@ export default function CompanyOverview() {
         toolBar: false,
         keypress: editable
           ? {
-              F1: (ev) => {
-                ev.preventDefault();
-              }
+            F1: (ev) => {
+              ev.preventDefault();
             }
+          }
           : false,
         allowUndo: editable,
         newTopicName: '새 조직',
@@ -247,7 +334,7 @@ export default function CompanyOverview() {
       }
       /** 데스크톱만 드래그 무력화(실수 이동 방지). 모바일은 확대된 조직도를 손가락으로 패닝 */
       if (typeof window !== 'undefined' && window.innerWidth > 768) {
-        mind.dragMoveHelper.onMove = () => {};
+        mind.dragMoveHelper.onMove = () => { };
       }
       mindInstanceRef.current = mind;
       mind.bus.addListener('operation', onOperation);
@@ -295,7 +382,7 @@ export default function CompanyOverview() {
       return;
     }
     setActionError('');
-    void mind.addChild().catch(() => {});
+    void mind.addChild().catch(() => { });
   }, [canManageRoles]);
 
   const handleOrgMindRemove = useCallback(() => {
@@ -310,20 +397,29 @@ export default function CompanyOverview() {
       return;
     }
     setActionError('');
-    void mind.removeNodes(removable).catch(() => {});
+    void mind.removeNodes(removable).catch(() => { });
   }, [canManageRoles]);
   const fullAddress = [company.address, company.addressDetail].filter(Boolean).join(' ');
   const isPendingUser = me.role === 'pending';
-  /** 역할 단계: Pending → Staff → Senior → Owner. 구독·시트 블록은 Senior 이상만 표시 */
-  const canSeeSubscriptionSection = ['senior', 'owner'].includes(me.role);
+  /** 구독·시트 블록: Admin·Owner (레거시 senior 포함) */
+  const canSeeSubscriptionSection = ['owner', 'admin', 'senior'].includes(me.role);
   const canEditRole = (emp) => canManageRoles && String(emp.id) !== String(me.id) && emp.role !== 'owner';
-  /** 구독 시트: 대표·책임·직원(비-pending) 인원만큼만 부여 가능 */
+  /** 구독 시트: 대표·관리자·실무자·직원(비-pending) 인원만큼만 부여 가능 */
   const subActive = subscription?.hasActiveSubscription === true;
   const seatsRemaining = subscription?.seatsRemaining;
   const noSeatForPromotion = subActive && typeof seatsRemaining === 'number' && seatsRemaining <= 0;
 
   const sortedEmployees = useMemo(() => {
-    const order = { owner: 0, senior: 1, staff: 2, pending: 3 };
+    const order = {
+      owner: 0,
+      admin: 1,
+      senior: 1,
+      manager: 2,
+      practitioner: 2,
+      contributor: 2,
+      staff: 3,
+      pending: 4
+    };
     return [...employees].sort((a, b) => {
       const ra = order[a.role] ?? 99;
       const rb = order[b.role] ?? 99;
@@ -410,7 +506,7 @@ export default function CompanyOverview() {
     setActionError('');
     setRequestMessage('');
     if (selectedApproverIds.length === 0) {
-      setActionError('권한 요청을 받을 대표 또는 책임을 선택해 주세요.');
+      setActionError('권한 요청을 받을 대표 또는 관리자를 선택해 주세요.');
       return;
     }
     setRequestSending(true);
@@ -471,56 +567,7 @@ export default function CompanyOverview() {
           </dl>
         </section>
 
-        {canSeeSubscriptionSection && (
-          <section className="company-overview-card company-subscription-card" aria-labelledby="co-sub-title">
-            <h2 id="co-sub-title" className="company-overview-section-title">
-              <span className="material-symbols-outlined">payments</span>
-              구독 · 시트 (역할 인원)
-            </h2>
-            <p className="company-subscription-visibility-note">
-              이 섹션은 책임(Senior) 이상만 볼 수 있습니다. 
-            </p>
-            {subActive ? (
-              <>
-                <dl className="company-info-list company-subscription-dl">
-                  <div className="company-info-row">
-                    <dt>구독 이용 인원</dt>
-                    <dd>{subscription.seatCount != null ? `${subscription.seatCount}명` : '—'}</dd>
-                  </div>
-                  <div className="company-info-row">
-                    <dt>역할 배정 사용</dt>
-                    <dd>
-                      {subscription.activeRoleCount != null ? `${subscription.activeRoleCount}명` : '—'}
-                      <span className="company-subscription-slots">
-                        {' '}(남은 시트 {typeof seatsRemaining === 'number' ? `${seatsRemaining}명` : '—'})
-                      </span>
-                    </dd>
-                  </div>
-                  <div className="company-info-row">
-                    <dt>월 정기 금액(안내)</dt>
-                    <dd>
-                      {subscription.planAmount != null
-                        ? `${Number(subscription.planAmount).toLocaleString('ko-KR')}원`
-                        : '—'}
-                    </dd>
-                  </div>
-                  <div className="company-info-row">
-                    <dt>다음 정기 결제 예정</dt>
-                    <dd>{formatSubscriptionDate(subscription.nextBillingAt)}</dd>
-                  </div>
-                </dl>
-                <p className="company-subscription-hint">
-                  대표·책임·직원 역할은 구독 인원(시트) 수만큼만 올릴 수 있습니다. 권한 대기(Pending)는 시트를 쓰지 않습니다.
-                  {noSeatForPromotion && ' 현재 시트가 없어 권한 대기 중인 계정을 직원/책임으로 올릴 수 없습니다.'}
-                </p>
-              </>
-            ) : (
-              <p className="company-subscription-hint">
-                활성 구독이 없습니다. 구독이 연동되면 위 인원만큼만 대표·책임·직원 역할을 부여할 수 있습니다.
-              </p>
-            )}
-          </section>
-        )}
+
 
         <section className="company-overview-card employees-card">
           <h2 className="company-overview-section-title">
@@ -540,7 +587,7 @@ export default function CompanyOverview() {
           {isPendingUser && (
             <div className="company-overview-approval-box">
               <p className="company-overview-approval-text">
-                권한 대기 상태입니다. 아래 대표 또는 책임 중 메일을 받을 사람을 선택한 뒤 승인 요청을 보내세요.
+                권한 대기 상태입니다. 아래 대표 또는 관리자 중 메일을 받을 사람을 선택한 뒤 승인 요청을 보내세요.
               </p>
               <button
                 type="button"
@@ -639,13 +686,20 @@ export default function CompanyOverview() {
                             >
                               직원 (Staff)
                             </option>
+                            <option
+                              value="manager"
+                              disabled={emp.role === 'pending' && noSeatForPromotion}
+                              title={emp.role === 'pending' && noSeatForPromotion ? '구독 시트가 부족합니다.' : undefined}
+                            >
+                              실무자 (Manager)
+                            </option>
                             {me.role === 'owner' && (
                               <option
-                                value="senior"
+                                value="admin"
                                 disabled={emp.role === 'pending' && noSeatForPromotion}
                                 title={emp.role === 'pending' && noSeatForPromotion ? '구독 시트가 부족합니다.' : undefined}
                               >
-                                책임 (Senior)
+                                관리자 (Admin)
                               </option>
                             )}
                           </select>
@@ -698,7 +752,7 @@ export default function CompanyOverview() {
           {orgChart ? (
             <div className="co-org-wrap">
               {!canManageRoles ? (
-                <p className="co-org-readonly-hint">조직도 편집·저장은 대표(Owner) 또는 책임(Senior)만 가능합니다.</p>
+                <p className="co-org-readonly-hint">조직도 편집·저장은 대표(Owner) 또는 관리자(Admin)만 가능합니다.</p>
               ) : null}
               <div className="co-org-toolbar">
                 <div className="co-org-toolbar-mind-actions" role="group" aria-label="조직 노드 추가·삭제">
@@ -710,7 +764,7 @@ export default function CompanyOverview() {
                     title={
                       canManageRoles
                         ? '선택한 노드 아래에 하위 조직 추가'
-                        : '대표 또는 책임만 편집할 수 있습니다.'
+                        : '대표 또는 관리자만 편집할 수 있습니다.'
                     }
                     aria-label="하위 조직 추가"
                   >
@@ -724,7 +778,7 @@ export default function CompanyOverview() {
                     title={
                       canManageRoles
                         ? '선택한 노드 삭제 (최상위 제외)'
-                        : '대표 또는 책임만 편집할 수 있습니다.'
+                        : '대표 또는 관리자만 편집할 수 있습니다.'
                     }
                     aria-label="선택 노드 삭제"
                   >
@@ -736,7 +790,7 @@ export default function CompanyOverview() {
                   className="co-org-save-btn"
                   onClick={handleSaveMindOrgChart}
                   disabled={!canManageRoles || orgSaving}
-                  title={canManageRoles ? undefined : '대표 또는 책임만 저장할 수 있습니다.'}
+                  title={canManageRoles ? undefined : '대표 또는 관리자만 저장할 수 있습니다.'}
                 >
                   <span className="material-symbols-outlined" aria-hidden>
                     {orgSaving ? 'hourglass_empty' : 'save'}
@@ -753,6 +807,87 @@ export default function CompanyOverview() {
             <p className="company-overview-empty">조직도 데이터를 불러오는 중입니다.</p>
           )}
         </section>
+
+        {canSeeSubscriptionSection && (
+          <section className="company-overview-card company-subscription-card" aria-labelledby="co-sub-title">
+            <h2 id="co-sub-title" className="company-overview-section-title">
+              <span className="material-symbols-outlined">payments</span>
+              구독 · 시트 (역할 인원)
+            </h2>
+            <p className="company-subscription-visibility-note">
+              이 섹션은 관리자(Admin) 이상만 볼 수 있습니다.
+            </p>
+            {subActive ? (
+              <dl className="company-info-list company-subscription-dl">
+                <div className="company-info-row">
+                  <dt>구독 이용 인원</dt>
+                  <dd>{subscription.seatCount != null ? `${subscription.seatCount}명` : '—'}</dd>
+                </div>
+                <div className="company-info-row">
+                  <dt>역할 배정 사용</dt>
+                  <dd>
+                    {subscription.activeRoleCount != null ? `${subscription.activeRoleCount}명` : '—'}
+                    <span className="company-subscription-slots">
+                      {' '}(남은 시트 {typeof seatsRemaining === 'number' ? `${seatsRemaining}명` : '—'})
+                    </span>
+                  </dd>
+                </div>
+                <div className="company-info-row">
+                  <dt>월 정기 금액(안내)</dt>
+                  <dd>
+                    {subscription.planAmount != null
+                      ? `${Number(subscription.planAmount).toLocaleString('ko-KR')}원`
+                      : '—'}
+                  </dd>
+                </div>
+                <div className="company-info-row">
+                  <dt>다음 정기 결제 예정</dt>
+                  <dd>{formatSubscriptionDate(subscription.nextBillingAt)}</dd>
+                </div>
+              </dl>
+            ) : null}
+            <SubscriptionRolePermissionGuide />
+            {subActive ? (
+              <div className="company-subscription-hint-block">
+                <p className="company-subscription-hint">
+                  <strong>구독 시트</strong>는 <strong>대표·관리자·실무자·직원</strong> 네 가지 역할을 쓰는 계정 수의 합이, 구독에 포함된
+                  이용 인원(시트)을 넘지 않아야 합니다. <strong>권한 대기(Pending)</strong>는 시트를 쓰지 않으므로, 초대만 된 상태로
+                  두거나 시트가 꽉 찼을 때 임시로 내려 두기에 적합합니다.
+                </p>
+                <ul className="company-subscription-hint-list">
+                  <li>
+                    역할을 권한 대기에서 직원·실무자·관리자·대표 쪽으로 올리면, 그 계정이 시트를 &quot;쓰는&quot; 역할이 되는 한
+                    사용 중인 시트 수가 늘어납니다. 반대로 Pending으로 내리면 해당 칸이 비워집니다.
+                  </li>
+                  <li>
+                    대표만 다른 계정을 <strong>관리자(Admin)</strong>로 지정할 수 있습니다. 관리자는 그 아래 역할(실무자·직원·대기) 변경과
+                    조직도 편집은 할 수 있습니다.
+                  </li>
+                  <li>
+                    위 &quot;역할별로 할 수 있는 일&quot;에서 기능 범위를 확인한 뒤, 필요한 만큼만 시트를 쓰는 역할로 배정하면 됩니다.
+                  </li>
+                </ul>
+                {noSeatForPromotion ? (
+                  <p className="company-subscription-hint company-subscription-hint-warn">
+                    현재 남은 시트가 없습니다. 권한 대기 중인 계정을 직원·실무자·관리자 등으로 올리려면, 구독 인원을 늘리거나
+                    다른 직원을 먼저 권한 대기로 내린 뒤 시트를 확보해 주세요.
+                  </p>
+                ) : null}
+              </div>
+            ) : (
+              <div className="company-subscription-hint-block">
+                <p className="company-subscription-hint">
+                  활성 구독이 없으면 시트 한도를 시스템이 알 수 없어, 위와 같은 인원 제한 안내가 적용되지 않을 수 있습니다.
+                  구독이 연동되면 <strong>대표·관리자·실무자·직원</strong> 역할을 가진 인원 수가 구독 이용 인원을 넘지 않도록 맞춰야 합니다.
+                </p>
+                <p className="company-subscription-hint company-subscription-hint-follow">
+                  역할별 권한은 위 &quot;역할별로 할 수 있는 일&quot; 안내를 참고하세요. Pending은 시트를 쓰지 않으며, 승인 후 직원으로
+                  시작하는 흐름이 일반적입니다.
+                </p>
+              </div>
+            )}
+          </section>
+        )}
       </div>
 
       {showDriveSettingsModal && (

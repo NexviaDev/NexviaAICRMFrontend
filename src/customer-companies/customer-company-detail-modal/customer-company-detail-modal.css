@@ -309,6 +309,33 @@
   pointer-events: none;
 }
 
+.customer-company-detail-card-map-static {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  display: block;
+  object-fit: cover;
+  background: var(--bg-light);
+  pointer-events: none;
+}
+
+.customer-company-detail-card-map-loading {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  color: var(--text-muted);
+  background: #eef4f5;
+  font-size: 0.8rem;
+}
+
+.customer-company-detail-card-map-loading .material-symbols-outlined {
+  font-size: 1.4rem;
+  opacity: 0.75;
+}
+
 .customer-company-detail-card-map-empty {
   width: 100%;
   aspect-ratio: 1 / 1;

@@ -30,6 +30,7 @@ const AdminUsers = lazy(() => import('./admin/adminusers'));
 const AdminCompanies = lazy(() => import('./admin/admincompanies'));
 const NotificationPage = lazy(() => import('./notification/notification'));
 const Messenger = lazy(() => import('./messenger/messenger'));
+const BusinessRegistryPage = lazy(() => import('./business-registry/business-registry'));
 
 function getStoredUser() {
   try {
@@ -106,6 +107,7 @@ function App() {
           <Route path="ai-voice" element={<PendingRestrictedRoute><AiVoice /></PendingRestrictedRoute>} />
           <Route path="email" element={<PendingRestrictedRoute><Email /></PendingRestrictedRoute>} />
           <Route path="messenger" element={<PendingRestrictedRoute><Messenger /></PendingRestrictedRoute>} />
+          <Route path="business-registry" element={<PendingRestrictedRoute><BusinessRegistryPage /></PendingRestrictedRoute>} />
           <Route path="map" element={<PendingRestrictedRoute><Map /></PendingRestrictedRoute>} />
           <Route path="todo-list" element={<PendingRestrictedRoute><TodoList /></PendingRestrictedRoute>} />
           <Route path="notification" element={<PendingRestrictedRoute><NotificationPage /></PendingRestrictedRoute>} />

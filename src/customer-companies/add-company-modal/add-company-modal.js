@@ -7,7 +7,7 @@ import CompanyImportPreviewModal from './company-import-preview-modal';
 import './add-company-modal.css';
 
 import { API_BASE } from '@/config';
-import { getStoredCrmUser, isSeniorOrAboveRole } from '@/lib/crm-role-utils';
+import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import {
   getGoogleMapsApiKey,
   loadGoogleMaps,
@@ -160,7 +160,7 @@ const MAX_DRIVE_API_UPLOAD_SIZE = 5 * 1024 * 1024;
 
 export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }) {
   const isEdit = Boolean(company);
-  const canManageCustomFieldDefinitions = isSeniorOrAboveRole(getStoredCrmUser()?.role);
+  const canManageCustomFieldDefinitions = isAdminOrAboveRole(getStoredCrmUser()?.role);
   const [form, setForm] = useState({
     name: '',
     representativeName: '',
@@ -1358,11 +1358,11 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
         <section className="add-company-section add-company-grid-2">
           <div className="add-company-field">
             <label className="add-company-label" htmlFor="add-company-name">고객사명 <span className="add-company-required">*</span></label>
-            <input id="add-company-name" name="name" type="text" value={form.name} onChange={handleChange} className="add-company-input" placeholder="고객사명을 입력하세요" required />
+            <input id="add-company-name" name="name" type="text" value={form.name} onChange={handleChange} className="add-company-input" placeholder="고객사명을 입력하세요" required disabled={isEdit} title={isEdit ? '수정 모드에서는 고객사명을 바꿀 수 없습니다.' : undefined} />
           </div>
           <div className="add-company-field">
             <label className="add-company-label" htmlFor="add-company-business-number">사업자등록번호</label>
-            <input id="add-company-business-number" name="businessNumber" type="text" inputMode="numeric" autoComplete="off" value={form.businessNumber} onChange={handleChange} className="add-company-input" placeholder="000-00-00000" maxLength={12} />
+            <input id="add-company-business-number" name="businessNumber" type="text" inputMode="numeric" autoComplete="off" value={form.businessNumber} onChange={handleChange} className="add-company-input" placeholder="000-00-00000" maxLength={12} disabled={isEdit} title={isEdit ? '수정 모드에서는 사업자등록번호를 바꿀 수 없습니다.' : undefined} />
           </div>
           <div className="add-company-field" style={{ gridColumn: '1 / -1' }}>
             <label className="add-company-label" htmlFor="add-company-industry">업종</label>
@@ -1371,7 +1371,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
           <div className="add-company-row-representative-assignee">
             <div className="add-company-field add-company-field-representative">
               <label className="add-company-label" htmlFor="add-company-representative">대표자명</label>
-              <input id="add-company-representative" name="representativeName" type="text" value={form.representativeName} onChange={handleChange} className="add-company-input" placeholder="대표자 성함을 입력하세요" />
+              <input id="add-company-representative" name="representativeName" type="text" value={form.representativeName} onChange={handleChange} className="add-company-input" placeholder="대표자 성함을 입력하세요" disabled={isEdit} title={isEdit ? '수정 모드에서는 대표자명을 바꿀 수 없습니다.' : undefined} />
             </div>
             <div className="add-company-field add-company-field-assignee">
               <label className="add-company-label" htmlFor="add-company-assignee-input">담당자</label>

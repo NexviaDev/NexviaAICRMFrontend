@@ -16,7 +16,7 @@ import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-head
 import * as XLSX from 'xlsx';
 
 import { API_BASE } from '@/config';
-import { getStoredCrmUser, isSeniorOrAboveRole } from '@/lib/crm-role-utils';
+import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { listPriceFromProduct } from '@/lib/product-price-utils';
 const LIST_ID = LIST_IDS.PRODUCT_LIST;
 const LIMIT = 10;
@@ -103,7 +103,8 @@ export default function ProductList() {
   }, [customFieldColumns]);
 
   const me = useMemo(() => getStoredCrmUser(), []);
-  const canExportExcel = isSeniorOrAboveRole(me?.role);
+  const canExportExcel = isAdminOrAboveRole(me?.role);
+  const canDeleteProduct = isAdminOrAboveRole(me?.role);
 
   const detailId = searchParams.get(DETAIL_ID_PARAM);
   const isDetailOpen = searchParams.get(MODAL_PARAM) === MODAL_DETAIL && detailId;
@@ -172,6 +173,10 @@ export default function ProductList() {
   };
 
   const handleDelete = async (row) => {
+    if (!isAdminOrAboveRole(getStoredCrmUser()?.role)) {
+      alert('제품 삭제는 관리자(Admin) 이상만 가능합니다.');
+      return;
+    }
     try {
       const res = await fetch(`${API_BASE}/products/${row._id}`, { method: 'DELETE', headers: getAuthHeader() });
       if (res.ok) {
@@ -297,8 +302,8 @@ export default function ProductList() {
 
   const handleDownloadExcel = useCallback(async () => {
     const viewer = getStoredCrmUser();
-    if (!isSeniorOrAboveRole(viewer?.role)) {
-      alert('엑셀 내려받기는 대표(Owner) 또는 책임(Senior)만 사용할 수 있습니다.');
+    if (!isAdminOrAboveRole(viewer?.role)) {
+      alert('엑셀 내려받기는 대표(Owner) 또는 관리자(Admin)만 사용할 수 있습니다.');
       return;
     }
     setExportExcelLoading(true);
@@ -466,13 +471,13 @@ export default function ProductList() {
             {canExportExcel ? (
               <button
                 type="button"
-                className="btn-secondary product-list-excel-btn"
+                className="btn-outline product-list-excel-btn"
                 onClick={handleDownloadExcel}
                 disabled={exportExcelLoading}
-                title="현재 검색·필터 조건에 맞는 제품 전체를 엑셀(.xlsx)로 받습니다. (Owner / Senior 전용)"
+                title="현재 검색·필터 조건에 맞는 제품 전체를 엑셀(.xlsx)로 받습니다. (Owner / Admin 전용)"
               >
                 <span className="material-symbols-outlined">download</span>
-                {exportExcelLoading ? '준비 중…' : '엑셀 내려받기'}
+                {exportExcelLoading ? '준비 중…' : '내보내기'}
               </button>
             ) : null}
             <button type="button" className="btn-primary" onClick={openAdd}>
@@ -714,7 +719,7 @@ export default function ProductList() {
           product={detailProduct}
           onClose={closeDetail}
           onUpdated={() => { fetchList(pagination.page); }}
-          onDelete={handleDelete}
+          onDelete={canDeleteProduct ? handleDelete : undefined}
         />
       )}
     </div>

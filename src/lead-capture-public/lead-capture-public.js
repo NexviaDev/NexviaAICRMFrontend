@@ -31,6 +31,46 @@ function formatPhoneForSave(value) {
   return digits;
 }
 
+/** 입력란용: 숫자만 반영하고 하이픈만 표시 (최대 11자리) */
+function formatPhoneInput(raw) {
+  let d = String(raw || '').replace(/\D/g, '');
+  if (d.startsWith('82') && d.length > 2) d = `0${d.slice(2)}`.slice(0, 11);
+  d = d.slice(0, 11);
+  if (!d) return '';
+  if (d.startsWith('02')) {
+    if (d.length <= 2) return d;
+    if (d.length <= 5) return `${d.slice(0, 2)}-${d.slice(2)}`;
+    if (d.length <= 9) return `${d.slice(0, 2)}-${d.slice(2, 6)}-${d.slice(6)}`;
+    return `${d.slice(0, 2)}-${d.slice(2, 6)}-${d.slice(6, 10)}`;
+  }
+  if (d.startsWith('01')) {
+    if (d.length <= 3) return d;
+    if (d.length <= 7) return `${d.slice(0, 3)}-${d.slice(3)}`;
+    return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
+  }
+  if (d.length <= 3) return d;
+  if (d.length <= 6) return `${d.slice(0, 3)}-${d.slice(3)}`;
+  if (d.length <= 10) return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
+  return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
+}
+
+/** 사업자등록번호: 숫자만, 10자리까지 XXX-XX-XXXXX */
+function formatBusinessNumberInput(raw) {
+  const d = String(raw || '').replace(/\D/g, '').slice(0, 10);
+  if (!d) return '';
+  if (d.length <= 3) return d;
+  if (d.length <= 5) return `${d.slice(0, 3)}-${d.slice(3)}`;
+  return `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}`;
+}
+
+function formatBusinessNumberForSave(value) {
+  const s = String(value || '').replace(/\D/g, '').slice(0, 10);
+  if (!s) return '';
+  if (s.length <= 3) return s;
+  if (s.length <= 5) return `${s.slice(0, 3)}-${s.slice(3)}`;
+  return `${s.slice(0, 3)}-${s.slice(3, 5)}-${s.slice(5)}`;
+}
+
 function fieldChoices(def) {
   const o = def.options;
   if (!o) return [];
@@ -40,7 +80,7 @@ function fieldChoices(def) {
 }
 
 /**
- * 임베드 스니펫과 동일: 기본 필드 + 빌더 커스텀 필드. API 키 없이 웹훅에 POST (publicLinkEnabled 폼만).
+ * 임베드 스니펫과 동일: 기본 필드 + 빌더 커스텀 필드. API 키 없이 웹훅에 POST.
  */
 export default function LeadCapturePublic() {
   const { secret: secretParam } = useParams();
@@ -54,6 +94,7 @@ export default function LeadCapturePublic() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [businessNumber, setBusinessNumber] = useState('');
   const [company, setCompany] = useState('');
   const [address, setAddress] = useState('');
   const [customValues, setCustomValues] = useState({});
@@ -141,6 +182,8 @@ export default function LeadCapturePublic() {
     const extra = {};
     const phoneFmt = formatPhoneForSave(phone);
     if (phoneFmt) extra.phone = phoneFmt;
+    const bnFmt = formatBusinessNumberForSave(businessNumber);
+    if (bnFmt) extra.business_number = bnFmt;
     const co = String(company || '').trim();
     if (co) extra.company = co;
     const adr = String(address || '').trim();
@@ -180,6 +223,7 @@ export default function LeadCapturePublic() {
           setName('');
           setEmail('');
           setPhone('');
+          setBusinessNumber('');
           setCompany('');
           setAddress('');
           setCustomValues({});
@@ -209,7 +253,7 @@ export default function LeadCapturePublic() {
     } else {
       await sendJson(null);
     }
-  }, [secret, name, email, phone, company, address, customDefs, customValues, cardFile]);
+  }, [secret, name, email, phone, businessNumber, company, address, customDefs, customValues, cardFile]);
 
   const customFieldInputs = useMemo(() => {
     return customDefs.map((def) => {
@@ -308,7 +352,7 @@ export default function LeadCapturePublic() {
       <div className="lcp-page">
         <div className="lead-form-wrapper">
           <h1 className="lead-form-title">문의 폼</h1>
-          <p className="lcp-muted">폼을 찾을 수 없거나, 공개 링크가 꺼져 있습니다. 링크를 확인해 주세요.</p>
+          <p className="lcp-muted">폼을 찾을 수 없거나 비활성 상태입니다. 링크를 확인해 주세요.</p>
         </div>
       </div>
     );
@@ -321,9 +365,30 @@ export default function LeadCapturePublic() {
         <p className="lead-form-sub-hint">아래 정보를 남겨 주시면 담당자가 연락드립니다.</p>
         <form className="lead-form" onSubmit={handleSubmit}>
           <input type="text" name="name" placeholder="이름" value={name} onChange={(e) => setName(e.target.value)} required />
-          <input type="number" name="phone" placeholder="연락처" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <input
+            type="text"
+            name="phone"
+            inputMode="tel"
+            autoComplete="tel"
+            spellCheck={false}
+            placeholder="연락처 (숫자만, 하이픈 자동)"
+            maxLength={15}
+            value={phone}
+            onInput={(e) => setPhone(formatPhoneInput(e.currentTarget.value))}
+          />
           <input type="email" name="email" placeholder="이메일" value={email} onChange={(e) => setEmail(e.target.value)} required />
           <input type="text" name="company" placeholder="회사명" value={company} onChange={(e) => setCompany(e.target.value)} />
+          <input
+            type="text"
+            name="business_number"
+            inputMode="numeric"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="사업자등록번호 (선택, 숫자만)"
+            maxLength={12}
+            value={businessNumber}
+            onInput={(e) => setBusinessNumber(formatBusinessNumberInput(e.currentTarget.value))}
+          />
           <input type="text" name="address" placeholder="회사 주소" value={address} onChange={(e) => setAddress(e.target.value)} />
           <div>
             <div className="lead-form-file-caption">명함 (이미지)</div>

@@ -23,7 +23,8 @@ function formatDateTime(iso) {
 
 function roleLabel(role) {
   if (role === 'owner') return '대표';
-  if (role === 'senior') return 'Senior';
+  if (role === 'admin' || role === 'senior') return '관리자';
+  if (role === 'manager' || role === 'practitioner' || role === 'contributor') return '실무자';
   if (role === 'staff') return 'Staff';
   return '권한 대기';
 }
@@ -51,7 +52,8 @@ export default function AdminUsers() {
   const [summary, setSummary] = useState({
     totalUsers: 0,
     owners: 0,
-    seniors: 0,
+    admins: 0,
+    managers: 0,
     staffs: 0,
     pending: 0,
     verifiedEmails: 0,
@@ -167,7 +169,8 @@ export default function AdminUsers() {
           <div className="admin-sub-users-summary">
             <div className="admin-sub-users-stat"><strong>{summary.totalUsers || 0}</strong><span>전체 유저</span></div>
             <div className="admin-sub-users-stat"><strong>{summary.owners || 0}</strong><span>대표</span></div>
-            <div className="admin-sub-users-stat"><strong>{summary.seniors || 0}</strong><span>Senior</span></div>
+            <div className="admin-sub-users-stat"><strong>{summary.admins ?? summary.seniors ?? 0}</strong><span>관리자</span></div>
+            <div className="admin-sub-users-stat"><strong>{summary.managers ?? summary.practitioners ?? 0}</strong><span>실무자</span></div>
             <div className="admin-sub-users-stat"><strong>{summary.staffs || 0}</strong><span>Staff</span></div>
             <div className="admin-sub-users-stat"><strong>{summary.pending || 0}</strong><span>권한 대기</span></div>
             <div className="admin-sub-users-stat"><strong>{summary.linkedCompanies || 0}</strong><span>연결 회사</span></div>

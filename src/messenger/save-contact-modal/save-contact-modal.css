@@ -1,0 +1,169 @@
+.messenger-save-contact-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 13000;
+  background: rgba(15, 23, 42, 0.38);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+
+.messenger-save-contact-panel {
+  width: 100%;
+  max-width: 420px;
+  background: #fff;
+  border-radius: 0.85rem;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.12);
+  max-height: min(90vh, 640px);
+  overflow: auto;
+}
+
+.messenger-save-contact-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1rem 0.5rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.messenger-save-contact-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.messenger-save-contact-close {
+  border: none;
+  background: #f8fafc;
+  color: #64748b;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.messenger-save-contact-close:hover:not(:disabled) {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.messenger-save-contact-close:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.messenger-save-contact-desc {
+  margin: 0;
+  padding: 0.75rem 1rem 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: #64748b;
+}
+
+.messenger-save-contact-loading {
+  margin: 0.75rem 1rem;
+  font-size: 0.8125rem;
+  color: #64748b;
+}
+
+.messenger-save-contact-fields {
+  padding: 0.75rem 1rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.messenger-save-contact-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #475569;
+  margin-top: 0.35rem;
+}
+
+.messenger-save-contact-req {
+  color: #c2410c;
+}
+
+.messenger-save-contact-input,
+.messenger-save-contact-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  background: #fff;
+  color: #1e293b;
+}
+
+.messenger-save-contact-input:focus,
+.messenger-save-contact-textarea:focus {
+  outline: none;
+  border-color: #93b4d4;
+  background: #fafcff;
+}
+
+.messenger-save-contact-textarea {
+  resize: vertical;
+  min-height: 3rem;
+}
+
+.messenger-save-contact-err {
+  margin: 0.5rem 1rem 0;
+  font-size: 0.78rem;
+  color: #b45309;
+}
+
+.messenger-save-contact-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 1rem;
+  margin-top: 0.25rem;
+  border-top: 1px solid #f1f5f9;
+}
+
+.messenger-save-contact-btn-cancel {
+  padding: 0.45rem 0.85rem;
+  border-radius: 0.5rem;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #64748b;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.messenger-save-contact-btn-cancel:hover:not(:disabled) {
+  background: #f8fafc;
+}
+
+.messenger-save-contact-btn-save {
+  padding: 0.45rem 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid #8fb4d4;
+  background: #e8f2fa;
+  color: #2d4a66;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.messenger-save-contact-btn-save:hover:not(:disabled) {
+  background: #ddeaf6;
+}
+
+.messenger-save-contact-btn-cancel:disabled,
+.messenger-save-contact-btn-save:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

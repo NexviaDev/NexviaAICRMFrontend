@@ -14,7 +14,7 @@ import {
   SNOOZE_MS
 } from '@/lib/home-capture-leads-visibility';
 import { formatPhone } from '@/register/phoneFormat';
-import { getStoredCrmUser, isSeniorOrAboveRole } from '@/lib/crm-role-utils';
+import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import HomeLeadDetailModal from './home-lead-detail-modal';
 import HomeFullViewModal from './home-full-view-modal';
 
@@ -28,6 +28,21 @@ function getGreetingForHome() {
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+/**
+ * 홈의 「캡처 채널별 리드 수신」「수신 리드」: 대표·관리자(Senior 포함)는 전체 폼,
+ * 그 외 역할은 본인이 담당자(assigneeUserIds)로 지정된 폼만 집계·조회합니다.
+ */
+function filterLeadCaptureFormsForHomeViewer(items, crmUser) {
+  if (!Array.isArray(items)) return [];
+  if (isAdminOrAboveRole(crmUser?.role)) return items;
+  const myId = crmUser?._id != null ? String(crmUser._id) : '';
+  if (!myId) return [];
+  return items.filter((form) => {
+    const arr = Array.isArray(form?.assigneeUserIds) ? form.assigneeUserIds : [];
+    return arr.some((a) => String(a?._id ?? a) === myId);
+  });
 }
 
 /** 홈 패널에 표시할 캡처 리드 최대 건수 (오래된 순 정렬 후 앞쪽) */
@@ -380,7 +395,7 @@ export default function Home() {
   const pipelineMounted = useRef(true);
   /** 인사이트 그래프: 서버 /auth/me 기준 (localStorage만 쓰면 DB 역할 변경·오래된 캐시와 어긋날 수 있음) */
   const [insightAccess, setInsightAccess] = useState({ checked: false, seniorPlus: false });
-  /** 우수 영업 담당자: sales-opportunities의 수주 성공(Won) — Senior·대표만 표시 */
+  /** 우수 영업 담당자: sales-opportunities의 수주 성공(Won) — 관리자·대표만 표시 */
   const [wonLeaderboardMode, setWonLeaderboardMode] = useState('month');
   const [wonLeaderboardRows, setWonLeaderboardRows] = useState([]);
   const [wonLeaderboardLoading, setWonLeaderboardLoading] = useState(false);
@@ -403,12 +418,12 @@ export default function Home() {
           } catch (_) {}
           setInsightAccess({
             checked: true,
-            seniorPlus: isSeniorOrAboveRole(data.user.role)
+            seniorPlus: isAdminOrAboveRole(data.user.role)
           });
         } else {
           setInsightAccess({
             checked: true,
-            seniorPlus: isSeniorOrAboveRole(getStoredCrmUser()?.role)
+            seniorPlus: isAdminOrAboveRole(getStoredCrmUser()?.role)
           });
         }
       })
@@ -416,7 +431,7 @@ export default function Home() {
         if (cancelled) return;
         setInsightAccess({
           checked: true,
-          seniorPlus: isSeniorOrAboveRole(getStoredCrmUser()?.role)
+          seniorPlus: isAdminOrAboveRole(getStoredCrmUser()?.role)
         });
       });
     return () => {
@@ -493,8 +508,9 @@ export default function Home() {
         const json = await res.json().catch(() => ({}));
         if (!cancelled && res.ok) {
           const items = Array.isArray(json.items) ? json.items : [];
+          const visibleForms = filterLeadCaptureFormsForHomeViewer(items, getStoredCrmUser());
           const bySource = new Map();
-          items.forEach((item) => {
+          visibleForms.forEach((item) => {
             const source = String(item?.source || '기타 채널').trim() || '기타 채널';
             const prev = bySource.get(source) || 0;
             bySource.set(source, prev + (Number(item?.totalLeads) || 0));
@@ -505,7 +521,7 @@ export default function Home() {
           setLeadChannels(sorted);
 
           const leadBatches = await Promise.all(
-            items.map(async (form) => {
+            visibleForms.map(async (form) => {
               try {
                 const lr = await fetch(
                   `${API_BASE}/lead-capture-forms/${form._id}/leads?limit=120&page=1`,
@@ -836,7 +852,7 @@ export default function Home() {
   );
   const netMarginSeries = useMemo(() => prepareChartSeries(netMarginRaw), [netMarginRaw]);
 
-  /** 소비자가·순마진 인사이트 그래프: Senior·대표만 (위 insightAccess = /auth/me 반영 후) */
+  /** 소비자가·순마진 인사이트 그래프: 관리자·대표만 (위 insightAccess = /auth/me 반영 후) */
   const canViewInsightCharts = insightAccess.checked && insightAccess.seniorPlus;
 
   const renderChartPanel = (title, subtitle, series, tone, emptyText, chartOptions = {}) => {
@@ -1267,7 +1283,7 @@ export default function Home() {
                   lock
                 </span>
                 <p>
-                  이 영역은 <strong>Senior·대표</strong> 권한에서만 열람할 수 있습니다. (Staff·권한 대기 계정은 표시되지 않습니다.)
+                  이 영역은 <strong>관리자·대표</strong> 권한에서만 열람할 수 있습니다. (Staff·권한 대기 계정은 표시되지 않습니다.)
                 </p>
               </div>
             </div>
@@ -1395,7 +1411,7 @@ export default function Home() {
                     lock
                   </span>
                   <p>
-                    이 표는 <strong>Senior·대표</strong>만 열람할 수 있습니다. (수주 성공 실적은 세일즈 현황과 연동됩니다.)
+                    이 표는 <strong>관리자·대표</strong>만 열람할 수 있습니다. (수주 성공 실적은 세일즈 현황과 연동됩니다.)
                   </p>
                 </div>
               </div>

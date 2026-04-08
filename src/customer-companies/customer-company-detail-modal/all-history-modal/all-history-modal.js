@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import './all-history-modal.css';
 
 import { API_BASE } from '@/config';
-import { getStoredCrmUser, isSeniorOrAboveRole } from '@/lib/crm-role-utils';
+import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -25,12 +25,12 @@ export default function AllHistoryModal({ historyItems, companyId, onClose, onRe
 
   if (!historyItems || historyItems.length === 0) return null;
 
-  const canDeleteHistory = isSeniorOrAboveRole(getStoredCrmUser()?.role);
+  const canDeleteHistory = isAdminOrAboveRole(getStoredCrmUser()?.role);
 
   const handleDelete = async (historyId) => {
     if (!historyId || !companyId) return;
-    if (!isSeniorOrAboveRole(getStoredCrmUser()?.role)) {
-      window.alert('업무 기록 삭제는 대표(Owner) 또는 책임(Senior)만 가능합니다.');
+    if (!isAdminOrAboveRole(getStoredCrmUser()?.role)) {
+      window.alert('업무 기록 삭제는 대표(Owner) 또는 관리자(Admin)만 가능합니다.');
       return;
     }
     try {
@@ -69,7 +69,7 @@ export default function AllHistoryModal({ historyItems, companyId, onClose, onRe
                         className="all-history-delete"
                         onClick={() => handleDelete(entry._id)}
                         aria-label="삭제"
-                        title="Owner / Senior"
+                        title="Owner / Admin"
                       >
                         <span className="material-symbols-outlined">delete</span>
                       </button>

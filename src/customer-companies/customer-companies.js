@@ -14,7 +14,7 @@ import './customer-companies.css';
 import './customer-companies-responsive.css';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import * as XLSX from 'xlsx';
-import { getStoredCrmUser, isSeniorOrAboveRole } from '@/lib/crm-role-utils';
+import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 
 import { API_BASE } from '@/config';
 const MODAL_PARAM = 'modal';
@@ -52,7 +52,20 @@ function formatBusinessNumber(num) {
   return `${s.slice(0, 3)}-${s.slice(3, 5)}-${s.slice(5, 10)}`;
 }
 
+/** 고객사명 아바타 이니셜 (연락처 리스트 getNameInitials 와 동일 규칙) */
+function getNameInitials(name) {
+  const s = (name || '?').trim();
+  if (!s) return '?';
+  const parts = s.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase().slice(0, 2);
+  }
+  return s.slice(0, 2).toUpperCase();
+}
+
 const LIST_ID = LIST_IDS.CUSTOMER_COMPANIES;
+
+const COMPANY_STATUS_LABEL = { active: '활성', inactive: '비활성', lead: '리드' };
 
 const CUSTOM_FIELDS_PREFIX = 'customFields.';
 /** @param {Record<string, string>} [assigneeIdToName] - userId → 이름 (목록 담당자 셀 표시용) */
@@ -62,6 +75,10 @@ function cellValue(row, key, assigneeIdToName = {}, assigneeNamesReady = false) 
   if (key === 'industry') return row.industry || '—';
   if (key === 'businessNumber') return formatBusinessNumber(row.businessNumber);
   if (key === 'address') return row.address || '—';
+  if (key === 'status') {
+    const st = (row.status || 'active').toLowerCase();
+    return COMPANY_STATUS_LABEL[st] || row.status || '—';
+  }
   if (key === 'assigneeUserIds') {
     const ids = Array.isArray(row.assigneeUserIds) ? row.assigneeUserIds : [];
     const names = ids.map((id) => assigneeIdToName[String(id)] || '').filter(Boolean);
@@ -100,7 +117,7 @@ export default function CustomerCompanies() {
   const [lastCheckedIndex, setLastCheckedIndex] = useState(null);
   const headerSelectAllRef = useRef(null);
   const me = useMemo(() => getStoredCrmUser(), []);
-  const canExportExcel = isSeniorOrAboveRole(me?.role);
+  const canExportExcel = isAdminOrAboveRole(me?.role);
   const SEARCH_FIELD_OPTIONS = [
     { key: 'name', label: '고객사명' },
     { key: 'representativeName', label: '대표자' },
@@ -337,6 +354,7 @@ export default function CustomerCompanies() {
     if (key === 'industry') return (row.industry || '').toLowerCase();
     if (key === 'businessNumber') return String(row.businessNumber || '').replace(/\D/g, '');
     if (key === 'address') return (row.address || '').toLowerCase();
+    if (key === 'status') return (row.status || '').toLowerCase();
     if (key === 'assigneeUserIds') {
       const ids = Array.isArray(row.assigneeUserIds) ? row.assigneeUserIds : [];
       const names = ids.map((id) => assigneeIdToName[String(id)] || '').filter(Boolean);
@@ -483,7 +501,7 @@ export default function CustomerCompanies() {
 
   const handleExportSelectedCompanies = useCallback(async () => {
     if (!canExportExcel) {
-      alert('엑셀 내보내기는 Owner / Senior만 가능합니다.');
+      alert('엑셀 내보내기는 Owner / Admin만 가능합니다.');
       return;
     }
     const selectedIds = [...selectedCompanyIds];
@@ -651,7 +669,7 @@ export default function CustomerCompanies() {
               aria-label="엑셀 매핑 가져오기"
             >
               <span className="material-symbols-outlined">upload_file</span>
-              <span className="cc-filter-label">엑셀 매핑 가져오기</span>
+              <span className="cc-filter-label">엑셀 매핑</span>
             </button>
             {canExportExcel ? (
               <button
@@ -659,7 +677,7 @@ export default function CustomerCompanies() {
                 className="btn-outline"
                 onClick={handleExportSelectedCompanies}
                 disabled={exportExcelLoading}
-                title="선택한 고객사만 엑셀(.xlsx)로 내보냅니다. (Owner / Senior 전용)"
+                title="선택한 고객사만 엑셀(.xlsx)로 내보냅니다. (Owner / Admin 전용)"
               >
                 <span className="material-symbols-outlined">file_download</span>
                 {exportExcelLoading ? '내보내는 중…' : `내보내기${selectedCompanyIds.size ? ` (${selectedCompanyIds.size})` : ''}`}
@@ -687,7 +705,12 @@ export default function CustomerCompanies() {
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDetailModal(row); } }}
                   >
                     <div className="customer-companies-mobile-card-avatar">
-                      <div className="avatar-img company-avatar"><span className="material-symbols-outlined" aria-hidden>business</span></div>
+                      <div
+                        className={`cc-name-cell-avatar cc-name-cell-avatar--${idx % 3}`}
+                        aria-hidden
+                      >
+                        <span className="cc-name-cell-initials">{getNameInitials(row.name)}</span>
+                      </div>
                     </div>
                     <div className="customer-companies-mobile-card-body">
                       <div className="customer-companies-mobile-card-head">
@@ -706,7 +729,10 @@ export default function CustomerCompanies() {
                             aria-label={`${row.name || '고객사'} 선택`}
                           />
                         </label>
-                        <h3 className="customer-companies-mobile-card-name">{row.name || '—'}</h3>
+                        <div className="customer-companies-mobile-card-name-block">
+                          <h3 className="customer-companies-mobile-card-name">{row.name || '—'}</h3>
+                          <p className="customer-companies-mobile-card-bn">{formatBusinessNumber(row.businessNumber)}</p>
+                        </div>
                         <button
                           type="button"
                           className={`cc-favorite-btn cc-mobile-favorite-btn ${row.isFavorite ? 'is-active' : ''}`}
@@ -725,7 +751,6 @@ export default function CustomerCompanies() {
                         {row.industry ? (
                           <p className="customer-companies-mobile-card-meta">업종 {row.industry}</p>
                         ) : null}
-                        <p className="customer-companies-mobile-card-meta">사업자번호 {formatBusinessNumber(row.businessNumber)}</p>
                         <p className="customer-companies-mobile-card-address">{row.address || '—'}</p>
                       </div>
                     </div>
@@ -835,10 +860,22 @@ export default function CustomerCompanies() {
                               <span className="material-symbols-outlined" aria-hidden>star</span>
                             </button>
                           ) : col.key === 'name' ? (
-                            <div className="cell-user">
-                              <div className="avatar-img company-avatar"><span className="material-symbols-outlined">business</span></div>
-                              <span className="font-semibold">{cellValue(row, col.key, assigneeIdToName, companyEmployeesLoaded)}</span>
+                            <div className="cell-user cc-name-cell">
+                              <div
+                                className={`cc-name-cell-avatar cc-name-cell-avatar--${idx % 3}`}
+                                aria-hidden
+                              >
+                                <span className="cc-name-cell-initials">{getNameInitials(row.name)}</span>
+                              </div>
+                              <div className="cc-name-cell-text">
+                                <span className="font-semibold">{row.name || '—'}</span>
+                                <span className="cc-name-cell-bn">{formatBusinessNumber(row.businessNumber)}</span>
+                              </div>
                             </div>
+                          ) : col.key === 'status' ? (
+                            <span className={`status-badge status-${(row.status || 'active').toLowerCase()}`}>
+                              {COMPANY_STATUS_LABEL[(row.status || 'active').toLowerCase()] || row.status || '—'}
+                            </span>
                           ) : (
                             cellValue(row, col.key, assigneeIdToName, companyEmployeesLoaded)
                           )}

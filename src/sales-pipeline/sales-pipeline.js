@@ -7,7 +7,7 @@ import './sales-pipeline-responsive.css';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 
 import { API_BASE } from '@/config';
-import { getStoredCrmUser, isSeniorOrAboveRole } from '@/lib/crm-role-utils';
+import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 const MODAL_PARAM = 'oppModal';
 const MODAL_ADD = 'add';
 const MODAL_EDIT = 'edit';
@@ -273,9 +273,18 @@ export default function SalesPipeline() {
   };
 
   const handleDelete = async (id) => {
+    if (!isAdminOrAboveRole(getStoredCrmUser()?.role)) {
+      window.alert('기회 삭제는 관리자(Admin) 이상만 가능합니다.');
+      return;
+    }
     if (!window.confirm('이 기회를 삭제하시겠습니까?')) return;
     try {
-      await fetch(`${API_BASE}/sales-opportunities/${id}`, { method: 'DELETE', headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/sales-opportunities/${id}`, { method: 'DELETE', headers: getAuthHeader() });
+      if (res.status === 403) {
+        const data = await res.json().catch(() => ({}));
+        window.alert(data.error || '삭제 권한이 없습니다.');
+        return;
+      }
       fetchData();
     } catch { /* ignore */ }
   };
@@ -312,11 +321,11 @@ export default function SalesPipeline() {
     return Math.round((100 * w) / (w + l));
   }, [grouped]);
 
-  /** Senior·대표: 금액·단계 관리 등 민감 UI (백엔드 requireSeniorOrAbove 와 동일 기준) */
-  const canViewSeniorContent = isSeniorOrAboveRole(getStoredCrmUser()?.role);
+  /** 관리자·대표: 금액·단계 관리·기회 삭제 등 (Manager 제외) */
+  const canViewAdminContent = isAdminOrAboveRole(getStoredCrmUser()?.role);
 
   const formatOppValue = (opp) => {
-    if (!canViewSeniorContent) return '—';
+    if (!canViewAdminContent) return '—';
     return formatCurrency(opp.value, opp.currency);
   };
 
@@ -330,7 +339,7 @@ export default function SalesPipeline() {
       <header className="sp-header">
         <div className="sp-header-left">
           <h2 className="sp-title">세일즈 현황</h2>
-          {canViewSeniorContent ? (
+          {canViewAdminContent ? (
             <button type="button" className="sp-stages-manage-btn" onClick={() => setShowStagesModal(true)} title="파이프라인 단계 관리">
               <span className="material-symbols-outlined">tune</span>
               단계 관리
@@ -356,9 +365,9 @@ export default function SalesPipeline() {
           {Number(listMeta.displayedOpportunities || 0).toLocaleString()}건만 표시됩니다. 검색으로 범위를 좁혀 주세요.
         </div>
       ) : null}
-      {!canViewSeniorContent ? (
+      {!canViewAdminContent ? (
         <div className="sp-senior-only-notice" role="status">
-          기회 금액은 Senior·대표만 표시됩니다.
+          기회 금액은 관리자·대표만 표시됩니다.
         </div>
       ) : null}
 
@@ -379,7 +388,7 @@ export default function SalesPipeline() {
                 <div>
                   <p className="sp-mobile-bento-label">파이프라인 합계</p>
                   <p className="sp-mobile-bento-value">
-                    {canViewSeniorContent
+                    {canViewAdminContent
                       ? formatCurrency(totalPipelineValue, (grouped[boardStages[0]] || [])[0]?.currency || 'KRW')
                       : '—'}
                   </p>
@@ -461,17 +470,19 @@ export default function SalesPipeline() {
                         </div>
                         <p className="sp-mobile-deal-value">{formatOppValue(opp)}</p>
                       </div>
-                      <button
-                        type="button"
-                        className="sp-card-delete sp-mobile-deal-delete"
-                        title="삭제"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDelete(opp._id);
-                        }}
-                      >
-                        <span className="material-symbols-outlined">close</span>
-                      </button>
+                      {canViewAdminContent ? (
+                        <button
+                          type="button"
+                          className="sp-card-delete sp-mobile-deal-delete"
+                          title="삭제"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(opp._id);
+                          }}
+                        >
+                          <span className="material-symbols-outlined">close</span>
+                        </button>
+                      ) : null}
                     </div>
                   );
                 })}
@@ -523,9 +534,11 @@ export default function SalesPipeline() {
                           <h4 className="sp-card-title">{opp.customerCompanyName || '\u00A0'}-{opp.title || '\u00A0'}</h4>
                           <div className="sp-card-top-right">
                             <span className="sp-card-value">{formatOppValue(opp)}</span>
-                            <button className="sp-card-delete" title="삭제" onClick={(e) => { e.stopPropagation(); handleDelete(opp._id); }}>
-                              <span className="material-symbols-outlined">close</span>
-                            </button>
+                            {canViewAdminContent ? (
+                              <button className="sp-card-delete" title="삭제" onClick={(e) => { e.stopPropagation(); handleDelete(opp._id); }}>
+                                <span className="material-symbols-outlined">close</span>
+                              </button>
+                            ) : null}
                           </div>
                         </div>
                         {opp.contactName && <p className="sp-card-contact">{opp.contactName}</p>}
@@ -588,9 +601,11 @@ export default function SalesPipeline() {
                           >
                             <div className="sp-card-top">
                               <h4 className="sp-card-title">{opp.customerCompanyName || '\u00A0'}-{opp.title || '\u00A0'}</h4>
-                              <button className="sp-card-delete" title="삭제" onClick={(e) => { e.stopPropagation(); handleDelete(opp._id); }}>
-                                <span className="material-symbols-outlined">close</span>
-                              </button>
+                              {canViewAdminContent ? (
+                                <button className="sp-card-delete" title="삭제" onClick={(e) => { e.stopPropagation(); handleDelete(opp._id); }}>
+                                  <span className="material-symbols-outlined">close</span>
+                                </button>
+                              ) : null}
                             </div>
                             <p className="sp-card-contact">{opp.contactName || '\u00A0'}</p>
                             <div className="sp-card-meta">

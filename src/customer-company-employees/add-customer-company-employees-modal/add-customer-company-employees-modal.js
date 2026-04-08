@@ -9,7 +9,7 @@ import './add-customer-company-employees-modal.css';
 import ContactImportPreviewModal from './contact-import-preview-modal';
 
 import { API_BASE } from '@/config';
-import { getStoredCrmUser, isSeniorOrAboveRole } from '@/lib/crm-role-utils';
+import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -174,7 +174,7 @@ function buildInitialForm(contact, initialCustomerCompany) {
 }
 
 export default function AddContactModal({ onClose, onSaved, onUpdated, initialCustomerCompany, contact }) {
-  const canManageCustomFieldDefinitions = isSeniorOrAboveRole(getStoredCrmUser()?.role);
+  const canManageCustomFieldDefinitions = isAdminOrAboveRole(getStoredCrmUser()?.role);
   const isEditMode = Boolean(contact && (contact._id || contact.id));
   const effectiveInitialCompany = isEditMode && (contact?.customerCompanyId || contact?.company)
     ? { _id: contact.customerCompanyId?._id ?? contact.customerCompanyId, name: typeof contact.company === 'string' ? contact.company : (contact.company?.name ?? '') }
@@ -192,6 +192,19 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
   const [bulkSaving, setBulkSaving] = useState(false);
   const [bulkResult, setBulkResult] = useState(null);
   const fixedCompany = !!(effectiveInitialCompany && effectiveInitialCompany._id);
+
+  /** 수정 모드: 연결 고객사의 사업자번호(조회 전용, 변경 불가) */
+  const editModeCompanyBusinessNumber = useMemo(() => {
+    if (!isEditMode || !contact) return '';
+    const cc = contact.customerCompanyId;
+    if (cc && typeof cc === 'object' && cc.businessNumber != null && String(cc.businessNumber).trim()) {
+      return String(cc.businessNumber).trim();
+    }
+    if (contact.company && typeof contact.company === 'object' && contact.company.businessNumber != null) {
+      return String(contact.company.businessNumber).trim();
+    }
+    return '';
+  }, [isEditMode, contact]);
 
   /** 고객사 칸·검색 선택 모두 비었을 때 = 개인 연락처 (고정 고객사 맥락이 아닐 때만) */
   const isIndividual = useMemo(() => {
@@ -1030,13 +1043,23 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
           {error && <p className="add-contact-modal-error">{error}</p>}
           <div className="add-contact-modal-field">
             <label htmlFor="add-contact-name">이름</label>
-            <input id="add-contact-name" name="name" type="text" value={form.name} onChange={handleChange} placeholder="띄어쓰기 없이 예: 홍길동" autoComplete="name" />
+            <input
+              id="add-contact-name"
+              name="name"
+              type="text"
+              value={form.name}
+              onChange={handleChange}
+              placeholder="띄어쓰기 없이 예: 홍길동"
+              autoComplete="name"
+              disabled={isEditMode}
+              title={isEditMode ? '수정 모드에서는 이름을 바꿀 수 없습니다.' : undefined}
+            />
           </div>
           <div className="add-contact-modal-field add-contact-company-field">
             <label htmlFor="add-contact-company">고객사</label>
             {fixedCompany ? (
               <div className="add-contact-company-wrap">
-                <span className="add-contact-company-display">{form.company}</span>
+                <span className="add-contact-company-display" title={isEditMode ? '수정 모드에서는 고객사를 바꿀 수 없습니다.' : undefined}>{form.company}</span>
               </div>
             ) : (
               <div className="add-contact-company-wrap">
@@ -1050,12 +1073,15 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
                   placeholder=""
                   autoComplete="organization"
                   aria-describedby="add-contact-company-hint"
+                  disabled={isEditMode}
+                  title={isEditMode ? '수정 모드에서는 고객사를 바꿀 수 없습니다.' : undefined}
                 />
                 <button
                   type="button"
                   className="add-contact-company-search"
-                  title="고객사 검색"
+                  title={isEditMode ? '수정 모드에서는 고객사를 바꿀 수 없습니다.' : '고객사 검색'}
                   onClick={() => setShowCompanySearchModal(true)}
+                  disabled={isEditMode}
                 >
                   <span className="material-symbols-outlined">search</span>
                   검색
@@ -1064,6 +1090,20 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
             )}
 
           </div>
+          {isEditMode && editModeCompanyBusinessNumber ? (
+            <div className="add-contact-modal-field">
+              <label htmlFor="add-contact-company-bn">사업자등록번호</label>
+              <input
+                id="add-contact-company-bn"
+                type="text"
+                readOnly
+                disabled
+                value={editModeCompanyBusinessNumber}
+                className="add-contact-company-text-input"
+                title="수정 모드에서는 사업자등록번호를 바꿀 수 없습니다."
+              />
+            </div>
+          ) : null}
           <div className="add-contact-modal-row">
             <div className="add-contact-modal-field">
               <label htmlFor="add-contact-email">이메일</label>

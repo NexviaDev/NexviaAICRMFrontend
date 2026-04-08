@@ -86,7 +86,7 @@
   letter-spacing: 0.05em;
 }
 
-/* 메인 메뉴 + 더보기 한 블록 스크롤, 남는 높이 사용 (sidebar111.js 구조) */
+/* 메인 메뉴 + 더보기 한 블록 스크롤, 남는 높이 사용 */
 .sidebar-nav {
   flex: 1;
   min-height: 0;
@@ -233,7 +233,7 @@
   flex-shrink: 0;
 }
 
-/* 햄버거(더보기): 고정 경로만 — 메인 목록 바로 아래 (sidebar111.js) */
+/* 햄버거(더보기): 고정 경로만 — 메인 목록 바로 아래 */
 .sidebar-overflow {
   position: relative;
   flex: 0 0 auto;

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AllEmployeesModal from './all-employees-modal/all-employees-modal';
 import AllHistoryModal from './all-history-modal/all-history-modal';
@@ -11,9 +11,10 @@ import DriveLargeFileWarningModal from '../../shared/drive-large-file-warning-mo
 import './customer-company-detail-modal.css';
 
 import { API_BASE } from '@/config';
-import { getStoredCrmUser, isSeniorOrAboveRole } from '@/lib/crm-role-utils';
+import { getStoredCrmUser, isManagerOrAboveRole, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { pingBackendHealth, BACKEND_KEEPALIVE_INTERVAL_MS, BACKEND_KEEPALIVE_INTERVAL_ENABLED } from '@/lib/backend-wake';
 import { pollJournalFromAudioJob } from '@/lib/journal-from-audio-poll';
+import { getGoogleMapsApiKey } from '@/lib/google-maps-client';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -74,6 +75,40 @@ function sanitizeFolderNamePart(s) {
 }
 
 const DRIVE_FOLDER_MIME = 'application/vnd.google-apps.folder';
+
+/**
+ * embed iframe 대신 Static Maps 이미지 1장만 요청 — 모달 체감 속도 개선.
+ * GCP에서 Maps Static API 사용 설정 필요(키는 JS API와 동일 VITE_GOOGLE_MAPS_API_KEY).
+ */
+function buildCompanyStaticMapPreviewUrl(company) {
+  const key = getGoogleMapsApiKey();
+  if (!key) return null;
+  const lat = Number(company?.latitude);
+  const lng = Number(company?.longitude);
+  const addr = (company?.address && String(company.address).trim()) || '';
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    const u = new URL('https://maps.googleapis.com/maps/api/staticmap');
+    u.searchParams.set('center', `${lat},${lng}`);
+    u.searchParams.set('zoom', '15');
+    u.searchParams.set('size', '640x640');
+    u.searchParams.set('scale', '2');
+    u.searchParams.set('key', key);
+    u.searchParams.set('language', 'ko');
+    u.searchParams.set('markers', `color:0x0d9488|${lat},${lng}`);
+    return u.toString();
+  }
+  if (addr) {
+    const u = new URL('https://maps.googleapis.com/maps/api/staticmap');
+    u.searchParams.set('center', addr);
+    u.searchParams.set('zoom', '15');
+    u.searchParams.set('size', '640x640');
+    u.searchParams.set('scale', '2');
+    u.searchParams.set('key', key);
+    u.searchParams.set('language', 'ko');
+    return u.toString();
+  }
+  return null;
+}
 const MAX_DRIVE_API_UPLOAD_SIZE = 5 * 1024 * 1024;
 
 function getDriveFolderIdFromLink(url) {
@@ -144,9 +179,38 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
   const companyToShow = displayedCompany || company || {};
   const companyId = companyToShow?._id || company?._id;
   const hasMapCoords = Number.isFinite(Number(companyToShow?.latitude)) && Number.isFinite(Number(companyToShow?.longitude));
-  const mapPreviewSrc = hasMapCoords
-    ? `https://www.google.com/maps?q=${Number(companyToShow.latitude)},${Number(companyToShow.longitude)}&z=15&output=embed`
-    : (companyToShow?.address ? `https://www.google.com/maps?q=${encodeURIComponent(String(companyToShow.address))}&z=15&output=embed` : '');
+
+  const mapEmbedSrc = useMemo(() => {
+    if (hasMapCoords) {
+      return `https://www.google.com/maps?q=${Number(companyToShow.latitude)},${Number(companyToShow.longitude)}&z=15&output=embed`;
+    }
+    if (companyToShow?.address) {
+      return `https://www.google.com/maps?q=${encodeURIComponent(String(companyToShow.address))}&z=15&output=embed`;
+    }
+    return '';
+  }, [hasMapCoords, companyToShow?.latitude, companyToShow?.longitude, companyToShow?.address]);
+
+  const staticMapPreviewUrl = useMemo(
+    () => buildCompanyStaticMapPreviewUrl(companyToShow),
+    [companyToShow?.latitude, companyToShow?.longitude, companyToShow?.address]
+  );
+
+  const [staticMapLoadFailed, setStaticMapLoadFailed] = useState(false);
+  useEffect(() => {
+    setStaticMapLoadFailed(false);
+  }, [companyId, staticMapPreviewUrl]);
+
+  const useStaticPreview = Boolean(staticMapPreviewUrl) && !staticMapLoadFailed;
+
+  const [mapEmbedSrcDeferred, setMapEmbedSrcDeferred] = useState(null);
+  useEffect(() => {
+    if (useStaticPreview || !mapEmbedSrc) {
+      setMapEmbedSrcDeferred(null);
+      return undefined;
+    }
+    const id = window.setTimeout(() => setMapEmbedSrcDeferred(mapEmbedSrc), 320);
+    return () => window.clearTimeout(id);
+  }, [useStaticPreview, mapEmbedSrc, companyId]);
 
   const openCompanyOnMap = useCallback(() => {
     if (!companyId) return;
@@ -497,8 +561,8 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
 
   const handleDeleteHistory = async (historyId) => {
     if (!historyId) return;
-    if (!isSeniorOrAboveRole(getStoredCrmUser()?.role)) {
-      window.alert('업무 기록 삭제는 대표(Owner) 또는 책임(Senior)만 가능합니다.');
+    if (!isAdminOrAboveRole(getStoredCrmUser()?.role)) {
+      window.alert('업무 기록 삭제는 대표(Owner) 또는 관리자(Admin)만 가능합니다.');
       return;
     }
     try {
@@ -625,8 +689,8 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
 
   const handleDeleteCompany = async () => {
     if (!companyId) return;
-    if (!isSeniorOrAboveRole(getStoredCrmUser()?.role)) {
-      window.alert('삭제는 대표(Owner) 또는 책임(Senior)만 가능합니다.');
+    if (!isAdminOrAboveRole(getStoredCrmUser()?.role)) {
+      window.alert('삭제는 대표(Owner) 또는 관리자(Admin)만 가능합니다.');
       return;
     }
     setDeleting(true);
@@ -651,7 +715,8 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
     }
   };
 
-  const canMutate = isSeniorOrAboveRole(getStoredCrmUser()?.role);
+  const canMutate = isManagerOrAboveRole(getStoredCrmUser()?.role);
+  const canDeleteCompany = isAdminOrAboveRole(getStoredCrmUser()?.role);
 
   return (
     <>
@@ -670,14 +735,14 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
             </div>
             <div className="customer-company-detail-header-actions">
               {canMutate ? (
-                <>
-                  <button type="button" className="customer-company-detail-icon-btn" onClick={() => setShowEditModal(true)} title="수정 (Owner / Senior)">
-                    <span className="material-symbols-outlined">edit</span>
-                  </button>
-                  <button type="button" className="customer-company-detail-icon-btn customer-company-detail-delete-btn" onClick={() => setShowDeleteConfirm(true)} title="삭제 (Owner / Senior)">
-                    <span className="material-symbols-outlined">delete</span>
-                  </button>
-                </>
+                <button type="button" className="customer-company-detail-icon-btn" onClick={() => setShowEditModal(true)} title="수정 (Manager 이상)">
+                  <span className="material-symbols-outlined">edit</span>
+                </button>
+              ) : null}
+              {canDeleteCompany ? (
+                <button type="button" className="customer-company-detail-icon-btn customer-company-detail-delete-btn" onClick={() => setShowDeleteConfirm(true)} title="삭제 (Admin 이상)">
+                  <span className="material-symbols-outlined">delete</span>
+                </button>
               ) : null}
               <button type="button" className="customer-company-detail-icon-btn" onClick={onClose} aria-label="닫기">
                 <span className="material-symbols-outlined">close</span>
@@ -685,7 +750,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
             </div>
           </header>
 
-          {showDeleteConfirm && canMutate && (
+          {showDeleteConfirm && canDeleteCompany && (
             <div className="customer-company-detail-delete-confirm">
               <span className="material-symbols-outlined">warning</span>
               <p>이 고객사를 삭제하시겠습니까?<br />삭제하면 소속 연락처·업무 기록 등 관련 데이터에 영향을 줄 수 있습니다.</p>
@@ -709,14 +774,31 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                     disabled={!companyId}
                     title={companyId ? '/map으로 이동해 해당 업체를 검색·표시합니다.' : '고객사 정보가 없습니다.'}
                   >
-                    {mapPreviewSrc ? (
-                      <iframe
-                        title={`${companyToShow.name || '업체'} 위치 미리보기`}
-                        src={mapPreviewSrc}
-                        loading="lazy"
-                        referrerPolicy="no-referrer-when-downgrade"
-                        className="customer-company-detail-card-map-iframe"
-                      />
+                    {mapEmbedSrc || staticMapPreviewUrl ? (
+                      useStaticPreview ? (
+                        <img
+                          src={staticMapPreviewUrl}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                          draggable={false}
+                          onError={() => setStaticMapLoadFailed(true)}
+                          className="customer-company-detail-card-map-static"
+                        />
+                      ) : mapEmbedSrcDeferred ? (
+                        <iframe
+                          title={`${companyToShow.name || '업체'} 위치 미리보기`}
+                          src={mapEmbedSrcDeferred}
+                          loading="lazy"
+                          referrerPolicy="no-referrer-when-downgrade"
+                          className="customer-company-detail-card-map-iframe"
+                        />
+                      ) : (
+                        <div className="customer-company-detail-card-map-loading">
+                          <span className="material-symbols-outlined" aria-hidden>map</span>
+                          <span>지도 불러오는 중…</span>
+                        </div>
+                      )
                     ) : (
                       <div className="customer-company-detail-card-map-empty">
                         <span className="material-symbols-outlined">map</span>
@@ -1295,7 +1377,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                               className="customer-company-detail-timeline-delete"
                               onClick={() => handleDeleteHistory(entry._id)}
                               aria-label="삭제"
-                              title="업무 기록 삭제 (Owner / Senior)"
+                              title="업무 기록 삭제 (Owner / Admin)"
                             >
                               <span className="material-symbols-outlined">delete</span>
                             </button>

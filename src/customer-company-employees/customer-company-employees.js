@@ -16,6 +16,7 @@ import {
 import './customer-company-employees.css';
 import './customer-company-employees-responsive.css';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
+import CustomerCompanyEmployeesExcelImportModal from './customer-company-employees-excel-import-modal/customer-company-employees-excel-import-modal';
 
 import * as XLSX from 'xlsx';
 
@@ -24,6 +25,7 @@ const LIST_ID = LIST_IDS.CUSTOMER_COMPANY_EMPLOYEES;
 const EXPORT_PAGE_LIMIT = 100;
 const MODAL_PARAM = 'modal';
 const MODAL_ADD_CONTACT = 'add-contact';
+const MODAL_EXCEL_IMPORT = 'excel-import';
 const MODAL_DETAIL = 'detail';
 const DETAIL_ID_PARAM = 'id';
 const LIMIT = 10;
@@ -122,7 +124,7 @@ export default function CustomerCompanyEmployees() {
     { key: 'name', label: '이름' },
     { key: 'company', label: '회사' },
     { key: 'email', label: '이메일' },
-    { key: 'phone', label: '전화' },
+    { key: 'phone', label: '연락처' },
     { key: 'position', label: '직책' },
     { key: 'address', label: '주소' },
     { key: 'status', label: '상태' },
@@ -152,6 +154,7 @@ export default function CustomerCompanyEmployees() {
   const [loadingDetailContact, setLoadingDetailContact] = useState(false);
 
   const isAddModalOpen = searchParams.get(MODAL_PARAM) === MODAL_ADD_CONTACT;
+  const isExcelImportOpen = searchParams.get(MODAL_PARAM) === MODAL_EXCEL_IMPORT;
   const detailId = searchParams.get(DETAIL_ID_PARAM);
   const isDetailOpen = searchParams.get(MODAL_PARAM) === MODAL_DETAIL && detailId;
   const selectedContactFromList = isDetailOpen ? items.find((c) => c._id === detailId) || null : null;
@@ -197,6 +200,13 @@ export default function CustomerCompanyEmployees() {
 
   const openAddModal = () => setSearchParams({ [MODAL_PARAM]: MODAL_ADD_CONTACT });
   const closeAddModal = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete(MODAL_PARAM);
+    setSearchParams(next, { replace: true });
+  };
+
+  const openExcelImportModal = () => setSearchParams({ [MODAL_PARAM]: MODAL_EXCEL_IMPORT });
+  const closeExcelImportModal = () => {
     const next = new URLSearchParams(searchParams);
     next.delete(MODAL_PARAM);
     setSearchParams(next, { replace: true });
@@ -657,6 +667,7 @@ export default function CustomerCompanyEmployees() {
     const idx = sortedIdx >= 0 ? sortedIdx : idxInMobileList;
     const telHref = phoneToTelHref(row.phone);
     const displayPhone = row.phone || '—';
+    const em = String(row.email || '').trim();
     const tone = idxInMobileList % 3;
     return (
       <div
@@ -700,73 +711,80 @@ export default function CustomerCompanyEmployees() {
               <span className="material-symbols-outlined" aria-hidden>star</span>
             </button>
             <h3 className="cce-mobile-card-name">{row.name || '—'}</h3>
+            <div
+              className="cce-mobile-name-phone-row"
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+              role="presentation"
+            >
+              <span className="cce-mobile-name-phone-num">{displayPhone}</span>
+              {telHref ? (
+                <a
+                  href={telHref}
+                  className="cce-mobile-quick-btn cce-mobile-name-phone-icon"
+                  title="전화 걸기"
+                  aria-label={`전화 걸기 ${displayPhone}`}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <span className="material-symbols-outlined" aria-hidden>call</span>
+                </a>
+              ) : (
+                <span className="cce-mobile-quick-btn cce-mobile-quick-btn--disabled cce-mobile-name-phone-icon" aria-hidden>
+                  <span className="material-symbols-outlined">call</span>
+                </span>
+              )}
+              {row.phone?.trim() ? (
+                <button
+                  type="button"
+                  className="cce-mobile-quick-btn cce-mobile-name-phone-icon"
+                  title="문자 (AI 초안 후 전송)"
+                  aria-label={`문자 보내기 ${displayPhone}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSmsModal({
+                      phone: row.phone,
+                      recipientName: row.name || '',
+                      companyName: row.company || ''
+                    });
+                  }}
+                >
+                  <span className="material-symbols-outlined" aria-hidden>chat_bubble</span>
+                </button>
+              ) : (
+                <span className="cce-mobile-quick-btn cce-mobile-quick-btn--disabled cce-mobile-name-phone-icon" aria-hidden>
+                  <span className="material-symbols-outlined">chat_bubble</span>
+                </span>
+              )}
+            </div>
+            <div
+              className="cce-mobile-name-email-row"
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+              role="presentation"
+            >
+              <span className="cce-mobile-name-email-text" title={em || undefined}>{em || '—'}</span>
+              {em ? (
+                <button
+                  type="button"
+                  className="cce-mobile-quick-btn cce-mobile-name-email-icon"
+                  title="메일 작성"
+                  aria-label={`${em}에게 메일 작성`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEmailCompose({ initialTo: em });
+                  }}
+                >
+                  <span className="material-symbols-outlined" aria-hidden>mail</span>
+                </button>
+              ) : (
+                <span className="cce-mobile-quick-btn cce-mobile-quick-btn--disabled cce-mobile-name-email-icon" aria-hidden>
+                  <span className="material-symbols-outlined">mail</span>
+                </span>
+              )}
+            </div>
             <p className="cce-mobile-card-company">{row.company || '—'}</p>
           </div>
           <span className="cce-mobile-card-chevron material-symbols-outlined" aria-hidden>chevron_right</span>
-        </div>
-        <div
-          className="cce-mobile-card-quick-row"
-          onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => e.stopPropagation()}
-          role="presentation"
-        >
-          <div className="cce-mobile-card-quick">
-            {telHref ? (
-              <a
-                href={telHref}
-                className="cce-mobile-quick-btn"
-                title="전화 걸기"
-                aria-label={`전화 걸기 ${displayPhone}`}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <span className="material-symbols-outlined" aria-hidden>call</span>
-              </a>
-            ) : (
-              <span className="cce-mobile-quick-btn cce-mobile-quick-btn--disabled" aria-hidden>
-                <span className="material-symbols-outlined">call</span>
-              </span>
-            )}
-            {row.phone?.trim() ? (
-              <button
-                type="button"
-                className="cce-mobile-quick-btn"
-                title="문자 (AI 초안 후 전송)"
-                aria-label={`문자 보내기 ${displayPhone}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSmsModal({
-                    phone: row.phone,
-                    recipientName: row.name || '',
-                    companyName: row.company || ''
-                  });
-                }}
-              >
-                <span className="material-symbols-outlined" aria-hidden>chat_bubble</span>
-              </button>
-            ) : (
-              <span className="cce-mobile-quick-btn cce-mobile-quick-btn--disabled" aria-hidden>
-                <span className="material-symbols-outlined">chat_bubble</span>
-              </span>
-            )}
-            {String(row.email || '').trim() ? (
-              <button
-                type="button"
-                className="cce-mobile-quick-btn"
-                title="메일 작성"
-                aria-label={`${String(row.email).trim()}에게 메일 작성`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setEmailCompose({ initialTo: String(row.email).trim() });
-                }}
-              >
-                <span className="material-symbols-outlined" aria-hidden>mail</span>
-              </button>
-            ) : (
-              <span className="cce-mobile-quick-btn cce-mobile-quick-btn--disabled" aria-hidden>
-                <span className="material-symbols-outlined">mail</span>
-              </span>
-            )}
-          </div>
         </div>
         <div className="cce-mobile-card-details">
           <p className="cce-mobile-card-meta">
@@ -854,13 +872,22 @@ export default function CustomerCompanyEmployees() {
             </button>
             <button
               type="button"
+              className="btn-outline cce-excel-import-btn"
+              onClick={openExcelImportModal}
+              title="엑셀 열을 이름·회사·연락처·이메일 등에 매핑하여 연락처를 한 번에 등록합니다."
+            >
+              <span className="material-symbols-outlined">upload_file</span>
+              엑셀 매핑
+            </button>
+            <button
+              type="button"
               className="btn-outline cce-excel-export-btn"
               onClick={handleDownloadExcel}
               disabled={exportExcelLoading}
               title="현재 검색·내 담당 필터에 맞는 연락처 전체를 엑셀(.xlsx)로 받습니다."
             >
               <span className="material-symbols-outlined">download</span>
-              {exportExcelLoading ? '준비 중…' : '엑셀 내려받기'}
+              {exportExcelLoading ? '준비 중…' : '내보내기'}
             </button>
             <button type="button" className="btn-primary" onClick={openAddModal}><span className="material-symbols-outlined">add</span> 새 연락처 추가</button>
           </div>
@@ -1118,7 +1145,17 @@ export default function CustomerCompanyEmployees() {
                           <td
                             key={col.key}
                             data-label={col.key === '_check' || col.key === '_favorite' ? '' : col.label}
-                            className={col.key === '_check' ? 'cce-td-check' : col.key === '_favorite' ? 'cce-td-favorite' : col.key === 'status' ? 'cce-td-status' : col.key !== 'name' ? 'text-muted' : ''}
+                            className={
+                              col.key === '_check'
+                                ? 'cce-td-check'
+                                : col.key === '_favorite'
+                                  ? 'cce-td-favorite'
+                                  : col.key === 'status'
+                                    ? 'cce-td-status'
+                                    : col.key === 'name' || col.key === 'phone' || col.key === 'email'
+                                      ? ''
+                                      : 'text-muted'
+                            }
                             onClick={col.key === '_check' || col.key === '_favorite' ? (e) => e.stopPropagation() : undefined}
                           >
                             {col.key === '_check' && (
@@ -1155,70 +1192,90 @@ export default function CustomerCompanyEmployees() {
                                 </span>
                               );
                             })()}
-                            {col.key === 'name' && (
-                              <div className="cell-user">
-                                <div className="avatar-img" />
-                                <span className="font-semibold">{row.name || '—'}</span>
-                              </div>
-                            )}
-                            {col.key === 'email' &&
-                              (() => {
-                                const em = String(row.email || '').trim();
-                                return (
-                                  <span className="cce-email-cell">
-                                    <span className="cce-email-text">{em || '—'}</span>
-                                    {em ? (
-                                      <button
-                                        type="button"
-                                        className="cce-email-compose-btn"
-                                        title="메일 작성"
-                                        aria-label={`${em}에게 메일 작성`}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setEmailCompose({ initialTo: em });
-                                        }}
-                                      >
-                                        <span className="material-symbols-outlined" aria-hidden>edit</span>
-                                      </button>
-                                    ) : null}
-                                  </span>
-                                );
-                              })()}
+                            {col.key === 'name' && (() => {
+                              const avatarTone = idx % 3;
+                              return (
+                                <div className="cell-user cce-name-cell">
+                                  <div
+                                    className={`cce-name-cell-avatar cce-name-cell-avatar--${avatarTone}`}
+                                    aria-hidden
+                                  >
+                                    <span className="cce-name-cell-initials">{getNameInitials(row.name)}</span>
+                                  </div>
+                                  <div className="cce-name-cell-text">
+                                    <span className="font-semibold">{row.name || '—'}</span>
+                                  </div>
+                                </div>
+                              );
+                            })()}
                             {col.key === 'phone' && (() => {
                               const telHref = phoneToTelHref(row.phone);
-                              const display = row.phone || '—';
-                              if (!row.phone?.trim() || !telHref) return display;
+                              const displayPhone = row.phone || '—';
                               return (
-                                <span className="cce-phone-cell">
-                                  <span className="cce-phone-text">{display}</span>
-                                  <span className="cce-phone-action-btns">
-                                    <a
-                                      href={telHref}
-                                      className="cce-phone-call-btn"
-                                      title="전화 걸기"
-                                      aria-label={`전화 걸기 ${display}`}
-                                      onClick={(e) => e.stopPropagation()}
-                                    >
-                                      <span className="material-symbols-outlined" aria-hidden>call</span>
-                                    </a>
+                                <div
+                                  className="cce-contact-cell"
+                                  onClick={(e) => e.stopPropagation()}
+                                  role="presentation"
+                                >
+                                  <span className="cce-phone-text text-muted">{displayPhone}</span>
+                                  {row.phone?.trim() && telHref ? (
+                                    <span className="cce-phone-action-btns">
+                                      <a
+                                        href={telHref}
+                                        className="cce-phone-call-btn"
+                                        title="전화 걸기"
+                                        aria-label={`전화 걸기 ${displayPhone}`}
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <span className="material-symbols-outlined" aria-hidden>call</span>
+                                      </a>
+                                      <button
+                                        type="button"
+                                        className="cce-phone-sms-btn"
+                                        title="문자 (AI 초안 후 전송)"
+                                        aria-label={`문자 보내기 ${displayPhone}`}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setSmsModal({
+                                            phone: row.phone,
+                                            recipientName: row.name || '',
+                                            companyName: row.company || ''
+                                          });
+                                        }}
+                                      >
+                                        <span className="material-symbols-outlined" aria-hidden>sms</span>
+                                      </button>
+                                    </span>
+                                  ) : null}
+                                </div>
+                              );
+                            })()}
+                            {col.key === 'email' && (() => {
+                              const em = String(row.email || '').trim();
+                              return (
+                                <div
+                                  className="cce-email-cell"
+                                  onClick={(e) => e.stopPropagation()}
+                                  role="presentation"
+                                >
+                                  <span className="cce-email-text text-muted" title={em || undefined}>
+                                    {em || '—'}
+                                  </span>
+                                  {em ? (
                                     <button
                                       type="button"
-                                      className="cce-phone-sms-btn"
-                                      title="문자 (AI 초안 후 전송)"
-                                      aria-label={`문자 보내기 ${display}`}
+                                      className="cce-email-compose-btn"
+                                      title="메일 작성"
+                                      aria-label={`${em}에게 메일 작성`}
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        setSmsModal({
-                                          phone: row.phone,
-                                          recipientName: row.name || '',
-                                          companyName: row.company || ''
-                                        });
+                                        setEmailCompose({ initialTo: em });
                                       }}
                                     >
-                                      <span className="material-symbols-outlined" aria-hidden>sms</span>
+                                      <span className="material-symbols-outlined" aria-hidden>mail</span>
                                     </button>
-                                  </span>
-                                </span>
+                                  ) : null}
+                                </div>
                               );
                             })()}
                             {col.key === 'status' && (
@@ -1312,6 +1369,13 @@ export default function CustomerCompanyEmployees() {
           onSent={() => setEmailCompose(null)}
         />
       ) : null}
+      {isExcelImportOpen && (
+        <CustomerCompanyEmployeesExcelImportModal
+          open
+          onClose={closeExcelImportModal}
+          onImported={() => { fetchContacts(1); setPagination((p) => ({ ...p, page: 1 })); }}
+        />
+      )}
       {isAddModalOpen && (
         <AddContactModal
           onClose={closeAddModal}

@@ -63,7 +63,8 @@ function isPendingBlockedMenu(user, to) {
 function canShowMenuByRole(user, item) {
   if (!item) return false;
   if (item.to === '/subscription') {
-    return user?.role === 'owner' || user?.role === 'senior';
+    const r = user?.role;
+    return r === 'owner' || r === 'admin' || r === 'senior';
   }
   return true;
 }

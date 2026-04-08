@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { API_BASE } from '@/config';
-import { getStoredCrmUser, isSeniorOrAboveRole } from '@/lib/crm-role-utils';
+import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { markNotificationsAsSeen } from '@/lib/notification-read-state';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import DOMPurify from 'dompurify';
@@ -29,8 +29,8 @@ export default function NotificationPage() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ title: '', content: '' });
 
-  /** 대표(Owner)·책임(Senior)만 등록·수정·삭제 — 백엔드 requireOwnerOrSenior 와 동일 */
-  const canManage = useMemo(() => isSeniorOrAboveRole(getStoredCrmUser()?.role), []);
+  /** 대표(Owner)·관리자(Admin)만 등록·수정·삭제 — 백엔드 requireOwnerOrAdmin 과 동일 */
+  const canManage = useMemo(() => isAdminOrAboveRole(getStoredCrmUser()?.role), []);
 
   const loadNotifications = useCallback(async (forcedPage) => {
     const token = localStorage.getItem('crm_token');
@@ -106,7 +106,7 @@ export default function NotificationPage() {
 
   const submit = async () => {
     if (!canManage) {
-      setError('등록·수정은 대표(Owner) 또는 책임(Senior)만 가능합니다.');
+      setError('등록·수정은 대표(Owner) 또는 관리자(Admin)만 가능합니다.');
       return;
     }
     const token = localStorage.getItem('crm_token');

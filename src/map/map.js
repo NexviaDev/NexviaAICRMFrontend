@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import CustomerCompanyDetailModal from '../customer-companies/customer-company-detail-modal/customer-company-detail-modal';
 import './map.css';
@@ -83,6 +83,9 @@ function shouldTryGpsRefinement() {
 /** 실시간 내 위치 반투명 원 — 지표 기준 고정 반경(m). 화면 픽셀 크기와 무관하게 지상 거리는 동일 */
 const MY_LOCATION_CIRCLE_RADIUS_M = 2000;
 const MY_LOCATION_CIRCLE_FIT_PADDING = { top: 56, right: 48, bottom: 100, left: 48 };
+
+/** 한 프레임에 추가할 고객사 마커 수 — 전부 한꺼번에 그리면 메인 스레드가 멈춰 첫 화면이 느려짐 */
+const MAP_MARKER_CHUNK_SIZE = 32;
 
 /**
  * PWA·브라우저: navigator.geolocation.
@@ -389,9 +392,32 @@ export default function Map({
   const focusRequestHandledRef = useRef(false);
   /** 지도 검색으로 붙인 focusCompanyId 등은 URL에 남김 — 외부 딥링크 처리 후에는 제거 */
   const skipStripFocusParamsRef = useRef(false);
+  /** 상세 모달에서 /map 진입 시: 해당 고객사 1건을 먼저 그리고, 잠시 뒤 전체 목록 로딩 */
+  const [focusedOnlyBoot, setFocusedOnlyBoot] = useState(() => !embedded && Boolean(focusCompanyId));
 
   useEffect(() => {
     focusRequestHandledRef.current = false;
+  }, [focusCompanyId]);
+
+  useEffect(() => {
+    setFocusedOnlyBoot(!embedded && Boolean(focusCompanyId));
+  }, [embedded, focusCompanyId]);
+
+  const fetchFocusedCompanyOnly = useCallback(async () => {
+    if (!focusCompanyId) return false;
+    try {
+      const res = await fetch(`${API_BASE}/customer-companies/${encodeURIComponent(String(focusCompanyId))}`, {
+        headers: getAuthHeader()
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data?._id) {
+        setCompanies([data]);
+        return true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
   }, [focusCompanyId]);
 
   const fetchCompanies = useCallback(async () => {
@@ -414,8 +440,25 @@ export default function Map({
   }, [assigneeMeOnly]);
 
   useEffect(() => {
-    fetchCompanies();
-  }, [fetchCompanies]);
+    let cancelled = false;
+    let timerId = null;
+    (async () => {
+      if (focusedOnlyBoot && focusCompanyId) {
+        const bootOk = await fetchFocusedCompanyOnly();
+        if (!cancelled && bootOk) setLoading(false);
+        timerId = window.setTimeout(() => {
+          if (cancelled) return;
+          setFocusedOnlyBoot(false);
+        }, 260);
+        return;
+      }
+      fetchCompanies();
+    })();
+    return () => {
+      cancelled = true;
+      if (timerId != null) window.clearTimeout(timerId);
+    };
+  }, [fetchCompanies, fetchFocusedCompanyOnly, focusedOnlyBoot, focusCompanyId]);
 
   useEffect(() => {
     initialViewAppliedRef.current = false;
@@ -535,7 +578,10 @@ export default function Map({
     };
   }, [liveLocationOn]);
 
-  const companiesWithCoords = companies.filter((c) => c.latitude != null && c.longitude != null);
+  const companiesWithCoords = useMemo(
+    () => companies.filter((c) => c.latitude != null && c.longitude != null),
+    [companies]
+  );
   // 지도에는 위경도 있는 고객사는 항상 전부 표시 (검색창은 구글 장소 이동용이라 고객사 필터에 쓰지 않음)
   const companiesToShowOnMap = companiesWithCoords;
 
@@ -599,7 +645,10 @@ export default function Map({
       if (watchIdRef.current != null) {
         getGeolocationService()?.clearWatch(watchIdRef.current);
       }
-      markersRef.current.forEach((m) => m.setMap(null));
+      markersRef.current.forEach((m) => {
+        window.google?.maps?.event?.clearInstanceListeners?.(m);
+        m.setMap(null);
+      });
       markersRef.current = [];
       koreaLabelMarkersRef.current.forEach((m) => m.setMap(null));
       koreaLabelMarkersRef.current = [];
@@ -780,13 +829,50 @@ export default function Map({
     };
   }, [mapReady]);
 
+  /** 내 위치가 먼저 잡히면 지도 중심만 1회 이동 (GPS 틱마다 마커 전체 재생성하지 않도록 myLocation은 마커 effect에서 제외) */
+  useEffect(() => {
+    if (!mapReady || !mapInstanceRef.current || !myLocation || initialViewAppliedRef.current) return;
+    const map = mapInstanceRef.current;
+    map.panTo({ lat: myLocation.lat, lng: myLocation.lng });
+    map.setZoom(15);
+    initialViewAppliedRef.current = true;
+  }, [mapReady, myLocation]);
+
   useEffect(() => {
     if (!mapReady || !mapInstanceRef.current || !window.google) return;
     const map = mapInstanceRef.current;
-    markerLabelsRef.current.forEach((iw) => iw.close());
-    markerLabelsRef.current = [];
-    markersRef.current.forEach((m) => m.setMap(null));
-    markersRef.current = [];
+    let cancelled = false;
+
+    const clearCompanyMarkers = () => {
+      markerLabelsRef.current.forEach((iw) => iw.close());
+      markerLabelsRef.current = [];
+      markersRef.current.forEach((m) => {
+        window.google.maps.event.clearInstanceListeners(m);
+        m.setMap(null);
+      });
+      markersRef.current = [];
+    };
+
+    clearCompanyMarkers();
+
+    const list = companiesToShowOnMap.filter((c) => c.latitude != null && c.longitude != null);
+
+    // 좌표만으로 초기 뷰를 먼저 잡음 → 마커 DOM/스프라이트 생성을 기다리지 않음
+    if (!initialViewAppliedRef.current) {
+      if (list.length === 1) {
+        const c = list[0];
+        map.panTo({ lat: c.latitude, lng: c.longitude });
+        map.setZoom(14);
+        initialViewAppliedRef.current = true;
+      } else if (list.length > 1) {
+        const bounds = new window.google.maps.LatLngBounds();
+        list.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
+        if (!bounds.isEmpty()) {
+          map.fitBounds(bounds, { top: 60, right: 60, bottom: 60, left: 60 });
+          initialViewAppliedRef.current = true;
+        }
+      }
+    }
 
     const companyName = (name) => (name && String(name).trim()) || '(업체명 없음)';
     const labelContent = (name) =>
@@ -794,58 +880,54 @@ export default function Map({
       (companyName(name).replace(/</g, '&lt;').replace(/>/g, '&gt;')) +
       '</div>';
 
-    companiesToShowOnMap.forEach((company) => {
-      const lat = company.latitude;
-      const lng = company.longitude;
-      if (lat == null || lng == null) return;
-      const marker = new window.google.maps.Marker({
-        position: { lat, lng },
-        map,
-        title: company.name || '',
-        icon: {
-          path: window.google.maps.SymbolPath.CIRCLE,
-          scale: 10,
-          fillColor: '#ccff00',
-          fillOpacity: 1,
-          strokeColor: '#333',
-          strokeWeight: 2
-        }
-      });
-      marker.addListener('click', () => setSelected(company));
-      const iw = new window.google.maps.InfoWindow({
-        content: labelContent(company.name),
-        pixelOffset: new window.google.maps.Size(0, -10)
-      });
-      markerLabelsRef.current.push(iw);
-      if (showMarkerLabels) iw.open(map, marker);
-      markersRef.current.push(marker);
-    });
-
-    // 처음 보이는 뷰: 한 번만 적용 (이후 검색으로 이동한 화면이 덮어쓰이지 않도록)
-    if (!initialViewAppliedRef.current) {
-      if (myLocation) {
-        map.panTo({ lat: myLocation.lat, lng: myLocation.lng });
-        map.setZoom(15);
-        initialViewAppliedRef.current = true;
-      } else if (companiesToShowOnMap.length === 1) {
-        const c = companiesToShowOnMap[0];
-        if (c.latitude != null && c.longitude != null) {
-          map.panTo({ lat: c.latitude, lng: c.longitude });
-          map.setZoom(14);
-          initialViewAppliedRef.current = true;
-        }
-      } else if (companiesToShowOnMap.length > 1) {
-        const bounds = new window.google.maps.LatLngBounds();
-        companiesToShowOnMap.forEach((c) => {
-          if (c.latitude != null && c.longitude != null) bounds.extend({ lat: c.latitude, lng: c.longitude });
+    let idx = 0;
+    const addChunk = () => {
+      if (cancelled) return;
+      const end = Math.min(idx + MAP_MARKER_CHUNK_SIZE, list.length);
+      for (; idx < end; idx++) {
+        const company = list[idx];
+        const lat = company.latitude;
+        const lng = company.longitude;
+        const marker = new window.google.maps.Marker({
+          position: { lat, lng },
+          map,
+          title: company.name || '',
+          optimized: true,
+          icon: {
+            path: window.google.maps.SymbolPath.CIRCLE,
+            scale: 10,
+            fillColor: '#ccff00',
+            fillOpacity: 1,
+            strokeColor: '#333',
+            strokeWeight: 2
+          }
         });
-        if (!bounds.isEmpty()) {
-          map.fitBounds(bounds, { top: 60, right: 60, bottom: 60, left: 60 });
-          initialViewAppliedRef.current = true;
+        marker.addListener('click', () => setSelected(company));
+        if (showMarkerLabels) {
+          const iw = new window.google.maps.InfoWindow({
+            content: labelContent(company.name),
+            pixelOffset: new window.google.maps.Size(0, -10)
+          });
+          iw.open(map, marker);
+          markerLabelsRef.current.push(iw);
         }
+        markersRef.current.push(marker);
       }
+      if (idx < list.length && !cancelled) {
+        requestAnimationFrame(addChunk);
+      }
+    };
+
+    // 첫 청크는 동기로 그려 첫 화면이 한 프레임 늦지 않게 함. 이후만 rAF로 나머지를 쪼갬.
+    if (list.length > 0) {
+      addChunk();
     }
-  }, [mapReady, companiesToShowOnMap, showMarkerLabels, myLocation]);
+
+    return () => {
+      cancelled = true;
+      clearCompanyMarkers();
+    };
+  }, [mapReady, companiesToShowOnMap, showMarkerLabels]);
 
   // 외부(예: 고객사 상세 모달)에서 전달된 고객사 포커스 요청 처리
   useEffect(() => {
@@ -1280,10 +1362,16 @@ export default function Map({
           />
         )}
       </div>
-      {loading && (
+      {!mapReady && (
         <div className="map-loading">
           <span className="material-symbols-outlined">progress_activity</span>
-          불러오는 중…
+          지도 불러오는 중…
+        </div>
+      )}
+      {mapReady && loading && (
+        <div className="map-loading-companies" role="status" aria-live="polite">
+          <span className="material-symbols-outlined">progress_activity</span>
+          고객사 목록 불러오는 중…
         </div>
       )}
     </div>

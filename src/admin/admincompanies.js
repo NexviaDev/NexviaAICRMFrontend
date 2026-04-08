@@ -11,10 +11,20 @@ function clearAdminSession() {
 
 const ROLE_OPTIONS = [
   { value: 'owner', label: '대표(Owner)' },
-  { value: 'senior', label: 'Senior' },
+  { value: 'admin', label: '관리자 (Admin)' },
+  { value: 'manager', label: '실무자 (Manager)' },
   { value: 'staff', label: 'Staff' },
   { value: 'pending', label: '권한 대기' }
 ];
+
+/** DB에 레거시 role이 남아 있어도 셀렉트 value와 맞춤 */
+function adminUiRoleValue(role) {
+  const r = String(role || '').trim().toLowerCase();
+  if (r === 'senior') return 'admin';
+  if (r === 'practitioner' || r === 'contributor') return 'manager';
+  if (['owner', 'admin', 'manager', 'staff', 'pending'].includes(r)) return r;
+  return 'pending';
+}
 
 export default function AdminCompanies() {
   const [adminToken, setAdminToken] = useState(() => localStorage.getItem(ADMIN_TOKEN_KEY) || '');
@@ -268,7 +278,7 @@ export default function AdminCompanies() {
                       </td>
                       <td>
                         {row.roleCounts
-                          ? `${row.roleCounts.owner} / ${row.roleCounts.senior} / ${row.roleCounts.staff} / ${row.roleCounts.pending}`
+                          ? `${row.roleCounts.owner} / ${row.roleCounts.admin ?? row.roleCounts.senior ?? 0} / ${row.roleCounts.manager ?? row.roleCounts.practitioner ?? 0} / ${row.roleCounts.staff} / ${row.roleCounts.pending}`
                           : '—'}
                       </td>
                       <td>
@@ -340,7 +350,7 @@ export default function AdminCompanies() {
                 </div>
                 <p className="admin-sub-lead" style={{ marginBottom: '14px' }}>
                   결제·카드 등록 없이 <strong>구독 및 인원</strong> 화면과 동일하게 <strong>활성 구독</strong>으로 보이게 합니다. 인원 상한은
-                  Owner·Senior·Staff 합계 기준 <strong>한 가지 숫자(시트)</strong>입니다.
+                  대표·관리자·실무자·직원 합계 기준 <strong>한 가지 숫자(시트)</strong>입니다.
                 </p>
                 {selectedRow.subscription && !selectedRow.subscription.adminGranted ? (
                   <p className="admin-sub-hint" style={{ marginBottom: '14px' }}>
@@ -403,7 +413,7 @@ export default function AdminCompanies() {
                             <select
                               className="admin-sub-input"
                               style={{ minWidth: '140px' }}
-                              value={u.role || 'pending'}
+                              value={adminUiRoleValue(u.role)}
                               disabled={roleSavingId === u._id}
                               onChange={(e) => void changeRole(u._id, e.target.value)}
                             >

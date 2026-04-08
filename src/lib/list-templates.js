@@ -17,9 +17,9 @@ export const DEFAULT_COLUMNS = {
     { key: '_favorite', label: '즐겨찾기' },
     { key: 'name', label: '고객사명' },
     { key: 'representativeName', label: '대표자' },
-    { key: 'businessNumber', label: '사업자 번호' },
     { key: 'industry', label: '업종' },
     { key: 'address', label: '주소' },
+    { key: 'status', label: '상태', defaultVisible: false },
     { key: 'assigneeUserIds', label: '담당자' }
   ],
   [LIST_IDS.CUSTOMER_COMPANY_EMPLOYEES]: [
@@ -27,9 +27,9 @@ export const DEFAULT_COLUMNS = {
     { key: '_favorite', label: '즐겨찾기' },
     { key: 'company', label: '회사' },
     { key: 'name', label: '이름' },
+    { key: 'phone', label: '연락처' },
     { key: 'email', label: '이메일' },
-    { key: 'phone', label: '전화' },
-    { key: 'status', label: '상태' },
+    { key: 'status', label: '상태', defaultVisible: false },
     { key: 'assigneeUserIds', label: '담당자' },
     { key: 'lastSupportedAt', label: '최근 지원 일자' }
   ],
@@ -69,7 +69,9 @@ export function getEffectiveTemplate(listId, saved, extraColumns = []) {
   for (const k of extraOrder) {
     if (!allOrder.includes(k)) allOrder.push(k);
   }
-  const defaultVisible = Object.fromEntries(defaults.map((c) => [c.key, true]));
+  const defaultVisible = Object.fromEntries(
+    defaults.map((c) => [c.key, c.defaultVisible !== false])
+  );
   const extraVisible = Object.fromEntries((Array.isArray(extraColumns) ? extraColumns : []).map((c) => [c.key, true]));
   const columnOrder = Array.isArray(saved?.columnOrder) && saved.columnOrder.length > 0
     ? saved.columnOrder.filter((k) => allOrder.includes(k))
@@ -85,6 +87,10 @@ export function getEffectiveTemplate(listId, saved, extraColumns = []) {
   if (listId === LIST_IDS.CUSTOMER_COMPANIES && order.includes('_favorite')) {
     order = order.filter((key) => key !== '_favorite');
     order.unshift('_favorite');
+  }
+  /** 사업자 번호는 고객사명 셀 아래에 표시하므로 열에서 제외 (저장된 템플릿 호환) */
+  if (listId === LIST_IDS.CUSTOMER_COMPANIES) {
+    order = order.filter((key) => key !== 'businessNumber');
   }
   const visible = { ...defaultVisible, ...extraVisible, ...(saved?.visible && typeof saved.visible === 'object' ? saved.visible : {}) };
   const columns = order.map((key) => defaults.find((c) => c.key === key) || (extraColumns || []).find((c) => c.key === key)).filter(Boolean);

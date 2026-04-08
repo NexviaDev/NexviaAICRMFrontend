@@ -54,7 +54,7 @@
   font-size: 0.82rem;
   line-height: 1.55;
   color: #475569;
-  background: linear-gradient(135deg, #f0f7fc 0%, #eef4f8 100%);
+  background: #f0f7fc;
   border: 1px solid rgba(148, 163, 184, 0.35);
   border-radius: 0.65rem;
 }
@@ -284,9 +284,17 @@
   color: #9a6b08;
 }
 
-.company-overview-badge.role-senior {
+.company-overview-badge.role-senior,
+.company-overview-badge.role-admin {
   background: #efeafe;
   color: #6450b8;
+}
+
+.company-overview-badge.role-practitioner,
+.company-overview-badge.role-contributor,
+.company-overview-badge.role-manager {
+  background: #eef8f4;
+  color: #3d7a62;
 }
 
 .company-overview-badge.role-pending {
@@ -300,7 +308,7 @@
 }
 
 .company-subscription-card {
-  background: linear-gradient(135deg, rgba(224, 242, 254, 0.35) 0%, rgba(239, 246, 255, 0.65) 100%);
+  background: rgba(224, 242, 254, 0.45);
   border-color: rgba(99, 102, 241, 0.12);
 }
 
@@ -330,6 +338,118 @@
   font-size: 0.82rem;
   line-height: 1.5;
   color: var(--text-muted);
+}
+
+.company-subscription-hint-block {
+  margin-top: 0.25rem;
+}
+
+.company-subscription-hint-block .company-subscription-hint:first-child {
+  margin-top: 0.75rem;
+}
+
+.company-subscription-hint-follow {
+  margin-top: 0.5rem;
+}
+
+.company-subscription-hint-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.15rem;
+  font-size: 0.8rem;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.company-subscription-hint-list li + li {
+  margin-top: 0.35rem;
+}
+
+.company-subscription-hint-warn {
+  margin-top: 0.65rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.5rem;
+  background: rgba(254, 243, 199, 0.4);
+  border: 1px solid rgba(251, 191, 36, 0.28);
+  color: var(--text);
+}
+
+.company-subscription-role-guide {
+  margin-bottom: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.65rem;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(99, 102, 241, 0.12);
+}
+
+.company-subscription-role-guide-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.company-subscription-role-guide-lead {
+  margin: 0 0 0.75rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.company-subscription-role-guide-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.company-subscription-role-block {
+  padding: 0.6rem 0.7rem;
+  border-radius: 0.5rem;
+  background: rgba(241, 245, 249, 0.55);
+  border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.company-subscription-role-block-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.6rem;
+  margin-bottom: 0.35rem;
+}
+
+.company-subscription-role-name {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.company-subscription-role-badge {
+  display: inline-block;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid rgba(14, 165, 233, 0.2);
+}
+
+.company-subscription-role-badge-muted {
+  background: #f1f5f9;
+  color: #64748b;
+  border-color: rgba(148, 163, 184, 0.35);
+}
+
+.company-subscription-role-ul {
+  margin: 0;
+  padding-left: 1.05rem;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.company-subscription-role-ul li + li {
+  margin-top: 0.25rem;
 }
 
 .company-overview-seat-warning {

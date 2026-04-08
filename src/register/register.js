@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import './register.css';
 import { formatPhone, phoneDigitsOnly } from './phoneFormat';
@@ -8,47 +8,6 @@ import SearchCompany from './search-company';
 import { API_BASE } from '@/config';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-/** 비밀번호가 있을 때만 규칙 검사. 빈 문자열은 통과(선택 입력). */
-function validatePasswordFront(password) {
-  const p = String(password || '').trim();
-  if (!p) return { ok: true };
-  if (p.length < 6) return { ok: false, error: '비밀번호는 6자 이상이어야 합니다.' };
-  if (!/[A-Z]/.test(p)) return { ok: false, error: '비밀번호에 대문자를 1개 이상 포함해 주세요.' };
-  if (!/[a-z]/.test(p)) return { ok: false, error: '비밀번호에 소문자를 1개 이상 포함해 주세요.' };
-  if (!/\d/.test(p)) return { ok: false, error: '비밀번호에 숫자를 1개 이상 포함해 주세요.' };
-  if (!/[^A-Za-z0-9]/.test(p)) return { ok: false, error: '비밀번호에 특수문자를 1개 이상 포함해 주세요.' };
-  return { ok: true };
-}
-
-/** 비밀번호·확인 둘 다 비우면 통과. 하나만 있거나 둘 다 있으면 일치 + 규칙 검사. */
-function validatePasswordPairOptional(password, passwordConfirm) {
-  const p = String(password || '').trim();
-  const c = String(passwordConfirm || '').trim();
-  if (!p && !c) return { ok: true };
-  if (p !== c) return { ok: false, error: '비밀번호가 일치하지 않습니다.' };
-  return validatePasswordFront(p);
-}
-
-/** 생략 가능 / 일치 여부 (목록 마지막 줄) */
-function getPasswordMatchRowState(password, passwordConfirm) {
-  const p = String(password || '').trim();
-  const c = String(passwordConfirm || '').trim();
-  if (!p && !c) return { ok: true, label: '비밀번호 생략 가능' };
-  if (p && p === String(passwordConfirm || '')) return { ok: true, label: '비밀번호 일치' };
-  return { ok: false, label: '비밀번호 일치' };
-}
-
-/** 비밀번호 조건 목록 (밑에 표시용) */
-function getPasswordConditions(password) {
-  return [
-    { ok: !!(password && password.length >= 6), label: '6자 이상' },
-    { ok: /[A-Z]/.test(password || ''), label: '대문자 1개 이상' },
-    { ok: /[a-z]/.test(password || ''), label: '소문자 1개 이상' },
-    { ok: /\d/.test(password || ''), label: '숫자 1개 이상' },
-    { ok: /[^A-Za-z0-9]/.test(password || ''), label: '특수문자 1개 이상' }
-  ];
-}
 
 export default function Register() {
   const navigate = useNavigate();
@@ -61,8 +20,6 @@ export default function Register() {
   const [email, setEmail] = useState('');
   const [emailChecked, setEmailChecked] = useState(false);
   const [verificationCode, setVerificationCode] = useState('');
-  const [password, setPassword] = useState('');
-  const [passwordConfirm, setPasswordConfirm] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [companyName, setCompanyName] = useState('');
@@ -84,11 +41,15 @@ export default function Register() {
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const passwordMatchRow = useMemo(() => getPasswordMatchRowState(password, passwordConfirm), [password, passwordConfirm]);
-
   const authHeader = () => {
     const t = tokenFromUrl || localStorage.getItem('crm_token');
     return t ? { Authorization: `Bearer ${t}` } : {};
+  };
+
+  /** DB에 사용자 없음(삭제됨)·토큰 무효 시 브라우저에 남은 세션 정리 */
+  const clearStoredSession = () => {
+    localStorage.removeItem('crm_token');
+    localStorage.removeItem('crm_user');
   };
 
   const resolveDepartmentValue = (raw, options) => {
@@ -113,35 +74,43 @@ export default function Register() {
     if (tokenFromUrl && needsRegister) {
       setMode('google-complete');
       fetch(`${API_BASE}/auth/me?token=${encodeURIComponent(tokenFromUrl)}`)
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.user) {
-            setEmail(data.user.email || '');
-            setName(data.user.name || '');
-            setPhone(data.user.phone ? formatPhone(data.user.phone) : '');
-            setCompanyName(data.user.companyName || '');
-            setCompanyAddress(data.user.companyAddress || '');
-            setCompanyAddressDetail(data.user.companyAddressDetail || '');
-            setCompanyDepartment(data.user.companyDepartment || '');
-            setSelectedCompanyId(data.user.companyId ? String(data.user.companyId) : '');
-            setCompanyNeedsCreate(false);
-            setCompanyRepresentativeName('');
-            if (data.user.companyName) {
-              setCompanyConfirmed(true);
-              fetch(`${API_BASE}/companies/search?q=${encodeURIComponent(data.user.companyName)}&limit=5`)
-                .then((r) => r.json())
-                .then((d) => {
-                  const match = (d.items || []).find((c) => c.name === data.user.companyName);
-                  if (match?.businessNumber) setCompanyBusinessNumber(match.businessNumber);
-                  if (match?._id || match?.id) setSelectedCompanyId(String(match._id || match.id));
-                })
-                .catch(() => {});
-            }
+        .then(async (res) => {
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.user) {
+            clearStoredSession();
+            setError(data.error || '계정을 찾을 수 없습니다. DB에서 삭제되었거나 토큰이 잘못되었을 수 있습니다.');
+            navigate('/login', { replace: true });
+            return;
+          }
+          setEmail(data.user.email || '');
+          setName(data.user.name || '');
+          setPhone(data.user.phone ? formatPhone(data.user.phone) : '');
+          setCompanyName(data.user.companyName || '');
+          setCompanyAddress(data.user.companyAddress || '');
+          setCompanyAddressDetail(data.user.companyAddressDetail || '');
+          setCompanyDepartment(data.user.companyDepartment || '');
+          setSelectedCompanyId(data.user.companyId ? String(data.user.companyId) : '');
+          setCompanyNeedsCreate(false);
+          setCompanyRepresentativeName('');
+          if (data.user.companyName) {
+            setCompanyConfirmed(true);
+            fetch(`${API_BASE}/companies/search?q=${encodeURIComponent(data.user.companyName)}&limit=5`)
+              .then((r) => r.json())
+              .then((d) => {
+                const match = (d.items || []).find((c) => c.name === data.user.companyName);
+                if (match?.businessNumber) setCompanyBusinessNumber(match.businessNumber);
+                if (match?._id || match?.id) setSelectedCompanyId(String(match._id || match.id));
+              })
+              .catch(() => {});
           }
         })
-        .catch(() => setError('로그인 정보를 불러오지 못했습니다.'));
+        .catch(() => {
+          clearStoredSession();
+          setError('로그인 정보를 불러오지 못했습니다.');
+          navigate('/login', { replace: true });
+        });
     }
-  }, [tokenFromUrl, needsRegister]);
+  }, [tokenFromUrl, needsRegister, navigate]);
 
   useEffect(() => {
     if (isEditMode) {
@@ -151,33 +120,41 @@ export default function Register() {
       }
       setMode('google-complete');
       fetch(`${API_BASE}/auth/me`, { headers: authHeader() })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.user) {
-            setEmail(data.user.email || '');
-            setName(data.user.name || '');
-            setPhone(data.user.phone ? formatPhone(data.user.phone) : '');
-            setCompanyName(data.user.companyName || '');
-            setCompanyAddress(data.user.companyAddress || '');
-            setCompanyAddressDetail(data.user.companyAddressDetail || '');
-            setCompanyDepartment(data.user.companyDepartment || '');
-            setSelectedCompanyId(data.user.companyId ? String(data.user.companyId) : '');
-            setCompanyNeedsCreate(false);
-            setCompanyRepresentativeName('');
-            if (data.user.companyName) {
-              setCompanyConfirmed(true);
-              fetch(`${API_BASE}/companies/search?q=${encodeURIComponent(data.user.companyName)}&limit=5`)
-                .then((r) => r.json())
-                .then((d) => {
-                  const match = (d.items || []).find((c) => c.name === data.user.companyName);
-                  if (match?.businessNumber) setCompanyBusinessNumber(match.businessNumber);
-                  if (match?._id || match?.id) setSelectedCompanyId(String(match._id || match.id));
-                })
-                .catch(() => {});
-            }
+        .then(async (res) => {
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || !data.user) {
+            clearStoredSession();
+            setError(data.error || '계정을 찾을 수 없습니다.');
+            navigate('/login', { replace: true });
+            return;
+          }
+          setEmail(data.user.email || '');
+          setName(data.user.name || '');
+          setPhone(data.user.phone ? formatPhone(data.user.phone) : '');
+          setCompanyName(data.user.companyName || '');
+          setCompanyAddress(data.user.companyAddress || '');
+          setCompanyAddressDetail(data.user.companyAddressDetail || '');
+          setCompanyDepartment(data.user.companyDepartment || '');
+          setSelectedCompanyId(data.user.companyId ? String(data.user.companyId) : '');
+          setCompanyNeedsCreate(false);
+          setCompanyRepresentativeName('');
+          if (data.user.companyName) {
+            setCompanyConfirmed(true);
+            fetch(`${API_BASE}/companies/search?q=${encodeURIComponent(data.user.companyName)}&limit=5`)
+              .then((r) => r.json())
+              .then((d) => {
+                const match = (d.items || []).find((c) => c.name === data.user.companyName);
+                if (match?.businessNumber) setCompanyBusinessNumber(match.businessNumber);
+                if (match?._id || match?.id) setSelectedCompanyId(String(match._id || match.id));
+              })
+              .catch(() => {});
           }
         })
-        .catch(() => setError('내 정보를 불러오지 못했습니다.'));
+        .catch(() => {
+          clearStoredSession();
+          setError('내 정보를 불러오지 못했습니다.');
+          navigate('/login', { replace: true });
+        });
     }
   }, [isEditMode, navigate]);
 
@@ -318,12 +295,6 @@ export default function Register() {
       setLoading(false);
       return;
     }
-    const pwdPair = validatePasswordPairOptional(password, passwordConfirm);
-    if (!pwdPair.ok) {
-      setError(pwdPair.error);
-      setLoading(false);
-      return;
-    }
     if (!name.trim()) {
       setError('이름을 입력해 주세요.');
       setLoading(false);
@@ -372,7 +343,6 @@ export default function Register() {
         body: JSON.stringify({
           email: eVal,
           verificationCode: verificationCode.trim(),
-          ...(String(password || '').trim() ? { password: String(password).trim() } : {}),
           name: name.trim(),
           phone: phone.trim(),
           companyName: companyName.trim(),
@@ -403,21 +373,6 @@ export default function Register() {
     e.preventDefault();
     setError('');
     setLoading(true);
-    if (!isEditMode) {
-      const pwdPair = validatePasswordPairOptional(password, passwordConfirm);
-      if (!pwdPair.ok) {
-        setError(pwdPair.error);
-        setLoading(false);
-        return;
-      }
-    } else if (password || passwordConfirm) {
-      const pwdPair = validatePasswordPairOptional(password, passwordConfirm);
-      if (!pwdPair.ok) {
-        setError(pwdPair.error);
-        setLoading(false);
-        return;
-      }
-    }
     if (!name.trim()) {
       setError('이름을 입력해 주세요.');
       setLoading(false);
@@ -471,7 +426,6 @@ export default function Register() {
         companyRepresentativeName: companyNeedsCreate ? companyRepresentativeName.trim() : '',
         createCompanyOnSave: companyNeedsCreate
       };
-      if (password) body.password = password;
       const res = await fetch(`${API_BASE}/auth/complete-profile`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeader() },
@@ -510,26 +464,6 @@ export default function Register() {
                 <div className="register-field">
                   <label>이메일 (아이디)</label>
                   <input type="email" value={email} readOnly />
-                </div>
-                <div className="register-field">
-                  <label htmlFor="reg-password">{isEditMode ? '비밀번호 (변경 시에만 입력)' : '비밀번호 (선택)'}</label>
-                  <input id="reg-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={isEditMode ? '변경할 경우에만 입력' : '미입력 시 비밀번호 없이 가입'} autoComplete="new-password" />
-                </div>
-                <div className="register-field">
-                  <label htmlFor="reg-password-confirm">{isEditMode ? '비밀번호 확인' : '비밀번호 확인 (선택)'}</label>
-                  <input id="reg-password-confirm" type="password" value={passwordConfirm} onChange={(e) => setPasswordConfirm(e.target.value)} placeholder={isEditMode ? '변경할 경우에만 입력' : '비밀번호를 설정한 경우에만 입력'} autoComplete="new-password" />
-                </div>
-                <div className="register-password-conditions">
-                  <p className="register-conditions-title">비밀번호 조건 {isEditMode ? '' : '(입력하는 경우에만 적용)'}</p>
-                  <ul className="register-conditions-list">
-                    {getPasswordConditions(password).map((c, i) => (
-                      <li key={i} className={c.ok ? 'ok' : ''}><span className="material-symbols-outlined">{c.ok ? 'check_circle' : 'cancel'}</span>{c.label}</li>
-                    ))}
-                    <li className={passwordMatchRow.ok ? 'ok' : ''}>
-                      <span className="material-symbols-outlined">{passwordMatchRow.ok ? 'check_circle' : 'cancel'}</span>
-                      {passwordMatchRow.label}
-                    </li>
-                  </ul>
                 </div>
                 <div className="register-field">
                   <label htmlFor="reg-name">이름 *</label>
@@ -644,26 +578,6 @@ export default function Register() {
                 <div className="register-field">
                   <label htmlFor="form-code">인증 번호 *</label>
                   <input id="form-code" type="text" value={verificationCode} onChange={(e) => setVerificationCode(e.target.value)} placeholder="6자리 인증 번호" maxLength={6} required />
-                </div>
-                <div className="register-field">
-                  <label htmlFor="form-password">비밀번호 (선택)</label>
-                  <input id="form-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="미입력 시 비밀번호 없이 가입" autoComplete="new-password" />
-                </div>
-                <div className="register-field">
-                  <label htmlFor="form-password-confirm">비밀번호 확인 (선택)</label>
-                  <input id="form-password-confirm" type="password" value={passwordConfirm} onChange={(e) => setPasswordConfirm(e.target.value)} placeholder="비밀번호를 설정한 경우에만 입력" autoComplete="new-password" />
-                </div>
-                <div className="register-password-conditions">
-                  <p className="register-conditions-title">비밀번호 조건 (입력하는 경우에만 적용)</p>
-                  <ul className="register-conditions-list">
-                    {getPasswordConditions(password).map((c, i) => (
-                      <li key={i} className={c.ok ? 'ok' : ''}><span className="material-symbols-outlined">{c.ok ? 'check_circle' : 'cancel'}</span>{c.label}</li>
-                    ))}
-                    <li className={passwordMatchRow.ok ? 'ok' : ''}>
-                      <span className="material-symbols-outlined">{passwordMatchRow.ok ? 'check_circle' : 'cancel'}</span>
-                      {passwordMatchRow.label}
-                    </li>
-                  </ul>
                 </div>
                 <div className="register-field">
                   <label htmlFor="form-name">이름 *</label>

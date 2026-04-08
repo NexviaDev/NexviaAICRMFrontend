@@ -168,7 +168,8 @@ export default function EmployeeWorkReport() {
 
   const roleLabel = (role) => {
     if (role === 'owner') return '대표 (Owner)';
-    if (role === 'senior') return '책임 (Senior)';
+    if (role === 'admin' || role === 'senior') return '관리자 (Admin)';
+    if (role === 'manager' || role === 'practitioner' || role === 'contributor') return '실무자 (Manager)';
     if (role === 'staff') return '직원 (Staff)';
     if (role === 'pending') return '권한 대기 (Pending)';
     return '직원';

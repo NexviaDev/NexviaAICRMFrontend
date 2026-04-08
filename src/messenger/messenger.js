@@ -4,6 +4,7 @@ import { API_BASE } from '@/config';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import ParticipantModal from '@/shared/participant-modal/participant-modal';
 import NewChatModal from './new-chat-modal/new-chat-modal';
+import SaveContactModal from './save-contact-modal/save-contact-modal';
 import { GoogleWorkspaceChatPolicyHint } from '@/lib/google-workspace-chat-hint';
 import { MESSENGER_MESSAGE_POLL_MS } from '@/lib/polling-intervals';
 import './messenger.css';
@@ -132,6 +133,14 @@ function dayLabel(iso) {
   return d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
+/** Google Chat `users/…` resourceName 정규화 (주소록 키·API 일치) */
+function normalizeChatResourceName(rn) {
+  if (!rn || typeof rn !== 'string') return '';
+  const t = rn.trim();
+  if (!t) return '';
+  return t.startsWith('users/') ? t : `users/${t}`;
+}
+
 function spaceTypeKo(spaceType) {
   switch (spaceType) {
     case 'DIRECT_MESSAGE':
@@ -148,6 +157,50 @@ function defaultSpaceTitle(s) {
   const st = s?.spaceType || s?.type;
   if (s?.displayName?.trim()) return s.displayName.trim();
   return `${spaceTypeKo(st)} 대화`;
+}
+
+/** Google `users/` 뒤 숫자만 있는 긴 식별자 — 이메일·표시명 없이 내부 ID만 있는 경우 */
+function isOpaqueGoogleUserId(id) {
+  if (id == null || typeof id !== 'string') return false;
+  const t = id.trim();
+  return t.length >= 12 && /^\d+$/.test(t);
+}
+
+/** 상대를 사람 이름으로 알 수 없고 숫자 ID만 있는 경우 — 실루엣 아이콘으로 대체 */
+function shouldShowDmSilhouette(peer) {
+  if (!peer) return false;
+  return isOpaqueGoogleUserId(peer.chatUserId) && peer.displayName === peer.chatUserId;
+}
+
+/** 멤버십에서 1:1 상대 한 명 추출 — 스레드 헤더·왼쪽 목록 공통 */
+function computeDmPeerFromMemberships(memberships, myResourceName, resolvedByRn) {
+  if (!Array.isArray(memberships) || !memberships.length) return null;
+  const other = memberships.find((x) => x?.member?.name && x.member.name !== myResourceName);
+  if (!other?.member?.name) return null;
+  const rn = other.member.name;
+  const chatUserId = rn.startsWith('users/') ? rn.slice('users/'.length) : rn;
+  let displayName = (other.member.displayName || '').trim();
+  if (!displayName && resolvedByRn && resolvedByRn[rn]) displayName = String(resolvedByRn[rn]).trim();
+  if (!displayName) displayName = chatUserId;
+  return { displayName, chatUserId, resourceName: rn };
+}
+
+/**
+ * 왼쪽 목록·모바일 스토리 텍스트. 1:1은 이름만(식별 가능할 때); 숫자 ID만 있으면 빈 문자열(실루엣은 JSX).
+ */
+function getSpaceListTitle(s, dmPeerBySpace) {
+  const dn = s?.displayName?.trim();
+  if (dn) return dn;
+  const st = s?.spaceType || s?.type;
+  if (st === 'DIRECT_MESSAGE') {
+    const peer = dmPeerBySpace[s.name];
+    if (peer) {
+      if (shouldShowDmSilhouette(peer)) return '';
+      if (peer.displayName === peer.chatUserId) return peer.chatUserId;
+      return peer.displayName;
+    }
+  }
+  return defaultSpaceTitle(s);
 }
 
 /**
@@ -207,7 +260,28 @@ export default function Messenger() {
   const [participantPickerMode, setParticipantPickerMode] = useState(null);
   const [teamMembers, setTeamMembers] = useState([]);
   const [previews, setPreviews] = useState(() => ({}));
+  /** space full name → 1:1 상대 표시용 (목록에서 '1:1 대화' 대신 이름·아이디) */
+  const [dmPeerBySpace, setDmPeerBySpace] = useState(() => ({}));
+  const dmPeerBySpaceRef = useRef({});
+  const dmPeerFetchInFlightRef = useRef(new Set());
+  /** 1:1 표시명 일괄 보강(resolve-user-names) — 짧은 연속 갱신은 한 번으로 묶음 */
+  const bulkResolveDebounceRef = useRef(null);
+  const bulkResolveGenRef = useRef(0);
   const msgsEndRef = useRef(null);
+  /** Chat 주소록(UserChatContact)에 등록된 상대 — chatResourceName 정규화 키 */
+  const [chatContactsRns, setChatContactsRns] = useState(() => ({}));
+  const [saveContactOpen, setSaveContactOpen] = useState(false);
+  const [saveContactLoading, setSaveContactLoading] = useState(false);
+  const [saveContactPrefillLoading, setSaveContactPrefillLoading] = useState(false);
+  const [saveContactRn, setSaveContactRn] = useState('');
+  const [saveContactForm, setSaveContactForm] = useState({
+    displayName: '',
+    email: '',
+    phone: '',
+    memo: ''
+  });
+  const [saveContactError, setSaveContactError] = useState('');
+  const [saveContactIsEdit, setSaveContactIsEdit] = useState(false);
 
   const currentUser = useMemo(() => {
     try {
@@ -243,6 +317,26 @@ export default function Messenger() {
       .catch(() => {});
   }, []);
 
+  const loadChatContacts = useCallback(async () => {
+    try {
+      const res = await fetchWithColdStartRetry(`${API_BASE}/google-chat/my-contacts`, {
+        headers: { ...getAuthHeader() },
+        credentials: 'include'
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+      const list = Array.isArray(data.contacts) ? data.contacts : [];
+      const map = {};
+      list.forEach((c) => {
+        const k = normalizeChatResourceName(c.chatResourceName);
+        if (k) map[k] = true;
+      });
+      setChatContactsRns(map);
+    } catch (_) {
+      /* 목록만 실패 — 등록 버튼은 계속 표시 가능 */
+    }
+  }, []);
+
   const participantPickerInitialSelection = useMemo(() => {
     const src =
       participantPickerMode === 'addMembers' ? addMembersInviteEmails : newChatInviteEmails;
@@ -271,6 +365,167 @@ export default function Messenger() {
 
   useEffect(() => {
     senderNamesRef.current = senderNamesByResource;
+  }, [senderNamesByResource]);
+
+  useEffect(() => {
+    dmPeerBySpaceRef.current = dmPeerBySpace;
+  }, [dmPeerBySpace]);
+
+  /** 목록에 없는 스페이스 키 정리 */
+  useEffect(() => {
+    const keep = new Set(spaces.map((s) => s.name));
+    setDmPeerBySpace((prev) => {
+      const keys = Object.keys(prev);
+      const stale = keys.filter((k) => !keep.has(k));
+      if (stale.length === 0) return prev;
+      const next = { ...prev };
+      stale.forEach((k) => {
+        delete next[k];
+      });
+      return next;
+    });
+  }, [spaces]);
+
+  /** 열린 1:1 스레드의 멤버 정보를 목록 캐시에 반영 */
+  useEffect(() => {
+    if (!selectedName) return;
+    const sp = spaces.find((s) => s.name === selectedName);
+    if (!sp) return;
+    const st = sp.spaceType || sp.type;
+    if (st !== 'DIRECT_MESSAGE' || !members.length) return;
+    const peer = computeDmPeerFromMemberships(members, myResourceName, senderNamesByResource);
+    if (!peer) return;
+    setDmPeerBySpace((prev) => ({ ...prev, [selectedName]: peer }));
+  }, [selectedName, spaces, members, myResourceName, senderNamesByResource]);
+
+  /** displayName 없는 1:1 방마다 멤버 API로 상대 표시명·users/아이디 조회 (목록 라벨용) */
+  useEffect(() => {
+    if (!spaces.length || !myResourceName) return;
+    let cancelled = false;
+    const run = async () => {
+      const need = spaces.filter((s) => {
+        const st = s.spaceType || s.type;
+        if (st !== 'DIRECT_MESSAGE') return false;
+        if (s.displayName?.trim()) return false;
+        if (dmPeerBySpaceRef.current[s.name]) return false;
+        if (dmPeerFetchInFlightRef.current.has(s.name)) return false;
+        return true;
+      });
+      const BATCH = 3;
+      for (let i = 0; i < need.length; i += BATCH) {
+        if (cancelled) return;
+        const chunk = need.slice(i, i + BATCH);
+        await Promise.all(
+          chunk.map((s) =>
+            (async () => {
+              if (cancelled) return;
+              dmPeerFetchInFlightRef.current.add(s.name);
+              try {
+                const sid = encodeURIComponent(spaceIdFromName(s.name));
+                const res = await fetchWithColdStartRetry(
+                  `${API_BASE}/google-chat/spaces/${sid}/members?pageSize=100`,
+                  { headers: { ...getAuthHeader() } }
+                );
+                const data = await res.json().catch(() => ({}));
+                if (cancelled || !res.ok) return;
+                const memberships = Array.isArray(data.memberships) ? data.memberships : [];
+                const peer = computeDmPeerFromMemberships(
+                  memberships,
+                  myResourceName,
+                  senderNamesByResource
+                );
+                if (!peer || cancelled) return;
+                setDmPeerBySpace((prev) => {
+                  if (prev[s.name]) return prev;
+                  return { ...prev, [s.name]: peer };
+                });
+              } catch (_) {
+                /* 조용히 건너뜀 */
+              } finally {
+                dmPeerFetchInFlightRef.current.delete(s.name);
+              }
+            })()
+          )
+        );
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [spaces, myResourceName, senderNamesByResource]);
+
+  /**
+   * 모든 1:1 방: 멤버로 잡힌 각 users/… 에 대해 resolve-user-names를 주기적으로 호출.
+   * - 예전: 실루엣일 때만 + senderNames에 없을 때만 요청 → CRM 이름 변경·목록 최신화가 안 됨.
+   * - 지금: dmPeer·spaces가 바뀔 때마다 디바운스 후 일괄 요청(캐시 스킵 없음) → 동료 googleId→이름 등 최신 반영.
+   */
+  useEffect(() => {
+    if (!myResourceName) return;
+    if (bulkResolveDebounceRef.current) clearTimeout(bulkResolveDebounceRef.current);
+    const gen = bulkResolveGenRef.current + 1;
+    bulkResolveGenRef.current = gen;
+    bulkResolveDebounceRef.current = window.setTimeout(() => {
+      bulkResolveDebounceRef.current = null;
+      const unique = [
+        ...new Set(
+          Object.values(dmPeerBySpace)
+            .map((p) => p?.resourceName)
+            .filter(Boolean)
+        )
+      ];
+      if (unique.length === 0) return;
+      (async () => {
+        try {
+          const res = await fetchWithColdStartRetry(`${API_BASE}/google-chat/resolve-user-names`, {
+            method: 'POST',
+            headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ resourceNames: unique })
+          });
+          const data = await res.json().catch(() => ({}));
+          if (gen !== bulkResolveGenRef.current || !res.ok) return;
+          const next = {};
+          Object.entries(data).forEach(([k, v]) => {
+            if (k.startsWith('_')) return;
+            if (typeof v === 'string' && v.trim()) next[k] = v.trim();
+          });
+          if (Object.keys(next).length === 0) return;
+          setSenderNamesByResource((p) => {
+            const merged = { ...p, ...next };
+            senderNamesRef.current = merged;
+            return merged;
+          });
+        } catch (_) {
+          /* 실패 시 기존 표시 유지 */
+        }
+      })();
+    }, 450);
+    return () => {
+      if (bulkResolveDebounceRef.current) {
+        clearTimeout(bulkResolveDebounceRef.current);
+        bulkResolveDebounceRef.current = null;
+      }
+      bulkResolveGenRef.current += 1;
+    };
+  }, [dmPeerBySpace, myResourceName, spaces]);
+
+  /** resolve-user-names 로 이름이 뒤늦게 채워지면 목록 캐시의 표시명도 갱신 */
+  useEffect(() => {
+    setDmPeerBySpace((prev) => {
+      let next = null;
+      for (const [spaceName, peer] of Object.entries(prev)) {
+        const rn = peer.resourceName;
+        if (!rn) continue;
+        const better = senderNamesByResource[rn];
+        if (!better || typeof better !== 'string') continue;
+        const trimmed = better.trim();
+        if (!trimmed || trimmed === peer.displayName) continue;
+        if (!next) next = { ...prev };
+        next[spaceName] = { ...peer, displayName: trimmed };
+      }
+      return next || prev;
+    });
   }, [senderNamesByResource]);
 
   /** 메시지에 등장한 발신자 resourceName에 대해 People API(백엔드 resolve-user-names)로 표시명 보강 */
@@ -377,28 +632,169 @@ export default function Messenger() {
     [spaces, selectedName]
   );
 
+  /**
+   * 1:1(DIRECT_MESSAGE) 상대: Google Chat member.name → `users/` 뒤가 이메일 또는 숫자 ID.
+   * People API 등으로 보강된 senderNamesByResource 를 이름 후보로 사용.
+   */
+  const dmPeerDetail = useMemo(
+    () =>
+      selectedSpace &&
+      (selectedSpace.spaceType || selectedSpace.type) === 'DIRECT_MESSAGE' &&
+      members.length
+        ? computeDmPeerFromMemberships(members, myResourceName, senderNamesByResource)
+        : null,
+    [selectedSpace, members, myResourceName, senderNamesByResource]
+  );
+
+  /** 말풍선 위 발신자 이름 옆 — 주소록 등록·수정 (본인 제외) */
+  const shouldShowAddressbookAction = useCallback(
+    (senderRn) => {
+      if (needsReauth || !senderRn || !myResourceName) return false;
+      if (senderRn === myResourceName) return false;
+      const key = normalizeChatResourceName(senderRn);
+      return !!key;
+    },
+    [needsReauth, myResourceName]
+  );
+
+  const openSaveContactModalForSender = useCallback((senderRn, hintDisplayName) => {
+    if (!senderRn) return;
+    const rn = normalizeChatResourceName(senderRn);
+    setSaveContactRn(rn);
+    setSaveContactError('');
+    setSaveContactIsEdit(!!chatContactsRns[rn]);
+    setSaveContactForm({ displayName: '', email: '', phone: '', memo: '' });
+    setSaveContactOpen(true);
+    setSaveContactPrefillLoading(true);
+    (async () => {
+      try {
+        const q = encodeURIComponent(rn);
+        const res = await fetchWithColdStartRetry(
+          `${API_BASE}/google-chat/profile?resourceName=${q}`,
+          { headers: { ...getAuthHeader() }, credentials: 'include' }
+        );
+        const data = await res.json().catch(() => ({}));
+        const fromApi = (data.displayName && String(data.displayName).trim()) || '';
+        const hint = (hintDisplayName && String(hintDisplayName).trim()) || '';
+        const hintOk = hint && !isOpaqueGoogleUserId(hint);
+        setSaveContactForm({
+          displayName: fromApi || (hintOk ? hint : '') || '',
+          email: data.email != null ? String(data.email).trim() : '',
+          phone: data.phone != null ? String(data.phone).trim() : '',
+          memo: data.memo != null ? String(data.memo).trim() : ''
+        });
+      } finally {
+        setSaveContactPrefillLoading(false);
+      }
+    })();
+  }, [chatContactsRns]);
+
+  const submitSaveContact = useCallback(async () => {
+    const name = saveContactForm.displayName.trim();
+    if (!name) {
+      setSaveContactError('이름을 입력해 주세요.');
+      return;
+    }
+    const rnNorm = normalizeChatResourceName(saveContactRn);
+    if (!rnNorm) {
+      setSaveContactError('대화 상대 정보를 찾을 수 없습니다.');
+      return;
+    }
+    setSaveContactLoading(true);
+    setSaveContactError('');
+    try {
+      const res = await fetch(`${API_BASE}/google-chat/my-contacts`, {
+        method: 'POST',
+        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          chatResourceName: rnNorm,
+          displayName: name,
+          email: saveContactForm.email.trim(),
+          phone: saveContactForm.phone.trim(),
+          memo: saveContactForm.memo.trim()
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSaveContactError(data.error || '저장에 실패했습니다.');
+        return;
+      }
+      setChatContactsRns((p) => ({ ...p, [rnNorm]: true }));
+      setSenderNamesByResource((p) => {
+        const merged = { ...p, [rnNorm]: name };
+        senderNamesRef.current = merged;
+        return merged;
+      });
+      setDmPeerBySpace((prev) => {
+        let next = null;
+        for (const [spaceName, peer] of Object.entries(prev)) {
+          if (normalizeChatResourceName(peer?.resourceName) !== rnNorm) continue;
+          if (!next) next = { ...prev };
+          next[spaceName] = { ...peer, displayName: name };
+        }
+        return next || prev;
+      });
+      setSaveContactOpen(false);
+    } catch (_) {
+      setSaveContactError('네트워크 오류입니다.');
+    } finally {
+      setSaveContactLoading(false);
+    }
+  }, [saveContactForm, saveContactRn]);
+
   const headerTitle = useMemo(() => {
     if (!selectedSpace) return '';
     if (selectedSpace.displayName?.trim()) return selectedSpace.displayName.trim();
     const st = selectedSpace.spaceType || selectedSpace.type;
-    if (st === 'DIRECT_MESSAGE' && members.length > 0) {
-      const other = members.find((x) => x?.member?.name && x.member.name !== myResourceName);
-      const dn = other?.member?.displayName;
-      if (dn) return dn;
+    if (st === 'DIRECT_MESSAGE' && dmPeerDetail) {
+      if (shouldShowDmSilhouette(dmPeerDetail)) return '';
+      return dmPeerDetail.displayName;
     }
     if (st === 'GROUP_CHAT') {
       const humans = members.filter((x) => x?.member?.type === 'HUMAN');
       if (humans.length) return `그룹 (${humans.length}명)`;
     }
     return defaultSpaceTitle(selectedSpace);
-  }, [selectedSpace, members, myResourceName]);
+  }, [selectedSpace, members, dmPeerDetail]);
 
-  const headerSubtitle = useMemo(() => {
-    if (!selectedSpace) return '';
+  const headerDmTitleSilhouette = useMemo(
+    () =>
+      !!(
+        selectedSpace &&
+        dmPeerDetail &&
+        (selectedSpace.spaceType || selectedSpace.type) === 'DIRECT_MESSAGE' &&
+        shouldShowDmSilhouette(dmPeerDetail)
+      ),
+    [selectedSpace, dmPeerDetail]
+  );
+
+  const threadSubtitleNode = useMemo(() => {
+    if (!selectedSpace) return null;
     const st = selectedSpace.spaceType || selectedSpace.type;
     if (st === 'SPACE' || st === 'GROUP_CHAT') return spaceTypeKo(st);
+    if (st === 'DIRECT_MESSAGE' && dmPeerDetail?.chatUserId) {
+      const showIcon = isOpaqueGoogleUserId(dmPeerDetail.chatUserId);
+      return (
+        <>
+          {showIcon ? (
+            <span
+              className="messenger-dm-opaque-id-icon"
+              title="Google 계정 식별자(비공개)"
+              aria-hidden
+            >
+              <span className="material-symbols-outlined">person</span>
+            </span>
+          ) : (
+            <span className="messenger-dm-peer-id-text">{dmPeerDetail.chatUserId}</span>
+          )}
+          <span className="messenger-dm-subtitle-sep"> · </span>
+          <span>Google Chat · Direct</span>
+        </>
+      );
+    }
     return 'Google Chat · Direct';
-  }, [selectedSpace]);
+  }, [selectedSpace, dmPeerDetail]);
 
   /** Google Chat 1:1(DM)은 멤버 추가 API 대상이 아님 — 그룹/스페이스만 */
   const canInviteToCurrentSpace = useMemo(() => {
@@ -524,10 +920,17 @@ export default function Messenger() {
     }
   }, []);
 
+  const refreshMessengerChrome = useCallback(() => {
+    void loadSpaces({ silent: true });
+    if (selectedName) void loadThread(selectedName, { silent: true });
+    void loadChatContacts();
+  }, [loadSpaces, loadThread, selectedName, loadChatContacts]);
+
   useEffect(() => {
     void loadMe();
     void loadSpaces();
-  }, [loadMe, loadSpaces]);
+    void loadChatContacts();
+  }, [loadMe, loadSpaces, loadChatContacts]);
 
   useEffect(() => {
     if (!selectedName) {
@@ -560,6 +963,7 @@ export default function Messenger() {
       if (cancelled || document.visibilityState !== 'visible') return;
       void loadThread(selectedName, { silent: true, skipMembers: false });
       void loadSpaces({ silent: true });
+      void loadChatContacts();
     };
 
     const onFocus = () => {
@@ -577,7 +981,7 @@ export default function Messenger() {
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', onFocus);
     };
-  }, [selectedName, loadThread, loadSpaces]);
+  }, [selectedName, loadThread, loadSpaces, loadChatContacts]);
 
   useEffect(() => {
     msgsEndRef.current?.scrollIntoView?.({ behavior: 'smooth' });
@@ -726,10 +1130,11 @@ export default function Messenger() {
     const q = listFilter.trim().toLowerCase();
     if (!q) return spaces;
     return spaces.filter((s) => {
-      const title = (s.displayName || defaultSpaceTitle(s)).toLowerCase();
-      return title.includes(q);
+      const title = getSpaceListTitle(s, dmPeerBySpace).toLowerCase();
+      const pv = (previews[s.name]?.text || '').toLowerCase();
+      return title.includes(q) || pv.includes(q);
     });
-  }, [spaces, listFilter]);
+  }, [spaces, listFilter, dmPeerBySpace, previews]);
 
   const showMobileListChrome = isMobile && !mobileThreadOpen;
 
@@ -833,7 +1238,13 @@ export default function Messenger() {
               {filteredSpaces.slice(0, 12).map((s) => {
                 const isGroup =
                   (s.spaceType || s.type) === 'GROUP_CHAT' || (s.spaceType || s.type) === 'SPACE';
-                const title = (s.displayName?.trim() || defaultSpaceTitle(s)).slice(0, 8);
+                const peer = dmPeerBySpace[s.name];
+                const storySilhouette =
+                  !isGroup &&
+                  (s.spaceType || s.type) === 'DIRECT_MESSAGE' &&
+                  shouldShowDmSilhouette(peer);
+                const titleText = getSpaceListTitle(s, dmPeerBySpace);
+                const title = titleText.slice(0, 12);
                 const active = s.name === selectedName;
                 return (
                   <button
@@ -854,7 +1265,20 @@ export default function Messenger() {
                         {isGroup ? 'groups' : 'person'}
                       </span>
                     </div>
-                    <span className="messenger-mobile-story-label">{title}</span>
+                    <span className="messenger-mobile-story-label">
+                      {storySilhouette ? (
+                        <span
+                          className="messenger-mobile-story-silhouette"
+                          title="상대를 이름으로 식별하지 못했습니다"
+                        >
+                          <span className="material-symbols-outlined" aria-hidden>
+                            person
+                          </span>
+                        </span>
+                      ) : (
+                        title
+                      )}
+                    </span>
                   </button>
                 );
               })}
@@ -897,7 +1321,12 @@ export default function Messenger() {
               filteredSpaces.map((s) => {
                 const isGroup =
                   (s.spaceType || s.type) === 'GROUP_CHAT' || (s.spaceType || s.type) === 'SPACE';
-                const title = s.displayName?.trim() || defaultSpaceTitle(s);
+                const peer = dmPeerBySpace[s.name];
+                const listSilhouette =
+                  !isGroup &&
+                  (s.spaceType || s.type) === 'DIRECT_MESSAGE' &&
+                  shouldShowDmSilhouette(peer);
+                const title = getSpaceListTitle(s, dmPeerBySpace);
                 const pv = previews[s.name];
                 const previewText = pv?.text || '메시지를 열어 확인하세요';
                 const timeShow = formatListTime(pv?.time);
@@ -921,7 +1350,20 @@ export default function Messenger() {
                     </div>
                     <div className="messenger-list-item-body">
                       <div className="messenger-list-item-top">
-                        <p className="messenger-list-item-name">{title}</p>
+                        <p className="messenger-list-item-name">
+                          {listSilhouette ? (
+                            <span
+                              className="messenger-list-name-silhouette"
+                              title="상대를 이름으로 식별하지 못했습니다"
+                            >
+                              <span className="material-symbols-outlined" aria-hidden>
+                                person
+                              </span>
+                            </span>
+                          ) : (
+                            title
+                          )}
+                        </p>
                         {timeShow ? <span className="messenger-list-item-time">{timeShow}</span> : null}
                       </div>
                       <p
@@ -1007,8 +1449,21 @@ export default function Messenger() {
                       )}
                     </div>
                     <div className="messenger-mobile-thread-titles">
-                      <h3>{headerTitle}</h3>
-                      <p>{headerSubtitle}</p>
+                      <h3>
+                        {headerDmTitleSilhouette ? (
+                          <span
+                            className="messenger-header-title-silhouette"
+                            title="상대를 이름으로 식별하지 못했습니다"
+                          >
+                            <span className="material-symbols-outlined" aria-hidden>
+                              person
+                            </span>
+                          </span>
+                        ) : (
+                          headerTitle || '—'
+                        )}
+                      </h3>
+                      <p className="messenger-thread-peer-sub-dm">{threadSubtitleNode}</p>
                     </div>
                   </div>
                   <div className="messenger-mobile-thread-appbar-actions">
@@ -1033,8 +1488,7 @@ export default function Messenger() {
                       title="목록 새로고침"
                       aria-label="새로고침"
                       onClick={() => {
-                        void loadSpaces();
-                        void loadThread(selectedName, { silent: true });
+                        refreshMessengerChrome();
                       }}
                     >
                       <span className="material-symbols-outlined">refresh</span>
@@ -1066,8 +1520,21 @@ export default function Messenger() {
                       ) : null}
                     </div>
                     <div className="messenger-thread-peer-text">
-                      <h3>{headerTitle}</h3>
-                      <p>{headerSubtitle}</p>
+                      <h3>
+                        {headerDmTitleSilhouette ? (
+                          <span
+                            className="messenger-header-title-silhouette"
+                            title="상대를 이름으로 식별하지 못했습니다"
+                          >
+                            <span className="material-symbols-outlined" aria-hidden>
+                              person
+                            </span>
+                          </span>
+                        ) : (
+                          headerTitle || '—'
+                        )}
+                      </h3>
+                      <p className="messenger-thread-peer-sub-dm">{threadSubtitleNode}</p>
                     </div>
                   </div>
                   <div className="messenger-thread-actions">
@@ -1092,8 +1559,7 @@ export default function Messenger() {
                       title="목록 새로고침"
                       aria-label="새로고침"
                       onClick={() => {
-                        void loadSpaces();
-                        void loadThread(selectedName, { silent: true });
+                        refreshMessengerChrome();
                       }}
                     >
                       <span className="material-symbols-outlined">refresh</span>
@@ -1133,6 +1599,8 @@ export default function Messenger() {
                       (i === 0 || prevSenderRn !== senderRn);
                     const avatarInitial =
                       !isOut && senderDisplay ? senderDisplay.charAt(0).toUpperCase() : '';
+                    const senderAddrKey = normalizeChatResourceName(senderRn);
+                    const inMessengerAddressbook = !!(senderAddrKey && chatContactsRns[senderAddrKey]);
                     return (
                       <div key={m.name || m.createTime + (m.text || '')}>
                         {showDay ? (
@@ -1151,7 +1619,24 @@ export default function Messenger() {
                           ) : null}
                           <div className="messenger-msg-col">
                             {showIncomingSender ? (
-                              <div className="messenger-sender-label">{senderDisplay}</div>
+                              <div className="messenger-sender-row">
+                                <span className="messenger-sender-label">{senderDisplay}</span>
+                                {shouldShowAddressbookAction(senderRn) ? (
+                                  <button
+                                    type="button"
+                                    className="messenger-sender-save-contact"
+                                    title={
+                                      inMessengerAddressbook
+                                        ? 'CRM 메신저 주소록에 저장된 정보를 수정합니다'
+                                        : 'CRM 메신저 주소록에 등록하면 이름·이메일로 표시를 맞출 수 있습니다'
+                                    }
+                                    disabled={needsReauth}
+                                    onClick={() => openSaveContactModalForSender(senderRn, senderDisplay)}
+                                  >
+                                    {inMessengerAddressbook ? '수정' : '주소록'}
+                                  </button>
+                                ) : null}
+                              </div>
                             ) : null}
                             <div className="messenger-bubble">
                               {body ? <span className="messenger-bubble-text">{body}</span> : null}
@@ -1208,6 +1693,18 @@ export default function Messenger() {
           )}
         </section>
       </div>
+
+      <SaveContactModal
+        open={saveContactOpen}
+        onClose={() => setSaveContactOpen(false)}
+        isEdit={saveContactIsEdit}
+        prefillLoading={saveContactPrefillLoading}
+        saveLoading={saveContactLoading}
+        form={saveContactForm}
+        setForm={setSaveContactForm}
+        error={saveContactError}
+        onSubmit={submitSaveContact}
+      />
 
       <NewChatModal
         open={newChatOpen}

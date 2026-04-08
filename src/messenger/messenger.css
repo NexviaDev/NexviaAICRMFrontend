@@ -351,6 +351,51 @@
   margin: 0.1rem 0 0;
   font-size: 0.72rem;
   color: #64748b;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+
+.messenger-thread-peer-sub-dm {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.1rem;
+}
+
+.messenger-header-title-silhouette,
+.messenger-dm-opaque-id-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+}
+
+.messenger-header-title-silhouette .material-symbols-outlined {
+  font-size: 1.35rem;
+}
+
+.messenger-dm-opaque-id-icon .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
+.messenger-dm-peer-id-text {
+  font-weight: 500;
+  color: #64748b;
+}
+
+.messenger-list-name-silhouette,
+.messenger-mobile-story-silhouette {
+  display: inline-flex;
+  align-items: center;
+  color: #94a3b8;
+}
+
+.messenger-list-name-silhouette .material-symbols-outlined {
+  font-size: 1.15rem;
+}
+
+.messenger-mobile-story-silhouette .material-symbols-outlined {
+  font-size: 0.95rem;
 }
 
 .messenger-thread-actions {
@@ -447,12 +492,43 @@
   max-width: 100%;
 }
 
+.messenger-sender-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+  margin-bottom: 0.2rem;
+  line-height: 1.2;
+}
+
 .messenger-sender-label {
   font-size: 0.7rem;
   font-weight: 600;
   color: #64748b;
-  margin-bottom: 0.2rem;
+}
+
+.messenger-sender-save-contact {
+  flex-shrink: 0;
+  border: 1px solid #c5d9ef;
+  background: #eef4fb;
+  color: #3d5a80;
+  font-size: 0.62rem;
+  font-weight: 600;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  cursor: pointer;
+  font-family: inherit;
   line-height: 1.2;
+}
+
+.messenger-sender-save-contact:hover:not(:disabled) {
+  background: #e4eef8;
+  border-color: #b3cce8;
+}
+
+.messenger-sender-save-contact:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .messenger-bubble {
@@ -1171,6 +1247,8 @@
   margin: 0.1rem 0 0;
   font-size: 0.68rem;
   color: #64748b;
+  word-break: break-all;
+  overflow-wrap: anywhere;
 }
 
 .messenger-mobile-thread-appbar-actions {

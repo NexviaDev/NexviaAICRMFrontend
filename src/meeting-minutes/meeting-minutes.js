@@ -22,8 +22,6 @@ function formatMeetingDate(d) {
   return date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' }) + ' ' + date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
 }
 
-const STATUS_LABELS = { Draft: '초안', Finalized: '완료' };
-
 export default function MeetingMinutes() {
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
@@ -199,18 +197,17 @@ export default function MeetingMinutes() {
                   <th>일시</th>
                   <th>장소</th>
                   <th>참석자</th>
-                  <th>상태</th>
                   <th className="th-actions"></th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="text-center">불러오는 중...</td>
+                    <td colSpan={5} className="text-center">불러오는 중...</td>
                   </tr>
                 ) : items.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="text-center">등록된 회의 일지가 없습니다.</td>
+                    <td colSpan={5} className="text-center">등록된 회의 일지가 없습니다.</td>
                   </tr>
                 ) : (
                   items.map((row) => (
@@ -235,11 +232,6 @@ export default function MeetingMinutes() {
                           )}
                           {(row.attendees || []).length === 0 && <span className="text-muted">—</span>}
                         </div>
-                      </td>
-                      <td>
-                        <span className={`status-badge status-${(row.status || 'Draft').toLowerCase()}`}>
-                          {STATUS_LABELS[row.status] || row.status}
-                        </span>
                       </td>
                       <td onClick={(e) => e.stopPropagation()}>
                         <button type="button" className="icon-btn small" onClick={() => openDetailModal(row)} aria-label="세부정보">

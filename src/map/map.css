@@ -758,6 +758,35 @@ div[class*="gm-style-cc"] {
   animation: map-spin 1s linear infinite;
 }
 
+/** 고객사 API 대기: 지도·조작은 막지 않음 (마커는 도착 후 순차 표시) */
+.map-loading-companies {
+  position: fixed;
+  left: 50%;
+  bottom: 1.25rem;
+  transform: translateX(-50%);
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--card-border, #e2e8f0);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+  pointer-events: none;
+}
+
+.map-page.map-page-embedded .map-loading-companies {
+  position: absolute;
+}
+
+.map-loading-companies .material-symbols-outlined {
+  font-size: 1.125rem;
+  animation: map-spin 1s linear infinite;
+}
+
 @keyframes map-spin {
   to { transform: rotate(360deg); }
 }

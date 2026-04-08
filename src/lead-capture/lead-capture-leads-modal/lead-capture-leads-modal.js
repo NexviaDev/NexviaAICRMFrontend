@@ -22,7 +22,8 @@ export default function LeadCaptureLeadsModal({
         (lead.name || '').toLowerCase().includes(q) ||
         (lead.email || '').toLowerCase().includes(q) ||
         (cf.company || '').toLowerCase().includes(q) ||
-        (cf.phone || '').toLowerCase().includes(q)
+        (cf.phone || '').toLowerCase().includes(q) ||
+        String(cf.business_number || '').toLowerCase().includes(q)
       );
     });
   }, [channelLeads, search]);

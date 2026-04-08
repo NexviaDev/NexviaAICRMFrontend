@@ -7,6 +7,7 @@ import './opportunity-modal.css';
 
 import { API_BASE } from '@/config';
 import { suggestedPriceFromProduct, OPPORTUNITY_PRICE_BASIS_OPTIONS } from '@/lib/product-price-utils';
+import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -175,6 +176,7 @@ export default function OpportunityModal({
   const stageAtLoadRef = useRef(null);
 
   const currentUserId = useMemo(() => getCurrentUserId(), []);
+  const canDeleteOpportunity = useMemo(() => isAdminOrAboveRole(getStoredCrmUser()?.role), []);
 
   const fetchOpp = useCallback(async () => {
     if (!isEdit || !oppId) return;
@@ -522,9 +524,23 @@ export default function OpportunityModal({
 
   const handleDelete = async () => {
     if (!isEdit || !oppId) return;
+    if (!canDeleteOpportunity) {
+      window.alert('기회 삭제는 관리자(Admin) 이상만 가능합니다.');
+      return;
+    }
     if (!window.confirm('이 기회를 삭제하시겠습니까?')) return;
     try {
-      await fetch(`${API_BASE}/sales-opportunities/${oppId}`, { method: 'DELETE', headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/sales-opportunities/${oppId}`, { method: 'DELETE', headers: getAuthHeader() });
+      if (res.status === 403) {
+        const data = await res.json().catch(() => ({}));
+        window.alert(data.error || '삭제 권한이 없습니다.');
+        return;
+      }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        window.alert(data.error || '삭제에 실패했습니다.');
+        return;
+      }
       try {
         window.dispatchEvent(new CustomEvent('nexvia-crm-calendar-refresh'));
       } catch {
@@ -532,7 +548,9 @@ export default function OpportunityModal({
       }
       onSaved();
       onClose();
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   };
 
   const handleEnsureRenewalCalendar = useCallback(async () => {
@@ -1131,12 +1149,12 @@ export default function OpportunityModal({
             </form>
 
             <div className="opp-modal-footer">
-              {isEdit && (
+              {isEdit && canDeleteOpportunity ? (
                 <button type="button" className="opp-delete-btn" onClick={handleDelete}>
                   <span className="material-symbols-outlined">delete</span>
                   삭제
                 </button>
-              )}
+              ) : null}
               <button type="button" className="opp-cancel-btn" onClick={onClose}>취소</button>
               <button type="submit" form="opp-form" className="opp-save-btn" disabled={saving}>
                 {saving ? '저장 중...' : isEdit ? '수정' : '추가'}

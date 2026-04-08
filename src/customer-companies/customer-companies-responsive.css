@@ -153,7 +153,7 @@
   /* 카드 = customerForMobile.html Contact Card (rounded-xl, shadow-sm, flex items-start gap-4) */
   .customer-companies-page .customer-companies-mobile-card {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 1rem;
     padding: 1rem;
     background: var(--card, #fff);
@@ -174,14 +174,13 @@
     flex-shrink: 0;
   }
 
-  .customer-companies-page .customer-companies-mobile-card-avatar .avatar-img {
+  .customer-companies-page .customer-companies-mobile-card-avatar .cc-name-cell-avatar {
     width: 3rem;
     height: 3rem;
-    border-radius: 50%;
   }
 
-  .customer-companies-page .customer-companies-mobile-card-avatar .company-avatar .material-symbols-outlined {
-    font-size: 1.5rem;
+  .customer-companies-page .customer-companies-mobile-card-avatar .cc-name-cell-initials {
+    font-size: 0.95rem;
   }
 
   .customer-companies-page .customer-companies-mobile-card-body {
@@ -210,13 +209,27 @@
     cursor: pointer;
   }
 
-  .customer-companies-page .customer-companies-mobile-card-name {
+  .customer-companies-page .customer-companies-mobile-card-name-block {
     flex: 1;
     min-width: 0;
+  }
+
+  .customer-companies-page .customer-companies-mobile-card-name {
     margin: 0;
     font-size: 1rem;
     font-weight: 600;
     color: var(--text, #1e293b);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .customer-companies-page .customer-companies-mobile-card-bn {
+    margin: 0.2rem 0 0;
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--text-muted, #94a3b8);
+    line-height: 1.35;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

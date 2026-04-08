@@ -10,8 +10,25 @@ export function getStoredCrmUser() {
   }
 }
 
-/** 백엔드 requireSeniorOrAbove 와 동일: 대표(Owner) · 책임(Senior) */
-export function isSeniorOrAboveRole(role) {
-  const r = String(role || '').trim().toLowerCase();
-  return r === 'owner' || r === 'senior';
+function norm(role) {
+  return String(role || '').trim().toLowerCase();
+}
+
+/** 백엔드 requireAdminOrAbove: Owner · Admin (구 Senior) */
+export function isAdminOrAboveRole(role) {
+  const r = norm(role);
+  return r === 'owner' || r === 'admin' || r === 'senior';
+}
+
+/** 백엔드 requireManagerOrAbove: Owner · Admin · Manager (구 practitioner) */
+export function isManagerOrAboveRole(role) {
+  const r = norm(role);
+  return (
+    r === 'owner' ||
+    r === 'admin' ||
+    r === 'manager' ||
+    r === 'senior' ||
+    r === 'practitioner' ||
+    r === 'contributor'
+  );
 }

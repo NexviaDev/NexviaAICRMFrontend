@@ -41,7 +41,8 @@ export function buildSourceOptions(customFieldDefinitions = []) {
     { key: 'customFields.phone', label: '연락처 (표 · 연락처)', icon: 'phone', meta: 'customFields' },
     { key: 'customFields.business_card', label: '명함 URL (표 · 명함)', icon: 'badge', meta: '이미지' },
     { key: 'source', label: '소스', icon: 'label', meta: '리드' },
-    { key: 'customFields.address', label: '회사 주소', icon: 'location_on', meta: 'customFields' }
+    { key: 'customFields.address', label: '회사 주소', icon: 'location_on', meta: 'customFields' },
+    { key: 'customFields.business_number', label: '사업자등록번호 (표 · 선택)', icon: 'pin', meta: 'customFields' }
   ];
 
   const extra = (customFieldDefinitions || [])
@@ -79,7 +80,7 @@ export function defaultCompanyMappingRows() {
   return [
     { id: 'co1', sourceType: 'field', sourceKey: 'customFields.company', constantValue: '', targetKey: 'company.name' },
     { id: 'co2', sourceType: 'field', sourceKey: 'name', constantValue: '', targetKey: 'company.representativeName' },
-    { id: 'co0', sourceType: 'field', sourceKey: '', constantValue: '', targetKey: 'company.businessNumber' },
+    { id: 'co0', sourceType: 'field', sourceKey: 'customFields.business_number', constantValue: '', targetKey: 'company.businessNumber' },
     { id: 'co3', sourceType: 'field', sourceKey: 'customFields.address', constantValue: '', targetKey: 'company.address' },
     { id: 'co4', sourceType: 'constant', sourceKey: '', constantValue: 'lead', targetKey: 'company.status' }
   ];

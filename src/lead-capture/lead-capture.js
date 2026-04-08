@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { API_BASE, BACKEND_BASE_URL } from '@/config';
-import { getStoredCrmUser, isSeniorOrAboveRole } from '@/lib/crm-role-utils';
+import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import LeadCaptureFormModal from './lead-capture-form-modal/lead-capture-form-modal';
 import LeadCaptureApiDocModal from './lead-capture-api-doc-modal/lead-capture-api-doc-modal';
 import LeadCaptureLeadsModal from './lead-capture-leads-modal/lead-capture-leads-modal';
@@ -31,6 +31,7 @@ const DEFAULT_FIELDS = [
   { icon: 'phone', label: '연락처', meta: '필수 · 숫자', type: 'number', required: true },
   { icon: 'mail', label: '이메일', meta: '필수 아님 · 문자열', type: 'text', required: false },
   { icon: 'business', label: '회사명', meta: '필수 아님 · 문자열', type: 'text', required: false },
+  { icon: 'pin', label: '사업자등록번호', meta: '선택 · 숫자(하이픈 자동)', type: 'text', required: false },
   { icon: 'location_on', label: '회사 주소', meta: '필수 아님 · 문자열', type: 'text', required: false },
   { icon: 'badge', label: '명함', meta: '필수 아님 · 회사 사진파일', type: 'file', required: false }
 ];
@@ -161,7 +162,6 @@ export default function LeadCapture() {
     embedCode: false,
     publicLink: false
   });
-  const [publicLinkSaving, setPublicLinkSaving] = useState(false);
   const [apiKeyCopyHint, setApiKeyCopyHint] = useState(false);
   const [customFields, setCustomFields] = useState([]);
   const [showCustomFieldsModal, setShowCustomFieldsModal] = useState(false);
@@ -187,7 +187,7 @@ export default function LeadCapture() {
   const [showEmbedPreview, setShowEmbedPreview] = useState(false);
   const [apiKeyForPreview, setApiKeyForPreview] = useState('');
 
-  const canManageCaptureChannels = isSeniorOrAboveRole(getStoredCrmUser()?.role);
+  const canManageCaptureChannels = isAdminOrAboveRole(getStoredCrmUser()?.role);
 
   const fetchSettings = useCallback(async () => {
     try {
@@ -554,27 +554,6 @@ export default function LeadCapture() {
     setTimeout(() => setCopyFeedback((f) => ({ ...f, publicLink: false })), 1500);
   }
 
-  async function handleSetPublicLinkEnabled(enabled) {
-    if (!selectedFormId || !canManageCaptureChannels) return;
-    setPublicLinkSaving(true);
-    try {
-      const res = await fetch(`${API_BASE}/lead-capture-forms/${selectedFormId}`, {
-        method: 'PATCH',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ publicLinkEnabled: enabled })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || '저장에 실패했습니다.');
-      setSelectedForm((prev) => (prev && prev._id === selectedFormId ? { ...prev, publicLinkEnabled: enabled, ...data } : prev));
-      fetchList();
-    } catch (err) {
-      setError(err.message || '저장 실패');
-    } finally {
-      setPublicLinkSaving(false);
-    }
-  }
-
   function handleCopyNewApiKey() {
     if (copyToClipboard(newApiKey)) {
       setCopyFeedback((f) => ({ ...f, newKey: true }));
@@ -809,9 +788,10 @@ export default function LeadCapture() {
   <div class="lead-form-title">문의 등록</div>
   <form id="lead-capture-form" class="lead-form">
     <input type="text" name="name" placeholder="이름" required />
-    <input type="number" name="phone" placeholder="연락처" />
+    <input type="text" name="phone" inputmode="tel" autocomplete="tel" maxlength="15" placeholder="연락처 (숫자만, 하이픈 자동)" />
     <input type="email" name="email" placeholder="이메일" required />
     <input type="text" name="company" placeholder="회사명" />
+    <input type="text" name="business_number" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="사업자등록번호 (선택)" />
     <input type="text" name="address" placeholder="회사 주소" />
     <div class="lead-form-file-wrap">
       <div class="lead-form-file-caption">명함 (이미지)</div>
@@ -855,6 +835,69 @@ ${customInputs}
 (function() {
   var form = document.getElementById('lead-capture-form');
   if (!form) return;
+  function leadFormDigits(s) {
+    return String(s || '').replace(/\\D/g, '');
+  }
+  function formatPhoneInputEmbed(raw) {
+    var d = leadFormDigits(raw);
+    if (d.slice(0, 2) === '82' && d.length > 2) d = ('0' + d.slice(2)).slice(0, 11);
+    d = d.slice(0, 11);
+    if (!d) return '';
+    if (d.slice(0, 2) === '02') {
+      if (d.length <= 2) return d;
+      if (d.length <= 5) return d.slice(0, 2) + '-' + d.slice(2);
+      if (d.length <= 9) return d.slice(0, 2) + '-' + d.slice(2, 6) + '-' + d.slice(6);
+      return d.slice(0, 2) + '-' + d.slice(2, 6) + '-' + d.slice(6, 10);
+    }
+    if (d.slice(0, 2) === '01') {
+      if (d.length <= 3) return d;
+      if (d.length <= 7) return d.slice(0, 3) + '-' + d.slice(3);
+      return d.slice(0, 3) + '-' + d.slice(3, 7) + '-' + d.slice(7);
+    }
+    if (d.length <= 3) return d;
+    if (d.length <= 6) return d.slice(0, 3) + '-' + d.slice(3);
+    if (d.length <= 10) return d.slice(0, 3) + '-' + d.slice(3, 6) + '-' + d.slice(6);
+    return d.slice(0, 3) + '-' + d.slice(3, 7) + '-' + d.slice(7);
+  }
+  function formatBusinessNumberInputEmbed(raw) {
+    var d = leadFormDigits(raw).slice(0, 10);
+    if (!d) return '';
+    if (d.length <= 3) return d;
+    if (d.length <= 5) return d.slice(0, 3) + '-' + d.slice(3);
+    return d.slice(0, 3) + '-' + d.slice(3, 5) + '-' + d.slice(5);
+  }
+  function formatPhoneForSaveEmbed(value) {
+    if (value == null || value === '') return '';
+    var digits = leadFormDigits(value);
+    if (digits.length === 0) return '';
+    if (digits.length === 11 && digits.slice(0, 3) === '010') return digits.slice(0, 3) + '-' + digits.slice(3, 7) + '-' + digits.slice(7);
+    if (digits.length === 10 && digits.slice(0, 2) === '02') return digits.slice(0, 2) + '-' + digits.slice(2, 6) + '-' + digits.slice(6);
+    if (digits.length === 9 && digits.slice(0, 1) === '2') return '02-' + digits.slice(1, 4) + '-' + digits.slice(4);
+    if (digits.length === 10 && digits.slice(0, 2) === '01') return digits.slice(0, 3) + '-' + digits.slice(3, 7) + '-' + digits.slice(7);
+    if (digits.length >= 9 && digits.length <= 11) return digits.replace(/(\\d{2,3})(\\d{3,4})(\\d{4})/, '$1-$2-$3');
+    return digits;
+  }
+  function formatBusinessNumberForSaveEmbed(value) {
+    var s = leadFormDigits(value).slice(0, 10);
+    if (!s) return '';
+    if (s.length <= 3) return s;
+    if (s.length <= 5) return s.slice(0, 3) + '-' + s.slice(3);
+    return s.slice(0, 3) + '-' + s.slice(3, 5) + '-' + s.slice(5);
+  }
+  var phoneInp = form.querySelector('input[name="phone"]');
+  var bnInp = form.querySelector('input[name="business_number"]');
+  if (phoneInp) {
+    phoneInp.addEventListener('input', function() {
+      var next = formatPhoneInputEmbed(phoneInp.value);
+      if (phoneInp.value !== next) phoneInp.value = next;
+    });
+  }
+  if (bnInp) {
+    bnInp.addEventListener('input', function() {
+      var next = formatBusinessNumberInputEmbed(bnInp.value);
+      if (bnInp.value !== next) bnInp.value = next;
+    });
+  }
   var customKeys = ${customKeysJson};
   var fileInput = form.querySelector('input[name="business_card"]');
   var fileZone = form.querySelector('.lead-form-file-zone');
@@ -911,7 +954,11 @@ ${customInputs}
     e.preventDefault();
     var fd = new FormData(form);
     var customFieldsObj = {};
-    ['phone', 'company', 'address'].forEach(function(k) {
+    var phoneSave = formatPhoneForSaveEmbed(fd.get('phone'));
+    if (phoneSave) customFieldsObj.phone = phoneSave;
+    var bnSave = formatBusinessNumberForSaveEmbed(fd.get('business_number'));
+    if (bnSave) customFieldsObj.business_number = bnSave;
+    ['company', 'address'].forEach(function(k) {
       var v = fd.get(k);
       if (v !== null && v !== undefined && v !== '') customFieldsObj[k] = v;
     });
@@ -1002,8 +1049,8 @@ ${customInputs}
   }
 
   function openEdit(form) {
-    if (!isSeniorOrAboveRole(getStoredCrmUser()?.role)) {
-      setError('캡처 채널 수정은 대표·책임 권한만 가능합니다.');
+    if (!isAdminOrAboveRole(getStoredCrmUser()?.role)) {
+      setError('캡처 채널 수정은 대표·관리자 권한만 가능합니다.');
       return;
     }
     setEditingForm(form);
@@ -1011,8 +1058,8 @@ ${customInputs}
   }
 
   async function handleDelete(form) {
-    if (!isSeniorOrAboveRole(getStoredCrmUser()?.role)) {
-      setError('캡처 채널 삭제는 대표·책임 권한만 가능합니다.');
+    if (!isAdminOrAboveRole(getStoredCrmUser()?.role)) {
+      setError('캡처 채널 삭제는 대표·관리자 권한만 가능합니다.');
       return;
     }
     if (!window.confirm(`"${form.name}" 캡처 폼을 삭제할까요?`)) return;
@@ -1233,7 +1280,7 @@ ${customInputs}
               </div>
               <div className="lead-capture-cta-text">
                 <h3 className="lead-capture-cta-title">커스텀 폼 UI를 만들까요?</h3>
-                <p className="lead-capture-cta-desc">아래 API 문서의 웹훅 URL과 formId는 이 채널에 맞게 자동 입력됩니다. 리드 캡처 빌더에 추가한 커스텀 필드도 임베드 코드에 포함되어 복사됩니다. YouTube 댓글처럼 임베드를 붙일 수 없는 곳은 오른쪽 외부 연동에서 공개 링크를 켜고 URL만 공유하세요.</p>
+                <p className="lead-capture-cta-desc">아래 API 문서의 웹훅 URL과 formId는 이 채널에 맞게 자동 입력됩니다. 리드 캡처 빌더에 추가한 커스텀 필드도 임베드 코드에 포함되어 복사됩니다. YouTube 댓글처럼 임베드를 붙일 수 없는 곳은 오른쪽 외부 연동의 공개 링크 URL만 공유하세요.</p>
               </div>
               <button
                 type="button"
@@ -1346,24 +1393,11 @@ ${customInputs}
                 </div>
                 <p className="lead-capture-hint">백엔드: {BACKEND_BASE_URL}</p>
                 <p className="lead-capture-hint">Typeform, Facebook 리드 등 서드파티에 이 URL을 설정하세요.</p>
-                <label className="lead-capture-public-link-row">
-                  <input
-                    type="checkbox"
-                    checked={!!selectedForm?.publicLinkEnabled}
-                    disabled={!selectedFormId || !canManageCaptureChannels || publicLinkSaving}
-                    onChange={(e) => handleSetPublicLinkEnabled(e.target.checked)}
-                  />
-                  <span>공개 링크 사용 (YouTube 댓글 등 HTML 없이 링크만 공유)</span>
-                </label>
-                {selectedFormId && !canManageCaptureChannels && !publicLinkSaving ? (
-                  <p className="lead-capture-hint lead-capture-hint-emphasis">
-                    공개 링크 설정은 대표·Senior만 변경할 수 있습니다.
-                  </p>
-                ) : null}
+                <label className="lead-capture-label">공개 링크</label>
                 <p className="lead-capture-hint">
-                  켜면 아래 주소로 열리는 페이지에서 문의를 받을 수 있습니다. API 키 없이 접속 가능하므로 링크는 필요한 곳에만 공유하세요.
+                  YouTube 댓글 등 HTML 없이 링크만 공유할 수 있습니다. 아래 페이지에서 문의를 받으며, API 키 없이 접속 가능하므로 링크는 필요한 곳에만 공유하세요.
                 </p>
-                {selectedForm?.publicLinkEnabled && getPublicFormPageUrl() ? (
+                {getPublicFormPageUrl() ? (
                   <>
                     <div className="lead-capture-input-wrap">
                       <input
@@ -1381,12 +1415,8 @@ ${customInputs}
                         <span className="material-symbols-outlined">{copyFeedback.publicLink ? 'check' : 'content_copy'}</span>
                       </button>
                     </div>
-                    <p className="lead-capture-hint">
-                      이 페이지에서 보내는 제출도 임베드·미리보기와 <strong>같은 웹훅 URL(POST)</strong>으로 처리됩니다. 담당자에게 가는 알림은 <strong>Gmail 앱에서 보내는 것이 아니라</strong> 서버에 설정한 SMTP로 Nodemailer가 보내며, 폼에 <strong>담당자</strong>가 있고 SMTP가 설정된 경우에만 발송됩니다.
-                    </p>
                   </>
                 ) : null}
-                <button type="button" className="lead-capture-test-btn">연동 테스트</button>
               </div>
             </div>
             <div className="lead-capture-card">

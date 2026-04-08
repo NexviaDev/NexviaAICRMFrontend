@@ -8,7 +8,7 @@ import DriveLargeFileWarningModal from '../../shared/drive-large-file-warning-mo
 import './customer-company-employees-detail-modal.css';
 
 import { API_BASE } from '@/config';
-import { getStoredCrmUser, isSeniorOrAboveRole } from '@/lib/crm-role-utils';
+import { getStoredCrmUser, isManagerOrAboveRole, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { pingBackendHealth, BACKEND_KEEPALIVE_INTERVAL_MS, BACKEND_KEEPALIVE_INTERVAL_ENABLED } from '@/lib/backend-wake';
 import { pollJournalFromAudioJob } from '@/lib/journal-from-audio-poll';
 
@@ -631,8 +631,8 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
 
   const handleDeleteHistory = async (historyId) => {
     if (!historyId) return;
-    if (!isSeniorOrAboveRole(getStoredCrmUser()?.role)) {
-      window.alert('업무 기록 삭제는 대표(Owner) 또는 책임(Senior)만 가능합니다.');
+    if (!isAdminOrAboveRole(getStoredCrmUser()?.role)) {
+      window.alert('업무 기록 삭제는 대표(Owner) 또는 관리자(Admin)만 가능합니다.');
       return;
     }
     try {
@@ -691,8 +691,8 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   };
 
   const startEdit = () => {
-    if (!isSeniorOrAboveRole(getStoredCrmUser()?.role)) {
-      window.alert('수정은 대표(Owner) 또는 책임(Senior)만 가능합니다.');
+    if (!isManagerOrAboveRole(getStoredCrmUser()?.role)) {
+      window.alert('수정은 실무자(Manager) 이상만 가능합니다.');
       return;
     }
     setEditing(true);
@@ -748,8 +748,8 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   };
 
   const handleEditSubmit = async () => {
-    if (!isSeniorOrAboveRole(getStoredCrmUser()?.role)) {
-      setEditError('수정은 대표(Owner) 또는 책임(Senior)만 가능합니다.');
+    if (!isManagerOrAboveRole(getStoredCrmUser()?.role)) {
+      setEditError('수정은 실무자(Manager) 이상만 가능합니다.');
       return;
     }
     setEditError('');
@@ -808,8 +808,8 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   };
 
   const handleDelete = async () => {
-    if (!isSeniorOrAboveRole(getStoredCrmUser()?.role)) {
-      window.alert('삭제는 대표(Owner) 또는 책임(Senior)만 가능합니다.');
+    if (!isAdminOrAboveRole(getStoredCrmUser()?.role)) {
+      window.alert('삭제는 대표(Owner) 또는 관리자(Admin)만 가능합니다.');
       return;
     }
     setDeleting(true);
@@ -834,7 +834,8 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
     }
   };
 
-  const canMutate = isSeniorOrAboveRole(getStoredCrmUser()?.role);
+  const canMutate = isManagerOrAboveRole(getStoredCrmUser()?.role);
+  const canDeleteContact = isAdminOrAboveRole(getStoredCrmUser()?.role);
 
   return (
     <>
@@ -874,14 +875,14 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                     <img src="https://www.gstatic.com/images/branding/product/1x/contacts_2022_48dp.png" alt="" className="contact-detail-google-icon" />
                   </button>
                   {canMutate ? (
-                    <>
-                      <button type="button" className="contact-detail-icon-btn" onClick={startEdit} title="수정 (Owner / Senior)">
-                        <span className="material-symbols-outlined">edit</span>
-                      </button>
-                      <button type="button" className="contact-detail-icon-btn contact-detail-delete-btn" onClick={() => setShowDeleteConfirm(true)} title="삭제 (Owner / Senior)">
-                        <span className="material-symbols-outlined">delete</span>
-                      </button>
-                    </>
+                    <button type="button" className="contact-detail-icon-btn" onClick={startEdit} title="수정 (Manager 이상)">
+                      <span className="material-symbols-outlined">edit</span>
+                    </button>
+                  ) : null}
+                  {canDeleteContact ? (
+                    <button type="button" className="contact-detail-icon-btn contact-detail-delete-btn" onClick={() => setShowDeleteConfirm(true)} title="삭제 (Admin 이상)">
+                      <span className="material-symbols-outlined">delete</span>
+                    </button>
                   ) : null}
                 </>
               )}
@@ -904,7 +905,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
           )}
 
           {/* 삭제 확인 */}
-          {showDeleteConfirm && canMutate && (
+          {showDeleteConfirm && canDeleteContact && (
             <div className="contact-detail-delete-confirm">
               <span className="material-symbols-outlined">warning</span>
               <p>이 연락처를 삭제하시겠습니까?<br />삭제하면 업무 기록도 함께 삭제됩니다.</p>
@@ -1351,7 +1352,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                                   className="contact-detail-timeline-delete"
                                   onClick={() => handleDeleteHistory(entry._id)}
                                   aria-label="삭제"
-                                  title="업무 기록 삭제 (Owner / Senior)"
+                                  title="업무 기록 삭제 (Owner / Admin)"
                                 >
                                   <span className="material-symbols-outlined">delete</span>
                                 </button>

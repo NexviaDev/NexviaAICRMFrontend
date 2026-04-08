@@ -202,11 +202,104 @@
   min-width: 0;
 }
 
+.customer-company-employees-page .cell-user.cce-name-cell {
+  align-items: center;
+}
+
+/** 데스크톱 이름 열 아바타 — 모바일 카드와 동일 이니셜·톤 색 (cce-mobile-card-avatar--0~2 와 동일 팔레트) */
+.customer-company-employees-page .cce-name-cell-avatar {
+  flex-shrink: 0;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.customer-company-employees-page .cce-name-cell-avatar--0 {
+  background: #8ff6d0;
+  color: #006c53;
+}
+
+.customer-company-employees-page .cce-name-cell-avatar--1 {
+  background: #e1e1f5;
+  color: #5c5e6e;
+}
+
+.customer-company-employees-page .cce-name-cell-avatar--2 {
+  background: #fed9b8;
+  color: #755a40;
+}
+
+.customer-company-employees-page .cce-name-cell-initials {
+  font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+  font-size: 0.8rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.customer-company-employees-page .cce-name-cell-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
 .customer-company-employees-page .cell-user .font-semibold {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.customer-company-employees-page .cce-name-phone-subline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  max-width: 100%;
+}
+
+.customer-company-employees-page .cce-name-phone-num {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  line-height: 1.35;
+  min-width: 0;
+}
+
+.customer-company-employees-page .cce-name-phone-actions {
+  margin-left: 0;
+}
+
+.customer-company-employees-page .cce-name-email-subline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  max-width: 100%;
+}
+
+.customer-company-employees-page .cce-name-email-text {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  line-height: 1.35;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: min(18rem, 100%);
+}
+
+.customer-company-employees-page .cce-name-email-compose-btn {
+  width: 1.65rem;
+  height: 1.65rem;
+}
+
+.customer-company-employees-page .cce-name-email-compose-btn .material-symbols-outlined {
+  font-size: 0.95rem;
 }
 
 .avatar-img {
@@ -469,6 +562,15 @@
 
 .cce-phone-sms-btn .material-symbols-outlined {
   font-size: 1.1rem;
+}
+
+/* 연락처 열: 번호 + 전화·문자 */
+.cce-contact-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  max-width: 100%;
 }
 
 /* 이메일 + 작성 (Gmail 새 메일) */
