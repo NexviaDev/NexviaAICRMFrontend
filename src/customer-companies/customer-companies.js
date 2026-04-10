@@ -13,6 +13,7 @@ import {
 import './customer-companies.css';
 import './customer-companies-responsive.css';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
+import ListPaginationButtons from '@/components/list-pagination-buttons/list-pagination-buttons';
 import * as XLSX from 'xlsx';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 
@@ -24,20 +25,6 @@ const MODAL_DETAIL = 'detail';
 const DETAIL_ID_PARAM = 'id';
 const LIMIT = 10;
 const EXPORT_PAGE_LIMIT = 100;
-
-/** 페이지네이션에 표시할 번호 목록 (현재 페이지 주변 + 첫/끝, 생략은 '...') */
-function getPageNumbers(current, total) {
-  if (total <= 0) return [];
-  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
-  const pages = new Set([1, total, current, current - 1, current + 1].filter((p) => p >= 1 && p <= total));
-  const sorted = [...pages].sort((a, b) => a - b);
-  const result = [];
-  for (let i = 0; i < sorted.length; i++) {
-    if (i > 0 && sorted[i] - sorted[i - 1] > 1) result.push('...');
-    result.push(sorted[i]);
-  }
-  return result;
-}
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -891,28 +878,11 @@ export default function CustomerCompanies() {
             <p className="pagination-info">
               <strong>{pagination.total}</strong>개 중 <strong>{items.length ? (pagination.page - 1) * pagination.limit + 1 : 0}</strong>–<strong>{(pagination.page - 1) * pagination.limit + items.length}</strong>건 표시
             </p>
-            <div className="pagination-btns">
-              <button type="button" className="pagination-btn" aria-label="첫 페이지" disabled={pagination.page <= 1} onClick={() => setPagination((p) => ({ ...p, page: 1 }))}><span className="material-symbols-outlined">first_page</span></button>
-              <button type="button" className="pagination-btn" aria-label="이전 페이지" disabled={pagination.page <= 1} onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}><span className="material-symbols-outlined">chevron_left</span></button>
-              {getPageNumbers(pagination.page, pagination.totalPages || 1).map((n, i) =>
-                n === '...' ? (
-                  <span key={`ellipsis-${i}`} className="pagination-ellipsis" aria-hidden>…</span>
-                ) : (
-                  <button
-                    key={n}
-                    type="button"
-                    className={`pagination-btn pagination-btn-num ${pagination.page === n ? 'active' : ''}`}
-                    aria-label={`${n}페이지`}
-                    aria-current={pagination.page === n ? 'page' : undefined}
-                    onClick={() => setPagination((p) => ({ ...p, page: n }))}
-                  >
-                    {n}
-                  </button>
-                )
-              )}
-              <button type="button" className="pagination-btn" aria-label="다음 페이지" disabled={pagination.page >= (pagination.totalPages || 1)} onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}><span className="material-symbols-outlined">chevron_right</span></button>
-              <button type="button" className="pagination-btn" aria-label="마지막 페이지" disabled={pagination.page >= (pagination.totalPages || 1)} onClick={() => setPagination((p) => ({ ...p, page: pagination.totalPages || 1 }))}><span className="material-symbols-outlined">last_page</span></button>
-            </div>
+            <ListPaginationButtons
+              page={pagination.page}
+              totalPages={pagination.totalPages || 1}
+              onPageChange={(nextPage) => setPagination((p) => ({ ...p, page: nextPage }))}
+            />
           </div>
         </div>
       </div>

@@ -308,6 +308,7 @@
   .customer-company-employees-page .cce-mobile-cards-wrap {
     display: block;
     -webkit-overflow-scrolling: touch;
+    min-height: 12rem;
   }
 
   .customer-company-employees-page .cce-mobile-cards-message {
@@ -329,11 +330,11 @@
     flex-direction: column;
     align-items: stretch;
     gap: 0;
-    padding: 1rem;
+    padding: 1rem 1.05rem;
     background: #fff;
-    border: none;
-    border-radius: 0.75rem;
-    box-shadow: 0 1px 3px rgba(44, 52, 53, 0.06);
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    border-radius: 0.875rem;
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.07);
     cursor: pointer;
     text-align: left;
     width: 100%;
@@ -546,7 +547,7 @@
   }
 
   .customer-company-employees-page .cce-mobile-card-company {
-    margin: 0.25rem 0 0;
+    margin: 0.15rem 0 0.4rem;
     font-size: 0.8125rem;
     color: #596061;
     overflow: hidden;

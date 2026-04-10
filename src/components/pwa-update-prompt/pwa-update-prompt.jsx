@@ -2,22 +2,32 @@ import { useEffect, useRef } from 'react';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 import './pwa-update-prompt.css';
 
-/** 배포 후 새 SW 감지 시 안내 — PWA 캐시로 옛 JS/CSS가 남는 문제 완화 (PC·모바일 동일) */
+/**
+ * PWA: autoUpdate 모드에서는 새 SW 적용 시 플러그인이 자동으로 페이지를 새로고침합니다.
+ * 이 컴포넌트는 오프라인 준비 토스트 + 주기·포커스 시 SW 업데이트 확인만 담당합니다.
+ */
 export default function PwaUpdatePrompt() {
-  const intervalRef = useRef(null);
+  const swCleanupRef = useRef(null);
 
-  const {
-    needRefresh: [needRefresh, setNeedRefresh],
-    offlineReady: [offlineReady, setOfflineReady],
-    updateServiceWorker
-  } = useRegisterSW({
+  const { offlineReady: [offlineReady, setOfflineReady] } = useRegisterSW({
     immediate: true,
     onRegisteredSW(swUrl, registration) {
       if (!registration || import.meta.env.DEV) return;
-      /** 장시간 열린 탭에서도 주기적으로 새 빌드 확인 (백엔드 슬립과 무관, 브라우저만) */
-      intervalRef.current = window.setInterval(() => {
-        registration.update().catch(() => {});
-      }, 60 * 60 * 1000);
+      swCleanupRef.current?.();
+      const check = () => registration.update().catch(() => {});
+      /** 앱으로 돌아올 때·탭 전환 후 빠르게 새 빌드 반영 (백엔드 슬립과 무관) */
+      const onFocus = () => check();
+      const onVis = () => {
+        if (document.visibilityState === 'visible') check();
+      };
+      window.addEventListener('focus', onFocus);
+      document.addEventListener('visibilitychange', onVis);
+      const intervalId = window.setInterval(check, 15 * 60 * 1000);
+      swCleanupRef.current = () => {
+        window.clearInterval(intervalId);
+        window.removeEventListener('focus', onFocus);
+        document.removeEventListener('visibilitychange', onVis);
+      };
     },
     onRegisterError(err) {
       if (import.meta.env.DEV) console.warn('[PWA] register', err);
@@ -26,7 +36,7 @@ export default function PwaUpdatePrompt() {
 
   useEffect(() => {
     return () => {
-      if (intervalRef.current) window.clearInterval(intervalRef.current);
+      swCleanupRef.current?.();
     };
   }, []);
 
@@ -37,33 +47,9 @@ export default function PwaUpdatePrompt() {
     }
   }, [offlineReady, setOfflineReady]);
 
-  return (
-    <>
-      {offlineReady ? (
-        <div className="pwa-update-offline-toast" role="status">
-          오프라인에서도 이전에 본 화면을 열 수 있습니다.
-        </div>
-      ) : null}
-
-      {needRefresh ? (
-        <div className="pwa-update-banner" role="alert">
-          <p className="pwa-update-banner-text">새 버전이 배포되었습니다. 적용하려면 새로고침하세요.</p>
-          <div className="pwa-update-banner-actions">
-            <button
-              type="button"
-              className="pwa-update-btn pwa-update-btn--primary"
-              onClick={() => {
-                void updateServiceWorker(true);
-              }}
-            >
-              지금 새로고침
-            </button>
-            <button type="button" className="pwa-update-btn pwa-update-btn--ghost" onClick={() => setNeedRefresh(false)}>
-              나중에
-            </button>
-          </div>
-        </div>
-      ) : null}
-    </>
-  );
+  return offlineReady ? (
+    <div className="pwa-update-offline-toast" role="status">
+      오프라인에서도 이전에 본 화면을 열 수 있습니다.
+    </div>
+  ) : null;
 }

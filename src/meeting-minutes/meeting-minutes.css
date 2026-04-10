@@ -80,33 +80,70 @@
   color: var(--success);
 }
 
-.meeting-minutes-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem 1.5rem;
+/* 목록 페이지와 동일 페이지네이션 (ListPaginationButtons) */
+.meeting-minutes-page .pagination-bar.meeting-minutes-pagination-bar {
+  padding: 1rem 1.5rem;
   border-top: 1px solid var(--card-border);
-  font-size: 0.875rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: center;
 }
 
-.meeting-minutes-pagination-info {
+@media (min-width: 640px) {
+  .meeting-minutes-page .pagination-bar.meeting-minutes-pagination-bar {
+    flex-direction: row;
+    justify-content: space-between;
+  }
+}
+
+.meeting-minutes-page .pagination-bar .pagination-info.meeting-minutes-pagination-info {
   margin: 0;
+  font-size: 0.875rem;
   color: var(--text-muted);
 }
 
-.meeting-minutes-pagination-btns {
+.meeting-minutes-page .pagination-bar .pagination-btns {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
-.meeting-minutes-pagination-btns .btn-outline.small {
-  padding: 0.35rem;
-}
-
-.meeting-minutes-page-num {
+.meeting-minutes-page .pagination-btn {
+  min-width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--card-border);
+  background: var(--card);
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
   font-weight: 500;
-  color: var(--text-muted);
+  color: var(--text);
+  transition: background 0.2s;
+  cursor: pointer;
+}
+
+.meeting-minutes-page .pagination-btn:hover:not(:disabled) {
+  background: var(--bg-light);
+}
+
+.meeting-minutes-page .pagination-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.meeting-minutes-page .pagination-btn.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.meeting-minutes-page .pagination-btn-num {
+  min-width: 2rem;
 }
 
 .meeting-minutes-detail-loading-overlay,

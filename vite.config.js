@@ -27,8 +27,11 @@ export default defineConfig({
     jsxInJs(),
     react({ include: /\.(jsx|js|tsx|ts)$/ }),
     VitePWA({
-      /** prompt: 새 SW 설치 시 사용자가 «새로고침»할 때까지 옛 캐시 유지 → 안내 배너로 해결 (PC·모바일 동일) */
-      registerType: 'prompt',
+      /**
+       * autoUpdate: 새 빌드의 SW가 감지되면 skipWaiting 후 탭을 자동 새로고침해 최신 JS/CSS 적용 (배포 직후 수동 새로고침·로그아웃 불필요).
+       * 단, 작성 중인 폼은 새로고침으로 날아갈 수 있음 → prompt로 되돌리려면 vite.config만 변경.
+       */
+      registerType: 'autoUpdate',
       includeAssets: ['nexvia-app-icon.png'],
       manifest: {
         name: '넥스비아 CRM',

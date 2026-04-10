@@ -1,0 +1,20 @@
+/* 현재 페이지 클릭 → 직접 입력(Enter 이동) — 목록 페이지 공통 */
+.pagination-page-jump-input {
+  box-sizing: border-box;
+  min-width: 2.25rem;
+  width: 3rem;
+  height: 2rem;
+  padding: 0 0.35rem;
+  border: 2px solid var(--primary);
+  border-radius: 0.5rem;
+  background: var(--card);
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--text);
+  outline: none;
+}
+
+.pagination-page-jump-input:focus {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 28%, transparent);
+}

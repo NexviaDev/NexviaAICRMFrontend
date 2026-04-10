@@ -2,6 +2,14 @@ import { useRef, useEffect, useState, useMemo } from 'react';
 import { API_BASE } from '@/config';
 import { getEmailSignatureHtmlFromUser, patchEmailSignatureHtml } from '@/lib/list-templates';
 import './email-compose-modal.css';
+import {
+  AI_GUIDED_AUDIENCES,
+  AI_GUIDED_DEFAULTS,
+  AI_GUIDED_EXTRAS,
+  AI_GUIDED_GOALS,
+  AI_GUIDED_LENGTHS,
+  AI_GUIDED_TONES
+} from '@/lib/gmail-ai-guided-options';
 
 const FONT_OPTIONS = [
   { value: '', label: '기본' },
@@ -319,8 +327,12 @@ export default function EmailComposeModal({
   const [showAiPanel, setShowAiPanel] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
-  const [aiMode, setAiMode] = useState('proofread');
-  const [aiTone, setAiTone] = useState('polite');
+  const [aiMode, setAiMode] = useState('guided_rewrite');
+  const [aiGuidedGoal, setAiGuidedGoal] = useState(AI_GUIDED_DEFAULTS.goal);
+  const [aiGuidedTone, setAiGuidedTone] = useState(AI_GUIDED_DEFAULTS.tone);
+  const [aiGuidedAudience, setAiGuidedAudience] = useState(AI_GUIDED_DEFAULTS.audience);
+  const [aiGuidedLength, setAiGuidedLength] = useState(AI_GUIDED_DEFAULTS.length);
+  const [aiGuidedExtra, setAiGuidedExtra] = useState(AI_GUIDED_DEFAULTS.extra);
   const [aiKeyword, setAiKeyword] = useState('');
   const [aiReceived, setAiReceived] = useState('');
   const [aiReplyIntent, setAiReplyIntent] = useState('approve');
@@ -585,8 +597,8 @@ export default function EmailComposeModal({
     setAiJsonResult('');
     const text = getEditorTextForAi();
     const modesNeedingEditorText = new Set([
+      'guided_rewrite',
       'proofread',
-      'tone',
       'rewrite',
       'summarize',
       'classify',
@@ -617,14 +629,19 @@ export default function EmailComposeModal({
         mode: aiMode,
         text: needsEditorText ? text : undefined,
         subject: subject.trim() || undefined,
-        tone: aiMode === 'tone' ? aiTone : undefined,
+        tone: undefined,
         keyword: aiMode === 'auto_draft' ? aiKeyword.trim() : undefined,
         receivedText: aiMode === 'smart_reply' ? aiReceived.trim() : undefined,
         replyIntent: aiMode === 'smart_reply' ? aiReplyIntent : undefined,
         targetLang: aiMode === 'translate' ? aiTargetLang : undefined,
         recipientName: aiMode === 'personalize' ? aiRecipientName.trim() : undefined,
         companyName: aiMode === 'personalize' ? aiCompanyName.trim() : undefined,
-        purpose: ['auto_draft', 'personalize'].includes(aiMode) ? (aiPurpose.trim() || undefined) : undefined
+        purpose: ['auto_draft', 'personalize'].includes(aiMode) ? (aiPurpose.trim() || undefined) : undefined,
+        guidedGoal: aiMode === 'guided_rewrite' ? aiGuidedGoal : undefined,
+        guidedTone: aiMode === 'guided_rewrite' ? aiGuidedTone : undefined,
+        guidedAudience: aiMode === 'guided_rewrite' ? aiGuidedAudience : undefined,
+        guidedLength: aiMode === 'guided_rewrite' ? aiGuidedLength : undefined,
+        guidedExtra: aiMode === 'guided_rewrite' ? aiGuidedExtra : undefined
       };
       const res = await fetch(`${API_BASE}/gmail/ai-assist`, {
         method: 'POST',
@@ -1434,7 +1451,7 @@ export default function EmailComposeModal({
                 </button>
               </div>
               <p className="email-compose-ai-hint">
-                교정·톤·요약 등은 본문을 입력하거나 <strong>적용할 문장만 선택</strong>한 뒤 실행하세요. 긴 본문도 그대로 반영됩니다. JSON 분석 결과는 아래에만 표시됩니다.
+                <strong>문장 다듬기</strong>는 아래 다섯 가지(목적·톤·독자·길이·추가)를 조합해 Gemini가 본문을 요청대로 고칩니다. 본문을 입력하거나 <strong>적용할 문장만 선택</strong>한 뒤 실행하세요. 다른 기능(요약·번역·초안 등)은 위에서 고른 뒤 안내된 입력란만 사용합니다.
               </p>
               <label className="email-compose-ai-label" htmlFor="email-compose-ai-mode">기능</label>
               <select
@@ -1443,41 +1460,82 @@ export default function EmailComposeModal({
                 value={aiMode}
                 onChange={(e) => setAiMode(e.target.value)}
               >
-                <optgroup label="기본 품질">
-                  <option value="proofread">맞춤법·문법 교정</option>
-                  <option value="tone">어조 변환</option>
-                  <option value="rewrite">문장 다듬기 (간결하게)</option>
-                </optgroup>
-                <optgroup label="생산성">
-                  <option value="auto_draft">이메일 자동 작성 (키워드)</option>
-                  <option value="smart_reply">답장 자동 생성</option>
-                  <option value="summarize">요약 (핵심 3줄)</option>
-                </optgroup>
-                <optgroup label="업무 자동화">
-                  <option value="classify">이메일 분류·태깅</option>
-                  <option value="priority">중요도·긴급도 판단</option>
-                  <option value="actions">할 일 추출</option>
-                </optgroup>
-                <optgroup label="글로벌">
-                  <option value="translate">번역 (한↔영)</option>
-                  <option value="style_us">미국식 비즈니스 스타일 (영문)</option>
-                </optgroup>
-                <optgroup label="고급">
-                  <option value="personalize">개인화 (이름·회사 반영)</option>
-                  <option value="sentiment">감정 분석</option>
-                  <option value="risk">스팸·위험 신호 점검</option>
-                </optgroup>
+                <option value="guided_rewrite">문장 다듬기 (목적·톤·독자·길이·추가)</option>
+                <option value="proofread">맞춤법·문법만 교정</option>
+                <option value="summarize">핵심 3줄 요약</option>
+                <option value="translate">번역 (한↔영)</option>
+                <option value="auto_draft">키워드로 본문 초안</option>
+                <option value="smart_reply">받은 메일 답장 초안</option>
+                <option value="personalize">수신자 맞춤 (이름·회사)</option>
               </select>
 
-              {aiMode === 'tone' && (
-                <div className="email-compose-ai-row">
-                  <label htmlFor="email-compose-ai-tone">어조</label>
-                  <select id="email-compose-ai-tone" className="email-compose-ai-select" value={aiTone} onChange={(e) => setAiTone(e.target.value)}>
-                    <option value="polite">공손 (비즈니스)</option>
-                    <option value="casual">캐주얼</option>
-                    <option value="firm">단호 (정중)</option>
-                    <option value="persuasive">설득형</option>
-                  </select>
+              {aiMode === 'guided_rewrite' && (
+                <div className="email-compose-ai-guided" role="group" aria-label="문장 다듬기 옵션">
+                  <div className="email-compose-ai-row">
+                    <label htmlFor="email-compose-ai-g-goal">1. 목적</label>
+                    <select
+                      id="email-compose-ai-g-goal"
+                      className="email-compose-ai-select"
+                      value={aiGuidedGoal}
+                      onChange={(e) => setAiGuidedGoal(e.target.value)}
+                    >
+                      {AI_GUIDED_GOALS.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="email-compose-ai-row">
+                    <label htmlFor="email-compose-ai-g-tone">2. 톤·스타일</label>
+                    <select
+                      id="email-compose-ai-g-tone"
+                      className="email-compose-ai-select"
+                      value={aiGuidedTone}
+                      onChange={(e) => setAiGuidedTone(e.target.value)}
+                    >
+                      {AI_GUIDED_TONES.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="email-compose-ai-row">
+                    <label htmlFor="email-compose-ai-g-aud">3. 대상 독자</label>
+                    <select
+                      id="email-compose-ai-g-aud"
+                      className="email-compose-ai-select"
+                      value={aiGuidedAudience}
+                      onChange={(e) => setAiGuidedAudience(e.target.value)}
+                    >
+                      {AI_GUIDED_AUDIENCES.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="email-compose-ai-row">
+                    <label htmlFor="email-compose-ai-g-len">4. 길이</label>
+                    <select
+                      id="email-compose-ai-g-len"
+                      className="email-compose-ai-select"
+                      value={aiGuidedLength}
+                      onChange={(e) => setAiGuidedLength(e.target.value)}
+                    >
+                      {AI_GUIDED_LENGTHS.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="email-compose-ai-row">
+                    <label htmlFor="email-compose-ai-g-ex">5. 추가 옵션</label>
+                    <select
+                      id="email-compose-ai-g-ex"
+                      className="email-compose-ai-select"
+                      value={aiGuidedExtra}
+                      onChange={(e) => setAiGuidedExtra(e.target.value)}
+                    >
+                      {AI_GUIDED_EXTRAS.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               )}
 

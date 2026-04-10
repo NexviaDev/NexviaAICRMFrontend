@@ -1137,6 +1137,14 @@
   font-family: inherit;
 }
 
+.email-compose-ai-guided {
+  margin: 0.35rem 0 0.5rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(248, 250, 252, 0.95);
+}
+
 .email-compose-ai-row {
   display: flex;
   flex-wrap: wrap;

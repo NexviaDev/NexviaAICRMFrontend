@@ -906,3 +906,143 @@
   color: #3949ab;
   border: 1px solid rgba(255, 255, 255, 0.9);
 }
+
+/* ── 브로셔형 연락처 리스트 (데스크톱 테이블, Sample Design 톤: 표면층·파스텔·구분은 톤 차이) ── */
+.customer-company-employees-page .cce-brochure-table-wrap {
+  background: #f0f4f4;
+  border-radius: 14px;
+  padding: 0.65rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  min-height: 14rem;
+}
+
+.customer-company-employees-page .cce-brochure-table-wrap .cce-brochure-data-table {
+  background: #ffffff;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 24px rgba(15, 23, 42, 0.06);
+  border-collapse: separate;
+  border-spacing: 0;
+  color: #1e293b;
+}
+
+.customer-company-employees-page .cce-brochure-table-wrap .data-table thead th {
+  background: #eaefef;
+  color: #596061;
+  font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+  font-size: 0.68rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  font-weight: 700;
+  padding: 0.85rem 1.15rem;
+  border-bottom: none;
+  vertical-align: middle;
+}
+
+.customer-company-employees-page .cce-brochure-table-wrap .data-table tbody td {
+  border-top: none;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.95);
+  padding: 0.9rem 1.15rem;
+  vertical-align: middle;
+}
+
+.customer-company-employees-page .cce-brochure-table-wrap .data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.customer-company-employees-page .cce-brochure-table-wrap .data-table tbody tr:nth-child(even) {
+  background: #fafcfc;
+}
+
+.customer-company-employees-page .cce-brochure-table-wrap .data-table tbody tr:hover {
+  background: #f4fbf8;
+}
+
+.customer-company-employees-page .cce-brochure-table-wrap .data-table tbody tr.cce-row-selected {
+  background: rgba(143, 246, 208, 0.22) !important;
+}
+
+.customer-company-employees-page .cce-brochure-table-wrap .data-table tbody tr.cce-row-selected:hover {
+  background: rgba(143, 246, 208, 0.3) !important;
+}
+
+.customer-company-employees-page .cce-brochure-table-wrap .data-table th.list-template-drag-over {
+  background: rgba(143, 246, 208, 0.35);
+}
+
+.customer-company-employees-page .cce-company-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  max-width: 20rem;
+}
+
+.customer-company-employees-page .cce-company-name {
+  font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #1e293b;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.customer-company-employees-page .cce-company-name.cce-company-unconfirmed {
+  font-style: italic;
+  color: #d4a5a5;
+}
+
+.customer-company-employees-page .cce-brochure-name {
+  font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.01em;
+}
+
+.customer-company-employees-page .cce-brochure-phone {
+  font-variant-numeric: tabular-nums;
+  color: #334155 !important;
+  font-weight: 500;
+}
+
+.customer-company-employees-page .cce-brochure-email {
+  color: #334155 !important;
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+/* 정적 미리보기(브로셔 데모) 안내 배너 */
+.customer-company-employees-page .cce-static-preview-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  margin-bottom: 1.25rem;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  background: #fef3e8;
+  color: #5c4d42;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  box-shadow: 0 1px 3px rgba(44, 52, 53, 0.06);
+}
+
+.customer-company-employees-page .cce-static-preview-banner .material-symbols-outlined {
+  flex-shrink: 0;
+  font-size: 1.25rem;
+  color: #b8860b;
+  margin-top: 0.1rem;
+}
+
+.customer-company-employees-page .cce-static-preview-banner code {
+  font-size: 0.78em;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.7);
+  color: #334155;
+}

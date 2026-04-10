@@ -16,6 +16,7 @@ import {
 import './customer-company-employees.css';
 import './customer-company-employees-responsive.css';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
+import ListPaginationButtons from '@/components/list-pagination-buttons/list-pagination-buttons';
 import CustomerCompanyEmployeesExcelImportModal from './customer-company-employees-excel-import-modal/customer-company-employees-excel-import-modal';
 
 import * as XLSX from 'xlsx';
@@ -39,20 +40,6 @@ function getNameInitials(name) {
     return (parts[0][0] + parts[1][0]).toUpperCase().slice(0, 2);
   }
   return s.slice(0, 2).toUpperCase();
-}
-
-/** 페이지네이션에 표시할 번호 목록 (현재 페이지 주변 + 첫/끝, 생략은 '...') */
-function getPageNumbers(current, total) {
-  if (total <= 0) return [];
-  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
-  const pages = new Set([1, total, current, current - 1, current + 1].filter((p) => p >= 1 && p <= total));
-  const sorted = [...pages].sort((a, b) => a - b);
-  const result = [];
-  for (let i = 0; i < sorted.length; i++) {
-    if (i > 0 && sorted[i] - sorted[i - 1] > 1) result.push('...');
-    result.push(sorted[i]);
-  }
-  return result;
 }
 
 /** 리스트에서 `tel:` 로 모바일 전화·데스크톱 기본 전화 앱 연결 */
@@ -80,11 +67,9 @@ export default function CustomerCompanyEmployees() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [items, setItems] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, limit: LIMIT, total: 0, totalPages: 0 });
-  /** 입력란 값 — Enter/검색 버튼까지 API에 반영하지 않음 */
-  const [searchInput, setSearchInput] = useState('');
-  /** 실제 목록·내보내기 API에 전달되는 검색어·필드 */
+  /** 입력 중인 검색어·필드(제출 전) — API는 applied* 만 사용 */
+  const [searchDraft, setSearchDraft] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
-  const [appliedSearchField, setAppliedSearchField] = useState('');
   const [assigneeMeOnly, setAssigneeMeOnly] = useState(() => getSavedTemplate(LIST_ID)?.assigneeMeOnly === true);
   const [loading, setLoading] = useState(true);
 
@@ -123,7 +108,8 @@ export default function CustomerCompanyEmployees() {
   const sortDir = sort.dir;
   const [companyEmployees, setCompanyEmployees] = useState([]);
   const [companyEmployeesLoaded, setCompanyEmployeesLoaded] = useState(false);
-  const [searchField, setSearchField] = useState('');
+  const [searchFieldDraft, setSearchFieldDraft] = useState('');
+  const [appliedSearchField, setAppliedSearchField] = useState('');
   const SEARCH_FIELD_OPTIONS = [
     { key: 'name', label: '이름' },
     { key: 'company', label: '회사' },
@@ -277,8 +263,8 @@ export default function CustomerCompanyEmployees() {
   const onSearch = (e) => {
     e?.preventDefault();
     clearSelection();
-    setAppliedSearch(searchInput.trim());
-    setAppliedSearchField(searchField);
+    setAppliedSearch(searchDraft.trim());
+    setAppliedSearchField(searchFieldDraft);
     setPagination((p) => ({ ...p, page: 1 }));
   };
 
@@ -810,15 +796,15 @@ export default function CustomerCompanyEmployees() {
           <form id="customer-company-employees-search-form" onSubmit={onSearch}>
             <input
               type="text"
-              placeholder={searchField ? `${SEARCH_FIELD_OPTIONS.find((o) => o.key === searchField)?.label || searchField} 검색...` : '모든 필드 검색 (이름, 회사, 이메일, 전화, 직책, 메모, 커스텀 필드 등)...'}
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder={searchFieldDraft ? `${SEARCH_FIELD_OPTIONS.find((o) => o.key === searchFieldDraft)?.label || searchFieldDraft} 검색...` : '모든 필드 검색 (이름, 회사, 이메일, 전화, 직책, 메모, 커스텀 필드 등)...'}
+              value={searchDraft}
+              onChange={(e) => setSearchDraft(e.target.value)}
             />
           </form>
           <select
             className="cce-sort-column-select"
-            value={searchField}
-            onChange={(e) => setSearchField(e.target.value)}
+            value={searchFieldDraft}
+            onChange={(e) => setSearchFieldDraft(e.target.value)}
             aria-label="검색 필드"
           >
             <option value="">전체 필드</option>
@@ -1312,28 +1298,11 @@ export default function CustomerCompanyEmployees() {
             <p className="pagination-info">
               <strong>{pagination.total}</strong>건 중 <strong>{items.length ? (pagination.page - 1) * pagination.limit + 1 : 0}</strong>–<strong>{(pagination.page - 1) * pagination.limit + items.length}</strong>건 표시
             </p>
-            <div className="pagination-btns">
-              <button type="button" className="pagination-btn" aria-label="첫 페이지" disabled={pagination.page <= 1} onClick={() => setPagination((p) => ({ ...p, page: 1 }))}><span className="material-symbols-outlined">first_page</span></button>
-              <button type="button" className="pagination-btn" aria-label="이전 페이지" disabled={pagination.page <= 1} onClick={() => setPagination((p) => ({ ...p, page: p.page - 1 }))}><span className="material-symbols-outlined">chevron_left</span></button>
-              {getPageNumbers(pagination.page, pagination.totalPages || 1).map((n, i) =>
-                n === '...' ? (
-                  <span key={`ellipsis-${i}`} className="pagination-ellipsis" aria-hidden>…</span>
-                ) : (
-                  <button
-                    key={n}
-                    type="button"
-                    className={`pagination-btn pagination-btn-num ${pagination.page === n ? 'active' : ''}`}
-                    aria-label={`${n}페이지`}
-                    aria-current={pagination.page === n ? 'page' : undefined}
-                    onClick={() => setPagination((p) => ({ ...p, page: n }))}
-                  >
-                    {n}
-                  </button>
-                )
-              )}
-              <button type="button" className="pagination-btn" aria-label="다음 페이지" disabled={pagination.page >= (pagination.totalPages || 1)} onClick={() => setPagination((p) => ({ ...p, page: p.page + 1 }))}><span className="material-symbols-outlined">chevron_right</span></button>
-              <button type="button" className="pagination-btn" aria-label="마지막 페이지" disabled={pagination.page >= (pagination.totalPages || 1)} onClick={() => setPagination((p) => ({ ...p, page: pagination.totalPages || 1 }))}><span className="material-symbols-outlined">last_page</span></button>
-            </div>
+            <ListPaginationButtons
+              page={pagination.page}
+              totalPages={pagination.totalPages || 1}
+              onPageChange={(nextPage) => setPagination((p) => ({ ...p, page: nextPage }))}
+            />
           </div>
         </div>
       </div>

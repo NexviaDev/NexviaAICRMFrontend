@@ -6,6 +6,7 @@ import './meeting-minutes.css';
 
 import { API_BASE } from '@/config';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
+import ListPaginationButtons from '@/components/list-pagination-buttons/list-pagination-buttons';
 const MODAL_PARAM = 'modal';
 const MODAL_ADD = 'add';
 const MODAL_DETAIL = 'detail';
@@ -244,32 +245,16 @@ export default function MeetingMinutes() {
               </tbody>
             </table>
           </div>
-          {pagination.totalPages > 1 && (
-            <div className="meeting-minutes-pagination">
-              <p className="meeting-minutes-pagination-info">
-                {((pagination.page - 1) * pagination.limit) + 1}–{Math.min(pagination.page * pagination.limit, pagination.total)} / {pagination.total}건
-              </p>
-              <div className="meeting-minutes-pagination-btns">
-                <button
-                  type="button"
-                  className="btn-outline small"
-                  disabled={pagination.page <= 1}
-                  onClick={() => handlePageChange(pagination.page - 1)}
-                >
-                  <span className="material-symbols-outlined">chevron_left</span>
-                </button>
-                <span className="meeting-minutes-page-num">{pagination.page} / {pagination.totalPages}</span>
-                <button
-                  type="button"
-                  className="btn-outline small"
-                  disabled={pagination.page >= pagination.totalPages}
-                  onClick={() => handlePageChange(pagination.page + 1)}
-                >
-                  <span className="material-symbols-outlined">chevron_right</span>
-                </button>
-              </div>
-            </div>
-          )}
+          <div className="pagination-bar meeting-minutes-pagination-bar">
+            <p className="pagination-info meeting-minutes-pagination-info">
+              <strong>{pagination.total}</strong>건 중 <strong>{items.length ? (pagination.page - 1) * pagination.limit + 1 : 0}</strong>–<strong>{(pagination.page - 1) * pagination.limit + items.length}</strong>건 표시
+            </p>
+            <ListPaginationButtons
+              page={pagination.page}
+              totalPages={Math.max(1, pagination.totalPages || 1)}
+              onPageChange={handlePageChange}
+            />
+          </div>
         </div>
       </div>
 
