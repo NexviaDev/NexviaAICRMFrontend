@@ -80,7 +80,11 @@ export default function CustomerCompanyEmployees() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [items, setItems] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, limit: LIMIT, total: 0, totalPages: 0 });
-  const [search, setSearch] = useState('');
+  /** 입력란 값 — Enter/검색 버튼까지 API에 반영하지 않음 */
+  const [searchInput, setSearchInput] = useState('');
+  /** 실제 목록·내보내기 API에 전달되는 검색어·필드 */
+  const [appliedSearch, setAppliedSearch] = useState('');
+  const [appliedSearchField, setAppliedSearchField] = useState('');
   const [assigneeMeOnly, setAssigneeMeOnly] = useState(() => getSavedTemplate(LIST_ID)?.assigneeMeOnly === true);
   const [loading, setLoading] = useState(true);
 
@@ -228,9 +232,9 @@ export default function CustomerCompanyEmployees() {
     setLoading(true);
     try {
       const params = new URLSearchParams({ page, limit: LIMIT });
-      if (search.trim()) {
-        params.set('search', search.trim());
-        if (searchField) params.set('searchField', searchField);
+      if (appliedSearch.trim()) {
+        params.set('search', appliedSearch.trim());
+        if (appliedSearchField) params.set('searchField', appliedSearchField);
       }
       const st = overrideStatus !== undefined ? overrideStatus : '';
       if (st) params.set('status', st);
@@ -250,7 +254,7 @@ export default function CustomerCompanyEmployees() {
     } finally {
       setLoading(false);
     }
-  }, [search, searchField, assigneeMeOnly]);
+  }, [appliedSearch, appliedSearchField, assigneeMeOnly]);
 
   useEffect(() => { fetchContacts(pagination.page); }, [pagination.page, fetchContacts]);
 
@@ -273,8 +277,9 @@ export default function CustomerCompanyEmployees() {
   const onSearch = (e) => {
     e?.preventDefault();
     clearSelection();
+    setAppliedSearch(searchInput.trim());
+    setAppliedSearchField(searchField);
     setPagination((p) => ({ ...p, page: 1 }));
-    fetchContacts(1);
   };
 
   const handleToggleFavorite = async (rowId, nextValue) => {
@@ -515,9 +520,9 @@ export default function CustomerCompanyEmployees() {
     const all = [];
     do {
       const params = new URLSearchParams({ page: String(page), limit: String(EXPORT_PAGE_LIMIT) });
-      if (search.trim()) {
-        params.set('search', search.trim());
-        if (searchField) params.set('searchField', searchField);
+      if (appliedSearch.trim()) {
+        params.set('search', appliedSearch.trim());
+        if (appliedSearchField) params.set('searchField', appliedSearchField);
       }
       if (assigneeMeOnly) params.set('assigneeMe', '1');
       const res = await fetch(`${API_BASE}/customer-company-employees?${params}`, { headers: getAuthHeader() });
@@ -532,7 +537,7 @@ export default function CustomerCompanyEmployees() {
       page += 1;
     } while (page <= totalPages);
     return all;
-  }, [search, searchField, assigneeMeOnly]);
+  }, [appliedSearch, appliedSearchField, assigneeMeOnly]);
 
   /** 검색·필터 결과 전체가 선택됐는지 (헤더 체크박스) */
   const allChecked =
@@ -806,8 +811,8 @@ export default function CustomerCompanyEmployees() {
             <input
               type="text"
               placeholder={searchField ? `${SEARCH_FIELD_OPTIONS.find((o) => o.key === searchField)?.label || searchField} 검색...` : '모든 필드 검색 (이름, 회사, 이메일, 전화, 직책, 메모, 커스텀 필드 등)...'}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
             />
           </form>
           <select

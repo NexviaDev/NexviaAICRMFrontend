@@ -585,7 +585,7 @@ export default function LeadCapture() {
         return `  <input type="${type}" name="custom_${d.key}" placeholder="${placeholder}"${required} />`;
       })
       .join('\n');
-    return `<!-- 리드 캡처 임베드: 기본 필드 + 빌더 커스텀 필드. YOUR_API_KEY를 실제 API 키로 바꾸세요. -->
+    return `<!-- 리드 캡처 임베드: 기본 필드 + 빌더 커스텀 필드. 기본은 API 키 없이 접수합니다. 키로만 제한하려면 스크립트에서 Authorization 또는 x-api-key 헤더를 추가하세요. -->
 <style>
   .lead-form-wrapper {
     max-width: 420px;
@@ -979,9 +979,10 @@ ${customInputs}
         if (v !== null && v !== undefined && v !== '') extra[k] = v;
       });
       var body = { name: fd.get('name'), email: fd.get('email'), formId: '${formId}', customFields: extra };
+      var leadCaptureHeaders = { 'Content-Type': 'application/json' };
       fetch('${url}', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer YOUR_API_KEY' },
+        headers: leadCaptureHeaders,
         body: JSON.stringify(body)
       }).then(function(r) { return r.ok ? alert('등록되었습니다.') : r.json(); })
         .then(function(d) { if (d && d.error) alert(d.error); })
@@ -1017,7 +1018,13 @@ ${customInputs}
 
   function handleShowEmbedPreview() {
     let code = embedCodeText || getEmbedSnippet();
-    if (apiKeyForPreview.trim()) code = code.replace(/YOUR_API_KEY/g, apiKeyForPreview.trim());
+    if (apiKeyForPreview.trim()) {
+      const safe = JSON.stringify(apiKeyForPreview.trim());
+      code = code.replace(
+        "var leadCaptureHeaders = { 'Content-Type': 'application/json' };",
+        `var leadCaptureHeaders = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + ${safe} };`
+      );
+    }
     setPreviewHtml(code);
     setShowEmbedPreview(true);
   }
