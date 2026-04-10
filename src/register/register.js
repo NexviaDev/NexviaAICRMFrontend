@@ -493,7 +493,8 @@ export default function Register() {
                   )}
                   {isEditMode && companyConfirmed && (
                     <span className="register-company-status unconfirmed">
-                      <span className="material-symbols-outlined">hourglass_top</span> 회사를 변경하면 권한이 `권한 대기` 상태로 전환됩니다.
+                      <span className="material-symbols-outlined">hourglass_top</span>
+                      검색으로 기존 회사로 바꾸면 승인 후 이용(권한 대기)될 수 있습니다. 회사 추가로 새 회사를 처음 등록하면 저장자에게 Owner가 부여됩니다.
                     </span>
                   )}
                   <button type="button" className="register-company-add-btn" onClick={() => setAddCompanyModalOpen(true)}>+ 회사 추가</button>

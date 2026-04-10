@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { API_BASE } from '@/config';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import AddTodoModal from './add-todo-modal/add-todo-modal';
@@ -43,6 +43,8 @@ export default function TodoList({ embedded = false, previewMax = null }) {
   });
   const [createListTitle, setCreateListTitle] = useState('');
   const [creatingList, setCreatingList] = useState(false);
+  const [addingTask, setAddingTask] = useState(false);
+  const addingTaskRef = useRef(false);
   const [companyMembers, setCompanyMembers] = useState([]);
   const [currentUserId, setCurrentUserId] = useState(null);
   const [togglingId, setTogglingId] = useState(null);
@@ -228,12 +230,15 @@ export default function TodoList({ embedded = false, previewMax = null }) {
 
   const addTask = async (e) => {
     e.preventDefault();
+    if (addingTaskRef.current) return;
     if (!form.title?.trim()) return;
     const listId = form.listId || taskListId;
     if (!listId) {
       setError('목록을 선택하거나 새 목록을 만든 뒤 추가해 주세요.');
       return;
     }
+    addingTaskRef.current = true;
+    setAddingTask(true);
     try {
       let notes = (form.description || '').trim();
       if (!form.allDay && form.dueTime) notes = (notes ? notes + '\n' : '') + '시간: ' + form.dueTime;
@@ -257,6 +262,9 @@ export default function TodoList({ embedded = false, previewMax = null }) {
       if (listId === taskListId) await fetchTasks({ silent: true });
     } catch (err) {
       setError(err.message);
+    } finally {
+      addingTaskRef.current = false;
+      setAddingTask(false);
     }
   };
 
@@ -407,6 +415,7 @@ export default function TodoList({ embedded = false, previewMax = null }) {
           handleCreateList={handleCreateList}
           creatingList={creatingList}
           addTask={addTask}
+          addingTask={addingTask}
           companyMembers={companyMembers}
           currentUserId={currentUserId}
         />

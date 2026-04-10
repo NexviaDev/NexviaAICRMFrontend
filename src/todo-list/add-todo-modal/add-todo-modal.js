@@ -26,6 +26,7 @@ export default function AddTodoModal({
   handleCreateList,
   creatingList,
   addTask,
+  addingTask = false,
   companyMembers,
   currentUserId
 }) {
@@ -302,10 +303,11 @@ export default function AddTodoModal({
             <button
               type="submit"
               className="btn-primary"
-              disabled={!form.listId || form.listId === '__new__'}
+              disabled={addingTask || !form.listId || form.listId === '__new__'}
+              aria-busy={addingTask}
             >
               <span className="material-symbols-outlined">add</span>
-              추가
+              {addingTask ? '추가 중…' : '추가'}
             </button>
           </div>
         </form>
