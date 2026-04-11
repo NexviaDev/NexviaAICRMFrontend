@@ -382,6 +382,16 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
   }, [driveFolderId, driveFolderName, ensureCompanyDriveInformationFolder]);
 
   const fetchDriveFiles = useCallback(async () => {
+    /**
+     * 신규 고객사 추가: 이름·사업자번호를 타이핑할 때마다 driveFolderName만 바뀌고
+     * 이 콜백이 ensure를 타면 Drive에 1, 12, 123… 접두사별 폴더가 생김.
+     * DB에 저장된 고객사(수정 모달)일 때만 목록 조회·폴더 ensure.
+     */
+    if (!company?._id) {
+      setDriveFilesList([]);
+      setLoadingDriveFiles(false);
+      return;
+    }
     if (!driveFolderName) {
       setDriveFilesList([]);
       return;
@@ -426,7 +436,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
     } finally {
       setLoadingDriveFiles(false);
     }
-  }, [driveCurrentFolderId, driveInformationFolderId, driveFolderId, driveFolderName, ensureCompanyDriveInformationFolder]);
+  }, [company?._id, driveCurrentFolderId, driveInformationFolderId, driveFolderId, driveFolderName, ensureCompanyDriveInformationFolder]);
 
   useEffect(() => {
     fetchDriveFiles();
