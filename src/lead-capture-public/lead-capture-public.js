@@ -80,7 +80,9 @@ function fieldChoices(def) {
 }
 
 /**
- * 임베드 스니펫과 동일: 기본 필드 + 빌더 커스텀 필드. API 키 없이 웹훅에 POST.
+ * 임베드 HTML(`lead-capture-shared/lead-capture-embed-snippet.js`)과 동일하게
+ * POST …/api/lead-capture-webhook/:secret 로 접수합니다. 공개 페이지는 API로 필드 정의를 받아
+ * select·multiselect·checkbox 등을 지원하고, 임베드는 커스텀 필드를 주로 text 위주로 넣습니다.
  */
 export default function LeadCapturePublic() {
   const { secret: secretParam } = useParams();

@@ -256,6 +256,7 @@ export default function EmployeeWorkReport() {
     title: roleLabel(selectedUser?.role),
     email: selectedUser?.email || '-',
     location: resolveDeptDisplay(organizationChart, selectedUser?.departmentDisplay || selectedUser?.department) || '-',
+    avatarUrl: (selectedUser?.avatar && String(selectedUser.avatar).trim()) || '',
     hoursLogged: timelineActivities.length,
     tasksDone,
     completionRate
@@ -377,7 +378,13 @@ export default function EmployeeWorkReport() {
         <div className="employee-summary panel">
           <div className="employee-profile">
             <div className="employee-avatar-wrap">
-              <div className="employee-avatar" />
+              {emp.avatarUrl ? (
+                <img src={emp.avatarUrl} alt="" className="employee-avatar employee-avatar-img" />
+              ) : (
+                <div className="employee-avatar employee-avatar-placeholder" aria-hidden>
+                  <span className="material-symbols-outlined">person</span>
+                </div>
+              )}
             </div>
             <div className="employee-info">
               <h3>{emp.name}</h3>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import './register.css';
 import { formatPhone, phoneDigitsOnly } from './phoneFormat';
@@ -6,6 +6,7 @@ import AddCompany from './add-company';
 import SearchCompany from './search-company';
 
 import { API_BASE } from '@/config';
+import { pingBackendHealth } from '@/lib/backend-wake';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -40,6 +41,121 @@ export default function Register() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+
+  /** 로컬에서 고른 파일(가입·프로필 저장 후 Cloudinary 업로드 — lead-capture 명함 패턴) */
+  const [avatarFile, setAvatarFile] = useState(null);
+  /** 미리보기: 서버 URL 또는 blob: */
+  const [avatarPreview, setAvatarPreview] = useState(null);
+  /** 서버에 저장된 아바타(선택 취소 시 복원) */
+  const [savedAvatarUrl, setSavedAvatarUrl] = useState(null);
+  /** 파일을 끌어다 놓을 때 영역 강조 */
+  const [avatarDropActive, setAvatarDropActive] = useState(false);
+  const avatarInputRef = useRef(null);
+  const avatarObjectUrlRef = useRef(null);
+
+  const clearAvatarObjectUrl = useCallback(() => {
+    if (avatarObjectUrlRef.current) {
+      URL.revokeObjectURL(avatarObjectUrlRef.current);
+      avatarObjectUrlRef.current = null;
+    }
+  }, []);
+
+  const applyServerAvatar = useCallback((url) => {
+    clearAvatarObjectUrl();
+    const u = url && String(url).trim() ? String(url).trim() : null;
+    setSavedAvatarUrl(u);
+    setAvatarPreview(u);
+    setAvatarFile(null);
+  }, [clearAvatarObjectUrl]);
+
+  useEffect(() => () => {
+    clearAvatarObjectUrl();
+  }, [clearAvatarObjectUrl]);
+
+  const tryUploadProfilePhoto = async (token, file) => {
+    if (!token || !file) return null;
+    await pingBackendHealth(() => ({ Authorization: `Bearer ${token}` }));
+    const formData = new FormData();
+    formData.append('image', file, file.name || 'profile.jpg');
+    const res = await fetch(`${API_BASE}/auth/profile-photo`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || '프로필 사진 업로드에 실패했습니다.');
+    return data;
+  };
+
+  const applyAvatarFile = useCallback((f) => {
+    setError('');
+    if (!f) return;
+    if (!f.type.startsWith('image/')) {
+      setError('이미지 파일만 선택할 수 있습니다.');
+      return;
+    }
+    if (f.size > 5 * 1024 * 1024) {
+      setError('사진은 5MB 이하로 올려 주세요.');
+      return;
+    }
+    clearAvatarObjectUrl();
+    const url = URL.createObjectURL(f);
+    avatarObjectUrlRef.current = url;
+    setAvatarPreview(url);
+    setAvatarFile(f);
+  }, [clearAvatarObjectUrl]);
+
+  const onAvatarFileChange = (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    applyAvatarFile(f);
+  };
+
+  const preventAvatarDragDefaults = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const onAvatarDragOver = useCallback(
+    (e) => {
+      preventAvatarDragDefaults(e);
+      try {
+        e.dataTransfer.dropEffect = 'copy';
+      } catch (_) {
+        /* ignore */
+      }
+    },
+    [preventAvatarDragDefaults]
+  );
+
+  const onAvatarDragEnter = useCallback(
+    (e) => {
+      preventAvatarDragDefaults(e);
+      const types = e.dataTransfer?.types;
+      const hasFiles = types && [...types].includes('Files');
+      if (hasFiles) setAvatarDropActive(true);
+    },
+    [preventAvatarDragDefaults]
+  );
+
+  const onAvatarDragLeave = useCallback(
+    (e) => {
+      preventAvatarDragDefaults(e);
+      if (e.currentTarget.contains(e.relatedTarget)) return;
+      setAvatarDropActive(false);
+    },
+    [preventAvatarDragDefaults]
+  );
+
+  const onAvatarDrop = useCallback(
+    (e) => {
+      preventAvatarDragDefaults(e);
+      setAvatarDropActive(false);
+      const f = e.dataTransfer?.files?.[0];
+      applyAvatarFile(f);
+    },
+    [applyAvatarFile, preventAvatarDragDefaults]
+  );
 
   const authHeader = () => {
     const t = tokenFromUrl || localStorage.getItem('crm_token');
@@ -84,6 +200,7 @@ export default function Register() {
           }
           setEmail(data.user.email || '');
           setName(data.user.name || '');
+          applyServerAvatar(data.user.avatar);
           setPhone(data.user.phone ? formatPhone(data.user.phone) : '');
           setCompanyName(data.user.companyName || '');
           setCompanyAddress(data.user.companyAddress || '');
@@ -110,7 +227,7 @@ export default function Register() {
           navigate('/login', { replace: true });
         });
     }
-  }, [tokenFromUrl, needsRegister, navigate]);
+  }, [tokenFromUrl, needsRegister, navigate, applyServerAvatar]);
 
   useEffect(() => {
     if (isEditMode) {
@@ -130,6 +247,7 @@ export default function Register() {
           }
           setEmail(data.user.email || '');
           setName(data.user.name || '');
+          applyServerAvatar(data.user.avatar);
           setPhone(data.user.phone ? formatPhone(data.user.phone) : '');
           setCompanyName(data.user.companyName || '');
           setCompanyAddress(data.user.companyAddress || '');
@@ -156,7 +274,7 @@ export default function Register() {
           navigate('/login', { replace: true });
         });
     }
-  }, [isEditMode, navigate]);
+  }, [isEditMode, navigate, applyServerAvatar]);
 
   const handlePhoneChange = (value) => {
     setPhone(formatPhone(value));
@@ -358,6 +476,18 @@ export default function Register() {
       if (res.ok && data.token) {
         localStorage.setItem('crm_token', data.token);
         if (data.user) localStorage.setItem('crm_user', JSON.stringify(data.user));
+        if (avatarFile) {
+          try {
+            const up = await tryUploadProfilePhoto(data.token, avatarFile);
+            if (up?.user) localStorage.setItem('crm_user', JSON.stringify(up.user));
+            else if (up?.avatar) {
+              const prev = data.user ? { ...data.user, avatar: up.avatar } : { avatar: up.avatar };
+              localStorage.setItem('crm_user', JSON.stringify(prev));
+            }
+          } catch (upErr) {
+            console.warn('[register] profile photo:', upErr.message || upErr);
+          }
+        }
         navigate('/', { replace: true });
         return;
       }
@@ -435,6 +565,18 @@ export default function Register() {
       if (res.ok && data.token) {
         localStorage.setItem('crm_token', data.token);
         if (data.user) localStorage.setItem('crm_user', JSON.stringify(data.user));
+        if (avatarFile) {
+          try {
+            const up = await tryUploadProfilePhoto(data.token, avatarFile);
+            if (up?.user) localStorage.setItem('crm_user', JSON.stringify(up.user));
+            else if (up?.avatar) {
+              const prev = data.user ? { ...data.user, avatar: up.avatar } : { avatar: up.avatar };
+              localStorage.setItem('crm_user', JSON.stringify(prev));
+            }
+          } catch (upErr) {
+            console.warn('[register] profile photo:', upErr.message || upErr);
+          }
+        }
         navigate('/', { replace: true });
         return;
       }
@@ -446,15 +588,50 @@ export default function Register() {
     }
   };
 
+  /** 헤더 — 큰 원형 미리보기 */
+  const registerAvatarHeaderTap = (
+    <div className="register-avatar-header-stack">
+      <input
+        ref={avatarInputRef}
+        type="file"
+        accept="image/*"
+        className="register-avatar-input-hidden"
+        onChange={onAvatarFileChange}
+        tabIndex={-1}
+        aria-hidden="true"
+      />
+      <div
+        className={`register-logo register-logo-avatar ${avatarDropActive ? 'is-dragover' : ''}`}
+        onDragEnter={onAvatarDragEnter}
+        onDragLeave={onAvatarDragLeave}
+        onDragOver={onAvatarDragOver}
+        onDrop={onAvatarDrop}
+      >
+        <button
+          type="button"
+          className="register-avatar-tap register-avatar-tap--header"
+          onClick={() => avatarInputRef.current?.click()}
+          aria-label="개인 사진 선택 또는 변경"
+        >
+          {avatarPreview ? (
+            <img src={avatarPreview} alt="" className="register-avatar-preview" />
+          ) : (
+            <span className="register-avatar-placeholder-inner" aria-hidden>
+              <span className="material-symbols-outlined">person</span>
+            </span>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+
   if (mode === 'google-complete') {
     return (
       <div className="register-page">
         <div className="register-container">
           <div className="register-card">
             <div className="register-header">
-              <div className="register-logo">
-                <span className="material-symbols-outlined">hub</span>
-              </div>
+              {registerAvatarHeaderTap}
               <h2>{isEditMode ? '내 정보 수정' : '추가 정보 입력'}</h2>
               <p>{isEditMode ? '회원 정보를 수정할 수 있습니다' : 'Google 로그인 후 부가 정보를 입력해 주세요'}</p>
             </div>
@@ -562,9 +739,7 @@ export default function Register() {
         <div className="register-container">
           <div className="register-card">
             <div className="register-header">
-              <div className="register-logo">
-                <span className="material-symbols-outlined">hub</span>
-              </div>
+              {registerAvatarHeaderTap}
               <h2>회원가입</h2>
               <p>정보를 입력해 주세요</p>
             </div>

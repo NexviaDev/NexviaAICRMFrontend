@@ -154,20 +154,47 @@
   gap: 0.75rem;
 }
 
-.product-list-icon-wrap {
-  width: 2.05rem;
-  height: 2.05rem;
-  border-radius: 0.5rem;
-  background: var(--pastel-sky);
-  color: var(--primary);
+/* 제품 아바타 — 모바일 카드와 동일 스타일(표·카드 공통) */
+.product-list-page .pl-mcard-icon {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 0.75rem;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
 
-.product-list-icon-wrap .material-symbols-outlined {
-  font-size: 1.05rem;
+.product-list-page .pl-mcard-icon--0 {
+  background: #8ff6d0;
+  color: #006c53;
+}
+
+.product-list-page .pl-mcard-icon--1 {
+  background: #e1e1f5;
+  color: #5c5e6e;
+}
+
+.product-list-page .pl-mcard-icon--2 {
+  background: #fed9b8;
+  color: #755a40;
+}
+
+.product-list-page .pl-mcard-icon--3 {
+  background: #dde4e4;
+  color: #596061;
+}
+
+.product-list-page .pl-mcard-icon .material-symbols-outlined {
+  font-size: 1.45rem;
+}
+
+.product-list-page .pl-mcard-icon--initials .pl-mcard-icon-initials {
+  font-size: 0.8125rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  font-family: 'Manrope', 'Inter', system-ui, sans-serif;
 }
 
 .product-list-name {

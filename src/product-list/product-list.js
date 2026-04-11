@@ -19,6 +19,7 @@ import * as XLSX from 'xlsx';
 import { API_BASE } from '@/config';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { listPriceFromProduct } from '@/lib/product-price-utils';
+import { CATEGORY_AVATAR_RULES } from './product-category-avatar-config';
 const LIST_ID = LIST_IDS.PRODUCT_LIST;
 const LIMIT = 10;
 const EXPORT_PAGE_LIMIT = 100;
@@ -58,7 +59,58 @@ function getConsumerMarginPercent(row) {
   return (getConsumerMargin(row) / lp) * 100;
 }
 
-const MOBILE_CARD_ICONS = ['category', 'architecture', 'rocket_launch', 'drafts'];
+function getProductInitials(name) {
+  const s = String(name || '').trim();
+  if (!s) return '?';
+  if (/[가-힣]/.test(s)) return s.slice(0, 2);
+  const parts = s.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2 && /^[a-zA-Z]/.test(parts[0])) {
+    const a = parts[0][0];
+    const b = parts[1][0];
+    if (/[a-zA-Z0-9]/.test(a) && /[a-zA-Z0-9]/.test(b)) return (a + b).toUpperCase();
+  }
+  const alnum = s.replace(/[^a-zA-Z0-9가-힣]/g, '');
+  if (alnum.length >= 2) return alnum.slice(0, 2).toUpperCase();
+  return s.slice(0, 2).toUpperCase();
+}
+
+function hashToneFromString(seed) {
+  let h = 0;
+  const s = String(seed || '');
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h) % 4;
+}
+
+function resolveProductAvatar(row, idx) {
+  const cat = String(row.category || '').toLowerCase();
+  for (const rule of CATEGORY_AVATAR_RULES) {
+    if (rule.keys.some((k) => cat.includes(k.toLowerCase()))) {
+      return { kind: 'icon', icon: rule.icon, tone: rule.tone % 4 };
+    }
+  }
+  const initials = getProductInitials(row.name);
+  const tone = hashToneFromString(row._id || row.name || String(idx));
+  return { kind: 'initials', initials, tone };
+}
+
+function ProductListAvatar({ row, idx }) {
+  const av = resolveProductAvatar(row, idx);
+  const base = `pl-mcard-icon pl-mcard-icon--${av.tone}`;
+  if (av.kind === 'initials') {
+    return (
+      <div className={`${base} pl-mcard-icon--initials`} aria-hidden>
+        <span className="pl-mcard-icon-initials">{av.initials}</span>
+      </div>
+    );
+  }
+  return (
+    <div className={base} aria-hidden>
+      <span className="material-symbols-outlined">{av.icon}</span>
+    </div>
+  );
+}
 
 export default function ProductList() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -343,10 +395,8 @@ export default function ProductList() {
   }, [fetchAllProductsForExport, customFieldLabelByKey]);
 
   const renderMobileCard = (row, idx) => {
-    const tone = idx % 4;
     const mp = getConsumerMarginPercent(row);
     const isEol = row.status === 'EndOfLife';
-    const iconName = MOBILE_CARD_ICONS[tone];
     const badgeClass =
       row.status === 'Active' ? 'pl-mcard-badge--active' : row.status === 'EndOfLife' ? 'pl-mcard-badge--eol' : 'pl-mcard-badge--draft';
     const sub =
@@ -369,9 +419,7 @@ export default function ProductList() {
       >
         <div className="pl-mcard-top">
           <div className="pl-mcard-id">
-            <div className={`pl-mcard-icon pl-mcard-icon--${tone}`} aria-hidden>
-              <span className="material-symbols-outlined">{iconName}</span>
-            </div>
+            <ProductListAvatar row={row} idx={idx} />
             <div className="pl-mcard-text">
               <h3 className="pl-mcard-name">{row.name || '—'}</h3>
               <p className="pl-mcard-sub">{sub}</p>
@@ -582,7 +630,7 @@ export default function ProductList() {
                 ) : sortedItems.length === 0 ? (
                   <tr><td colSpan={colSpan} className="text-center">등록된 제품이 없습니다.</td></tr>
                 ) : (
-                  sortedItems.map((row) => (
+                  sortedItems.map((row, rowIdx) => (
                     <tr
                       key={row._id}
                       className={`product-list-row-clickable ${row.status === 'EndOfLife' ? 'product-list-row-eol' : ''}`}
@@ -592,9 +640,7 @@ export default function ProductList() {
                         <td key={col.key}>
                           {col.key === 'name' && (
                             <div className="product-list-cell-name">
-                              <div className="product-list-icon-wrap">
-                                <span className="material-symbols-outlined">inventory_2</span>
-                              </div>
+                              <ProductListAvatar row={row} idx={rowIdx} />
                               <div>
                                 <span className="product-list-name">{row.name || '—'}</span>
                                 {row.code && !template.visible?.code && (

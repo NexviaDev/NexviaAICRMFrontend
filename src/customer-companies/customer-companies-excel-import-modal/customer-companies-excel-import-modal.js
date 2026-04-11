@@ -670,6 +670,7 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
           return;
         }
 
+        setSaveMsg(null);
         setImportResult(data);
       } catch (e) {
         setSaveMsg(e.message || '실패');
@@ -746,6 +747,7 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
         if (data.status === 'completed' || data.status === 'failed') {
           activeImportJobRef.current = null;
           setInProgressJob(null);
+          setSaveMsg(null);
           setImportResult({
             ...data,
             jobId: data.jobId || data._id || inProgressJob.jobId

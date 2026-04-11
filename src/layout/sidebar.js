@@ -558,7 +558,13 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
       )}
       <div className="sidebar-footer">
         <Link to="/register?edit=1" className="sidebar-user sidebar-user-clickable">
-          <div className="sidebar-avatar" />
+          {user?.avatar ? (
+            <img src={user.avatar} alt="" className="sidebar-avatar sidebar-avatar-img" />
+          ) : (
+            <div className="sidebar-avatar sidebar-avatar-fallback" aria-hidden>
+              <span className="material-symbols-outlined">person</span>
+            </div>
+          )}
           <div className="sidebar-user-info">
             <p className="sidebar-user-name">{user?.name || '사용자'}</p>
             <p className="sidebar-user-role">{departmentLabel}</p>

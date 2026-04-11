@@ -632,6 +632,7 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || '가져오기 실패');
+        setSaveMsg(null);
         setImportResult(data);
       } catch (e) {
         setSaveMsg(e.message || '실패');

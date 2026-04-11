@@ -575,6 +575,15 @@
   line-height: 1.45;
 }
 
+/* 고객사 상세와 동일 업무 기록 UI (customer-company-detail-modal.css 클래스 재사용) */
+.opp-modal-journal-like-company-detail {
+  margin-top: 6px;
+}
+
+.opp-modal-journal-hint {
+  margin-bottom: 8px;
+}
+
 .opp-comments-list {
   list-style: none;
   margin: 0;

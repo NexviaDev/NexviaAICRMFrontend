@@ -6,6 +6,8 @@ import '../../customer-companies/customer-company-detail-modal/customer-company-
 import './opportunity-modal.css';
 
 import { API_BASE } from '@/config';
+import { pingBackendHealth } from '@/lib/backend-wake';
+import { pollJournalFromAudioJob } from '@/lib/journal-from-audio-poll';
 import { suggestedPriceFromProduct, OPPORTUNITY_PRICE_BASIS_OPTIONS } from '@/lib/product-price-utils';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 
@@ -63,16 +65,30 @@ function formatCommentDate(iso) {
   }
 }
 
+/** customer-company-detail-modal.js `toDatetimeLocalValue` 와 동일 */
+function toDatetimeLocalValue(date) {
+  if (!date) return '';
+  const d = new Date(date);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const h = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${y}-${m}-${day}T${h}:${min}`;
+}
+
 function isCommentAuthor(comment, userId) {
   if (userId == null || !comment?.userId) return false;
   return String(comment.userId) === String(userId);
 }
 
-function sanitizeFolderNamePart(s) {
-  return String(s ?? '')
+function sanitizeFolderNamePart(s, maxLen) {
+  const t = String(s ?? '')
     .replace(/[/\\*?:<>"|]/g, '_')
     .replace(/\s+/g, ' ')
     .trim();
+  if (maxLen == null || maxLen <= 0) return t;
+  return t.length > maxLen ? t.slice(0, maxLen) : t;
 }
 
 function getDriveFolderIdFromLink(url) {
@@ -80,6 +96,85 @@ function getDriveFolderIdFromLink(url) {
   const s = url.trim();
   const m = s.match(/\/folders\/([a-zA-Z0-9_-]+)/);
   return m ? m[1] : null;
+}
+
+/** 담당자의 소속사 문자열로 고객사 DB에서 한 건 매칭 (정확 일치 우선) */
+async function resolveCustomerCompanyByAffiliationName(nameTrim) {
+  if (!nameTrim) return null;
+  const res = await fetch(`${API_BASE}/customer-companies?search=${encodeURIComponent(nameTrim)}&limit=40`, { headers: getAuthHeader() });
+  const data = await res.json().catch(() => ({}));
+  const items = Array.isArray(data.items) ? data.items : [];
+  const lower = nameTrim.toLowerCase();
+  const exact = items.find((c) => (c.name || '').trim().toLowerCase() === lower);
+  return exact || items[0] || null;
+}
+
+async function fetchRegisteredDriveParentId() {
+  const rootRes = await fetch(`${API_BASE}/custom-field-definitions/drive-root`, { headers: getAuthHeader() });
+  const rootJson = await rootRes.json().catch(() => ({}));
+  const driveRootUrl = (rootJson.driveRootUrl != null && String(rootJson.driveRootUrl).trim()) ? String(rootJson.driveRootUrl).trim() : '';
+  return getDriveFolderIdFromLink(driveRootUrl);
+}
+
+/** customer-company-employees-detail-modal Drive 로직과 동일한 기본 폴더명 */
+async function buildContactBaseFolderName(contact) {
+  const ccId = contact.customerCompanyId?._id ?? contact.customerCompanyId ?? null;
+  if (ccId) {
+    let ccName = contact.customerCompanyId?.name || contact.company || '';
+    let ccBn = contact.customerCompanyId?.businessNumber || '';
+    if (!ccName || !ccBn) {
+      try {
+        const ccRes = await fetch(`${API_BASE}/customer-companies/${ccId}`, { headers: getAuthHeader() });
+        const ccData = await ccRes.json().catch(() => ({}));
+        if (ccRes.ok && ccData._id) {
+          ccName = ccData.name || ccName;
+          ccBn = ccData.businessNumber || ccBn;
+        }
+      } catch (_) { /* ignore */ }
+    }
+    const bnPart = String(ccBn || '').replace(/\D/g, '') || '미등록';
+    return `${sanitizeFolderNamePart(ccName || '미소속', 80)}_${sanitizeFolderNamePart(bnPart, 20)}`;
+  }
+  const namePart = sanitizeFolderNamePart(contact.name || '이름없음', 80);
+  const contactPart = sanitizeFolderNamePart(contact.phone || contact.email || '미등록', 40);
+  return `${namePart}_${contactPart}`;
+}
+
+/** 연락처 증서·자료 폴더(및 선택 시 제품 하위 폴더)까지 ensure */
+async function ensureContactLeafDriveFolder(contact, productSubfolderSanitized) {
+  const registeredFolderId = await fetchRegisteredDriveParentId();
+  if (!registeredFolderId) {
+    return { ok: false, error: 'Google Drive 등록 폴더를 찾을 수 없습니다.', baseFolderName: '', id: null, webViewLink: '' };
+  }
+  const baseFolderName = await buildContactBaseFolderName(contact);
+  const r1 = await fetch(`${API_BASE}/drive/folders/ensure`, {
+    method: 'POST',
+    headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ folderName: baseFolderName, parentFolderId: registeredFolderId })
+  });
+  const data1 = await r1.json().catch(() => ({}));
+  if (!r1.ok) {
+    return { ok: false, error: data1.error || '연락처 폴더를 준비할 수 없습니다.', baseFolderName, id: null, webViewLink: '' };
+  }
+  let targetId = data1.id;
+  let targetLink = data1.webViewLink || `https://drive.google.com/drive/folders/${data1.id}`;
+  const prod = productSubfolderSanitized ? sanitizeFolderNamePart(productSubfolderSanitized) : '';
+  if (prod) {
+    const r2 = await fetch(`${API_BASE}/drive/folders/ensure`, {
+      method: 'POST',
+      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ folderName: prod, parentFolderId: targetId })
+    });
+    const data2 = await r2.json().catch(() => ({}));
+    if (!r2.ok) {
+      return { ok: false, error: data2.error || '제품 폴더를 준비할 수 없습니다.', baseFolderName, id: null, webViewLink: '' };
+    }
+    targetId = data2.id;
+    targetLink = data2.webViewLink || `https://drive.google.com/drive/folders/${data2.id}`;
+  }
+  return { ok: true, id: targetId, webViewLink: targetLink, baseFolderName, error: '' };
 }
 
 function fileToBase64(file) {
@@ -131,6 +226,7 @@ export default function OpportunityModal({
   const [form, setForm] = useState({
     customerCompanyId: '',
     customerCompanyName: '',
+    customerCompanyEmployeeId: '',
     contactName: '',
     productId: '',
     productName: '',
@@ -153,6 +249,8 @@ export default function OpportunityModal({
   const [documentRefs, setDocumentRefs] = useState([]);
   const [driveError, setDriveError] = useState('');
   const [driveEmbedRevision, setDriveEmbedRevision] = useState(0);
+  /** 고객사 미선택·담당자만 선택 시 embed 경로 표시용 */
+  const [contactLeafFolderLabel, setContactLeafFolderLabel] = useState('');
   const fileInputRef = useRef(null);
   const lastEnsuredFolderKeyRef = useRef('');
   const [showCompanySearchModal, setShowCompanySearchModal] = useState(false);
@@ -165,6 +263,13 @@ export default function OpportunityModal({
   const [showProductFields, setShowProductFields] = useState(false);
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
+  const [journalDateTime, setJournalDateTime] = useState(() => toDatetimeLocalValue(new Date()));
+  const [savingJournal, setSavingJournal] = useState(false);
+  const [audioUploading, setAudioUploading] = useState(false);
+  const [audioDropActive, setAudioDropActive] = useState(false);
+  const [journalInputError, setJournalInputError] = useState('');
+  const [journalSummaryNotice, setJournalSummaryNotice] = useState(null);
+  const oppJournalAudioInputRef = useRef(null);
   const [commentBusy, setCommentBusy] = useState(false);
   const [commentError, setCommentError] = useState('');
   const [editingCommentId, setEditingCommentId] = useState(null);
@@ -186,6 +291,7 @@ export default function OpportunityModal({
       if (!res.ok) throw new Error();
       const data = await res.json();
       const cc = data.customerCompanyId;
+      const emp = data.customerCompanyEmployeeId;
       const product = data.productId;
       const qty = data.quantity ?? 1;
       const unit = data.unitPrice ?? 0;
@@ -197,6 +303,7 @@ export default function OpportunityModal({
       setForm({
         customerCompanyId: cc?._id || cc || '',
         customerCompanyName: cc?.name || '',
+        customerCompanyEmployeeId: emp?._id || emp || '',
         contactName: data.contactName || '',
         productId: product?._id || product || '',
         productName: product?.name || '',
@@ -219,6 +326,9 @@ export default function OpportunityModal({
       setShowProductFields(false);
       setComments(Array.isArray(data.comments) ? data.comments : []);
       setNewComment('');
+      setJournalDateTime(toDatetimeLocalValue(new Date()));
+      setJournalInputError('');
+      setJournalSummaryNotice(null);
       setCommentError('');
       setEditingCommentId(null);
       setEditDraft('');
@@ -249,7 +359,8 @@ export default function OpportunityModal({
         ...f,
         contactName: initialContact?.name || f.contactName,
         customerCompanyId: initialContact?.customerCompanyId || f.customerCompanyId,
-        customerCompanyName: initialContact?.customerCompanyName || f.customerCompanyName
+        customerCompanyName: initialContact?.customerCompanyName || f.customerCompanyName,
+        customerCompanyEmployeeId: initialContact?._id || f.customerCompanyEmployeeId
       }));
       setBusinessNumber(String(initialContact?.customerCompanyBusinessNumber ?? ''));
     }
@@ -292,6 +403,19 @@ export default function OpportunityModal({
     return name || '';
   }, [form.productName]);
 
+  const driveDocsFolderHintLine = useMemo(() => {
+    if (form.customerCompanyName?.trim()) {
+      return `${driveFolderName}${productFolderName ? ` / ${productFolderName}` : ''}`;
+    }
+    if (form.customerCompanyEmployeeId?.trim() && contactLeafFolderLabel) {
+      return `${contactLeafFolderLabel}${productFolderName ? ` / ${productFolderName}` : ''}`;
+    }
+    if (form.customerCompanyEmployeeId?.trim()) {
+      return `(연락처 폴더 준비 중)${productFolderName ? ` / ${productFolderName}` : ''}`;
+    }
+    return '—';
+  }, [form.customerCompanyName, form.customerCompanyEmployeeId, driveFolderName, productFolderName, contactLeafFolderLabel]);
+
   const ensureTargetDriveFolder = useCallback(async () => {
     if (!form.customerCompanyName?.trim()) {
       return { ok: false, error: '고객사를 먼저 선택해 주세요.' };
@@ -323,20 +447,44 @@ export default function OpportunityModal({
   }, [form.customerCompanyName, driveFolderName, productFolderName]);
 
   useEffect(() => {
-    if (!form.customerCompanyName?.trim()) return;
-    const key = `${driveFolderName}|${productFolderName}`;
-    if (lastEnsuredFolderKeyRef.current === key) return;
-    let cancelled = false;
-    (async () => {
-      const result = await ensureTargetDriveFolder();
-      if (cancelled || !result.ok) return;
-      lastEnsuredFolderKeyRef.current = key;
-      setDriveFolderId(result.id);
-      setDriveFolderLink(result.webViewLink);
-      setDriveError('');
-    })();
-    return () => { cancelled = true; };
-  }, [form.customerCompanyName, driveFolderName, productFolderName, ensureTargetDriveFolder]);
+    if (form.customerCompanyName?.trim()) {
+      const key = `co:${driveFolderName}|${productFolderName}`;
+      if (lastEnsuredFolderKeyRef.current === key) return;
+      let cancelled = false;
+      setContactLeafFolderLabel('');
+      (async () => {
+        const result = await ensureTargetDriveFolder();
+        if (cancelled || !result.ok) return;
+        lastEnsuredFolderKeyRef.current = key;
+        setDriveFolderId(result.id);
+        setDriveFolderLink(result.webViewLink);
+        setDriveError('');
+      })();
+      return () => { cancelled = true; };
+    }
+    if (form.customerCompanyEmployeeId?.trim()) {
+      const key = `emp:${form.customerCompanyEmployeeId}|${productFolderName}`;
+      if (lastEnsuredFolderKeyRef.current === key) return;
+      let cancelled = false;
+      (async () => {
+        const cr = await fetch(`${API_BASE}/customer-company-employees/${form.customerCompanyEmployeeId}`, { headers: getAuthHeader() });
+        const contact = await cr.json().catch(() => ({}));
+        if (cancelled || !cr.ok || !contact?._id) return;
+        const result = await ensureContactLeafDriveFolder(contact, productFolderName);
+        if (cancelled || !result.ok) return;
+        lastEnsuredFolderKeyRef.current = key;
+        setContactLeafFolderLabel(result.baseFolderName || '');
+        setDriveFolderId(result.id);
+        setDriveFolderLink(result.webViewLink);
+        setDriveError('');
+      })();
+      return () => { cancelled = true; };
+    }
+    lastEnsuredFolderKeyRef.current = '';
+    setContactLeafFolderLabel('');
+    setDriveFolderId(null);
+    setDriveFolderLink('');
+  }, [form.customerCompanyName, form.customerCompanyEmployeeId, driveFolderName, productFolderName, ensureTargetDriveFolder]);
 
   const addDocumentRef = useCallback((url, name) => {
     const link = (url || '').trim();
@@ -347,42 +495,95 @@ export default function OpportunityModal({
   const handleDirectFileUpload = useCallback(async (files) => {
     const filesArray = Array.from(files || []);
     if (!filesArray.length) return;
+    const hasCompany = Boolean(form.customerCompanyName?.trim());
+    const empId = (form.customerCompanyEmployeeId || '').trim();
+    if (!hasCompany && !empId) {
+      setDriveError('고객사 또는 담당자(연락처)를 선택해 주세요.');
+      return;
+    }
     setDriveUploading(true);
     setDriveError('');
     try {
-      const result = await ensureTargetDriveFolder();
-      if (!result.ok) {
-        setDriveError(result.error);
-        return;
-      }
-      setDriveFolderId(result.id);
-      setDriveFolderLink(result.webViewLink);
       let uploadedOkCount = 0;
-      for (const file of filesArray) {
-        try {
-          const contentBase64 = await fileToBase64(file);
-          if (!contentBase64) {
-            setDriveError(`"${file.name}" 변환 실패`);
-            continue;
+      if (hasCompany) {
+        const result = await ensureTargetDriveFolder();
+        if (!result.ok) {
+          setDriveError(result.error);
+          return;
+        }
+        setDriveFolderId(result.id);
+        setDriveFolderLink(result.webViewLink);
+        for (const file of filesArray) {
+          try {
+            const contentBase64 = await fileToBase64(file);
+            if (!contentBase64) {
+              setDriveError(`"${file.name}" 변환 실패`);
+              continue;
+            }
+            const up = await fetch(`${API_BASE}/drive/upload`, {
+              method: 'POST',
+              headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({
+                name: file.name,
+                mimeType: file.type || 'application/octet-stream',
+                contentBase64,
+                parentFolderId: result.id
+              })
+            });
+            const upData = await up.json().catch(() => ({}));
+            if (up.ok && upData.webViewLink) {
+              addDocumentRef(upData.webViewLink, upData.name || file.name);
+              uploadedOkCount += 1;
+            } else setDriveError(upData.error || upData.details || '업로드 실패');
+          } catch (err) {
+            setDriveError(err?.message || '업로드 중 오류가 났습니다.');
           }
-          const up = await fetch(`${API_BASE}/drive/upload`, {
-            method: 'POST',
-            headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-              name: file.name,
-              mimeType: file.type || 'application/octet-stream',
-              contentBase64,
-              parentFolderId: result.id
-            })
-          });
-          const upData = await up.json().catch(() => ({}));
-          if (up.ok && upData.webViewLink) {
-            addDocumentRef(upData.webViewLink, upData.name || file.name);
-            uploadedOkCount += 1;
-          } else setDriveError(upData.error || upData.details || '업로드 실패');
-        } catch (err) {
-          setDriveError(err?.message || '업로드 중 오류가 났습니다.');
+        }
+      }
+      if (empId) {
+        const cr = await fetch(`${API_BASE}/customer-company-employees/${empId}`, { headers: getAuthHeader() });
+        const contact = await cr.json().catch(() => ({}));
+        if (!cr.ok || !contact?._id) {
+          if (!hasCompany) setDriveError(contact.error || '연락처를 불러올 수 없습니다.');
+        } else {
+          const result = await ensureContactLeafDriveFolder(contact, productFolderName);
+          if (!result.ok) {
+            if (!hasCompany) setDriveError(result.error);
+          } else {
+            if (!hasCompany) {
+              setDriveFolderId(result.id);
+              setDriveFolderLink(result.webViewLink);
+              setContactLeafFolderLabel(result.baseFolderName || '');
+            }
+            for (const file of filesArray) {
+              try {
+                const contentBase64 = await fileToBase64(file);
+                if (!contentBase64) {
+                  setDriveError(`"${file.name}" 변환 실패`);
+                  continue;
+                }
+                const up = await fetch(`${API_BASE}/drive/upload`, {
+                  method: 'POST',
+                  headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+                  credentials: 'include',
+                  body: JSON.stringify({
+                    name: file.name,
+                    mimeType: file.type || 'application/octet-stream',
+                    contentBase64,
+                    parentFolderId: result.id
+                  })
+                });
+                const upData = await up.json().catch(() => ({}));
+                if (up.ok && upData.webViewLink) {
+                  addDocumentRef(upData.webViewLink, upData.name || file.name);
+                  uploadedOkCount += 1;
+                } else setDriveError(upData.error || upData.details || '연락처 Drive 업로드 실패');
+              } catch (err) {
+                setDriveError(err?.message || '연락처 Drive 업로드 중 오류가 났습니다.');
+              }
+            }
+          }
         }
       }
       if (uploadedOkCount > 0) setDriveEmbedRevision((n) => n + 1);
@@ -391,9 +592,10 @@ export default function OpportunityModal({
     } finally {
       setDriveUploading(false);
     }
-  }, [ensureTargetDriveFolder, addDocumentRef]);
+  }, [ensureTargetDriveFolder, addDocumentRef, form.customerCompanyName, form.customerCompanyEmployeeId, productFolderName]);
 
-  const canDocsUpload = Boolean(form.customerCompanyName?.trim()) && !driveUploading;
+  const canDocsUpload =
+    Boolean((form.customerCompanyName || '').trim() || (form.customerCompanyEmployeeId || '').trim()) && !driveUploading;
 
   const handleDocsDragOver = useCallback((e) => {
     e.preventDefault();
@@ -460,9 +662,10 @@ export default function OpportunityModal({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const titleToUse = form.productName?.trim() || form.customerCompanyName?.trim() || '';
+    const titleToUse =
+      form.productName?.trim() || form.customerCompanyName?.trim() || form.contactName?.trim() || '';
     if (!titleToUse) {
-      setError('고객사 또는 제품을 선택해 주세요.');
+      setError('고객사·담당자·제품 중 하나는 선택해 주세요.');
       return;
     }
     setSaving(true);
@@ -472,6 +675,7 @@ export default function OpportunityModal({
       const body = {
         title: titleToUse,
         customerCompanyId: form.customerCompanyId || null,
+        customerCompanyEmployeeId: form.customerCompanyEmployeeId || null,
         contactName: form.contactName.trim(),
         productId: form.productId || null,
         productName: form.productName?.trim() || '',
@@ -577,7 +781,7 @@ export default function OpportunityModal({
           '회사 캘린더에 일정이 등록되었습니다.\n\n';
         if (rc.noticeEventStart) msg += `· 수주 당일 안내: ${fmt(rc.noticeEventStart)}\n`;
         if (rc.preReminderEventStart) {
-          msg += `· 사전 알림(월간=갱신 2주 전 / 연간=갱신 1개월 전): ${fmt(rc.preReminderEventStart)}\n`;
+          msg += `· 사전 알림(월간=갱신 3주 전 / 연간=갱신 1개월 전): ${fmt(rc.preReminderEventStart)}\n`;
         }
         if (rc.eventStart) msg += `· 실제 갱신(1개월/1년 후): ${fmt(rc.eventStart)}\n`;
         msg += '\n«회사 일정» 탭에서 확인하세요.';
@@ -599,6 +803,177 @@ export default function OpportunityModal({
       setRenewalCalBusy(false);
     }
   }, [isEdit, oppId, form.stage, form.productId]);
+
+  const handleSaveOppJournal = async () => {
+    const content = newComment.trim();
+    const companyId = form.customerCompanyId;
+    const contactEmpId = form.customerCompanyEmployeeId;
+    if (!content || !oppId) return;
+    if (!companyId && !contactEmpId) {
+      setJournalInputError('고객사 또는 담당자(연락처)를 선택해 주세요.');
+      return;
+    }
+    setJournalInputError('');
+    setJournalSummaryNotice(null);
+    setSavingJournal(true);
+    try {
+      const createdAt =
+        journalDateTime && !Number.isNaN(new Date(journalDateTime).getTime())
+          ? new Date(journalDateTime).toISOString()
+          : undefined;
+      const requestBody = JSON.stringify({ content, ...(createdAt ? { createdAt } : {}) });
+
+      let empRecord = null;
+      if (contactEmpId) {
+        try {
+          const er = await fetch(`${API_BASE}/customer-company-employees/${contactEmpId}`, { headers: getAuthHeader() });
+          empRecord = await er.json().catch(() => ({}));
+          if (!er.ok || !empRecord?._id) empRecord = null;
+        } catch {
+          empRecord = null;
+        }
+      }
+      const empCc = empRecord?.customerCompanyId?._id ?? empRecord?.customerCompanyId;
+      const skipCompanyPostBecauseEmployeeCovers =
+        Boolean(contactEmpId && empCc && companyId && String(empCc) === String(companyId));
+
+      if (contactEmpId && empRecord) {
+        const resEmp = await fetch(`${API_BASE}/customer-company-employees/${contactEmpId}/history`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+          ...(requestBody.length <= 60 * 1024 ? { keepalive: true } : {}),
+          body: requestBody
+        });
+        const dataEmp = await resEmp.json().catch(() => ({}));
+        if (!resEmp.ok) throw new Error(dataEmp.error || '연락처 업무 기록 저장에 실패했습니다.');
+        if (dataEmp.summaryQueued) {
+          setJournalSummaryNotice({
+            type: 'info',
+            text:
+              '연락처 업무 기록이 저장되었습니다. 최신 기록 기준으로 Gemini 요약을 요청했으면 연락처 상세에서 확인할 수 있습니다.'
+          });
+        } else if (dataEmp.summarySkippedReason === 'older_than_latest_history') {
+          setJournalSummaryNotice({
+            type: 'muted',
+            text: '등록한 업무 기록 일시가 기존 최신 기록보다 과거라서, 이번 기록은 요약 갱신 대상에서 제외되었습니다.'
+          });
+        }
+      } else if (contactEmpId && !empRecord) {
+        throw new Error('담당자(연락처) 정보를 불러올 수 없습니다.');
+      }
+
+      if (companyId && !skipCompanyPostBecauseEmployeeCovers) {
+        const res = await fetch(`${API_BASE}/customer-companies/${companyId}/history`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+          ...(requestBody.length <= 60 * 1024 ? { keepalive: true } : {}),
+          body: requestBody
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || '고객사 업무 기록 저장에 실패했습니다.');
+        if (data.summaryQueued) {
+          setJournalSummaryNotice({
+            type: 'info',
+            text:
+              '최신 고객사 업무 기록을 기준으로 Gemini 요약을 요청했습니다. 고객사 상세에서 확인할 수 있습니다.'
+          });
+        } else if (data.summarySkippedReason === 'older_than_latest_history') {
+          setJournalSummaryNotice({
+            type: 'muted',
+            text: '등록한 업무 기록 일시가 기존 최신 기록보다 과거라서, 이번 기록은 요약 갱신 대상에서 제외되었습니다.'
+          });
+        }
+      }
+
+      const resComment = await fetch(`${API_BASE}/sales-opportunities/${oppId}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+        body: JSON.stringify({ text: content })
+      });
+      const dataComment = await resComment.json().catch(() => ({}));
+      if (!resComment.ok) {
+        throw new Error(
+          dataComment.error || '기회 코멘트 반영에 실패했습니다. 업무 기록은 저장되었을 수 있습니다.'
+        );
+      }
+      setComments(Array.isArray(dataComment.comments) ? dataComment.comments : []);
+      setNewComment('');
+      setJournalDateTime(toDatetimeLocalValue(new Date()));
+    } catch (err) {
+      setJournalInputError(err.message || '저장에 실패했습니다.');
+    } finally {
+      setSavingJournal(false);
+    }
+  };
+
+  const uploadAudioForOpportunityJournal = useCallback(
+    async (filesLike) => {
+      const companyId = form.customerCompanyId;
+      const contactEmpId = form.customerCompanyEmployeeId;
+      const files = Array.from(filesLike || []).filter((f) => f && f instanceof File);
+      if (!files.length || savingJournal || audioUploading) return;
+      if (!companyId && !contactEmpId) return;
+      const accept = /\.(mp3|wav|m4a|webm)$/i;
+      const audioTypes = ['audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/x-m4a', 'audio/webm'];
+      const file = files.find((f) => accept.test(f.name) || audioTypes.includes(f.type));
+      if (!file) {
+        setJournalInputError('MP3, WAV, M4A, WebM 파일만 업로드할 수 있습니다.');
+        return;
+      }
+      setJournalInputError('');
+      setJournalSummaryNotice({
+        type: 'info',
+        text:
+          '음성 파일을 올렸습니다. 전사·요약은 서버에서 진행하며, 진행 중에도 연결이 끊기지 않도록 짧게 상태를 확인합니다.'
+      });
+      await pingBackendHealth(getAuthHeader);
+      setAudioUploading(true);
+      try {
+        const fd = new FormData();
+        fd.append('audio', file);
+        const useContactAudio = Boolean(contactEmpId);
+        const res = await fetch(
+          useContactAudio
+            ? `${API_BASE}/customer-company-employees/${contactEmpId}/history/from-audio`
+            : `${API_BASE}/customer-companies/${companyId}/history/from-audio`,
+          {
+            method: 'POST',
+            headers: getAuthHeader(),
+            credentials: 'include',
+            body: fd
+          }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || '음성 업로드 처리에 실패했습니다.');
+        if (res.status === 202 && data.jobId) {
+          setJournalSummaryNotice({
+            type: 'info',
+            text: 'AssemblyAI 전사 및 Gemini 요약 진행 중입니다. 잠시만 기다려 주세요…'
+          });
+          const pollUrl = useContactAudio
+            ? `${API_BASE}/customer-company-employees/${contactEmpId}/history/from-audio/jobs/${encodeURIComponent(
+                data.jobId
+              )}`
+            : `${API_BASE}/customer-companies/${companyId}/history/from-audio/jobs/${encodeURIComponent(data.jobId)}`;
+          const result = await pollJournalFromAudioJob(pollUrl, getAuthHeader);
+          setNewComment(result.content || '');
+          setJournalDateTime(toDatetimeLocalValue(new Date()));
+          setJournalSummaryNotice({
+            type: 'info',
+            text:
+              '요약이 입력창에 채워졌습니다. 내용 확인 후 "메모 저장"을 눌러 등록해 주세요. 개인정보 보호를 위해 AssemblyAI 전사 데이터는 삭제 요청되었습니다.'
+          });
+        } else {
+          throw new Error(data.error || '서버 응답 형식을 알 수 없습니다.');
+        }
+      } catch (e) {
+        setJournalInputError(e.message || '음성 업로드 처리에 실패했습니다.');
+      } finally {
+        setAudioUploading(false);
+      }
+    },
+    [audioUploading, form.customerCompanyId, form.customerCompanyEmployeeId, savingJournal]
+  );
 
   const { roots, childrenMap } = useMemo(() => organizeComments(comments), [comments]);
   const commentById = useMemo(() => {
@@ -931,7 +1306,7 @@ export default function OpportunityModal({
                     {renewalCalBusy ? '처리 중…' : '갱신 캘린더 일정 등록·확인'}
                   </button>
                   <p className="opp-renewal-cal-hint">
-                    월간·연간 제품만 해당합니다. 수주 당일 안내 일정(이번 달에 표시)과 실제 갱신 일정(1개월 또는 1년 뒤) 두 가지가 «회사 일정»에 등록됩니다. «개인 일정» 탭에는 표시되지 않습니다.
+                    월간·연간 제품만 해당합니다. 수주 당일 안내·실제 갱신일(1개월 또는 1년 뒤)·사전 알림(월간은 갱신 3주 전, 연간은 갱신 1개월 전)이 «회사 일정»에 등록됩니다. «개인 일정» 탭에는 표시되지 않습니다.
                   </p>
                 </div>
               ) : null}
@@ -1033,7 +1408,7 @@ export default function OpportunityModal({
                   multiple
                   style={{ display: 'none' }}
                   onChange={(e) => { handleDirectFileUpload(e.target.files); e.target.value = ''; }}
-                  disabled={driveUploading || !form.customerCompanyName?.trim()}
+                  disabled={!canDocsUpload}
                   aria-hidden="true"
                 />
                 <div className="customer-company-detail-section-head">
@@ -1044,16 +1419,16 @@ export default function OpportunityModal({
                   <button
                     type="button"
                     className="customer-company-detail-btn-all"
-                    onClick={() => { if (form.customerCompanyName?.trim() && !driveUploading && fileInputRef.current) fileInputRef.current.click(); }}
-                    disabled={driveUploading || !form.customerCompanyName?.trim()}
-                    title={!form.customerCompanyName?.trim() ? '고객사 선택 후 업로드 가능' : '파일 추가'}
+                    onClick={() => { if (canDocsUpload && fileInputRef.current) fileInputRef.current.click(); }}
+                    disabled={!canDocsUpload}
+                    title={canDocsUpload ? '파일 추가' : driveUploading ? '업로드 중' : '고객사 또는 담당자 선택 후 업로드 가능'}
                     aria-label="파일 추가"
                   >
                     <span className="material-symbols-outlined">add</span>
                   </button>
                 </div>
                 <p className="opp-modal-docs-folder-hint">
-                  폴더: {driveFolderName}{productFolderName ? ` / ${productFolderName}` : ''}
+                  폴더: {driveDocsFolderHintLine}
                 </p>
                 {driveFolderLink && getDriveFolderIdFromLink(driveFolderLink) ? (
                   <div
@@ -1070,8 +1445,8 @@ export default function OpportunityModal({
                       src={`https://drive.google.com/embeddedfolderview?id=${getDriveFolderIdFromLink(driveFolderLink)}#list`}
                       className="register-sale-docs-embed"
                     />
-                    {!form.customerCompanyName?.trim() ? (
-                      <div className="register-sale-docs-embed-overlay opp-modal-docs-embed-overlay--blocking">고객사 선택 후 파일 등록 가능</div>
+                    {!form.customerCompanyName?.trim() && !form.customerCompanyEmployeeId?.trim() ? (
+                      <div className="register-sale-docs-embed-overlay opp-modal-docs-embed-overlay--blocking">고객사 또는 담당자 선택 후 파일 등록 가능</div>
                     ) : driveUploading ? (
                       <div className="register-sale-docs-embed-overlay opp-modal-docs-embed-overlay--blocking">업로드 중…</div>
                     ) : docsDropActive && canDocsUpload ? (
@@ -1098,8 +1473,8 @@ export default function OpportunityModal({
                   >
                     <span className="material-symbols-outlined register-sale-docs-dropzone-icon">upload_file</span>
                     <span>
-                      {!form.customerCompanyName?.trim()
-                        ? '고객사 선택 후 업로드 가능'
+                      {!form.customerCompanyName?.trim() && !form.customerCompanyEmployeeId?.trim()
+                        ? '고객사 또는 담당자 선택 후 업로드 가능'
                         : driveUploading
                           ? '업로드 중…'
                           : '파일을 여기에 놓거나 클릭하여 선택'}
@@ -1116,30 +1491,111 @@ export default function OpportunityModal({
                   <ul className="opp-comments-list">
                     {roots.map((c) => renderCommentItem(c))}
                   </ul>
-                  <div className="opp-comment-compose">
-                    <div className="opp-comment-compose-wrap">
-                      <textarea
-                        className="opp-textarea opp-comment-compose-textarea"
-                        value={newComment}
-                        onChange={(e) => setNewComment(e.target.value)}
-                        placeholder="코멘트를 입력하세요."
-                        rows={2}
-                        maxLength={5000}
-                        disabled={commentBusy}
-                      />
-                      <button
-                        type="button"
-                        className="opp-comment-add-btn opp-comment-add-btn--inset"
-                        disabled={commentBusy || !newComment.trim()}
-                        onClick={() => handleAddComment()}
-                        aria-label={commentBusy ? '등록 중' : '코멘트 등록'}
-                        title={commentBusy ? '등록 중' : '코멘트 등록'}
-                      >
-                        <span className={'material-symbols-outlined' + (commentBusy ? ' opp-comment-add-btn-icon--spin' : '')} aria-hidden>
-                          {commentBusy ? 'progress_activity' : 'send'}
-                        </span>
-                      </button>
-                    </div>
+                  <div className="customer-company-detail-journal-input-wrap opp-modal-journal-like-company-detail">
+                    <p className="opp-comments-hint opp-modal-journal-hint">
+                      루트 메모는 고객사 상세의 「지원 및 업무 기록」 또는 연락처 상세의 「업무 기록」과 동일하게 등록됩니다. (등록일시·음성 → 메모 저장)
+                    </p>
+                    {!form.customerCompanyId && !form.customerCompanyEmployeeId ? (
+                      <p className="customer-company-detail-journal-error">고객사 또는 담당자(연락처)를 선택한 뒤 업무 기록을 등록할 수 있습니다.</p>
+                    ) : (
+                      <>
+                        {journalInputError ? (
+                          <p className="customer-company-detail-journal-error">{journalInputError}</p>
+                        ) : null}
+                        <div className="customer-company-detail-journal-datetime-row">
+                          <label htmlFor="opp-modal-journal-datetime" className="customer-company-detail-journal-datetime-label">
+                            등록일시
+                          </label>
+                          <input
+                            id="opp-modal-journal-datetime"
+                            type="datetime-local"
+                            className="customer-company-detail-journal-datetime"
+                            value={journalDateTime}
+                            onChange={(e) => setJournalDateTime(e.target.value)}
+                            disabled={savingJournal || audioUploading}
+                            aria-label="업무 기록 등록일시"
+                          />
+                        </div>
+                        <textarea
+                          className="customer-company-detail-journal-input"
+                          placeholder="회사 단위 메모 또는 업무 기록 (여러 직원 미팅 등)..."
+                          rows={3}
+                          maxLength={5000}
+                          value={newComment}
+                          onChange={(e) => setNewComment(e.target.value)}
+                          disabled={savingJournal || audioUploading || commentBusy}
+                        />
+                        <input
+                          ref={oppJournalAudioInputRef}
+                          type="file"
+                          accept="audio/*,.mp3,.wav,.m4a,.webm"
+                          className="customer-company-detail-audio-input-hidden"
+                          onChange={(e) => {
+                            if (e.target.files?.length) uploadAudioForOpportunityJournal(e.target.files);
+                            e.target.value = '';
+                          }}
+                          aria-hidden="true"
+                        />
+                        <div
+                          className={`customer-company-detail-journal-audio-drop ${audioDropActive ? 'is-dragover' : ''} ${audioUploading ? 'is-uploading' : ''}`}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (!audioUploading && !savingJournal) setAudioDropActive(true);
+                          }}
+                          onDragLeave={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (!e.currentTarget.contains(e.relatedTarget)) setAudioDropActive(false);
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setAudioDropActive(false);
+                            if (!audioUploading && !savingJournal && e.dataTransfer?.files?.length) {
+                              uploadAudioForOpportunityJournal(e.dataTransfer.files);
+                            }
+                          }}
+                        >
+                          <span className="material-symbols-outlined">audio_file</span>
+                          <span>
+                            {audioUploading
+                              ? '음성 처리 중... (AssemblyAI 전사 → Gemini 분류/요약)'
+                              : '음성 파일 드래그앤드롭 또는 선택 (MP3/WAV/M4A/WebM)'}
+                          </span>
+                          <button
+                            type="button"
+                            className="customer-company-detail-journal-audio-btn"
+                            onClick={() => oppJournalAudioInputRef.current?.click()}
+                            disabled={audioUploading || savingJournal}
+                          >
+                            파일 선택
+                          </button>
+                        </div>
+                        <div className="customer-company-detail-journal-actions">
+                          <button
+                            type="button"
+                            className="customer-company-detail-journal-save"
+                            onClick={handleSaveOppJournal}
+                            disabled={
+                              savingJournal ||
+                              audioUploading ||
+                              !newComment.trim() ||
+                              (!form.customerCompanyId && !form.customerCompanyEmployeeId)
+                            }
+                          >
+                            {savingJournal ? '저장 중...' : '메모 저장'}
+                          </button>
+                        </div>
+                        {journalSummaryNotice?.text ? (
+                          <p
+                            className={`customer-company-detail-summary-notice is-${journalSummaryNotice.type || 'info'}`}
+                          >
+                            {journalSummaryNotice.text}
+                          </p>
+                        ) : null}
+                      </>
+                    )}
                   </div>
                   {commentError ? <p className="opp-comment-error">{commentError}</p> : null}
                 </div>
@@ -1166,7 +1622,12 @@ export default function OpportunityModal({
           <CustomerCompanySearchModal
             onClose={() => setShowCompanySearchModal(false)}
             onSelect={(company) => {
-              setForm((f) => ({ ...f, customerCompanyId: company._id, customerCompanyName: company.name || '' }));
+              setForm((f) => ({
+                ...f,
+                customerCompanyId: company._id,
+                customerCompanyName: company.name || '',
+                customerCompanyEmployeeId: ''
+              }));
               setBusinessNumber(String(company?.businessNumber ?? ''));
               setShowCompanySearchModal(false);
             }}
@@ -1176,16 +1637,46 @@ export default function OpportunityModal({
           <CustomerCompanyEmployeesSearchModal
             customerCompanyId={form.customerCompanyId || null}
             onClose={() => setShowContactSearchModal(false)}
-            onSelect={(contact) => {
+            onSelect={async (contact) => {
+              const empId = contact._id != null ? String(contact._id) : '';
+              let nextCcId = '';
+              let nextCcName = '';
+              let nextBn = '';
+              if (contact.customerCompanyId) {
+                const cc = contact.customerCompanyId;
+                if (typeof cc === 'object' && cc !== null && cc._id) {
+                  nextCcId = cc._id;
+                  nextCcName = cc.name || contact.company || '';
+                  nextBn = String(cc.businessNumber ?? '');
+                } else {
+                  const cid = cc;
+                  try {
+                    const ccRes = await fetch(`${API_BASE}/customer-companies/${cid}`, { headers: getAuthHeader() });
+                    const ccData = await ccRes.json().catch(() => ({}));
+                    if (ccRes.ok && ccData._id) {
+                      nextCcId = ccData._id;
+                      nextCcName = ccData.name || contact.company || '';
+                      nextBn = String(ccData.businessNumber ?? '');
+                    }
+                  } catch (_) { /* ignore */ }
+                }
+              } else if ((contact.company || '').trim()) {
+                const resolved = await resolveCustomerCompanyByAffiliationName(String(contact.company).trim());
+                if (resolved) {
+                  nextCcId = resolved._id;
+                  nextCcName = resolved.name || '';
+                  nextBn = String(resolved.businessNumber ?? '');
+                }
+              }
               setForm((f) => ({
                 ...f,
                 contactName: contact.name || '',
-                ...(contact.customerCompanyId && {
-                  customerCompanyId: contact.customerCompanyId._id || contact.customerCompanyId,
-                  customerCompanyName: contact.customerCompanyId?.name || contact.company || ''
-                })
+                customerCompanyEmployeeId: empId,
+                ...(nextCcId
+                  ? { customerCompanyId: nextCcId, customerCompanyName: nextCcName }
+                  : { customerCompanyId: '', customerCompanyName: '' })
               }));
-              setBusinessNumber(String(contact?.customerCompanyId?.businessNumber ?? businessNumber ?? ''));
+              setBusinessNumber(nextBn);
               setShowContactSearchModal(false);
             }}
           />

@@ -387,6 +387,25 @@
   height: 2.5rem;
   border-radius: 50%;
   background: var(--pastel-sky);
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.sidebar-avatar-img {
+  display: block;
+  object-fit: cover;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+}
+
+.sidebar-avatar-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-avatar-fallback .material-symbols-outlined {
+  font-size: 1.35rem;
+  opacity: 0.85;
 }
 
 .sidebar-user-info {

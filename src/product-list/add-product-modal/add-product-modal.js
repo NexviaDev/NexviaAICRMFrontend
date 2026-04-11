@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import CustomFieldsSection from '../../shared/custom-fields-section';
 import CustomFieldsManageModal from '../../shared/custom-fields-manage-modal/custom-fields-manage-modal';
 import { listPriceFromProduct } from '@/lib/product-price-utils';
+import { getPresetCategoryAvatar } from '../product-category-avatar-config';
 import './add-product-modal.css';
 
 import { API_BASE } from '@/config';
@@ -13,6 +14,52 @@ const STATUS_OPTIONS = [
 ];
 const BILLING_OPTIONS = ['Monthly', 'Annual', 'Perpetual'];
 const BILLING_LABELS = { Monthly: '월간', Annual: '연간', Perpetual: '영구' };
+
+/** DB에는 소문자 key 저장 (office, cad, …). 기타는 사용자 입력 문자열 */
+const PRODUCT_CATEGORY_KEYS = [
+  'office',
+  'cad',
+  'cam',
+  'cae',
+  'security',
+  'cloud',
+  'data',
+  'network',
+  'dev',
+  'design'
+];
+const PRODUCT_CATEGORY_OPTIONS = [
+  { value: 'office', label: 'Office' },
+  { value: 'cad', label: 'CAD' },
+  { value: 'cam', label: 'CAM' },
+  { value: 'cae', label: 'CAE' },
+  { value: 'security', label: 'Security' },
+  { value: 'cloud', label: 'Cloud' },
+  { value: 'data', label: 'Data / DB' },
+  { value: 'network', label: 'Network' },
+  { value: 'dev', label: '개발 · Dev' },
+  { value: 'design', label: 'Design' },
+  { value: 'other', label: '기타 (직접 입력)' }
+];
+
+function parseCategoryFromStored(category) {
+  const raw = String(category ?? '').trim();
+  if (!raw) return { key: '', other: '' };
+  const lower = raw.toLowerCase();
+  if (PRODUCT_CATEGORY_KEYS.includes(lower)) return { key: lower, other: '' };
+  return { key: 'other', other: raw };
+}
+
+function getCategoryTriggerLabel(categoryKey, categoryOther) {
+  if (!categoryKey) return '선택 안 함';
+  if (categoryKey === 'other') {
+    const t = String(categoryOther || '').trim();
+    return t ? `기타 · ${t}` : '기타 (직접 입력)';
+  }
+  const opt = PRODUCT_CATEGORY_OPTIONS.find((o) => o.value === categoryKey);
+  return opt?.label || categoryKey;
+}
+
 const CURRENCY_OPTIONS = [
   { value: 'KRW', label: 'KRW (₩)' },
   { value: 'USD', label: 'USD ($)' }
@@ -64,7 +111,6 @@ export default function AddProductModal({ product, onClose, onSaved, presentatio
   const [form, setForm] = useState({
     name: product?.name ?? '',
     code: product?.code ?? '',
-    category: product?.category ?? '',
     version: product?.version ?? '',
     currency: product?.currency ?? 'KRW',
     billingType: product?.billingType ?? 'Monthly',
@@ -78,6 +124,10 @@ export default function AddProductModal({ product, onClose, onSaved, presentatio
   const [listPriceInput, setListPriceInput] = useState(() => formatPriceDisplay(listPriceFromProduct(product)));
   const [costPriceInput, setCostPriceInput] = useState(() => formatPriceDisplay(Number(product?.costPrice) || 0));
   const [channelPriceInput, setChannelPriceInput] = useState(() => formatPriceDisplay(Number(product?.channelPrice) || 0));
+  const [categoryKey, setCategoryKey] = useState(() => parseCategoryFromStored(product?.category).key);
+  const [categoryOther, setCategoryOther] = useState(() => parseCategoryFromStored(product?.category).other);
+  const [categoryOpen, setCategoryOpen] = useState(false);
+  const categoryPickerRef = useRef(null);
 
   const fetchCustomDefinitions = async () => {
     try {
@@ -98,14 +148,32 @@ export default function AddProductModal({ product, onClose, onSaved, presentatio
   }, [product?._id, product?.price, product?.listPrice, product?.costPrice, product?.channelPrice]);
 
   useEffect(() => {
+    const p = parseCategoryFromStored(product?.category);
+    setCategoryKey(p.key);
+    setCategoryOther(p.other);
+  }, [product?._id, product?.category]);
+
+  useEffect(() => {
     const onKey = (e) => {
       if (e.key !== 'Escape') return;
       if (showCustomFieldsModal) setShowCustomFieldsModal(false);
+      else if (categoryOpen) setCategoryOpen(false);
       else onClose?.();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, showCustomFieldsModal]);
+  }, [onClose, showCustomFieldsModal, categoryOpen]);
+
+  useEffect(() => {
+    if (!categoryOpen) return;
+    const onDoc = (e) => {
+      if (categoryPickerRef.current && !categoryPickerRef.current.contains(e.target)) {
+        setCategoryOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [categoryOpen]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -137,13 +205,19 @@ export default function AddProductModal({ product, onClose, onSaved, presentatio
     try {
       const url = isEdit ? `${API_BASE}/products/${product._id}` : `${API_BASE}/products`;
       const method = isEdit ? 'PATCH' : 'POST';
+      const categoryPayload =
+        categoryKey === 'other'
+          ? String(categoryOther).trim() || undefined
+          : categoryKey
+            ? categoryKey
+            : undefined;
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         body: JSON.stringify({
           name: form.name.trim(),
           code: form.code.trim() || undefined,
-          category: form.category.trim() || undefined,
+          category: categoryPayload,
           version: form.version.trim() || undefined,
           listPrice: listP,
           costPrice: costP,
@@ -168,6 +242,8 @@ export default function AddProductModal({ product, onClose, onSaved, presentatio
       setSaving(false);
     }
   };
+
+  const categoryTriggerAvatar = getPresetCategoryAvatar(categoryKey);
 
   return (
     <div className={`add-product-modal-overlay ${isSlidePanel ? 'add-product-modal-overlay--slide' : ''}`}>
@@ -221,16 +297,110 @@ export default function AddProductModal({ product, onClose, onSaved, presentatio
                     <span className="material-symbols-outlined add-product-modal-input-suffix" aria-hidden>fingerprint</span>
                   </div>
                 </div>
-                <div className="add-product-modal-field">
-                  <label htmlFor="add-product-category">카테고리</label>
-                  <input
-                    id="add-product-category"
-                    name="category"
-                    type="text"
-                    value={form.category}
-                    onChange={handleChange}
-                    placeholder="예: Security"
-                  />
+                <div className="add-product-modal-field add-product-modal-field--category" ref={categoryPickerRef}>
+                  <label id="add-product-category-label">카테고리</label>
+                  <div className="add-product-modal-category-picker">
+                    <button
+                      type="button"
+                      id="add-product-category"
+                      className="add-product-modal-category-trigger"
+                      aria-labelledby="add-product-category-label"
+                      aria-haspopup="listbox"
+                      aria-expanded={categoryOpen}
+                      onClick={() => {
+                        setCategoryOpen((o) => !o);
+                        setError('');
+                      }}
+                    >
+                      <span className="add-product-category-avatar-slot" aria-hidden>
+                        {categoryTriggerAvatar ? (
+                          <div
+                            className={`pl-mcard-icon pl-mcard-icon--${categoryTriggerAvatar.tone} add-product-category-avatar--trigger`}
+                          >
+                            <span className="material-symbols-outlined">{categoryTriggerAvatar.icon}</span>
+                          </div>
+                        ) : (
+                          <div className="add-product-category-avatar-placeholder add-product-category-avatar--trigger" />
+                        )}
+                      </span>
+                      <span className="add-product-category-trigger-text">
+                        {getCategoryTriggerLabel(categoryKey, categoryOther)}
+                      </span>
+                      <span className="material-symbols-outlined add-product-category-chevron" aria-hidden>
+                        expand_more
+                      </span>
+                    </button>
+                    {categoryOpen ? (
+                      <ul className="add-product-modal-category-list" role="listbox" aria-labelledby="add-product-category-label">
+                        <li role="none">
+                          <button
+                            type="button"
+                            role="option"
+                            aria-selected={!categoryKey}
+                            className={`add-product-modal-category-option ${!categoryKey ? 'is-active' : ''}`}
+                            onClick={() => {
+                              setCategoryKey('');
+                              setCategoryOther('');
+                              setCategoryOpen(false);
+                              setError('');
+                            }}
+                          >
+                            <span className="add-product-category-avatar-slot" aria-hidden>
+                              <div className="add-product-category-avatar-placeholder add-product-category-avatar--row" />
+                            </span>
+                            <span>선택 안 함</span>
+                          </button>
+                        </li>
+                        {PRODUCT_CATEGORY_OPTIONS.map((opt) => {
+                          const optAv = getPresetCategoryAvatar(opt.value);
+                          return (
+                            <li key={opt.value} role="none">
+                              <button
+                                type="button"
+                                role="option"
+                                aria-selected={categoryKey === opt.value}
+                                className={`add-product-modal-category-option ${categoryKey === opt.value ? 'is-active' : ''}`}
+                                onClick={() => {
+                                  setCategoryKey(opt.value);
+                                  if (opt.value !== 'other') setCategoryOther('');
+                                  setCategoryOpen(false);
+                                  setError('');
+                                }}
+                              >
+                                <span className="add-product-category-avatar-slot" aria-hidden>
+                                  {optAv ? (
+                                    <div
+                                      className={`pl-mcard-icon pl-mcard-icon--${optAv.tone} add-product-category-avatar--row`}
+                                    >
+                                      <span className="material-symbols-outlined">{optAv.icon}</span>
+                                    </div>
+                                  ) : (
+                                    <div className="add-product-category-avatar-placeholder add-product-category-avatar--row" />
+                                  )}
+                                </span>
+                                <span>{opt.label}</span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : null}
+                  </div>
+                  {categoryKey === 'other' ? (
+                    <input
+                      id="add-product-category-other"
+                      type="text"
+                      value={categoryOther}
+                      onChange={(e) => {
+                        setCategoryOther(e.target.value);
+                        setError('');
+                      }}
+                      placeholder="카테고리를 직접 입력하세요"
+                      className="add-product-modal-category-other"
+                      autoComplete="off"
+                      aria-label="기타 카테고리 직접 입력"
+                    />
+                  ) : null}
                 </div>
                 <div className="add-product-modal-field">
                   <label htmlFor="add-product-version">버전</label>

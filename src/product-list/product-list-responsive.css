@@ -260,39 +260,7 @@
     min-width: 0;
   }
 
-  .product-list-page .pl-mcard-icon {
-    width: 3rem;
-    height: 3rem;
-    border-radius: 0.75rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-
-  .product-list-page .pl-mcard-icon--0 {
-    background: #8ff6d0;
-    color: #006c53;
-  }
-
-  .product-list-page .pl-mcard-icon--1 {
-    background: #e1e1f5;
-    color: #5c5e6e;
-  }
-
-  .product-list-page .pl-mcard-icon--2 {
-    background: #fed9b8;
-    color: #755a40;
-  }
-
-  .product-list-page .pl-mcard-icon--3 {
-    background: #dde4e4;
-    color: #596061;
-  }
-
-  .product-list-page .pl-mcard-icon .material-symbols-outlined {
-    font-size: 1.45rem;
-  }
+  /* pl-mcard-icon: 공통 스타일은 product-list.css */
 
   .product-list-page .pl-mcard-text {
     min-width: 0;

@@ -238,7 +238,7 @@ export default function SalesPipeline() {
             msg += `· 수주 당일 안내(지금 보는 달에 표시): ${fmt(rc.noticeEventStart)}\n`;
           }
           if (rc.preReminderEventStart) {
-            msg += `· 사전 알림(월간=갱신 2주 전 / 연간=갱신 1개월 전): ${fmt(rc.preReminderEventStart)}\n`;
+            msg += `· 사전 알림(월간=갱신 3주 전 / 연간=갱신 1개월 전): ${fmt(rc.preReminderEventStart)}\n`;
           }
           if (rc.eventStart) {
             msg += `· 실제 갱신 알림(월간=1개월 후 / 연간=1년 후): ${fmt(rc.eventStart)}\n`;

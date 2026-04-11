@@ -90,39 +90,55 @@ export default function ImportResultModal({
   variant = 'company'
 }) {
   const isContact = variant === 'contact';
+  const isRunning = !!saving;
   const saveMsgIsError = saveMsg && (saveMsg.includes('실패') || saveMsg.includes('남아') || saveMsg.includes('먼저'));
   const rowLabel = (item, i) =>
     String(isContact ? item.contactName || '' : item.companyName || '').trim() || `행 ${(item.rowIndex ?? i) + 1}`;
 
+  const doneTitle = isPreviewPhase
+    ? failed > 0
+      ? '가져오기 완료 (검사 중 일부 오류)'
+      : '가져오기 완료'
+    : failed > 0
+      ? '가져오기 완료 (일부 실패)'
+      : '가져오기 완료';
+
+  const doneSub = isPreviewPhase
+    ? isContact
+      ? `총 ${total}행 검사 완료 · 아직 MongoDB에는 저장되지 않았습니다. 보류를 모두 적용한 뒤 확인을 누르면 그때 연락처가 일괄 등록됩니다.`
+      : `총 ${total}행 검사 완료 · 아직 MongoDB에는 저장되지 않았습니다. 보류를 모두 적용한 뒤 확인을 누르면, 그때 add-company 모달과 같은 방식으로 주소 기준 위도·경도를 계산한 후 등록합니다.`
+    : isContact
+      ? `총 ${total}행 처리 · 연락처 목록`
+      : `총 ${total}행 처리 · 고객사 리스트`;
+
+  const runningSub =
+    saveMsg && String(saveMsg).trim()
+      ? saveMsg
+      : isContact
+        ? '연락처를 서버에 반영하는 중입니다. 잠시만 기다려 주세요.'
+        : '위도·경도 계산 또는 서버 등록이 진행 중입니다. 잠시만 기다려 주세요.';
+
   return (
     <div className="lc-crm-map-overlay" role="dialog" aria-modal="true">
-      <div className="lc-crm-result-panel" onClick={(e) => e.stopPropagation()}>
+      <div
+        className={`lc-crm-result-panel${isRunning ? ' lc-crm-result-panel--running' : ''}`}
+        onClick={(e) => e.stopPropagation()}
+        aria-busy={isRunning}
+      >
         <div className="lc-crm-result-icon-wrap">
-          <span
-            className="material-symbols-outlined lc-crm-result-icon"
-            style={{ color: failed > 0 ? '#f59e0b' : '#10b981' }}
-          >
-            {failed > 0 ? 'warning' : 'check_circle'}
-          </span>
+          {isRunning ? (
+            <div className="lc-crm-result-spinner" role="status" aria-live="polite" aria-label="처리 중" />
+          ) : (
+            <span
+              className="material-symbols-outlined lc-crm-result-icon"
+              style={{ color: failed > 0 ? '#f59e0b' : '#10b981' }}
+            >
+              {failed > 0 ? 'warning' : 'check_circle'}
+            </span>
+          )}
         </div>
-        <h2 className="lc-crm-result-title">
-          {isPreviewPhase
-            ? failed > 0
-              ? '가져오기 완료 (검사 중 일부 오류)'
-              : '가져오기 완료'
-            : failed > 0
-              ? '가져오기 완료 (일부 실패)'
-              : '가져오기 완료'}
-        </h2>
-        <p className="lc-crm-result-sub">
-          {isPreviewPhase
-            ? isContact
-              ? `총 ${total}행 검사 완료 · 아직 MongoDB에는 저장되지 않았습니다. 보류를 모두 적용한 뒤 확인을 누르면 그때 연락처가 일괄 등록됩니다.`
-              : `총 ${total}행 검사 완료 · 아직 MongoDB에는 저장되지 않았습니다. 보류를 모두 적용한 뒤 확인을 누르면, 그때 add-company 모달과 같은 방식으로 주소 기준 위도·경도를 계산한 후 등록합니다.`
-            : isContact
-              ? `총 ${total}행 처리 · 연락처 목록`
-              : `총 ${total}행 처리 · 고객사 리스트`}
-        </p>
+        <h2 className="lc-crm-result-title">{isRunning ? '실행 중입니다…' : doneTitle}</h2>
+        <p className="lc-crm-result-sub">{isRunning ? runningSub : doneSub}</p>
 
         <div className="lc-crm-result-cards">
           <div className="lc-crm-result-card success">
@@ -394,21 +410,23 @@ export default function ImportResultModal({
         )}
 
         <div style={{ marginTop: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
-          <p className="lc-crm-map-save-msg" style={{ margin: 0, color: '#475569', lineHeight: 1.5 }}>
-            {isPreviewPhase
-              ? (
-                saving
-                  ? isContact
-                    ? '확인 버튼을 누른 뒤 MongoDB에 연락처를 저장합니다.'
-                    : '확인 버튼을 누른 뒤 주소 기준 위도·경도를 계산하고 MongoDB 저장을 시작합니다.'
-                  : canConfirmPreview
+          {!isRunning ? (
+            <p className="lc-crm-map-save-msg" style={{ margin: 0, color: '#475569', lineHeight: 1.5 }}>
+              {isPreviewPhase
+                ? (
+                  canConfirmPreview
                     ? isContact
                       ? '보류 카드가 모두 사라졌습니다. 확인을 누르면 연락처가 저장됩니다.'
                       : '보류 카드가 모두 사라졌습니다. 확인을 누르면 그때 위도·경도 계산 후 저장합니다.'
                     : '보류 카드를 모두 적용해 사라지게 만든 뒤 확인을 눌러 주세요. 확인 전에는 MongoDB에 저장되지 않습니다.'
-              )
-              : '처리가 끝났습니다. 확인을 누르면 결과 화면을 닫습니다.'}
-          </p>
+                )
+                : '처리가 끝났습니다. 확인을 누르면 결과 화면을 닫습니다.'}
+            </p>
+          ) : (
+            <p className="lc-crm-map-save-msg" style={{ margin: 0, color: '#64748b', fontSize: '0.78rem', lineHeight: 1.5 }}>
+              완료되면 요약이 갱신되고 확인 버튼이 다시 눌리게 됩니다.
+            </p>
+          )}
           <button
             type="button"
             className="lc-crm-result-confirm"
@@ -418,7 +436,7 @@ export default function ImportResultModal({
             확인
           </button>
         </div>
-        {saveMsg && (
+        {saveMsg && !isRunning && (
           <p className={`lc-crm-map-save-msg ${saveMsgIsError ? 'err' : ''}`}>
             {saveMsg}
           </p>

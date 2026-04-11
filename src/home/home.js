@@ -70,8 +70,10 @@ const DEFAULT_STAGE_LABELS = {
 };
 const DEFAULT_ACTIVE_STAGES = ['NewLead', 'Contacted', 'ProposalSent', 'Negotiation', 'Won'];
 
-/** sales-pipeline.js DROP_ZONE_CONFIG·하단 드롭존과 동일 — 진행 딜·첫 단계 집계에서 제외 */
+/** sales-pipeline.js 하단 드롭존과 동일 — 파이프라인 메인 칸 집계에서 제외 */
 const DROP_ZONE_STAGES = ['Lost', 'Abandoned'];
+/** 수주 완료 열 — sales-pipeline.js `boardStages`(activeStages에서 Won 제외)와 맞춤. 진행 중 딜 카운트에 넣지 않음 */
+const CLOSED_WON_STAGE = 'Won';
 const CURRENCY_SYMBOLS = { KRW: '₩', USD: '$', JPY: '¥' };
 const PIPELINE_STEP_HINTS = {
   NewLead: '잠재 고객 발굴',
@@ -490,7 +492,8 @@ export default function Home() {
           },
           activeDeals: 128,
           newLeads: 45,
-          taskCompletion: 82
+          taskCompletion: 0,
+          taskCompletionMeta: { totalOpportunities: 0, wonCount: 0 }
         });
       } finally {
         if (!cancelled) setLoading(false);
@@ -627,8 +630,12 @@ export default function Home() {
     [activeStages]
   );
 
+  /** 진행 중 딜: 메인 보드 단계만 (Won·Lost·Abandoned 제외 — 파이프라인 칸반과 동일 범의) */
   const inProgressDealCount = useMemo(
-    () => pipelineMainStages.reduce((sum, s) => sum + (grouped[s]?.length || 0), 0),
+    () =>
+      pipelineMainStages
+        .filter((s) => s !== CLOSED_WON_STAGE)
+        .reduce((sum, s) => sum + (grouped[s]?.length || 0), 0),
     [pipelineMainStages, grouped]
   );
 
@@ -808,8 +815,14 @@ export default function Home() {
     },
     {
       label: '업무 완료율',
-      value: `${stats.taskCompletion ?? 82}%`,
-      subtext: '최근 업무 처리 기준',
+      value: `${stats.taskCompletion ?? 0}%`,
+      subtext: (() => {
+        const m = stats.taskCompletionMeta;
+        if (m && typeof m.totalOpportunities === 'number') {
+          return `전체 기회 ${m.totalOpportunities}건 중 수주 성공 ${Number(m.wonCount) || 0}건`;
+        }
+        return '세일즈 파이프라인 전체 기회 대비 수주 성공(Won) 비율';
+      })(),
       icon: 'task_alt',
       color: 'primary',
       fromPipeline: false

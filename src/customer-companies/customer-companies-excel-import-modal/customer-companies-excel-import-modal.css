@@ -57,3 +57,29 @@
   border-radius: 0.35rem;
   border: 1px solid #a7f3d0;
 }
+
+/* import-result-modal: 확인 후 위·경도/서버 등록 중 */
+.lc-crm-result-spinner {
+  display: inline-block;
+  width: 3rem;
+  height: 3rem;
+  box-sizing: border-box;
+  border: 3px solid #e2e8f0;
+  border-top-color: #3d5a80;
+  border-radius: 50%;
+  animation: cc-excel-result-spin 0.75s linear infinite;
+  vertical-align: middle;
+}
+
+@keyframes cc-excel-result-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.lc-crm-result-panel--running .lc-crm-result-cards,
+.lc-crm-result-panel--running .lc-crm-result-detail-section {
+  opacity: 0.55;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
