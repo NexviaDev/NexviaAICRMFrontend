@@ -31,6 +31,7 @@ const MENU_ITEMS = [
   { to: '/customer-company-employees', icon: 'group', label: '연락처 리스트' },
   { to: '/product-list', icon: 'inventory_2', label: '제품 리스트' },
   { to: '/meeting-minutes', icon: 'event_note', label: '회의 일지' },
+  { to: '/project', icon: 'folder_open', label: '프로젝트' },
   { to: '/ai-voice', icon: 'mic', label: 'AI 음성 기록' },
   { to: '/email', icon: 'mail', label: '이메일' },
   { to: '/messenger', icon: 'chat_bubble', label: '메신저' },

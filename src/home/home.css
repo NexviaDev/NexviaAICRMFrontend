@@ -137,6 +137,34 @@
   overflow: auto;
 }
 
+.home-lead-channel-body--chart {
+  overflow: visible;
+  padding: 1.5rem;
+}
+
+.home-lead-channel-panel .home-chart-head {
+  align-items: flex-start;
+}
+
+.home-modal-channel-chart-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.home-modal-channel-chart-toolbar-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.home-modal-channels--chart {
+  width: 100%;
+}
+
 .home-lead-channel-list {
   list-style: none;
   margin: 0;

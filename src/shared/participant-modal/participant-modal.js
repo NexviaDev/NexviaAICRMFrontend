@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { API_BASE } from '@/config';
 import { collectExactSelectedMemberDeptIds } from '@/lib/org-chart-tree-utils';
+import { buildParticipantDirectoryFromOverview } from '@/lib/participant-directory-merge';
 import ParticipantOrgChartPicker from './participant-org-chart-picker';
 import './participant-modal.css';
 
@@ -23,8 +24,10 @@ export default function ParticipantModal({
   const [lastClickedIndex, setLastClickedIndex] = useState(null);
   const [orgPickerOpen, setOrgPickerOpen] = useState(false);
   const [organizationChart, setOrganizationChart] = useState(null);
-  const [orgChartLoading, setOrgChartLoading] = useState(false);
-  const [orgChartError, setOrgChartError] = useState('');
+  /** 사내현황과 동일 소스 — 팀 API만 쓰면 동의 전 인원 누락·조직도 불일치 */
+  const [overviewData, setOverviewData] = useState(null);
+  const [overviewLoading, setOverviewLoading] = useState(true);
+  const [overviewError, setOverviewError] = useState('');
   const [selectedOrgIds, setSelectedOrgIds] = useState([]);
 
   useEffect(() => {
@@ -55,33 +58,52 @@ export default function ParticipantModal({
   }, []);
 
   useEffect(() => {
-    if (!orgPickerOpen) return undefined;
     let cancelled = false;
-    setOrgChartError('');
-    setOrgChartLoading(true);
+    setOverviewLoading(true);
+    setOverviewError('');
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/companies/organization-chart`, {
+        const res = await fetch(`${API_BASE}/companies/overview`, {
           headers: getAuthHeader(),
           credentials: 'include'
         });
         const json = await res.json().catch(() => ({}));
         if (cancelled) return;
-        if (!res.ok) throw new Error(json.error || '조직도를 불러오지 못했습니다.');
-        setOrganizationChart(json.organizationChart || null);
+        if (!res.ok) throw new Error(json.error || '사내 현황을 불러오지 못했습니다.');
+        setOverviewData(json);
       } catch (e) {
-        if (!cancelled) setOrgChartError(e.message || '조직도를 불러오지 못했습니다.');
+        if (!cancelled) {
+          setOverviewError(e.message || '사내 현황을 불러오지 못했습니다.');
+          setOverviewData(null);
+        }
       } finally {
-        if (!cancelled) setOrgChartLoading(false);
+        if (!cancelled) setOverviewLoading(false);
       }
     })();
-    return () => { cancelled = true; };
-  }, [orgPickerOpen]);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /** company-overview와 동일한 organizationChart (overview에만 안정적으로 포함) */
+  useEffect(() => {
+    const chart = overviewData?.company?.organizationChart;
+    if (chart && typeof chart === 'object') {
+      setOrganizationChart(chart);
+    } else if (!overviewLoading) {
+      setOrganizationChart(null);
+    }
+  }, [overviewData, overviewLoading]);
 
   const orgDeptFilter = useMemo(() => {
     if (!organizationChart || selectedOrgIds.length === 0) return null;
     return collectExactSelectedMemberDeptIds(organizationChart, selectedOrgIds);
   }, [organizationChart, selectedOrgIds]);
+
+  const directoryMembers = useMemo(
+    () => buildParticipantDirectoryFromOverview(teamMembers, overviewData),
+    [teamMembers, overviewData]
+  );
 
   /** 조직 선택이 바뀔 때만 의존 (Set 참조 변화로 effect 중복 실행 방지) */
   const orgSelectionKey = useMemo(
@@ -96,14 +118,14 @@ export default function ParticipantModal({
     if (allowed.size === 0) return;
     setLocalSelected((prev) => {
       const map = new Map(prev.map((p) => [String(p.userId), p]));
-      for (const m of teamMembers) {
+      for (const m of directoryMembers) {
         const deptId = String(m.companyDepartment || '').trim();
         if (!deptId || !allowed.has(deptId)) continue;
         map.set(String(m._id), { userId: m._id, name: m.name || m.email });
       }
       return Array.from(map.values());
     });
-  }, [orgSelectionKey, organizationChart, selectedOrgIds, teamMembers]);
+  }, [orgSelectionKey, organizationChart, selectedOrgIds, directoryMembers]);
 
   const handleToggleOrgId = useCallback((id) => {
     const sid = String(id);
@@ -115,7 +137,7 @@ export default function ParticipantModal({
   }, []);
 
   const filtered = useMemo(() => {
-    return teamMembers.filter((m) => {
+    return directoryMembers.filter((m) => {
       if (orgDeptFilter) {
         const deptId = String(m.companyDepartment || '').trim();
         if (!deptId || !orgDeptFilter.has(deptId)) return false;
@@ -132,7 +154,7 @@ export default function ParticipantModal({
         deptShown.includes(q)
       );
     });
-  }, [teamMembers, search, orgDeptFilter]);
+  }, [directoryMembers, search, orgDeptFilter]);
 
   const addAllVisibleToSelection = useCallback(() => {
     setLocalSelected((prev) => {
@@ -251,13 +273,13 @@ export default function ParticipantModal({
                 나오고 자동 체크됩니다. 하위 부서 직원은 포함되지 않으니, 필요하면 하위 노드도 따로 선택하세요. 조직도를 접으려면 위의{' '}
                 <strong>조직도로 선택하기</strong>를 다시 누르세요.
               </p>
-              {orgChartLoading ? (
-                <p className="participant-modal-org-loading">조직도를 불러오는 중…</p>
+              {overviewLoading ? (
+                <p className="participant-modal-org-loading">사내 현황·조직도를 불러오는 중…</p>
               ) : null}
-              {orgChartError ? (
-                <p className="participant-modal-org-error">{orgChartError}</p>
+              {!overviewLoading && overviewError ? (
+                <p className="participant-modal-org-error">{overviewError}</p>
               ) : null}
-              {!orgChartLoading && !orgChartError && organizationChart ? (
+              {!overviewLoading && !overviewError && organizationChart ? (
                 <div className="participant-modal-org-tree-panel">
                   <div className="participant-modal-org-tree-panel-head" aria-hidden>
                     <span className="material-symbols-outlined">account_tree</span>
@@ -272,7 +294,7 @@ export default function ParticipantModal({
                   </div>
                 </div>
               ) : null}
-              {!orgChartLoading && !orgChartError && !organizationChart ? (
+              {!overviewLoading && !overviewError && !organizationChart ? (
                 <p className="participant-modal-org-empty">표시할 조직도가 없습니다.</p>
               ) : null}
             </div>
@@ -288,7 +310,9 @@ export default function ParticipantModal({
 
           <div className="participant-modal-list">
             {filtered.length === 0 && (
-              <p className="participant-modal-empty">선택 가능한 팀원이 없습니다.</p>
+              <p className="participant-modal-empty">
+                {overviewLoading ? '사내 현황을 불러오는 중…' : '선택 가능한 팀원이 없습니다.'}
+              </p>
             )}
             {filtered.length > 0 && (
               <div className="participant-modal-list-head">

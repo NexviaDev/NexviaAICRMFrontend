@@ -5,6 +5,7 @@ import '../../calendar/event-modal/event-modal.css';
 import './add-meeting-modal.css';
 
 import { API_BASE } from '@/config';
+import { buildParticipantDirectoryFromOverview } from '@/lib/participant-directory-merge';
 const DEFAULT_MEETING_CATEGORIES = ['주간회의', '월간 회의', '프로젝트 회의'];
 
 function getAuthHeader() {
@@ -183,16 +184,10 @@ export default function AddMeetingModal({ meeting, onClose, onSaved }) {
     ])
       .then(([teamData, overviewData]) => {
         const fromTeam = Array.isArray(teamData?.members) ? teamData.members : [];
-        const fromOverview = Array.isArray(overviewData?.employees) ? overviewData.employees : [];
-        const overviewMap = new Map(fromOverview.map((e) => [String(e.id), e]));
-        const merged = fromTeam.map((m) => {
-          const o = overviewMap.get(String(m._id));
-          return {
-            ...m,
-            phone: m.phone || o?.phone || '',
-            department: m.department || m.companyDepartment || o?.department || ''
-          };
-        });
+        const merged = buildParticipantDirectoryFromOverview(
+          fromTeam,
+          overviewData && typeof overviewData === 'object' ? overviewData : null
+        );
         setTeamMembers(merged);
       })
       .catch(() => {});

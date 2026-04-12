@@ -3,6 +3,7 @@ import ParticipantModal from '@/shared/participant-modal/participant-modal';
 import './event-modal.css';
 
 import { API_BASE } from '@/config';
+import { buildParticipantDirectoryFromOverview } from '@/lib/participant-directory-merge';
 import { googleEventDisplayTitle } from '../google-event-display-title';
 import {
   stripRelatedCompanyDescriptionBlock,
@@ -309,14 +310,25 @@ export default function EventModal({ eventId, isEdit, initialDate, calendarType,
   useEffect(() => {
     if (!isAdd && isGoogle) return;
     let cancelled = false;
-    fetch(`${API_BASE}/calendar-events/team-members`, { headers: getAuthHeader() })
-      .then((r) => r.json())
-      .then((data) => {
-        if (cancelled || !data.members) return;
-        setTeamMembers(data.members);
+    const headers = getAuthHeader();
+    Promise.all([
+      fetch(`${API_BASE}/calendar-events/team-members`, { headers }).then((r) => r.json().catch(() => ({}))),
+      fetch(`${API_BASE}/companies/overview`, { headers }).then((r) => r.json().catch(() => ({})))
+    ])
+      .then(([teamData, overviewData]) => {
+        if (cancelled) return;
+        const fromTeam = Array.isArray(teamData?.members) ? teamData.members : [];
+        setTeamMembers(
+          buildParticipantDirectoryFromOverview(
+            fromTeam,
+            overviewData && typeof overviewData === 'object' ? overviewData : null
+          )
+        );
       })
       .catch(() => {});
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [isAdd, isGoogle]);
 
   const teamMemberById = useMemo(() => {

@@ -1,0 +1,853 @@
+/**
+ * Sample Design / Project2.html — 간격·타이포 정렬
+ * 그라데이션 없음 · 단색(플랫) · 파스텔 톤. 펼침 패널은 .project-p2-facade 안에서만 사용.
+ */
+
+/* —— 파스텔 단색 팔레트 (코드 전용, 그라데이션 없음) —— */
+.project-p2-facade {
+  --p2-on-surface: #4a5866;
+  --p2-on-surface-variant: #8b9bab;
+  --p2-primary: #5f85a3;
+  --p2-primary-dim: #4d7394;
+  --p2-on-primary: #fafcfe;
+  --p2-primary-container: #cfe2ef;
+  --p2-on-primary-container: #3d5668;
+  --p2-tertiary-container: #d2ebe0;
+  --p2-on-tertiary-container: #3f5c4d;
+  --p2-secondary-container: #d8e8f6;
+  --p2-on-secondary-container: #3d5a70;
+  --p2-surface-container-low: #e9eef4;
+  --p2-surface-container-lowest: #fbfcfd;
+  --p2-surface-bright: #f3f6f9;
+  --p2-surface-container-highest: #d8e1ea;
+  --p2-outline-variant: #c4ced8;
+  --p2-error: #c48987;
+}
+
+/* ===== main: p-10 max-w-7xl mx-auto w-full ===== */
+.project-p2-facade-main {
+  width: 100%;
+  max-width: 80rem;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 2.5rem 1.25rem;
+  box-sizing: border-box;
+}
+
+@media (min-width: 1024px) {
+  .project-p2-facade-main {
+    padding: 2.5rem 2.5rem;
+  }
+}
+
+/* ===== Project header: mb-12 ===== */
+.project-p2-facade-header {
+  margin-bottom: 3rem;
+}
+
+/* breadcrumb: flex items-center gap-2 text-xs font-medium ... mb-4 tracking-widest uppercase */
+.project-p2-facade-bc {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--p2-on-surface-variant);
+  margin-bottom: 1rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.project-p2-facade-bc-sep {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.project-p2-facade-bc-current {
+  color: var(--p2-primary);
+}
+
+/* flex justify-between items-end */
+.project-p2-facade-hero-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+/* h1 text-4xl font-extrabold tracking-tight text-on-surface mb-2 */
+.project-p2-facade-h1 {
+  margin: 0 0 0.5rem;
+  font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+  font-size: 2.25rem;
+  line-height: 1.2;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: var(--p2-on-surface);
+}
+
+/* p text-on-surface-variant max-w-2xl */
+.project-p2-facade-lead {
+  margin: 0;
+  max-width: 42rem;
+  font-size: 1rem;
+  line-height: 1.55;
+  color: var(--p2-on-surface-variant);
+}
+
+/* 타임라인 안내 문구 — 가로 트랙 선 위로 올림(단색 레이어링) */
+.project-p2-facade-lead--layered {
+  position: relative;
+  z-index: 1;
+}
+
+.project-p2-facade-hero-btns {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* px-4 py-2 text-sm font-semibold text-primary hover:bg-primary-container/30 rounded-lg */
+.project-p2-facade-btn-ghost {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--p2-primary);
+  background: transparent;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.project-p2-facade-btn-ghost:hover {
+  background: var(--p2-primary-container);
+}
+
+/* px-5 py-2 text-sm font-bold bg-primary text-on-primary rounded-lg shadow-sm */
+.project-p2-facade-btn-primary {
+  padding: 0.5rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--p2-on-primary);
+  background: var(--p2-primary);
+  border: 1px solid #4d6b82;
+  border-radius: 0.625rem;
+  box-shadow: none;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.project-p2-facade-btn-primary:hover {
+  background: var(--p2-primary-dim);
+}
+
+.project-p2-facade-btn-primary:active {
+  transform: scale(0.97);
+}
+
+/* ===== Workflow: section mb-12 ===== */
+.project-p2-facade-wf-section {
+  margin-bottom: 3rem;
+}
+
+/* 단색 카드 — 얇은 테두리, 그림자 없음 */
+.project-p2-facade-wf-card {
+  background: var(--p2-surface-container-low);
+  border: 1px solid var(--p2-outline-variant);
+  padding: 2rem;
+  border-radius: 0.875rem;
+  box-shadow: none;
+}
+
+/* head: flex items-center justify-between mb-6 */
+.project-p2-facade-wf-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+/* h2 text-lg font-bold text-on-surface flex items-center gap-2 */
+.project-p2-facade-wf-title {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+  font-size: 1.125rem;
+  line-height: 1.3;
+  font-weight: 700;
+  color: var(--p2-on-surface);
+}
+
+.project-p2-facade-wf-title .material-symbols-outlined {
+  font-size: 1.25rem;
+  color: var(--p2-primary);
+}
+
+/* D-45 pill: text-xs font-semibold px-3 py-1 bg-tertiary-container text-on-tertiary-container rounded-full */
+.project-p2-facade-wf-due {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.25rem 0.75rem;
+  background: var(--p2-tertiary-container);
+  color: var(--p2-on-tertiary-container);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.project-p2-facade-wf-due--muted {
+  background: var(--p2-surface-container-highest);
+  color: var(--p2-on-surface-variant);
+}
+
+/*
+ * 트랙: 라벨 줄 수가 달라도 원이 한 줄에 오도록 align-items: flex-start.
+ * 가로선은 아이콘 슬롯 높이(2.75rem) 중앙에 고정 — top:50%는 라벨 포함 전체 높이 기준이라 단계가 많을 때 끊겨 보임.
+ */
+.project-p2-facade-wf-track {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  width: 100%;
+  min-width: 0;
+  gap: 0;
+}
+
+/* 슬롯 중심 = 1.375rem — 연결선은 아이콘 뒤에서만 이어지고, 원과 겹치지 않도록 슬롯에 마스크로 끊어 보임 */
+.project-p2-facade-wf-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(1.375rem - 0.125rem);
+  height: 0.25rem;
+  background: var(--p2-surface-container-highest);
+  z-index: 0;
+  pointer-events: none;
+  border-radius: 1px;
+}
+
+/* step column: relative z-10 flex flex-col items-center gap-2 bg-surface-container-low px-2 */
+.project-p2-facade-wf-step {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--p2-surface-container-low);
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 6rem;
+  box-sizing: border-box;
+}
+
+/* 최대 아이콘(2.5rem 링)보다 약간 크게 — 라벨과 무관하게 원 중심이 동일 높이 */
+.project-p2-facade-wf-icon-slot {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 2.75rem;
+  flex-shrink: 0;
+}
+
+/* 가로 트랙 선이 원 중앙을 관통하지 않도록, 슬롯 폭만큼 카드색으로 선 가림 */
+.project-p2-facade-wf-icon-slot::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: calc(1.375rem - 0.125rem);
+  transform: translate(-50%, -50%);
+  width: min(100%, 3.25rem);
+  height: 0.65rem;
+  background: var(--p2-surface-container-low);
+  border-radius: 0.2rem;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.project-p2-facade-wf-icon-slot > .project-p2-facade-wf-icon-done,
+.project-p2-facade-wf-icon-slot > .project-p2-facade-wf-icon-current,
+.project-p2-facade-wf-icon-slot > .project-p2-facade-wf-icon-todo {
+  position: relative;
+  z-index: 2;
+}
+
+/* done: w-8 h-8 rounded-full bg-primary ... */
+.project-p2-facade-wf-icon-done {
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  padding: 0;
+  border-radius: 999px;
+  background: var(--p2-primary);
+  color: var(--p2-on-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.project-p2-facade-wf-icon-done .material-symbols-outlined {
+  font-size: 0.875rem;
+}
+
+/* current: w-10 h-10 border-4 border-primary bg-surface-container-lowest */
+.project-p2-facade-wf-icon-current {
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border-radius: 999px;
+  border: 4px solid var(--p2-primary);
+  background: var(--p2-surface-container-lowest);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.project-p2-facade-wf-dot {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 999px;
+  background: var(--p2-primary);
+}
+
+/* 예정 단계: 전체 opacity로 눌리지 않고, 아이콘·글자만 은은하게 구분 */
+.project-p2-facade-wf-step--todo {
+  opacity: 1;
+}
+
+.project-p2-facade-wf-icon-todo {
+  width: 2rem;
+  height: 2rem;
+  border: 2px solid rgba(172, 179, 183, 0.55);
+  padding: 0;
+  border-radius: 999px;
+  background: var(--p2-surface-container-lowest);
+  flex-shrink: 0;
+}
+
+/* labels: text-xs font-bold text-on-surface / text-primary */
+.project-p2-facade-wf-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--p2-on-surface);
+  text-align: center;
+  line-height: 1.25;
+  word-break: keep-all;
+  width: 100%;
+  min-width: 0;
+}
+
+.project-p2-facade-wf-label--active {
+  color: var(--p2-primary);
+}
+
+.project-p2-facade-wf-label--todo {
+  font-weight: 600;
+  color: var(--p2-on-surface-variant);
+  opacity: 0.92;
+}
+
+/* ===== Tree: section space-y-4 ===== */
+.project-p2-facade-tree-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.project-p2-facade-tree-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+/* text-xl font-bold text-on-surface */
+.project-p2-facade-tree-h2 {
+  margin: 0;
+  font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--p2-on-surface);
+}
+
+.project-p2-facade-tree-head-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--p2-on-surface-variant);
+}
+
+.project-p2-facade-tree-filter {
+  font-size: 0.875rem;
+  cursor: default;
+  opacity: 0.85;
+}
+
+.project-p2-facade-tree-box {
+  background: var(--p2-surface-container-lowest);
+  border: 1px solid var(--p2-outline-variant);
+  border-radius: 0.875rem;
+  padding: 2rem;
+  box-shadow: none;
+}
+
+/* L1 block */
+.project-p2-facade-tree-l1 {
+  position: relative;
+}
+
+.project-p2-facade-tree-l1 + .project-p2-facade-tree-l1 {
+  margin-top: 2rem;
+}
+
+/* row: flex items-center justify-between p-4 bg-surface-container-low rounded-lg ... */
+.project-p2-facade-tree-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: var(--p2-surface-container-low);
+  border: 1px solid transparent;
+  border-radius: 0.625rem;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  min-width: 0;
+}
+
+.project-p2-facade-tree-row:hover {
+  background: var(--p2-surface-bright);
+  border-color: rgba(196, 206, 216, 0.65);
+}
+
+.project-p2-facade-tree-row-main {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+  flex: 1;
+}
+
+/* 행 클릭으로 단계·코멘트·하위 묶음 펼침 */
+.project-p2-facade-tree-row-main--expandable {
+  cursor: pointer;
+  border-radius: 0.35rem;
+}
+
+.project-p2-facade-tree-row-main--expandable:focus-visible {
+  outline: 2px solid var(--p2-primary);
+  outline-offset: 2px;
+}
+
+.project-p2-facade-tree-row-chevron {
+  font-size: 1.25rem;
+  color: var(--p2-on-surface-variant);
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.project-p2-facade-tree-row-chevron--compact {
+  font-size: 1.05rem;
+}
+
+.project-p2-facade-tree-row-chevron--open {
+  transform: rotate(-180deg);
+}
+
+.project-p2-facade-tree-bundle {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.project-p2-facade-tree-bundle .project-p2-facade-subtree-comments {
+  margin-top: 0;
+}
+
+.project-p2-facade-tree-ico-l1 {
+  color: var(--p2-primary-dim);
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.project-p2-facade-tree-ico-l2 {
+  color: var(--p2-on-surface-variant);
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.project-p2-facade-tree-h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--p2-on-surface);
+  line-height: 1.3;
+}
+
+.project-p2-facade-tree-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+/* text-[10px] px-2 py-0.5 ... uppercase */
+.project-p2-facade-tree-pill {
+  font-size: 10px;
+  line-height: 1.2;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.25rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.project-p2-facade-tree-pill--ip {
+  background: var(--p2-primary-container);
+  color: var(--p2-on-primary-container);
+}
+
+.project-p2-facade-tree-pill--done {
+  background: var(--p2-tertiary-container);
+  color: var(--p2-on-tertiary-container);
+}
+
+.project-p2-facade-tree-pill--pending {
+  background: var(--p2-secondary-container);
+  color: var(--p2-on-secondary-container);
+}
+
+.project-p2-facade-tree-date {
+  font-size: 0.75rem;
+  color: var(--p2-on-surface-variant);
+}
+
+.project-p2-facade-tree-side {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-shrink: 0;
+}
+
+/* Project2.html: L1 우측 아이콘 묶음 gap-1 */
+.project-p2-facade-tree-l1-ibtns {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.project-p2-facade-tree-side-tight {
+  gap: 1rem;
+}
+
+/* avatars -space-x-2 */
+.project-p2-facade-tree-avatars {
+  display: flex;
+  align-items: center;
+}
+
+.project-p2-facade-tree-av {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  border: 2px solid var(--p2-surface-container-lowest);
+  margin-left: -0.35rem;
+  object-fit: cover;
+  background: var(--p2-surface-container-highest);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--p2-on-surface);
+}
+
+.project-p2-facade-tree-av.comment-author-avatar--photo {
+  padding: 0;
+  overflow: hidden;
+  line-height: 0;
+}
+
+.project-p2-facade-tree-avatars .project-p2-facade-tree-av:first-child {
+  margin-left: 0;
+}
+
+/* icon buttons p-2 */
+.project-p2-facade-tree-ibtn {
+  padding: 0.5rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--p2-on-surface-variant);
+  border-radius: 0.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease;
+}
+
+.project-p2-facade-tree-ibtn:hover {
+  color: var(--p2-primary);
+}
+
+.project-p2-facade-tree-ibtn--danger:hover {
+  color: var(--p2-error);
+}
+
+.project-p2-facade-tree-ibtn .material-symbols-outlined {
+  font-size: 1.25rem;
+}
+
+/* outline button 댓글 보기 */
+.project-p2-facade-tree-chipbtn {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--p2-on-surface);
+  background: transparent;
+  border: 1px solid rgba(172, 179, 183, 0.35);
+  border-radius: 0.25rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.project-p2-facade-tree-chipbtn:hover {
+  background: var(--p2-surface-container-highest);
+}
+
+/* L3 compact row */
+.project-p2-facade-tree-row-l3 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(172, 179, 183, 0.35);
+  background: var(--p2-surface-container-lowest);
+}
+
+.project-p2-facade-tree-row-l3:hover {
+  background: var(--p2-surface-bright);
+}
+
+.project-p2-facade-tree-l3-row-hit {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  flex: 1;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  border-radius: 0.25rem;
+}
+
+.project-p2-facade-tree-l3-row-hit:focus-visible {
+  outline: 2px solid var(--p2-primary);
+  outline-offset: 2px;
+}
+
+.project-p2-facade-tree-l3-main {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.project-p2-facade-tree-h4 {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--p2-on-surface);
+}
+
+.project-p2-facade-tree-ico-l3 {
+  font-size: 1rem;
+  color: var(--p2-on-surface-variant);
+  flex-shrink: 0;
+}
+
+.project-p2-facade-tree-add-ico-sm {
+  font-size: 1.125rem;
+  color: var(--p2-primary);
+  cursor: pointer;
+}
+
+/* ml-10 mt-4 space-y-4 relative tree-line */
+.project-p2-facade-tree-nest {
+  margin-left: 2.5rem;
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  position: relative;
+}
+
+.project-p2-facade-tree-nest.tree-line::before {
+  content: '';
+  position: absolute;
+  left: -1.25rem;
+  top: -0.5rem;
+  bottom: 0.5rem;
+  width: 2px;
+  background-color: var(--p2-surface-container-highest);
+}
+
+/* 단계 전용 tree-line: bundle 안 첫 블록일 때 위쪽 여백 중복 완화 */
+.project-p2-facade-tree-bundle > .project-p2-facade-tree-nest--workflow-stages:first-child {
+  margin-top: 0;
+}
+
+.project-p2-facade-tree-item.tree-item {
+  position: relative;
+}
+
+.project-p2-facade-tree-item.tree-item::after {
+  content: '';
+  position: absolute;
+  left: -1.25rem;
+  top: 1rem;
+  width: 1.25rem;
+  height: 2px;
+  background-color: var(--p2-surface-container-highest);
+}
+
+/* dashed add */
+.project-p2-facade-tree-add {
+  margin-top: 2rem;
+  width: 100%;
+  border: 2px dashed rgba(172, 179, 183, 0.45);
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 0.25rem;
+  color: var(--p2-on-surface-variant);
+  background: transparent;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.project-p2-facade-tree-add:hover {
+  border-color: rgba(44, 100, 133, 0.45);
+}
+
+.project-p2-facade-tree-add-ico {
+  font-size: 1.875rem;
+  margin-bottom: 0.25rem;
+  transition: transform 0.15s ease;
+}
+
+.project-p2-facade-tree-add:hover .project-p2-facade-tree-add-ico {
+  transform: scale(1.08);
+}
+
+.project-p2-facade-tree-add-title {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--p2-on-surface-variant);
+}
+
+.project-p2-facade-tree-add-sub {
+  font-size: 0.75rem;
+  opacity: 0.6;
+}
+
+/* ===== 트리 안 세로 단계 행 — Project2.html L3 카드와 동일 계열 (tree-line + 들여쓰기) ===== */
+.project-p2-facade-tree-row--stage {
+  justify-content: flex-start;
+  width: 100%;
+}
+
+/* 단계 행 클릭 → 워크플로 메뉴 (버튼 리셋, L3 테두리 유지) */
+.project-p2-facade-tree-stage-hit {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  border: 1px solid rgba(172, 179, 183, 0.35);
+  background: var(--p2-surface-container-lowest);
+  font: inherit;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  border-radius: 0.5rem;
+  box-sizing: border-box;
+}
+
+.project-p2-facade-tree-stage-hit:hover {
+  background: var(--p2-surface-bright);
+}
+
+.project-p2-facade-tree-stage-hit:focus-visible {
+  outline: 2px solid var(--p2-primary);
+  outline-offset: 2px;
+}
+
+.project-p2-facade-tree-row--stage-done {
+  opacity: 0.92;
+}
+
+.project-p2-facade-tree-row--stage-todo {
+  opacity: 0.5;
+}
+
+.project-p2-facade-tree-row--stage-current {
+  border-color: rgba(44, 100, 133, 0.38);
+  background: var(--p2-surface-bright);
+}
+
+.project-p2-facade-tree-stage-ico {
+  font-size: 1.125rem;
+  color: var(--p2-primary);
+}
+
+.project-p2-facade-tree-stage-ico--muted {
+  color: var(--p2-on-surface-variant);
+}
+
+.project-p2-facade-tree-row--stage-todo .project-p2-facade-tree-stage-ico {
+  color: var(--p2-on-surface-variant);
+}
+
+.project-p2-facade-tree-stage-em {
+  font-weight: 600;
+  color: var(--p2-primary);
+  font-size: 0.8125rem;
+}
+
+.project-p2-facade-tree-row--stage-compact {
+  padding: 0.5rem 0.75rem;
+}
+
+.project-p2-facade-tree-row--stage-compact .project-p2-facade-tree-h4 {
+  font-size: 0.8125rem;
+}

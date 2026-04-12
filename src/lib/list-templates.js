@@ -181,7 +181,7 @@ export const DEFAULT_SIDEBAR_OVERFLOW_ROUTES = ['/lead-capture', '/map', '/ai-vo
  * 사이드바 라우트 목록이 바뀔 때마다 1씩 올리면, Sidebar가 저장값을 다시 병합합니다.
  * (신규 메뉴 누락·PWA 구버전 번들 이슈 완화)
  */
-export const SIDEBAR_MENU_EPOCH = 2;
+export const SIDEBAR_MENU_EPOCH = 3;
 
 function dedupeRoutesPreserveOrder(paths) {
   const seen = new Set();

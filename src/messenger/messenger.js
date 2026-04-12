@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { API_BASE } from '@/config';
+import { buildParticipantDirectoryFromOverview } from '@/lib/participant-directory-merge';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import ParticipantModal from '@/shared/participant-modal/participant-modal';
 import NewChatModal from './new-chat-modal/new-chat-modal';
@@ -302,17 +303,12 @@ export default function Messenger() {
     ])
       .then(([teamData, overviewData]) => {
         const fromTeam = Array.isArray(teamData?.members) ? teamData.members : [];
-        const fromOverview = Array.isArray(overviewData?.employees) ? overviewData.employees : [];
-        const overviewMap = new Map(fromOverview.map((e) => [String(e.id), e]));
-        const merged = fromTeam.map((m) => {
-          const o = overviewMap.get(String(m._id));
-          return {
-            ...m,
-            phone: m.phone || o?.phone || '',
-            department: m.department || m.companyDepartment || o?.department || ''
-          };
-        });
-        setTeamMembers(merged);
+        setTeamMembers(
+          buildParticipantDirectoryFromOverview(
+            fromTeam,
+            overviewData && typeof overviewData === 'object' ? overviewData : null
+          )
+        );
       })
       .catch(() => {});
   }, []);

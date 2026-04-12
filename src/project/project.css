@@ -1,0 +1,1840 @@
+/* Sample Design Project.md / Project.html — 파스텔, 그라데이션 없음 */
+
+/* 상단 바: 고객사 리스트(customer-companies.js)와 동일 — 높이 4rem 안에서 아이콘만 우측 정렬 */
+.project-page-toolbar {
+  align-items: center;
+}
+
+.project-page-toolbar-spacer {
+  flex: 1;
+  min-width: 0;
+  min-height: 1px;
+}
+
+.project-page-toolbar-actions {
+  margin-left: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+/* 본문 상단: 제목 + 「새 프로젝트」(customer-companies-top / customer-companies-actions 패턴) */
+.project-page-top {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+@media (min-width: 640px) {
+  .project-page-top {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+}
+
+.project-page-title {
+  margin: 0;
+  font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #4a5866;
+  letter-spacing: -0.02em;
+}
+
+.project-page-desc {
+  margin: 0.35rem 0 0;
+  line-height: 1.45;
+}
+
+.project-page-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+.project-page-empty {
+  margin: 0;
+  padding: 2rem 0.5rem;
+  text-align: center;
+  color: #596061;
+  font-size: 0.9375rem;
+}
+
+.project-accordion-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.project-accordion-item {
+  background: #fbfcfd;
+  border: 1px solid #d8e1ea;
+  border-radius: 0.875rem;
+  box-shadow: none;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* 펼침 시에만 — :has() 미지원·버그 환경 회피 (project.js에서 --open 클래스 부여) */
+.project-accordion-item--open {
+  overflow: visible;
+}
+
+.project-accordion-item--sub .project-accordion-trigger-main {
+  padding-left: 0.35rem;
+  border-left: 3px solid rgba(63, 103, 80, 0.35);
+}
+
+.project-accordion-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1.1rem 1.25rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.project-accordion-trigger:hover {
+  background: #f8f9fb;
+}
+
+.project-accordion-trigger-main {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-width: 0;
+}
+
+.project-accordion-icon {
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 0.65rem;
+  background: #d8e8f4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #5f85a3;
+  flex-shrink: 0;
+}
+
+.project-accordion-title {
+  margin: 0;
+  font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #4a5866;
+}
+
+.project-accordion-meta {
+  margin: 0.2rem 0 0;
+  font-size: 0.8125rem;
+  color: #596061;
+}
+
+.project-accordion-trigger-right {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.project-accordion-actions {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 0.2rem;
+}
+
+.project-accordion-avatars {
+  display: flex;
+  align-items: center;
+}
+
+.project-accordion-av {
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: 999px;
+  border: 2px solid #fff;
+  margin-left: -0.4rem;
+  background: #cde5ff;
+  color: #20567c;
+  font-size: 0.55rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.project-accordion-av.comment-author-avatar--photo {
+  padding: 0;
+  overflow: hidden;
+  line-height: 0;
+}
+
+.project-accordion-avatars .project-accordion-av:first-child {
+  margin-left: 0;
+}
+
+.project-accordion-av--more {
+  background: #eaeff2;
+  color: #596061;
+  font-size: 0.6rem;
+}
+
+.project-status-pill {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  background: #d4ebe0;
+  color: #3f5c4d;
+}
+
+.project-status-pill--done {
+  background: #dde5ec;
+  color: #6b7882;
+}
+
+.project-icon-danger:hover {
+  color: #a83836;
+}
+
+.project-chevron {
+  color: #596061;
+  transition: transform 0.2s ease;
+}
+
+.project-chevron--open {
+  transform: rotate(180deg);
+}
+
+.project-accordion-panel {
+  background: #eef2f7;
+  padding: 1.25rem 1.25rem 1.5rem;
+  border-top: 1px solid #d8e1ea;
+  overflow: visible;
+  min-width: 0;
+}
+
+.project-panel-section {
+  margin-bottom: 1.35rem;
+}
+
+.project-panel-section:last-child {
+  margin-bottom: 0;
+}
+
+.project-panel-h {
+  margin: 0 0 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #596061;
+}
+
+.project-panel-desc {
+  margin: 0 0 0.85rem;
+  font-size: 0.8125rem;
+  color: #8191a0;
+}
+
+.project-stage-workflow-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow: visible;
+  padding-bottom: 0.35rem;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* 시작~완료 한 행(nowrap). 메인/서브 구분해 간격·겹침 다르게 처리 */
+.project-stage-strip {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0;
+  overflow: visible;
+  padding: 0.5rem 0 0;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/*
+ * 컨테이너 쿼리(container-type) 제거: 일부 환경에서 플렉스 자손이 세로로 쌓이는 현상 방지.
+ * 워크플로 스트립은 항상 가로 한 줄로 고정(중첩 서브 스트립 포함).
+ */
+.project-stage-workflow-block > .project-stage-strip,
+.project-stage-nested-strip-inner > .project-stage-strip {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}
+
+.project-stage-strip > .project-stage-column {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: none;
+  position: relative;
+}
+
+/*
+ * 메인·서브 공통: flex gap을 쓰면 열 사이가 떨어져 ::before/::after 가로선이 끊겨 보임.
+ * gap은 0으로 두고 padding-inline으로만 간격을 낸다.
+ */
+.project-stage-strip:not(.project-stage-strip--subtree) {
+  gap: 0;
+}
+
+.project-stage-strip:not(.project-stage-strip--subtree) > .project-stage-column {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 6rem;
+  overflow: visible;
+  padding-inline: 0.5rem;
+  box-sizing: border-box;
+}
+
+/* 서브 워크플로: 가로선 연속 + 단계 사이 여유는 padding으로 */
+.project-stage-strip.project-stage-strip--subtree {
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: 0;
+  width: max-content;
+  max-width: none;
+  min-width: 100%;
+  box-sizing: border-box;
+}
+
+.project-stage-strip.project-stage-strip--subtree > .project-stage-column {
+  padding-inline: 0.4rem;
+  box-sizing: border-box;
+}
+
+.project-stage-strip.project-stage-strip--subtree > .project-stage-column:not(:first-child) {
+  margin-left: 0;
+}
+
+.project-stage-strip > .project-stage-column:hover,
+.project-stage-strip > .project-stage-column:focus-within {
+  z-index: 20;
+}
+
+/* 부모 단계 아래에 붙은 서브 워크플로: 「시작」열 = 부모 세로축, 이후 단계는 gap으로 간격 */
+.project-stage-strip--nested.project-stage-strip--subtree > .project-stage-column--subtree-anchor {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 2.75rem;
+  max-width: 3.5rem;
+  /* 부모 단계 아이콘(루트 메인) 지름과 맞춤 — 가로선·세로축 정렬 */
+  margin-left: calc(50% - (clamp(2.25rem, 7vw, 2.75rem) / 2));
+}
+
+.project-stage-strip--nested.project-stage-strip--subtree > .project-stage-column:not(.project-stage-column--subtree-anchor) {
+  flex: 0 0 auto;
+  min-width: 2.85rem;
+  max-width: none;
+}
+
+.project-stage-column {
+  --project-wf-line-y: calc(0.2rem + (clamp(2.25rem, 7vw, 2.75rem) / 2));
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 1;
+  min-width: 0;
+  z-index: 0;
+}
+
+.project-stage-strip--nested .project-stage-column {
+  --project-wf-line-y: calc(0.2rem + (clamp(1.85rem, 5.2vw, 2.15rem) / 2));
+}
+
+/* 이웃 열 사이 가로선: 중앙(아이콘)까지 이어짐 — 미세 틈 방지용 1px 겹침 */
+.project-stage-column::before {
+  content: '';
+  position: absolute;
+  left: -0.5px;
+  top: var(--project-wf-line-y);
+  width: calc(50% + 0.5px);
+  height: 3px;
+  margin-top: -1.5px;
+  background: #dce4e8;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.project-stage-column:first-child::before {
+  display: none;
+}
+
+.project-stage-column::after {
+  content: '';
+  position: absolute;
+  right: -0.5px;
+  top: var(--project-wf-line-y);
+  width: calc(50% + 0.5px);
+  height: 3px;
+  margin-top: -1.5px;
+  background: #dce4e8;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.project-stage-column:last-child::after {
+  display: none;
+}
+
+/* 진행 구간: 이전 열의 오른쪽 반선 + 다음 열의 왼쪽 반선을 같은 색으로 (project.js에서 인덱스로 지정) */
+.project-stage-column--line-before-on::before {
+  background: #a3c5df;
+}
+
+.project-stage-column--line-after-on::after {
+  background: #a3c5df;
+}
+
+.project-stage-top {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  position: relative;
+  z-index: 1;
+}
+
+.project-stage-icon-wrap {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+}
+
+/* 서브가 있을 때만: 이름은 원의 우측 하단(트리 세로축·가로선 가리지 않음) */
+.project-stage-icon-subnames {
+  position: absolute;
+  right: -0.05rem;
+  bottom: -0.08rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.06rem;
+  max-width: min(5.75rem, 46vw);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.project-stage-icon-subname {
+  display: block;
+  max-width: 100%;
+  padding: 0.06rem 0.18rem 0.05rem;
+  border-radius: 0.22rem;
+  border: 1px solid rgba(160, 213, 251, 0.65);
+  background: rgba(255, 255, 255, 0.96);
+  font-size: 0.5rem;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: #3d5d6e;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(44, 52, 55, 0.06);
+}
+
+.project-stage-top .project-stage-node {
+  flex-shrink: 0;
+}
+
+/* 본문(document.body) 포털 — 패널 스크롤과 무관하게 뷰포트에 고정 */
+.project-stage-dropdown--portal {
+  min-width: 12rem;
+  max-width: min(18rem, 92vw);
+  max-height: min(70vh, 22rem);
+  overflow-x: hidden;
+  overflow-y: auto;
+  margin: 0;
+  background: #fbfcfd;
+  border: 1px solid #c9d4df;
+  border-radius: 0.625rem;
+  box-shadow: 0 4px 16px rgba(74, 104, 130, 0.12);
+  padding: 0.35rem 0;
+}
+
+.project-stage-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: none;
+  background: transparent;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #5f85a3;
+  cursor: pointer;
+  text-align: left;
+}
+
+.project-stage-dropdown-item:hover {
+  background: #f0f4f7;
+}
+
+.project-stage-dropdown-item--secondary {
+  border-top: 1px solid rgba(172, 179, 183, 0.22);
+}
+
+.project-stage-dropdown-item .material-symbols-outlined {
+  font-size: 1.125rem;
+  flex-shrink: 0;
+}
+
+.project-stage-dropdown-subs {
+  border-top: 1px solid rgba(172, 179, 183, 0.22);
+  padding: 0.3rem 0 0.15rem;
+  margin-top: 0.1rem;
+}
+
+.project-stage-dropdown-subs-label {
+  display: block;
+  padding: 0.2rem 0.75rem 0.4rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8191a0;
+}
+
+.project-stage-dropdown-sublist {
+  list-style: none;
+  margin: 0;
+  padding: 0 0.4rem 0.25rem;
+  max-height: 10rem;
+  overflow-y: auto;
+}
+
+.project-stage-dropdown-sublead {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.project-stage-dropdown-subrow {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.4rem;
+  padding: 0.35rem 0.45rem;
+  border-radius: 0.35rem;
+}
+
+.project-stage-dropdown-subrow:hover {
+  background: #f8f9fb;
+}
+
+.project-stage-dropdown-subtitle {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #4a5866;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-stage-dropdown-subactions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.1rem;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.project-stage-orphan-line {
+  margin: 0.35rem 0 0;
+  padding: 0;
+  font-size: 0.75rem;
+  color: #596061;
+  line-height: 1.5;
+}
+
+.project-stage-orphan-inline-label {
+  display: block;
+  font-weight: 600;
+  color: #8191a0;
+  margin-bottom: 0.35rem;
+}
+
+.project-stage-orphan-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.35rem 0.5rem;
+}
+
+.project-stage-node-wrap {
+  display: flex;
+  align-items: center;
+}
+
+.project-stage-line {
+  width: 1.5rem;
+  height: 3px;
+  background: #dce4e8;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.project-stage-line--on {
+  background: #a3c5df;
+}
+
+.project-stage-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  padding: 0.25rem 0.35rem;
+  min-width: 4rem;
+}
+
+/* 메인 단계: 원 아이콘만 (라벨은 아래로 분리 → 세로 트리가 원 중심 기준) */
+.project-stage-node--main-icon {
+  gap: 0;
+  min-width: 0;
+  padding: 0.2rem;
+}
+
+.project-stage-node-inner {
+  width: clamp(2.25rem, 7vw, 2.75rem);
+  height: clamp(2.25rem, 7vw, 2.75rem);
+  border-radius: 999px;
+  border: 2px solid #b8d4ea;
+  background: #fbfcfd;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #5f85a3;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.project-stage-node--active .project-stage-node-inner {
+  background: #5f85a3;
+  border-color: #5f85a3;
+  color: #f5f9ff;
+}
+
+/* 서브 프로젝트 — 메인 단계 노드와 동일 아이콘·원형, 소형 */
+.project-stage-node--sub {
+  min-width: 3rem;
+  max-width: 6rem;
+  padding: 0.15rem 0.2rem;
+  gap: 0.25rem;
+}
+
+.project-stage-node--sub .project-stage-node-inner {
+  width: 2rem;
+  height: 2rem;
+  border-width: 2px;
+}
+
+.project-stage-node--sub .project-stage-node-inner .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
+.project-stage-node-inner--tiny {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-width: 2px;
+}
+
+.project-stage-node-inner--tiny .material-symbols-outlined {
+  font-size: 0.85rem;
+}
+
+.project-stage-node--sub:hover .project-stage-node-inner {
+  border-color: #7ec4f4;
+  background: #f7fbfe;
+}
+
+.project-stage-label--sub {
+  font-size: 0.6rem;
+  max-width: 5rem;
+  line-height: 1.2;
+}
+
+.project-stage-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #596061;
+  text-align: center;
+  max-width: 5.5rem;
+  line-height: 1.25;
+}
+
+.project-stage-label--under {
+  margin-top: 0.2rem;
+}
+
+/* 서브 트리 아래에 두는 부모 단계명(시각적 우선순위 낮춤) */
+.project-stage-label--after-branch {
+  margin-top: 0.35rem;
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: #7a8b96;
+}
+
+/* 단계 아래 서브 트리 — 부모 아이콘 6시 ↔ 서브 시작 12시 한 축. 가로로 길어져도 부모 열(max-width)을 밀지 않고 넘침 */
+.project-stage-branch {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: max-content;
+  min-width: 100%;
+  max-width: min(96vw, 52rem);
+  margin-top: 0.06rem;
+  margin-left: auto;
+  margin-right: auto;
+  padding-bottom: 0.2rem;
+  position: relative;
+  box-sizing: border-box;
+}
+
+/* 부모 아이콘 바로 아래 짧은 구간(스파인과 맞닿게) */
+.project-stage-branch-vrule-top {
+  width: 2px;
+  height: 0.45rem;
+  margin: 0 auto 0;
+  flex-shrink: 0;
+  background: #c5d6e0;
+}
+
+.project-stage-vrule {
+  width: 2px;
+  height: 1rem;
+  background: #c5d6e0;
+  flex-shrink: 0;
+}
+
+.project-stage-substrip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.15rem 0;
+  max-width: 12rem;
+  margin-top: 0.15rem;
+}
+
+/* 서브 아래 세로로 쌓아 각 서브에 전체 워크플로 표시 */
+.project-stage-substrip--stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.85rem;
+  width: 100%;
+  max-width: none;
+  margin-top: 0;
+  min-width: 0;
+}
+
+.project-stage-nested-project {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
+  width: 100%;
+  overflow: visible;
+  isolation: isolate;
+}
+
+.project-stage-nested-project--linked {
+  position: relative;
+}
+
+/* 단계 미연결 서브: 아이콘 옆 라벨 없음 — 한 줄 제목만 */
+.project-stage-nested-heading--orphan-inline {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #5a6b78;
+  margin: 0 0 0.3rem;
+  text-align: left;
+  align-self: flex-start;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-stage-nested-strip-outer {
+  position: relative;
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  min-height: 0;
+  overflow-x: visible;
+  padding-top: 0.15rem;
+  box-sizing: border-box;
+}
+
+/* 부모·서브 아이콘 중심을 잇는 세로축(50%) */
+.project-stage-nested-spine {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  transform: translateX(-50%);
+  z-index: 0;
+  background: #c5d6e0;
+  pointer-events: none;
+}
+
+/* 첫 서브: 위로 뻗어 branch 상단 세로선·부모 원 6시와 한 줄로 */
+.project-stage-substrip--stack > .project-stage-nested-project--linked:first-child .project-stage-nested-spine,
+.project-stage-orphan-row--nested > .project-stage-nested-project--linked:first-child .project-stage-nested-spine {
+  top: calc(-0.45rem - 0.06rem);
+  bottom: 0;
+  height: auto;
+}
+
+.project-stage-nested-strip-inner {
+  position: relative;
+  z-index: 1;
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  min-height: 0;
+  overflow: visible;
+  box-sizing: border-box;
+}
+
+.project-stage-nested-heading {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #5a6b78;
+  margin-bottom: 0.2rem;
+  max-width: 14rem;
+  text-align: center;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-stage-strip--nested {
+  overflow: visible;
+  padding: 0.2rem 0 0.05rem;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+.project-stage-node--nested-tier .project-stage-node-inner {
+  width: clamp(1.85rem, 5.2vw, 2.15rem);
+  height: clamp(1.85rem, 5.2vw, 2.15rem);
+}
+
+.project-stage-node--nested-tier .project-stage-node-inner .material-symbols-outlined {
+  font-size: 1rem;
+}
+
+.project-stage-orphan-line--nested {
+  margin-top: 0.5rem;
+  padding-top: 0.35rem;
+  border-top: 1px dashed rgba(172, 179, 183, 0.35);
+}
+
+.project-stage-orphan-row--nested {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.75rem;
+}
+
+.project-stage-nested-project--orphan {
+  width: 100%;
+  align-items: center;
+}
+
+.project-stage-subnode-wrap {
+  display: inline-flex;
+  align-items: center;
+}
+
+.project-stage-subhline {
+  width: 0.45rem;
+  height: 2px;
+  background: #c5d6e0;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.project-desc-box .project-desc-text {
+  margin: 0;
+  font-size: 0.875rem;
+  color: #4a5866;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.project-participant-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: 0.65rem;
+}
+
+.project-participant-card {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 0.5rem;
+  background: #ffffff;
+}
+
+.project-participant-av {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  background: #cde5ff;
+  color: #20567c;
+  font-size: 0.65rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.project-participant-av.comment-author-avatar--photo {
+  padding: 0;
+  overflow: hidden;
+  line-height: 0;
+}
+
+.project-participant-name {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #4a5866;
+}
+
+.project-muted {
+  font-size: 0.8125rem;
+  color: #8191a0;
+}
+
+.project-comments-section {
+  background: #fbfcfd;
+  border: 1px solid #d8e1ea;
+  border-radius: 0.65rem;
+  padding: 1rem;
+}
+
+.project-comment-list {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.project-comment-block {
+  border-bottom: 1px solid #eaeff2;
+  padding-bottom: 0.85rem;
+}
+
+.project-comment-block:last-of-type {
+  border-bottom: none;
+}
+
+.project-comment-main {
+  display: flex;
+  gap: 0.65rem;
+}
+
+.project-comment-av {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  background: #e3e9ed;
+  color: #4a5866;
+  font-size: 0.65rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.project-comment-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.project-comment-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.project-comment-head strong {
+  font-size: 0.8125rem;
+  color: #4a5866;
+}
+
+.project-comment-head time {
+  font-size: 0.65rem;
+  color: #8191a0;
+}
+
+.project-comment-bubble {
+  background: #e8eef4;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.5rem 0.75rem 0.75rem 0.75rem;
+  font-size: 0.875rem;
+  color: #4a5866;
+  line-height: 1.45;
+}
+
+.project-comment-replies-toggle {
+  display: flex;
+  width: 100%;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #d8e1ea;
+  border-radius: 0.45rem;
+  background: #eef3f8;
+  color: #5f85a3;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.project-comment-replies-toggle:hover {
+  background: #e4edf5;
+}
+
+.project-comment-replies-panel {
+  margin-top: 0.35rem;
+  padding-top: 0.35rem;
+}
+
+.project-comment-replies-panel .project-reply-form {
+  margin-top: 0.65rem;
+}
+
+.project-reply-form--under-bubble {
+  margin-top: 0.45rem;
+}
+
+.project-reply-row {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.65rem 0 0 1.5rem;
+  padding-left: 0.75rem;
+  border-left: 2px solid #dce4e8;
+}
+
+.project-reply-bubble {
+  background: rgba(160, 213, 251, 0.25);
+  padding: 0.45rem 0.65rem;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.project-reply-form {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.5rem 0 0 1.5rem;
+  align-items: center;
+}
+
+.project-reply-form input {
+  flex: 1;
+  border: none;
+  border-radius: 999px;
+  background: #f0f4f7;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.8125rem;
+}
+
+.project-reply-send {
+  flex-shrink: 0;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.75rem;
+}
+
+.project-new-comment {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.project-new-comment input {
+  flex: 1;
+  border: none;
+  border-radius: 999px;
+  background: #eaeff2;
+  padding: 0.55rem 1rem;
+  font-size: 0.875rem;
+}
+
+/* —— Sample Design Project2.html — 브레드크럼 · 히어로 · 워크플로 카드 · 서브 트리 —— */
+.project-panel-breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #747c80;
+  margin-bottom: 1rem;
+}
+
+.project-panel-bc-sep {
+  font-size: 0.65rem;
+  opacity: 0.7;
+}
+
+.project-panel-bc-current {
+  color: #5f85a3;
+}
+
+.project-panel-hero {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.1rem;
+}
+
+.project-panel-hero-title {
+  margin: 0 0 0.5rem;
+  font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #4a5866;
+}
+
+.project-panel-hero-desc {
+  margin: 0 0 0.5rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: #596061;
+  max-width: 40rem;
+}
+
+.project-panel-hero-meta {
+  margin: 0 0 0.85rem;
+  font-size: 0.75rem;
+  color: #8191a0;
+}
+
+.project-panel-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.project-panel-workflow-card {
+  background: #f0f4f7;
+  border-radius: 0.75rem;
+  padding: 1.25rem 1.35rem 1.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.project-panel-workflow-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+}
+
+.project-panel-h--inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 1rem;
+}
+
+.project-panel-h-icon {
+  font-size: 1.25rem;
+  color: #5f85a3;
+}
+
+.project-panel-due-pill {
+  font-size: 0.6rem;
+  font-weight: 700;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  background: #cbf9db;
+  color: #38614a;
+}
+
+.project-panel-due-pill--done {
+  background: #dce4e8;
+  color: #596061;
+}
+
+.project-panel-desc--tight {
+  margin-bottom: 0.75rem;
+}
+
+.project-panel-subtree-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.project-panel-subtree-hint {
+  font-size: 0.7rem;
+  color: #8191a0;
+}
+
+.project-subtree-root {
+  background: #ffffff;
+  border-radius: 0.75rem;
+  padding: 1rem 1.1rem;
+  box-shadow: 0 1px 3px rgba(44, 52, 55, 0.04);
+}
+
+.project-subtree-children {
+  margin-left: 0.35rem;
+  padding-left: 1rem;
+  border-left: 2px solid #dce4e8;
+}
+
+.project-subtree-rowwrap {
+  display: flex;
+  align-items: stretch;
+}
+
+.project-subtree-card {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  background: #f0f4f7;
+  border-radius: 0.5rem;
+  margin-bottom: 0.65rem;
+  min-width: 0;
+}
+
+.project-subtree-card-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.project-subtree-icon {
+  color: #5f85a3;
+  flex-shrink: 0;
+  font-size: 1.35rem;
+}
+
+.project-subtree-title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: #4a5866;
+}
+
+.project-subtree-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.2rem;
+}
+
+.project-subtree-pill {
+  font-size: 0.55rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: #cde5ff;
+  color: #20567c;
+}
+
+.project-subtree-pill--done {
+  background: #dce4e8;
+  color: #596061;
+}
+
+.project-subtree-due {
+  font-size: 0.65rem;
+  color: #8191a0;
+}
+
+.project-subtree-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.project-subtree-miniav {
+  width: 1.45rem;
+  height: 1.45rem;
+  border-radius: 999px;
+  background: #cde5ff;
+  color: #20567c;
+  font-size: 0.5rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.project-subtree-edit {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.35rem 0.65rem;
+}
+
+.project-subtree-edit .material-symbols-outlined {
+  font-size: 1rem;
+}
+
+.project-comment-scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.85rem;
+}
+
+.project-comment-scope-chip {
+  border: 1px solid rgba(160, 213, 251, 0.85);
+  background: #f4f8fb;
+  color: #3d5d6e;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.project-comment-scope-chip--on {
+  background: #e3f0fa;
+  border-color: #7ec4f4;
+  color: #5f85a3;
+}
+
+/* 구조적 하위 트리 — 카드 바로 아래 인라인 코멘트 */
+.project-p2-facade-subtree-comments {
+  margin: 0.5rem 0 0.75rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.625rem;
+  border: 1px solid #c9dae8;
+  background: #e8f1f8;
+}
+
+.project-p2-facade-subtree-comments-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  margin: 0;
+  padding: 0.35rem 0.2rem;
+  border: none;
+  border-radius: 0.45rem;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  transition: background 0.15s ease;
+}
+
+.project-p2-facade-subtree-comments-toggle:hover {
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.project-p2-facade-subtree-comments-toggle:focus-visible {
+  outline: 2px solid rgba(100, 160, 200, 0.55);
+  outline-offset: 2px;
+}
+
+.project-p2-facade-subtree-comments-h {
+  display: block;
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #4a6678;
+}
+
+.project-p2-facade-subtree-comments-count {
+  flex-shrink: 0;
+  min-width: 1.35rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  line-height: 1.2;
+  background: rgba(180, 210, 228, 0.75);
+  color: #3d5a6e;
+}
+
+.project-p2-facade-subtree-comments-chevron {
+  flex-shrink: 0;
+  font-size: 1.35rem;
+  color: #5f85a3;
+  transition: transform 0.2s ease;
+}
+
+.project-p2-facade-subtree-comments-chevron--open {
+  transform: rotate(-180deg);
+}
+
+.project-p2-facade-subtree-comments-body {
+  margin-top: 0.5rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid rgba(180, 200, 215, 0.65);
+}
+
+.project-p2-facade-subtree-comments .project-comment-list {
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+/* —— Sample Design Project2.html — 펼침 패널 (파스텔 · 단색 배경) —— */
+.project-page-content--p2 {
+  background: #f3f6fa;
+}
+
+.project-accordion-panel--p2 {
+  background: #f3f6fa;
+  border-top: 1px solid #d8e1ea;
+  padding: 0;
+}
+
+.project-p2-inner {
+  max-width: 80rem;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 2.5rem 1.25rem 2rem;
+  box-sizing: border-box;
+}
+
+@media (min-width: 1024px) {
+  .project-p2-inner {
+    padding: 2.5rem 2.5rem 2.25rem;
+  }
+}
+
+.project-p2-inner .project-panel-breadcrumb {
+  font-size: 0.75rem;
+  letter-spacing: 0.2em;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+.project-p2-hero {
+  margin-bottom: 3rem;
+  padding-bottom: 0;
+}
+
+.project-p2-hero-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 1.25rem;
+}
+
+.project-p2-hero-copy {
+  flex: 1 1 min(100%, 28rem);
+  min-width: 0;
+}
+
+.project-p2-hero .project-panel-hero-title.project-p2-hero-title {
+  margin-bottom: 0.5rem;
+  font-size: 2.25rem;
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  color: #4a5866;
+}
+
+.project-p2-hero-desc {
+  margin: 0;
+  max-width: 42rem;
+}
+
+.project-p2-hero-desc--muted {
+  opacity: 0.88;
+}
+
+.project-p2-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.project-p2-btn-ghost {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #5f85a3;
+  background: transparent;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.project-p2-btn-ghost:hover {
+  background: #d8e8f4;
+}
+
+.project-p2-btn-primary {
+  padding: 0.5rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #fafcfe;
+  background: #5f85a3;
+  border: 1px solid #4d6b82;
+  border-radius: 0.625rem;
+  box-shadow: none;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+
+.project-p2-btn-primary:hover {
+  background: #4d7394;
+}
+
+.project-p2-btn-primary:active {
+  transform: scale(0.98);
+}
+
+.project-p2-section {
+  margin-bottom: 3rem;
+}
+
+.project-p2-wf-card.project-panel-workflow-card {
+  padding: 2rem;
+  margin-bottom: 0;
+}
+
+.project-p2-wf-head {
+  margin-bottom: 1.5rem;
+}
+
+.project-p2-wf-heading {
+  color: #4a5866;
+}
+
+.project-p2-due-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  background: #cbf9db;
+  color: #38614a;
+}
+
+.project-p2-due-badge--done {
+  background: #dce4e8;
+  color: #596061;
+}
+
+.project-p2-wf-track {
+  position: relative;
+  display: block;
+  width: 100%;
+  overflow: visible;
+}
+
+.project-p2-wf-backline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(0.5rem + 0.2rem + (clamp(2.25rem, 7vw, 2.75rem) / 2));
+  transform: translateY(-50%);
+  height: 4px;
+  background: #dce4e8;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: 2px;
+}
+
+.project-stage-workflow-block--p2 {
+  position: relative;
+  z-index: 1;
+}
+
+.project-stage-workflow-block--p2 > .project-stage-strip:not(.project-stage-strip--subtree) > .project-stage-column::before,
+.project-stage-workflow-block--p2 > .project-stage-strip:not(.project-stage-strip--subtree) > .project-stage-column::after {
+  display: none !important;
+}
+
+.project-stage-workflow-block--p2 > .project-stage-strip:not(.project-stage-strip--subtree) > .project-stage-column > .project-stage-top {
+  position: relative;
+  z-index: 10;
+}
+
+.project-stage-workflow-block--p2 .project-stage-node--active .project-stage-node-inner {
+  background: #5f85a3;
+}
+
+.project-stage-workflow-block--p2 .project-stage-node-inner {
+  background: #f0f4f7;
+}
+
+.project-p2-tree-section-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+  color: #4a5866;
+}
+
+.project-p2-tree-head {
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.project-p2-tree-head-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  color: #596064;
+}
+
+.project-p2-tree-filter-ico {
+  font-size: 1rem;
+  opacity: 0.7;
+}
+
+.project-subtree-root.project-p2-tree-shell {
+  background: #ffffff;
+  border-radius: 0.75rem;
+  padding: 2rem;
+  box-shadow: 0 1px 3px rgba(44, 52, 55, 0.06);
+}
+
+.project-p2-tree-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.project-p2-tree-list .project-subtree-card,
+.project-p2-tree-nest .project-subtree-card {
+  margin-bottom: 0;
+}
+
+.project-p2-tree-empty {
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+  color: #8191a0;
+  text-align: center;
+}
+
+.project-p2-tree-add {
+  margin-top: 2rem;
+  width: 100%;
+  border: 2px dashed rgba(172, 179, 183, 0.45);
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  background: transparent;
+  cursor: pointer;
+  color: #596064;
+  transition: border-color 0.15s ease;
+}
+
+.project-p2-tree-add:hover {
+  border-color: rgba(44, 100, 133, 0.45);
+}
+
+.project-p2-tree-add-ico {
+  font-size: 2rem;
+  margin-bottom: 0.15rem;
+}
+
+.project-p2-tree-add-title {
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.project-p2-tree-add-sub {
+  font-size: 0.75rem;
+  opacity: 0.65;
+}
+
+/* 트리 연결선 — Project2.html 인라인 스타일과 동일 */
+.project-p2-tree-nest.tree-line {
+  position: relative;
+  margin-left: 2.5rem;
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.tree-item {
+  position: relative;
+}
+
+.tree-line::before {
+  content: '';
+  position: absolute;
+  left: -1.25rem;
+  top: -0.5rem;
+  bottom: 0.5rem;
+  width: 2px;
+  background-color: #dce4e8;
+}
+
+.tree-item::after {
+  content: '';
+  position: absolute;
+  left: -1.25rem;
+  top: 1rem;
+  width: 1.25rem;
+  height: 2px;
+  background-color: #dce4e8;
+}
+
+.project-subtree-card {
+  transition: background 0.15s ease;
+}
+
+.project-subtree-card:hover {
+  background: #f8f9fb;
+}
+
+.project-subtree-icon--l1 {
+  color: #1c5879;
+  font-size: 1.5rem;
+}
+
+.project-subtree-icon--nested {
+  color: #747c80;
+  font-size: 1.35rem;
+}
+
+.project-subtree-card--compact {
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(172, 179, 183, 0.25);
+  background: #ffffff;
+}
+
+.project-subtree-title--sm {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.project-subtree-avatar-stack {
+  display: flex;
+  align-items: center;
+  margin-right: 0.25rem;
+}
+
+.project-subtree-avatar-stack .project-subtree-miniav {
+  margin-left: -0.35rem;
+  border: 2px solid #ffffff;
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: 0.55rem;
+}
+
+.project-subtree-avatar-stack .project-subtree-miniav:first-child {
+  margin-left: 0;
+}
+
+.project-subtree-miniav--more {
+  background: #dce4e8;
+  color: #4a5866;
+}
+
+.project-subtree-iconbtn {
+  padding: 0.5rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #747c80;
+  border-radius: 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease;
+}
+
+.project-subtree-iconbtn:hover {
+  color: #5f85a3;
+}
+
+.project-subtree-iconbtn--danger:hover {
+  color: #a83836;
+}
+
+@media (max-width: 768px) {
+  .project-accordion-trigger {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .project-accordion-trigger-right {
+    justify-content: space-between;
+    flex-wrap: wrap;
+    row-gap: 0.5rem;
+  }
+
+  .project-accordion-actions {
+    flex-wrap: nowrap;
+  }
+}

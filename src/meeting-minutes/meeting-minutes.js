@@ -23,6 +23,27 @@ function formatMeetingDate(d) {
   return date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' }) + ' ' + date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
 }
 
+/** Sample Design / 카드 참석자 이니셜 */
+function attendeeInitials(name) {
+  const s = String(name || '').trim();
+  if (!s) return '?';
+  const noSpace = s.replace(/\s/g, '');
+  if (noSpace.length <= 2) return noSpace.toUpperCase();
+  return (noSpace[0] + noSpace[noSpace.length - 1]).toUpperCase();
+}
+
+function isVideoLocation(loc) {
+  const t = String(loc || '').toLowerCase();
+  return /zoom|teams|meet\.google|http|:\/\/|비대면|화상|온라인/.test(t);
+}
+
+const MM_BADGE_FINAL = { className: 'meeting-minutes-m-badge meeting-minutes-m-badge--final', label: '확정' };
+const MM_BADGE_DRAFT = { className: 'meeting-minutes-m-badge meeting-minutes-m-badge--draft', label: '초안' };
+
+function meetingStatusBadge(status) {
+  return String(status) === 'Finalized' ? MM_BADGE_FINAL : MM_BADGE_DRAFT;
+}
+
 export default function MeetingMinutes() {
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
@@ -34,6 +55,17 @@ export default function MeetingMinutes() {
   const [editMeeting, setEditMeeting] = useState(null);
   const [detailMeetingOverride, setDetailMeetingOverride] = useState(null);
   const [detailFetchLoading, setDetailFetchLoading] = useState(false);
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia('(max-width: 768px)').matches : false
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)');
+    const fn = () => setIsMobile(mq.matches);
+    fn();
+    mq.addEventListener('change', fn);
+    return () => mq.removeEventListener('change', fn);
+  }, []);
 
   const modalMode = searchParams.get(MODAL_PARAM);
   const isAddOpen = modalMode === MODAL_ADD;
@@ -123,6 +155,16 @@ export default function MeetingMinutes() {
     setEditMeeting(null);
     setSearchParams({ [MODAL_PARAM]: MODAL_ADD }, { replace: true });
   };
+
+  const openEditDraftModal = useCallback(
+    (e, row) => {
+      e?.stopPropagation();
+      if (!row?._id) return;
+      setEditMeeting(row);
+      setSearchParams({ [MODAL_PARAM]: MODAL_ADD }, { replace: true });
+    },
+    [setSearchParams]
+  );
   const closeAddModal = () => {
     setEditMeeting(null);
     const next = new URLSearchParams(searchParams);
@@ -153,42 +195,208 @@ export default function MeetingMinutes() {
     setSearchParams(next, { replace: true });
   };
 
+  const rangeStart =
+    items.length === 0 ? 0 : (pagination.page - 1) * (pagination.limit || 20) + 1;
+  const rangeEnd = items.length === 0 ? 0 : (pagination.page - 1) * (pagination.limit || 20) + items.length;
+
   return (
     <div className="page meeting-minutes-page">
-      <header className="page-header">
-        <div className="header-search">
-          <form onSubmit={handleSearch} className="header-search-form">
-            <button type="submit" className="header-search-icon-btn" aria-label="검색">
-              <span className="material-symbols-outlined">search</span>
-            </button>
+      {isMobile ? (
+        <div className="meeting-minutes-m-top" aria-label="회의 일지">
+          <div className="meeting-minutes-m-top-row">
+            <h1 className="meeting-minutes-m-title">회의 일지</h1>
+            <div className="meeting-minutes-m-notify-group">
+              <PageHeaderNotifyChat noWrapper buttonClassName="meeting-minutes-m-icon-btn" />
+            </div>
+          </div>
+          <form onSubmit={handleSearch} className="meeting-minutes-m-search">
+            <span className="material-symbols-outlined meeting-minutes-m-search-icon" aria-hidden>
+              search
+            </span>
             <input
-              type="text"
-              placeholder="회의 일지 검색..."
+              type="search"
+              placeholder="회의 일지 검색…"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               aria-label="회의 일지 검색"
             />
           </form>
+          <p className="meeting-minutes-m-summary">
+            전체 <strong>{pagination.total}</strong>건 중{' '}
+            <strong>{rangeStart}</strong>–<strong>{rangeEnd}</strong>건 표시
+          </p>
+          <p className="meeting-minutes-m-hint">
+            참석자로 지정되었거나 내가 작성한 회의만 목록에 표시됩니다.
+          </p>
         </div>
-        <div className="header-actions">
-          <button type="button" className="btn-primary" onClick={openAddModal}>
-            <span className="material-symbols-outlined">add</span>
-            새 회의 일지
-          </button>
-          <PageHeaderNotifyChat noWrapper buttonClassName="icon-btn" />
-        </div>
-      </header>
-
-      <div className="page-content">
-        <div className="meeting-minutes-top">
-          <div>
-            <h2 className="meeting-minutes-title">회의 일지</h2>
-            <p className="page-desc">
-              참석자로 지정되었거나 내가 작성한 회의만 목록에 표시됩니다. {pagination.total}건 (총 {pagination.totalPages}페이지)
-            </p>
+      ) : (
+        <header className="page-header">
+          <div className="header-search">
+            <form onSubmit={handleSearch} className="header-search-form">
+              <button type="submit" className="header-search-icon-btn" aria-label="검색">
+                <span className="material-symbols-outlined">search</span>
+              </button>
+              <input
+                type="text"
+                placeholder="회의 일지 검색..."
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                aria-label="회의 일지 검색"
+              />
+            </form>
           </div>
-        </div>
+          <div className="header-actions">
+            <button type="button" className="btn-primary" onClick={openAddModal}>
+              <span className="material-symbols-outlined">add</span>
+              새 회의 일지
+            </button>
+            <PageHeaderNotifyChat noWrapper buttonClassName="icon-btn" />
+          </div>
+        </header>
+      )}
 
+      <div className={`page-content${isMobile ? ' meeting-minutes-page-content--mobile' : ''}`}>
+        {!isMobile ? (
+          <div className="meeting-minutes-top">
+            <div>
+              <h2 className="meeting-minutes-title">회의 일지</h2>
+              <p className="page-desc">
+                참석자로 지정되었거나 내가 작성한 회의만 목록에 표시됩니다. {pagination.total}건 (총{' '}
+                {pagination.totalPages}페이지)
+              </p>
+            </div>
+          </div>
+        ) : null}
+
+        {isMobile ? (
+          <section className="meeting-minutes-m-list" aria-label="회의 목록">
+            {loading ? (
+              <p className="meeting-minutes-m-empty">불러오는 중…</p>
+            ) : items.length === 0 ? (
+              <p className="meeting-minutes-m-empty">등록된 회의 일지가 없습니다.</p>
+            ) : (
+              <ul className="meeting-minutes-m-cards">
+                {items.map((row) => {
+                  const badge = meetingStatusBadge(row.status);
+                  const attendees = Array.isArray(row.attendees) ? row.attendees : [];
+                  const showVideo = isVideoLocation(row.location);
+                  const isDraft = String(row.status) !== 'Finalized';
+                  return (
+                    <li key={row._id}>
+                      <article
+                        className={`meeting-minutes-m-card${isDraft ? ' meeting-minutes-m-card--draft' : ''}`}
+                      >
+                        <div className="meeting-minutes-m-card-head">
+                          <span className={badge.className}>{badge.label}</span>
+                          <button
+                            type="button"
+                            className="meeting-minutes-m-more"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openDetailModal(row);
+                            }}
+                            aria-label="메뉴"
+                          >
+                            <span className="material-symbols-outlined">more_vert</span>
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          className="meeting-minutes-m-card-body-btn"
+                          onClick={() => openDetailModal(row)}
+                        >
+                          <h3 className="meeting-minutes-m-card-title">{row.title || '—'}</h3>
+                          <div className="meeting-minutes-m-meta">
+                            <span className="meeting-minutes-m-meta-line">
+                              <span className="material-symbols-outlined" aria-hidden>
+                                calendar_today
+                              </span>
+                              {formatMeetingDate(row.meetingDate)}
+                            </span>
+                            <span className="meeting-minutes-m-meta-line">
+                              <span className="material-symbols-outlined" aria-hidden>
+                                {showVideo ? 'videocam' : 'location_on'}
+                              </span>
+                              {row.location?.trim() ? row.location : '—'}
+                            </span>
+                          </div>
+                        </button>
+                        <div className="meeting-minutes-m-card-foot">
+                          <div
+                            className="meeting-minutes-m-avatars"
+                            aria-label={
+                              attendees.length === 0
+                                ? '참석자 없음'
+                                : `참석자 ${attendees.length}명`
+                            }
+                          >
+                            {attendees.slice(0, 3).map((a, i) => (
+                              <span
+                                key={`${row._id}-a-${i}`}
+                                className="meeting-minutes-m-avatar"
+                                title={a.name || ''}
+                              >
+                                {attendeeInitials(a.name)}
+                              </span>
+                            ))}
+                            {attendees.length > 3 ? (
+                              <span className="meeting-minutes-m-avatar meeting-minutes-m-avatar--more">
+                                +{attendees.length - 3}
+                              </span>
+                            ) : null}
+                            {attendees.length === 0 ? (
+                              <span className="meeting-minutes-m-no-attendees">참석자 없음</span>
+                            ) : null}
+                          </div>
+                          {isDraft ? (
+                            <button
+                              type="button"
+                              className="meeting-minutes-m-action meeting-minutes-m-action--primary"
+                              onClick={(e) => openEditDraftModal(e, row)}
+                            >
+                              초안 수정
+                              <span className="material-symbols-outlined" aria-hidden>
+                                edit
+                              </span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="meeting-minutes-m-action meeting-minutes-m-action--primary"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openDetailModal(row);
+                              }}
+                            >
+                              상세 보기
+                              <span className="material-symbols-outlined" aria-hidden>
+                                arrow_forward
+                              </span>
+                            </button>
+                          )}
+                        </div>
+                      </article>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            {!loading && items.length > 0 ? (
+              <div className="pagination-bar meeting-minutes-pagination-bar meeting-minutes-m-pagination">
+                <p className="pagination-info meeting-minutes-pagination-info">
+                  <strong>{pagination.total}</strong>건 중 <strong>{rangeStart}</strong>–<strong>{rangeEnd}</strong>건
+                </p>
+                <ListPaginationButtons
+                  page={pagination.page}
+                  totalPages={Math.max(1, pagination.totalPages || 1)}
+                  onPageChange={handlePageChange}
+                />
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
+        {!isMobile ? (
         <div className="panel table-panel">
           <div className="table-wrap">
             <table className="data-table">
@@ -256,7 +464,22 @@ export default function MeetingMinutes() {
             />
           </div>
         </div>
+        ) : null}
       </div>
+
+      {isMobile ? (
+        <button
+          type="button"
+          className="meeting-minutes-fab"
+          onClick={openAddModal}
+          aria-label="새 회의 일지"
+          title="새 회의 일지"
+        >
+          <span className="material-symbols-outlined" aria-hidden>
+            add
+          </span>
+        </button>
+      ) : null}
 
       {isAddOpen && (
         <AddMeetingModal

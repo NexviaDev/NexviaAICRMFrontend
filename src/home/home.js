@@ -283,6 +283,117 @@ function chartSeriesAllZero(raw) {
   return arr.length === 0 || arr.every((x) => Number(x?.value) === 0);
 }
 
+function startOfWeekMonday(d) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  const day = x.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  x.setDate(x.getDate() + diff);
+  return x;
+}
+
+function formatShortMd(d) {
+  try {
+    return new Date(d).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * 캡처 리드 receivedAt 기준 최근 numWeeks주(월요일 시작). 시계열은 왼쪽이 가장 오래된 주.
+ */
+function computeWeeklyLeadSeries(leads, numWeeks = 6) {
+  const now = new Date();
+  const list = Array.isArray(leads) ? leads : [];
+  const thisMonday = startOfWeekMonday(now);
+  const series = [];
+  for (let i = 0; i < numWeeks; i++) {
+    const ws = new Date(thisMonday);
+    ws.setDate(thisMonday.getDate() - (numWeeks - 1 - i) * 7);
+    const weFull = new Date(ws);
+    weFull.setDate(ws.getDate() + 7);
+    weFull.setMilliseconds(-1);
+    const isCurrentWeek = i === numWeeks - 1;
+    const upper = isCurrentWeek ? now : weFull;
+    const t0 = ws.getTime();
+    const t1 = upper.getTime();
+    let count = 0;
+    for (const lead of list) {
+      const raw = lead?.receivedAt;
+      if (raw == null) continue;
+      const t = new Date(raw).getTime();
+      if (!Number.isNaN(t) && t >= t0 && t <= t1) count += 1;
+    }
+    const label = `${formatShortMd(ws)}–${formatShortMd(upper)}`;
+    series.push({ label, value: count });
+  }
+  return series;
+}
+
+/** 주간 리드 건수 단일 꺾은선 (순마진 차트와 동일 레이아웃·툴팁) */
+function WeeklyLeadCountLineChart({ series, title }) {
+  const [hoverIdx, setHoverIdx] = useState(null);
+  const cur = Array.isArray(series) ? series : [];
+  const maxAbs = lineChartMaxAbs(cur, []);
+  const dCur = buildLinePathD(cur, maxAbs);
+  const stroke = MARGIN_LINE_CURRENT;
+
+  return (
+    <div className="home-line-chart-chart-block">
+      <svg
+        className="home-line-chart"
+        viewBox={`0 0 ${LINE_CHART_VB.w} ${LINE_CHART_VB.h}`}
+        preserveAspectRatio="none"
+        aria-hidden
+      >
+        {dCur ? (
+          <path
+            d={dCur}
+            fill="none"
+            stroke={stroke}
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ) : null}
+        {cur.map((item, idx) => {
+          const x = lineChartX(idx, cur.length);
+          const y = lineChartY(Number(item?.value) || 0, maxAbs);
+          return (
+            <circle
+              key={`${title}-lw-dot-${item.label}-${idx}`}
+              cx={x}
+              cy={y}
+              r="5"
+              fill={stroke}
+              stroke="#fff"
+              strokeWidth="1.5"
+            />
+          );
+        })}
+      </svg>
+      <div className="home-line-chart-hover-zones" role="presentation">
+        {cur.map((item, idx) => (
+          <div
+            key={`${title}-lw-hz-${item.label}-${idx}`}
+            className="home-line-chart-hover-zone"
+            onMouseEnter={() => setHoverIdx(idx)}
+            onMouseLeave={() => setHoverIdx(null)}
+          >
+            {hoverIdx === idx ? (
+              <div className="home-chart-tooltip-fly home-chart-tooltip-fly--line" role="tooltip">
+                <strong>{item.label}</strong>
+                <div>수신 {Number(item.value) || 0}건</div>
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** 올해·전년 이중 꺾은선 (순마진·소비자가 공용) */
 function MarginLineChartWithTooltips({
   marginLineCurrent,
@@ -376,7 +487,6 @@ const CONSUMER_LINE_PREV = MARGIN_LINE_PREV;
 export default function Home() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [leadChannels, setLeadChannels] = useState([]);
   const [leadChannelsLoading, setLeadChannelsLoading] = useState(true);
   /** 캡처 채널별 수신 리드 (receivedAt 오름차순 = 가장 오래된 것부터) */
   const [recentCaptureLeads, setRecentCaptureLeads] = useState([]);
@@ -388,6 +498,8 @@ export default function Home() {
   /** 인사이트 그래프: 막대 | 꺾은선 (기본 소비자=막대, 순마진=꺾은선) */
   const [consumerChartMode, setConsumerChartMode] = useState('bar');
   const [marginChartMode, setMarginChartMode] = useState('line');
+  /** 홈 캡처 채널 주간 리드: 꺾은선 기본, 막대 옵션 (순마진 그래프와 동일 토글 UX) */
+  const [leadChannelChartMode, setLeadChannelChartMode] = useState('line');
   /** 홈 수신 리드: 완료 숨김(permanent) · 1주 스누즈(snoozed ISO) */
   const [leadHomeVisibility, setLeadHomeVisibility] = useState(() =>
     loadHomeCaptureLeadVisibility(getLeadVisibilityUserKey())
@@ -512,16 +624,6 @@ export default function Home() {
         if (!cancelled && res.ok) {
           const items = Array.isArray(json.items) ? json.items : [];
           const visibleForms = filterLeadCaptureFormsForHomeViewer(items, getStoredCrmUser());
-          const bySource = new Map();
-          visibleForms.forEach((item) => {
-            const source = String(item?.source || '기타 채널').trim() || '기타 채널';
-            const prev = bySource.get(source) || 0;
-            bySource.set(source, prev + (Number(item?.totalLeads) || 0));
-          });
-          const sorted = Array.from(bySource.entries())
-            .map(([source, count]) => ({ source, count }))
-            .sort((a, b) => b.count - a.count);
-          setLeadChannels(sorted);
 
           const leadBatches = await Promise.all(
             visibleForms.map(async (form) => {
@@ -553,12 +655,10 @@ export default function Home() {
           });
           if (!cancelled) setRecentCaptureLeads(merged);
         } else if (!cancelled) {
-          setLeadChannels([]);
           setRecentCaptureLeads([]);
         }
       } catch (_) {
         if (!cancelled) {
-          setLeadChannels([]);
           setRecentCaptureLeads([]);
         }
       } finally {
@@ -729,6 +829,13 @@ export default function Home() {
     if (isMobile) return leadsCappedForHome.slice(0, HOME_MOBILE_PREVIEW_LEADS);
     return leadsCappedForHome;
   }, [isMobile, leadsCappedForHome]);
+
+  /** 캡처 리드 주간(월요일 기준 6주) 집계 — 꺾은선·막대 공용 */
+  const leadWeeklySeries = useMemo(
+    () => computeWeeklyLeadSeries(recentCaptureLeads, 6),
+    [recentCaptureLeads]
+  );
+  const leadWeeklyBarSeries = useMemo(() => prepareChartSeries(leadWeeklySeries), [leadWeeklySeries]);
 
   const dismissLeadFromHome = useCallback((leadId) => {
     const key = getLeadVisibilityUserKey();
@@ -1093,40 +1200,99 @@ export default function Home() {
         </section>
 
         <div className="home-top-grid">
-          <div className="panel home-lead-channel-panel">
-            <div className="panel-head">
-              <h2>캡처 채널별 리드 수신</h2>
-              {isMobile ? (
-                <button
-                  type="button"
-                  className="home-pipeline-link home-pipeline-link--btn"
-                  onClick={() => openHomeView('channels')}
-                >
-                  전체 보기
-                </button>
-              ) : (
-                <Link to="/lead-capture" className="home-pipeline-link">
-                  채널 관리
-                </Link>
-              )}
+          <div className="panel home-lead-channel-panel home-chart-panel">
+            <div className="panel-head home-chart-head">
+              <div>
+                <h2>캡처 채널별 리드 수신</h2>
+                <p className="home-chart-subtitle">
+                  최근 6주간 주간 수신 건수입니다. 꺾은선은 추이, 막대는 주간 비교에 적합합니다.
+                </p>
+              </div>
+              <div className="home-chart-actions">
+                <div className="home-chart-view-toggle">
+                  <button
+                    type="button"
+                    className="home-chart-type-icon active"
+                    onClick={() => setLeadChannelChartMode(leadChannelChartMode === 'bar' ? 'line' : 'bar')}
+                    aria-label={
+                      leadChannelChartMode === 'bar'
+                        ? '막대 그래프로 보는 중입니다. 꺾은선으로 전환합니다.'
+                        : '꺾은선 그래프로 보는 중입니다. 막대로 전환합니다.'
+                    }
+                    title={leadChannelChartMode === 'bar' ? '꺾은선 그래프로 전환' : '막대 그래프로 전환'}
+                  >
+                    <span className="material-symbols-outlined" aria-hidden>
+                      {leadChannelChartMode === 'bar' ? 'bar_chart' : 'show_chart'}
+                    </span>
+                  </button>
+                </div>
+                {isMobile ? (
+                  <button
+                    type="button"
+                    className="home-pipeline-link home-pipeline-link--btn"
+                    onClick={() => openHomeView('channels')}
+                  >
+                    전체 보기
+                  </button>
+                ) : (
+                  <Link to="/lead-capture" className="home-pipeline-link">
+                    채널 관리
+                  </Link>
+                )}
+              </div>
             </div>
-            <div className="home-lead-channel-body">
+            <div className="home-chart-body home-lead-channel-body home-lead-channel-body--chart">
               {leadChannelsLoading ? (
                 <p className="home-chart-empty">채널 데이터 불러오는 중…</p>
-              ) : leadChannels.length === 0 ? (
-                <p className="home-chart-empty">표시할 캡처 채널 데이터가 없습니다.</p>
+              ) : recentCaptureLeads.length === 0 ? (
+                <p className="home-chart-empty">표시할 캡처 리드가 없습니다.</p>
+              ) : leadChannelChartMode === 'line' ? (
+                <div className="home-line-chart-wrap">
+                  <WeeklyLeadCountLineChart series={leadWeeklySeries} title="home-lead-weekly" />
+                  <div className="home-line-chart-legend" aria-hidden>
+                    <span>
+                      <span className="home-line-legend-swatch current" /> 주간 수신 건수
+                    </span>
+                  </div>
+                  <div className="home-line-chart-labels">
+                    {leadWeeklySeries.map((item) => (
+                      <span key={`home-lw-lbl-${item.label}`}>{item.label}</span>
+                    ))}
+                  </div>
+                </div>
               ) : (
-                <ul className="home-lead-channel-list">
-                  {leadChannels.slice(0, 8).map((channel) => (
-                    <li key={channel.source} className="home-lead-channel-item">
-                      <div className="home-lead-channel-source">
-                        <span className="home-lead-channel-dot" />
-                        <span>{channel.source}</span>
+                <div className="home-bar-chart-wrap">
+                  <div className="home-mini-chart">
+                    {leadWeeklyBarSeries.map((item, idx) => (
+                      <div
+                        key={`home-lw-bar-${item.label}-${idx}`}
+                        className="home-mini-chart-col home-mini-chart-col--tip"
+                      >
+                        <div className="home-mini-chart-track">
+                          <div className="home-mini-chart-bar-hit">
+                            <div
+                              className={`home-mini-chart-bar ${item.value < 0 ? 'negative' : ''}`}
+                              style={{
+                                height: `${Math.max(12, item.height * 2)}%`,
+                                backgroundColor:
+                                  item.value < 0 ? CHART_PASTEL_NEGATIVE : chartPastelAt(idx)
+                              }}
+                            />
+                            <div className="home-chart-tooltip-fly home-chart-tooltip-fly--bar" role="tooltip">
+                              <strong>{item.label}</strong>
+                              <span>{Number(item.value) || 0}건</span>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                      <strong>{channel.count.toLocaleString()}건</strong>
-                    </li>
-                  ))}
-                </ul>
+                    ))}
+                  </div>
+                  <div className="home-bar-chart-labels">
+                    {leadWeeklyBarSeries.map((item) => (
+                      <span key={`home-lw-x-${item.label}`}>{item.label}</span>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
           </div>
@@ -1456,23 +1622,89 @@ export default function Home() {
         ) : null}
         {activeHomeView === 'calendar' ? <Calendar embedded hideBottomSection={false} /> : null}
         {activeHomeView === 'channels' ? (
-          <div className="home-modal-channels" aria-label="캡처 채널 전체">
+          <div className="home-modal-channels home-modal-channels--chart" aria-label="캡처 채널별 리드 주간 그래프">
+            {!leadChannelsLoading && recentCaptureLeads.length > 0 ? (
+              <div className="home-modal-channel-chart-toolbar">
+                <span className="home-modal-channel-chart-toolbar-label">표시 형식</span>
+                <div className="home-chart-view-toggle">
+                  <button
+                    type="button"
+                    className={`home-chart-type-icon${leadChannelChartMode === 'line' ? ' active' : ''}`}
+                    onClick={() => setLeadChannelChartMode('line')}
+                    aria-pressed={leadChannelChartMode === 'line'}
+                    aria-label="꺾은선 그래프"
+                    title="꺾은선"
+                  >
+                    <span className="material-symbols-outlined" aria-hidden>
+                      show_chart
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`home-chart-type-icon${leadChannelChartMode === 'bar' ? ' active' : ''}`}
+                    onClick={() => setLeadChannelChartMode('bar')}
+                    aria-pressed={leadChannelChartMode === 'bar'}
+                    aria-label="막대 그래프"
+                    title="막대"
+                  >
+                    <span className="material-symbols-outlined" aria-hidden>
+                      bar_chart
+                    </span>
+                  </button>
+                </div>
+              </div>
+            ) : null}
             {leadChannelsLoading ? (
               <p className="home-chart-empty">채널 데이터 불러오는 중…</p>
-            ) : leadChannels.length === 0 ? (
-              <p className="home-chart-empty">표시할 캡처 채널 데이터가 없습니다.</p>
+            ) : recentCaptureLeads.length === 0 ? (
+              <p className="home-chart-empty">표시할 캡처 리드가 없습니다.</p>
+            ) : leadChannelChartMode === 'line' ? (
+              <div className="home-line-chart-wrap">
+                <WeeklyLeadCountLineChart series={leadWeeklySeries} title="home-modal-lead-weekly" />
+                <div className="home-line-chart-legend" aria-hidden>
+                  <span>
+                    <span className="home-line-legend-swatch current" /> 주간 수신 건수
+                  </span>
+                </div>
+                <div className="home-line-chart-labels">
+                  {leadWeeklySeries.map((item) => (
+                    <span key={`modal-lw-lbl-${item.label}`}>{item.label}</span>
+                  ))}
+                </div>
+              </div>
             ) : (
-              <ul className="home-lead-channel-list">
-                {leadChannels.map((channel) => (
-                  <li key={channel.source} className="home-lead-channel-item">
-                    <div className="home-lead-channel-source">
-                      <span className="home-lead-channel-dot" />
-                      <span>{channel.source}</span>
+              <div className="home-bar-chart-wrap">
+                <div className="home-mini-chart">
+                  {leadWeeklyBarSeries.map((item, idx) => (
+                    <div
+                      key={`modal-lw-bar-${item.label}-${idx}`}
+                      className="home-mini-chart-col home-mini-chart-col--tip"
+                    >
+                      <div className="home-mini-chart-track">
+                        <div className="home-mini-chart-bar-hit">
+                          <div
+                            className={`home-mini-chart-bar ${item.value < 0 ? 'negative' : ''}`}
+                            style={{
+                              height: `${Math.max(12, item.height * 2)}%`,
+                              backgroundColor:
+                                item.value < 0 ? CHART_PASTEL_NEGATIVE : chartPastelAt(idx)
+                            }}
+                          />
+                          <div className="home-chart-tooltip-fly home-chart-tooltip-fly--bar" role="tooltip">
+                            <strong>{item.label}</strong>
+                            <span>{Number(item.value) || 0}건</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <strong>{channel.count.toLocaleString()}건</strong>
-                  </li>
-                ))}
-              </ul>
+                  ))}
+                </div>
+                <div className="home-bar-chart-labels">
+                  {leadWeeklyBarSeries.map((item) => (
+                    <span key={`modal-lw-x-${item.label}`}>{item.label}</span>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
         ) : null}

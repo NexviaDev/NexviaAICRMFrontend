@@ -170,3 +170,384 @@
   max-width: 22rem;
   line-height: 1.5;
 }
+
+/* ---------- Sample Design: Meeting Results for mobile (Ethereal Organizer) ---------- */
+/* 토큰: md — primary #006c53, surface #f8fafa, primary-container #8ff6d0, tertiary-container #fed9b8 */
+
+.meeting-minutes-m-top {
+  padding: 0.75rem 1rem 1rem;
+  background: #f8fafa;
+  border-bottom: none;
+}
+
+.meeting-minutes-m-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.meeting-minutes-m-title {
+  margin: 0;
+  font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #006c53;
+  letter-spacing: -0.02em;
+}
+
+.meeting-minutes-m-notify-group {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.meeting-minutes-m-icon-btn {
+  width: 2.5rem;
+  height: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #596061;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.meeting-minutes-m-icon-btn:hover {
+  background: rgba(143, 246, 208, 0.22);
+  color: #006c53;
+}
+
+.meeting-minutes-m-icon-btn .material-symbols-outlined {
+  font-size: 1.25rem;
+}
+
+.meeting-minutes-m-search {
+  position: relative;
+  display: block;
+  width: 100%;
+  margin: 0;
+}
+
+.meeting-minutes-m-search-icon {
+  position: absolute;
+  left: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 1.25rem;
+  color: #757c7d;
+  pointer-events: none;
+}
+
+.meeting-minutes-m-search input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.95rem 1rem 0.95rem 2.85rem;
+  border: none;
+  border-radius: 0.75rem;
+  background: #e3e9ea;
+  font-size: 0.9375rem;
+  color: #2c3435;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.meeting-minutes-m-search input::placeholder {
+  color: #757c7d;
+}
+
+.meeting-minutes-m-search input:focus {
+  outline: none;
+  background: #ffffff;
+  box-shadow: 0 0 0 2px rgba(0, 108, 83, 0.25);
+}
+
+.meeting-minutes-m-summary {
+  margin: 1rem 0 0;
+  font-size: 0.8125rem;
+  color: #596061;
+  line-height: 1.4;
+}
+
+.meeting-minutes-m-summary strong {
+  color: #2c3435;
+  font-weight: 600;
+}
+
+.meeting-minutes-m-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.75rem;
+  color: #8191a0;
+  line-height: 1.45;
+}
+
+.meeting-minutes-page-content--mobile {
+  padding: 1rem 1rem 5.5rem;
+  background: #f8fafa;
+  flex: 1;
+}
+
+.meeting-minutes-m-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.meeting-minutes-m-empty {
+  margin: 0;
+  padding: 2rem 0.5rem;
+  text-align: center;
+  font-size: 0.9rem;
+  color: #596061;
+}
+
+.meeting-minutes-m-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.meeting-minutes-m-card {
+  background: #ffffff;
+  border-radius: 0.75rem;
+  padding: 1.15rem 1.15rem 1rem;
+  box-shadow: 0 4px 24px rgba(44, 52, 53, 0.06);
+}
+
+.meeting-minutes-m-card--draft {
+  border-left: 4px solid #755a40;
+  padding-left: calc(1.15rem - 4px);
+}
+
+.meeting-minutes-m-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
+.meeting-minutes-m-badge {
+  display: inline-block;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 999px;
+}
+
+.meeting-minutes-m-badge--final {
+  background: #8ff6d0;
+  color: #005d47;
+}
+
+.meeting-minutes-m-badge--draft {
+  background: #fed9b8;
+  color: #644b32;
+}
+
+.meeting-minutes-m-more {
+  padding: 0.2rem;
+  margin: -0.2rem;
+  border: none;
+  background: none;
+  color: #757c7d;
+  border-radius: 0.35rem;
+  cursor: pointer;
+  line-height: 0;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.meeting-minutes-m-more:hover {
+  color: #006c53;
+  background: rgba(143, 246, 208, 0.15);
+}
+
+.meeting-minutes-m-more .material-symbols-outlined {
+  font-size: 1.35rem;
+}
+
+.meeting-minutes-m-card-body-btn {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.meeting-minutes-m-card-title {
+  margin: 0 0 0.65rem;
+  font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: #2c3435;
+  line-height: 1.35;
+}
+
+.meeting-minutes-m-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 0.85rem;
+}
+
+.meeting-minutes-m-meta-line {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.8125rem;
+  color: #596061;
+}
+
+.meeting-minutes-m-meta-line .material-symbols-outlined {
+  font-size: 1.125rem;
+  color: #757c7d;
+  flex-shrink: 0;
+}
+
+.meeting-minutes-m-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.meeting-minutes-m-avatars {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0;
+}
+
+.meeting-minutes-m-avatar {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  border: 2px solid #ffffff;
+  margin-left: -0.45rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.5625rem;
+  font-weight: 700;
+  color: #4f5161;
+  background: #e1e1f5;
+  box-sizing: border-box;
+}
+
+.meeting-minutes-m-avatars .meeting-minutes-m-avatar:first-child {
+  margin-left: 0;
+}
+
+.meeting-minutes-m-avatar:nth-child(1) {
+  background: #d8e8f5;
+}
+
+.meeting-minutes-m-avatar:nth-child(2) {
+  background: #e1e1f5;
+}
+
+.meeting-minutes-m-avatar:nth-child(3) {
+  background: #c5e8d6;
+}
+
+.meeting-minutes-m-avatar--more {
+  font-size: 0.625rem;
+  background: #eaefef;
+  color: #596061;
+}
+
+.meeting-minutes-m-no-attendees {
+  font-size: 0.75rem;
+  color: #8191a0;
+  margin-left: 0.15rem;
+}
+
+.meeting-minutes-m-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.15s ease;
+}
+
+.meeting-minutes-m-action--primary {
+  color: #006c53;
+}
+
+.meeting-minutes-m-action--primary:hover {
+  opacity: 0.88;
+}
+
+.meeting-minutes-m-action .material-symbols-outlined {
+  font-size: 1rem;
+}
+
+.meeting-minutes-m-pagination {
+  margin-top: 0.5rem;
+  padding: 1rem 0 0;
+  border-top: none;
+  background: transparent;
+}
+
+.meeting-minutes-m-pagination .pagination-info {
+  text-align: center;
+}
+
+.meeting-minutes-fab {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 35;
+  width: 3.5rem;
+  height: 3.5rem;
+  border: none;
+  border-radius: 1rem;
+  background: #006c53;
+  color: #e5fff2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 8px 28px rgba(44, 52, 53, 0.18);
+  transition: transform 0.12s ease, background 0.15s ease;
+}
+
+.meeting-minutes-fab:hover {
+  background: #005f48;
+}
+
+.meeting-minutes-fab:active {
+  transform: scale(0.96);
+}
+
+.meeting-minutes-fab .material-symbols-outlined {
+  font-size: 1.75rem;
+}
+
+@media (min-width: 769px) {
+  .meeting-minutes-fab {
+    display: none;
+  }
+}
