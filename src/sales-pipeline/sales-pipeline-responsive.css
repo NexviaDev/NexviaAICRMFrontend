@@ -77,6 +77,35 @@
     box-shadow: 0 0 0 2px rgba(0, 108, 83, 0.12);
   }
 
+  .sp-mobile-mine-wrap {
+    padding: 0 1rem 0.65rem;
+  }
+
+  .sp-mobile-mine-chips {
+    display: flex;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+  }
+
+  .sp-mobile-mine-chip {
+    padding: 0.38rem 0.85rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    font-family: inherit;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--text-muted, #64748b);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+
+  .sp-mobile-mine-chip.is-active {
+    border-color: rgba(92, 107, 192, 0.45);
+    background: rgba(92, 107, 192, 0.1);
+    color: var(--primary, #5c6bc0);
+  }
+
   .sp-add-btn {
     display: none;
   }

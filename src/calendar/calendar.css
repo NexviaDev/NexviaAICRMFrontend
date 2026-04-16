@@ -1038,3 +1038,212 @@
 .calendar-ai-cta:active {
   transform: scale(0.98);
 }
+
+/* 월간: 날짜 드래그 선택 강조 */
+.calendar-day.calendar-day--drag-select {
+  background: #eef2ff;
+  box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.35);
+}
+
+.calendar-day.calendar-day--drag-select.today {
+  background: #e0e7ff;
+}
+
+/* 주간 보기 */
+.calendar-week-view {
+  padding: 0.35rem 0.25rem 0.75rem;
+}
+
+.calendar-week-drag-hint {
+  margin: 0 0 0.65rem 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.calendar-week-view-scroll {
+  max-height: min(70vh, 52rem);
+  overflow: auto;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: var(--card, #fff);
+}
+
+.calendar-week-view-header-row {
+  display: grid;
+  grid-template-columns: 2.75rem repeat(7, minmax(0, 1fr));
+  gap: 0;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--card, #fff);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.calendar-week-view-corner {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0.35rem 0.2rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: #f8fafc;
+}
+
+.calendar-week-col-head {
+  min-width: 0;
+  padding: 0.35rem 0.25rem 0.45rem;
+  text-align: center;
+  border-left: 1px solid rgba(0, 0, 0, 0.06);
+  background: #fafbfc;
+}
+
+.calendar-week-col-head-main {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+}
+
+.calendar-week-col-wd {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+.calendar-week-col-num {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.calendar-week-allday-chips {
+  margin-top: 0.35rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  justify-content: center;
+}
+
+.calendar-week-allday-chip {
+  max-width: 100%;
+  padding: 0.12rem 0.35rem;
+  font-size: 0.58rem;
+  font-weight: 600;
+  font-family: inherit;
+  border: none;
+  border-radius: 0.3rem;
+  cursor: pointer;
+  background: var(--cal-primary-soft);
+  color: #4338ca;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.calendar-week-allday-chip:hover {
+  filter: brightness(0.97);
+}
+
+.calendar-week-allday-more {
+  font-size: 0.58rem;
+  color: var(--text-muted);
+}
+
+.calendar-week-body {
+  display: grid;
+  grid-template-columns: 2.75rem repeat(7, minmax(0, 1fr));
+  align-items: stretch;
+  min-width: 0;
+}
+
+.calendar-week-time-rail {
+  display: flex;
+  flex-direction: column;
+  background: #f8fafc;
+  border-right: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.calendar-week-time-label {
+  flex: 0 0 2rem;
+  height: 2rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-align: right;
+  padding-right: 0.35rem;
+  padding-top: 0.1rem;
+  box-sizing: border-box;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+/* 8열 그리드에서 요일 영역(열 2~8)을 한 덩어리로 */
+.calendar-week-cols {
+  grid-column: 2 / -1;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.calendar-week-day-column {
+  min-width: 0;
+  border-left: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.calendar-week-hour-grid {
+  position: relative;
+  min-height: calc(24 * 2rem);
+}
+
+.calendar-week-slot {
+  height: 2rem;
+  box-sizing: border-box;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  cursor: crosshair;
+  transition: background 0.08s;
+}
+
+.calendar-week-slot:hover {
+  background: rgba(99, 102, 241, 0.07);
+}
+
+.calendar-week-slot--drag {
+  background: var(--cal-primary-soft);
+}
+
+.calendar-week-ev-block {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  z-index: 2;
+  overflow: hidden;
+  padding: 0.1rem 0.25rem;
+  border: none;
+  border-radius: 0.3rem;
+  text-align: left;
+  font-size: 0.58rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  line-height: 1.2;
+  background: var(--cal-primary-soft);
+  color: #4338ca;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  display: flex;
+  align-items: flex-start;
+  gap: 0.15rem;
+}
+
+.calendar-week-ev-block:hover {
+  filter: brightness(0.97);
+  z-index: 4;
+}
+
+.calendar-week-ev-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

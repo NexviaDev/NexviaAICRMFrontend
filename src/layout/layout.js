@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Outlet, useLocation, useNavigate, Link } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { API_BASE } from '@/config';
 import { getPendingExcelImportJobs, removePendingExcelImportJob } from '@/lib/cc-excel-import-jobs';
 import { LAYOUT_EXCEL_IMPORT_POLL_MS } from '@/lib/polling-intervals';
@@ -23,8 +23,10 @@ export default function Layout() {
   });
   const location = useLocation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const isSalesPipeline = location.pathname === '/sales-pipeline';
   const isMessenger = location.pathname === '/messenger';
+  const isProjectGantt = location.pathname === '/project' && searchParams.get('view') === 'gantt';
 
   useEffect(() => {
     const token = localStorage.getItem('crm_token');
@@ -140,7 +142,7 @@ export default function Layout() {
             <span className="material-symbols-outlined">menu</span>
           </button>
         </header>
-        <div className={`app-main-content ${isSalesPipeline || isMessenger ? 'app-main-content--fullheight' : ''}`}>
+        <div className={`app-main-content ${isSalesPipeline || isMessenger || isProjectGantt ? 'app-main-content--fullheight' : ''}`}>
           <Outlet />
         </div>
       </main>

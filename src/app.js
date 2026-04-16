@@ -8,6 +8,7 @@ const Home = lazy(() => import('./home/home'));
 const CustomerCompanies = lazy(() => import('./customer-companies/customer-companies'));
 const CustomerCompanyEmployees = lazy(() => import('./customer-company-employees/customer-company-employees'));
 const Calendar = lazy(() => import('./calendar/calendar'));
+const Project = lazy(() => import('./project/project'));
 const SalesReport = lazy(() => import('./sales-report/sales-report'));
 const EmployeePerformance = lazy(() => import('./employee-performance/employee-performance'));
 const EmployeeWorkReport = lazy(() => import('./employee-work-report/employee-work-report'));
@@ -15,7 +16,7 @@ const CompanyOverview = lazy(() => import('./company-overview/company-overview')
 const SalesPipeline = lazy(() => import('./sales-pipeline/sales-pipeline'));
 const ProductList = lazy(() => import('./product-list/product-list'));
 const MeetingMinutes = lazy(() => import('./meeting-minutes/meeting-minutes'));
-const Project = lazy(() => import('./project/project'));
+const Kpi = lazy(() => import('./kpi/kpi'));
 const AiVoice = lazy(() => import('./ai-voice/ai-voice'));
 const Email = lazy(() => import('./email/email'));
 const Map = lazy(() => import('./map/map'));
@@ -100,12 +101,13 @@ function App() {
           <Route path="company-overview" element={<CompanyOverview />} />
           <Route path="customer-companies" element={<PendingRestrictedRoute><CustomerCompanies /></PendingRestrictedRoute>} />
           <Route path="customer-company-employees" element={<PendingRestrictedRoute><CustomerCompanyEmployees /></PendingRestrictedRoute>} />
+          <Route path="kpi" element={<PendingRestrictedRoute><Kpi /></PendingRestrictedRoute>} />
           <Route path="calendar" element={<PendingRestrictedRoute><Calendar /></PendingRestrictedRoute>} />
+          <Route path="project" element={<PendingRestrictedRoute><Project /></PendingRestrictedRoute>} />
           <Route path="sales-pipeline" element={<PendingRestrictedRoute><SalesPipeline /></PendingRestrictedRoute>} />
           <Route path="product-list" element={<PendingRestrictedRoute><ProductList /></PendingRestrictedRoute>} />
           <Route path="lead-capture" element={<PendingRestrictedRoute><LeadCapture /></PendingRestrictedRoute>} />
           <Route path="meeting-minutes" element={<PendingRestrictedRoute><MeetingMinutes /></PendingRestrictedRoute>} />
-          <Route path="project" element={<PendingRestrictedRoute><Project /></PendingRestrictedRoute>} />
           <Route path="ai-voice" element={<PendingRestrictedRoute><AiVoice /></PendingRestrictedRoute>} />
           <Route path="email" element={<PendingRestrictedRoute><Email /></PendingRestrictedRoute>} />
           <Route path="messenger" element={<PendingRestrictedRoute><Messenger /></PendingRestrictedRoute>} />

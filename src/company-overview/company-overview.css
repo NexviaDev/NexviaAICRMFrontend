@@ -117,6 +117,193 @@
   font-size: 0.9rem;
 }
 
+.co-handover-pending-card {
+  border-color: #dbeafe;
+}
+
+.co-handover-pending-lead {
+  margin: 0 0 1rem;
+  font-size: 0.88rem;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.co-handover-pending-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.co-handover-pending-item {
+  padding: 0.75rem 0.9rem;
+  border-radius: 0.65rem;
+  background: #f8fafc;
+  border: 1px solid #e8eef4;
+  font-size: 0.88rem;
+  color: #334155;
+}
+
+.co-handover-group-card.co-handover-pending-item {
+  padding: 0.85rem 1rem;
+}
+
+.co-handover-reason-box {
+  margin: 0 0 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.5rem;
+  background: #f8fafc;
+  border: 1px solid #e8eef4;
+  font-size: 0.82rem;
+  color: #334155;
+  line-height: 1.5;
+}
+
+.co-handover-reason-k {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.03em;
+  margin-bottom: 0.35rem;
+}
+
+.co-handover-reason-v {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.co-handover-group-subject {
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.co-handover-group-people {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem 0.65rem;
+  margin: 0 0 0.55rem;
+}
+
+@media (max-width: 960px) {
+  .co-handover-group-people {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .co-handover-group-people {
+    grid-template-columns: 1fr;
+  }
+}
+
+.co-handover-ppl-cell {
+  padding: 0.5rem 0.55rem;
+  border-radius: 0.5rem;
+  background: #eef6fb;
+  border: 1px solid #dbeafe;
+}
+
+.co-handover-ppl-k {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #64748b;
+  letter-spacing: 0.02em;
+}
+
+.co-handover-ppl-hint {
+  display: block;
+  font-size: 0.68rem;
+  color: #94a3b8;
+  margin-bottom: 0.2rem;
+}
+
+.co-handover-ppl-v {
+  display: block;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.co-handover-ppl-pending {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.co-handover-ppl-consent {
+  font-weight: 600;
+  color: #334155;
+  line-height: 1.35;
+}
+
+.co-handover-inline-error {
+  margin-bottom: 0.65rem;
+}
+
+.co-handover-approve-row {
+  margin-top: 0.65rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.co-handover-approve-btn {
+  appearance: none;
+  border: 1px solid #c7e0d8;
+  background: #e8f5f0;
+  color: #1e4d3f;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.45rem 0.85rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.co-handover-approve-btn:hover:not(:disabled) {
+  background: #dff3eb;
+  border-color: #b8d9cc;
+}
+
+.co-handover-approve-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.co-handover-group-requester {
+  margin: 0 0 0.5rem;
+  font-size: 0.82rem;
+  color: #64748b;
+}
+
+.co-handover-group-targets {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.82rem;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.co-handover-pending-target {
+  display: block;
+  font-weight: 700;
+  color: #0f172a;
+  margin-bottom: 0.35rem;
+}
+
+.co-handover-pending-meta {
+  font-size: 0.82rem;
+  color: #64748b;
+  line-height: 1.45;
+}
+
 .company-info-list {
   margin: 0;
   display: flex;

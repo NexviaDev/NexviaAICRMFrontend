@@ -18,6 +18,8 @@ import './customer-company-employees-responsive.css';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import ListPaginationButtons from '@/components/list-pagination-buttons/list-pagination-buttons';
 import CustomerCompanyEmployeesExcelImportModal from './customer-company-employees-excel-import-modal/customer-company-employees-excel-import-modal';
+import AssigneeHandoverModal from '@/company-overview/assignee-handover-modal/assignee-handover-modal';
+import { getStoredCrmUser } from '@/lib/crm-role-utils';
 
 import * as XLSX from 'xlsx';
 
@@ -64,6 +66,9 @@ const STATUS_OPTIONS = ['', 'Lead', 'Active', 'Pending', 'Inactive'];
 const CUSTOM_FIELDS_PREFIX = 'customFields.';
 
 export default function CustomerCompanyEmployees() {
+  const me = useMemo(() => getStoredCrmUser(), []);
+  const canRequestAssigneeHandover = !!(me && String(me.role || '').toLowerCase() !== 'pending');
+  const [handoverCtx, setHandoverCtx] = useState(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const [items, setItems] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, limit: LIMIT, total: 0, totalPages: 0 });
@@ -500,6 +505,29 @@ export default function CustomerCompanyEmployees() {
     });
   }, []);
 
+  const openHandoverFromSelection = useCallback(() => {
+    if (!canRequestAssigneeHandover) return;
+    if (selected.size === 0) return;
+    const rows = [];
+    for (const id of selected) {
+      const row = selectedRowsRef.current.get(id) || sortedItems.find((r) => String(r._id) === String(id));
+      if (row) rows.push(row);
+    }
+    const withAssignee = rows.filter((r) => Array.isArray(r.assigneeUserIds) && r.assigneeUserIds.length > 0);
+    if (withAssignee.length === 0) {
+      window.alert('담당자가 지정된 연락처만 이관 신청할 수 있습니다.');
+      return;
+    }
+    setHandoverCtx({
+      targetType: 'customerCompanyEmployee',
+      targets: withAssignee.map((r) => ({
+        targetId: r._id,
+        targetLabel: `연락처: ${r.name || '—'}`,
+        assigneeUserIds: r.assigneeUserIds
+      }))
+    });
+  }, [canRequestAssigneeHandover, selected, sortedItems]);
+
   const fetchAllContactsForExport = useCallback(async () => {
     let page = 1;
     let totalPages = 1;
@@ -919,6 +947,17 @@ export default function CustomerCompanyEmployees() {
                 <img src="https://www.gstatic.com/images/branding/product/1x/contacts_2022_48dp.png" alt="" className="cce-action-google-icon" />
                 {googleSaving ? '저장 중...' : `구글 주소록에 저장 (${selected.size}명)`}
               </button>
+              {canRequestAssigneeHandover ? (
+                <button
+                  type="button"
+                  className="cce-action-bar-handover"
+                  onClick={openHandoverFromSelection}
+                  title="선택한 연락처의 담당 이관 신청 (여러 명 선택 가능, 담당자가 있는 항목만 신청, 관리자 메일 승인 후 반영)"
+                >
+                  <span className="material-symbols-outlined" aria-hidden>swap_horiz</span>
+                  인수인계
+                </button>
+              ) : null}
               <button type="button" className="cce-action-bar-cancel" onClick={clearSelection}>선택 해제</button>
             </div>
           </div>
@@ -1392,6 +1431,22 @@ export default function CustomerCompanyEmployees() {
             }
             fetchContacts(pagination.page);
           }}
+        />
+      )}
+      {handoverCtx && (
+        <AssigneeHandoverModal
+          open
+          onClose={() => setHandoverCtx(null)}
+          onSubmitted={() => {
+            fetchContacts(pagination.page);
+            clearSelection();
+          }}
+          targetType={handoverCtx.targetType}
+          targets={handoverCtx.targets}
+          assigneeIdToName={assigneeIdToName}
+          currentUserId={me?._id || me?.id}
+          companyEmployees={companyEmployees}
+          companyEmployeesLoaded={companyEmployeesLoaded}
         />
       )}
     </div>

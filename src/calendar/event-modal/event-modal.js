@@ -266,7 +266,25 @@ function googleCalendarQuery(calendarId) {
   return `?calendarId=${encodeURIComponent(calendarId)}`;
 }
 
-export default function EventModal({ eventId, isEdit, initialDate, calendarType, onClose, onSaved, onDeleted, currentUser, googleCalendarId, googleCalendarAccessRole }) {
+export default function EventModal({
+  eventId,
+  isEdit,
+  initialDate,
+  /** YYYY-MM-DD — 종일 또는 시간 일정의 종료일(주간 드래그 등) */
+  initialDateEnd,
+  /** 신규 추가 시에만: 종일 여부 초기값을 강제할 때 true/false */
+  initialAllDay,
+  /** 신규 추가 시에만: HH:mm */
+  initialStartTime,
+  initialEndTime,
+  calendarType,
+  onClose,
+  onSaved,
+  onDeleted,
+  currentUser,
+  googleCalendarId,
+  googleCalendarAccessRole
+}) {
   const isAdd = !eventId;
   const isPersonal = calendarType === 'personal';
   const isGoogle = !isAdd && isGoogleEventId(eventId);
@@ -302,10 +320,18 @@ export default function EventModal({ eventId, isEdit, initialDate, calendarType,
     : event ? (currentUser && String(event.userId) === String(currentUser._id)) : true;
 
   useEffect(() => {
-    if (isAdd && initialDate && /^\d{4}-\d{2}-\d{2}$/.test(initialDate)) {
-      setForm((prev) => ({ ...prev, startDate: initialDate, endDate: initialDate }));
-    }
-  }, [isAdd, initialDate]);
+    if (!isAdd || !initialDate || !/^\d{4}-\d{2}-\d{2}$/.test(initialDate)) return;
+    const endOk = initialDateEnd && /^\d{4}-\d{2}-\d{2}$/.test(initialDateEnd);
+    const endDate = endOk ? initialDateEnd : initialDate;
+    setForm((prev) => ({
+      ...prev,
+      startDate: initialDate,
+      endDate,
+      ...(initialAllDay === true || initialAllDay === false ? { allDay: initialAllDay } : {}),
+      ...(initialStartTime && /^\d{2}:\d{2}$/.test(initialStartTime) ? { startTime: initialStartTime } : {}),
+      ...(initialEndTime && /^\d{2}:\d{2}$/.test(initialEndTime) ? { endTime: initialEndTime } : {})
+    }));
+  }, [isAdd, initialDate, initialDateEnd, initialAllDay, initialStartTime, initialEndTime]);
 
   useEffect(() => {
     if (!isAdd && isGoogle) return;

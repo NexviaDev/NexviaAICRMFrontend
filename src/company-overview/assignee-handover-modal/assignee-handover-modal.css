@@ -1,0 +1,286 @@
+.ahm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(0.75rem, env(safe-area-inset-top, 0px)) 1rem max(0.75rem, env(safe-area-inset-bottom, 0px));
+  box-sizing: border-box;
+  background: rgba(15, 23, 42, 0.45);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ahm-panel {
+  width: 100%;
+  max-width: 460px;
+  /* 뷰포트보다 커지지 않게 하고 내용은 패널 안에서만 스크롤 */
+  max-height: min(92vh, calc(100dvh - 1.5rem));
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  background: var(--card, #ffffff);
+  border: 1px solid var(--card-border, #e2e8f0);
+  border-radius: 0.85rem;
+  box-shadow: 0 16px 48px rgba(15, 23, 42, 0.12);
+  padding: 1.35rem 1.4rem 1.25rem;
+}
+
+.ahm-head {
+  margin-bottom: 1rem;
+}
+
+.ahm-title {
+  margin: 0 0 0.4rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text, #0f172a);
+}
+
+.ahm-lead {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--text-muted, #475569);
+  line-height: 1.5;
+}
+
+.ahm-lead-muted {
+  font-weight: 400;
+  color: #94a3b8;
+}
+
+.ahm-target-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.15rem;
+  font-size: 0.82rem;
+  color: #475569;
+  line-height: 1.45;
+}
+
+.ahm-single-label {
+  margin: 0.4rem 0 0;
+  font-size: 0.88rem;
+  color: #334155;
+}
+
+.ahm-field-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.76rem;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+.ahm-field-hint-strong {
+  color: #334155;
+  font-weight: 600;
+}
+
+.ahm-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.ahm-field label,
+.ahm-label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64748b;
+  margin-bottom: 0.35rem;
+}
+
+.ahm-select {
+  width: 100%;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.5rem;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  font-size: 0.9rem;
+  color: #0f172a;
+}
+
+.ahm-select:focus {
+  outline: none;
+  border-color: #93c5d8;
+  box-shadow: 0 0 0 3px rgba(147, 197, 216, 0.35);
+}
+
+.ahm-textarea {
+  width: 100%;
+  min-height: 5.5rem;
+  max-height: 10rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.5rem;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  font-size: 0.88rem;
+  color: #0f172a;
+  line-height: 1.45;
+  resize: vertical;
+  font-family: inherit;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+.ahm-textarea:focus {
+  outline: none;
+  border-color: #93c5d8;
+  box-shadow: 0 0 0 3px rgba(147, 197, 216, 0.35);
+}
+
+.ahm-textarea::placeholder {
+  color: #94a3b8;
+}
+
+.ahm-static {
+  margin: 0;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.5rem;
+  background: #eef6fb;
+  border: 1px solid #dbeafe;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #0c4a6e;
+}
+
+.ahm-static-hint {
+  font-weight: 400;
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.ahm-error {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.5rem;
+  background: #fff7f7;
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  color: #b91c1c;
+  font-size: 0.85rem;
+}
+
+.ahm-done {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.5rem;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+  font-size: 0.85rem;
+}
+
+.ahm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.ahm-btn {
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.ahm-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ahm-btn--ghost {
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+  color: #475569;
+}
+
+.ahm-btn--ghost:hover:not(:disabled) {
+  background: #e8eef4;
+}
+
+.ahm-btn--primary {
+  background: #c5e3d8;
+  border-color: #9dc9ae;
+  color: #14532d;
+}
+
+.ahm-btn--primary:hover:not(:disabled) {
+  background: #b0d9c9;
+}
+
+.ahm-label-sub {
+  font-weight: 500;
+  color: #94a3b8;
+  font-size: 0.76rem;
+}
+
+.ahm-consent-lead {
+  margin-bottom: 0.45rem !important;
+}
+
+.ahm-consent-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  /* 패널 전체가 스크롤되므로 여기서는 높이 제한 없음(이중 스크롤 방지) */
+  border-radius: 0.5rem;
+  border: 1px solid #dbeafe;
+  background: #f8fafc;
+}
+
+.ahm-consent-item {
+  border-bottom: 1px solid #e8eef4;
+}
+
+.ahm-consent-item:last-child {
+  border-bottom: none;
+}
+
+.ahm-consent-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem 0.55rem;
+  cursor: pointer;
+  font-size: 0.86rem;
+  color: #334155;
+}
+
+.ahm-consent-label:hover {
+  background: #eef6fb;
+}
+
+.ahm-consent-check {
+  margin-top: 0.15rem;
+  flex-shrink: 0;
+  accent-color: #6eb89a;
+}
+
+.ahm-consent-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.ahm-consent-name {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.ahm-consent-role {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.ahm-consent-email {
+  font-size: 0.74rem;
+  color: #64748b;
+  word-break: break-all;
+}

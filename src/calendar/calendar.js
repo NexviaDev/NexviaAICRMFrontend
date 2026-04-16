@@ -6,6 +6,7 @@ import { googleEventDisplayTitle } from './google-event-display-title';
 import './calendar.css';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import { API_BASE } from '@/config';
+import { getSavedCalendarViewMode, patchCalendarViewTemplate } from '@/lib/list-templates';
 import {
   formatDateInSeoulYmd,
   ymdAddOneDay,
@@ -206,8 +207,15 @@ const FILTER_OPTIONS = [
 
 const VIEW_OPTIONS = [
   { key: 'month', label: '월' },
+  { key: 'week', label: '주' },
   { key: 'day', label: '일' }
 ];
+
+/** 일정 추가 모달 URL — 기간·시간(캘린더 드래그) */
+const DATE_END_PARAM = 'dateEnd';
+const ADD_ALLDAY_PARAM = 'ad';
+const ADD_TS_PARAM = 'ts';
+const ADD_TE_PARAM = 'te';
 
 /** 해당 월의 day에 걸치는지 (getEventDaysInMonth 재사용) */
 function eventTouchesCalendarDay(ev, year, month, day) {
@@ -220,6 +228,59 @@ function formatDayViewTitle(year, month, day) {
   if (Number.isNaN(d.getTime())) return '';
   const w = WEEKDAYS[d.getDay()];
   return `${year}년 ${month + 1}월 ${day}일 (${w})`;
+}
+
+function padCal2(n) {
+  return String(n).padStart(2, '0');
+}
+
+/** 월간 그리드와 동일: 주는 일요일 시작 */
+function sundayPartsOfLocalDate(year, month, day) {
+  const dt = new Date(year, month, day);
+  const dow = dt.getDay();
+  dt.setDate(dt.getDate() - dow);
+  return { y: dt.getFullYear(), m: dt.getMonth(), d: dt.getDate() };
+}
+
+function formatWeekRangeTitle(sunParts) {
+  const sat = new Date(sunParts.y, sunParts.m, sunParts.d + 6);
+  const s1 = `${sunParts.y}년 ${sunParts.m + 1}월 ${sunParts.d}일`;
+  if (sat.getFullYear() !== sunParts.y) {
+    return `${s1} – ${sat.getFullYear()}년 ${sat.getMonth() + 1}월 ${sat.getDate()}일`;
+  }
+  if (sat.getMonth() !== sunParts.m) {
+    return `${s1} – ${sat.getMonth() + 1}월 ${sat.getDate()}일`;
+  }
+  return `${s1} – ${sat.getDate()}일`;
+}
+
+function getWeekTimeBounds(sunParts) {
+  const s = new Date(sunParts.y, sunParts.m, sunParts.d, 0, 0, 0, 0);
+  const e = new Date(sunParts.y, sunParts.m, sunParts.d + 6, 23, 59, 59, 999);
+  return { timeMin: s.toISOString(), timeMax: e.toISOString() };
+}
+
+function localDateFromWeekMinute(sunParts, weekMinute) {
+  const totalDays = Math.floor(weekMinute / 1440);
+  const rem = weekMinute % 1440;
+  const h = Math.floor(rem / 60);
+  const min = rem % 60;
+  return new Date(sunParts.y, sunParts.m, sunParts.d + totalDays, h, min, 0, 0);
+}
+
+function getTimedSegmentForDay(ev, y, m, d) {
+  if (!ev?.start || ev.allDay) return null;
+  const s = new Date(ev.start);
+  const e = ev.end ? new Date(ev.end) : new Date(s.getTime() + 3600000);
+  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return null;
+  const dayStart = new Date(y, m, d, 0, 0, 0, 0);
+  const dayEnd = new Date(y, m, d, 23, 59, 59, 999);
+  const segStart = Math.max(s.getTime(), dayStart.getTime());
+  const segEnd = Math.min(e.getTime(), dayEnd.getTime());
+  if (segEnd < segStart) return null;
+  const startMins = (segStart - dayStart.getTime()) / 60000;
+  const endMins = (segEnd - dayStart.getTime()) / 60000;
+  return { startMins, endMins };
 }
 
 function formatTimeRangeKo(ev) {
@@ -284,8 +345,18 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
   const [error, setError] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [activeFilter, setActiveFilter] = useState('all');
-  const [viewMode, setViewMode] = useState('month');
+  const [viewMode, setViewMode] = useState(() => getSavedCalendarViewMode());
   const [selectedDay, setSelectedDay] = useState(() => new Date().getDate());
+  /** 주간 보기: 해당 주 일요일 (로컬) */
+  const [weekViewStart, setWeekViewStart] = useState(() =>
+    sundayPartsOfLocalDate(new Date().getFullYear(), new Date().getMonth(), new Date().getDate())
+  );
+  /** 월간 그리드 드래그 선택 { startDay, endDay } — 날짜 번호만, 현재 달 */
+  const [monthDragRange, setMonthDragRange] = useState(null);
+  const monthDragActiveRef = useRef(false);
+  /** 주간 시간 격자 드래그 — 주 시작 분 단위 */
+  const [weekDragRange, setWeekDragRange] = useState(null);
+  const weekDragActiveRef = useRef(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [googleCalendarList, setGoogleCalendarList] = useState([]);
   const [googleCalDropdownOpen, setGoogleCalDropdownOpen] = useState(false);
@@ -308,6 +379,10 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
   const modalEventId = searchParams.get(EVENT_ID_PARAM) || null;
   const modalEdit = searchParams.get(EDIT_PARAM) === '1';
   const modalDate = searchParams.get(DATE_PARAM) || null;
+  const modalDateEnd = searchParams.get(DATE_END_PARAM) || null;
+  const modalAddAllDay = searchParams.get(ADD_ALLDAY_PARAM) === '1';
+  const modalAddTs = searchParams.get(ADD_TS_PARAM) || null;
+  const modalAddTe = searchParams.get(ADD_TE_PARAM) || null;
   const modalGoogleCalendarId = searchParams.get(GC_PARAM) || undefined;
   const googleCalendarAccessRole = useMemo(() => {
     if (!modalGoogleCalendarId || !googleCalendarList.length) return undefined;
@@ -318,6 +393,11 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
   const openAddEvent = () => {
     const next = new URLSearchParams(searchParams);
     next.set(MODAL_PARAM, MODAL_EVENT);
+    next.delete(DATE_PARAM);
+    next.delete(DATE_END_PARAM);
+    next.delete(ADD_ALLDAY_PARAM);
+    next.delete(ADD_TS_PARAM);
+    next.delete(ADD_TE_PARAM);
     next.delete(EVENT_ID_PARAM);
     next.delete(GC_PARAM);
     next.delete(EDIT_PARAM);
@@ -328,11 +408,48 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
     const next = new URLSearchParams(searchParams);
     next.set(MODAL_PARAM, MODAL_EVENT);
     next.set(DATE_PARAM, dateStr);
+    next.delete(DATE_END_PARAM);
+    next.delete(ADD_ALLDAY_PARAM);
+    next.delete(ADD_TS_PARAM);
+    next.delete(ADD_TE_PARAM);
     next.delete(EVENT_ID_PARAM);
     next.delete(GC_PARAM);
     next.delete(EDIT_PARAM);
     setSearchParams(next, { replace: true });
   };
+
+  /** 드래그로 잡은 기간·시간 → 일정 추가 모달 */
+  const openAddEventFromSelection = useCallback(
+    ({
+      startYmd,
+      endYmd,
+      allDay,
+      startTime,
+      endTime
+    }) => {
+      const next = new URLSearchParams(searchParams);
+      next.set(MODAL_PARAM, MODAL_EVENT);
+      next.set(DATE_PARAM, startYmd);
+      if (endYmd && endYmd !== startYmd) next.set(DATE_END_PARAM, endYmd);
+      else next.delete(DATE_END_PARAM);
+      if (allDay) {
+        next.set(ADD_ALLDAY_PARAM, '1');
+        next.delete(ADD_TS_PARAM);
+        next.delete(ADD_TE_PARAM);
+      } else {
+        next.delete(ADD_ALLDAY_PARAM);
+        if (startTime) next.set(ADD_TS_PARAM, startTime);
+        else next.delete(ADD_TS_PARAM);
+        if (endTime) next.set(ADD_TE_PARAM, endTime);
+        else next.delete(ADD_TE_PARAM);
+      }
+      next.delete(EVENT_ID_PARAM);
+      next.delete(GC_PARAM);
+      next.delete(EDIT_PARAM);
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams]
+  );
   const openEventDetail = (eventId, googleCalendarId) => {
     if (!eventId) return;
     const next = new URLSearchParams(searchParams);
@@ -360,6 +477,10 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
     next.delete(EVENT_ID_PARAM);
     next.delete(EDIT_PARAM);
     next.delete(DATE_PARAM);
+    next.delete(DATE_END_PARAM);
+    next.delete(ADD_ALLDAY_PARAM);
+    next.delete(ADD_TS_PARAM);
+    next.delete(ADD_TE_PARAM);
     next.delete(GC_PARAM);
     setSearchParams(next, { replace: true });
   };
@@ -387,10 +508,12 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
     return rows;
   }, [days]);
 
-  const { timeMin, timeMax } = useMemo(
-    () => getMonthRange(current.year, current.month),
-    [current.year, current.month]
-  );
+  const { timeMin, timeMax } = useMemo(() => {
+    if (viewMode === 'week' && weekViewStart) {
+      return getWeekTimeBounds(weekViewStart);
+    }
+    return getMonthRange(current.year, current.month);
+  }, [viewMode, weekViewStart, current.year, current.month]);
 
   useEffect(() => {
     let cancelled = false;
@@ -403,6 +526,28 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
+
+  const applyCalendarViewMode = useCallback(
+    (mode) => {
+      if (mode === 'week') {
+        setWeekViewStart(sundayPartsOfLocalDate(current.year, current.month, selectedDay));
+      }
+      setViewMode(mode);
+      patchCalendarViewTemplate({ viewMode: mode }).catch(() => {});
+    },
+    [current.year, current.month, selectedDay]
+  );
+
+  useEffect(() => {
+    if (!currentUser?._id) return;
+    const v = currentUser.listTemplates?.calendar?.viewMode;
+    if (v === 'month' || v === 'week' || v === 'day') {
+      setViewMode(v);
+      if (v === 'week') {
+        setWeekViewStart(sundayPartsOfLocalDate(current.year, current.month, selectedDay));
+      }
+    }
+  }, [currentUser?._id]);
 
   useEffect(() => {
     try {
@@ -703,6 +848,19 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
       .slice(0, 5);
   }, [events, current.year, current.month]);
 
+  const weekColumnMeta = useMemo(() => {
+    if (!weekViewStart) return [];
+    return Array.from({ length: 7 }, (_, i) => {
+      const dt = new Date(weekViewStart.y, weekViewStart.m, weekViewStart.d + i);
+      return {
+        y: dt.getFullYear(),
+        m: dt.getMonth(),
+        d: dt.getDate(),
+        weekday: WEEKDAYS[dt.getDay()]
+      };
+    });
+  }, [weekViewStart]);
+
   const isMyEvent = useCallback((ev) => {
     if (ev._source === 'google') return true;
     if (!currentUser?._id) return false;
@@ -730,8 +888,109 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
     setSelectedDay(d.getDate());
   }, [current.year, current.month, selectedDay]);
 
+  const goPrevWeek = useCallback(() => {
+    setWeekViewStart((ws) => {
+      const d = new Date(ws.y, ws.m, ws.d - 7);
+      return { y: d.getFullYear(), m: d.getMonth(), d: d.getDate() };
+    });
+  }, []);
+
+  const goNextWeek = useCallback(() => {
+    setWeekViewStart((ws) => {
+      const d = new Date(ws.y, ws.m, ws.d + 7);
+      return { y: d.getFullYear(), m: d.getMonth(), d: d.getDate() };
+    });
+  }, []);
+
+  const endMonthDayDrag = useCallback(() => {
+    if (!monthDragActiveRef.current) return;
+    monthDragActiveRef.current = false;
+    setMonthDragRange((prev) => {
+      if (!prev) return null;
+      const a = Math.min(prev.startDay, prev.endDay);
+      const b = Math.max(prev.startDay, prev.endDay);
+      if (a !== b) {
+        const sy = `${current.year}-${String(current.month + 1).padStart(2, '0')}-${String(a).padStart(2, '0')}`;
+        const ey = `${current.year}-${String(current.month + 1).padStart(2, '0')}-${String(b).padStart(2, '0')}`;
+        window.setTimeout(() => {
+          openAddEventFromSelection({ startYmd: sy, endYmd: ey, allDay: true });
+        }, 0);
+      }
+      return null;
+    });
+  }, [current.year, current.month, openAddEventFromSelection]);
+
+  const endWeekTimeDrag = useCallback(() => {
+    if (!weekDragActiveRef.current) return;
+    weekDragActiveRef.current = false;
+    const ws = weekViewStart;
+    setWeekDragRange((prev) => {
+      if (!prev || !ws) return null;
+      let lo = Math.min(prev.start, prev.end);
+      let hi = Math.max(prev.start, prev.end);
+      if (lo === hi) hi = lo + 60;
+      const startDt = localDateFromWeekMinute(ws, lo);
+      const endDt = localDateFromWeekMinute(ws, hi);
+      const sy = `${startDt.getFullYear()}-${padCal2(startDt.getMonth() + 1)}-${padCal2(startDt.getDate())}`;
+      const ey = `${endDt.getFullYear()}-${padCal2(endDt.getMonth() + 1)}-${padCal2(endDt.getDate())}`;
+      const st = `${padCal2(startDt.getHours())}:${padCal2(startDt.getMinutes())}`;
+      const et = `${padCal2(endDt.getHours())}:${padCal2(endDt.getMinutes())}`;
+      window.setTimeout(() => {
+        openAddEventFromSelection({
+          startYmd: sy,
+          endYmd: ey,
+          allDay: false,
+          startTime: st,
+          endTime: et
+        });
+      }, 0);
+      return null;
+    });
+  }, [weekViewStart, openAddEventFromSelection]);
+
+  useEffect(() => {
+    const finish = () => {
+      if (monthDragActiveRef.current) endMonthDayDrag();
+      if (weekDragActiveRef.current) endWeekTimeDrag();
+    };
+    window.addEventListener('mouseup', finish);
+    window.addEventListener('touchend', finish);
+    window.addEventListener('blur', finish);
+    return () => {
+      window.removeEventListener('mouseup', finish);
+      window.removeEventListener('touchend', finish);
+      window.removeEventListener('blur', finish);
+    };
+  }, [endMonthDayDrag, endWeekTimeDrag]);
+
+  const beginMonthDayDrag = useCallback((day, e) => {
+    if (e.target.closest('.calendar-day-num')) return;
+    if (e.button !== 0) return;
+    e.preventDefault();
+    monthDragActiveRef.current = true;
+    setMonthDragRange({ startDay: day, endDay: day });
+  }, []);
+
+  const enterMonthDayWhileDrag = useCallback((day) => {
+    if (!monthDragActiveRef.current || day == null) return;
+    setMonthDragRange((prev) => (prev ? { ...prev, endDay: day } : prev));
+  }, []);
+
+  const beginWeekSlotDrag = useCallback((weekMinute, e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    weekDragActiveRef.current = true;
+    setWeekDragRange({ start: weekMinute, end: weekMinute });
+  }, []);
+
+  const enterWeekSlotWhileDrag = useCallback((weekMinute) => {
+    if (!weekDragActiveRef.current) return;
+    setWeekDragRange((prev) => (prev ? { ...prev, end: weekMinute } : prev));
+  }, []);
+
   const monthTitle = `${current.year}년 ${current.month + 1}월`;
   const dayTitle = formatDayViewTitle(current.year, current.month, selectedDay);
+  const weekTitle = formatWeekRangeTitle(weekViewStart);
 
   return (
     <div className={`page calendar-page${embedded ? ' calendar-page--embedded' : ''}`}>
@@ -753,22 +1012,22 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
             <div className="calendar-hero-main">
               <div className="calendar-title-block">
                 <h1 className="calendar-month-headline">
-                  {viewMode === 'day' ? dayTitle : monthTitle}
+                  {viewMode === 'day' ? dayTitle : viewMode === 'week' ? weekTitle : monthTitle}
                 </h1>
                 <div className="calendar-round-nav">
                   <button
                     type="button"
                     className="calendar-round-nav-btn"
-                    onClick={viewMode === 'day' ? goPrevDay : prevMonth}
-                    aria-label={viewMode === 'day' ? '이전 날' : '이전 달'}
+                    onClick={viewMode === 'day' ? goPrevDay : viewMode === 'week' ? goPrevWeek : prevMonth}
+                    aria-label={viewMode === 'day' ? '이전 날' : viewMode === 'week' ? '이전 주' : '이전 달'}
                   >
                     <span className="material-symbols-outlined">chevron_left</span>
                   </button>
                   <button
                     type="button"
                     className="calendar-round-nav-btn"
-                    onClick={viewMode === 'day' ? goNextDay : nextMonth}
-                    aria-label={viewMode === 'day' ? '다음 날' : '다음 달'}
+                    onClick={viewMode === 'day' ? goNextDay : viewMode === 'week' ? goNextWeek : nextMonth}
+                    aria-label={viewMode === 'day' ? '다음 날' : viewMode === 'week' ? '다음 주' : '다음 달'}
                   >
                     <span className="material-symbols-outlined">chevron_right</span>
                   </button>
@@ -784,7 +1043,7 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
                     role="tab"
                     aria-selected={viewMode === opt.key}
                     className={`calendar-view-tab ${viewMode === opt.key ? 'active' : ''}`}
-                    onClick={() => setViewMode(opt.key)}
+                    onClick={() => applyCalendarViewMode(opt.key)}
                   >
                     {opt.label}
                   </button>
@@ -887,12 +1146,19 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
                       const isSaturday = dayIndex === 6;
                       const evs = (d != null && eventsByDay[d]) || [];
                       const totalDayEvents = (d != null && allEventsByDay[d]) || [];
+                      const inMonthDragSel =
+                        monthDragRange &&
+                        d != null &&
+                        d >= Math.min(monthDragRange.startDay, monthDragRange.endDay) &&
+                        d <= Math.max(monthDragRange.startDay, monthDragRange.endDay);
                       return (
                         <div
                           key={cellIndex}
-                          className={`calendar-day ${d == null ? 'empty' : ''} ${isToday ? 'today' : ''} ${isSunday ? 'sun' : ''} ${isSaturday ? 'sat' : ''}`}
+                          className={`calendar-day ${d == null ? 'empty' : ''} ${isToday ? 'today' : ''} ${isSunday ? 'sun' : ''} ${isSaturday ? 'sat' : ''} ${inMonthDragSel ? 'calendar-day--drag-select' : ''}`}
+                          onMouseDown={(e) => d != null && beginMonthDayDrag(d, e)}
+                          onMouseEnter={() => enterMonthDayWhileDrag(d)}
                           onDoubleClick={() => d != null && openAddEventOnDate(current.year, current.month, d)}
-                          title={d != null ? '날짜 클릭: 일별 보기 · 더블클릭: 일정 추가' : undefined}
+                          title={d != null ? '드래그: 기간(종일) 일정 · 날짜 클릭: 일별 보기 · 더블클릭: 일정 추가' : undefined}
                         >
                           {d != null && (
                             <span
@@ -903,14 +1169,14 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setSelectedDay(d);
-                                setViewMode('day');
+                                applyCalendarViewMode('day');
                               }}
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter' || e.key === ' ') {
                                   e.preventDefault();
                                   e.stopPropagation();
                                   setSelectedDay(d);
-                                  setViewMode('day');
+                                  applyCalendarViewMode('day');
                                 }
                               }}
                             >
@@ -949,7 +1215,9 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
                                     </button>
                                   </li>
                                 )}
-                                {evs.length <= 5 && totalDayEvents.length > evs.length && (
+                                {evs.length <= 5 &&
+                                  totalDayEvents.length > evs.length &&
+                                  totalDayEvents.length > 2 && (
                                   <li className="calendar-more-item">
                                     <button type="button" className="calendar-more-btn" onClick={(e) => { e.stopPropagation(); openDayList(current.year, current.month, d); }}>
                                       전체 {totalDayEvents.length}개 보기
@@ -991,6 +1259,116 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
               );
             })}
           </div>
+            ) : viewMode === 'week' ? (
+            <div className="calendar-week-view">
+              <p className="calendar-week-drag-hint" role="note">
+                빈 시간 칸을 드래그하면 새 일정의 시작·종료(날짜·시간)이 입력됩니다. 하루 종일은 월간 보기에서 날짜를 드래그하세요.
+              </p>
+              <div className="calendar-week-view-scroll">
+                <div className="calendar-week-view-header-row">
+                  <div className="calendar-week-view-corner" aria-hidden>
+                    <span className="calendar-week-view-corner-inner">시간</span>
+                  </div>
+                  {weekColumnMeta.map((col) => {
+                    const colEvs = events.filter((ev) => eventTouchesCalendarDay(ev, col.y, col.m, col.d));
+                    const allDayCol = colEvs.filter((ev) => isAllDayEvent(ev));
+                    return (
+                      <div key={`wh-${col.y}-${col.m}-${col.d}`} className="calendar-week-col-head">
+                        <div className="calendar-week-col-head-main">
+                          <span className="calendar-week-col-wd">{col.weekday}</span>
+                          <span className="calendar-week-col-num">{col.d}</span>
+                        </div>
+                        {allDayCol.length > 0 && (
+                          <div className="calendar-week-allday-chips" aria-label="종일 일정">
+                            {allDayCol.slice(0, 3).map((ev, evIdx) => {
+                              const style = getEventStyle(ev);
+                              const pillClass = style ? '' : eventPillClass(ev, evIdx);
+                              return (
+                                <button
+                                  key={`${ev.googleCalendarId || ''}-${ev._id}-allday`}
+                                  type="button"
+                                  className={`calendar-week-allday-chip ${pillClass}`}
+                                  style={style}
+                                  onClick={() => openEventDetail(ev._id, ev.googleCalendarId)}
+                                >
+                                  {ev.title || '(제목 없음)'}
+                                </button>
+                              );
+                            })}
+                            {allDayCol.length > 3 && (
+                              <span className="calendar-week-allday-more">+{allDayCol.length - 3}</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="calendar-week-body">
+                  <div className="calendar-week-time-rail" aria-hidden>
+                    {Array.from({ length: 24 }, (_, hour) => (
+                      <div key={hour} className="calendar-week-time-label">
+                        {hour}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="calendar-week-cols">
+                    {weekColumnMeta.map((col, colIdx) => {
+                      const colEvs = events.filter((ev) => eventTouchesCalendarDay(ev, col.y, col.m, col.d));
+                      const timedCol = colEvs.filter((ev) => !isAllDayEvent(ev));
+                      return (
+                        <div key={`wc-${col.y}-${col.m}-${col.d}`} className="calendar-week-day-column">
+                          <div className="calendar-week-hour-grid">
+                            {Array.from({ length: 24 }, (_, hour) => {
+                              const wm = colIdx * 1440 + hour * 60;
+                              let inDrag = false;
+                              if (weekDragRange) {
+                                const lo = Math.min(weekDragRange.start, weekDragRange.end);
+                                const hi = Math.max(weekDragRange.start, weekDragRange.end);
+                                inDrag = wm >= lo && wm <= hi;
+                              }
+                              return (
+                                <div
+                                  key={hour}
+                                  className={`calendar-week-slot ${inDrag ? 'calendar-week-slot--drag' : ''}`}
+                                  data-day-index={colIdx}
+                                  data-hour={hour}
+                                  onMouseDown={(e) => beginWeekSlotDrag(wm, e)}
+                                  onMouseEnter={(e) => {
+                                    if (e.buttons === 1) enterWeekSlotWhileDrag(wm);
+                                  }}
+                                />
+                              );
+                            })}
+                            {timedCol.map((ev, evIdx) => {
+                              const seg = getTimedSegmentForDay(ev, col.y, col.m, col.d);
+                              if (!seg) return null;
+                              const top = (seg.startMins / 1440) * 100;
+                              const height = ((seg.endMins - seg.startMins) / 1440) * 100;
+                              const style = getEventStyle(ev);
+                              const pillClass = style ? '' : eventPillClass(ev, evIdx);
+                              const isGoogle = ev._source === 'google';
+                              return (
+                                <button
+                                  key={`${ev.googleCalendarId || ''}-${ev._id}-timed`}
+                                  type="button"
+                                  className={`calendar-week-ev-block ${pillClass} ${isGoogle ? 'google-event' : ''}`}
+                                  style={{ ...style, top: `${top}%`, height: `${Math.max(height, 3)}%` }}
+                                  onClick={() => openEventDetail(ev._id, ev.googleCalendarId)}
+                                >
+                                  {isGoogle && <span className="calendar-event-google-dot" aria-hidden />}
+                                  <span className="calendar-week-ev-title">{ev.title || '(제목 없음)'}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
             ) : (
             <div className="calendar-day-view">
               <div className="calendar-day-view-toolbar">
@@ -1140,6 +1518,10 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
           eventId={modalEventId}
           isEdit={modalEdit}
           initialDate={modalDate}
+          initialDateEnd={modalDateEnd}
+          initialAllDay={modalAddAllDay ? true : modalAddTs || modalAddTe ? false : undefined}
+          initialStartTime={modalAddTs || undefined}
+          initialEndTime={modalAddTe || undefined}
           calendarType={activeFilter === 'mine' ? 'personal' : 'company'}
           googleCalendarId={modalGoogleCalendarId}
           googleCalendarAccessRole={googleCalendarAccessRole}

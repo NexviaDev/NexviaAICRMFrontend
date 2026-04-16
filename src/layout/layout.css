@@ -50,7 +50,7 @@
   flex-direction: column;
   overflow: hidden;
   background: var(--bg-light);
-  margin-left: 16rem;
+  margin-left: var(--sidebar-total-width, 16rem);
   min-width: 0;
 }
 

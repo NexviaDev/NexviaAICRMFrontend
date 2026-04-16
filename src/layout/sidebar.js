@@ -1,11 +1,11 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { NavLink, useNavigate, Link, useLocation } from 'react-router-dom';
 import {
+  getSavedSidebar2LevelConfig,
   getSavedSidebarConfig,
-  patchSidebarOrder,
-  setSavedSidebarConfigLocally,
-  normalizeSidebarOrders,
-  SIDEBAR_MENU_EPOCH
+  patchSidebarLayout,
+  setSavedSidebar2LevelConfigLocally,
+  normalizeSidebar2LevelConfig
 } from '@/lib/list-templates';
 import { API_BASE } from '@/config';
 import { resolveDepartmentDisplayFromChart } from '@/lib/org-chart-tree-utils';
@@ -16,38 +16,57 @@ function getAuthHeader() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-/** 사이드바 상단 로고 (Cloudinary CDN) */
 const NEXVIA_LOGO_CDN_URL =
   'https://res.cloudinary.com/djcsvvhly/image/upload/v1774253552/NexviaLogo_pid8kz.png';
 
-/** 드롭: 리스트 끝에 삽입 */
 const DROP_END = '__end__';
+const SIDEBAR_DRAG_ITEM_MIME = 'application/x-nexvia-sidebar-item';
 
-/** 메뉴 항목 정의 (추가 시 여기만 수정하면 되고, 저장된 순서·overflow와 병합됨). */
-const MENU_ITEMS = [
-  { to: '/', icon: 'dashboard', label: '대시보드' },
-  { to: '/company-overview', icon: 'domain', label: '사내 현황' },
-  { to: '/customer-companies', icon: 'business', label: '고객사 리스트' },
-  { to: '/customer-company-employees', icon: 'group', label: '연락처 리스트' },
-  { to: '/product-list', icon: 'inventory_2', label: '제품 리스트' },
-  { to: '/meeting-minutes', icon: 'event_note', label: '회의 일지' },
-  { to: '/project', icon: 'folder_open', label: '프로젝트' },
-  { to: '/ai-voice', icon: 'mic', label: 'AI 음성 기록' },
-  { to: '/email', icon: 'mail', label: '이메일' },
-  { to: '/messenger', icon: 'chat_bubble', label: '메신저' },
-  { to: '/map', icon: 'map', label: '지도' },
-  { to: '/sales-pipeline', icon: 'view_kanban', label: '세일즈 현황' },
-  { to: '/lead-capture', icon: 'ads_click', label: '리드 캡처' },
-  { to: '/reports/work-report', icon: 'assignment', label: '직원 업무 보고' },
-  { to: '/subscription', icon: 'subscriptions', label: '구독관리' }
+const CATEGORY_ITEMS = [
+  { key: 'inhouse', label: '사내 업무', icon: 'arrow_circle_left' },
+  { key: 'outside', label: '사외 업무', icon: 'arrow_circle_right' },
+  { key: 'cloud', label: '클라우드', icon: 'cloud' },
+  { key: 'schedule', label: '일정', icon: 'event' },
+  { key: 'etc', label: '기타', icon: 'more_horiz' }
 ];
+
+const SUBMENU_ITEMS = [
+  { to: '/', icon: 'dashboard', label: '대시보드', category: 'inhouse' },
+  { to: '/company-overview', icon: 'domain', label: '사내 현황', category: 'inhouse' },
+  { to: '/meeting-minutes', icon: 'event_note', label: '회의 일지', category: 'inhouse' },
+  { to: '/reports/work-report', icon: 'assignment', label: '직원 업무 보고', category: 'inhouse' },
+  { to: '/product-list', icon: 'inventory_2', label: '제품 리스트', category: 'inhouse' },
+  { to: '/kpi', icon: 'analytics', label: 'KPI 분석', category: 'inhouse' },
+  { to: '/customer-companies', icon: 'business', label: '고객사 리스트', category: 'outside' },
+  { to: '/customer-company-employees', icon: 'group', label: '연락처 리스트', category: 'outside' },
+  { to: '/sales-pipeline', icon: 'view_kanban', label: '세일즈 현황', category: 'outside' },
+  { to: '/map', icon: 'map', label: '지도', category: 'outside' },
+  { to: '/lead-capture', icon: 'ads_click', label: '리드 캡처', category: 'outside' },
+  { to: '/calendar', icon: 'calendar_month', label: '캘린더', category: 'schedule' },
+  { to: '/project', icon: 'folder', label: '프로젝트', category: 'schedule' },
+  { to: '/todo-list', icon: 'checklist', label: 'Todo List', category: 'schedule' },
+  { to: '/ai-voice', icon: 'mic', label: 'AI 음성 기록', category: 'etc' },
+  { to: '/messenger', icon: 'chat_bubble', label: '메신저', category: 'etc' },
+  { to: '/email', icon: 'mail', label: '이메일', category: 'etc' },
+  { to: '/subscription', icon: 'subscriptions', label: '구독관리', category: 'etc' }
+];
+
+const SUBMENU_BY_TO = Object.fromEntries(SUBMENU_ITEMS.map((item) => [item.to, item]));
+const SUBMENU_BY_CATEGORY = CATEGORY_ITEMS.reduce((acc, category) => {
+  acc[category.key] = SUBMENU_ITEMS.filter((item) => item.category === category.key);
+  return acc;
+}, {});
 
 function pathMatchesMenuItem(to, pathname) {
   if (to === '/') return pathname === '/';
   return pathname === to || pathname.startsWith(`${to}/`);
 }
 
-/** 조직도 노드 id 또는 자유 텍스트 → 사이드바 표시명 */
+function findCategoryByPath(pathname) {
+  const found = SUBMENU_ITEMS.find((item) => pathMatchesMenuItem(item.to, pathname));
+  return found?.category || null;
+}
+
 function getSidebarDepartmentLabel(user, orgChartRoot) {
   const raw = String(user?.companyDepartment || user?.department || '').trim();
   if (!raw) return '—';
@@ -70,48 +89,50 @@ function canShowMenuByRole(user, item) {
   return true;
 }
 
-function orderToVisibleItems(order, user) {
-  return order
-    .map((to) => MENU_ITEMS.find((i) => i.to === to))
-    .filter((item) => item && canShowMenuByRole(user, item));
-}
-
-/** 같은 리스트 안에서 순서만 바꿈 (to 기준, DROP_END면 맨 끝) */
-function reorderWithin(list, draggedTo, dropTargetTo) {
+function reorderWithin(list, draggedKey, dropTargetKey) {
   const next = [...list];
-  const fromIdx = next.indexOf(draggedTo);
+  const fromIdx = next.indexOf(draggedKey);
   if (fromIdx === -1) return list;
   next.splice(fromIdx, 1);
-  let toIdx =
-    dropTargetTo === DROP_END ? next.length : next.indexOf(dropTargetTo);
-  if (dropTargetTo !== DROP_END && toIdx === -1) return list;
-  if (dropTargetTo !== DROP_END && fromIdx < toIdx) toIdx -= 1;
-  next.splice(toIdx, 0, draggedTo);
+  let toIdx = dropTargetKey === DROP_END ? next.length : next.indexOf(dropTargetKey);
+  if (dropTargetKey !== DROP_END && toIdx === -1) return list;
+  if (dropTargetKey !== DROP_END && fromIdx < toIdx) toIdx -= 1;
+  next.splice(toIdx, 0, draggedKey);
   return next;
 }
 
-/** main에서 제거 후 overflow에 삽입 */
-function moveMainToOverflow(main, overflow, draggedTo, dropTargetTo) {
-  if (!main.includes(draggedTo)) return null;
-  const nextMain = main.filter((t) => t !== draggedTo);
-  const nextOv = [...overflow];
-  let idx =
-    dropTargetTo === DROP_END ? nextOv.length : nextOv.indexOf(dropTargetTo);
-  if (dropTargetTo !== DROP_END && idx === -1) return null;
-  nextOv.splice(dropTargetTo === DROP_END ? nextOv.length : idx, 0, draggedTo);
-  return { main: nextMain, overflow: nextOv };
+function reorderByPlacement(list, draggedKey, dropTargetKey, place = 'before') {
+  if (dropTargetKey === DROP_END) {
+    return reorderWithin(list, draggedKey, DROP_END);
+  }
+  const next = [...list];
+  const fromIdx = next.indexOf(draggedKey);
+  const targetIdx = next.indexOf(dropTargetKey);
+  if (fromIdx === -1 || targetIdx === -1) return list;
+  next.splice(fromIdx, 1);
+  let insertIdx = place === 'after' ? targetIdx + 1 : targetIdx;
+  if (fromIdx < targetIdx) insertIdx -= 1;
+  if (insertIdx < 0) insertIdx = 0;
+  if (insertIdx > next.length) insertIdx = next.length;
+  next.splice(insertIdx, 0, draggedKey);
+  return next;
 }
 
-/** overflow에서 제거 후 main에 삽입 */
-function moveOverflowToMain(main, overflow, draggedTo, dropTargetTo) {
-  if (!overflow.includes(draggedTo)) return null;
-  const nextOv = overflow.filter((t) => t !== draggedTo);
-  const nextMain = [...main];
-  let idx =
-    dropTargetTo === DROP_END ? nextMain.length : nextMain.indexOf(dropTargetTo);
-  if (dropTargetTo !== DROP_END && idx === -1) return null;
-  nextMain.splice(dropTargetTo === DROP_END ? nextMain.length : idx, 0, draggedTo);
-  return { main: nextMain, overflow: nextOv };
+function moveItemBetweenCategories(itemOrdersByCategory, itemTo, targetCategoryKey) {
+  const next = {};
+  const sourceEntries = Object.entries(itemOrdersByCategory || {});
+  for (const [categoryKey, order] of sourceEntries) {
+    const safeOrder = Array.isArray(order) ? order : [];
+    next[categoryKey] = safeOrder.filter((to) => to !== itemTo);
+  }
+  const targetOrder = Array.isArray(next[targetCategoryKey]) ? next[targetCategoryKey] : [];
+  if (!targetOrder.includes(itemTo)) targetOrder.push(itemTo);
+  next[targetCategoryKey] = targetOrder;
+  return next;
+}
+
+function normalizeFromAnySavedConfig(saved) {
+  return normalizeSidebar2LevelConfig(CATEGORY_ITEMS, SUBMENU_BY_CATEGORY, saved);
 }
 
 export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
@@ -127,8 +148,26 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
   }, []);
   const user = currentUser || storedUser;
   const userSyncKey = user?._id || user?.id || user?.email || '';
-
   const [organizationChart, setOrganizationChart] = useState(null);
+  const [savingOrder, setSavingOrder] = useState(false);
+  const [draggingCategory, setDraggingCategory] = useState(null);
+  const [categoryDropHint, setCategoryDropHint] = useState(null);
+  const [draggingItemTo, setDraggingItemTo] = useState(null);
+  const [itemDropHint, setItemDropHint] = useState(null);
+  const [itemCrossMoveCategory, setItemCrossMoveCategory] = useState(null);
+  const draggingCategoryRef = useRef(null);
+  const draggingItemToRef = useRef(null);
+
+  const initialConfig = useMemo(() => {
+    const modern = getSavedSidebar2LevelConfig();
+    if (modern) return normalizeFromAnySavedConfig(modern);
+    const legacy = getSavedSidebarConfig();
+    return normalizeFromAnySavedConfig(legacy);
+  }, []);
+
+  const [categoryOrder, setCategoryOrder] = useState(initialConfig.categoryOrder);
+  const [itemOrdersByCategory, setItemOrdersByCategory] = useState(initialConfig.itemOrdersByCategory);
+  const [activeCategory, setActiveCategory] = useState(initialConfig.activeCategory);
 
   useEffect(() => {
     let cancelled = false;
@@ -139,16 +178,12 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
           credentials: 'include'
         });
         const json = await res.json().catch(() => ({}));
-        if (!cancelled && res.ok) {
-          setOrganizationChart(json.organizationChart ?? null);
-        }
+        if (!cancelled && res.ok) setOrganizationChart(json.organizationChart ?? null);
       } catch {
         /* 조직도 없어도 사이드바는 동작 */
       }
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
   const departmentLabel = useMemo(
@@ -156,236 +191,142 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
     [user, organizationChart]
   );
 
-  const [mainOrder, setMainOrder] = useState(() => {
-    const { mainOrder: m } = normalizeSidebarOrders(MENU_ITEMS, getSavedSidebarConfig());
-    return m;
-  });
-  const [overflowOrder, setOverflowOrder] = useState(() => {
-    const { overflowOrder: o } = normalizeSidebarOrders(MENU_ITEMS, getSavedSidebarConfig());
-    return o;
-  });
-  const [draggingTo, setDraggingTo] = useState(null);
-  const [dragFromZone, setDragFromZone] = useState(null);
-  const [dragOverDrop, setDragOverDrop] = useState(null);
-  const [savingOrder, setSavingOrder] = useState(false);
-  const [overflowOpen, setOverflowOpen] = useState(false);
-  const overflowWrapRef = useRef(null);
-  const draggedToRef = useRef(null);
-  const dragFromZoneRef = useRef(null);
-  const mainOrderRef = useRef(mainOrder);
-  const overflowOrderRef = useRef(overflowOrder);
-
-  mainOrderRef.current = mainOrder;
-  overflowOrderRef.current = overflowOrder;
-  dragFromZoneRef.current = dragFromZone;
-
-  useEffect(() => {
-    const saved = getSavedSidebarConfig();
-    const { mainOrder: m, overflowOrder: o } = normalizeSidebarOrders(MENU_ITEMS, saved);
-    setMainOrder(m);
-    setOverflowOrder(o);
-
-    const allTos = MENU_ITEMS.map((i) => i.to);
-    const union = new Set([
-      ...(Array.isArray(saved?.order) ? saved.order : []),
-      ...(Array.isArray(saved?.overflow) ? saved.overflow : [])
-    ]);
-    const hadEveryMenu = allTos.every((t) => union.has(t));
-    if (!hadEveryMenu) {
-      setSavedSidebarConfigLocally({ order: m, overflow: o });
-      patchSidebarOrder(m, o).catch(() => {});
-    }
-  }, [userSyncKey, SIDEBAR_MENU_EPOCH]);
-
-  const mainItems = useMemo(
-    () => orderToVisibleItems(mainOrder, user),
-    [mainOrder, user]
-  );
-  const overflowItems = useMemo(
-    () => orderToVisibleItems(overflowOrder, user),
-    [overflowOrder, user]
-  );
-
-  const persistBoth = useCallback((nextMain, nextOverflow) => {
-    setSavedSidebarConfigLocally({ order: nextMain, overflow: nextOverflow });
+  const persistSidebarLayout = useCallback((nextCategoryOrder, nextItemOrdersByCategory, nextActiveCategory) => {
+    const payload = {
+      categoryOrder: nextCategoryOrder,
+      itemOrdersByCategory: nextItemOrdersByCategory,
+      activeCategory: nextActiveCategory
+    };
+    setSavedSidebar2LevelConfigLocally(payload);
     setSavingOrder(true);
-    patchSidebarOrder(nextMain, nextOverflow)
+    patchSidebarLayout(payload)
       .catch(() => {})
       .finally(() => setSavingOrder(false));
   }, []);
 
-  const prevPathRef = useRef(location.pathname);
+  useEffect(() => {
+    const modern = getSavedSidebar2LevelConfig();
+    const legacy = getSavedSidebarConfig();
+    const normalized = normalizeFromAnySavedConfig(modern || legacy);
+    setCategoryOrder(normalized.categoryOrder);
+    setItemOrdersByCategory(normalized.itemOrdersByCategory);
+    setActiveCategory(normalized.activeCategory);
+    persistSidebarLayout(
+      normalized.categoryOrder,
+      normalized.itemOrdersByCategory,
+      normalized.activeCategory
+    );
+  }, [userSyncKey, persistSidebarLayout]);
 
   useEffect(() => {
-    const path = location.pathname;
-    const inOverflow = overflowItems.some((item) => pathMatchesMenuItem(item.to, path));
-    if (inOverflow) {
-      setOverflowOpen(true);
-    } else {
-      const prev = prevPathRef.current;
-      const wasInOverflow = overflowItems.some((item) => pathMatchesMenuItem(item.to, prev));
-      if (wasInOverflow) setOverflowOpen(false);
-    }
-    prevPathRef.current = path;
-  }, [location.pathname, overflowItems]);
+    const matchedCategory = findCategoryByPath(location.pathname);
+    if (!matchedCategory) return;
+    setActiveCategory(matchedCategory);
+    setSavedSidebar2LevelConfigLocally({ activeCategory: matchedCategory });
+  }, [location.pathname]);
 
-  useEffect(() => {
-    if (!overflowOpen) return;
-    const onDoc = (e) => {
-      /* 메인 메뉴 드래그 핸들 mousedown은 overflow 바깥으로 간주되며, 기존에는 여기서 패널이 닫혀 드롭 불가였음 */
-      if (e.target.closest?.('.sidebar-drag-handle')) return;
-      if (overflowWrapRef.current && !overflowWrapRef.current.contains(e.target)) {
-        setOverflowOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [overflowOpen]);
+  const visibleCategoryOrder = useMemo(
+    () =>
+      categoryOrder.filter((categoryKey) =>
+        (SUBMENU_BY_CATEGORY[categoryKey] || []).some((item) => canShowMenuByRole(user, item)) ||
+        categoryKey === 'cloud'
+      ),
+    [categoryOrder, user]
+  );
 
-  useEffect(() => {
-    if (!overflowOpen) return;
-    const onKey = (e) => {
-      if (e.key === 'Escape' && !draggingTo) setOverflowOpen(false);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [overflowOpen, draggingTo]);
+  const activeItems = useMemo(() => {
+    if (!activeCategory || activeCategory === 'cloud') return [];
+    const orderedTos = itemOrdersByCategory?.[activeCategory] || [];
+    return orderedTos
+      .map((to) => SUBMENU_BY_TO[to])
+      .filter((item) => item && canShowMenuByRole(user, item));
+  }, [activeCategory, itemOrdersByCategory, user]);
 
-  const handleDragStart = useCallback((e, itemTo, zone) => {
+  const handleCategoryClick = useCallback((categoryKey) => {
+    setActiveCategory((prev) => {
+      const next = prev === categoryKey ? null : categoryKey;
+      setSavedSidebar2LevelConfigLocally({ activeCategory: next });
+      return next;
+    });
+  }, []);
+
+  const handleCategoryDragStart = useCallback((e, categoryKey) => {
     e.stopPropagation();
-    draggedToRef.current = itemTo;
-    dragFromZoneRef.current = zone;
-    setDraggingTo(itemTo);
-    setDragFromZone(zone);
-    if (zone === 'main') setOverflowOpen(true);
+    draggingCategoryRef.current = categoryKey;
+    setDraggingCategory(categoryKey);
+    e.dataTransfer.setData('text/plain', categoryKey);
+    e.dataTransfer.effectAllowed = 'move';
+  }, []);
+
+  const handleCategoryDragEnd = useCallback(() => {
+    draggingCategoryRef.current = null;
+    setDraggingCategory(null);
+    setCategoryDropHint(null);
+  }, []);
+
+  const handleCategoryDrop = useCallback((e, dropTargetKey, place = 'before') => {
+    e.preventDefault();
+    e.stopPropagation();
+    const dragged = draggingCategoryRef.current;
+    if (!dragged) return;
+    const nextOrder = reorderByPlacement(categoryOrder, dragged, dropTargetKey, place);
+    setCategoryOrder(nextOrder);
+    persistSidebarLayout(nextOrder, itemOrdersByCategory, activeCategory);
+    handleCategoryDragEnd();
+  }, [activeCategory, categoryOrder, handleCategoryDragEnd, itemOrdersByCategory, persistSidebarLayout]);
+
+  const handleItemDragStart = useCallback((e, itemTo) => {
+    e.stopPropagation();
+    draggingItemToRef.current = itemTo;
+    setDraggingItemTo(itemTo);
+    e.dataTransfer.setData(SIDEBAR_DRAG_ITEM_MIME, itemTo);
     e.dataTransfer.setData('text/plain', itemTo);
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('application/x-sidebar-to', itemTo);
-    e.dataTransfer.setData('application/x-sidebar-zone', zone);
   }, []);
 
-  const handleDragEnd = useCallback(() => {
-    draggedToRef.current = null;
-    dragFromZoneRef.current = null;
-    setDraggingTo(null);
-    setDragFromZone(null);
-    setDragOverDrop(null);
+  const handleItemDragEnd = useCallback(() => {
+    draggingItemToRef.current = null;
+    setDraggingItemTo(null);
+    setItemDropHint(null);
+    setItemCrossMoveCategory(null);
   }, []);
 
-  const applyDrop = useCallback(
-    (targetZone, dropTargetTo) => {
-      const dragged = draggedToRef.current;
-      const from = dragFromZoneRef.current;
-      if (!dragged || !from) return;
+  const handleItemDrop = useCallback((e, dropTargetTo, place = 'before') => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!activeCategory || activeCategory === 'cloud') return;
+    const dragged = draggingItemToRef.current ||
+      e.dataTransfer.getData(SIDEBAR_DRAG_ITEM_MIME) ||
+      e.dataTransfer.getData('text/plain');
+    if (!dragged) return;
+    const current = itemOrdersByCategory?.[activeCategory] || [];
+    const next = reorderByPlacement(current, dragged, dropTargetTo, place);
+    const nextByCategory = { ...itemOrdersByCategory, [activeCategory]: next };
+    setItemOrdersByCategory(nextByCategory);
+    persistSidebarLayout(categoryOrder, nextByCategory, activeCategory);
+    handleItemDragEnd();
+  }, [activeCategory, categoryOrder, handleItemDragEnd, itemOrdersByCategory, persistSidebarLayout]);
 
-      const main = mainOrderRef.current;
-      const ov = overflowOrderRef.current;
-
-      let nextMain = main;
-      let nextOv = ov;
-
-      if (from === 'main' && targetZone === 'main') {
-        nextMain = reorderWithin(main, dragged, dropTargetTo);
-        nextOv = ov;
-      } else if (from === 'overflow' && targetZone === 'overflow') {
-        nextMain = main;
-        nextOv = reorderWithin(ov, dragged, dropTargetTo);
-      } else if (from === 'main' && targetZone === 'overflow') {
-        const moved = moveMainToOverflow(main, ov, dragged, dropTargetTo);
-        if (!moved) return;
-        nextMain = moved.main;
-        nextOv = moved.overflow;
-      } else if (from === 'overflow' && targetZone === 'main') {
-        const moved = moveOverflowToMain(main, ov, dragged, dropTargetTo);
-        if (!moved) return;
-        nextMain = moved.main;
-        nextOv = moved.overflow;
-      } else {
-        return;
-      }
-
-      setMainOrder(nextMain);
-      setOverflowOrder(nextOv);
-      persistBoth(nextMain, nextOv);
-    },
-    [persistBoth]
-  );
-
-  const setDropHighlight = useCallback((zone, to) => {
-    setDragOverDrop(zone && to != null ? { zone, to } : null);
-  }, []);
-
-  const handleMainRowDragOver = useCallback(
-    (e, itemTo) => {
-      e.preventDefault();
-      e.stopPropagation();
-      e.dataTransfer.dropEffect = 'move';
-      if (itemTo !== draggingTo) setDropHighlight('main', itemTo);
-    },
-    [draggingTo, setDropHighlight]
-  );
-
-  const handleOverflowRowDragOver = useCallback(
-    (e, itemTo) => {
-      e.preventDefault();
-      e.stopPropagation();
-      e.dataTransfer.dropEffect = 'move';
-      if (itemTo !== draggingTo) setDropHighlight('overflow', itemTo);
-    },
-    [draggingTo, setDropHighlight]
-  );
-
-  const handleOverflowEndDragOver = useCallback(
-    (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      e.dataTransfer.dropEffect = 'move';
-      setDropHighlight('overflow', DROP_END);
-    },
-    [setDropHighlight]
-  );
-
-  const handleMainDrop = useCallback(
-    (e, explicitTargetTo) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const row = e.target.closest?.('[data-sidebar-drop-zone="main"]');
-      const dropTo = explicitTargetTo ?? row?.getAttribute?.('data-sidebar-drop-to');
-      if (dropTo == null) return;
-      applyDrop('main', dropTo);
-      handleDragEnd();
-    },
-    [applyDrop, handleDragEnd]
-  );
-
-  const handleOverflowDrop = useCallback(
-    (e, explicitTargetTo) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const row = e.target.closest?.('[data-sidebar-drop-zone="overflow"]');
-      const dropTo = explicitTargetTo ?? row?.getAttribute?.('data-sidebar-drop-to');
-      if (dropTo == null) return;
-      applyDrop('overflow', dropTo);
-      handleDragEnd();
-    },
-    [applyDrop, handleDragEnd]
-  );
-
-  const navDragLeave = useCallback((e) => {
-    if (!e.currentTarget.contains(e.relatedTarget)) setDragOverDrop(null);
-  }, []);
-
-  const overflowCount = overflowItems.length;
+  const handleItemDropToCategory = useCallback((e, targetCategoryKey) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const dragged = draggingItemToRef.current ||
+      e.dataTransfer.getData(SIDEBAR_DRAG_ITEM_MIME) ||
+      e.dataTransfer.getData('text/plain');
+    if (!dragged || !targetCategoryKey) return;
+    const nextByCategory = moveItemBetweenCategories(itemOrdersByCategory, dragged, targetCategoryKey);
+    setItemOrdersByCategory(nextByCategory);
+    setActiveCategory(targetCategoryKey);
+    setSavedSidebar2LevelConfigLocally({ activeCategory: targetCategoryKey });
+    persistSidebarLayout(categoryOrder, nextByCategory, targetCategoryKey);
+    handleItemDragEnd();
+  }, [categoryOrder, handleItemDragEnd, itemOrdersByCategory, persistSidebarLayout]);
 
   return (
     <aside className={`sidebar ${drawerOpen ? 'sidebar-drawer-open' : ''}`}>
       <div className="sidebar-header">
         <div className="sidebar-header-logo">
-          <img
-            src={NEXVIA_LOGO_CDN_URL}
-            alt="Nexvia CRM"
-            decoding="async"
-          />
+          <img src={NEXVIA_LOGO_CDN_URL} alt="Nexvia CRM" decoding="async" />
         </div>
         {drawerOpen && (
           <button
@@ -398,165 +339,156 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
           </button>
         )}
       </div>
-      <nav className="sidebar-nav" onDragLeave={navDragLeave}>
-        {mainItems.map((item) => {
-          const isLocked = isPendingBlockedMenu(user, item.to);
-          const over =
-            dragOverDrop?.zone === 'main' && dragOverDrop?.to === item.to;
-          return (
-            <div
-              key={item.to}
-              data-sidebar-drop-zone="main"
-              data-sidebar-drop-to={item.to}
-              className={`sidebar-nav-item ${draggingTo === item.to ? 'sidebar-nav-item-dragging' : ''} ${over ? 'sidebar-nav-item-drag-over' : ''}`}
-              onDragOver={(e) => handleMainRowDragOver(e, item.to)}
-              onDrop={(e) => handleMainDrop(e, item.to)}
-            >
-              <span
-                className="sidebar-drag-handle"
-                draggable
-                onDragStart={(e) => handleDragStart(e, item.to, 'main')}
-                onDragEnd={handleDragEnd}
-                title="드래그하여 순서 변경 · 더보기로 이동"
-                aria-label="순서 변경"
-              >
-                <span className="material-symbols-outlined">drag_indicator</span>
-              </span>
-              <NavLink
-                to={item.to}
-                className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''} ${isLocked ? 'sidebar-link-locked' : ''}`}
-                end={item.to === '/'}
-                onClick={(e) => {
-                  if (item.to === '#') e.preventDefault();
-                  else if (isLocked) {
-                    e.preventDefault();
-                    window.alert('현재 계정은 권한 대기 상태입니다. 사내 현황에서 회사의 허용을 받아야 다른 메뉴에 접근할 수 있습니다.');
-                  } else onCloseDrawer?.();
+
+      <nav className="sidebar-nav sidebar-nav-twolevel">
+        <div
+          className="sidebar-category-rail"
+          onDragOver={(e) => {
+            e.preventDefault();
+            if (draggingCategory) setCategoryDropHint({ to: DROP_END, place: 'after' });
+          }}
+          onDrop={(e) => {
+            if (!draggingCategory) return;
+            handleCategoryDrop(e, DROP_END, 'after');
+          }}
+        >
+          {visibleCategoryOrder.map((categoryKey) => {
+            const category = CATEGORY_ITEMS.find((c) => c.key === categoryKey);
+            if (!category) return null;
+            const isActive = activeCategory === category.key;
+            const isOver = categoryDropHint?.to === category.key;
+            const overBefore = isOver && categoryDropHint?.place === 'before';
+            const overAfter = isOver && categoryDropHint?.place === 'after';
+            return (
+              <div
+                key={category.key}
+                className={`sidebar-category-wrap ${draggingCategory === category.key ? 'sidebar-nav-item-dragging' : ''} ${isOver ? 'sidebar-nav-item-drag-over' : ''} ${overBefore ? 'sidebar-drop-before' : ''} ${overAfter ? 'sidebar-drop-after' : ''}`}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (draggingItemToRef.current) {
+                    e.dataTransfer.dropEffect = 'move';
+                    setItemCrossMoveCategory(category.key);
+                    return;
+                  }
+                  if (draggingCategory === category.key) return;
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const place = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+                  setCategoryDropHint({ to: category.key, place });
+                }}
+                onDrop={(e) => {
+                  if (draggingItemToRef.current) return;
+                  handleCategoryDrop(e, category.key, categoryDropHint?.place || 'before');
                 }}
               >
-                <span className="material-symbols-outlined">{item.icon}</span>
-                <span>{item.label}</span>
-                {isLocked && <span className="material-symbols-outlined sidebar-lock-icon" aria-hidden>lock</span>}
-              </NavLink>
-            </div>
-          );
-        })}
-
-        <div className="sidebar-overflow" ref={overflowWrapRef}>
-          <button
-            type="button"
-            className={`sidebar-overflow-toggle ${overflowOpen ? 'sidebar-overflow-toggle--open' : ''}`}
-            onClick={() => setOverflowOpen((v) => !v)}
-            aria-expanded={overflowOpen}
-            aria-controls="sidebar-overflow-menu"
-            id="sidebar-overflow-btn"
-          >
-            <span className="material-symbols-outlined sidebar-overflow-hamburger" aria-hidden>
-              menu
-            </span>
-            <span className="sidebar-overflow-toggle-label">
-              더보기{overflowCount > 0 ? ` (${overflowCount})` : ''}
-            </span>
-            <span className="material-symbols-outlined sidebar-overflow-chevron" aria-hidden>
-              {overflowOpen ? 'expand_less' : 'expand_more'}
-            </span>
-          </button>
-          {overflowOpen ? (
-            <div
-              className="sidebar-overflow-panel"
-              id="sidebar-overflow-menu"
-              role="region"
-              aria-label="추가 메뉴"
-              onDragLeave={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget)) {
-                  if (dragOverDrop?.zone === 'overflow') setDragOverDrop(null);
-                }
-              }}
-            >
-              {overflowItems.length === 0 ? (
-                <div
-                  data-sidebar-drop-zone="overflow"
-                  data-sidebar-drop-to={DROP_END}
-                  className={`sidebar-nav-empty-drop ${dragOverDrop?.zone === 'overflow' && dragOverDrop?.to === DROP_END ? 'sidebar-nav-item-drag-over' : ''}`}
-                  onDragOver={handleOverflowEndDragOver}
-                  onDrop={(e) => handleOverflowDrop(e, DROP_END)}
+                <button
+                  type="button"
+                  className={`sidebar-category-button ${isActive ? 'sidebar-category-button-active' : ''} ${itemCrossMoveCategory === category.key ? 'sidebar-category-button-drop-target' : ''}`}
+                  draggable={!draggingItemTo}
+                  onDragStart={(e) => handleCategoryDragStart(e, category.key)}
+                  onDragEnd={handleCategoryDragEnd}
+                  onDragOver={(e) => {
+                    if (!draggingItemToRef.current) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.dataTransfer.dropEffect = 'move';
+                    setItemCrossMoveCategory(category.key);
+                  }}
+                  onDrop={(e) => {
+                    if (!draggingItemToRef.current) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleItemDropToCategory(e, category.key);
+                  }}
+                  onClick={(e) => {
+                    if (draggingItemToRef.current) {
+                      e.preventDefault();
+                      return;
+                    }
+                    handleCategoryClick(category.key);
+                  }}
+                  title={category.label}
+                  aria-label={category.label}
                 >
-                  메인에서 항목을 드래그하여 여기에 놓으면 더보기에만 표시됩니다.
-                </div>
-              ) : null}
+                  <span className="material-symbols-outlined">{category.icon}</span>
+                </button>
+              </div>
+            );
+          })}
+        </div>
 
-              {overflowItems.map((item) => {
+        <div
+          className="sidebar-submenu-pane"
+          onDragOver={(e) => {
+            if (!draggingItemTo) return;
+            e.preventDefault();
+            setItemDropHint({ to: DROP_END, place: 'after' });
+          }}
+          onDrop={(e) => {
+            if (!draggingItemTo) return;
+            handleItemDrop(e, DROP_END, 'after');
+          }}
+        >
+          {!activeCategory ? (
+            <div className="sidebar-submenu-empty">대분류 아이콘을 선택해 주세요.</div>
+          ) : activeCategory === 'cloud' ? (
+            <div className="sidebar-submenu-empty">클라우드 기능은 추후 개발 예정입니다.</div>
+          ) : (
+            <>
+              {activeItems.map((item) => {
                 const isLocked = isPendingBlockedMenu(user, item.to);
-                const over =
-                  dragOverDrop?.zone === 'overflow' && dragOverDrop?.to === item.to;
+                const isOver = itemDropHint?.to === item.to;
+                const overBefore = isOver && itemDropHint?.place === 'before';
+                const overAfter = isOver && itemDropHint?.place === 'after';
                 return (
                   <div
                     key={item.to}
-                    data-sidebar-drop-zone="overflow"
-                    data-sidebar-drop-to={item.to}
-                    className={`sidebar-overflow-row sidebar-nav-item ${draggingTo === item.to ? 'sidebar-nav-item-dragging' : ''} ${over ? 'sidebar-nav-item-drag-over' : ''}`}
-                    onDragOver={(e) => handleOverflowRowDragOver(e, item.to)}
-                    onDrop={(e) => handleOverflowDrop(e, item.to)}
+                    className={`sidebar-nav-item ${draggingItemTo === item.to ? 'sidebar-nav-item-dragging' : ''} ${isOver ? 'sidebar-nav-item-drag-over' : ''} ${overBefore ? 'sidebar-drop-before' : ''} ${overAfter ? 'sidebar-drop-after' : ''}`}
+                    draggable
+                    onDragStart={(e) => handleItemDragStart(e, item.to)}
+                    onDragEnd={handleItemDragEnd}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (draggingItemTo === item.to) return;
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const place = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
+                      setItemDropHint({ to: item.to, place });
+                    }}
+                    onDrop={(e) => handleItemDrop(e, item.to, itemDropHint?.place || 'before')}
                   >
-                    <span
-                      className="sidebar-drag-handle"
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, item.to, 'overflow')}
-                      onDragEnd={handleDragEnd}
-                      title="드래그하여 순서 변경 · 메인으로 이동"
-                      aria-label="순서 변경"
-                    >
-                      <span className="material-symbols-outlined">drag_indicator</span>
-                    </span>
                     <NavLink
                       to={item.to}
-                      className={({ isActive }) =>
-                        `sidebar-link sidebar-overflow-link ${isActive ? 'active' : ''} ${isLocked ? 'sidebar-link-locked' : ''}`
-                      }
+                      className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''} ${isLocked ? 'sidebar-link-locked' : ''}`}
                       end={item.to === '/'}
+                      draggable={false}
                       onClick={(e) => {
-                        if (item.to === '#') e.preventDefault();
-                        else if (isLocked) {
+                        if (isLocked) {
                           e.preventDefault();
                           window.alert('현재 계정은 권한 대기 상태입니다. 사내 현황에서 회사의 허용을 받아야 다른 메뉴에 접근할 수 있습니다.');
-                        } else {
-                          setOverflowOpen(false);
-                          onCloseDrawer?.();
+                          return;
                         }
+                        onCloseDrawer?.();
                       }}
                     >
                       <span className="material-symbols-outlined">{item.icon}</span>
                       <span>{item.label}</span>
-                      {isLocked ? (
-                        <span className="material-symbols-outlined sidebar-lock-icon" aria-hidden>
-                          lock
-                        </span>
-                      ) : null}
+                      {isLocked ? <span className="material-symbols-outlined sidebar-lock-icon" aria-hidden>lock</span> : null}
                     </NavLink>
                   </div>
                 );
               })}
-
-              {overflowItems.length > 0 ? (
-                <div
-                  data-sidebar-drop-zone="overflow"
-                  data-sidebar-drop-to={DROP_END}
-                  className={`sidebar-overflow-end-drop ${dragOverDrop?.zone === 'overflow' && dragOverDrop?.to === DROP_END ? 'sidebar-nav-item-drag-over' : ''}`}
-                  onDragOver={handleOverflowEndDragOver}
-                  onDrop={(e) => handleOverflowDrop(e, DROP_END)}
-                >
-                  맨 아래에 놓기
-                </div>
-              ) : null}
-            </div>
-          ) : null}
+            </>
+          )}
         </div>
       </nav>
+
       {savingOrder && (
         <div className="sidebar-order-saving" aria-live="polite">
           레이아웃 저장 중…
         </div>
       )}
+
       <div className="sidebar-footer">
         <Link to="/register?edit=1" className="sidebar-user sidebar-user-clickable">
           {user?.avatar ? (
@@ -571,7 +503,15 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
             <p className="sidebar-user-role">{departmentLabel}</p>
           </div>
         </Link>
-        <button type="button" className="sidebar-logout" onClick={() => { localStorage.removeItem('crm_token'); localStorage.removeItem('crm_user'); navigate('/login', { replace: true }); }}>
+        <button
+          type="button"
+          className="sidebar-logout"
+          onClick={() => {
+            localStorage.removeItem('crm_token');
+            localStorage.removeItem('crm_user');
+            navigate('/login', { replace: true });
+          }}
+        >
           <span className="material-symbols-outlined">logout</span>
           <span>로그아웃</span>
         </button>

@@ -2,11 +2,12 @@
 /* 사이드바 배경 (더보기 패널 등과 공통) */
 .sidebar {
   --sidebar-bg: #1a365d;
+  --sidebar-total-width: 16rem;
   position: fixed;
   left: 0;
   top: 0;
   bottom: 0;
-  width: 16rem;
+  width: var(--sidebar-total-width);
   height: 100vh;
   height: 100dvh;
   max-height: 100vh;
@@ -29,6 +30,8 @@
   align-items: center;
   gap: 0.75rem;
   flex-shrink: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+  margin-bottom: 0.35rem;
 }
 
 /* 상단: 텍스트 대신 CDN 브랜드 이미지 전체 */
@@ -104,6 +107,95 @@
   scrollbar-width: thin;
 }
 
+.sidebar-nav-twolevel {
+  display: grid;
+  grid-template-columns: 3.2rem minmax(0, 1fr);
+  column-gap: 0.6rem;
+  align-items: stretch;
+}
+
+.sidebar-category-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+  padding-top: 0.2rem;
+}
+
+.sidebar-category-wrap {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  padding: 0.15rem;
+  cursor: grab;
+}
+
+.sidebar-category-button {
+  width: 2.35rem;
+  height: 2.35rem;
+  border-radius: 0.75rem;
+  border: 1px solid transparent;
+  color: rgba(255, 255, 255, 0.82);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.sidebar-category-button:hover {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.sidebar-category-button-active {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #fff;
+}
+
+.sidebar-category-button-drop-target {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.36);
+}
+
+.sidebar-category-button .material-symbols-outlined {
+  font-size: 1.25rem;
+}
+
+.sidebar-category-end-drop {
+  margin-top: auto;
+  padding: 0.2rem;
+  border-radius: 0.45rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.52);
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sidebar-submenu-pane {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  border-left: 1px solid rgba(255, 255, 255, 0.16);
+  padding-left: 0.55rem;
+}
+
+.sidebar-submenu-empty {
+  margin-top: 0.3rem;
+  border-radius: 0.55rem;
+  padding: 0.75rem 0.65rem;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.07);
+}
+
 .sidebar-nav::-webkit-scrollbar {
   width: 6px;
 }
@@ -126,12 +218,21 @@
   align-items: stretch;
   border-radius: 0.5rem;
   transition: background 0.15s;
+  cursor: grab;
 }
 
 .sidebar-nav-item-drag-over {
   background: rgba(255, 255, 255, 0.08);
   outline: 1px dashed rgba(255, 255, 255, 0.3);
   outline-offset: -1px;
+}
+
+.sidebar-drop-before {
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.85);
+}
+
+.sidebar-drop-after {
+  box-shadow: inset 0 -2px 0 rgba(255, 255, 255, 0.85);
 }
 
 .sidebar-nav-item-dragging .sidebar-link {
@@ -480,7 +581,7 @@
     top: 0;
     left: auto; /* 기본 left:0과 함께 right 지정 시 right가 무시되는 것 방지 → 오른쪽에서 슬라이드 */
     right: 0;
-    width: 16rem;
+    width: var(--sidebar-total-width);
     height: 100vh;
     max-height: 100dvh;
     z-index: 1001;
@@ -561,6 +662,11 @@
   .sidebar.sidebar-drawer-open .sidebar-nav-item .sidebar-link {
     justify-content: flex-start;
     padding: 0.6rem 0.75rem;
+  }
+
+  .sidebar.sidebar-drawer-open .sidebar-nav-twolevel {
+    grid-template-columns: 2.9rem minmax(0, 1fr);
+    column-gap: 0.55rem;
   }
 
   .sidebar:not(.sidebar-drawer-open) .sidebar-overflow-toggle-label,

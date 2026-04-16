@@ -8,6 +8,9 @@ import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-head
 
 import { API_BASE } from '@/config';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
+import { getSavedTemplate, patchListTemplate, LIST_IDS } from '@/lib/list-templates';
+
+const SALES_PIPELINE_LIST_ID = LIST_IDS.SALES_PIPELINE;
 const MODAL_PARAM = 'oppModal';
 const MODAL_ADD = 'add';
 const MODAL_EDIT = 'edit';
@@ -63,6 +66,8 @@ export default function SalesPipeline() {
   const [showStagesModal, setShowStagesModal] = useState(false);
   /** 모바일: 칩으로 선택한 파이프라인 단계(해당 단계 카드만 목록 표시) */
   const [mobileListStage, setMobileListStage] = useState(null);
+  /** 고객사/연락처와 동일: listTemplates.salesPipeline.assigneeMeOnly 로 «내 기회만» 필터 저장 */
+  const [mineOnly, setMineOnly] = useState(() => getSavedTemplate(SALES_PIPELINE_LIST_ID)?.assigneeMeOnly === true);
 
   const modalMode = searchParams.get(MODAL_PARAM);
   const editOppId = searchParams.get(OPP_ID_PARAM);
@@ -97,6 +102,7 @@ export default function SalesPipeline() {
     try {
       const params = new URLSearchParams();
       if (search) params.set('search', search);
+      if (mineOnly) params.set('createdByMe', '1');
       const res = await fetch(`${API_BASE}/sales-opportunities?${params}`, { headers: getAuthHeader() });
       if (!res.ok) throw new Error('fetch failed');
       const data = await res.json();
@@ -110,7 +116,7 @@ export default function SalesPipeline() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [search]);
+  }, [search, mineOnly]);
 
   const fetchStageDefinitions = useCallback(async () => {
     try {
@@ -149,6 +155,29 @@ export default function SalesPipeline() {
     clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(() => fetchData(), 350);
   };
+
+  const toggleMineOnly = useCallback(() => {
+    const prev = mineOnly;
+    const next = !mineOnly;
+    setMineOnly(next);
+    patchListTemplate(SALES_PIPELINE_LIST_ID, { assigneeMeOnly: next }).catch((err) => {
+      window.alert(err?.message || '저장에 실패했습니다.');
+      setMineOnly(prev);
+    });
+  }, [mineOnly]);
+
+  const setMineOnlyFromChip = useCallback(
+    (next) => {
+      if (next === mineOnly) return;
+      const prev = mineOnly;
+      setMineOnly(next);
+      patchListTemplate(SALES_PIPELINE_LIST_ID, { assigneeMeOnly: next }).catch((err) => {
+        window.alert(err?.message || '저장에 실패했습니다.');
+        setMineOnly(prev);
+      });
+    },
+    [mineOnly]
+  );
 
   /* ---- Drag & Drop ---- */
   const handleDragStart = (e, id) => {
@@ -347,6 +376,16 @@ export default function SalesPipeline() {
           ) : null}
         </div>
         <div className="sp-header-right">
+          <button
+            type="button"
+            className={`icon-btn sp-assignee-filter-btn ${mineOnly ? 'active' : ''}`}
+            onClick={toggleMineOnly}
+            title={mineOnly ? '전체 기회 보기' : '내 기회만 보기'}
+            aria-label={mineOnly ? '전체 기회 보기' : '내 기회만 보기'}
+          >
+            <span className="material-symbols-outlined">person_pin_circle</span>
+            <span className="sp-assignee-filter-label">내 기회만 보기</span>
+          </button>
           <div className="sp-search-wrap">
             <span className="material-symbols-outlined sp-search-icon">search</span>
             <input className="sp-search" type="text" placeholder="기회 검색..." value={search} onChange={onSearchInput} />
@@ -403,6 +442,29 @@ export default function SalesPipeline() {
                   </p>
                 </div>
               </div>
+            </div>
+          </section>
+
+          <section className="sp-mobile-mine-wrap sp-mobile-only" aria-label="등록자 필터">
+            <div className="sp-mobile-mine-chips" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={!mineOnly}
+                className={`sp-mobile-mine-chip ${!mineOnly ? 'is-active' : ''}`}
+                onClick={() => setMineOnlyFromChip(false)}
+              >
+                전체
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mineOnly}
+                className={`sp-mobile-mine-chip ${mineOnly ? 'is-active' : ''}`}
+                onClick={() => setMineOnlyFromChip(true)}
+              >
+                내 기회
+              </button>
             </div>
           </section>
 

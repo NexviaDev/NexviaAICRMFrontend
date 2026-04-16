@@ -168,6 +168,11 @@ export default function CompanyOverview() {
   const [requestMessage, setRequestMessage] = useState('');
   const [orgChart, setOrgChart] = useState(null);
   const [orgSaving, setOrgSaving] = useState(false);
+  const [handoverPendingGroups, setHandoverPendingGroups] = useState([]);
+  const [handoverPendingLoading, setHandoverPendingLoading] = useState(false);
+  const [handoverViewerCanConsent, setHandoverViewerCanConsent] = useState(false);
+  const [handoverApprovingKey, setHandoverApprovingKey] = useState('');
+  const [handoverActionError, setHandoverActionError] = useState('');
   const mindContainerRef = useRef(null);
   const mindInstanceRef = useRef(null);
 
@@ -186,6 +191,93 @@ export default function CompanyOverview() {
     setData(json);
   }, []);
 
+  const loadHandoverPending = useCallback(async () => {
+    const role = data?.me?.role;
+    if (!['owner', 'admin', 'senior'].includes(role)) {
+      setHandoverViewerCanConsent(false);
+      setHandoverPendingGroups([]);
+      return;
+    }
+    setHandoverPendingLoading(true);
+    try {
+      const r = await fetch(`${API_BASE}/companies/assignee-handover-requests/pending`, { headers: getAuthHeader() });
+      const json = await r.json().catch(() => ({}));
+      if (Array.isArray(json?.groups)) {
+        setHandoverViewerCanConsent(Boolean(json.viewerCanConsent));
+        setHandoverPendingGroups(json.groups);
+        return;
+      }
+      if (Array.isArray(json?.items)) {
+        setHandoverViewerCanConsent(true);
+        setHandoverPendingGroups(
+          json.items.map((h) => ({
+            batchKey: `legacy:${h.id}`,
+            subjectLine: `[Nexvia CRM] 담당 이관 승인 요청 · ${h.targetLabel || '—'}`,
+            fromName: h.fromName,
+            toName: h.toName,
+            requesterName: h.requesterName,
+            ownerName: '',
+            consentRequiredUsers: [],
+            useBatchApprove: false,
+            approveBatchId: null,
+            approveRequestId: h.id ? String(h.id) : null,
+            requestReason: '',
+            items: [
+              {
+                id: h.id,
+                targetType: h.targetType,
+                targetLabel: h.targetLabel,
+                createdAt: h.createdAt,
+                expiresAt: h.expiresAt
+              }
+            ]
+          }))
+        );
+        return;
+      }
+      setHandoverViewerCanConsent(false);
+      setHandoverPendingGroups([]);
+    } catch {
+      setHandoverViewerCanConsent(false);
+      setHandoverPendingGroups([]);
+    } finally {
+      setHandoverPendingLoading(false);
+    }
+  }, [data?.me?.role]);
+
+  const approveHandoverInApp = useCallback(
+    async (g) => {
+      const body =
+        g.useBatchApprove && g.approveBatchId
+          ? { batchId: g.approveBatchId }
+          : g.approveRequestId
+            ? { requestId: g.approveRequestId }
+            : null;
+      if (!body) {
+        setHandoverActionError('동의할 수 있는 요청 정보가 없습니다.');
+        return;
+      }
+      setHandoverActionError('');
+      setHandoverApprovingKey(g.batchKey);
+      try {
+        const res = await fetch(`${API_BASE}/companies/assignee-handover-requests/approve-in-app`, {
+          method: 'POST',
+          headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(out.error || '동의 처리에 실패했습니다.');
+        await loadHandoverPending();
+        await refreshOverview();
+      } catch (e) {
+        setHandoverActionError(e.message || '동의 처리에 실패했습니다.');
+      } finally {
+        setHandoverApprovingKey('');
+      }
+    },
+    [loadHandoverPending, refreshOverview]
+  );
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -200,9 +292,21 @@ export default function CompanyOverview() {
     return () => { cancelled = true; };
   }, [refreshOverview]);
 
+  useEffect(() => {
+    if (loading || error) return;
+    loadHandoverPending();
+  }, [loading, error, loadHandoverPending]);
+
   const { company = {}, employees = [], subscription = {} } = data || {};
   const me = data?.me || {};
   const canManageRoles = ['owner', 'admin', 'senior'].includes(me.role);
+  const showHandoverConsentCard = canManageRoles && (handoverPendingLoading || handoverViewerCanConsent);
+
+  const formatHandoverConsentNames = (users) => {
+    if (!Array.isArray(users) || users.length === 0) return '—';
+    const s = users.map((u) => (u && (u.name || u.email)) || '').filter(Boolean).join(', ');
+    return s || '—';
+  };
   const orgDeptOptions = useMemo(() => {
     if (!orgChart || typeof orgChart !== 'object') return [];
     return flattenOrgChartOptions(orgChart);
@@ -567,7 +671,95 @@ export default function CompanyOverview() {
           </dl>
         </section>
 
-
+        {showHandoverConsentCard && (
+          <section className="company-overview-card co-handover-pending-card" aria-labelledby="co-handover-title">
+            <h2 id="co-handover-title" className="company-overview-section-title">
+              <span className="material-symbols-outlined">swap_horiz</span>
+              담당 이관 승인 대기
+            </h2>
+            <p className="co-handover-pending-lead">
+              동의가 필요한 관리자에게만 표시됩니다. 메일과 동일하게 <strong>인수·인계·대표(Owner)·동의·승인</strong> 정보를
+              보여 주며, 아래 버튼으로 메일의 「동의하기」와 같은 반영을 할 수 있습니다. 여러 건 묶음은{' '}
+              <strong>전체 동의하기 · 반영</strong>으로 한 번에 처리됩니다.
+            </p>
+            {handoverActionError ? (
+              <p className="company-overview-error company-overview-inline-error co-handover-inline-error" role="alert">
+                {handoverActionError}
+              </p>
+            ) : null}
+            {handoverPendingLoading ? (
+              <p className="company-overview-empty">불러오는 중...</p>
+            ) : handoverPendingGroups.length === 0 ? (
+              <p className="company-overview-empty">대기 중인 신청이 없습니다.</p>
+            ) : (
+              <ul className="co-handover-pending-list">
+                {handoverPendingGroups.map((g) => (
+                  <li key={g.batchKey} className="co-handover-pending-item co-handover-group-card">
+                    <p className="co-handover-group-subject">{g.subjectLine}</p>
+                    {g.requestReason ? (
+                      <div className="co-handover-reason-box">
+                        <span className="co-handover-reason-k">이관 사유</span>
+                        <p className="co-handover-reason-v">{g.requestReason}</p>
+                      </div>
+                    ) : null}
+                    <div className="co-handover-group-people" role="group" aria-label="인수·인계·대표·동의">
+                      <div className="co-handover-ppl-cell">
+                        <span className="co-handover-ppl-k">인수자</span>
+                        <span className="co-handover-ppl-hint">(새 담당)</span>
+                        <strong className="co-handover-ppl-v">{g.toName || '—'}</strong>
+                      </div>
+                      <div className="co-handover-ppl-cell">
+                        <span className="co-handover-ppl-k">인계자</span>
+                        <span className="co-handover-ppl-hint">(기존 담당)</span>
+                        <strong className="co-handover-ppl-v">{g.fromName || '—'}</strong>
+                      </div>
+                      <div className="co-handover-ppl-cell">
+                        <span className="co-handover-ppl-k">대표 (Owner)</span>
+                        <span className="co-handover-ppl-hint">(회사)</span>
+                        <strong className="co-handover-ppl-v">{g.ownerName || '—'}</strong>
+                      </div>
+                      <div className="co-handover-ppl-cell">
+                        <span className="co-handover-ppl-k">동의·승인</span>
+                        <span className="co-handover-ppl-hint">(관리자)</span>
+                        <strong className="co-handover-ppl-v co-handover-ppl-consent">
+                          {formatHandoverConsentNames(g.consentRequiredUsers)}
+                        </strong>
+                      </div>
+                    </div>
+                    <p className="co-handover-group-requester">
+                      신청자: <strong>{g.requesterName || '—'}</strong>
+                    </p>
+                    {g.items && g.items.length > 0 ? (
+                      <ul className="co-handover-group-targets" aria-label="신청 대상 항목">
+                        {g.items.map((it) => (
+                          <li key={String(it.id)}>{it.targetLabel || '—'}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    <div className="co-handover-approve-row">
+                      <button
+                        type="button"
+                        className="co-handover-approve-btn"
+                        onClick={() => approveHandoverInApp(g)}
+                        disabled={
+                          handoverApprovingKey === g.batchKey ||
+                          (!g.useBatchApprove && !g.approveRequestId) ||
+                          (g.useBatchApprove && !g.approveBatchId)
+                        }
+                      >
+                        {handoverApprovingKey === g.batchKey
+                          ? '처리 중…'
+                          : g.useBatchApprove
+                            ? '전체 동의하기 · 반영'
+                            : '동의하기 · 반영'}
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
 
         <section className="company-overview-card employees-card">
           <h2 className="company-overview-section-title">

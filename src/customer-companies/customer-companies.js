@@ -16,6 +16,7 @@ import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-head
 import ListPaginationButtons from '@/components/list-pagination-buttons/list-pagination-buttons';
 import * as XLSX from 'xlsx';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
+import AssigneeHandoverModal from '@/company-overview/assignee-handover-modal/assignee-handover-modal';
 
 import { API_BASE } from '@/config';
 const MODAL_PARAM = 'modal';
@@ -105,6 +106,8 @@ export default function CustomerCompanies() {
   const headerSelectAllRef = useRef(null);
   const me = useMemo(() => getStoredCrmUser(), []);
   const canExportExcel = isAdminOrAboveRole(me?.role);
+  const canRequestAssigneeHandover = !!(me && String(me.role || '').toLowerCase() !== 'pending');
+  const [handoverCtx, setHandoverCtx] = useState(null);
   const SEARCH_FIELD_OPTIONS = [
     { key: 'name', label: '고객사명' },
     { key: 'representativeName', label: '대표자' },
@@ -465,6 +468,34 @@ export default function CustomerCompanies() {
     setLastCheckedIndex(idx);
   }, [sortedItems, selectedCompanyIds, lastCheckedIndex]);
 
+  const clearCompanySelection = useCallback(() => {
+    setSelectedCompanyIds(new Set());
+    setSelectedCompanyMap({});
+    setLastCheckedIndex(null);
+  }, []);
+
+  const openCompanyHandoverFromSelection = useCallback(() => {
+    if (!canRequestAssigneeHandover) return;
+    if (selectedCompanyIds.size === 0) return;
+    const ids = [...selectedCompanyIds];
+    const rows = ids
+      .map((id) => selectedCompanyMap[id] || sortedItems.find((r) => String(r._id) === String(id)))
+      .filter(Boolean);
+    const withAssignee = rows.filter((r) => Array.isArray(r.assigneeUserIds) && r.assigneeUserIds.length > 0);
+    if (withAssignee.length === 0) {
+      window.alert('담당자가 지정된 고객사만 이관 신청할 수 있습니다.');
+      return;
+    }
+    setHandoverCtx({
+      targetType: 'customerCompany',
+      targets: withAssignee.map((r) => ({
+        targetId: r._id,
+        targetLabel: `고객사: ${r.name || '—'}`,
+        assigneeUserIds: r.assigneeUserIds
+      }))
+    });
+  }, [canRequestAssigneeHandover, selectedCompanyIds, selectedCompanyMap, sortedItems]);
+
   const fetchAllEmployeesForCompany = useCallback(async (companyId) => {
     const all = [];
     let page = 1;
@@ -673,6 +704,30 @@ export default function CustomerCompanies() {
             <button type="button" className="btn-primary" onClick={openAddModal}><span className="material-symbols-outlined">add</span> 고객사 추가</button>
           </div>
         </div>
+        {selectedCompanyIds.size > 0 && (
+          <div className="cc-selection-action-bar">
+            <span className="cc-selection-action-bar-count">
+              <strong>{selectedCompanyIds.size}</strong>곳 선택됨
+              <span className="cc-selection-action-bar-hint">Shift+클릭으로 범위 선택</span>
+            </span>
+            <div className="cc-selection-action-bar-btns">
+              {canRequestAssigneeHandover ? (
+                <button
+                  type="button"
+                  className="cc-selection-action-bar-handover"
+                  onClick={openCompanyHandoverFromSelection}
+                  title="선택한 고객사의 담당 이관 신청 (여러 곳 선택 가능, 담당자가 있는 항목만 신청, 관리자 메일 승인 후 반영)"
+                >
+                  <span className="material-symbols-outlined" aria-hidden>swap_horiz</span>
+                  인수인계
+                </button>
+              ) : null}
+              <button type="button" className="cc-selection-action-bar-cancel" onClick={clearCompanySelection}>
+                선택 해제
+              </button>
+            </div>
+          </div>
+        )}
         <div className="panel table-panel">
           {/* 모바일 전용 카드 목록 (customerForMobile.html 구조) */}
           <div className="customer-companies-mobile-cards-wrap">
@@ -937,6 +992,22 @@ export default function CustomerCompanies() {
             fetchList(pagination.page);
             closeDetailModal();
           }}
+        />
+      )}
+      {handoverCtx && (
+        <AssigneeHandoverModal
+          open
+          onClose={() => setHandoverCtx(null)}
+          onSubmitted={() => {
+            fetchList(pagination.page);
+            clearCompanySelection();
+          }}
+          targetType={handoverCtx.targetType}
+          targets={handoverCtx.targets}
+          assigneeIdToName={assigneeIdToName}
+          currentUserId={me?._id || me?.id}
+          companyEmployees={companyEmployees}
+          companyEmployeesLoaded={companyEmployeesLoaded}
         />
       )}
     </div>

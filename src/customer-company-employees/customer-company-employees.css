@@ -722,6 +722,29 @@
   font-size: 1.05rem;
 }
 
+.cce-action-bar-handover {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.95rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #3d5a80;
+  background: #e8f0f8;
+  border: 1px solid #c5d4e8;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.cce-action-bar-handover:hover {
+  background: #dce8f4;
+}
+
+.cce-action-bar-handover .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
 .cce-action-bar-google {
   display: flex;
   align-items: center;

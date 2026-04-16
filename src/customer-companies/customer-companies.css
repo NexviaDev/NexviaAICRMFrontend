@@ -118,6 +118,84 @@
   }
 }
 
+/* 고객사 목록 — 체크박스 다중 선택 시 액션 바 (연락처 리스트와 동일 패턴) */
+.cc-selection-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.65rem 1.25rem;
+  margin-bottom: 1rem;
+  background: var(--primary-pastel, #e8eaf6);
+  border: 1px solid rgba(92, 107, 192, 0.2);
+  border-radius: 0.5rem;
+  user-select: none;
+}
+
+.cc-selection-action-bar-count {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text, #333);
+}
+
+.cc-selection-action-bar-count strong {
+  color: var(--primary, #5c6bc0);
+}
+
+.cc-selection-action-bar-hint {
+  margin-left: 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--text-muted, #aaa);
+}
+
+.cc-selection-action-bar-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.cc-selection-action-bar-handover {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.95rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #3d5a80;
+  background: #e8f0f8;
+  border: 1px solid #c5d4e8;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.cc-selection-action-bar-handover:hover {
+  background: #dce8f4;
+}
+
+.cc-selection-action-bar-handover .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
+.cc-selection-action-bar-cancel {
+  padding: 0.45rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-muted, #666);
+  background: var(--bg-light, #f0f0f0);
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.cc-selection-action-bar-cancel:hover {
+  background: #e0e0e0;
+}
+
 .header-actions {
   display: flex;
   align-items: center;
