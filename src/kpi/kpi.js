@@ -1029,7 +1029,7 @@ export default function Kpi() {
           </div>
 
           <div className="kpi-hero-actions">
-            <div className="kpi-scope-row">
+            <div className="kpi-scope-period-row">
               <div className="kpi-scope-switch" role="tablist" aria-label="조회 범위">
                 {KPI_SCOPE_OPTIONS.map((item) => (
                   <button
@@ -1042,57 +1042,58 @@ export default function Kpi() {
                   </button>
                 ))}
               </div>
-              <button type="button" className="kpi-target-open-button" onClick={openTargetModal}>
-                목표 설정
-              </button>
+              <div className="kpi-period-switch" role="tablist" aria-label="조회 기간">
+                {PERIODS.map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    className={period === item.key ? 'is-active' : ''}
+                    onClick={() => setPeriod(item.key)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {scopeType === 'team' ? (
-              <select
-                className="kpi-scope-select"
-                value={selectedScopeDepartment}
-                onChange={(e) => setSelectedScopeDepartment(e.target.value)}
-                aria-label="부서 검색"
-              >
-                <option value="">전체 부서</option>
-                {scopeDepartmentOptions.map((item) => (
-                  <option key={item.id} value={item.id}>{item.label}</option>
-                ))}
-              </select>
-            ) : (
-              <div className="kpi-scope-select-wrap">
-                {selectedScopeUserOption?.avatar ? (
-                  <img src={selectedScopeUserOption.avatar} alt="" className="kpi-scope-select-avatar kpi-scope-select-avatar-img" />
-                ) : (
-                  <div className="kpi-scope-select-avatar kpi-scope-select-avatar-fallback" aria-hidden>
-                    <span className="material-symbols-outlined">person</span>
-                  </div>
-                )}
+            <div className="kpi-scope-select-row">
+              {scopeType === 'team' ? (
                 <select
-                  className="kpi-scope-select kpi-scope-select-with-avatar"
-                  value={selectedScopeUser}
-                  onChange={(e) => setSelectedScopeUser(e.target.value)}
-                  aria-label="직원 검색"
-                  disabled={scopeUserOptions.length === 0}
+                  className="kpi-scope-select"
+                  value={selectedScopeDepartment}
+                  onChange={(e) => setSelectedScopeDepartment(e.target.value)}
+                  aria-label="부서 검색"
                 >
-                  {scopeUserOptions.map((item) => (
+                  <option value="">전체 부서</option>
+                  {scopeDepartmentOptions.map((item) => (
                     <option key={item.id} value={item.id}>{item.label}</option>
                   ))}
                 </select>
-              </div>
-            )}
-
-            <div className="kpi-period-switch" role="tablist" aria-label="조회 기간">
-              {PERIODS.map((item) => (
-                <button
-                  key={item.key}
-                  type="button"
-                  className={period === item.key ? 'is-active' : ''}
-                  onClick={() => setPeriod(item.key)}
-                >
-                  {item.label}
-                </button>
-              ))}
+              ) : (
+                <div className="kpi-scope-select-wrap">
+                  {selectedScopeUserOption?.avatar ? (
+                    <img src={selectedScopeUserOption.avatar} alt="" className="kpi-scope-select-avatar kpi-scope-select-avatar-img" />
+                  ) : (
+                    <div className="kpi-scope-select-avatar kpi-scope-select-avatar-fallback" aria-hidden>
+                      <span className="material-symbols-outlined">person</span>
+                    </div>
+                  )}
+                  <select
+                    className="kpi-scope-select kpi-scope-select-with-avatar"
+                    value={selectedScopeUser}
+                    onChange={(e) => setSelectedScopeUser(e.target.value)}
+                    aria-label="직원 검색"
+                    disabled={scopeUserOptions.length === 0}
+                  >
+                    {scopeUserOptions.map((item) => (
+                      <option key={item.id} value={item.id}>{item.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <button type="button" className="kpi-target-open-button" onClick={openTargetModal}>
+                목표 설정
+              </button>
             </div>
           </div>
         </section>

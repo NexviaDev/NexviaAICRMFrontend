@@ -61,10 +61,31 @@
   gap: 0.8rem;
 }
 
-.kpi-scope-row {
+.kpi-scope-period-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 0.8rem;
+  width: 100%;
+}
+
+.kpi-scope-select-row {
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+  gap: 0.8rem;
+  width: 100%;
+}
+
+.kpi-scope-select-row .kpi-scope-select,
+.kpi-scope-select-row .kpi-scope-select-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.kpi-scope-select-row .kpi-scope-select-wrap {
+  width: auto;
 }
 
 .kpi-breadcrumb {
@@ -1120,7 +1141,12 @@
     align-items: stretch;
   }
 
-  .kpi-scope-row {
+  .kpi-scope-period-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .kpi-scope-select-row {
     flex-direction: column;
     align-items: stretch;
   }
@@ -1134,7 +1160,7 @@
     justify-content: space-between;
   }
 
-  .kpi-target-open-button {
+  .kpi-scope-select-row .kpi-target-open-button {
     width: 100%;
   }
 

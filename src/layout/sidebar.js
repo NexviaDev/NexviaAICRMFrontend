@@ -24,7 +24,7 @@ const SIDEBAR_DRAG_ITEM_MIME = 'application/x-nexvia-sidebar-item';
 
 const CATEGORY_ITEMS = [
   { key: 'inhouse', label: '사내 업무', icon: 'arrow_circle_left' },
-  { key: 'outside', label: '사외 업무', icon: 'arrow_circle_right' },
+  { key: 'outside', label: '사외 업무', icon: 'globe' },
   { key: 'cloud', label: '클라우드', icon: 'cloud' },
   { key: 'schedule', label: '일정', icon: 'event' },
   { key: 'etc', label: '기타', icon: 'more_horiz' }

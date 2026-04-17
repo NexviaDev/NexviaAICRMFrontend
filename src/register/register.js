@@ -469,7 +469,10 @@ export default function Register() {
           companyDepartment: departmentValue,
           companyBusinessNumber: companyBusinessNumber.trim(),
           companyRepresentativeName: companyNeedsCreate ? companyRepresentativeName.trim() : '',
-          createCompanyOnSave: companyNeedsCreate
+          createCompanyOnSave: companyNeedsCreate,
+          ...(!companyNeedsCreate && String(selectedCompanyId || '').trim()
+            ? { companyId: String(selectedCompanyId).trim() }
+            : {})
         })
       });
       const data = await res.json().catch(() => ({}));
@@ -554,7 +557,10 @@ export default function Register() {
         companyDepartment: departmentValue,
         companyBusinessNumber: companyBusinessNumber.trim(),
         companyRepresentativeName: companyNeedsCreate ? companyRepresentativeName.trim() : '',
-        createCompanyOnSave: companyNeedsCreate
+        createCompanyOnSave: companyNeedsCreate,
+        ...(!companyNeedsCreate && String(selectedCompanyId || '').trim()
+          ? { companyId: String(selectedCompanyId).trim() }
+          : {})
       };
       const res = await fetch(`${API_BASE}/auth/complete-profile`, {
         method: 'POST',

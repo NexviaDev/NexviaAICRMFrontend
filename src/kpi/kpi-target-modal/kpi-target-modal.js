@@ -105,7 +105,7 @@ export default function KpiTargetModal({
             <button type="button" className="kpi-target-modal-cancel" onClick={onClose}>닫기</button>
             <button type="submit" className="kpi-target-modal-submit" disabled={saving}>
               {saving ? '저장 중...' : '목표 저장'}
-            </button>
+            </button>수수
           </div>
         </form>
       </div>
