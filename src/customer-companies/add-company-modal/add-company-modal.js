@@ -1,13 +1,11 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import CustomFieldsSection from '../../shared/custom-fields-section';
-import CustomFieldsManageModal from '../../shared/custom-fields-manage-modal/custom-fields-manage-modal';
 import AssigneePickerModal from '../../company-overview/assignee-picker-modal/assignee-picker-modal';
 import DriveLargeFileWarningModal from '../../shared/drive-large-file-warning-modal/drive-large-file-warning-modal';
 import CompanyImportPreviewModal from './company-import-preview-modal';
 import './add-company-modal.css';
 
 import { API_BASE } from '@/config';
-import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import {
   getGoogleMapsApiKey,
   loadGoogleMaps,
@@ -160,7 +158,6 @@ const MAX_DRIVE_API_UPLOAD_SIZE = 5 * 1024 * 1024;
 
 export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }) {
   const isEdit = Boolean(company);
-  const canManageCustomFieldDefinitions = isAdminOrAboveRole(getStoredCrmUser()?.role);
   const [form, setForm] = useState({
     name: '',
     representativeName: '',
@@ -178,7 +175,6 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
   const [companyEmployeesForDisplay, setCompanyEmployeesForDisplay] = useState([]); // 담당자 input 표시용 이름 매핑
   const [assigneeDisplayText, setAssigneeDisplayText] = useState(undefined); // 수기 수정 가능 (undefined면 선택된 ID 기준 표시)
   const [customDefinitions, setCustomDefinitions] = useState([]);
-  const [showCustomFieldsModal, setShowCustomFieldsModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [showMapPicker, setShowMapPicker] = useState(false);
@@ -526,12 +522,11 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
       if (largeFileWarning.open) setLargeFileWarning({ open: false, files: [], folderUrl: '' });
       else if (showMapPicker) setShowMapPicker(false);
       else if (showAssigneePicker) setShowAssigneePicker(false);
-      else if (showCustomFieldsModal) setShowCustomFieldsModal(false);
       else onClose?.();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, showAssigneePicker, showCustomFieldsModal, showMapPicker, largeFileWarning.open]);
+  }, [onClose, showAssigneePicker, showMapPicker, largeFileWarning.open]);
 
   // 지도 피커: 열릴 때 Google Maps 로드 후 지도 초기화 + 주소 있으면 바로 검색
   useEffect(() => {
@@ -798,7 +793,9 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
         return;
       }
       const items = Array.isArray(data.items) ? data.items : [];
-      const valid = items.filter((r) => !r.error && (r.name || '').trim());
+      const valid = items.filter(
+        (r) => !r.error && ((r.name || '').trim() || (r.address || '').trim() || (r.businessNumber || '').trim())
+      );
       if (!valid.length) {
         const firstErr = items.find((r) => r.error);
         setError(firstErr?.error || '추출된 고객사가 없습니다.');
@@ -1483,15 +1480,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
         </section>
         {/* 사용자 정의 필드 */}
         <section className="add-company-section add-company-section-custom">
-          <div className="add-company-custom-head">
-            <h3 className="add-company-section-title">사용자 정의 필드</h3>
-            {canManageCustomFieldDefinitions ? (
-              <button type="button" className="add-company-btn-field-add" onClick={() => setShowCustomFieldsModal(true)}>
-                <span className="material-symbols-outlined">add</span>
-                필드 추가
-              </button>
-            ) : null}
-          </div>
+          <h3 className="add-company-section-title">사용자 정의 필드</h3>
           <CustomFieldsSection
             definitions={customDefinitions}
             values={form.customFields || {}}
@@ -1540,15 +1529,6 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
                 const names = (ids || []).map((id) => assigneeIdToName[String(id)] || id).join(', ');
                 setAssigneeDisplayText(names);
               }}
-            />
-          )}
-          {showCustomFieldsModal && canManageCustomFieldDefinitions && (
-            <CustomFieldsManageModal
-              entityType="customerCompany"
-              onClose={() => setShowCustomFieldsModal(false)}
-              onFieldAdded={() => fetchCustomDefinitions()}
-              apiBase={API_BASE}
-              getAuthHeader={getAuthHeader}
             />
           )}
           {showMapPicker && GOOGLE_MAPS_API_KEY && (
@@ -1633,15 +1613,6 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
         </header>
         {formContent}
       </div>
-      {showCustomFieldsModal && canManageCustomFieldDefinitions && (
-        <CustomFieldsManageModal
-          entityType="customerCompany"
-          onClose={() => setShowCustomFieldsModal(false)}
-          onFieldAdded={() => fetchCustomDefinitions()}
-          apiBase={API_BASE}
-          getAuthHeader={getAuthHeader}
-        />
-      )}
       {showAssigneePicker && (
         <AssigneePickerModal
           open={showAssigneePicker}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AddProductModal from './add-product-modal/add-product-modal';
 import ProductDetailModal from './product-detail-modal/product-detail-modal';
@@ -31,6 +31,23 @@ const STATUS_LABELS = { Active: '활성', EndOfLife: 'End of Life', Draft: '초�
 const BILLING_LABELS = { Monthly: '월간', Annual: '연간', Perpetual: '영구' };
 const CUSTOM_FIELDS_PREFIX = 'customFields.';
 
+/** API filterField 값 — 백엔드 Product 스키마 + customFields.xxx */
+const PRODUCT_FIELD_FILTER_STATIC = [
+  { value: 'name', label: '제품명' },
+  { value: 'code', label: '코드' },
+  { value: 'category', label: '카테고리' },
+  { value: 'version', label: '버전' },
+  { value: 'currency', label: '통화' },
+  { value: 'status', label: '상태' },
+  { value: 'billingType', label: '결제 주기' },
+  { value: 'listPrice', label: '소비자가(listPrice)' },
+  { value: 'price', label: '가격(price)' },
+  { value: 'costPrice', label: '원가' },
+  { value: 'channelPrice', label: '유통가' },
+  { value: 'createdAt', label: '등록일' },
+  { value: 'updatedAt', label: '수정일' }
+];
+
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -42,17 +59,17 @@ function formatPrice(price, currency) {
   return `${sym}${Number(price).toLocaleString()}`;
 }
 
-/** 유통 마진 = 유통가 − 원가 — 영업 기회「유통 마진 기준」가격(channelPrice)과 동일 축 */
+/** 유통시 순 마진(금액) = 유통가 − 원가 — 영업 기회「유통시 순 마진 기준」가격(channelPrice)과 동일 축 */
 function getChannelMargin(row) {
   return (Number(row.channelPrice) || 0) - (Number(row.costPrice) || 0);
 }
 
-/** 소비자 마진 = 소비자가 − 원가 — 영업 기회「소비자 마진 기준」가격(listPrice/price)과 동일 축 */
+/** 순 마진(금액) = 소비자가 − 원가 — 영업 기회「순 마진 기준」가격(listPrice/price)과 동일 축 */
 function getConsumerMargin(row) {
   return (Number(listPriceFromProduct(row)) || 0) - (Number(row.costPrice) || 0);
 }
 
-/** 소비자가 대비 마진율(%) — 모바일 카드 표시용 */
+/** 소비자가 대비 순 마진율(%) — 모바일 카드 표시용 */
 function getConsumerMarginPercent(row) {
   const lp = Number(listPriceFromProduct(row)) || 0;
   if (lp <= 0) return null;
@@ -72,6 +89,13 @@ function getProductInitials(name) {
   const alnum = s.replace(/[^a-zA-Z0-9가-힣]/g, '');
   if (alnum.length >= 2) return alnum.slice(0, 2).toUpperCase();
   return s.slice(0, 2).toUpperCase();
+}
+
+/** 데스크톱 표: 소비자가+순 마진 / 유통가+유통시 순 마진 묶음 배경 */
+function productListColumnToneClass(key) {
+  if (key === 'price' || key === 'consumerMargin') return 'pl-col--direct';
+  if (key === 'channelPrice' || key === 'channelMargin') return 'pl-col--channel';
+  return '';
 }
 
 function hashToneFromString(seed) {
@@ -128,6 +152,17 @@ export default function ProductList() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sort, setSort] = useState({ key: null, dir: 'asc' });
   const [exportExcelLoading, setExportExcelLoading] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
+  const selectionAnchorIdxRef = useRef(null);
+  const headerSelectAllRef = useRef(null);
+
+  const [fieldFilterSelect, setFieldFilterSelect] = useState('name');
+  const [fieldFilterInput, setFieldFilterInput] = useState('');
+  const [fieldFilterFieldApplied, setFieldFilterFieldApplied] = useState('');
+  const [fieldFilterValueApplied, setFieldFilterValueApplied] = useState('');
+
   const sortKey = sort.key;
   const sortDir = sort.dir;
 
@@ -139,6 +174,23 @@ export default function ProductList() {
       m[fk] = (c.label || fk).trim() || fk;
     });
     return m;
+  }, [customFieldColumns]);
+
+  const fieldFilterOptions = useMemo(() => {
+    const customOpts = customFieldColumns.map((c) => {
+      const k = c.key?.startsWith(CUSTOM_FIELDS_PREFIX)
+        ? `customFields.${c.key.slice(CUSTOM_FIELDS_PREFIX.length)}`
+        : c.key;
+      return { value: k, label: c.label || k };
+    });
+    const seen = new Set();
+    const out = [];
+    for (const o of [...PRODUCT_FIELD_FILTER_STATIC, ...customOpts]) {
+      if (!o.value || seen.has(o.value)) continue;
+      seen.add(o.value);
+      out.push(o);
+    }
+    return out;
   }, [customFieldColumns]);
 
   const me = useMemo(() => getStoredCrmUser(), []);
@@ -156,6 +208,10 @@ export default function ProductList() {
       if (searchApplied) params.set('search', searchApplied);
       if (filterStatus) params.set('status', filterStatus);
       if (filterBilling) params.set('billingType', filterBilling);
+      if (fieldFilterFieldApplied && fieldFilterValueApplied) {
+        params.set('filterField', fieldFilterFieldApplied);
+        params.set('filterValue', fieldFilterValueApplied);
+      }
       const res = await fetch(`${API_BASE}/products?${params}`, { headers: getAuthHeader() });
       if (res.ok) {
         const data = await res.json();
@@ -171,10 +227,15 @@ export default function ProductList() {
     } finally {
       setLoading(false);
     }
-  }, [searchApplied, filterStatus, filterBilling]);
+  }, [searchApplied, filterStatus, filterBilling, fieldFilterFieldApplied, fieldFilterValueApplied]);
 
   useEffect(() => { fetchList(pagination.page); }, [pagination.page, fetchList]);
-  useEffect(() => { setPagination((p) => ({ ...p, page: 1 })); }, [searchApplied, filterStatus, filterBilling]);
+  useEffect(() => { setPagination((p) => ({ ...p, page: 1 })); }, [searchApplied, filterStatus, filterBilling, fieldFilterFieldApplied, fieldFilterValueApplied]);
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+    selectionAnchorIdxRef.current = null;
+  }, [searchApplied, filterStatus, filterBilling, fieldFilterFieldApplied, fieldFilterValueApplied]);
 
   /** 제품 커스텀 필드 정의 → 리스트 템플릿 열에 반영 (열 설정 모달·표시 순서) */
   useEffect(() => {
@@ -264,7 +325,7 @@ export default function ProductList() {
   };
 
   const displayColumns = template.columns.filter((c) => template.visible[c.key]);
-  const colSpan = Math.max(1, displayColumns.length);
+  const colSpan = Math.max(1, displayColumns.length + 1);
 
   const getSortValue = useCallback((row, key) => {
     if (key === 'name') return (row.name || '').toLowerCase();
@@ -299,7 +360,7 @@ export default function ProductList() {
     });
   }, [items, sortKey, sortDir, getSortValue]);
 
-  /** 현재 페이지에 표시된 제품만으로 평균 소비자 마진율(%) — 모바일 요약 카드 */
+  /** 현재 페이지에 표시된 제품만으로 평균 순 마진율(%) — 모바일 요약 카드 */
   const avgMarginPercent = useMemo(() => {
     const rows = items.filter((r) => (Number(listPriceFromProduct(r)) || 0) > 0);
     if (rows.length === 0) return null;
@@ -316,6 +377,102 @@ export default function ProductList() {
     });
   }, []);
 
+  const pageRowIds = useMemo(() => sortedItems.map((r) => r._id).filter(Boolean), [sortedItems]);
+  const allOnPageSelected = pageRowIds.length > 0 && pageRowIds.every((id) => selectedIds.has(id));
+  const someOnPageSelected = pageRowIds.some((id) => selectedIds.has(id)) && !allOnPageSelected;
+
+  useEffect(() => {
+    const el = headerSelectAllRef.current;
+    if (el) el.indeterminate = someOnPageSelected;
+  }, [someOnPageSelected]);
+
+  const handleRowCheckboxClick = useCallback((e, rowIdx, rowId) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const list = sortedItems;
+    if (!rowId) return;
+    if (e.shiftKey && selectionAnchorIdxRef.current != null) {
+      const a = selectionAnchorIdxRef.current;
+      const start = Math.min(a, rowIdx);
+      const end = Math.max(a, rowIdx);
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (let i = start; i <= end; i++) {
+          const id = list[i]?._id;
+          if (id) next.add(id);
+        }
+        return next;
+      });
+    } else {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(rowId)) next.delete(rowId);
+        else next.add(rowId);
+        return next;
+      });
+      selectionAnchorIdxRef.current = rowIdx;
+    }
+  }, [sortedItems]);
+
+  const toggleSelectAllOnPage = useCallback((e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const ids = sortedItems.map((r) => r._id).filter(Boolean);
+    const allSelected = ids.length > 0 && ids.every((id) => selectedIds.has(id));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allSelected) ids.forEach((id) => next.delete(id));
+      else ids.forEach((id) => next.add(id));
+      return next;
+    });
+    selectionAnchorIdxRef.current = null;
+  }, [sortedItems, selectedIds]);
+
+  const applyFieldFilter = useCallback(() => {
+    const v = fieldFilterInput.trim();
+    if (!fieldFilterSelect || !v) {
+      alert('필드와 검색 값을 입력해 주세요.');
+      return;
+    }
+    setFieldFilterFieldApplied(fieldFilterSelect);
+    setFieldFilterValueApplied(v);
+    setPagination((p) => ({ ...p, page: 1 }));
+  }, [fieldFilterInput, fieldFilterSelect]);
+
+  const clearFieldFilter = useCallback(() => {
+    setFieldFilterFieldApplied('');
+    setFieldFilterValueApplied('');
+    setFieldFilterInput('');
+    setPagination((p) => ({ ...p, page: 1 }));
+  }, []);
+
+  const confirmBulkDelete = useCallback(async () => {
+    if (!canDeleteProduct || selectedIds.size === 0) return;
+    setBulkDeleteLoading(true);
+    try {
+      const ids = [...selectedIds];
+      const res = await fetch(`${API_BASE}/products/bulk-delete`, {
+        method: 'POST',
+        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data.error || '삭제에 실패했습니다.');
+        return;
+      }
+      if (detailId && ids.includes(detailId)) closeDetail();
+      setSelectedIds(new Set());
+      selectionAnchorIdxRef.current = null;
+      setBulkDeleteOpen(false);
+      fetchList(pagination.page);
+    } catch (_) {
+      alert('서버에 연결할 수 없습니다.');
+    } finally {
+      setBulkDeleteLoading(false);
+    }
+  }, [canDeleteProduct, selectedIds, detailId, fetchList, pagination.page, closeDetail]);
+
   const fetchAllProductsForExport = useCallback(async () => {
     let page = 1;
     let totalPages = 1;
@@ -325,6 +482,10 @@ export default function ProductList() {
       if (searchApplied) params.set('search', searchApplied);
       if (filterStatus) params.set('status', filterStatus);
       if (filterBilling) params.set('billingType', filterBilling);
+      if (fieldFilterFieldApplied && fieldFilterValueApplied) {
+        params.set('filterField', fieldFilterFieldApplied);
+        params.set('filterValue', fieldFilterValueApplied);
+      }
       const res = await fetch(`${API_BASE}/products?${params}`, { headers: getAuthHeader() });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -337,7 +498,7 @@ export default function ProductList() {
       page += 1;
     } while (page <= totalPages);
     return all;
-  }, [searchApplied, filterStatus, filterBilling]);
+  }, [searchApplied, filterStatus, filterBilling, fieldFilterFieldApplied, fieldFilterValueApplied]);
 
   const handleDownloadExcel = useCallback(async () => {
     const viewer = getStoredCrmUser();
@@ -368,8 +529,8 @@ export default function ProductList() {
           소비자가: listPriceFromProduct(row) ?? '',
           원가: row.costPrice ?? '',
           유통가: row.channelPrice ?? '',
-          소비자마진: getConsumerMargin(row),
-          유통마진: getChannelMargin(row),
+          '순 마진': getConsumerMargin(row),
+          '유통시 순 마진': getChannelMargin(row),
           통화: row.currency || '',
           결제주기: row.billingType ? BILLING_LABELS[row.billingType] || row.billingType : '',
           상태: row.status ? STATUS_LABELS[row.status] || row.status : '',
@@ -418,6 +579,20 @@ export default function ProductList() {
         }}
       >
         <div className="pl-mcard-top">
+          <div
+            className="pl-mcard-checkbox-wrap"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            role="presentation"
+          >
+            <input
+              type="checkbox"
+              className="pl-mcard-row-cb"
+              checked={selectedIds.has(row._id)}
+              onClick={(e) => handleRowCheckboxClick(e, idx, row._id)}
+              aria-label={`${row.name || '제품'} 선택`}
+            />
+          </div>
           <div className="pl-mcard-id">
             <ProductListAvatar row={row} idx={idx} />
             <div className="pl-mcard-text">
@@ -437,7 +612,7 @@ export default function ProductList() {
             <span className="pl-mcard-metric-val">{formatPrice(listPriceFromProduct(row), row.currency)}</span>
           </div>
           <div className="pl-mcard-metric">
-            <span className="pl-mcard-metric-label">마진</span>
+            <span className="pl-mcard-metric-label">순 마진</span>
             <span className="pl-mcard-metric-val pl-mcard-metric-val--margin">
               {mp != null ? `${mp.toFixed(1)}%` : '—'}
             </span>
@@ -465,6 +640,17 @@ export default function ProductList() {
           </form>
         </div>
         <div className="header-actions">
+          {canDeleteProduct && selectedIds.size > 0 ? (
+            <button
+              type="button"
+              className="icon-btn product-list-header-delete-btn"
+              aria-label="선택한 제품 삭제"
+              title="선택한 제품 삭제"
+              onClick={() => setBulkDeleteOpen(true)}
+            >
+              <span className="material-symbols-outlined">delete</span>
+            </button>
+          ) : null}
           <button
             type="button"
             className="icon-btn"
@@ -490,7 +676,7 @@ export default function ProductList() {
               <p className="pl-mobile-bento-value">{pagination.total != null ? `${pagination.total.toLocaleString()}개` : '—'}</p>
             </div>
             <div className="pl-mobile-bento-card pl-mobile-bento-card--peach">
-              <p className="pl-mobile-bento-label">목록 평균 마진</p>
+              <p className="pl-mobile-bento-label">목록 평균 순 마진</p>
               <p className="pl-mobile-bento-value">
                 {avgMarginPercent != null ? `${avgMarginPercent.toFixed(1)}%` : '—'}
               </p>
@@ -544,6 +730,79 @@ export default function ProductList() {
               <option value="Annual">연간</option>
               <option value="Perpetual">영구</option>
             </select>
+            <div className="product-list-field-filter" role="group" aria-label="필드별 필터">
+              <select
+                className="product-list-filter-select product-list-field-filter-select"
+                value={fieldFilterSelect}
+                onChange={(e) => setFieldFilterSelect(e.target.value)}
+                aria-label="필터 필드"
+              >
+                {fieldFilterOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+              <input
+                type="text"
+                className="product-list-field-filter-input"
+                value={fieldFilterInput}
+                onChange={(e) => setFieldFilterInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    applyFieldFilter();
+                  }
+                }}
+                placeholder="해당 필드 값"
+                aria-label="필드 검색 값"
+              />
+              <button type="button" className="btn-outline product-list-field-filter-apply" onClick={applyFieldFilter}>
+                필터 적용
+              </button>
+              {fieldFilterFieldApplied && fieldFilterValueApplied ? (
+                <button type="button" className="btn-outline product-list-field-filter-clear" onClick={clearFieldFilter}>
+                  필터 해제
+                </button>
+              ) : null}
+            </div>
+          </div>
+          <div className="pl-mobile-field-filter pl-mobile-only">
+            <p className="pl-mobile-chips-label">필드 필터</p>
+            <div className="pl-mobile-field-filter-row">
+              <select
+                className="product-list-filter-select product-list-field-filter-select"
+                value={fieldFilterSelect}
+                onChange={(e) => setFieldFilterSelect(e.target.value)}
+                aria-label="필터 필드"
+              >
+                {fieldFilterOptions.map((opt) => (
+                  <option key={`m-${opt.value}`} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+              <input
+                type="text"
+                className="product-list-field-filter-input"
+                value={fieldFilterInput}
+                onChange={(e) => setFieldFilterInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    applyFieldFilter();
+                  }
+                }}
+                placeholder="값"
+                aria-label="필드 검색 값"
+              />
+            </div>
+            <div className="pl-mobile-field-filter-actions">
+              <button type="button" className="btn-outline product-list-field-filter-apply" onClick={applyFieldFilter}>
+                적용
+              </button>
+              {fieldFilterFieldApplied && fieldFilterValueApplied ? (
+                <button type="button" className="btn-outline product-list-field-filter-clear" onClick={clearFieldFilter}>
+                  해제
+                </button>
+              ) : null}
+            </div>
           </div>
           <div className="pl-mobile-chips-block pl-mobile-only">
             <p className="pl-mobile-chips-label">상태</p>
@@ -600,10 +859,24 @@ export default function ProductList() {
             <table className="data-table product-list-table">
               <thead>
                 <tr>
+                  <th className="pl-th-checkbox" scope="col" aria-label="현재 페이지 전체 선택">
+                    <input
+                      ref={headerSelectAllRef}
+                      type="checkbox"
+                      className="pl-row-checkbox"
+                      checked={allOnPageSelected}
+                      onClick={toggleSelectAllOnPage}
+                      title="현재 페이지 전체 선택"
+                    />
+                  </th>
                   {displayColumns.map((col) => (
                     <th
                       key={col.key}
-                      className={`${dragOverKey === col.key ? 'list-template-drag-over' : ''} list-template-th-sortable`}
+                      className={[
+                        'list-template-th-sortable',
+                        dragOverKey === col.key ? 'list-template-drag-over' : '',
+                        productListColumnToneClass(col.key)
+                      ].filter(Boolean).join(' ')}
                       draggable
                       onDragStart={(e) => handleHeaderDragStart(e, col.key)}
                       onDragOver={(e) => handleHeaderDragOver(e, col.key)}
@@ -636,8 +909,17 @@ export default function ProductList() {
                       className={`product-list-row-clickable ${row.status === 'EndOfLife' ? 'product-list-row-eol' : ''}`}
                       onClick={() => openDetail(row)}
                     >
+                      <td className="pl-td-checkbox" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          className="pl-row-checkbox"
+                          checked={selectedIds.has(row._id)}
+                          onClick={(e) => handleRowCheckboxClick(e, rowIdx, row._id)}
+                          aria-label={`${row.name || '제품'} 선택`}
+                        />
+                      </td>
                       {displayColumns.map((col) => (
-                        <td key={col.key}>
+                        <td key={col.key} className={productListColumnToneClass(col.key)}>
                           {col.key === 'name' && (
                             <div className="product-list-cell-name">
                               <ProductListAvatar row={row} idx={rowIdx} />
@@ -738,6 +1020,38 @@ export default function ProductList() {
           onDelete={canDeleteProduct ? handleDelete : undefined}
         />
       )}
+      {bulkDeleteOpen && canDeleteProduct ? (
+        <div className="product-bulk-delete-overlay" role="presentation">
+          <div
+            className="product-bulk-delete-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="product-bulk-delete-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="product-bulk-delete-title" className="product-bulk-delete-title">선택한 제품 삭제</h3>
+            <p className="product-bulk-delete-msg">삭제 하시겠습니까? ({selectedIds.size}건)</p>
+            <div className="product-bulk-delete-actions">
+              <button
+                type="button"
+                className="btn-outline"
+                disabled={bulkDeleteLoading}
+                onClick={() => setBulkDeleteOpen(false)}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={bulkDeleteLoading}
+                onClick={confirmBulkDelete}
+              >
+                {bulkDeleteLoading ? '삭제 중…' : '확인'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

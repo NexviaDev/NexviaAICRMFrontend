@@ -42,6 +42,85 @@
   color: #20567c;
 }
 
+/* 전체 부서 / 전체 직원 — 수주 매출 기준 100% 누적 막대 (그라데이션 없음, 파스텔 톤) */
+.kpi-contribution-panel {
+  margin-bottom: 1.5rem;
+  padding: 1.25rem 1.35rem;
+  background: #ffffff;
+  border-radius: 1rem;
+  border: 1px solid rgba(44, 52, 55, 0.08);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+}
+
+.kpi-contribution-head {
+  margin-bottom: 1rem;
+}
+
+.kpi-contribution-head h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #2c3437;
+  letter-spacing: -0.02em;
+}
+
+.kpi-contribution-head p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #5a6b78;
+  font-weight: 600;
+}
+
+.kpi-contribution-bar {
+  display: flex;
+  width: 100%;
+  min-height: 5.25rem;
+  border-radius: 0.65rem;
+  overflow: hidden;
+  border: 1px solid rgba(44, 100, 133, 0.12);
+}
+
+.kpi-contribution-segment {
+  min-width: 0;
+  display: flex;
+  align-items: stretch;
+  color: #1e293b;
+  box-sizing: border-box;
+  border-right: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.kpi-contribution-segment:last-child {
+  border-right: none;
+}
+
+.kpi-contribution-segment-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.15rem;
+  padding: 0.55rem 0.65rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.kpi-contribution-segment-name {
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kpi-contribution-segment-metric,
+.kpi-contribution-segment-ach {
+  font-size: 0.68rem;
+  font-weight: 600;
+  opacity: 0.92;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .kpi-hero {
   display: flex;
   align-items: flex-end;
@@ -378,6 +457,13 @@
   color: #596064;
 }
 
+.kpi-summary-subline {
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #5a6b78;
+}
+
 .kpi-summary-copy h2 {
   margin: 0.45rem 0 0;
   font-family: 'Manrope', 'Inter', system-ui, sans-serif;
@@ -622,12 +708,12 @@
 .kpi-manual-panel {
   display: flex;
   flex-direction: column;
-  background: #f0f4f7;
+  background: #ffffff;
 }
 
 .kpi-target-overview-body {
   padding: 1.5rem 1.65rem 1.5rem;
-  background: #f6f8fb;
+  background: #ffffff;
 }
 
 .kpi-target-overview-list {
@@ -964,6 +1050,11 @@
   color: #2c6485;
 }
 
+.kpi-score-muted {
+  color: #8a9399;
+  font-weight: 600;
+}
+
 .kpi-mini-trend {
   display: inline-flex;
   align-items: flex-end;
@@ -1192,6 +1283,29 @@
   .kpi-period-switch button {
     flex: 1 1 0;
     padding-inline: 0.7rem;
+  }
+
+  .kpi-contribution-panel {
+    padding: 1rem 1.05rem;
+    margin-bottom: 1.1rem;
+  }
+
+  .kpi-contribution-bar {
+    min-height: 4.5rem;
+    overflow-x: auto;
+  }
+
+  .kpi-contribution-segment-body {
+    padding: 0.4rem 0.45rem;
+  }
+
+  .kpi-contribution-segment-name {
+    font-size: 0.65rem;
+  }
+
+  .kpi-contribution-segment-metric,
+  .kpi-contribution-segment-ach {
+    font-size: 0.6rem;
   }
 
   .kpi-summary-grid {

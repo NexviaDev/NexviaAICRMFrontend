@@ -17,6 +17,7 @@ import ListPaginationButtons from '@/components/list-pagination-buttons/list-pag
 import * as XLSX from 'xlsx';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import AssigneeHandoverModal from '@/company-overview/assignee-handover-modal/assignee-handover-modal';
+import CustomFieldsManageModal from '@/shared/custom-fields-manage-modal/custom-fields-manage-modal';
 
 import { API_BASE } from '@/config';
 const MODAL_PARAM = 'modal';
@@ -106,8 +107,10 @@ export default function CustomerCompanies() {
   const headerSelectAllRef = useRef(null);
   const me = useMemo(() => getStoredCrmUser(), []);
   const canExportExcel = isAdminOrAboveRole(me?.role);
+  const canManageCustomFieldDefinitions = isAdminOrAboveRole(me?.role);
   const canRequestAssigneeHandover = !!(me && String(me.role || '').toLowerCase() !== 'pending');
   const [handoverCtx, setHandoverCtx] = useState(null);
+  const [showCustomFieldsManageModal, setShowCustomFieldsManageModal] = useState(false);
   const SEARCH_FIELD_OPTIONS = [
     { key: 'name', label: '고객사명' },
     { key: 'representativeName', label: '대표자' },
@@ -238,21 +241,23 @@ export default function CustomerCompanies() {
   }, [fetchList, pagination.page]);
   useEffect(() => { setPagination((p) => ({ ...p, page: 1 })); }, [searchApplied, searchField, assigneeMeOnly]);
 
+  const loadCustomerCompanyCustomFieldColumns = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=customerCompany`, { headers: getAuthHeader() });
+      const data = await res.json().catch(() => ({}));
+      const items = Array.isArray(data?.items) ? data.items : [];
+      const extra = items.map((d) => ({ key: `${CUSTOM_FIELDS_PREFIX}${d.key}`, label: d.label || d.key || '' }));
+      setCustomFieldColumns(extra);
+      setTemplate((prev) => getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), extra));
+    } catch {
+      setCustomFieldColumns([]);
+    }
+  }, []);
+
   /** 새 고객사 추가 시 정의된 커스텀 필드를 리스트 템플릿에 반영 */
   useEffect(() => {
-    let cancelled = false;
-    fetch(`${API_BASE}/custom-field-definitions?entityType=customerCompany`, { headers: getAuthHeader() })
-      .then((r) => r.json().catch(() => ({})))
-      .then((data) => {
-        if (cancelled) return;
-        const items = Array.isArray(data?.items) ? data.items : [];
-        const extra = items.map((d) => ({ key: `${CUSTOM_FIELDS_PREFIX}${d.key}`, label: d.label || d.key || '' }));
-        setCustomFieldColumns(extra);
-        setTemplate((prev) => getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), extra));
-      })
-      .catch(() => { if (!cancelled) setCustomFieldColumns([]); });
-    return () => { cancelled = true; };
-  }, []);
+    loadCustomerCompanyCustomFieldColumns();
+  }, [loadCustomerCompanyCustomFieldColumns]);
 
   const openAddModal = () => setSearchParams({ [MODAL_PARAM]: MODAL_ADD_COMPANY });
   const closeAddModal = () => {
@@ -701,6 +706,17 @@ export default function CustomerCompanies() {
                 {exportExcelLoading ? '내보내는 중…' : `내보내기${selectedCompanyIds.size ? ` (${selectedCompanyIds.size})` : ''}`}
               </button>
             ) : null}
+            {canManageCustomFieldDefinitions ? (
+              <button
+                type="button"
+                className="btn-outline"
+                onClick={() => setShowCustomFieldsManageModal(true)}
+                title="고객사에 쓸 사용자 정의 필드를 추가합니다"
+              >
+                <span className="material-symbols-outlined">playlist_add</span>
+                필드 추가
+              </button>
+            ) : null}
             <button type="button" className="btn-primary" onClick={openAddModal}><span className="material-symbols-outlined">add</span> 고객사 추가</button>
           </div>
         </div>
@@ -949,6 +965,15 @@ export default function CustomerCompanies() {
           columnOrder={template.columnOrder}
           onSave={saveTemplate}
           onClose={() => setSettingsOpen(false)}
+        />
+      )}
+      {showCustomFieldsManageModal && canManageCustomFieldDefinitions && (
+        <CustomFieldsManageModal
+          entityType="customerCompany"
+          onClose={() => setShowCustomFieldsManageModal(false)}
+          onFieldAdded={() => loadCustomerCompanyCustomFieldColumns()}
+          apiBase={API_BASE}
+          getAuthHeader={getAuthHeader}
         />
       )}
       {isAddModalOpen && (

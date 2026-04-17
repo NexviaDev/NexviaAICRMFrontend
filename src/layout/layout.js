@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, useLocation, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { API_BASE } from '@/config';
 import { getPendingExcelImportJobs, removePendingExcelImportJob } from '@/lib/cc-excel-import-jobs';
@@ -10,34 +10,14 @@ import './layout.css';
 const NEXVIA_LOGO_CDN_URL =
   'https://res.cloudinary.com/djcsvvhly/image/upload/v1774253552/NexviaLogo_pid8kz.png';
 
-const SPLIT_SESSION_MODE = 'nexvia_inapp_split_mode';
-const SPLIT_SESSION_PATH = 'nexvia_inapp_split_path';
-
-/** @param {'off'|'horizontal'|'vertical'} mode */
-function isSplitMode(mode) {
-  return mode === 'horizontal' || mode === 'vertical';
-}
-
-function acceptSplitPath(raw) {
-  if (!raw || typeof raw !== 'string') return '';
-  const line = raw.trim().split(/\r?\n/)[0].trim();
-  if (!line) return '';
+/** 예전 분할뷰 세션 키 제거 */
+function clearLegacySplitSession() {
   try {
-    const u = new URL(line, window.location.origin);
-    if (u.origin !== window.location.origin) return '';
-    if (u.pathname === '/login' || u.pathname === '/register') return '';
-    u.searchParams.delete('pane');
-    return u.pathname + u.search || '/';
+    sessionStorage.removeItem('nexvia_inapp_split_mode');
+    sessionStorage.removeItem('nexvia_inapp_split_path');
   } catch {
-    return '';
+    /* noop */
   }
-}
-
-function toEmbedSrc(pathnameAndQuery) {
-  const p = pathnameAndQuery.startsWith('/') ? pathnameAndQuery : `/${pathnameAndQuery}`;
-  const u = new URL(p, window.location.origin);
-  u.searchParams.set('pane', 'embed');
-  return u.pathname + u.search + u.hash;
 }
 
 export default function Layout() {
@@ -54,74 +34,10 @@ export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const isEmbedPane = searchParams.get('pane') === 'embed';
-
-  const [splitMode, setSplitMode] = useState(() => {
-    try {
-      const m = sessionStorage.getItem(SPLIT_SESSION_MODE);
-      return m === 'horizontal' || m === 'vertical' ? m : 'off';
-    } catch {
-      return 'off';
-    }
-  });
-  const [splitSecondaryPath, setSplitSecondaryPath] = useState(() => {
-    try {
-      return sessionStorage.getItem(SPLIT_SESSION_PATH) || '';
-    } catch {
-      return '';
-    }
-  });
 
   useEffect(() => {
-    try {
-      sessionStorage.setItem(SPLIT_SESSION_MODE, splitMode);
-      if (splitMode === 'off') {
-        sessionStorage.removeItem(SPLIT_SESSION_PATH);
-      } else if (splitSecondaryPath) {
-        sessionStorage.setItem(SPLIT_SESSION_PATH, splitSecondaryPath);
-      } else {
-        sessionStorage.removeItem(SPLIT_SESSION_PATH);
-      }
-    } catch {
-      /* noop */
-    }
-  }, [splitMode, splitSecondaryPath]);
-
-  const handleSplitDragOver = useCallback(
-    (e) => {
-      if (!isSplitMode(splitMode)) return;
-      const types = e.dataTransfer?.types ? Array.from(e.dataTransfer.types) : [];
-      if (types.includes('text/uri-list') || types.includes('text/plain') || types.includes('Url')) {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'copy';
-      }
-    },
-    [splitMode]
-  );
-
-  const handleSplitDrop = useCallback((e) => {
-    e.preventDefault();
-    if (!isSplitMode(splitMode)) return;
-    const uri = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain') || '';
-    const next = acceptSplitPath(uri);
-    if (next) setSplitSecondaryPath(next);
-  }, [splitMode]);
-
-  const clearSplit = useCallback(() => {
-    setSplitMode('off');
-    setSplitSecondaryPath('');
+    clearLegacySplitSession();
   }, []);
-
-  const chooseSplitOrientation = useCallback((orientation) => {
-    if (orientation === 'horizontal' || orientation === 'vertical') {
-      setSplitMode((prev) => (prev === orientation ? 'off' : orientation));
-    }
-  }, []);
-
-  const splitIframeSrc = useMemo(() => {
-    if (!splitSecondaryPath) return '';
-    return `${window.location.origin}${toEmbedSrc(splitSecondaryPath)}`;
-  }, [splitSecondaryPath]);
 
   const isSalesPipeline = location.pathname === '/sales-pipeline';
   const isMessenger = location.pathname === '/messenger';
@@ -141,7 +57,9 @@ export default function Layout() {
         setCurrentUser(data.user);
       })
       .catch(() => {});
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [location.pathname]);
 
   useEffect(() => {
@@ -199,19 +117,10 @@ export default function Layout() {
     };
   }, []);
 
-  if (isEmbedPane) {
-    return (
-      <div className="app-layout app-layout--embed-only">
-        <Outlet />
-      </div>
-    );
-  }
-
   const needsFullHeightMain = isSalesPipeline || isMessenger || isProjectGantt;
   const mainContentClassName = [
     'app-main-content',
-    isSplitMode(splitMode) ? 'app-main-content--has-split' : '',
-    !isSplitMode(splitMode) && needsFullHeightMain ? 'app-main-content--fullheight' : ''
+    needsFullHeightMain ? 'app-main-content--fullheight' : ''
   ]
     .filter(Boolean)
     .join(' ');
@@ -230,9 +139,6 @@ export default function Layout() {
         currentUser={currentUser}
         drawerOpen={sidebarDrawerOpen}
         onCloseDrawer={() => setSidebarDrawerOpen(false)}
-        splitMode={splitMode}
-        onSplitOrientation={chooseSplitOrientation}
-        onSplitClear={clearSplit}
       />
       <main className="app-main">
         {importBanner && (
@@ -261,52 +167,8 @@ export default function Layout() {
             <span className="material-symbols-outlined">menu</span>
           </button>
         </header>
-        <div
-          className={mainContentClassName}
-          onDragOver={handleSplitDragOver}
-          onDrop={handleSplitDrop}
-        >
-          {isSplitMode(splitMode) ? (
-            <>
-              <div className="app-split-bar">
-                <span className="app-split-bar-text">
-                  화면 분할 · {splitMode === 'horizontal' ? '좌우' : '상하'}
-                  {splitSecondaryPath ? ` · ${splitSecondaryPath}` : ''}
-                </span>
-                <button type="button" className="app-split-bar-close" onClick={clearSplit}>
-                  분할 끄기
-                </button>
-              </div>
-              <div className={`app-split-wrap app-split-wrap--${splitMode}`}>
-                <div
-                  className={[
-                    'app-split-primary',
-                    needsFullHeightMain ? 'app-main-content--fullheight app-split-primary--fullheight' : ''
-                  ]
-                    .filter(Boolean)
-                    .join(' ')}
-                >
-                  <Outlet />
-                </div>
-                {splitSecondaryPath ? (
-                  <iframe className="app-split-iframe" title="분할 화면" src={splitIframeSrc} />
-                ) : (
-                  <div
-                    className="app-split-placeholder"
-                    onDragOver={handleSplitDragOver}
-                    onDrop={handleSplitDrop}
-                  >
-                    <span className="material-symbols-outlined" aria-hidden>
-                      add_link
-                    </span>
-                    <p>보조 화면: 사이드바 메뉴를 이 영역으로 끌어 놓으세요.</p>
-                  </div>
-                )}
-              </div>
-            </>
-          ) : (
-            <Outlet />
-          )}
+        <div className={mainContentClassName}>
+          <Outlet />
         </div>
       </main>
     </div>

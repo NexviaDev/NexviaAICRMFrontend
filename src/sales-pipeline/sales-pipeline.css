@@ -515,15 +515,51 @@
 
 .sp-card-top-right {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.2rem;
   flex-shrink: 0;
+}
+
+.sp-card-value-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.2rem;
+  text-align: right;
+  min-width: 0;
+}
+
+.sp-card-value-col--dz {
+  width: 100%;
 }
 
 .sp-card-value {
   font-size: 0.7rem;
   font-weight: 700;
   color: var(--primary, #1d283a);
+}
+
+/* opportunity-modal .opp-summary-net-margin 과 동일 톤 — 다크 레드 */
+.sp-card-net-margin {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.05rem;
+  line-height: 1.15;
+}
+
+.sp-card-net-margin-label {
+  font-size: 0.55rem;
+  font-weight: 800;
+  color: #7f1d1d;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sp-card-net-margin-value {
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: #991b1b;
 }
 
 .sp-card-delete {

@@ -4,6 +4,9 @@ import './register.css';
 import { formatPhone, phoneDigitsOnly } from './phoneFormat';
 import AddCompany from './add-company';
 import SearchCompany from './search-company';
+import PrivacyPolicyModal from '../login/legal-modals/PrivacyPolicyModal';
+import TermsOfServiceModal from '../login/legal-modals/TermsOfServiceModal';
+import GoogleApiTermsModal from '../login/legal-modals/GoogleApiTermsModal';
 
 import { API_BASE } from '@/config';
 import { pingBackendHealth } from '@/lib/backend-wake';
@@ -33,6 +36,11 @@ export default function Register() {
 
   const [addCompanyModalOpen, setAddCompanyModalOpen] = useState(false);
   const [companySearchModalOpen, setCompanySearchModalOpen] = useState(false);
+  /** Google 추가 정보 입력 시 필수 — 내 정보 수정(edit)에서는 생략 */
+  const [agreePrivacy, setAgreePrivacy] = useState(false);
+  const [agreeTerms, setAgreeTerms] = useState(false);
+  const [agreeGoogleApi, setAgreeGoogleApi] = useState(false);
+  const [legalModal, setLegalModal] = useState(null);
   const [companyConfirmed, setCompanyConfirmed] = useState(false);
   const [companyBusinessNumber, setCompanyBusinessNumber] = useState('');
   const [companyRepresentativeName, setCompanyRepresentativeName] = useState('');
@@ -71,6 +79,15 @@ export default function Register() {
   useEffect(() => () => {
     clearAvatarObjectUrl();
   }, [clearAvatarObjectUrl]);
+
+  useEffect(() => {
+    if (!legalModal) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setLegalModal(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [legalModal]);
 
   const tryUploadProfilePhoto = async (token, file) => {
     if (!token || !file) return null;
@@ -506,6 +523,11 @@ export default function Register() {
     e.preventDefault();
     setError('');
     setLoading(true);
+    if (!isEditMode && (!agreePrivacy || !agreeTerms || !agreeGoogleApi)) {
+      setError('개인정보 보호정책, 서비스 이용약관, Google API 약관에 모두 동의해 주세요.');
+      setLoading(false);
+      return;
+    }
     if (!name.trim()) {
       setError('이름을 입력해 주세요.');
       setLoading(false);
@@ -715,6 +737,50 @@ export default function Register() {
                     required
                   />
                 </div>
+                {!isEditMode ? (
+                  <div className="register-legal-consent" role="group" aria-labelledby="register-legal-consent-title">
+                    <p id="register-legal-consent-title" className="register-legal-consent-title">필수 동의</p>
+                    <label className="register-legal-row">
+                      <input
+                        type="checkbox"
+                        checked={agreePrivacy}
+                        onChange={(e) => setAgreePrivacy(e.target.checked)}
+                      />
+                      <span>
+                        <button type="button" className="register-legal-link" onClick={() => setLegalModal('privacy')}>
+                          개인정보 보호정책
+                        </button>
+                        에 동의합니다 (필수)
+                      </span>
+                    </label>
+                    <label className="register-legal-row">
+                      <input
+                        type="checkbox"
+                        checked={agreeTerms}
+                        onChange={(e) => setAgreeTerms(e.target.checked)}
+                      />
+                      <span>
+                        <button type="button" className="register-legal-link" onClick={() => setLegalModal('terms')}>
+                          서비스 이용약관
+                        </button>
+                        에 동의합니다 (필수)
+                      </span>
+                    </label>
+                    <label className="register-legal-row">
+                      <input
+                        type="checkbox"
+                        checked={agreeGoogleApi}
+                        onChange={(e) => setAgreeGoogleApi(e.target.checked)}
+                      />
+                      <span>
+                        <button type="button" className="register-legal-link" onClick={() => setLegalModal('google')}>
+                          Google API 및 연동 약관·고지
+                        </button>
+                        에 동의합니다 (필수)
+                      </span>
+                    </label>
+                  </div>
+                ) : null}
                 <button type="submit" className="register-submit" disabled={loading}>{loading ? '저장 중...' : '저장'}</button>
               </form>
             </div>
@@ -734,6 +800,9 @@ export default function Register() {
           onSuccess={(company) => { handleCompanySelect(company); setAddCompanyModalOpen(false); }}
           setError={setError}
         />
+        <PrivacyPolicyModal open={legalModal === 'privacy'} onClose={() => setLegalModal(null)} />
+        <TermsOfServiceModal open={legalModal === 'terms'} onClose={() => setLegalModal(null)} />
+        <GoogleApiTermsModal open={legalModal === 'google'} onClose={() => setLegalModal(null)} />
         <div className="register-top-bar" />
       </div>
     );

@@ -287,6 +287,253 @@
   gap: 1.5rem;
 }
 
+/** 소비자가·순마진 — 페이지 상단 배치 */
+.home-insights-top {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.home-insights-top .home-insight-toolbar {
+  grid-column: 1 / -1;
+}
+
+.home-insight-toolbar {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.home-insight-toolbar-rows {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: flex-start;
+  gap: 0.6rem 1rem;
+  width: 100%;
+}
+
+.home-insight-leader-filters-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.45rem 0.65rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.home-insight-filter-field--inline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: min(100%, 11rem);
+  max-width: min(24rem, 100%);
+}
+
+.home-insight-filter-select--inline {
+  max-width: min(24rem, 100%);
+  min-width: 11rem;
+}
+
+.home-insight-filter-clear--inline {
+  margin-left: 0;
+  align-self: center;
+}
+
+/** 팀별·개인별·회사 전체 3분할 */
+.home-insight-mode-switch--with-company button {
+  padding: 0.42rem 0.6rem;
+  font-size: 0.78rem;
+}
+
+.home-insight-hint--solo {
+  margin: 0;
+  flex: 1 1 14rem;
+}
+
+.home-insight-mode-switch {
+  display: inline-flex;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: var(--bg-light);
+}
+
+.home-insight-mode-switch button {
+  border: none;
+  background: transparent;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.home-insight-mode-switch button:hover:not(:disabled) {
+  background: rgba(184, 212, 240, 0.2);
+}
+
+.home-insight-mode-switch button.is-active {
+  background: rgba(143, 246, 208, 0.35);
+  color: #005d47;
+}
+
+.home-insight-mode-switch button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.home-insight-hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  flex: 1 1 12rem;
+  line-height: 1.45;
+}
+
+.home-insight-toolbar .home-insight-hint {
+  flex: none;
+  width: 100%;
+}
+
+.home-insight-filter-warn--toolbar {
+  width: 100%;
+  margin: 0;
+  padding: 0 0.1rem;
+}
+
+.home-insight-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 8.5rem;
+}
+
+.home-insight-filter-field--grow {
+  flex: 1 1 14rem;
+  min-width: min(100%, 12rem);
+  max-width: 32rem;
+}
+
+.home-insight-filter-heading {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.home-insight-filter-select {
+  font-size: 0.8125rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--card-border);
+  background: #fff;
+  color: var(--text);
+  max-width: 16rem;
+}
+
+.home-insight-filter-clear {
+  align-self: center;
+  margin-left: auto;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid var(--card-border);
+  border-radius: 0.4rem;
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.home-insight-filter-clear:hover {
+  background: rgba(143, 246, 208, 0.25);
+  color: #0d5c48;
+}
+
+.home-insight-filter-warn {
+  width: 100%;
+  margin: 0;
+  flex-basis: 100%;
+  font-size: 0.75rem;
+  color: #9a3412;
+}
+
+.home-insights-top .home-leader-breakdown-panel {
+  grid-column: 1 / -1;
+}
+
+.home-leader-breakdown-panel {
+  padding: 1rem 1.25rem 1.25rem;
+}
+
+.home-leader-breakdown-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+}
+
+.home-leader-breakdown-title {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-main, #1a2b3c);
+}
+
+.home-leader-breakdown-sub {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+  max-width: 42rem;
+}
+
+.home-leader-breakdown-toggle.home-insight-mode-switch {
+  flex-shrink: 0;
+}
+
+.home-leader-breakdown-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.home-leader-breakdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.home-leader-breakdown-table th,
+.home-leader-breakdown-table td {
+  padding: 0.5rem 0.65rem;
+  text-align: left;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.home-leader-breakdown-table th {
+  font-weight: 600;
+  color: var(--text-muted);
+  background: rgba(184, 212, 240, 0.12);
+}
+
+.home-leader-breakdown-table tbody tr:hover {
+  background: rgba(143, 246, 208, 0.12);
+}
+
+.home-leader-breakdown-empty {
+  margin: 0;
+  padding: 0.75rem 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
 /* Senior 미만: 인사이트 그래프 대체 안내 (한 줄 전체 폭) */
 .home-insights-grid > .home-insights-restricted-panel,
 .home-insights-grid > .home-insights-role-loading {
@@ -330,6 +577,10 @@
     grid-template-columns: 1fr;
   }
   .home-insights-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .home-insights-top {
     grid-template-columns: 1fr;
   }
 }
@@ -520,6 +771,12 @@
   justify-content: center;
 }
 
+.home-mini-chart-bar-hit--split {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
 .home-line-chart {
   width: 100%;
   height: 14rem;
@@ -649,7 +906,7 @@
   padding: 0 0.35rem;
 }
 
-.home-mini-chart-track::before {
+.home-mini-chart-track:not(.home-mini-chart-track--split-axis)::before {
   content: '';
   position: absolute;
   left: 0;
@@ -657,6 +914,44 @@
   bottom: 0;
   height: 1px;
   background: rgba(91, 124, 153, 0.16);
+}
+
+.home-mini-chart-track--split-axis {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.home-mini-chart-split-top {
+  flex: 1 1 50%;
+  min-height: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 0.1rem;
+}
+
+.home-mini-chart-split-mid {
+  flex: 0 0 1px;
+  background: rgba(91, 124, 153, 0.16);
+}
+
+.home-mini-chart-split-bot {
+  flex: 1 1 50%;
+  min-height: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 0 0.1rem;
+}
+
+.home-mini-chart-track--split-axis .home-mini-chart-bar {
+  width: 100%;
+  border-radius: 0.75rem 0.75rem 0 0;
+}
+
+.home-mini-chart-track--split-axis .home-mini-chart-bar.negative {
+  border-radius: 0 0 0.75rem 0.75rem;
 }
 
 .home-mini-chart-bar {
@@ -1576,6 +1871,10 @@
   }
 
   .home-insights-grid {
+    gap: 1rem;
+  }
+
+  .home-insights-top {
     gap: 1rem;
   }
 

@@ -220,6 +220,19 @@ div[class*="gm-style-cc"] {
   pointer-events: none;
 }
 
+/* 우측, 지도 높이 기준 세로 중앙: 줌·도구 아이콘 세로 스택 */
+.map-toolbar-cluster {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+/* 전체/내 담당 토글 — 같은 열에서 맨 아래에 두고 위 도구와 살짝 띄움 */
+.map-assignee-scope-toggle {
+  margin-top: 0.25rem;
+}
+
 .map-top-bar > * {
   pointer-events: auto;
 }
@@ -381,117 +394,55 @@ div[class*="gm-style-cc"] {
   gap: 0.5rem;
 }
 
-.map-filter-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  min-height: 2.5rem;
-  padding: 0.5rem 0.8rem;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.92);
-  color: var(--text, #334155);
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
-  cursor: pointer;
-  transition: background 0.2s, border-color 0.2s, color 0.2s, transform 0.2s;
-}
-
-.map-filter-chip:hover {
-  background: #f0f9ff;
-  border-color: #93c5fd;
-  color: var(--primary, #2563eb);
-  transform: translateY(-1px);
-}
-
-.map-filter-chip.active {
-  background: #e0f2fe;
-  border-color: #60a5fa;
-  color: var(--primary, #2563eb);
-}
-
-.map-filter-chip .material-symbols-outlined {
-  font-size: 1.1rem;
-}
-
-/* 원형 컨트롤(map-ctrl-btn-circle)과 동일한 외곽선·그림자·라운드 */
-.map-filter-chip.map-filter-chip--icon-only {
-  justify-content: center;
-  align-items: center;
-  min-width: 2.75rem;
-  min-height: 2.75rem;
-  padding: 0;
-  gap: 0;
-  border: none;
-  border-radius: 0.5rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  background: var(--card);
-  color: var(--text);
-  transition: background 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.2s;
-}
-
-.map-filter-chip.map-filter-chip--icon-only:hover {
-  background: var(--pastel-sky, #e0f2fe);
-  color: var(--primary);
-  transform: none;
-  border: none;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-}
-
-.map-filter-chip.map-filter-chip--icon-only.active {
-  background: var(--pastel-sky, #bae6fd);
-  border: 1px solid var(--primary);
-  color: var(--primary);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-}
-
-.map-filter-chip--icon-only .material-symbols-outlined {
-  font-size: 1.5rem;
-}
-
 .map-zoom-btns {
   display: flex;
   flex-direction: column;
   width: fit-content;
   align-self: flex-end;
-  border-radius: 0.5rem;
-  overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  background: var(--card);
+  gap: 0.5rem;
 }
 
 .map-ctrl-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 2.75rem;
+  height: 2.75rem;
   padding: 0;
-  border: none;
-  background: var(--card);
-  color: var(--text);
+  border: 1px solid rgba(129, 199, 132, 0.45);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.95);
+  color: #2e7d32;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
   cursor: pointer;
-  transition: background 0.2s, color 0.2s;
+  transition: background 0.2s, color 0.2s, border-color 0.2s, box-shadow 0.2s;
 }
 
 .map-ctrl-btn:hover {
-  background: var(--pastel-sky, #e0f2fe);
-  color: var(--primary);
-}
-
-.map-ctrl-btn + .map-ctrl-btn {
-  border-top: 1px solid var(--card-border);
+  background: rgba(200, 230, 201, 0.65);
+  color: #1b5e20;
+  border-color: rgba(76, 175, 80, 0.55);
 }
 
 .map-ctrl-btn-circle {
-  border-radius: 0.5rem;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  background: var(--card);
+  border-radius: 50%;
+}
+
+.map-ctrl-btn-circle .material-symbols-outlined {
+  font-size: 1.35rem;
 }
 
 .map-ctrl-btn-circle.active {
-  background: var(--pastel-sky, #bae6fd);
-  border: 1px solid var(--primary);
-  color: var(--primary);
+  background: var(--pastel-mint, #c8e6c9);
+  border: 1px solid rgba(46, 125, 50, 0.45);
+  color: #1b5e20;
+  box-shadow: 0 4px 12px rgba(46, 125, 50, 0.12);
+}
+
+.map-ctrl-btn-circle.active:hover {
+  background: #a5d6a7;
+  border-color: rgba(27, 94, 32, 0.5);
+  color: #1b5e20;
 }
 
 .map-bottom-chips {

@@ -322,9 +322,23 @@ export default function OpportunityModal({
       setDocumentRefs(Array.isArray(data.documentRefs)
         ? data.documentRefs.map((url) => (typeof url === 'string' ? { url, name: '파일' } : { url: url?.url, name: url?.name || '파일' })).filter((d) => d?.url)
         : []);
-      setSelectedProduct(null);
       setShowProductFields(false);
       setComments(Array.isArray(data.comments) ? data.comments : []);
+      const loadedProductId = product?._id || product || '';
+      if (loadedProductId) {
+        try {
+          const pres = await fetch(`${API_BASE}/products/${loadedProductId}`, { headers: getAuthHeader() });
+          if (pres.ok) {
+            const pdoc = await pres.json();
+            if (pdoc?._id) setSelectedProduct(pdoc);
+            else setSelectedProduct(null);
+          } else setSelectedProduct(null);
+        } catch {
+          setSelectedProduct(null);
+        }
+      } else {
+        setSelectedProduct(null);
+      }
       setNewComment('');
       setJournalDateTime(toDatetimeLocalValue(new Date()));
       setJournalInputError('');
@@ -658,6 +672,16 @@ export default function OpportunityModal({
     const subtotal = qty * unit;
     const finalAmt = computeFinalAmount();
     return Math.max(0, subtotal - finalAmt);
+  };
+
+  /** 거래 순마진: 최종 금액 − (제품 원가 × 수량). 제품·원가 없으면 null */
+  const computeNetMargin = () => {
+    if (!selectedProduct || !form.productId) return null;
+    const cost = Number(selectedProduct.costPrice);
+    if (!Number.isFinite(cost) || cost < 0) return null;
+    const qty = Math.max(0, Number(form.quantity) || 1);
+    const costTotal = Math.round(cost * qty);
+    return computeFinalAmount() - costTotal;
   };
 
   const handleSubmit = async (e) => {
@@ -1196,6 +1220,8 @@ export default function OpportunityModal({
     );
   }
 
+  const netMarginAmount = computeNetMargin();
+
   return (
     <div className="opp-modal-overlay">
       <div className="opp-modal" onClick={(e) => e.stopPropagation()}>
@@ -1311,27 +1337,41 @@ export default function OpportunityModal({
                 </div>
               ) : null}
 
-              {/* 가격 기준(제품 목록: 소비자 마진 / 유통 마진 축) */}
+              {/* 가격 기준(제품 목록: 순 마진 / 유통시 순 마진 축) */}
               <div className="opp-label">
                 <span>가격 기준</span>
-                <p className="opp-price-basis-hint">제품 목록의 소비자 마진·유통 마진과 같은 가격 축을 선택합니다. 제품 선택 시 아래 가격이 자동 채워집니다.</p>
+                <p className="opp-price-basis-hint">제품 목록의 순 마진·유통시 순 마진과 같은 가격 축을 선택합니다. 제품 선택 시 아래 가격이 자동 채워집니다.</p>
                 <div className="opp-price-basis-group" role="group" aria-label="가격 기준">
                   {OPPORTUNITY_PRICE_BASIS_OPTIONS.map((opt) => (
                     <button
                       key={opt.value}
                       type="button"
                       className={'opp-price-basis-btn' + (form.priceBasis === opt.value ? ' opp-price-basis-btn--selected' : '')}
-                      onClick={() => {
+                      onClick={async () => {
                         const basis = opt.value;
+                        setError('');
+                        let product = selectedProduct;
+                        if (!product && form.productId) {
+                          try {
+                            const pres = await fetch(`${API_BASE}/products/${form.productId}`, { headers: getAuthHeader() });
+                            if (pres.ok) {
+                              const pdoc = await pres.json();
+                              if (pdoc?._id) product = pdoc;
+                            }
+                          } catch {
+                            /* ignore */
+                          }
+                        }
+                        if (product && !selectedProduct) setSelectedProduct(product);
                         setForm((f) => {
                           const next = { ...f, priceBasis: basis };
-                          if (selectedProduct) {
-                            const p = suggestedPriceFromProduct(selectedProduct, basis);
+                          if (product) {
+                            const p = suggestedPriceFromProduct(product, basis);
                             next.unitPrice = p > 0 ? p.toLocaleString() : '';
+                            next.currency = product.currency || f.currency || 'KRW';
                           }
                           return next;
                         });
-                        setError('');
                       }}
                       title={opt.desc}
                     >
@@ -1382,9 +1422,17 @@ export default function OpportunityModal({
                   <span className="opp-summary-label">차감 금액</span>
                   <span className="opp-summary-value">- {formatCurrencyDisplay(computeDeduction(), form.currency)}</span>
                 </div>
-                <div className="opp-summary-item opp-summary-item--end">
+                <div className="opp-summary-item opp-summary-item--end opp-summary-item--final-stack">
                   <span className="opp-summary-label">최종 금액</span>
                   <span className="opp-summary-value">{formatCurrencyDisplay(computeFinalAmount(), form.currency)}</span>
+                  {form.productId && selectedProduct ? (
+                    <div className="opp-summary-net-margin" aria-label="순마진">
+                      <span className="opp-summary-net-margin-label">순마진</span>
+                      <span className="opp-summary-net-margin-value">
+                        {netMarginAmount != null ? formatCurrencyDisplay(netMarginAmount, form.currency) : '—'}
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 

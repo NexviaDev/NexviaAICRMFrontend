@@ -861,6 +861,62 @@
   stroke-linejoin: round;
 }
 
+.company-overview-name-with-badge {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.company-overview-dept-leader-badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.15rem 0.45rem;
+  border-radius: 0.35rem;
+  background: #e8eef7;
+  color: #4a6078;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  white-space: nowrap;
+}
+
+.company-overview-th-dept-leader,
+.company-overview-dept-leader-cell {
+  width: 5.5rem;
+  text-align: center;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.company-overview-dept-leader-cell .company-overview-muted {
+  display: inline-block;
+  width: 100%;
+  text-align: center;
+}
+
+.company-overview-dept-leader-label {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  margin: 0 auto;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text-muted, #64748b);
+}
+
+.company-overview-dept-leader-label input[type="checkbox"] {
+  width: 1.35rem;
+  height: 1.35rem;
+  margin: 0;
+  cursor: pointer;
+  accent-color: #8fa8c4;
+  flex-shrink: 0;
+}
+
+.company-overview-muted {
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+
 @media (max-width: 768px) {
   .company-overview-content {
     padding: 1rem;

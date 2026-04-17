@@ -52,6 +52,21 @@
   display: block;
 }
 
+.sidebar-header-logo-link {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  text-decoration: none;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.sidebar-header-logo-link:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.45);
+  outline-offset: 2px;
+  border-radius: 0.35rem;
+}
+
 /* Admin 사이드바 (adminsidebar.js): 아이콘 + 텍스트 */
 .sidebar-logo {
   width: 2.5rem;
@@ -120,6 +135,8 @@
   align-items: stretch;
   gap: 0.35rem;
   padding-top: 0.2rem;
+  flex: 1;
+  min-height: 0;
 }
 
 .sidebar-category-wrap {
@@ -129,7 +146,7 @@
   justify-content: center;
   border-radius: 0.5rem;
   padding: 0.15rem;
-  cursor: grab;
+  cursor: default;
 }
 
 .sidebar-category-button {

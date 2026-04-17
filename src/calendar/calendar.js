@@ -24,6 +24,10 @@ const MODAL_DAY_LIST = 'day-list';
 const GC_PARAM = 'gc';
 const GOOGLE_CALENDAR_IDS_STORAGE_KEY = 'nexvia_google_calendar_visible_ids';
 
+/** 헤더 아바타 플레이스홀더 (todo-list와 동일 톤) */
+const HEADER_AVATAR_PLACEHOLDER =
+  'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%2394a3b8"%3E%3Cpath d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/%3E%3C/svg%3E';
+
 function pickTextOnCalendarColor(hex) {
   if (!hex || typeof hex !== 'string' || !/^#[0-9A-Fa-f]{6}$/.test(hex)) return '#1e293b';
   const h = hex.slice(1);
@@ -361,6 +365,7 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
   const [googleCalendarList, setGoogleCalendarList] = useState([]);
   const [googleCalDropdownOpen, setGoogleCalDropdownOpen] = useState(false);
   const googleCalDropdownRef = useRef(null);
+  const [headerSearch, setHeaderSearch] = useState('');
   const [selectedGoogleCalendarIds, setSelectedGoogleCalendarIds] = useState(() => {
     try {
       const raw = localStorage.getItem(GOOGLE_CALENDAR_IDS_STORAGE_KEY);
@@ -695,12 +700,23 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
   }, [timeMin, timeMax, refreshKey, activeFilter, selectedGoogleCalendarIds, googleCalendarList, currentUser]);
 
   /** 회사 일정=CRM 이벤트, 개인 일정=이미 정규화된 Google 이벤트 배열 */
-  const events = useMemo(() => {
+  const rawEvents = useMemo(() => {
     if (activeFilter === 'all') {
       return crmEvents.map((ev) => ({ ...ev, _source: 'crm' }));
     }
     return googleEvents;
   }, [crmEvents, googleEvents, activeFilter]);
+
+  const events = useMemo(() => {
+    const q = headerSearch.trim().toLowerCase();
+    if (!q) return rawEvents;
+    return rawEvents.filter((ev) => {
+      const title = String(ev.title || '').toLowerCase();
+      const desc = String(ev.description || '').toLowerCase();
+      const calName = String(ev.calendarName || '').toLowerCase();
+      return title.includes(q) || desc.includes(q) || calName.includes(q);
+    });
+  }, [rawEvents, headerSearch]);
 
   useEffect(() => {
     const dim = new Date(current.year, current.month + 1, 0).getDate();
@@ -995,13 +1011,41 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
   return (
     <div className={`page calendar-page${embedded ? ' calendar-page--embedded' : ''}`}>
       {!embedded && (
-      <header className="page-header">
-        <div className="header-search">
-          <span className="material-symbols-outlined">search</span>
-          <input type="text" placeholder="일정 검색..." />
+      <header className="calendar-page-header">
+        <div className="calendar-page-header-left">
+          <div className="calendar-page-header-title-wrap">
+            <span className="material-symbols-outlined calendar-page-header-icon" aria-hidden>
+              calendar_month
+            </span>
+            <h2 className="calendar-page-header-title">캘린더</h2>
+          </div>
+          <div className="calendar-page-search-wrap">
+            <span className="material-symbols-outlined calendar-page-search-icon" aria-hidden>
+              search
+            </span>
+            <input
+              type="search"
+              className="calendar-page-search-input"
+              placeholder="일정 검색…"
+              value={headerSearch}
+              onChange={(e) => setHeaderSearch(e.target.value)}
+              aria-label="일정 검색"
+              autoComplete="off"
+            />
+          </div>
         </div>
-        <div className="header-actions">
-          <PageHeaderNotifyChat noWrapper buttonClassName="icon-btn" />
+        <div className="calendar-page-header-right">
+          <div className="calendar-page-header-trailing">
+            <div
+              className="calendar-page-header-avatar"
+              style={{ backgroundImage: `url(${HEADER_AVATAR_PLACEHOLDER})` }}
+              aria-hidden
+            />
+            <PageHeaderNotifyChat
+              buttonClassName="calendar-page-icon-btn"
+              wrapperClassName="calendar-page-header-notify-chat"
+            />
+          </div>
         </div>
       </header>
       )}

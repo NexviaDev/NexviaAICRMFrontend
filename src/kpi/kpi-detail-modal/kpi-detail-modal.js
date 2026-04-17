@@ -1,5 +1,21 @@
 import './kpi-detail-modal.css';
 
+/** 액수 입력: 숫자만 추출 */
+function amountDigitsOnly(raw) {
+  return String(raw ?? '').replace(/\D/g, '');
+}
+
+/** 숫자 문자열 → 천 단위 콤마 표시(입력란 표시용) */
+function formatAmountInputDisplay(digitStr) {
+  const d = amountDigitsOnly(digitStr);
+  if (!d) return '';
+  try {
+    return BigInt(d).toLocaleString('ko-KR');
+  } catch {
+    return d.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+}
+
 function isDealLikeItem(item) {
   const k = String(item?.key || '');
   return k.startsWith('opportunity:') || k.startsWith('deal:') || k.startsWith('work:');
@@ -36,7 +52,11 @@ function totalAmountDisplay(item) {
 }
 
 function showWonStyleBadge(title) {
-  return /수주\s*(매출|성공)/.test(String(title || ''));
+  return /수주\s*(매출|성공)|수주\s*매출·성공/.test(String(title || ''));
+}
+
+function isOtherPerformanceItem(item) {
+  return item?.kind === 'otherPerformance' || String(item?.key || '').startsWith('other:');
 }
 
 export default function KpiDetailModal({
@@ -49,13 +69,26 @@ export default function KpiDetailModal({
   message = '',
   onScoreChange,
   onSave,
-  onClose
+  onClose,
+  variant = 'default',
+  otherForm = null,
+  onOtherFormChange,
+  onOpenParticipantPicker,
+  onSubmitOtherPerformance,
+  onDeleteOtherEntry,
+  otherSubmitting = false
 }) {
   const mgmtRef = String(periodLabel || 'KPI')
     .replace(/\s+/g, '-')
     .replace(/[^0-9a-zA-Z가-힣·.-]/g, '')
     .slice(0, 32);
   const showBadge = showWonStyleBadge(title);
+  const isOtherVariant = variant === 'otherPerformance';
+  const of = otherForm || { title: '', amount: '', startDate: '', endDate: '', participants: [] };
+  const setOf = (patch) => {
+    if (typeof onOtherFormChange !== 'function') return;
+    onOtherFormChange((prev) => ({ ...(prev || {}), ...patch }));
+  };
 
   return (
     <div className="kpi-detail-modal-overlay" role="presentation">
@@ -98,6 +131,46 @@ export default function KpiDetailModal({
 
           <div className="kpi-detail-card-list">
             {items.map((item) => {
+              if (isOtherVariant && isOtherPerformanceItem(item)) {
+                const names = (item.otherParticipants || []).map((p) => p.name).filter(Boolean).join(', ') || item.assigneeDisplay || '—';
+                const periodTxt = item.contactDisplay || item.completedDateDisplay || '—';
+                return (
+                  <article key={item.key} className="kpi-detail-other-card">
+                    <div className="kpi-detail-other-card-head">
+                      <h3 className="kpi-detail-other-title">{item.label}</h3>
+                      <button
+                        type="button"
+                        className="kpi-detail-other-delete"
+                        onClick={() => onDeleteOtherEntry?.(item.key)}
+                        aria-label="항목 삭제"
+                      >
+                        <span className="material-symbols-outlined">delete</span>
+                      </button>
+                    </div>
+                    <p className="kpi-detail-other-amount">{item.currentDisplay}</p>
+                    <dl className="kpi-detail-other-dl">
+                      <div><dt>참여자</dt><dd>{names}</dd></div>
+                      <div><dt>기간</dt><dd>{periodTxt}</dd></div>
+                    </dl>
+                    {item.detailLines?.length ? (
+                      <div className="kpi-detail-other-note">
+                        {item.detailLines.map((line, idx) => (
+                          <p key={`${item.key}-ln-${idx}`}>{line}</p>
+                        ))}
+                      </div>
+                    ) : null}
+                    <label className="kpi-detail-lucid-score kpi-detail-other-score">
+                      <span>체크리스트 점수</span>
+                      <input
+                        type="number"
+                        min="0"
+                        value={item.score}
+                        onChange={(e) => onScoreChange?.(item.key, e.target.value)}
+                      />
+                    </label>
+                  </article>
+                );
+              }
               const dealLike = isDealLikeItem(item);
               const plainLines = filterLegacyDetailLines(item.detailLines || []);
               const oppOrDeal = isOpportunityOrDeal(item);
@@ -234,8 +307,80 @@ export default function KpiDetailModal({
               );
             })}
             {loading ? <p className="kpi-detail-empty-cell">체크리스트를 불러오는 중입니다.</p> : null}
-            {!loading && items.length === 0 ? (
+            {!loading && items.length === 0 && !isOtherVariant ? (
               <p className="kpi-detail-empty-cell">표시할 KPI 리스트가 없습니다.</p>
+            ) : null}
+            {!loading && items.length === 0 && isOtherVariant ? (
+              <p className="kpi-detail-empty-cell kpi-detail-empty-cell--muted">등록된 기타 성과가 없습니다. 아래에서 추가할 수 있습니다.</p>
+            ) : null}
+
+            {isOtherVariant ? (
+              <div className="kpi-detail-other-compose">
+                <h4 className="kpi-detail-other-compose-title">기타 성과 추가</h4>
+                <label className="kpi-detail-other-field">
+                  <span>내용</span>
+                  <input
+                    type="text"
+                    value={of.title}
+                    onChange={(e) => setOf({ title: e.target.value })}
+                    placeholder="성과 내용을 입력하세요"
+                    maxLength={200}
+                  />
+                </label>
+                <div className="kpi-detail-other-row2">
+                  <label className="kpi-detail-other-field">
+                    <span>시작일</span>
+                    <input
+                      type="date"
+                      value={of.startDate}
+                      onChange={(e) => setOf({ startDate: e.target.value })}
+                    />
+                  </label>
+                  <label className="kpi-detail-other-field">
+                    <span>종료일</span>
+                    <input
+                      type="date"
+                      value={of.endDate}
+                      onChange={(e) => setOf({ endDate: e.target.value })}
+                    />
+                  </label>
+                </div>
+                <label className="kpi-detail-other-field">
+                  <span>액수 (원)</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    value={formatAmountInputDisplay(of.amount)}
+                    onChange={(e) => {
+                      const next = amountDigitsOnly(e.target.value);
+                      setOf({ amount: next });
+                    }}
+                    placeholder="0"
+                    maxLength={18}
+                  />
+                </label>
+                <div className="kpi-detail-other-participants">
+                  <span className="kpi-detail-other-part-label">참여자</span>
+                  <div className="kpi-detail-other-chips">
+                    {(of.participants || []).map((p) => (
+                      <span key={String(p.userId)} className="kpi-detail-other-chip">{p.name || p.userId}</span>
+                    ))}
+                  </div>
+                  <button type="button" className="kpi-detail-other-pick-btn" onClick={() => onOpenParticipantPicker?.()}>
+                    <span className="material-symbols-outlined">group_add</span>
+                    참여자 선택
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  className="kpi-detail-other-submit"
+                  onClick={() => onSubmitOtherPerformance?.()}
+                  disabled={otherSubmitting || loading}
+                >
+                  {otherSubmitting ? '등록 중…' : '기타 성과 등록'}
+                </button>
+              </div>
             ) : null}
           </div>
         </div>
@@ -245,7 +390,11 @@ export default function KpiDetailModal({
         <footer className="kpi-detail-modal-footer">
           <div className="kpi-detail-modal-footer-note">
             <span className="material-symbols-outlined kpi-detail-footer-info-icon">info</span>
-            <p>본 상세 내역은 확정된 수주 데이터를 바탕으로 생성되었습니다.</p>
+            <p>
+              {isOtherVariant
+                ? '기타 성과는 회사 테넌트 DB에 저장되며, 참여자로 등록된 동료와 공유됩니다.'
+                : '본 상세 내역은 확정된 수주 데이터를 바탕으로 생성되었습니다.'}
+            </p>
           </div>
           <div className="kpi-detail-modal-footer-actions">
             <button type="button" className="kpi-detail-btn-ghost" onClick={onClose}>

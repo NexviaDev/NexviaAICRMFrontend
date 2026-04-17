@@ -2,14 +2,12 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import GoogleContactsModal from '../google-contacts-modal/google-contacts-modal';
 import CustomerCompanySearchModal from '../../customer-companies/customer-company-search-modal/customer-company-search-modal';
 import CustomFieldsSection from '../../shared/custom-fields-section';
-import CustomFieldsManageModal from '../../shared/custom-fields-manage-modal/custom-fields-manage-modal';
 import AssigneePickerModal from '../../company-overview/assignee-picker-modal/assignee-picker-modal';
 import '../../customer-companies/add-company-modal/add-company-modal.css';
 import './add-customer-company-employees-modal.css';
 import ContactImportPreviewModal from './contact-import-preview-modal';
 
 import { API_BASE } from '@/config';
-import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -174,7 +172,6 @@ function buildInitialForm(contact, initialCustomerCompany) {
 }
 
 export default function AddContactModal({ onClose, onSaved, onUpdated, initialCustomerCompany, contact }) {
-  const canManageCustomFieldDefinitions = isAdminOrAboveRole(getStoredCrmUser()?.role);
   const isEditMode = Boolean(contact && (contact._id || contact.id));
   const effectiveInitialCompany = isEditMode && (contact?.customerCompanyId || contact?.company)
     ? { _id: contact.customerCompanyId?._id ?? contact.customerCompanyId, name: typeof contact.company === 'string' ? contact.company : (contact.company?.name ?? '') }
@@ -184,7 +181,6 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
   const [showAssigneePicker, setShowAssigneePicker] = useState(false);
   const [companyEmployeesForDisplay, setCompanyEmployeesForDisplay] = useState([]);
   const [customDefinitions, setCustomDefinitions] = useState([]);
-  const [showCustomFieldsModal, setShowCustomFieldsModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [showCompanySearchModal, setShowCompanySearchModal] = useState(false);
@@ -331,13 +327,12 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
       if (showBulkGoogle) setShowBulkGoogle(false);
       else if (showAssigneePicker) setShowAssigneePicker(false);
       else if (showCompanySearchModal) setShowCompanySearchModal(false);
-      else if (showCustomFieldsModal) setShowCustomFieldsModal(false);
       else if (showImportPreview) setShowImportPreview(false);
       else onClose?.();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, showAssigneePicker, showBulkGoogle, showCompanySearchModal, showCustomFieldsModal, showImportPreview]);
+  }, [onClose, showAssigneePicker, showBulkGoogle, showCompanySearchModal, showImportPreview]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -1164,27 +1159,12 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
             />
           </div>
           <div className="add-contact-modal-footer">
-            {canManageCustomFieldDefinitions ? (
-              <button type="button" className="add-contact-modal-extra" onClick={() => setShowCustomFieldsModal(true)}>
-                <span className="material-symbols-outlined">add_circle</span>
-                추가 필드
-              </button>
-            ) : null}
             <div className="add-contact-modal-footer-actions">
               <button type="button" className="add-contact-modal-cancel" onClick={onClose}>취소</button>
               <button type="submit" className="add-contact-modal-save" disabled={saving || extractingBusinessCard || importPreviewLoading}>{saving ? '저장 중...' : isEditMode ? '저장' : '연락처 저장'}</button>
             </div>
           </div>
         </form>
-        {showCustomFieldsModal && canManageCustomFieldDefinitions && (
-          <CustomFieldsManageModal
-            entityType="contact"
-            onClose={() => setShowCustomFieldsModal(false)}
-            onFieldAdded={() => fetchCustomDefinitions()}
-            apiBase={API_BASE}
-            getAuthHeader={getAuthHeader}
-          />
-        )}
         {showAssigneePicker && (
           <AssigneePickerModal
             open={showAssigneePicker}

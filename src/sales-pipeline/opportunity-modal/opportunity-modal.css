@@ -138,7 +138,7 @@
   flex: 0 0 110px;
 }
 
-/* 가격 기준 — 제품 목록의 소비자 마진·유통 마진과 동일 가격 축 */
+/* 가격 기준 — 제품 목록의 순 마진·유통시 순 마진과 동일 가격 축 */
 .opp-price-basis-hint {
   margin: 0 0 0.6rem;
   font-size: 0.75rem;
@@ -441,6 +441,34 @@
 .opp-summary-item--end {
   align-items: flex-end;
   text-align: right;
+}
+
+.opp-summary-item--final-stack {
+  gap: 0.35rem;
+}
+
+.opp-summary-net-margin {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.1rem;
+  margin-top: 0.35rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.opp-summary-net-margin-label {
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: #7f1d1d;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.opp-summary-net-margin-value {
+  font-size: 0.8125rem;
+  font-weight: 800;
+  color: #991b1b;
 }
 
 .opp-summary-label {
@@ -919,5 +947,9 @@
   .opp-summary-item--end {
     align-items: flex-start;
     text-align: left;
+  }
+
+  .opp-summary-net-margin {
+    align-items: flex-start;
   }
 }

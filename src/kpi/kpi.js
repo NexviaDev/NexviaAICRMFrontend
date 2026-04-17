@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { API_BASE } from '@/config';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
+import ParticipantModal from '@/shared/participant-modal/participant-modal';
 import KpiDetailModal from './kpi-detail-modal/kpi-detail-modal';
 import KpiTargetModal from './kpi-target-modal/kpi-target-modal';
 import './kpi.css';
@@ -17,9 +18,87 @@ const KPI_SCOPE_OPTIONS = [
   { key: 'team', label: '팀별' },
   { key: 'user', label: '개인별' }
 ];
+
+/** 개인별 범위에서 «전체 직원» — 백엔드 `KPI_ALL_STAFF_USER_ID` 와 동일 */
+const KPI_ALL_STAFF_VALUE = '__kpi_all_staff__';
 const KPI_LIST_MODAL_PARAM = 'kpiList';
 const KPI_LIST_METRIC_PARAM = 'kpiMetric';
 const KPI_TARGET_MODAL_PARAM = 'kpiTarget';
+
+/** 브라우저 주소창에 노출되는 KPI 필터 쿼리 키 (다른 기능과 충돌 방지) */
+const KPI_URL = {
+  SCOPE: 'kpiScope',
+  PERIOD: 'kpiPeriod',
+  DEPT: 'kpiDept',
+  STAFF: 'kpiStaff',
+  VIEW: 'kpiView',
+  LB_DEPT: 'kpiLbDept',
+  LB_RANK: 'kpiLbRank'
+};
+
+function parseKpiFiltersFromSearchParams(sp) {
+  const raw = sp instanceof URLSearchParams ? sp : new URLSearchParams(sp);
+  const scopeRaw = String(raw.get(KPI_URL.SCOPE) || '').trim();
+  const scopeType = scopeRaw === 'user' ? 'user' : scopeRaw === 'team' ? 'team' : null;
+
+  const periodRaw = String(raw.get(KPI_URL.PERIOD) || '').trim();
+  const period = PERIODS.some((x) => x.key === periodRaw) ? periodRaw : null;
+
+  const viewRaw = String(raw.get(KPI_URL.VIEW) || '').trim();
+  const viewBy = ['overall', 'department', 'rank'].includes(viewRaw) ? viewRaw : null;
+
+  const kpiDept = String(raw.get(KPI_URL.DEPT) || '').trim();
+  const kpiStaff = String(raw.get(KPI_URL.STAFF) || '').trim();
+  const kpiLbDept = String(raw.get(KPI_URL.LB_DEPT) || '').trim();
+  const kpiLbRank = String(raw.get(KPI_URL.LB_RANK) || '').trim();
+
+  return { scopeType, period, viewBy, kpiDept, kpiStaff, kpiLbDept, kpiLbRank };
+}
+
+function readInitialKpiFiltersFromWindow() {
+  if (typeof window === 'undefined') return parseKpiFiltersFromSearchParams('');
+  return parseKpiFiltersFromSearchParams(new URLSearchParams(window.location.search));
+}
+
+function resolvedKpiFiltersFromParsed(f) {
+  return {
+    period: f.period || 'monthly',
+    scopeType: f.scopeType || 'team',
+    selectedScopeDepartment: f.scopeType === 'team' && f.kpiDept ? f.kpiDept : '',
+    selectedScopeUser: f.scopeType === 'user' && f.kpiStaff ? f.kpiStaff : '',
+    viewBy: f.viewBy || 'overall',
+    selectedDepartment: f.viewBy === 'department' && f.kpiLbDept ? f.kpiLbDept : '',
+    selectedRank: f.viewBy === 'rank' && f.kpiLbRank ? f.kpiLbRank : ''
+  };
+}
+
+function mergeKpiFilterSearchParams(next, filters) {
+  const {
+    scopeType,
+    period,
+    viewBy,
+    selectedScopeDepartment,
+    selectedScopeUser,
+    selectedDepartment,
+    selectedRank
+  } = filters;
+  next.set(KPI_URL.SCOPE, scopeType);
+  next.set(KPI_URL.PERIOD, period);
+  next.set(KPI_URL.VIEW, viewBy);
+  if (scopeType === 'team') {
+    if (selectedScopeDepartment) next.set(KPI_URL.DEPT, selectedScopeDepartment);
+    else next.delete(KPI_URL.DEPT);
+    next.delete(KPI_URL.STAFF);
+  } else {
+    if (selectedScopeUser) next.set(KPI_URL.STAFF, selectedScopeUser);
+    else next.delete(KPI_URL.STAFF);
+    next.delete(KPI_URL.DEPT);
+  }
+  if (viewBy === 'department' && selectedDepartment) next.set(KPI_URL.LB_DEPT, selectedDepartment);
+  else next.delete(KPI_URL.LB_DEPT);
+  if (viewBy === 'rank' && selectedRank) next.set(KPI_URL.LB_RANK, selectedRank);
+  else next.delete(KPI_URL.LB_RANK);
+}
 
 function formatOrgDeptPickerLabel(node) {
   if (!node || typeof node !== 'object') return '';
@@ -74,6 +153,14 @@ function formatNumber(value) {
 
 function formatRevenue(value) {
   return `${formatNumber(Math.round(Number(value) || 0))}원`;
+}
+
+/** 기여도 막대 안 짧은 표기 (이미지 스타일) */
+function formatRevenueCompact(value) {
+  const v = Math.round(Number(value) || 0);
+  if (v >= 100000000) return `₩${(v / 100000000).toFixed(1)}억`;
+  if (v >= 10000) return `₩${Math.round(v / 10000)}만`;
+  return `₩${formatNumber(v)}`;
 }
 
 function formatDelta(current, previous, suffix = '') {
@@ -148,6 +235,10 @@ function buildDetailRows(dashboard, metricKey = 'all') {
   const activeProjectsPrevious = Number(metrics?.activeProjects?.previous) || 0;
   const workCurrent = Number(metrics?.workLogs?.current) || 0;
   const workPrevious = Number(metrics?.workLogs?.previous) || 0;
+  const opAmtCur = Number(metrics?.otherPerformance?.amountCurrent) || 0;
+  const opAmtPrev = Number(metrics?.otherPerformance?.amountPrevious) || 0;
+  const opCntCur = Number(metrics?.otherPerformance?.countCurrent) || 0;
+  const opCntPrev = Number(metrics?.otherPerformance?.countPrevious) || 0;
 
   const avgDealValue = dealsCurrent > 0
     ? revenueCurrent / dealsCurrent
@@ -162,31 +253,24 @@ function buildDetailRows(dashboard, metricKey = 'all') {
     : Math.max(workCurrent, workPrevious, 1);
   const formatGap = (key, value) => {
     const safe = Math.max(0, Number(value) || 0);
-    if (key === 'revenue') return formatRevenue(safe);
+    if (key === 'revenue' || key === 'wonSales' || key === 'otherPerformance') return formatRevenue(safe);
     if (key === 'projects' || key === 'activeProjects') return `${formatNumber(safe)}개`;
     return `${formatNumber(safe)}건`;
   };
 
   const rawRows = [
     {
-      key: 'revenue',
-      label: '매출액',
+      key: 'wonSales',
+      label: '수주 매출·성공',
       previous: revenuePrevious,
       current: revenueCurrent,
       target: revenueTarget,
-      previousDisplay: formatRevenue(revenuePrevious),
-      currentDisplay: formatRevenue(revenueCurrent),
-      targetDisplay: revenueTarget > 0 ? formatRevenue(revenueTarget) : '미설정'
-    },
-    {
-      key: 'wonDeals',
-      label: '수주 건수',
-      previous: dealsPrevious,
-      current: dealsCurrent,
-      target: dealTarget,
-      previousDisplay: `${formatNumber(dealsPrevious)}건`,
-      currentDisplay: `${formatNumber(dealsCurrent)}건`,
-      targetDisplay: `${formatNumber(dealTarget)}건`
+      previousDisplay: `${formatRevenue(revenuePrevious)} · ${formatNumber(dealsPrevious)}건`,
+      currentDisplay: `${formatRevenue(revenueCurrent)} · ${formatNumber(dealsCurrent)}건`,
+      targetDisplay: revenueTarget > 0 ? formatRevenue(revenueTarget) : '미설정',
+      dealsPrevious,
+      dealsCurrent,
+      dealTarget
     },
     {
       key: 'projects',
@@ -219,6 +303,16 @@ function buildDetailRows(dashboard, metricKey = 'all') {
       previousDisplay: `${formatNumber(workPrevious)}건`,
       currentDisplay: `${formatNumber(workCurrent)}건`,
       targetDisplay: `${formatNumber(workTarget)}건`
+    },
+    {
+      key: 'otherPerformance',
+      label: '기타 성과',
+      previous: opAmtPrev,
+      current: opAmtCur,
+      target: 0,
+      previousDisplay: `${formatRevenue(opAmtPrev)} · ${formatNumber(opCntPrev)}건`,
+      currentDisplay: `${formatRevenue(opAmtCur)} · ${formatNumber(opCntCur)}건`,
+      targetDisplay: '-'
     }
   ];
 
@@ -233,6 +327,8 @@ function buildDetailRows(dashboard, metricKey = 'all') {
     gapDisplay:
       row.key === 'activeProjects'
         ? '백엔드 stage 기준 진행중'
+        : row.key === 'otherPerformance'
+        ? '직접 등록한 기타 성과 합계'
         : row.target > 0
         ? row.current >= row.target
           ? `목표 초과 ${formatGap(row.key, row.current - row.target)}`
@@ -243,10 +339,12 @@ function buildDetailRows(dashboard, metricKey = 'all') {
     targetPct: row.target > 0 ? Math.max(8, Math.round((row.target / maxValue) * 100)) : 0
   }));
 
-  if (metricKey === 'revenue') return allRows.filter((row) => row.key === 'revenue');
-  if (metricKey === 'wonDeals') return allRows.filter((row) => row.key === 'wonDeals');
+  if (metricKey === 'wonSales' || metricKey === 'revenue' || metricKey === 'wonDeals') {
+    return allRows.filter((row) => row.key === 'wonSales');
+  }
   if (metricKey === 'projects') return allRows.filter((row) => row.key === 'projects' || row.key === 'activeProjects');
   if (metricKey === 'workLogs') return allRows.filter((row) => row.key === 'workLogs');
+  if (metricKey === 'otherPerformance') return allRows.filter((row) => row.key === 'otherPerformance');
   return allRows.filter((row) => row.key !== 'activeProjects');
 }
 
@@ -255,16 +353,10 @@ function buildChartRows(dashboard) {
 }
 
 function getDetailModalMeta(metricKey) {
-  if (metricKey === 'revenue') {
+  if (metricKey === 'wonSales' || metricKey === 'revenue' || metricKey === 'wonDeals') {
     return {
-      title: '수주 매출 상세',
-      description: '현재 기간의 수주 매출 건을 개별 항목으로 확인합니다.'
-    };
-  }
-  if (metricKey === 'wonDeals') {
-    return {
-      title: '수주 성공 상세',
-      description: '현재 기간의 수주 성공 건을 개별 항목으로 확인합니다.'
+      title: '수주 매출·성공 상세',
+      description: '현재 기간의 수주 매출 및 성공 건을 통합하여 확인합니다.'
     };
   }
   if (metricKey === 'projects') {
@@ -279,6 +371,12 @@ function getDetailModalMeta(metricKey) {
       description: '현재 기간의 업무 기록을 개별 항목으로 확인합니다.'
     };
   }
+  if (metricKey === 'otherPerformance') {
+    return {
+      title: '기타 성과',
+      description: '내용·참여자·기간·액수를 등록한 기타 성과 목록입니다.'
+    };
+  }
   return {
     title: 'KPI 상세',
     description: '차트에 보이는 핵심 지표를 표 형식으로 더 자세히 확인합니다.'
@@ -286,11 +384,12 @@ function getDetailModalMeta(metricKey) {
 }
 
 function resolveChecklistScope(scopeType, departmentId, userId) {
+  const uid = String(userId || '').trim();
   if (scopeType === 'team' && departmentId) {
     return { scopeType: 'team', scopeId: String(departmentId || '').trim() };
   }
-  if (scopeType === 'user' && userId) {
-    return { scopeType: 'user', scopeId: String(userId || '').trim() };
+  if (scopeType === 'user' && uid && uid !== KPI_ALL_STAFF_VALUE) {
+    return { scopeType: 'user', scopeId: uid };
   }
   return { scopeType: 'company', scopeId: '' };
 }
@@ -331,7 +430,11 @@ function normalizeDetailItems(items = []) {
     dateLabelTitle: String(item?.dateLabelTitle || '완료일').trim(),
     completedDateDisplay: String(item?.completedDateDisplay || '').trim(),
     detailLines: (Array.isArray(item?.detailLines) ? item.detailLines : []).map((line) => String(line || '').trim()).filter(Boolean),
-    achievementPct: item?.achievementPct == null ? null : Number(item.achievementPct)
+    achievementPct: item?.achievementPct == null ? null : Number(item.achievementPct),
+    kind: String(item?.kind || '').trim(),
+    otherStartAt: String(item?.otherStartAt || ''),
+    otherEndAt: String(item?.otherEndAt || ''),
+    otherParticipants: Array.isArray(item?.otherParticipants) ? item.otherParticipants : []
   })).filter((item) => item.key);
 }
 
@@ -361,13 +464,26 @@ function getStoredUser() {
 
 export default function Kpi() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [period, setPeriod] = useState('monthly');
-  const [scopeType, setScopeType] = useState('team');
-  const [selectedScopeDepartment, setSelectedScopeDepartment] = useState('');
-  const [selectedScopeUser, setSelectedScopeUser] = useState('');
-  const [viewBy, setViewBy] = useState('overall');
-  const [selectedDepartment, setSelectedDepartment] = useState('');
-  const [selectedRank, setSelectedRank] = useState('');
+  const initialFilters = useMemo(() => {
+    const f = readInitialKpiFiltersFromWindow();
+    return {
+      period: f.period || 'monthly',
+      scopeType: f.scopeType || 'team',
+      selectedScopeDepartment: f.scopeType === 'team' && f.kpiDept ? f.kpiDept : '',
+      selectedScopeUser: f.scopeType === 'user' && f.kpiStaff ? f.kpiStaff : '',
+      viewBy: f.viewBy || 'overall',
+      selectedDepartment: f.viewBy === 'department' && f.kpiLbDept ? f.kpiLbDept : '',
+      selectedRank: f.viewBy === 'rank' && f.kpiLbRank ? f.kpiLbRank : ''
+    };
+  }, []);
+  const [period, setPeriod] = useState(initialFilters.period);
+  const [scopeType, setScopeType] = useState(initialFilters.scopeType);
+  const [selectedScopeDepartment, setSelectedScopeDepartment] = useState(initialFilters.selectedScopeDepartment);
+  const [selectedScopeUser, setSelectedScopeUser] = useState(initialFilters.selectedScopeUser);
+  const [viewBy, setViewBy] = useState(initialFilters.viewBy);
+  const [selectedDepartment, setSelectedDepartment] = useState(initialFilters.selectedDepartment);
+  const [selectedRank, setSelectedRank] = useState(initialFilters.selectedRank);
+  const skipFirstUrlHydrateRef = useRef(true);
   const [dashboard, setDashboard] = useState(null);
   const [overview, setOverview] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -395,6 +511,16 @@ export default function Kpi() {
   const [detailChecklistLoading, setDetailChecklistLoading] = useState(false);
   const [detailChecklistSaving, setDetailChecklistSaving] = useState(false);
   const [detailChecklistMessage, setDetailChecklistMessage] = useState('');
+  const [otherPerfForm, setOtherPerfForm] = useState({
+    title: '',
+    amount: '',
+    startDate: '',
+    endDate: '',
+    participants: []
+  });
+  const [participantPickerOpen, setParticipantPickerOpen] = useState(false);
+  const [otherPerfSubmitting, setOtherPerfSubmitting] = useState(false);
+  const [otherPerfRefresh, setOtherPerfRefresh] = useState(0);
 
   const displayName = useMemo(() => getUserName(), []);
   const storedUser = useMemo(() => getStoredUser(), []);
@@ -408,6 +534,11 @@ export default function Kpi() {
     [overviewEmployees, currentUserId]
   );
   const currentDepartmentId = String(currentEmployee?.department || '').trim();
+  const kpiAccess = dashboard?.kpiAccess || null;
+  const kpiScopeTabOptions = useMemo(
+    () => (kpiAccess?.mode === 'self' ? KPI_SCOPE_OPTIONS.filter((x) => x.key === 'user') : KPI_SCOPE_OPTIONS),
+    [kpiAccess?.mode]
+  );
   const scopeDepartmentOptions = useMemo(() => {
     const orgOptions = flattenOrgChartOptions(overviewOrgChart, []);
     const seen = new Set(orgOptions.map((item) => item.id));
@@ -420,6 +551,14 @@ export default function Kpi() {
     }
     return [...orgOptions, ...legacy].sort((a, b) => a.label.localeCompare(b.label, 'ko'));
   }, [overviewEmployees, overviewOrgChart]);
+  const allowedDeptIdSet = useMemo(() => {
+    if (kpiAccess?.mode !== 'leader' || !Array.isArray(kpiAccess.allowedDepartmentIds)) return null;
+    return new Set(kpiAccess.allowedDepartmentIds);
+  }, [kpiAccess]);
+  const filteredScopeDepartmentOptions = useMemo(() => {
+    if (!allowedDeptIdSet) return scopeDepartmentOptions;
+    return scopeDepartmentOptions.filter((o) => allowedDeptIdSet.has(o.id));
+  }, [scopeDepartmentOptions, allowedDeptIdSet]);
   const scopeUserOptions = useMemo(() => (
     [...overviewEmployees]
       .map((employee) => ({
@@ -430,9 +569,33 @@ export default function Kpi() {
       }))
       .sort((a, b) => a.name.localeCompare(b.name, 'ko'))
   ), [overviewEmployees, overviewOrgChart]);
+  const filteredScopeUserOptions = useMemo(() => {
+    if (kpiAccess?.mode === 'self' && currentUserId) {
+      return scopeUserOptions.filter((o) => o.id === currentUserId);
+    }
+    if (kpiAccess?.mode === 'leader' && Array.isArray(kpiAccess.allowedUserIds)) {
+      const allow = new Set(kpiAccess.allowedUserIds);
+      return scopeUserOptions.filter((o) => allow.has(o.id));
+    }
+    return scopeUserOptions;
+  }, [scopeUserOptions, kpiAccess, currentUserId]);
   const selectedScopeUserOption = useMemo(
-    () => scopeUserOptions.find((item) => item.id === selectedScopeUser) || null,
-    [scopeUserOptions, selectedScopeUser]
+    () => filteredScopeUserOptions.find((item) => item.id === selectedScopeUser)
+      || scopeUserOptions.find((item) => item.id === selectedScopeUser)
+      || null,
+    [filteredScopeUserOptions, scopeUserOptions, selectedScopeUser]
+  );
+  const participantTeamMembers = useMemo(
+    () => overviewEmployees.map((e) => ({
+      _id: e.id || e._id,
+      name: e.name,
+      email: e.email || '',
+      phone: e.phone || '',
+      companyDepartment: e.companyDepartment || e.department || '',
+      department: resolveDeptDisplay(overviewOrgChart, e.department || e.companyDepartment),
+      departmentDisplay: resolveDeptDisplay(overviewOrgChart, e.department || e.companyDepartment)
+    })),
+    [overviewEmployees, overviewOrgChart]
   );
   const targetModalDepartmentOptions = useMemo(() => (
     currentDepartmentId
@@ -444,6 +607,58 @@ export default function Kpi() {
       ? scopeUserOptions.filter((item) => item.id === currentUserId)
       : []
   ), [scopeUserOptions, currentUserId]);
+
+  const handleScopeTypeChange = useCallback((key) => {
+    setScopeType(key);
+    if (key === 'team') {
+      setSelectedScopeUser('');
+    } else {
+      setSelectedScopeDepartment('');
+      setSelectedScopeUser(KPI_ALL_STAFF_VALUE);
+    }
+  }, []);
+
+  /** KPI 필터 상태 → 주소창 (모달 kpiList / kpiMetric / kpiTarget 유지) */
+  useEffect(() => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      mergeKpiFilterSearchParams(next, {
+        scopeType,
+        period,
+        viewBy,
+        selectedScopeDepartment,
+        selectedScopeUser,
+        selectedDepartment,
+        selectedRank
+      });
+      return next;
+    }, { replace: true });
+  }, [
+    scopeType,
+    period,
+    viewBy,
+    selectedScopeDepartment,
+    selectedScopeUser,
+    selectedDepartment,
+    selectedRank,
+    setSearchParams
+  ]);
+
+  /** 뒤로가기·직접 주소 수정 시에만 동작 (searchParams만 의존 — UI로 바꾼 직후 옛 URL로 되돌리지 않음) */
+  useEffect(() => {
+    if (skipFirstUrlHydrateRef.current) {
+      skipFirstUrlHydrateRef.current = false;
+      return;
+    }
+    const fromUrl = resolvedKpiFiltersFromParsed(parseKpiFiltersFromSearchParams(searchParams));
+    setPeriod((p) => (fromUrl.period !== p ? fromUrl.period : p));
+    setScopeType((s) => (fromUrl.scopeType !== s ? fromUrl.scopeType : s));
+    setSelectedScopeDepartment((d) => (fromUrl.selectedScopeDepartment !== d ? fromUrl.selectedScopeDepartment : d));
+    setSelectedScopeUser((u) => (fromUrl.selectedScopeUser !== u ? fromUrl.selectedScopeUser : u));
+    setViewBy((v) => (fromUrl.viewBy !== v ? fromUrl.viewBy : v));
+    setSelectedDepartment((d) => (fromUrl.selectedDepartment !== d ? fromUrl.selectedDepartment : d));
+    setSelectedRank((r) => (fromUrl.selectedRank !== r ? fromUrl.selectedRank : r));
+  }, [searchParams]);
 
   useEffect(() => {
     let cancelled = false;
@@ -502,25 +717,33 @@ export default function Kpi() {
     return () => { cancelled = true; };
   }, [period, scopeType, selectedScopeDepartment, selectedScopeUser, viewBy, selectedDepartment, selectedRank]);
 
+  const skipLbFilterResetRef = useRef(true);
   useEffect(() => {
+    if (skipLbFilterResetRef.current) {
+      skipLbFilterResetRef.current = false;
+      return;
+    }
     setSelectedDepartment('');
     setSelectedRank('');
   }, [viewBy, period]);
 
   useEffect(() => {
-    if (scopeType === 'team') setSelectedScopeUser('');
-    if (scopeType === 'user') setSelectedScopeDepartment('');
-  }, [scopeType]);
-
-  useEffect(() => {
     if (scopeType !== 'user') return;
     if (selectedScopeUser) return;
+    if (kpiAccess?.mode === 'self' && currentUserId) {
+      setSelectedScopeUser(currentUserId);
+      return;
+    }
     if (scopeUserOptions.length === 0) return;
-    const preferredUser =
-      scopeUserOptions.find((item) => item.id === currentUserId) ||
-      scopeUserOptions[0];
-    if (preferredUser?.id) setSelectedScopeUser(preferredUser.id);
-  }, [scopeType, selectedScopeUser, scopeUserOptions, currentUserId]);
+    setSelectedScopeUser(KPI_ALL_STAFF_VALUE);
+  }, [scopeType, selectedScopeUser, scopeUserOptions, kpiAccess?.mode, currentUserId]);
+
+  useEffect(() => {
+    if (!kpiAccess || kpiAccess.mode !== 'self' || !currentUserId) return;
+    if (scopeType !== 'user') setScopeType('user');
+    setSelectedScopeDepartment('');
+    if (selectedScopeUser !== currentUserId) setSelectedScopeUser(currentUserId);
+  }, [kpiAccess?.mode, currentUserId, scopeType, selectedScopeUser]);
 
   const currentPeriodLabel = dashboard?.period?.current?.label || (PERIODS.find((item) => item.key === period)?.label || '현재 기간');
   const comparisonRows = useMemo(() => buildChartRows(dashboard), [dashboard]);
@@ -535,15 +758,21 @@ export default function Kpi() {
   );
   const checklistPeriod = dashboard?.period?.current || null;
   const leaderboardRows = dashboard?.leaderboard?.items || [];
+  const contributionBar = dashboard?.contributionBar || null;
   const target = dashboard?.target || {};
   const metrics = dashboard?.metrics || {};
+  const isAllStaffUserScope = scopeType === 'user' && selectedScopeUser === KPI_ALL_STAFF_VALUE;
   const targetOverviewScopeId = scopeType === 'team' ? selectedScopeDepartment : selectedScopeUser;
   const targetOverviewScopeLabel = scopeType === 'team'
     ? scopeDepartmentOptions.find((item) => item.id === selectedScopeDepartment)?.label || ''
-    : scopeUserOptions.find((item) => item.id === selectedScopeUser)?.name || '';
+    : isAllStaffUserScope
+      ? '전체 직원'
+      : scopeUserOptions.find((item) => item.id === selectedScopeUser)?.name || '';
   const targetOverviewTitle = scopeType === 'team'
     ? targetOverviewScopeLabel ? `${targetOverviewScopeLabel} 목표 현황` : '팀 목표 현황'
-    : targetOverviewScopeLabel ? `${targetOverviewScopeLabel} 목표 현황` : '개인 목표 현황';
+    : isAllStaffUserScope
+      ? '회사 목표 현황'
+      : targetOverviewScopeLabel ? `${targetOverviewScopeLabel} 목표 현황` : '개인 목표 현황';
   const targetModalPeriodOptions = useMemo(
     () => buildPeriodValueOptions(targetModalPeriodType),
     [targetModalPeriodType]
@@ -551,31 +780,24 @@ export default function Kpi() {
 
   const cards = useMemo(() => {
     const revenueDelta = formatDelta(metrics?.revenue?.current, metrics?.revenue?.previous);
-    const wonDelta = formatDelta(metrics?.wonDeals?.current, metrics?.wonDeals?.previous, '건');
     const projectDelta = formatDelta(metrics?.completedProjects?.current, metrics?.completedProjects?.previous, '개');
     const workDelta = formatDelta(metrics?.workLogs?.current, metrics?.workLogs?.previous, '건');
+    const opAmtCur = Number(metrics?.otherPerformance?.amountCurrent) || 0;
+    const opAmtPrev = Number(metrics?.otherPerformance?.amountPrevious) || 0;
+    const opDelta = formatDelta(opAmtCur, opAmtPrev);
+    const opCnt = Number(metrics?.otherPerformance?.countCurrent) || 0;
     return [
       {
-        key: 'revenue',
-        detailKey: 'revenue',
+        key: 'wonSales',
+        detailKey: 'wonSales',
         label: '수주 매출',
+        subLine: `수주 성공 ${formatNumber(metrics?.wonDeals?.current)}건`,
         value: formatRevenue(metrics?.revenue?.current),
         unit: target?.targetRevenue > 0 ? `목표 ${formatRevenue(target?.targetRevenue)}` : '목표 미설정',
         delta: revenueDelta.text,
         positive: revenueDelta.positive,
         icon: 'payments',
         tone: 'mint'
-      },
-      {
-        key: 'wonDeals',
-        detailKey: 'wonDeals',
-        label: '수주 성공',
-        value: `${formatNumber(metrics?.wonDeals?.current)}건`,
-        unit: `이전 ${formatNumber(metrics?.wonDeals?.previous)}건`,
-        delta: wonDelta.text,
-        positive: wonDelta.positive,
-        icon: 'workspace_premium',
-        tone: 'sky'
       },
       {
         key: 'projects',
@@ -598,6 +820,18 @@ export default function Kpi() {
         positive: workDelta.positive,
         icon: 'edit_note',
         tone: 'sky'
+      },
+      {
+        key: 'otherPerformance',
+        detailKey: 'otherPerformance',
+        label: '기타 성과',
+        subLine: `${formatNumber(opCnt)}건 등록`,
+        value: formatRevenue(opAmtCur),
+        unit: '직접 등록',
+        delta: opDelta.text,
+        positive: opDelta.positive,
+        icon: 'interests',
+        tone: 'mint'
       }
     ];
   }, [metrics, target]);
@@ -605,6 +839,7 @@ export default function Kpi() {
   const goalRate = calcAchievement(metrics?.revenue?.current, target?.targetRevenue);
   const projectGoalRate = calcAchievement(metrics?.completedProjects?.current, target?.targetProjects);
   const strongestLeaderboard = leaderboardRows[0];
+  const hideKpiScoreMethod = Boolean(kpiAccess?.hideScoreMethodology);
   const workInsightDelta = formatDelta(metrics?.workLogs?.current, metrics?.workLogs?.previous, '건');
   const insightCards = useMemo(() => ([
     {
@@ -636,7 +871,9 @@ export default function Kpi() {
       kind: 'icon',
       icon: 'military_tech',
       description: strongestLeaderboard
-        ? `${strongestLeaderboard.name}님이 현재 ${strongestLeaderboard.score.toFixed(1)}점으로 선두입니다. ${strongestLeaderboard.departmentDisplay || strongestLeaderboard.department || '미지정'} 부서에서 가장 높은 성과를 보이고 있습니다.`
+        ? (hideKpiScoreMethod || strongestLeaderboard.score == null
+          ? `${strongestLeaderboard.name}님이 이번 기간 선두입니다. ${strongestLeaderboard.departmentDisplay || strongestLeaderboard.department || '미지정'} 부서 소속입니다.`
+          : `${strongestLeaderboard.name}님이 현재 ${Number(strongestLeaderboard.score).toFixed(1)}점으로 선두입니다. ${strongestLeaderboard.departmentDisplay || strongestLeaderboard.department || '미지정'} 부서에서 가장 높은 성과를 보이고 있습니다.`)
         : '아직 집계된 리더보드 데이터가 없습니다.'
     },
     {
@@ -647,11 +884,17 @@ export default function Kpi() {
       icon: 'edit_note',
       description: `현재 업무 기록은 ${formatNumber(metrics?.workLogs?.current)}건이며 이전 기간 ${formatNumber(metrics?.workLogs?.previous)}건 대비 ${workInsightDelta.text} 변화했습니다.`
     }
-  ]), [goalRate, projectGoalRate, strongestLeaderboard, metrics, target, workInsightDelta]);
-  const scopeTitle = scopeType === 'team' ? '팀별 KPI 대시보드' : '개인별 KPI 대시보드';
-  const scopeDescription = scopeType === 'team'
-    ? `${displayName}님, 사내 현황의 부서 기준으로 팀 KPI를 비교할 수 있습니다.`
-    : `${displayName}님, 사내 현황의 직원 기준으로 개인 KPI를 비교할 수 있습니다.`;
+  ]), [goalRate, projectGoalRate, strongestLeaderboard, metrics, target, workInsightDelta, hideKpiScoreMethod]);
+  const scopeTitle = kpiAccess?.mode === 'self'
+    ? '개인 KPI 대시보드'
+    : scopeType === 'team'
+      ? '팀별 KPI 대시보드'
+      : '개인별 KPI 대시보드';
+  const scopeDescription = kpiAccess?.mode === 'self'
+    ? `${displayName}님 본인의 실적·목표만 조회됩니다. 타 직원·타 부서 범위는 표시되지 않습니다.`
+    : scopeType === 'team'
+      ? `${displayName}님, 사내 현황의 부서 기준으로 팀 KPI를 비교할 수 있습니다.`
+      : `${displayName}님, 사내 현황의 직원 기준으로 개인 KPI를 비교할 수 있습니다.`;
 
   const handleSaveTarget = async (e) => {
     e.preventDefault();
@@ -755,8 +998,21 @@ export default function Kpi() {
   }, [isTargetModalOpen, targetModalScopeType, targetModalDepartmentId, targetModalUserId, targetModalYear, targetModalPeriodType, targetModalPeriodValue]);
 
   useEffect(() => {
-    const activeScopeId = scopeType === 'team' ? selectedScopeDepartment : selectedScopeUser;
-    if (!activeScopeId) {
+    const overviewParams = (() => {
+      if (scopeType === 'team') {
+        if (!selectedScopeDepartment) return null;
+        return { scopeType: 'team', scopeId: selectedScopeDepartment };
+      }
+      if (scopeType === 'user') {
+        if (!selectedScopeUser) return null;
+        if (selectedScopeUser === KPI_ALL_STAFF_VALUE) {
+          return { scopeType: 'company', scopeId: '' };
+        }
+        return { scopeType: 'user', scopeId: selectedScopeUser };
+      }
+      return null;
+    })();
+    if (!overviewParams) {
       setTargetOverview(null);
       return;
     }
@@ -765,8 +1021,8 @@ export default function Kpi() {
       try {
         const params = new URLSearchParams({
           year: String(dashboard?.period?.current?.year || new Date().getFullYear()),
-          scopeType: scopeType,
-          scopeId: activeScopeId
+          scopeType: overviewParams.scopeType,
+          ...(overviewParams.scopeId ? { scopeId: overviewParams.scopeId } : {})
         });
         const res = await fetch(`${API_BASE}/kpi/targets/overview?${params.toString()}`, {
           headers: getAuthHeader(),
@@ -840,6 +1096,9 @@ export default function Kpi() {
             metricKey: selectedListMetric
           });
           if (checklistScope.scopeId) detailParams.set('scopeId', checklistScope.scopeId);
+          detailParams.set('kpiFilterScopeType', scopeType);
+          if (scopeType === 'team' && selectedScopeDepartment) detailParams.set('kpiDepartmentId', selectedScopeDepartment);
+          if (scopeType === 'user' && selectedScopeUser) detailParams.set('kpiUserId', selectedScopeUser);
           const detailRes = await fetch(`${API_BASE}/kpi/detail-items?${detailParams.toString()}`, {
             headers: getAuthHeader(),
             credentials: 'include'
@@ -884,8 +1143,46 @@ export default function Kpi() {
     checklistPeriod?.periodType,
     checklistPeriod?.periodValue,
     checklistScope.scopeType,
-    checklistScope.scopeId
+    checklistScope.scopeId,
+    otherPerfRefresh,
+    scopeType,
+    selectedScopeDepartment,
+    selectedScopeUser
   ]);
+
+  const ensureSelfInParticipants = useCallback((list) => {
+    const uid = String(currentUserId || '').trim();
+    if (!uid) return Array.isArray(list) ? list : [];
+    const name = String(storedUser?.name || displayName || '나').trim() || '나';
+    const arr = Array.isArray(list)
+      ? list.map((p) => ({ userId: String(p.userId), name: String(p.name || '').trim() || '사용자' }))
+      : [];
+    if (!arr.some((p) => String(p.userId) === uid)) {
+      arr.unshift({ userId: uid, name });
+    }
+    return arr;
+  }, [currentUserId, storedUser, displayName]);
+
+  const participantModalCurrentUser = useMemo(
+    () => ({ userId: currentUserId, name: displayName }),
+    [currentUserId, displayName]
+  );
+
+  useEffect(() => {
+    if (!isListModalOpen || selectedListMetric !== 'otherPerformance') return;
+    setOtherPerfForm({
+      title: '',
+      amount: '',
+      startDate: '',
+      endDate: '',
+      participants: ensureSelfInParticipants([])
+    });
+  }, [isListModalOpen, selectedListMetric, ensureSelfInParticipants]);
+
+  const handleOtherParticipantConfirm = useCallback((sel) => {
+    setOtherPerfForm((prev) => ({ ...prev, participants: ensureSelfInParticipants(sel) }));
+    setParticipantPickerOpen(false);
+  }, [ensureSelfInParticipants]);
 
   const openListModal = (metricKey = 'all') => {
     const next = new URLSearchParams(searchParams);
@@ -912,6 +1209,78 @@ export default function Kpi() {
     const next = new URLSearchParams(searchParams);
     next.delete(KPI_TARGET_MODAL_PARAM);
     setSearchParams(next, { replace: true });
+  };
+
+  const handleSubmitOtherPerformance = async () => {
+    if (!checklistPeriod) return;
+    const title = String(otherPerfForm.title || '').trim();
+    if (!title) {
+      setDetailChecklistMessage('내용을 입력해 주세요.');
+      return;
+    }
+    setOtherPerfSubmitting(true);
+    setDetailChecklistMessage('');
+    try {
+      const res = await fetch(`${API_BASE}/kpi/other-performance/entries`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+        credentials: 'include',
+        body: JSON.stringify({
+          title,
+          amount: Number(otherPerfForm.amount) || 0,
+          note: '',
+          startAt: otherPerfForm.startDate || null,
+          endAt: otherPerfForm.endDate || null,
+          participants: otherPerfForm.participants,
+          year: checklistPeriod.year,
+          periodType: checklistPeriod.periodType,
+          periodValue: checklistPeriod.periodValue,
+          scopeType: checklistScope.scopeType,
+          scopeId: checklistScope.scopeId
+        })
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || '등록에 실패했습니다.');
+      setDetailChecklistMessage(json?.message || '등록되었습니다.');
+      setOtherPerfRefresh((t) => t + 1);
+      setOtherPerfForm((prev) => ({
+        title: '',
+        amount: '',
+        startDate: '',
+        endDate: '',
+        participants: ensureSelfInParticipants(prev.participants)
+      }));
+    } catch (err) {
+      setDetailChecklistMessage(err.message || '등록에 실패했습니다.');
+    } finally {
+      setOtherPerfSubmitting(false);
+    }
+  };
+
+  const handleDeleteOtherEntry = async (entryKey) => {
+    const raw = String(entryKey || '').replace(/^other:/, '');
+    if (!raw || !checklistPeriod) return;
+    setDetailChecklistMessage('');
+    try {
+      const params = new URLSearchParams({
+        year: String(checklistPeriod.year),
+        periodType: checklistPeriod.periodType,
+        periodValue: String(checklistPeriod.periodValue),
+        scopeType: checklistScope.scopeType
+      });
+      if (checklistScope.scopeId) params.set('scopeId', checklistScope.scopeId);
+      const res = await fetch(`${API_BASE}/kpi/other-performance/entries/${encodeURIComponent(raw)}?${params}`, {
+        method: 'DELETE',
+        headers: getAuthHeader(),
+        credentials: 'include'
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || '삭제에 실패했습니다.');
+      setDetailChecklistMessage(json?.message || '삭제되었습니다.');
+      setOtherPerfRefresh((t) => t + 1);
+    } catch (err) {
+      setDetailChecklistMessage(err.message || '삭제에 실패했습니다.');
+    }
   };
 
   const handleChecklistScoreChange = (itemKey, value) => {
@@ -1031,12 +1400,12 @@ export default function Kpi() {
           <div className="kpi-hero-actions">
             <div className="kpi-scope-period-row">
               <div className="kpi-scope-switch" role="tablist" aria-label="조회 범위">
-                {KPI_SCOPE_OPTIONS.map((item) => (
+                {kpiScopeTabOptions.map((item) => (
                   <button
                     key={item.key}
                     type="button"
                     className={scopeType === item.key ? 'is-active' : ''}
-                    onClick={() => setScopeType(item.key)}
+                    onClick={() => handleScopeTypeChange(item.key)}
                   >
                     {item.label}
                   </button>
@@ -1065,29 +1434,35 @@ export default function Kpi() {
                   aria-label="부서 검색"
                 >
                   <option value="">전체 부서</option>
-                  {scopeDepartmentOptions.map((item) => (
+                  {filteredScopeDepartmentOptions.map((item) => (
                     <option key={item.id} value={item.id}>{item.label}</option>
                   ))}
                 </select>
               ) : (
                 <div className="kpi-scope-select-wrap">
-                  {selectedScopeUserOption?.avatar ? (
+                  {selectedScopeUser && selectedScopeUser !== KPI_ALL_STAFF_VALUE && selectedScopeUserOption?.avatar ? (
                     <img src={selectedScopeUserOption.avatar} alt="" className="kpi-scope-select-avatar kpi-scope-select-avatar-img" />
                   ) : (
                     <div className="kpi-scope-select-avatar kpi-scope-select-avatar-fallback" aria-hidden>
-                      <span className="material-symbols-outlined">person</span>
+                      <span className="material-symbols-outlined">
+                        {selectedScopeUser === KPI_ALL_STAFF_VALUE ? 'groups' : 'person'}
+                      </span>
                     </div>
                   )}
                   <select
                     className="kpi-scope-select kpi-scope-select-with-avatar"
                     value={selectedScopeUser}
                     onChange={(e) => setSelectedScopeUser(e.target.value)}
-                    aria-label="직원 검색"
-                    disabled={scopeUserOptions.length === 0}
+                    aria-label="직원·전체 직원 선택"
+                    disabled={filteredScopeUserOptions.length === 0}
                   >
-                    {scopeUserOptions.map((item) => (
+                    {kpiAccess?.mode === 'self' ? null : (
+                      <option value={KPI_ALL_STAFF_VALUE}>전체 직원</option>
+                    )}
+                    {filteredScopeUserOptions.map((item) => (
                       <option key={item.id} value={item.id}>{item.label}</option>
                     ))}
+                   
                   </select>
                 </div>
               )}
@@ -1103,6 +1478,39 @@ export default function Kpi() {
         ) : null}
         {saveMessage ? (
           <div className="kpi-status-banner kpi-status-banner-info" role="status">{saveMessage}</div>
+        ) : null}
+
+        {!loading && contributionBar?.segments?.length ? (
+          <section className="kpi-contribution-panel" aria-labelledby="kpi-contribution-title">
+            <div className="kpi-contribution-head">
+              <h3 id="kpi-contribution-title">{contributionBar.title}</h3>
+              <p>{contributionBar.sublabel}</p>
+            </div>
+            <div className="kpi-contribution-bar" role="list">
+              {contributionBar.segments.map((seg) => (
+                <div
+                  key={seg.id}
+                  role="listitem"
+                  className="kpi-contribution-segment"
+                  style={{
+                    flex: `0 0 ${Math.max(0, Number(seg.pct) || 0)}%`,
+                    backgroundColor: seg.color || '#b8c5e0'
+                  }}
+                  title={`${seg.label} · 매출 ${formatRevenueCompact(seg.amount)} · 비중 ${seg.pct}% · 달성률 ${
+                    seg.achievement == null ? '회사 목표 매출 미설정' : `${seg.achievement}%`
+                  }`}
+                >
+                  <div className="kpi-contribution-segment-body">
+                    <strong className="kpi-contribution-segment-name">{seg.label}</strong>
+                    <span className="kpi-contribution-segment-metric">매출 {formatRevenueCompact(seg.amount)}</span>
+                    <span className="kpi-contribution-segment-ach">
+                      달성률 {seg.achievement == null ? '목표 미설정' : `${seg.achievement}%`}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
         ) : null}
 
         <section className="kpi-summary-grid" aria-label="핵심 KPI">
@@ -1134,6 +1542,9 @@ export default function Kpi() {
                   <h2>
                     {card.value} <span>{card.unit}</span>
                   </h2>
+                  {card.subLine ? (
+                    <p className="kpi-summary-subline">{card.subLine}</p>
+                  ) : null}
                 </div>
                 {showCl ? (
                   <div className="kpi-summary-footer">
@@ -1238,7 +1649,11 @@ export default function Kpi() {
           <div className="kpi-panel-head kpi-leaderboard-head">
             <div>
               <h3>직원 리더보드</h3>
-              <p>{currentPeriodLabel} 기준 성과 점수 순위입니다. 부서별/직급별 보기로 전환할 수 있습니다.</p>
+              <p>
+                {hideKpiScoreMethod
+                  ? `${currentPeriodLabel} 기준 개인 실적 요약입니다. 종합 점수 산정 방식은 표시되지 않습니다.`
+                  : `${currentPeriodLabel} 기준 성과 점수 순위입니다. 부서별/직급별 보기로 전환할 수 있습니다.`}
+              </p>
             </div>
             <div className="kpi-leaderboard-controls">
               <div className="kpi-view-switch" role="tablist" aria-label="리더보드 보기">
@@ -1292,14 +1707,20 @@ export default function Kpi() {
                     <td>{row.departmentDisplay || row.department}</td>
                     <td>{row.rankLabel}</td>
                     <td>
-                      <span className="kpi-score-value">{row.score.toFixed(1)}</span>
+                      <span className="kpi-score-value">
+                        {row.score != null && !Number.isNaN(Number(row.score)) ? Number(row.score).toFixed(1) : '—'}
+                      </span>
                     </td>
                     <td>
-                      <div className="kpi-mini-trend" aria-hidden>
-                        {row.trend.map((value, idx) => (
-                          <i key={`${row.userId}-trend-${idx}`} style={{ height: `${value}%` }} />
-                        ))}
-                      </div>
+                      {Array.isArray(row.trend) && row.trend.length > 0 ? (
+                        <div className="kpi-mini-trend" aria-hidden>
+                          {row.trend.map((value, idx) => (
+                            <i key={`${row.userId}-trend-${idx}`} style={{ height: `${value}%` }} />
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="kpi-score-value kpi-score-muted">—</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -1345,6 +1766,23 @@ export default function Kpi() {
             onScoreChange={handleChecklistScoreChange}
             onSave={handleSaveChecklist}
             onClose={closeListModal}
+            variant={selectedListMetric === 'otherPerformance' ? 'otherPerformance' : 'default'}
+            otherForm={otherPerfForm}
+            onOtherFormChange={setOtherPerfForm}
+            onOpenParticipantPicker={() => setParticipantPickerOpen(true)}
+            onSubmitOtherPerformance={handleSubmitOtherPerformance}
+            onDeleteOtherEntry={handleDeleteOtherEntry}
+            otherSubmitting={otherPerfSubmitting}
+          />
+        ) : null}
+        {participantPickerOpen ? (
+          <ParticipantModal
+            teamMembers={participantTeamMembers}
+            selected={otherPerfForm.participants}
+            currentUser={participantModalCurrentUser}
+            onConfirm={handleOtherParticipantConfirm}
+            onClose={() => setParticipantPickerOpen(false)}
+            title="기타 성과 참여자"
           />
         ) : null}
         {isTargetModalOpen ? (

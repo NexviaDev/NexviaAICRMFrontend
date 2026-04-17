@@ -58,7 +58,7 @@
   border: none;
   border-radius: 0.5rem;
   background: var(--bg-light);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
 }
 
 .product-list-page .header-actions {
@@ -107,13 +107,13 @@
 
 .product-list-top h2 {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: 1.35rem;
   font-weight: 700;
 }
 
 .product-list-top .page-desc {
   margin: 0.25rem 0 0;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   color: var(--text-muted);
 }
 
@@ -129,7 +129,7 @@
 
 .product-list-filter-select {
   padding: 0.5rem 2rem 0.5rem 0.75rem;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   border: 1px solid var(--card-border);
   border-radius: 0.5rem;
   background: var(--card);
@@ -267,7 +267,7 @@
 }
 .product-list-page .pagination-info {
   margin: 0;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   color: var(--text-muted);
 }
 .product-list-page .pagination-btns {
@@ -286,7 +286,7 @@
   border: 1px solid var(--card-border);
   background: var(--card);
   border-radius: 0.5rem;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 500;
   color: var(--text);
   transition: background 0.2s;
@@ -331,10 +331,14 @@
   margin-bottom: 2rem;
 }
 
+.product-list-page .data-table {
+  font-size: 0.8125rem;
+}
+
 .product-list-page .data-table th {
-  padding: 0.75rem 1.5rem;
+  padding: 0.65rem 1.25rem;
   text-align: left;
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -343,7 +347,7 @@
 }
 
 .product-list-page .data-table td {
-  padding: 1rem 1.5rem;
+  padding: 0.75rem 1.25rem;
   border-top: 1px solid var(--card-border);
 }
 
@@ -360,7 +364,7 @@
   color: #fff;
   border: none;
   border-radius: 0.5rem;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 700;
   cursor: pointer;
 }
@@ -382,7 +386,7 @@
   gap: 0.35rem;
 }
 .product-list-page .list-template-drag-handle {
-  font-size: 1rem;
+  font-size: 0.9rem;
   color: var(--text-muted);
   cursor: grab;
 }
@@ -400,7 +404,129 @@
   color: var(--text);
 }
 .product-list-page .list-template-sort-icon {
-  font-size: 1rem;
+  font-size: 0.9rem;
   margin-left: 0.25rem;
   vertical-align: middle;
+}
+
+/* 직접 판매 묶음: 소비자가 + 순 마진 */
+.product-list-page .data-table th.pl-col--direct,
+.product-list-page .data-table td.pl-col--direct {
+  background: rgba(167, 212, 181, 0.2);
+}
+
+/* 유통 묶음: 유통가 + 유통시 순 마진 */
+.product-list-page .data-table th.pl-col--channel,
+.product-list-page .data-table td.pl-col--channel {
+  background: rgba(244, 196, 160, 0.26);
+}
+
+.product-list-page .data-table tbody tr:hover td.pl-col--direct {
+  background: rgba(167, 212, 181, 0.3);
+}
+
+.product-list-page .data-table tbody tr:hover td.pl-col--channel {
+  background: rgba(244, 196, 160, 0.34);
+}
+
+.product-list-page .data-table th.pl-col--direct,
+.product-list-page .data-table th.pl-col--channel {
+  color: var(--text-muted);
+}
+
+/* 행 선택 · 필드 필터 · 일괄 삭제 모달 */
+.product-list-page .pl-th-checkbox,
+.product-list-page .pl-td-checkbox {
+  width: 2.75rem;
+  text-align: center;
+  vertical-align: middle;
+  padding-left: 0.5rem;
+  padding-right: 0.25rem;
+}
+
+.product-list-page .pl-th-checkbox {
+  cursor: default;
+}
+
+.product-list-page .pl-row-checkbox {
+  width: 1.05rem;
+  height: 1.05rem;
+  cursor: pointer;
+  accent-color: #3d8b7a;
+}
+
+.product-list-page .product-list-header-delete-btn:hover {
+  background: rgba(255, 182, 193, 0.35);
+  color: #8b3a4c;
+}
+
+.product-list-filters .product-list-field-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 100%;
+  margin-top: 0.5rem;
+}
+
+.product-list-field-filter-input {
+  min-width: 8rem;
+  flex: 1 1 10rem;
+  max-width: 16rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8125rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--bg-light);
+}
+
+.product-list-field-filter-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.product-list-field-filter-apply,
+.product-list-field-filter-clear {
+  font-size: 0.8125rem;
+  padding: 0.45rem 0.75rem;
+}
+
+.product-bulk-delete-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(44, 52, 53, 0.35);
+}
+
+.product-bulk-delete-modal {
+  width: 100%;
+  max-width: 22rem;
+  padding: 1.35rem 1.5rem;
+  border-radius: 0.75rem;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  box-shadow: 0 8px 32px rgba(44, 52, 53, 0.12);
+}
+
+.product-bulk-delete-title {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.product-bulk-delete-msg {
+  margin: 0 0 1.15rem;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.product-bulk-delete-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
 }

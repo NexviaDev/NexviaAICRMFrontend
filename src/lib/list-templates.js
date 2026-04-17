@@ -76,15 +76,15 @@ export const DEFAULT_COLUMNS = {
   ],
   [LIST_IDS.PRODUCT_LIST]: [
     { key: 'name', label: '제품명' },
-    { key: 'code', label: '제품 코드' },
+    { key: 'code', label: '제품 코드', defaultVisible: false },
     { key: 'category', label: '카테고리' },
     { key: 'version', label: '버전' },
-    { key: 'price', label: '소비자가' },
     { key: 'costPrice', label: '원가' },
+    { key: 'price', label: '소비자가' },
+    { key: 'consumerMargin', label: '순 마진' },
     { key: 'channelPrice', label: '유통가' },
-    { key: 'consumerMargin', label: '소비자 마진' },
-    { key: 'channelMargin', label: '유통 마진' },
-    { key: 'currency', label: '통화' },
+    { key: 'channelMargin', label: '유통시 순 마진' },
+    { key: 'currency', label: '통화', defaultVisible: false },
     { key: 'billingType', label: '결제 주기' },
     { key: 'status', label: '상태' }
   ]

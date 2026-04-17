@@ -1,61 +1,23 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
+import MainAppRoutes, { PendingRestrictedRoute } from './layout/main-app-routes';
 
 const Layout = lazy(() => import('./layout/layout'));
+const Home = lazy(() => import('./home/home'));
 const Login = lazy(() => import('./login/login'));
 const Register = lazy(() => import('./register/register'));
-const Home = lazy(() => import('./home/home'));
-const CustomerCompanies = lazy(() => import('./customer-companies/customer-companies'));
-const CustomerCompanyEmployees = lazy(() => import('./customer-company-employees/customer-company-employees'));
-const Calendar = lazy(() => import('./calendar/calendar'));
-const Project = lazy(() => import('./project/project'));
-const SalesReport = lazy(() => import('./sales-report/sales-report'));
-const EmployeePerformance = lazy(() => import('./employee-performance/employee-performance'));
-const EmployeeWorkReport = lazy(() => import('./employee-work-report/employee-work-report'));
-const CompanyOverview = lazy(() => import('./company-overview/company-overview'));
-const SalesPipeline = lazy(() => import('./sales-pipeline/sales-pipeline'));
-const ProductList = lazy(() => import('./product-list/product-list'));
-const MeetingMinutes = lazy(() => import('./meeting-minutes/meeting-minutes'));
-const Kpi = lazy(() => import('./kpi/kpi'));
-const AiVoice = lazy(() => import('./ai-voice/ai-voice'));
-const Email = lazy(() => import('./email/email'));
-const Map = lazy(() => import('./map/map'));
-const TodoList = lazy(() => import('./todo-list/todo-list'));
-const LeadCapture = lazy(() => import('./lead-capture/lead-capture'));
 const LeadCapturePublic = lazy(() => import('./lead-capture-public/lead-capture-public'));
 const LegalPublicPage = lazy(() => import('./legal/LegalPublicPage'));
-const Subscription = lazy(() => import('./subscription/subscription'));
 const AdminSubscription = lazy(() => import('./admin/adminsubscription'));
 const AdminLayout = lazy(() => import('./admin/adminlayout'));
 const AdminNotices = lazy(() => import('./admin/adminnotices'));
 const AdminUsers = lazy(() => import('./admin/adminusers'));
 const AdminCompanies = lazy(() => import('./admin/admincompanies'));
-const NotificationPage = lazy(() => import('./notification/notification'));
-const Messenger = lazy(() => import('./messenger/messenger'));
-const BusinessRegistryPage = lazy(() => import('./business-registry/business-registry'));
-
-function getStoredUser() {
-  try {
-    const raw = localStorage.getItem('crm_user');
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
-function isPendingUser() {
-  return getStoredUser()?.role === 'pending';
-}
 
 /** 로그인하지 않으면 /login으로 리다이렉트 */
 function ProtectedRoute({ children }) {
   const token = localStorage.getItem('crm_token');
   if (!token) return <Navigate to="/login" replace />;
-  return children;
-}
-
-function PendingRestrictedRoute({ children }) {
-  if (isPendingUser()) return <Navigate to="/company-overview" replace />;
   return children;
 }
 
@@ -97,28 +59,9 @@ function App() {
           <Route path="companies" element={<AdminCompanies />} />
         </Route>
         <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+          {/* `/`는 index로 매칭 — 부모만 path="*"일 때 내부 Routes의 index가 비는 문제 방지 */}
           <Route index element={<PendingRestrictedRoute><Home /></PendingRestrictedRoute>} />
-          <Route path="company-overview" element={<CompanyOverview />} />
-          <Route path="customer-companies" element={<PendingRestrictedRoute><CustomerCompanies /></PendingRestrictedRoute>} />
-          <Route path="customer-company-employees" element={<PendingRestrictedRoute><CustomerCompanyEmployees /></PendingRestrictedRoute>} />
-          <Route path="kpi" element={<PendingRestrictedRoute><Kpi /></PendingRestrictedRoute>} />
-          <Route path="calendar" element={<PendingRestrictedRoute><Calendar /></PendingRestrictedRoute>} />
-          <Route path="project" element={<PendingRestrictedRoute><Project /></PendingRestrictedRoute>} />
-          <Route path="sales-pipeline" element={<PendingRestrictedRoute><SalesPipeline /></PendingRestrictedRoute>} />
-          <Route path="product-list" element={<PendingRestrictedRoute><ProductList /></PendingRestrictedRoute>} />
-          <Route path="lead-capture" element={<PendingRestrictedRoute><LeadCapture /></PendingRestrictedRoute>} />
-          <Route path="meeting-minutes" element={<PendingRestrictedRoute><MeetingMinutes /></PendingRestrictedRoute>} />
-          <Route path="ai-voice" element={<PendingRestrictedRoute><AiVoice /></PendingRestrictedRoute>} />
-          <Route path="email" element={<PendingRestrictedRoute><Email /></PendingRestrictedRoute>} />
-          <Route path="messenger" element={<PendingRestrictedRoute><Messenger /></PendingRestrictedRoute>} />
-          <Route path="business-registry" element={<PendingRestrictedRoute><BusinessRegistryPage /></PendingRestrictedRoute>} />
-          <Route path="map" element={<PendingRestrictedRoute><Map /></PendingRestrictedRoute>} />
-          <Route path="todo-list" element={<PendingRestrictedRoute><TodoList /></PendingRestrictedRoute>} />
-          <Route path="notification" element={<PendingRestrictedRoute><NotificationPage /></PendingRestrictedRoute>} />
-          <Route path="reports/sales" element={<PendingRestrictedRoute><SalesReport /></PendingRestrictedRoute>} />
-          <Route path="reports/performance" element={<PendingRestrictedRoute><EmployeePerformance /></PendingRestrictedRoute>} />
-          <Route path="reports/work-report/:employeeId?" element={<PendingRestrictedRoute><EmployeeWorkReport /></PendingRestrictedRoute>} />
-          <Route path="subscription" element={<PendingRestrictedRoute><Subscription /></PendingRestrictedRoute>} />
+          <Route path="*" element={<MainAppRoutes includeHomeIndex={false} />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

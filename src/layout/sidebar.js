@@ -25,7 +25,6 @@ const SIDEBAR_DRAG_ITEM_MIME = 'application/x-nexvia-sidebar-item';
 const CATEGORY_ITEMS = [
   { key: 'inhouse', label: '사내 업무', icon: 'arrow_circle_left' },
   { key: 'outside', label: '사외 업무', icon: 'globe' },
-  { key: 'cloud', label: '클라우드', icon: 'cloud' },
   { key: 'schedule', label: '일정', icon: 'event' },
   { key: 'etc', label: '기타', icon: 'more_horiz' }
 ];
@@ -36,9 +35,9 @@ const SUBMENU_ITEMS = [
   { to: '/meeting-minutes', icon: 'event_note', label: '회의 일지', category: 'inhouse' },
   { to: '/reports/work-report', icon: 'assignment', label: '직원 업무 보고', category: 'inhouse' },
   { to: '/product-list', icon: 'inventory_2', label: '제품 리스트', category: 'inhouse' },
-  { to: '/kpi', icon: 'analytics', label: 'KPI 분석', category: 'inhouse' },
-  { to: '/customer-companies', icon: 'business', label: '고객사 리스트', category: 'outside' },
+  { to: '/kpi', icon: 'analytics', label: '성과분석', category: 'inhouse' },
   { to: '/customer-company-employees', icon: 'group', label: '연락처 리스트', category: 'outside' },
+  { to: '/customer-companies', icon: 'business', label: '고객사 리스트', category: 'outside' },
   { to: '/sales-pipeline', icon: 'view_kanban', label: '세일즈 현황', category: 'outside' },
   { to: '/map', icon: 'map', label: '지도', category: 'outside' },
   { to: '/lead-capture', icon: 'ads_click', label: '리드 캡처', category: 'outside' },
@@ -150,12 +149,9 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
   const userSyncKey = user?._id || user?.id || user?.email || '';
   const [organizationChart, setOrganizationChart] = useState(null);
   const [savingOrder, setSavingOrder] = useState(false);
-  const [draggingCategory, setDraggingCategory] = useState(null);
-  const [categoryDropHint, setCategoryDropHint] = useState(null);
   const [draggingItemTo, setDraggingItemTo] = useState(null);
   const [itemDropHint, setItemDropHint] = useState(null);
   const [itemCrossMoveCategory, setItemCrossMoveCategory] = useState(null);
-  const draggingCategoryRef = useRef(null);
   const draggingItemToRef = useRef(null);
 
   const initialConfig = useMemo(() => {
@@ -228,14 +224,13 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
   const visibleCategoryOrder = useMemo(
     () =>
       categoryOrder.filter((categoryKey) =>
-        (SUBMENU_BY_CATEGORY[categoryKey] || []).some((item) => canShowMenuByRole(user, item)) ||
-        categoryKey === 'cloud'
+        (SUBMENU_BY_CATEGORY[categoryKey] || []).some((item) => canShowMenuByRole(user, item))
       ),
     [categoryOrder, user]
   );
 
   const activeItems = useMemo(() => {
-    if (!activeCategory || activeCategory === 'cloud') return [];
+    if (!activeCategory) return [];
     const orderedTos = itemOrdersByCategory?.[activeCategory] || [];
     return orderedTos
       .map((to) => SUBMENU_BY_TO[to])
@@ -249,31 +244,6 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
       return next;
     });
   }, []);
-
-  const handleCategoryDragStart = useCallback((e, categoryKey) => {
-    e.stopPropagation();
-    draggingCategoryRef.current = categoryKey;
-    setDraggingCategory(categoryKey);
-    e.dataTransfer.setData('text/plain', categoryKey);
-    e.dataTransfer.effectAllowed = 'move';
-  }, []);
-
-  const handleCategoryDragEnd = useCallback(() => {
-    draggingCategoryRef.current = null;
-    setDraggingCategory(null);
-    setCategoryDropHint(null);
-  }, []);
-
-  const handleCategoryDrop = useCallback((e, dropTargetKey, place = 'before') => {
-    e.preventDefault();
-    e.stopPropagation();
-    const dragged = draggingCategoryRef.current;
-    if (!dragged) return;
-    const nextOrder = reorderByPlacement(categoryOrder, dragged, dropTargetKey, place);
-    setCategoryOrder(nextOrder);
-    persistSidebarLayout(nextOrder, itemOrdersByCategory, activeCategory);
-    handleCategoryDragEnd();
-  }, [activeCategory, categoryOrder, handleCategoryDragEnd, itemOrdersByCategory, persistSidebarLayout]);
 
   const handleItemDragStart = useCallback((e, itemTo) => {
     e.stopPropagation();
@@ -294,7 +264,7 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
   const handleItemDrop = useCallback((e, dropTargetTo, place = 'before') => {
     e.preventDefault();
     e.stopPropagation();
-    if (!activeCategory || activeCategory === 'cloud') return;
+    if (!activeCategory) return;
     const dragged = draggingItemToRef.current ||
       e.dataTransfer.getData(SIDEBAR_DRAG_ITEM_MIME) ||
       e.dataTransfer.getData('text/plain');
@@ -326,7 +296,14 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
     <aside className={`sidebar ${drawerOpen ? 'sidebar-drawer-open' : ''}`}>
       <div className="sidebar-header">
         <div className="sidebar-header-logo">
-          <img src={NEXVIA_LOGO_CDN_URL} alt="Nexvia CRM" decoding="async" />
+          <Link
+            to="/"
+            className="sidebar-header-logo-link"
+            onClick={() => onCloseDrawer?.()}
+            aria-label="홈(대시보드)으로 이동"
+          >
+            <img src={NEXVIA_LOGO_CDN_URL} alt="Nexvia CRM" decoding="async" />
+          </Link>
         </div>
         {drawerOpen && (
           <button
@@ -341,52 +318,16 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
       </div>
 
       <nav className="sidebar-nav sidebar-nav-twolevel">
-        <div
-          className="sidebar-category-rail"
-          onDragOver={(e) => {
-            e.preventDefault();
-            if (draggingCategory) setCategoryDropHint({ to: DROP_END, place: 'after' });
-          }}
-          onDrop={(e) => {
-            if (!draggingCategory) return;
-            handleCategoryDrop(e, DROP_END, 'after');
-          }}
-        >
+        <div className="sidebar-category-rail">
           {visibleCategoryOrder.map((categoryKey) => {
             const category = CATEGORY_ITEMS.find((c) => c.key === categoryKey);
             if (!category) return null;
             const isActive = activeCategory === category.key;
-            const isOver = categoryDropHint?.to === category.key;
-            const overBefore = isOver && categoryDropHint?.place === 'before';
-            const overAfter = isOver && categoryDropHint?.place === 'after';
             return (
-              <div
-                key={category.key}
-                className={`sidebar-category-wrap ${draggingCategory === category.key ? 'sidebar-nav-item-dragging' : ''} ${isOver ? 'sidebar-nav-item-drag-over' : ''} ${overBefore ? 'sidebar-drop-before' : ''} ${overAfter ? 'sidebar-drop-after' : ''}`}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  if (draggingItemToRef.current) {
-                    e.dataTransfer.dropEffect = 'move';
-                    setItemCrossMoveCategory(category.key);
-                    return;
-                  }
-                  if (draggingCategory === category.key) return;
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const place = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
-                  setCategoryDropHint({ to: category.key, place });
-                }}
-                onDrop={(e) => {
-                  if (draggingItemToRef.current) return;
-                  handleCategoryDrop(e, category.key, categoryDropHint?.place || 'before');
-                }}
-              >
+              <div key={category.key} className="sidebar-category-wrap">
                 <button
                   type="button"
                   className={`sidebar-category-button ${isActive ? 'sidebar-category-button-active' : ''} ${itemCrossMoveCategory === category.key ? 'sidebar-category-button-drop-target' : ''}`}
-                  draggable={!draggingItemTo}
-                  onDragStart={(e) => handleCategoryDragStart(e, category.key)}
-                  onDragEnd={handleCategoryDragEnd}
                   onDragOver={(e) => {
                     if (!draggingItemToRef.current) return;
                     e.preventDefault();
@@ -431,8 +372,6 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
         >
           {!activeCategory ? (
             <div className="sidebar-submenu-empty">대분류 아이콘을 선택해 주세요.</div>
-          ) : activeCategory === 'cloud' ? (
-            <div className="sidebar-submenu-empty">클라우드 기능은 추후 개발 예정입니다.</div>
           ) : (
             <>
               {activeItems.map((item) => {

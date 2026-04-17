@@ -517,3 +517,57 @@
   opacity: 0;
   pointer-events: none;
 }
+
+/* Google 추가 정보 입력 — 필수 약관 동의 */
+.register-legal-consent {
+  margin-top: 0.5rem;
+  padding: 1rem 1rem 0.25rem;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(91, 124, 153, 0.22);
+  background: rgba(91, 124, 153, 0.06);
+}
+
+.register-legal-consent-title {
+  margin: 0 0 0.65rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #5b6b78;
+}
+
+.register-legal-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  margin-bottom: 0.55rem;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: #3d4a52;
+  cursor: pointer;
+}
+
+.register-legal-row:last-child {
+  margin-bottom: 0;
+}
+
+.register-legal-row input[type='checkbox'] {
+  margin-top: 0.2rem;
+  flex-shrink: 0;
+  accent-color: var(--primary);
+}
+
+.register-legal-link {
+  display: inline;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-weight: 700;
+  color: #4a6d8c;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.register-legal-link:hover {
+  color: #3a5a75;
+}

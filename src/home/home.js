@@ -128,6 +128,19 @@ function formatWonRevenue(w) {
   return parts.join(' · ');
 }
 
+/** 통화별 합계 — 순마진 등 음수·0 구분 표시 */
+function formatDashboardCurrencyTotals(w) {
+  const entries = Object.entries(w || {}).filter(
+    ([, amount]) => Number(amount) !== 0 && Number.isFinite(Number(amount))
+  );
+  if (entries.length === 0) return formatCurrency(0, 'KRW');
+  const parts = [];
+  for (const [currency, amount] of entries) {
+    parts.push(formatCurrency(amount, currency));
+  }
+  return parts.join(' · ');
+}
+
 /** 세일즈 파이프라인 수주(Won) 집계용 시점: 판매일 우선, 없으면 수정일 */
 function getWonOpportunityDate(opp) {
   if (opp?.saleDate) {
@@ -253,26 +266,60 @@ function lineChartX(idx, len) {
   return Math.round(LINE_CHART_VB.padX + (idx / (len - 1)) * inner);
 }
 
-function lineChartY(value, maxAbs) {
+/** 건수 등 비음수 시리즈: 0을 아래에 둠 */
+function lineChartYFromBottom(value, maxAbs) {
   const { h, padYTop, padYBottom } = LINE_CHART_VB;
   const plotH = h - padYTop - padYBottom;
   const v = Number(value) || 0;
-  return Math.round(h - padYBottom - (v / maxAbs) * plotH);
+  const scale = Math.max(maxAbs, 1e-9);
+  return Math.round(h - padYBottom - (v / scale) * plotH);
 }
 
-function buildLinePathD(series, maxAbs) {
+/**
+ * 순마진·소비자가 꺾은선: 음수가 없으면 0=아래, 음수가 있을 때만 [min,max]에 맞춰 0선이 필요한 만큼 올라감 (항상 중앙 고정 아님)
+ */
+function lineChartExtentsFromSeries(seriesA, seriesB) {
+  const vals = [...(Array.isArray(seriesA) ? seriesA : []), ...(Array.isArray(seriesB) ? seriesB : [])].map(
+    (x) => Number(x?.value) || 0
+  );
+  if (vals.length === 0) return { hasNegative: false, vMin: 0, vMax: 1 };
+  const rawMin = Math.min(...vals);
+  const rawMax = Math.max(...vals);
+  if (rawMin >= 0) {
+    return { hasNegative: false, vMin: 0, vMax: Math.max(1, rawMax) };
+  }
+  const range = rawMax - rawMin;
+  const pad = range > 1e-9 ? range * 0.06 : Math.max(Math.abs(rawMin), Math.abs(rawMax), 1) * 0.08;
+  return { hasNegative: true, vMin: rawMin - pad, vMax: rawMax + pad };
+}
+
+function lineChartYMargin(value, extents) {
+  const { h, padYTop, padYBottom } = LINE_CHART_VB;
+  const plotTop = padYTop;
+  const plotBottom = h - padYBottom;
+  const plotH = plotBottom - plotTop;
+  const v = Number(value) || 0;
+  if (!extents.hasNegative) {
+    const scale = Math.max(extents.vMax, 1e-9);
+    return Math.round(plotBottom - (v / scale) * plotH);
+  }
+  const span = Math.max(extents.vMax - extents.vMin, 1e-9);
+  return Math.round(plotBottom - ((v - extents.vMin) / span) * plotH);
+}
+
+function buildLinePathD(series, getY) {
   if (!Array.isArray(series) || series.length === 0) return '';
   const n = series.length;
   if (n === 1) {
     const v = Number(series[0]?.value) || 0;
     const x = lineChartX(0, 1);
-    const y = lineChartY(v, maxAbs);
+    const y = getY(v);
     return `M${x},${y}L${x},${y}`;
   }
   return series
     .map((item, idx) => {
       const x = lineChartX(idx, n);
-      const y = lineChartY(Number(item?.value) || 0, maxAbs);
+      const y = getY(Number(item?.value) || 0);
       return `${idx === 0 ? 'M' : 'L'}${x},${y}`;
     })
     .join(' ');
@@ -336,7 +383,8 @@ function WeeklyLeadCountLineChart({ series, title }) {
   const [hoverIdx, setHoverIdx] = useState(null);
   const cur = Array.isArray(series) ? series : [];
   const maxAbs = lineChartMaxAbs(cur, []);
-  const dCur = buildLinePathD(cur, maxAbs);
+  const getY = (v) => lineChartYFromBottom(v, maxAbs);
+  const dCur = buildLinePathD(cur, getY);
   const stroke = MARGIN_LINE_CURRENT;
 
   return (
@@ -359,7 +407,7 @@ function WeeklyLeadCountLineChart({ series, title }) {
         ) : null}
         {cur.map((item, idx) => {
           const x = lineChartX(idx, cur.length);
-          const y = lineChartY(Number(item?.value) || 0, maxAbs);
+          const y = getY(Number(item?.value) || 0);
           return (
             <circle
               key={`${title}-lw-dot-${item.label}-${idx}`}
@@ -406,9 +454,14 @@ function MarginLineChartWithTooltips({
   const [hoverIdx, setHoverIdx] = useState(null);
   const cur = marginLineCurrent;
   const prev = marginLinePrev;
-  const maxAbs = lineChartMaxAbs(cur, prev);
-  const dPrev = buildLinePathD(prev, maxAbs);
-  const dCur = buildLinePathD(cur, maxAbs);
+  const extents = lineChartExtentsFromSeries(cur, prev);
+  const getY = (v) => lineChartYMargin(v, extents);
+  const dPrev = buildLinePathD(prev, getY);
+  const dCur = buildLinePathD(cur, getY);
+  const zeroY = lineChartYMargin(0, extents);
+  const showZeroLine = extents.hasNegative && extents.vMin <= 0 && extents.vMax >= 0;
+  const axisX1 = LINE_CHART_VB.padX;
+  const axisX2 = LINE_CHART_VB.w - LINE_CHART_VB.padX;
 
   return (
     <div className="home-line-chart-chart-block">
@@ -418,6 +471,17 @@ function MarginLineChartWithTooltips({
         preserveAspectRatio="none"
         aria-hidden
       >
+        {showZeroLine ? (
+          <line
+            x1={axisX1}
+            x2={axisX2}
+            y1={zeroY}
+            y2={zeroY}
+            stroke="rgba(91, 124, 153, 0.2)"
+            strokeWidth="1"
+            vectorEffect="non-scaling-stroke"
+          />
+        ) : null}
         {dPrev ? (
           <path
             d={dPrev}
@@ -441,7 +505,7 @@ function MarginLineChartWithTooltips({
         ) : null}
         {cur.map((item, idx) => {
           const x = lineChartX(idx, cur.length);
-          const y = lineChartY(Number(item?.value) || 0, maxAbs);
+          const y = getY(Number(item?.value) || 0);
           return (
             <circle
               key={`${title}-dot-${item.label}-${idx}`}
@@ -484,7 +548,30 @@ function MarginLineChartWithTooltips({
 /** 소비자가 전년 점선 — 순마진 전년과 동일 톤 */
 const CONSUMER_LINE_PREV = MARGIN_LINE_PREV;
 
+/** 회사 전체 — URL 동기화, 백엔드 insightScope=full (역할 무관) */
+const HOME_INSIGHT_PARAM = 'homeInsight';
+/** 팀장·관리자 «팀별 / 개인 보기» — 백엔드는 insightDept(팀) 또는 insightUser(개인)로 반영 */
+const HOME_INSIGHT_VIEW_PARAM = 'homeInsightView';
+
+/** 팀장 대시보드: 직원별 / 부서별 실적 표 — 조직도 트리 노드 id 기준 부서 집계 */
+const HOME_LEADER_BREAKDOWN_PARAM = 'homeLeaderBreakdown';
+function leaderBreakdownModeFromSearchParams(sp) {
+  const v = String(sp.get(HOME_LEADER_BREAKDOWN_PARAM) || '').toLowerCase();
+  return v === 'department' ? 'department' : 'employee';
+}
+
+/** 팀장 전용: 하위 부서·직원으로 인사이트 범위 좁히기 (백엔드 insightDept / insightUser) */
+const HOME_INSIGHT_DEPT_PARAM = 'homeInsightDept';
+const HOME_INSIGHT_USER_PARAM = 'homeInsightUser';
+
+function formatLeaderEmployeeOptionLabel(u, departments) {
+  const deptLabel = (departments || []).find((d) => d.id === u.departmentId)?.label;
+  if (deptLabel) return `${u.name} (${deptLabel})`;
+  return u.name;
+}
+
 export default function Home() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [leadChannelsLoading, setLeadChannelsLoading] = useState(true);
@@ -509,6 +596,17 @@ export default function Home() {
   const pipelineMounted = useRef(true);
   /** 인사이트 그래프: 서버 /auth/me 기준 (localStorage만 쓰면 DB 역할 변경·오래된 캐시와 어긋날 수 있음) */
   const [insightAccess, setInsightAccess] = useState({ checked: false, seniorPlus: false });
+  const [leaderBreakdownView, setLeaderBreakdownView] = useState(() =>
+    leaderBreakdownModeFromSearchParams(searchParams)
+  );
+  const insightDeptQ = String(searchParams.get(HOME_INSIGHT_DEPT_PARAM) || '').trim();
+  const insightUserQ = String(searchParams.get(HOME_INSIGHT_USER_PARAM) || '').trim();
+  const isCompanyWideInsight = String(searchParams.get(HOME_INSIGHT_PARAM) || '').toLowerCase() === 'full';
+  const leaderInsightViewKind =
+    String(searchParams.get(HOME_INSIGHT_VIEW_PARAM) || 'team').toLowerCase() === 'personal'
+      ? 'personal'
+      : 'team';
+  const myCrmUserId = String(getStoredCrmUser()?._id || '').trim();
   /** 우수 영업 담당자: sales-opportunities의 수주 성공(Won) — 관리자·대표만 표시 */
   const [wonLeaderboardMode, setWonLeaderboardMode] = useState('month');
   const [wonLeaderboardRows, setWonLeaderboardRows] = useState([]);
@@ -554,6 +652,140 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    setLeaderBreakdownView(leaderBreakdownModeFromSearchParams(searchParams));
+  }, [searchParams]);
+
+  const setCompanyWideInsight = useCallback(
+    (enable) => {
+      setSearchParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          if (enable) {
+            p.set(HOME_INSIGHT_PARAM, 'full');
+            p.delete(HOME_INSIGHT_VIEW_PARAM);
+            p.delete(HOME_INSIGHT_DEPT_PARAM);
+            p.delete(HOME_INSIGHT_USER_PARAM);
+          } else {
+            p.delete(HOME_INSIGHT_PARAM);
+            if (!p.get(HOME_INSIGHT_VIEW_PARAM)) p.set(HOME_INSIGHT_VIEW_PARAM, 'team');
+          }
+          return p;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
+
+  const setLeaderInsightViewKind = useCallback(
+    (kind) => {
+      const next = kind === 'personal' ? 'personal' : 'team';
+      setSearchParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          p.delete(HOME_INSIGHT_PARAM);
+          if (next === 'team') {
+            p.set(HOME_INSIGHT_VIEW_PARAM, 'team');
+            p.delete(HOME_INSIGHT_USER_PARAM);
+          } else {
+            p.set(HOME_INSIGHT_VIEW_PARAM, 'personal');
+            p.delete(HOME_INSIGHT_DEPT_PARAM);
+            const uid = String(getStoredCrmUser()?._id || '').trim();
+            if (uid) p.set(HOME_INSIGHT_USER_PARAM, uid);
+          }
+          return p;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
+
+  const setHomeInsightDeptFilter = useCallback(
+    (deptId) => {
+      setSearchParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          p.delete(HOME_INSIGHT_PARAM);
+          p.set(HOME_INSIGHT_VIEW_PARAM, 'team');
+          const v = String(deptId || '').trim();
+          if (!v) p.delete(HOME_INSIGHT_DEPT_PARAM);
+          else p.set(HOME_INSIGHT_DEPT_PARAM, v);
+          p.delete(HOME_INSIGHT_USER_PARAM);
+          return p;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
+
+  const setHomeInsightUserFilter = useCallback(
+    (userId) => {
+      setSearchParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          p.delete(HOME_INSIGHT_PARAM);
+          p.set(HOME_INSIGHT_VIEW_PARAM, 'personal');
+          const v = String(userId || '').trim();
+          if (!v) p.delete(HOME_INSIGHT_USER_PARAM);
+          else p.set(HOME_INSIGHT_USER_PARAM, v);
+          p.delete(HOME_INSIGHT_DEPT_PARAM);
+          return p;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
+
+  const clearHomeInsightLeaderFilters = useCallback(() => {
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        p.delete(HOME_INSIGHT_DEPT_PARAM);
+        p.delete(HOME_INSIGHT_USER_PARAM);
+        p.delete(HOME_INSIGHT_PARAM);
+        p.set(HOME_INSIGHT_VIEW_PARAM, 'team');
+        return p;
+      },
+      { replace: true }
+    );
+  }, [setSearchParams]);
+
+  const resetLeaderInsightToSelfUser = useCallback(() => {
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        p.delete(HOME_INSIGHT_PARAM);
+        p.set(HOME_INSIGHT_VIEW_PARAM, 'personal');
+        p.delete(HOME_INSIGHT_DEPT_PARAM);
+        const uid = String(getStoredCrmUser()?._id || '').trim();
+        if (uid) p.set(HOME_INSIGHT_USER_PARAM, uid);
+        return p;
+      },
+      { replace: true }
+    );
+  }, [setSearchParams]);
+
+  const setHomeLeaderBreakdownMode = useCallback(
+    (mode) => {
+      const next = mode === 'department' ? 'department' : 'employee';
+      setLeaderBreakdownView(next);
+      setSearchParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          if (next === 'employee') p.delete(HOME_LEADER_BREAKDOWN_PARAM);
+          else p.set(HOME_LEADER_BREAKDOWN_PARAM, 'department');
+          return p;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
+
+  useEffect(() => {
     if (!insightAccess.checked || !insightAccess.seniorPlus) return undefined;
     let cancelled = false;
     setWonLeaderboardLoading(true);
@@ -587,7 +819,20 @@ export default function Home() {
     let cancelled = false;
     const fetchData = async () => {
       try {
-        const res = await fetch(`${API_BASE}/reports/dashboard`, { headers: getAuthHeader() });
+        const q = new URLSearchParams();
+        if (isCompanyWideInsight) {
+          q.set('insightScope', 'full');
+        } else {
+          q.set('insightScope', 'personal');
+          if (leaderInsightViewKind === 'personal') {
+            const uid = insightUserQ || myCrmUserId;
+            if (uid) q.set('insightUser', uid);
+          } else if (insightDeptQ) {
+            q.set('insightDept', insightDeptQ);
+          }
+        }
+        q.set('leaderBreakdown', leaderBreakdownView);
+        const res = await fetch(`${API_BASE}/reports/dashboard?${q.toString()}`, { headers: getAuthHeader() });
         if (!cancelled && res.ok) {
           const json = await res.json();
           setData(json);
@@ -613,7 +858,14 @@ export default function Home() {
     };
     fetchData();
     return () => { cancelled = true; };
-  }, []);
+  }, [
+    isCompanyWideInsight,
+    leaderInsightViewKind,
+    leaderBreakdownView,
+    insightDeptQ,
+    insightUserQ,
+    myCrmUserId
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -767,7 +1019,6 @@ export default function Home() {
     return () => mq.removeEventListener('change', fn);
   }, []);
 
-  const [searchParams, setSearchParams] = useSearchParams();
   const activeHomeView = useMemo(() => {
     const v = searchParams.get(HOME_VIEW_PARAM);
     return HOME_VIEW_VALUES.has(v) ? v : null;
@@ -972,9 +1223,6 @@ export default function Home() {
   );
   const netMarginSeries = useMemo(() => prepareChartSeries(netMarginRaw), [netMarginRaw]);
 
-  /** 소비자가·순마진 인사이트 그래프: 관리자·대표만 (위 insightAccess = /auth/me 반영 후) */
-  const canViewInsightCharts = insightAccess.checked && insightAccess.seniorPlus;
-
   const renderChartPanel = (title, subtitle, series, tone, emptyText, chartOptions = {}) => {
     const {
       marginLineCurrent = [],
@@ -992,36 +1240,98 @@ export default function Home() {
         ? chartSeriesAllZero(consumerLineCurrent) && chartSeriesAllZero(consumerLinePrev)
         : series.length === 0 || series.every((item) => item.value === 0));
 
-    const renderBarBlock = (barSeries) => (
-      <div className="home-bar-chart-wrap">
-        <div className="home-mini-chart">
-          {barSeries.map((item, idx) => (
-            <div key={`${title}-${item.label}-${idx}`} className="home-mini-chart-col home-mini-chart-col--tip">
-              <div className="home-mini-chart-track">
-                <div className="home-mini-chart-bar-hit">
-                  <div
-                    className={`home-mini-chart-bar ${item.value < 0 ? 'negative' : ''}`}
-                    style={{
-                      height: `${Math.max(12, item.height * 2)}%`,
-                      backgroundColor: item.value < 0 ? CHART_PASTEL_NEGATIVE : chartPastelAt(idx)
-                    }}
-                  />
-                  <div className="home-chart-tooltip-fly home-chart-tooltip-fly--bar" role="tooltip">
-                    <strong>{item.label}</strong>
-                    <span>{formatCurrency(item.value, selectedGraphCurrency)}</span>
+    const renderBarBlock = (barSeries) => {
+      const nums = barSeries.map((it) => Number(it?.value) || 0);
+      const rawMin = nums.length ? Math.min(...nums) : 0;
+      const rawMax = nums.length ? Math.max(...nums) : 0;
+      const barHasNegative = rawMin < 0;
+      const posSpan = Math.max(rawMax, 0);
+      const negSpan = Math.max(-rawMin, 0);
+      const spanSum = posSpan + negSpan;
+      const topFr = spanSum > 0 ? posSpan : 1;
+      const botFr = spanSum > 0 ? negSpan : 1;
+
+      return (
+        <div className="home-bar-chart-wrap">
+          <div className="home-mini-chart">
+            {barSeries.map((item, idx) => {
+              const v = Number(item.value) || 0;
+              if (!barHasNegative) {
+                return (
+                  <div key={`${title}-${item.label}-${idx}`} className="home-mini-chart-col home-mini-chart-col--tip">
+                    <div className="home-mini-chart-track">
+                      <div className="home-mini-chart-bar-hit">
+                        <div
+                          className={`home-mini-chart-bar ${item.value < 0 ? 'negative' : ''}`}
+                          style={{
+                            height: `${Math.max(12, item.height * 2)}%`,
+                            backgroundColor: item.value < 0 ? CHART_PASTEL_NEGATIVE : chartPastelAt(idx)
+                          }}
+                        />
+                        <div className="home-chart-tooltip-fly home-chart-tooltip-fly--bar" role="tooltip">
+                          <strong>{item.label}</strong>
+                          <span>{formatCurrency(item.value, selectedGraphCurrency)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+              const posPct =
+                v > 0 && rawMax > 0 ? Math.max(15, Math.round((v / rawMax) * 100)) : v > 0 ? 100 : 0;
+              const negPct =
+                v < 0 && rawMin < 0 ? Math.max(15, Math.round((Math.abs(v) / negSpan) * 100)) : v < 0 ? 100 : 0;
+              return (
+                <div key={`${title}-${item.label}-${idx}`} className="home-mini-chart-col home-mini-chart-col--tip">
+                  <div className="home-mini-chart-track home-mini-chart-track--split-axis">
+                    <div className="home-mini-chart-bar-hit home-mini-chart-bar-hit--split">
+                      <div
+                        className="home-mini-chart-split-top"
+                        style={{ flex: posSpan > 0 ? `${topFr} 1 0` : '0 1 0', minHeight: 0 }}
+                      >
+                        {v > 0 && posSpan > 0 ? (
+                          <div
+                            className="home-mini-chart-bar"
+                            style={{
+                              height: `${posPct}%`,
+                              backgroundColor: chartPastelAt(idx)
+                            }}
+                          />
+                        ) : null}
+                      </div>
+                      <div className="home-mini-chart-split-mid" aria-hidden />
+                      <div
+                        className="home-mini-chart-split-bot"
+                        style={{ flex: negSpan > 0 ? `${botFr} 1 0` : '0 1 0', minHeight: 0 }}
+                      >
+                        {v < 0 && negSpan > 0 ? (
+                          <div
+                            className="home-mini-chart-bar negative"
+                            style={{
+                              height: `${negPct}%`,
+                              backgroundColor: CHART_PASTEL_NEGATIVE
+                            }}
+                          />
+                        ) : null}
+                      </div>
+                      <div className="home-chart-tooltip-fly home-chart-tooltip-fly--bar" role="tooltip">
+                        <strong>{item.label}</strong>
+                        <span>{formatCurrency(item.value, selectedGraphCurrency)}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
-          ))}
+              );
+            })}
+          </div>
+          <div className="home-bar-chart-labels">
+            {barSeries.map((item) => (
+              <span key={`${title}-x-${item.label}`}>{item.label}</span>
+            ))}
+          </div>
         </div>
-        <div className="home-bar-chart-labels">
-          {barSeries.map((item) => (
-            <span key={`${title}-x-${item.label}`}>{item.label}</span>
-          ))}
-        </div>
-      </div>
-    );
+      );
+    };
 
     return (
       <div className="panel home-chart-panel">
@@ -1197,6 +1507,228 @@ export default function Home() {
             {getGreetingForHome()}, {homeUserDisplay}
           </p>
           <h2 className="home-mobile-dashboard-title">일일 대시보드</h2>
+        </section>
+
+        <section className="home-insights-top" aria-label="소비자가·순마진 인사이트">
+          {!insightAccess.checked ? (
+            <div className="panel home-chart-panel home-insights-role-loading" aria-busy="true">
+              <p className="home-chart-empty">권한 확인 중…</p>
+            </div>
+          ) : (
+            <>
+              <div className="home-insight-toolbar">
+                <div className="home-insight-toolbar-rows">
+                  {data?.insightScope?.leaderSubtree ? (
+                    <>
+                      <div
+                        className="home-insight-mode-switch home-insight-mode-switch--leader home-insight-mode-switch--with-company"
+                        role="tablist"
+                        aria-label="소비자가·순마진 조회 범위"
+                      >
+                        <button
+                          type="button"
+                          className={isCompanyWideInsight ? 'is-active' : ''}
+                          onClick={() => setCompanyWideInsight(true)}
+                          title="회사 전체 수주·파이프라인 기준"
+                        >
+                          회사 전체
+                        </button>
+                        <button
+                          type="button"
+                          className={!isCompanyWideInsight && leaderInsightViewKind === 'team' ? 'is-active' : ''}
+                          onClick={() => setLeaderInsightViewKind('team')}
+                        >
+                          팀별
+                        </button>
+                        <button
+                          type="button"
+                          className={!isCompanyWideInsight && leaderInsightViewKind === 'personal' ? 'is-active' : ''}
+                          onClick={() => setLeaderInsightViewKind('personal')}
+                        >
+                          개인 보기
+                        </button>
+                      </div>
+                      {!isCompanyWideInsight && data?.insightLeaderFilters ? (
+                        <div className="home-insight-leader-filters-inline" aria-label="팀·직원 범위">
+                          {leaderInsightViewKind === 'team' ? (
+                            <label className="home-insight-filter-field home-insight-filter-field--inline">
+                              <select
+                                className="home-insight-filter-select home-insight-filter-select--inline"
+                                value={insightDeptQ}
+                                onChange={(e) => setHomeInsightDeptFilter(e.target.value)}
+                              >
+                                <option value="">전체 부서 (담당 범위 합산)</option>
+                                {(data.insightLeaderFilters.departments || []).map((d) => (
+                                  <option key={d.id} value={d.id}>
+                                    {d.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          ) : (
+                            <label className="home-insight-filter-field home-insight-filter-field--inline">
+                              <select
+                                className="home-insight-filter-select home-insight-filter-select--inline"
+                                value={insightUserQ || myCrmUserId}
+                                onChange={(e) => setHomeInsightUserFilter(e.target.value)}
+                              >
+                                {(data.insightLeaderFilters.users || []).map((u) => (
+                                  <option key={u.id} value={u.id}>
+                                    {formatLeaderEmployeeOptionLabel(u, data.insightLeaderFilters.departments)}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          )}
+                          {((leaderInsightViewKind === 'team' && insightDeptQ) ||
+                            (leaderInsightViewKind === 'personal' &&
+                              insightUserQ &&
+                              insightUserQ !== myCrmUserId)) ? (
+                            <button
+                              type="button"
+                              className="home-insight-filter-clear home-insight-filter-clear--inline"
+                              onClick={
+                                leaderInsightViewKind === 'team'
+                                  ? clearHomeInsightLeaderFilters
+                                  : resetLeaderInsightToSelfUser
+                              }
+                            >
+                              {leaderInsightViewKind === 'team' ? '부서 초기화' : '본인으로'}
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </>
+                  ) : (
+                    <>
+                      <div
+                        className="home-insight-mode-switch home-insight-mode-switch--with-company home-insight-mode-switch--solo-non-leader"
+                        role="tablist"
+                        aria-label="조회 범위"
+                      >
+                        <button
+                          type="button"
+                          className={isCompanyWideInsight ? 'is-active' : ''}
+                          onClick={() => setCompanyWideInsight(true)}
+                          title="회사 전체 수주·파이프라인 기준"
+                        >
+                          회사 전체
+                        </button>
+                        <button
+                          type="button"
+                          className={!isCompanyWideInsight && leaderInsightViewKind === 'team' ? 'is-active' : ''}
+                          onClick={() => setLeaderInsightViewKind('team')}
+                        >
+                          팀별
+                        </button>
+                        <button
+                          type="button"
+                          className={!isCompanyWideInsight && leaderInsightViewKind === 'personal' ? 'is-active' : ''}
+                          onClick={() => setLeaderInsightViewKind('personal')}
+                        >
+                          개인 보기
+                        </button>
+                      </div>
+                      <p className="home-insight-hint home-insight-hint--solo">
+                        본인 담당 실적만 표시됩니다. 부서 팀장으로 지정되면 팀·직원 단위로 볼 수 있습니다.
+                      </p>
+                    </>
+                  )}
+                </div>
+                {data?.insightNarrow?.type === 'dept' && data?.insightNarrow?.empty ? (
+                  <p className="home-insight-filter-warn home-insight-filter-warn--toolbar" role="status">
+                    선택한 부서에 조직도 부서가 일치하는 직원이 없어 그래프가 비어 있을 수 있습니다.
+                  </p>
+                ) : null}
+              </div>
+              {renderChartPanel(
+                '소비자가 기준 그래프',
+                '수주 성공 건의 최근 6개월 소비자가 합계입니다. 꺾은선에서는 전년 동월과 같은 눈금으로 비교합니다.',
+                consumerSeries,
+                'consumer',
+                '최근 6개월·전년 동월 소비자가 데이터가 없습니다.',
+                {
+                  chartMode: consumerChartMode,
+                  onChartModeChange: setConsumerChartMode,
+                  consumerLineCurrent: consumerRaw,
+                  consumerLinePrev: consumerPrevRaw
+                }
+              )}
+              {renderChartPanel(
+                '순마진 그래프',
+                '수주 금액에서 원가×수량을 뺀 금액입니다. 최근 6개월과 전년 동월 6개월을 같은 눈금으로 비교합니다.',
+                netMarginSeries,
+                'margin',
+                '최근 6개월·전년 동월 순마진 데이터가 없습니다.',
+                {
+                  chartMode: marginChartMode,
+                  onChartModeChange: setMarginChartMode,
+                  marginLineCurrent: netMarginRaw,
+                  marginLinePrev: netMarginPrevRaw
+                }
+              )}
+              {data?.insightScope?.leaderSubtree && data?.leaderScopeBreakdown ? (
+                <div className="panel home-leader-breakdown-panel" aria-label="팀 실적 요약">
+                  <div className="home-leader-breakdown-head">
+                    <div>
+                      <h3 className="home-leader-breakdown-title">팀 실적 요약</h3>
+                      <p className="home-leader-breakdown-sub">
+                        위 그래프와 동일한 기간·필터(수주 성공·담당 기준)입니다. 부서는 회사 조직도에 등록된 노드만 집계합니다.
+                      </p>
+                    </div>
+                    <div
+                      className="home-insight-mode-switch home-leader-breakdown-toggle"
+                      role="tablist"
+                      aria-label="팀 실적 보기 방식"
+                    >
+                      <button
+                        type="button"
+                        className={leaderBreakdownView === 'employee' ? 'is-active' : ''}
+                        onClick={() => setHomeLeaderBreakdownMode('employee')}
+                      >
+                        직원별
+                      </button>
+                      <button
+                        type="button"
+                        className={leaderBreakdownView === 'department' ? 'is-active' : ''}
+                        onClick={() => setHomeLeaderBreakdownMode('department')}
+                      >
+                        부서별
+                      </button>
+                    </div>
+                  </div>
+                  <div className="home-leader-breakdown-table-wrap">
+                    {(data.leaderScopeBreakdown.rows || []).length === 0 ? (
+                      <p className="home-leader-breakdown-empty">
+                        표시할 행이 없습니다. 팀원 부서(조직도 노드 id) 배정을 확인해 주세요.
+                      </p>
+                    ) : (
+                      <table className="home-leader-breakdown-table">
+                        <thead>
+                          <tr>
+                            <th scope="col">{leaderBreakdownView === 'department' ? '부서' : '직원'}</th>
+                            <th scope="col">건수</th>
+                            <th scope="col">수주액</th>
+                            <th scope="col">순마진</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(data.leaderScopeBreakdown.rows || []).map((row) => (
+                            <tr key={row.key}>
+                              <td>{row.label}</td>
+                              <td>{row.orderCount}</td>
+                              <td>{formatWonRevenue(row.revenueByCurrency)}</td>
+                              <td>{formatDashboardCurrencyTotals(row.netMarginByCurrency)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+            </>
+          )}
         </section>
 
         <div className="home-top-grid">
@@ -1413,60 +1945,6 @@ export default function Home() {
               <Calendar embedded hideBottomSection />
             </div>
           </div>
-        </div>
-
-        <div className="home-insights-grid">
-          {!insightAccess.checked ? (
-            <div className="panel home-chart-panel home-insights-role-loading" aria-busy="true">
-              <p className="home-chart-empty">권한 확인 중…</p>
-            </div>
-          ) : canViewInsightCharts ? (
-            <>
-              {renderChartPanel(
-                '소비자가 기준 그래프',
-                '수주 성공 건의 최근 6개월 소비자가 합계입니다. 꺾은선에서는 전년 동월과 같은 눈금으로 비교합니다.',
-                consumerSeries,
-                'consumer',
-                '최근 6개월·전년 동월 소비자가 데이터가 없습니다.',
-                {
-                  chartMode: consumerChartMode,
-                  onChartModeChange: setConsumerChartMode,
-                  consumerLineCurrent: consumerRaw,
-                  consumerLinePrev: consumerPrevRaw
-                }
-              )}
-              {renderChartPanel(
-                '순마진 그래프',
-                '수주 금액에서 원가×수량을 뺀 금액입니다. 최근 6개월과 전년 동월 6개월을 같은 눈금으로 비교합니다.',
-                netMarginSeries,
-                'margin',
-                '최근 6개월·전년 동월 순마진 데이터가 없습니다.',
-                {
-                  chartMode: marginChartMode,
-                  onChartModeChange: setMarginChartMode,
-                  marginLineCurrent: netMarginRaw,
-                  marginLinePrev: netMarginPrevRaw
-                }
-              )}
-            </>
-          ) : (
-            <div className="panel home-chart-panel home-insights-restricted-panel" aria-live="polite">
-              <div className="panel-head home-chart-head">
-                <div>
-                  <h2>매출 인사이트 그래프</h2>
-                  <p className="home-chart-subtitle">소비자가·순마진 추이</p>
-                </div>
-              </div>
-              <div className="home-insights-restricted-body">
-                <span className="material-symbols-outlined home-insights-restricted-icon" aria-hidden>
-                  lock
-                </span>
-                <p>
-                  이 영역은 <strong>관리자·대표</strong> 권한에서만 열람할 수 있습니다. (Staff·권한 대기 계정은 표시되지 않습니다.)
-                </p>
-              </div>
-            </div>
-          )}
         </div>
 
         <div className="panel sales-pipeline">

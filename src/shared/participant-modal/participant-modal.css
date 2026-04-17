@@ -1,3 +1,4 @@
+/* 상세 모달(z-index ~1200–1300) 위에 겹치도록 */
 .participant-modal-overlay {
   position: fixed;
   inset: 0;
@@ -5,7 +6,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1100;
+  z-index: 1400;
   padding: 1rem;
   animation: pmOverlayIn 0.18s ease-out;
 }

@@ -37,12 +37,26 @@ function getAuthHeader() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+function getCurrentUserIdFromStorage() {
+  try {
+    const u = JSON.parse(localStorage.getItem('crm_user') || '{}');
+    return u?._id ? String(u._id) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** assigneeUserIds 에 로그인 사용자가 있으면 내 담당 */
+function isCompanyAssigneeMine(company, myUserId) {
+  if (!myUserId) return false;
+  const ids = Array.isArray(company.assigneeUserIds) ? company.assigneeUserIds : [];
+  return ids.some((id) => String(id) === myUserId);
+}
+
 /**
- * 실시간 내 위치 — 체감 속도·정확도 균형
- * - 첫 표시: 캐시 허용(getCurrentPosition) → 재방문·탭 복귀 시 거의 즉시 마커
- * - 캐시 없음: 짧은 타임아웃 후 네트워크 기반 신규 좌표 1회(여전히 enableHighAccuracy:false → GPS 냉시작 대기 최소화)
- * - 연속: watchPosition으로 갱신
- * - 정밀 보정: 모바일 등에서만 지연 1회 enableHighAccuracy:true (GPS, 느릴 수 있음 — UI는 이미 위 옵션으로 먼저 그림)
+ * 실시간 내 위치
+ * - 데스크톱: 첫 표시는 캐시 우선(빠름), watch는 저부하(고정밀 끔) — 노트북 GPS 없을 때 타임아웃 완화
+ * - 모바일/터치: 네이버·카카오 앱처럼 쓰려면 watch를 enableHighAccuracy 로 두지 않으면 셀타워 위치만 반복되어 정확도가 크게 떨어짐
  */
 const GEOLOCATION_OPTIONS_CACHE_FIRST = {
   enableHighAccuracy: false,
@@ -56,13 +70,26 @@ const GEOLOCATION_OPTIONS_FRESH_NETWORK = {
   timeout: 14000
 };
 
+/** 데스크톱·비터치: 연속 추적 시 네트워크 위주(배터리·콜드 GPS 회피) */
 const GEOLOCATION_OPTIONS_WATCH = {
   enableHighAccuracy: false,
   maximumAge: 20000,
   timeout: 22000
 };
 
-/** GPS 안테나 — 첫 네트워크 위치 후에만 1회(모바일 위주) */
+/** 모바일: watch 자체를 GPS 우선 — 저정확 watch가 고정밀 1회 샘플을 계속 덮어쓰는 문제 방지 */
+function getGeolocationWatchOptions() {
+  if (shouldTryGpsRefinement()) {
+    return {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 30000
+    };
+  }
+  return GEOLOCATION_OPTIONS_WATCH;
+}
+
+/** GPS 안테나 — 콜드 스타트 후 늦게 잡히는 경우 보조 */
 const GEOLOCATION_OPTIONS_GPS_REFINE = {
   enableHighAccuracy: true,
   maximumAge: 0,
@@ -344,6 +371,7 @@ export default function Map({
   initialFocusCompanyId = null,
   initialOpenCompanyModal = false,
   initialZoom = 16,
+  /** 일반 /map 진입 시 기본은 «내 담당»만 (전체는 툴바에서 전환). URL focusCompanyId 있을 때만 전체 조회로 시작 */
   assigneeMeOnlyDefault = true,
   allowCompanyDetailModal = true
 } = {}) {
@@ -386,6 +414,7 @@ export default function Map({
   const [liveLocationOn, setLiveLocationOn] = useState(false);
   const watchIdRef = useRef(null);
   const gpsRefineTimeoutRef = useRef(null);
+  const gpsRefineLateTimeoutRef = useRef(null);
   const locationSamplesRef = useRef([]);
   const myLocationAccuracyCircleRef = useRef(null);
   const lastRefinedLocationRef = useRef(null);
@@ -484,6 +513,10 @@ export default function Map({
       clearTimeout(gpsRefineTimeoutRef.current);
       gpsRefineTimeoutRef.current = null;
     }
+    if (gpsRefineLateTimeoutRef.current != null) {
+      clearTimeout(gpsRefineLateTimeoutRef.current);
+      gpsRefineLateTimeoutRef.current = null;
+    }
 
     const applyPos = (pos) => {
       const w = pushGeolocationSample(locationSamplesRef, pos);
@@ -510,7 +543,7 @@ export default function Map({
       /* 일부 환경에서 동기 throw */
     }
 
-    const watchId = geo.watchPosition(applyPos, noop, GEOLOCATION_OPTIONS_WATCH);
+    const watchId = geo.watchPosition(applyPos, noop, getGeolocationWatchOptions());
     watchIdRef.current = watchId;
 
     if (shouldTryGpsRefinement()) {
@@ -522,6 +555,15 @@ export default function Map({
           /* 동기 throw */
         }
       }, 480);
+      /** GPS 냉시작 시 첫 보정만으로 부족할 때 — 네이티브/웹 모두 늦게 잠기는 경우 대비 */
+      gpsRefineLateTimeoutRef.current = window.setTimeout(() => {
+        gpsRefineLateTimeoutRef.current = null;
+        try {
+          geo.getCurrentPosition(applyPos, noop, GEOLOCATION_OPTIONS_GPS_REFINE);
+        } catch {
+          /* 동기 throw */
+        }
+      }, 2800);
     }
 
     setLiveLocationOn(true);
@@ -531,6 +573,10 @@ export default function Map({
     if (gpsRefineTimeoutRef.current != null) {
       clearTimeout(gpsRefineTimeoutRef.current);
       gpsRefineTimeoutRef.current = null;
+    }
+    if (gpsRefineLateTimeoutRef.current != null) {
+      clearTimeout(gpsRefineLateTimeoutRef.current);
+      gpsRefineLateTimeoutRef.current = null;
     }
     if (watchIdRef.current != null) {
       getGeolocationService()?.clearWatch(watchIdRef.current);
@@ -855,6 +901,8 @@ export default function Map({
 
     clearCompanyMarkers();
 
+    const myUserId = getCurrentUserIdFromStorage();
+
     const list = companiesToShowOnMap.filter((c) => c.latitude != null && c.longitude != null);
 
     // 좌표만으로 초기 뷰를 먼저 잡음 → 마커 DOM/스프라이트 생성을 기다리지 않음
@@ -888,17 +936,20 @@ export default function Map({
         const company = list[idx];
         const lat = company.latitude;
         const lng = company.longitude;
+        const mine = isCompanyAssigneeMine(company, myUserId);
         const marker = new window.google.maps.Marker({
           position: { lat, lng },
           map,
           title: company.name || '',
           optimized: true,
+          /** 겹침 시 내 담당 마커가 다른 마커보다 위(앞)에 그려지도록 */
+          zIndex: mine ? 2000 + idx : 100,
           icon: {
             path: window.google.maps.SymbolPath.CIRCLE,
             scale: 10,
-            fillColor: '#ccff00',
+            fillColor: mine ? '#fff176' : '#a5d6a7',
             fillOpacity: 1,
-            strokeColor: '#333',
+            strokeColor: mine ? '#5d4037' : '#2e7d32',
             strokeWeight: 2
           }
         });
@@ -1225,21 +1276,13 @@ export default function Map({
           <div ref={mapContainerRef} className="map-canvas map-canvas-google" />
 
           <div className="map-top-bar">
-            <div className="map-controls">
-              <button
-                type="button"
-                className={`map-filter-chip map-filter-chip--icon-only ${assigneeMeOnly ? 'active' : ''}`}
-                onClick={() => setAssigneeMeOnly((prev) => !prev)}
-                aria-label={assigneeMeOnly ? '전체 고객사 보기' : '내 담당 고객사만 보기'}
-                title={assigneeMeOnly ? '전체 고객사 보기' : '내 담당 고객사만 보기'}
-              >
-                <span className="material-symbols-outlined">person_pin_circle</span>
-              </button>
+            <div className="map-toolbar-cluster">
+              <div className="map-controls">
               <div className="map-zoom-btns">
-                <button type="button" className="map-ctrl-btn" onClick={zoomIn} aria-label="확대">
+                <button type="button" className="map-ctrl-btn map-ctrl-btn-circle" onClick={zoomIn} aria-label="확대">
                   <span className="material-symbols-outlined">add</span>
                 </button>
-                <button type="button" className="map-ctrl-btn" onClick={zoomOut} aria-label="축소">
+                <button type="button" className="map-ctrl-btn map-ctrl-btn-circle" onClick={zoomOut} aria-label="축소">
                   <span className="material-symbols-outlined">remove</span>
                 </button>
               </div>
@@ -1288,6 +1331,25 @@ export default function Map({
               >
                 <span className="material-symbols-outlined">explore</span>
               </button>
+              <button
+                type="button"
+                className={`map-ctrl-btn map-ctrl-btn-circle map-assignee-scope-toggle ${assigneeMeOnly ? 'active' : ''}`}
+                onClick={() => setAssigneeMeOnly((v) => !v)}
+                aria-pressed={assigneeMeOnly}
+                title={
+                  assigneeMeOnly
+                    ? '지금: 내 담당만 — 클릭하면 전체 고객사'
+                    : '지금: 전체 고객사 — 클릭하면 내 담당만'
+                }
+                aria-label={
+                  assigneeMeOnly ? '전체 고객사 보기로 전환' : '내 담당 고객사만 보기로 전환'
+                }
+              >
+                <span className="material-symbols-outlined">
+                  {assigneeMeOnly ? 'person_pin_circle' : 'public'}
+                </span>
+              </button>
+              </div>
             </div>
           </div>
 

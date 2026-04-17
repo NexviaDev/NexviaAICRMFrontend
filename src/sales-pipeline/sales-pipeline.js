@@ -38,9 +38,48 @@ const DROP_ZONE_CONFIG = {
 };
 
 function formatCurrency(value, currency) {
-  if (!value) return currency === 'KRW' ? '₩0' : '$0';
-  if (currency === 'USD') return '$' + value.toLocaleString();
-  return '₩' + value.toLocaleString();
+  if (!value && value !== 0) return currency === 'KRW' ? '₩0' : '$0';
+  if (currency === 'USD') return '$' + Number(value).toLocaleString();
+  if (currency === 'JPY') return '¥' + Number(value).toLocaleString();
+  return '₩' + Number(value).toLocaleString();
+}
+
+function toMoneyNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** opportunity-modal 순마진과 동일: 수주 금액(value) − 원가×수량. 제품·원가 없으면 표시 안 함 */
+function getOppCostPerUnit(opp) {
+  const snap = toMoneyNumber(opp?.productCostPriceSnapshot);
+  if (snap > 0) return snap;
+  const p = opp?.productId && typeof opp.productId === 'object' ? opp.productId : null;
+  if (p && p.costPrice != null) {
+    const c = toMoneyNumber(p.costPrice);
+    if (c >= 0) return c;
+  }
+  return null;
+}
+
+function computeOppNetMargin(opp) {
+  const pid = opp?.productId;
+  const hasProduct = pid && (typeof pid === 'object' ? pid._id || pid.name : pid);
+  if (!hasProduct) return null;
+  const costPerUnit = getOppCostPerUnit(opp);
+  if (costPerUnit == null) return null;
+  const qty = Math.max(0, Number(opp.quantity) || 1);
+  return Math.round(toMoneyNumber(opp.value) - costPerUnit * qty);
+}
+
+function renderOppNetMargin(opp) {
+  const m = computeOppNetMargin(opp);
+  if (m == null) return null;
+  return (
+    <div className="sp-card-net-margin" aria-label="순마진">
+      <span className="sp-card-net-margin-label">순마진</span>
+      <span className="sp-card-net-margin-value">{formatCurrency(m, opp.currency)}</span>
+    </div>
+  );
 }
 
 function nameInitials(name) {
@@ -530,7 +569,10 @@ export default function SalesPipeline() {
                           </span>
                           <span className="sp-mobile-deal-owner-name">{opp.assignedToName || '담당 미지정'}</span>
                         </div>
-                        <p className="sp-mobile-deal-value">{formatOppValue(opp)}</p>
+                        <div className="sp-mobile-deal-value-wrap">
+                          <p className="sp-mobile-deal-value">{formatOppValue(opp)}</p>
+                          {canViewAdminContent ? renderOppNetMargin(opp) : null}
+                        </div>
                       </div>
                       {canViewAdminContent ? (
                         <button
@@ -595,7 +637,10 @@ export default function SalesPipeline() {
                         <div className="sp-card-top">
                           <h4 className="sp-card-title">{opp.customerCompanyName || '\u00A0'}-{opp.title || '\u00A0'}</h4>
                           <div className="sp-card-top-right">
-                            <span className="sp-card-value">{formatOppValue(opp)}</span>
+                            <div className="sp-card-value-col">
+                              <span className="sp-card-value">{formatOppValue(opp)}</span>
+                              {canViewAdminContent ? renderOppNetMargin(opp) : null}
+                            </div>
                             {canViewAdminContent ? (
                               <button className="sp-card-delete" title="삭제" onClick={(e) => { e.stopPropagation(); handleDelete(opp._id); }}>
                                 <span className="material-symbols-outlined">close</span>
@@ -671,7 +716,10 @@ export default function SalesPipeline() {
                             </div>
                             <p className="sp-card-contact">{opp.contactName || '\u00A0'}</p>
                             <div className="sp-card-meta">
-                              <span className="sp-card-value">{formatOppValue(opp)}</span>
+                              <div className="sp-card-value-col sp-card-value-col--dz">
+                                <span className="sp-card-value">{formatOppValue(opp)}</span>
+                                {canViewAdminContent ? renderOppNetMargin(opp) : null}
+                              </div>
                             </div>
                           </div>
                         ))}

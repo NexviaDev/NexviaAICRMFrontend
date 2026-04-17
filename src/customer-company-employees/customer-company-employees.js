@@ -19,7 +19,8 @@ import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-head
 import ListPaginationButtons from '@/components/list-pagination-buttons/list-pagination-buttons';
 import CustomerCompanyEmployeesExcelImportModal from './customer-company-employees-excel-import-modal/customer-company-employees-excel-import-modal';
 import AssigneeHandoverModal from '@/company-overview/assignee-handover-modal/assignee-handover-modal';
-import { getStoredCrmUser } from '@/lib/crm-role-utils';
+import CustomFieldsManageModal from '@/shared/custom-fields-manage-modal/custom-fields-manage-modal';
+import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 
 import * as XLSX from 'xlsx';
 
@@ -67,8 +68,10 @@ const CUSTOM_FIELDS_PREFIX = 'customFields.';
 
 export default function CustomerCompanyEmployees() {
   const me = useMemo(() => getStoredCrmUser(), []);
+  const canManageCustomFieldDefinitions = isAdminOrAboveRole(me?.role);
   const canRequestAssigneeHandover = !!(me && String(me.role || '').toLowerCase() !== 'pending');
   const [handoverCtx, setHandoverCtx] = useState(null);
+  const [showCustomFieldsManageModal, setShowCustomFieldsManageModal] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const [items, setItems] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, limit: LIMIT, total: 0, totalPages: 0 });
@@ -249,21 +252,23 @@ export default function CustomerCompanyEmployees() {
 
   useEffect(() => { fetchContacts(pagination.page); }, [pagination.page, fetchContacts]);
 
+  const loadContactCustomFieldColumns = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=contact`, { headers: getAuthHeader() });
+      const data = await res.json().catch(() => ({}));
+      const defs = Array.isArray(data?.items) ? data.items : [];
+      const extra = defs.map((d) => ({ key: `${CUSTOM_FIELDS_PREFIX}${d.key}`, label: d.label || d.key || '' }));
+      setCustomFieldColumns(extra);
+      setTemplate((prev) => getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), extra));
+    } catch {
+      setCustomFieldColumns([]);
+    }
+  }, []);
+
   /** 새 연락처 추가 시 정의된 커스텀 필드를 리스트 템플릿에 반영 */
   useEffect(() => {
-    let cancelled = false;
-    fetch(`${API_BASE}/custom-field-definitions?entityType=contact`, { headers: getAuthHeader() })
-      .then((r) => r.json().catch(() => ({})))
-      .then((data) => {
-        if (cancelled) return;
-        const defs = Array.isArray(data?.items) ? data.items : [];
-        const extra = defs.map((d) => ({ key: `${CUSTOM_FIELDS_PREFIX}${d.key}`, label: d.label || d.key || '' }));
-        setCustomFieldColumns(extra);
-        setTemplate((prev) => getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), extra));
-      })
-      .catch(() => { if (!cancelled) setCustomFieldColumns([]); });
-    return () => { cancelled = true; };
-  }, []);
+    loadContactCustomFieldColumns();
+  }, [loadContactCustomFieldColumns]);
 
   const onSearch = (e) => {
     e?.preventDefault();
@@ -908,6 +913,17 @@ export default function CustomerCompanyEmployees() {
               <span className="material-symbols-outlined">download</span>
               {exportExcelLoading ? '준비 중…' : '내보내기'}
             </button>
+            {canManageCustomFieldDefinitions ? (
+              <button
+                type="button"
+                className="btn-outline"
+                onClick={() => setShowCustomFieldsManageModal(true)}
+                title="연락처에 쓸 사용자 정의 필드를 추가합니다"
+              >
+                <span className="material-symbols-outlined">playlist_add</span>
+                필드 추가
+              </button>
+            ) : null}
             <button type="button" className="btn-primary" onClick={openAddModal}><span className="material-symbols-outlined">add</span> 새 연락처 추가</button>
           </div>
         </div>
@@ -1387,6 +1403,15 @@ export default function CustomerCompanyEmployees() {
           open
           onClose={closeExcelImportModal}
           onImported={() => { fetchContacts(1); setPagination((p) => ({ ...p, page: 1 })); }}
+        />
+      )}
+      {showCustomFieldsManageModal && canManageCustomFieldDefinitions && (
+        <CustomFieldsManageModal
+          entityType="contact"
+          onClose={() => setShowCustomFieldsManageModal(false)}
+          onFieldAdded={() => loadContactCustomFieldColumns()}
+          apiBase={API_BASE}
+          getAuthHeader={getAuthHeader}
         />
       )}
       {isAddModalOpen && (

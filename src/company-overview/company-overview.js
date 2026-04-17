@@ -162,6 +162,7 @@ export default function CompanyOverview() {
   const [actionError, setActionError] = useState('');
   const [showDriveSettingsModal, setShowDriveSettingsModal] = useState(false);
   const [savingMemberId, setSavingMemberId] = useState('');
+  const [savingDeptLeader, setSavingDeptLeader] = useState(false);
   const [editingRoleMemberId, setEditingRoleMemberId] = useState('');
   const [selectedApproverIds, setSelectedApproverIds] = useState([]);
   const [requestSending, setRequestSending] = useState(false);
@@ -298,8 +299,11 @@ export default function CompanyOverview() {
   }, [loading, error, loadHandoverPending]);
 
   const { company = {}, employees = [], subscription = {} } = data || {};
+  const departmentLeaderList = data?.departmentLeaderList || [];
   const me = data?.me || {};
   const canManageRoles = ['owner', 'admin', 'senior'].includes(me.role);
+  /** 부서 팀장 배지 지정 — Owner / Admin 만 (Manager·Staff 불가) */
+  const canManageDepartmentLeaders = ['owner', 'admin'].includes(me.role);
   const showHandoverConsentCard = canManageRoles && (handoverPendingLoading || handoverViewerCanConsent);
 
   const formatHandoverConsentNames = (users) => {
@@ -311,6 +315,41 @@ export default function CompanyOverview() {
     if (!orgChart || typeof orgChart !== 'object') return [];
     return flattenOrgChartOptions(orgChart);
   }, [orgChart]);
+
+  const applyDepartmentLeaderToggle = useCallback(async (emp) => {
+    const uid = String(emp.id || '').trim();
+    const dept = String(emp.department || '').trim();
+    if (!uid || !dept) return;
+    if (!orgDeptOptions.some((o) => o.id === dept)) return;
+    const list = (Array.isArray(data?.departmentLeaderList) ? data.departmentLeaderList : []).map((x) => ({
+      userId: String(x.userId),
+      departmentId: String(x.departmentId || '').trim()
+    }));
+    const isOn = list.some((l) => l.userId === uid && l.departmentId === dept);
+    let next;
+    if (isOn) {
+      next = list.filter((l) => !(l.userId === uid && l.departmentId === dept));
+    } else {
+      next = list.filter((l) => l.userId !== uid && l.departmentId !== dept);
+      next.push({ userId: uid, departmentId: dept });
+    }
+    setSavingDeptLeader(true);
+    setActionError('');
+    try {
+      const res = await fetch(`${API_BASE}/companies/department-leaders`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+        body: JSON.stringify({ leaders: next })
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || '부서 팀장 저장에 실패했습니다.');
+      await refreshOverview();
+    } catch (e) {
+      setActionError(e.message || '부서 팀장 저장에 실패했습니다.');
+    } finally {
+      setSavingDeptLeader(false);
+    }
+  }, [data?.departmentLeaderList, orgDeptOptions, refreshOverview]);
 
   useEffect(() => {
     if (company?.organizationChart) setOrgChart(company.organizationChart);
@@ -327,7 +366,13 @@ export default function CompanyOverview() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || '조직도 저장 실패');
       setOrgChart(json.organizationChart || nextTree);
-      setData((prev) => prev ? { ...prev, company: { ...prev.company, organizationChart: json.organizationChart || nextTree } } : prev);
+      setData((prev) => (prev
+        ? {
+            ...prev,
+            company: { ...prev.company, organizationChart: json.organizationChart || nextTree },
+            departmentLeaderList: json.departmentLeaderList ?? prev.departmentLeaderList
+          }
+        : prev));
     } catch (e) {
       setActionError(e.message || '조직도 저장 실패');
     } finally {
@@ -803,14 +848,31 @@ export default function CompanyOverview() {
                     <th>이메일</th>
                     <th>연락처</th>
                     <th>부서</th>
+                    <th
+                      className="company-overview-th-dept-leader"
+                      title="대표·관리자만 체크할 수 있습니다."
+                    >
+                      부서 팀장
+                    </th>
                     <th>CRM 관리 역할</th>
                     {isPendingUser && <th>선택</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedEmployees.map((emp) => (
+                  {sortedEmployees.map((emp) => {
+                    const deptRaw = String(emp.department || '').trim();
+                    const deptInOrg = deptRaw && orgDeptOptions.some((o) => o.id === deptRaw);
+                    const isDeptLeader = deptRaw && departmentLeaderList.some(
+                      (l) => String(l.userId) === String(emp.id) && String(l.departmentId) === deptRaw
+                    );
+                    return (
                     <tr key={emp.id}>
-                      <td>{emp.name || '—'}</td>
+                      <td>
+                        <div className="company-overview-name-with-badge">
+                          <span>{emp.name || '—'}</span>
+
+                        </div>
+                      </td>
                       <td>{emp.email || '—'}</td>
                       <td>{emp.phone || '—'}</td>
                       <td>
@@ -856,6 +918,20 @@ export default function CompanyOverview() {
                           </select>
                         ) : (
                           resolveDeptDisplay(orgChart, emp.department) || '—'
+                        )}
+                      </td>
+                      <td className="company-overview-dept-leader-cell">
+                        {canManageDepartmentLeaders && deptInOrg ? (
+                          <label className="company-overview-dept-leader-label">
+                            <input
+                              type="checkbox"
+                              checked={isDeptLeader}
+                              disabled={savingDeptLeader || savingMemberId === String(emp.id)}
+                              onChange={() => void applyDepartmentLeaderToggle(emp)}
+                            />
+                          </label>
+                        ) : (
+                          <span className="company-overview-muted">—</span>
                         )}
                       </td>
                       <td>
@@ -928,7 +1004,8 @@ export default function CompanyOverview() {
                         </td>
                       )}
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
