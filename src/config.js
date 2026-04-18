@@ -22,5 +22,11 @@ if (isProd && !base) {
 /** 예: https://api.example.com/api — 비어 있으면 상대 경로 /api (로컬 프록시) */
 export const API_BASE = base ? `${base}/api` : '/api';
 
+/**
+ * Drive POST /drive/upload JSON(base64) 단일 요청 상한 — 백엔드 DRIVE_UPLOAD_MAX_BYTES(기본 100MB)와 맞출 것.
+ * 초과 파일은 Drive 웹에서 직접 올리도록 안내.
+ */
+export const MAX_DRIVE_JSON_UPLOAD_BYTES = 100 * 1024 * 1024;
+
 /** 표시·웹훅 URL 정규화용 백엔드 오리진(슬래시 없음). 로컬에서 비어 있으면 Vite 프록시만 사용 중 */
 export const BACKEND_BASE_URL = base;

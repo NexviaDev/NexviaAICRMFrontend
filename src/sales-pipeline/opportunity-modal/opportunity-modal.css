@@ -28,9 +28,18 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   padding: 16px 24px;
   border-bottom: 1px solid var(--card-border, #e2e8f0);
   flex-shrink: 0;
+}
+
+.opp-modal-header-left {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+  min-width: 0;
 }
 
 .opp-modal-title {
@@ -38,6 +47,28 @@
   font-size: 1.25rem;
   font-weight: 700;
   color: var(--text, #1d283a);
+}
+
+.opp-modal-sale-date-label {
+  display: inline-flex;
+  align-items: center;
+}
+
+.opp-modal-sale-date-input {
+  border: 1px solid var(--card-border, #e2e8f0);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 0.8125rem;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--bg-light, #f8fafc);
+  min-height: 36px;
+}
+
+.opp-modal-sale-date-input:focus {
+  outline: none;
+  border-color: var(--primary, #1d283a);
+  box-shadow: 0 0 0 3px rgba(29, 41, 58, 0.1);
 }
 
 .opp-modal-close {
@@ -80,6 +111,39 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
+  align-items: stretch;
+}
+
+.opp-form-grid-2--company-contact .opp-label {
+  height: 100%;
+}
+
+.opp-label-top {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-height: 1.3125rem;
+}
+
+/* 개인구매 버튼이 줄 높이를 밀지 않도록 라벨만 한 줄로 두고 버튼은 띄움 → 고객사 열과 입력란 정렬 */
+.opp-label-top--with-personal-btn {
+  position: relative;
+  padding-right: 4.75rem;
+}
+
+.opp-label-top--with-personal-btn .opp-personal-purchase-check {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+}
+
+.opp-label-top > span {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-muted, #475569);
 }
 
 .opp-label {
@@ -250,9 +314,179 @@
   font-size: 1rem;
 }
 
+.opp-company-wrap--disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+/* 담당자 행 — 개인구매 (작은 글자 + 체크박스 오른쪽) */
+.opp-personal-purchase-check {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.opp-personal-purchase-check-text {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-muted, #64748b);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.opp-personal-purchase-check input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: #7c8ea8;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.opp-channel-distributor-block {
+  margin-top: -8px;
+}
+
+.opp-channel-distributor-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.opp-channel-distributor-input {
+  flex: 1;
+  min-width: 140px;
+}
+
+.opp-channel-distributor-select {
+  min-width: 140px;
+  max-width: 100%;
+}
+
+.opp-channel-distributor-chips {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.opp-channel-distributor-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px 4px 10px;
+  font-size: 0.75rem;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  max-width: 100%;
+}
+
+.opp-channel-distributor-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+.opp-channel-distributor-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  font-size: 0.95rem;
+  line-height: 1;
+  color: #64748b;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.opp-channel-distributor-chip-remove:hover {
+  color: #b91c1c;
+  background: rgba(248, 113, 113, 0.15);
+}
+
+.opp-discount-purchase-split {
+  grid-column: span 2;
+}
+
+.opp-discount-purchase-split-inner {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  width: 100%;
+}
+
+.opp-label--nested {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.opp-label--nested > span {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-muted, #475569);
+}
+
 /* 증서 · 자료: customer-company-detail-modal.css 의 register-sale-docs 클래스 사용, 모달 내 여백·오버레이만 보조 */
 .opp-modal .customer-company-detail-section.register-sale-docs.opp-modal-register-sale-docs {
   margin-bottom: 1rem;
+}
+
+.opp-modal .opp-register-sale-docs-crm-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.opp-modal .opp-register-sale-docs-crm-title-row .register-sale-docs-crm-uploads-title {
+  margin-bottom: 0;
+}
+
+.opp-modal .opp-register-sale-docs-crm-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--primary, #334155);
+  background: #e8f0fe;
+  border: 1px solid #c7d7f0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.opp-modal .opp-register-sale-docs-crm-refresh:hover:not(:disabled) {
+  background: #dce8fc;
+  border-color: #b8c8e8;
+}
+
+.opp-modal .opp-register-sale-docs-crm-refresh:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.opp-modal .opp-register-sale-docs-crm-refresh .material-symbols-outlined {
+  font-size: 1rem;
 }
 
 .opp-modal-docs-folder-hint {
@@ -438,6 +672,13 @@
   gap: 2px;
 }
 
+.opp-summary-item--row-between {
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .opp-summary-item--end {
   align-items: flex-end;
   text-align: right;
@@ -579,6 +820,185 @@
 .opp-product-fields-list dd {
   margin: 0;
   color: var(--text);
+}
+
+.opp-product-fields-block {
+  margin-top: 12px;
+}
+
+.opp-product-fields-block:first-child {
+  margin-top: 0;
+}
+
+/* 제품별 가격 블록 */
+.opp-line-block {
+  padding: 14px 16px;
+  background: rgba(248, 250, 252, 0.95);
+  border: 1px solid var(--card-border, #e2e8f0);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.opp-line-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.opp-line-block-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text, #334155);
+}
+
+/* 요약: 제품별 + 전체 */
+.opp-summary-per-line {
+  grid-column: 1 / -1;
+  margin-bottom: 16px;
+}
+
+.opp-summary-per-line:last-of-type {
+  margin-bottom: 0;
+}
+
+.opp-summary-per-line-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-muted, #64748b);
+  margin-bottom: 8px;
+}
+
+.opp-summary-divider {
+  height: 1px;
+  background: var(--card-border, #e2e8f0);
+  margin: 12px 0 16px;
+  grid-column: 1 / -1;
+}
+
+/* 전체 합계: 그리드 전체 폭, 전체 최종 금액은 단독 한 행으로 강조 */
+.opp-summary-total-block {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.opp-summary-total-deduction {
+  width: 100%;
+}
+
+.opp-summary-grand-final {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: rgba(224, 242, 254, 0.55);
+  border: 1px solid rgba(125, 211, 252, 0.65);
+  box-sizing: border-box;
+}
+
+.opp-summary-grand-final-label {
+  font-size: 0.875rem;
+  font-weight: 800;
+  color: var(--primary, #1d283a);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.opp-summary-grand-final-value {
+  font-size: 1.65rem;
+  font-weight: 800;
+  color: var(--primary, #1d283a);
+  line-height: 1.2;
+  text-align: right;
+  flex: 1;
+  min-width: 0;
+  word-break: break-all;
+}
+
+.opp-summary-total-net {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding-top: 4px;
+}
+
+.opp-summary-total-net-label {
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: #7f1d1d;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.opp-summary-total-net-value {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #991b1b;
+}
+
+.opp-summary-forecast-expected {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(241, 245, 249, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  box-sizing: border-box;
+}
+
+.opp-summary-forecast-expected--single {
+  margin-top: 12px;
+}
+
+.opp-summary-forecast-expected-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+}
+
+.opp-summary-forecast-expected-label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #334155;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.opp-summary-forecast-expected-meta {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #64748b;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.opp-summary-forecast-expected-value {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #1e3a5f;
+  text-align: right;
+  flex-shrink: 0;
 }
 
 /* ========== Comments (기회 코멘트) ========== */
@@ -951,5 +1371,9 @@
 
   .opp-summary-net-margin {
     align-items: flex-start;
+  }
+
+  .opp-discount-purchase-split-inner {
+    grid-template-columns: 1fr;
   }
 }

@@ -45,14 +45,14 @@ function getCurrentUserId() {
 
 const REQUIRED_TARGETS = [
   { key: 'company.businessNumber', label: '사업자 번호' },
-  { key: 'company.name', label: '고객사 명' },
+  { key: 'company.name', label: '기업명' },
   { key: 'company.representativeName', label: '대표자명' },
   { key: 'company.address', label: '주소' }
 ];
 
 const FALLBACK_TARGET_OPTIONS = [
   { value: 'company.businessNumber', label: '고객사 · 사업자 번호' },
-  { value: 'company.name', label: '고객사 · 고객사명' },
+  { value: 'company.name', label: '고객사 · 기업명' },
   { value: 'company.representativeName', label: '고객사 · 대표자명' },
   { value: 'company.address', label: '고객사 · 주소' },
   { value: 'company.status', label: '고객사 · 상태' },
@@ -190,19 +190,6 @@ function mapPreviewResultsToUiResults(previewResults) {
     const name = (pr.companyName || '').trim();
     if (pr.kind === 'create') {
       results.push({ rowIndex: i, ok: true, companyName: name, previewPending: true });
-    } else if (pr.kind === 'duplicate_exact') {
-      results.push({ rowIndex: i, ok: true, skipped: true, companyId: pr.companyId, companyName: name });
-    } else if (pr.kind === 'hold') {
-      results.push({
-        rowIndex: i,
-        ok: true,
-        hold: true,
-        companyName: name,
-        reason: '사업자번호가 같고 회사명이 달라 확인이 필요합니다.',
-        companyPayload: pr.companyPayload,
-        conflictCandidates: pr.conflictCandidates || [],
-        code: pr.code
-      });
     } else if (pr.kind === 'error') {
       results.push({ rowIndex: i, ok: false, error: pr.error, companyName: name });
     } else if (pr.kind === 'empty') {
@@ -222,8 +209,6 @@ function buildPreviewSummary(previewResults) {
   let emptySkipped = 0;
   for (const p of previewResults) {
     if (p.kind === 'create') created += 1;
-    else if (p.kind === 'duplicate_exact') skippedDuplicateCompany += 1;
-    else if (p.kind === 'hold') onHold += 1;
     else if (p.kind === 'error') failed += 1;
     else if (p.kind === 'empty') emptySkipped += 1;
     else failed += 1;
@@ -248,7 +233,7 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
   const [excelFileName, setExcelFileName] = useState('');
   const [dragOver, setDragOver] = useState(false);
   const [saving, setSaving] = useState(false);
-  /** 가져오기 클릭 후 서버 미리보기(중복 검사) API 대기 중 — 이 동안만 별도 모달 표시 */
+  /** 가져오기 클릭 후 서버 미리보기 API 대기 중 — 이 동안만 별도 모달 표시 */
   const [previewChecking, setPreviewChecking] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null);
   const [importResult, setImportResult] = useState(null);
@@ -506,7 +491,7 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
         })
       });
       const previewData = await previewRes.json().catch(() => ({}));
-      if (!previewRes.ok) throw new Error(previewData.error || '중복 검사에 실패했습니다.');
+      if (!previewRes.ok) throw new Error(previewData.error || '미리보기에 실패했습니다.');
 
       const list = Array.isArray(previewData.results) ? previewData.results : [];
       setImportResult({
@@ -557,7 +542,7 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
       throw new Error('미리보기 데이터가 없습니다. 다시 가져오기를 눌러 주세요.');
     }
 
-    const rowsToGeocode = previewRows.filter((item) => item?.kind === 'create' || item?.kind === 'hold');
+    const rowsToGeocode = previewRows.filter((item) => item?.kind === 'create');
     if (rowsToGeocode.length === 0) {
       return { mappings, rows: excelRows, geocodedCount: 0 };
     }
@@ -584,7 +569,7 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
       if (!address) continue;
       addressedRows += 1;
 
-      setSaveMsg(`위도·경도 계산 중입니다… ${processed}/${rowsToGeocode.length}`);
+
       try {
         const coords = await geocodeAddressForImport(google, address);
         if (!coords) continue;
@@ -704,7 +689,6 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
       const stagedActions = Array.isArray(resolvedHoldActions) ? resolvedHoldActions : [];
       setSaving(true);
       try {
-        setSaveMsg('주소 기준 위도·경도를 계산 중입니다…');
         const { mappings, rows: importRows, geocodedCount } = await buildClientGeocodedImportPayload();
         await commitExcelImport({
           stagedActions,
@@ -862,7 +846,7 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
             </span>
           </div>
           <h2 className="lc-crm-result-title">매칭 처리 중입니다</h2>
-          <p className="lc-crm-result-sub">중복 검사를 실행하고 있습니다. 잠시만 기다려 주세요…</p>
+          <p className="lc-crm-result-sub">행별 미리보기를 준비하고 있습니다. 잠시만 기다려 주세요…</p>
           <p className="lc-crm-map-save-msg" style={{ marginTop: '0.75rem', color: '#64748b' }}>
             이 단계에서는 위·경도를 계산하지 않습니다.
           </p>

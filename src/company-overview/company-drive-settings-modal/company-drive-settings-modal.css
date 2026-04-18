@@ -83,6 +83,11 @@
   line-height: 1.45;
 }
 
+.company-drive-settings-hint--sub {
+  margin: -0.5rem 0 1rem;
+  font-size: 0.75rem;
+}
+
 .company-drive-settings-row {
   display: flex;
   gap: 0.75rem;

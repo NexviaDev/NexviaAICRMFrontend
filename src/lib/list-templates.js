@@ -13,7 +13,9 @@ export const LIST_IDS = {
   /** 캘린더 월/주/일 보기 — user.listTemplates.calendar */
   CALENDAR: 'calendar',
   /** 세일즈 파이프라인 «내 기회만» 필터 — listTemplates.salesPipeline.assigneeMeOnly */
-  SALES_PIPELINE: 'salesPipeline'
+  SALES_PIPELINE: 'salesPipeline',
+  /** 제품 검색 모달 선택 빈도 — listTemplates.productSearchModal { usage, order } */
+  PRODUCT_SEARCH_MODAL: 'productSearchModal'
 };
 
 const CALENDAR_VIEW_MODES = new Set(['month', 'week', 'day']);
@@ -56,7 +58,7 @@ export async function patchCalendarViewTemplate({ viewMode }) {
 export const DEFAULT_COLUMNS = {
   [LIST_IDS.CUSTOMER_COMPANIES]: [
     { key: '_favorite', label: '즐겨찾기' },
-    { key: 'name', label: '고객사명' },
+    { key: 'name', label: '기업명' },
     { key: 'representativeName', label: '대표자' },
     { key: 'industry', label: '업종' },
     { key: 'address', label: '주소' },
@@ -129,13 +131,32 @@ export function getEffectiveTemplate(listId, saved, extraColumns = []) {
     order = order.filter((key) => key !== '_favorite');
     order.unshift('_favorite');
   }
-  /** 사업자 번호는 고객사명 셀 아래에 표시하므로 열에서 제외 (저장된 템플릿 호환) */
+  /** 사업자 번호는 기업명 셀 아래에 표시하므로 열에서 제외 (저장된 템플릿 호환) */
   if (listId === LIST_IDS.CUSTOMER_COMPANIES) {
     order = order.filter((key) => key !== 'businessNumber');
   }
   const visible = { ...defaultVisible, ...extraVisible, ...(saved?.visible && typeof saved.visible === 'object' ? saved.visible : {}) };
   const columns = order.map((key) => defaults.find((c) => c.key === key) || (extraColumns || []).find((c) => c.key === key)).filter(Boolean);
   return { columnOrder: order, visible, columns };
+}
+
+/**
+ * 제품 검색 모달: 저장된 order(자주 선택한 순) 기준으로 정렬, 나머지는 제품명 가나다
+ * @param {{ _id?: unknown, name?: string }[]} items
+ * @param {string[]} orderIds — 사용 빈도 내림차순 id 배열
+ */
+export function sortProductsByPickerUsage(items, orderIds) {
+  if (!Array.isArray(items) || items.length === 0) return [];
+  const order = Array.isArray(orderIds) ? orderIds.map(String) : [];
+  const rank = new Map(order.map((id, i) => [id, i]));
+  return [...items].sort((a, b) => {
+    const ida = a._id != null ? String(a._id) : '';
+    const idb = b._id != null ? String(b._id) : '';
+    const ra = rank.has(ida) ? rank.get(ida) : 999999;
+    const rb = rank.has(idb) ? rank.get(idb) : 999999;
+    if (ra !== rb) return ra - rb;
+    return (a.name || '').localeCompare(b.name || '', 'ko');
+  });
 }
 
 /** 현재 유저의 listTemplates에서 해당 리스트 템플릿 가져오기 */
@@ -185,6 +206,27 @@ export async function patchEmailSignatureHtml(html) {
     user.listTemplates = data.listTemplates;
   }
   if (data.emailSignatureHtml != null) user.emailSignatureHtml = data.emailSignatureHtml;
+  localStorage.setItem('crm_user', JSON.stringify(user));
+  return data;
+}
+
+/**
+ * 제품 검색 모달에서 선택 완료 시 호출 — 서버가 usage·order 전체 갱신 저장
+ * @param {string[]} selectedProductIds — 이번에 선택한 제품 _id (복수 가능)
+ */
+export async function patchProductSearchModalUsage(selectedProductIds) {
+  const ids = Array.isArray(selectedProductIds) ? selectedProductIds.map((id) => String(id).trim()).filter(Boolean) : [];
+  const res = await fetch(`${API_BASE}/auth/list-templates`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    credentials: 'include',
+    body: JSON.stringify({ listId: LIST_IDS.PRODUCT_SEARCH_MODAL, selectedProductIds: ids })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || '저장에 실패했습니다.');
+  const userRaw = localStorage.getItem('crm_user');
+  const user = userRaw ? JSON.parse(userRaw) : {};
+  user.listTemplates = data.listTemplates || user.listTemplates || {};
   localStorage.setItem('crm_user', JSON.stringify(user));
   return data;
 }

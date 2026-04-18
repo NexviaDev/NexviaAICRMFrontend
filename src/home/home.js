@@ -64,11 +64,21 @@ const HOME_MOBILE_PREVIEW_TODO = 5;
 const DEFAULT_STAGE_LABELS = {
   NewLead: '신규 리드',
   Contacted: '연락 완료',
-  ProposalSent: '제안서 발송',
+  ProposalSent: '제안서 전달 완료',
+  TechDemo: '기술 시연',
+  Quotation: '견적',
   Negotiation: '최종 협상',
   Won: '수주 성공'
 };
-const DEFAULT_ACTIVE_STAGES = ['NewLead', 'Contacted', 'ProposalSent', 'Negotiation', 'Won'];
+const DEFAULT_ACTIVE_STAGES = [
+  'NewLead',
+  'Contacted',
+  'ProposalSent',
+  'TechDemo',
+  'Quotation',
+  'Negotiation',
+  'Won'
+];
 
 /** sales-pipeline.js 하단 드롭존과 동일 — 파이프라인 메인 칸 집계에서 제외 */
 const DROP_ZONE_STAGES = ['Lost', 'Abandoned'];
@@ -78,7 +88,9 @@ const CURRENCY_SYMBOLS = { KRW: '₩', USD: '$', JPY: '¥' };
 const PIPELINE_STEP_HINTS = {
   NewLead: '잠재 고객 발굴',
   Contacted: '초기 미팅 완료',
-  ProposalSent: '견적 및 협상',
+  ProposalSent: '제안·자료 전달',
+  TechDemo: '기술 시연·POC',
+  Quotation: '견적 제출',
   Negotiation: '클로징 단계',
   Won: '최종 승인'
 };
@@ -126,6 +138,29 @@ function formatWonRevenue(w) {
     parts.push(formatCurrency(amount, currency));
   }
   return parts.join(' · ');
+}
+
+/** 홈 상단 KPI — Forecast 비율(달성도) */
+function formatHomeKpiForecastPct(pct) {
+  if (pct == null || Number.isNaN(Number(pct))) return '—';
+  return `${Math.round(Number(pct))}%`;
+}
+
+/** 매출총이익률 등 — Forecast 대비(퍼센트포인트) */
+function formatHomeKpiForecastPP(pp) {
+  if (pp == null || Number.isNaN(Number(pp))) return '—';
+  const n = Number(pp);
+  const sign = n >= 0 ? '+' : '';
+  return `${sign}${n.toFixed(1)}%p`;
+}
+
+/** 전년·전월 등 증감률 + 방향(화살표용) */
+function formatHomeKpiDeltaPct(pct, isPP) {
+  if (pct == null || Number.isNaN(Number(pct))) return { text: '—', dir: null };
+  const n = Number(pct);
+  const dir = n > 0 ? 'up' : n < 0 ? 'down' : 'flat';
+  const body = (n > 0 ? '+' : '') + n.toFixed(1);
+  return { text: isPP ? `${body}%p` : `${body}%`, dir };
 }
 
 /** 통화별 합계 — 순마진 등 음수·0 구분 표시 */
@@ -845,12 +880,16 @@ export default function Home() {
             consumerByCurrency: { KRW: [] },
             consumerPrevYearByCurrency: { KRW: [] },
             netMarginByCurrency: { KRW: [] },
-            netMarginPrevYearByCurrency: { KRW: [] }
+            netMarginPrevYearByCurrency: { KRW: [] },
+            wonValueByCurrency: { KRW: [] },
+            wonValuePrevYearByCurrency: { KRW: [] }
           },
           activeDeals: 128,
           newLeads: 45,
           taskCompletion: 0,
-          taskCompletionMeta: { totalOpportunities: 0, wonCount: 0 }
+          taskCompletionMeta: { totalOpportunities: 0, wonCount: 0 },
+          kpiSummary: null,
+          pipelineKpi: null
         });
       } finally {
         if (!cancelled) setLoading(false);
@@ -962,6 +1001,14 @@ export default function Home() {
   }, [fetchStageDefinitions]);
 
   useEffect(() => {
+    const onStagesUpdated = () => {
+      fetchStageDefinitions();
+    };
+    window.addEventListener('nexvia-pipeline-stages-updated', onStagesUpdated);
+    return () => window.removeEventListener('nexvia-pipeline-stages-updated', onStagesUpdated);
+  }, [fetchStageDefinitions]);
+
+  useEffect(() => {
     if (!healthPinged) {
       fetch(`${API_BASE}/health`).finally(() => setHealthPinged(true));
       return;
@@ -980,15 +1027,6 @@ export default function Home() {
   const pipelineMainStages = useMemo(
     () => activeStages.filter((s) => !DROP_ZONE_STAGES.includes(s)),
     [activeStages]
-  );
-
-  /** 진행 중 딜: 메인 보드 단계만 (Won·Lost·Abandoned 제외 — 파이프라인 칸반과 동일 범의) */
-  const inProgressDealCount = useMemo(
-    () =>
-      pipelineMainStages
-        .filter((s) => s !== CLOSED_WON_STAGE)
-        .reduce((sum, s) => sum + (grouped[s]?.length || 0), 0),
-    [pipelineMainStages, grouped]
   );
 
   const homeUserDisplay = useMemo(() => {
@@ -1054,14 +1092,6 @@ export default function Home() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [activeHomeView, closeHomeView]);
-
-  /** 파이프라인 첫 컬럼 = 세일즈 현황 좌측 첫 단계(기본 NewLead) */
-  const firstPipelineStageKey = pipelineMainStages[0] || 'NewLead';
-  const newLeadStageCount = grouped[firstPipelineStageKey]?.length ?? 0;
-  const firstPipelineStageLabel =
-    stageLabels[firstPipelineStageKey] ||
-    DEFAULT_STAGE_LABELS[firstPipelineStageKey] ||
-    firstPipelineStageKey;
 
   const visibleHomeCaptureLeads = useMemo(
     () =>
@@ -1146,46 +1176,99 @@ export default function Home() {
   /** 통화 선택 UI 제거 — API 통화 목록의 첫 통화로 그래프 표시 */
   const selectedGraphCurrency = graphCurrencies[0] || 'KRW';
 
-  const cards = [
-    {
-      label: '총 매출 (수주 성공)',
-      value: formatWonRevenue(stats.wonRevenue),
-      subtext: '지난달 대비 지표',
-      icon: 'payments',
-      color: 'primary',
-      fromPipeline: false
-    },
-    {
-      label: '진행 중 딜 (파이프라인)',
-      value: inProgressDealCount,
-      subtext: '현재 진행 단계 기준',
-      icon: 'handshake',
-      color: 'rose',
-      fromPipeline: true
-    },
-    {
-      label: `${firstPipelineStageLabel} · 파이프라인 첫 단계`,
-      value: newLeadStageCount,
-      subtext: '첫 단계 유입 건수',
-      icon: 'person_add',
-      color: 'mint',
-      fromPipeline: true
-    },
-    {
-      label: '업무 완료율',
-      value: `${stats.taskCompletion ?? 0}%`,
-      subtext: (() => {
-        const m = stats.taskCompletionMeta;
-        if (m && typeof m.totalOpportunities === 'number') {
-          return `전체 기회 ${m.totalOpportunities}건 중 수주 성공 ${Number(m.wonCount) || 0}건`;
-        }
-        return '세일즈 파이프라인 전체 기회 대비 수주 성공(Won) 비율';
-      })(),
-      icon: 'task_alt',
-      color: 'primary',
-      fromPipeline: false
+  const homeKpiCards = useMemo(() => {
+    const kpi = stats.kpiSummary;
+    const cur = kpi?.primaryCurrency || selectedGraphCurrency || 'KRW';
+    if (!kpi) {
+      return [
+        { key: 'rev', skeleton: true },
+        { key: 'gm', skeleton: true },
+        { key: 'goal', skeleton: true },
+        { key: 'lead', skeleton: true },
+        { key: 'deal', skeleton: true }
+      ];
     }
-  ];
+    const rev = kpi.revenue;
+    const gm = kpi.grossMargin;
+    const goal = kpi.goal;
+    const nl = kpi.newLeads;
+    const ip = kpi.inProgress;
+
+    return [
+      {
+        key: 'rev',
+        title: '매출액',
+        hint: '최근 6개월 수주 합계',
+        value: formatCurrency(rev?.last6Total ?? 0, cur),
+        icon: 'payments',
+        showForecast: true,
+        showPeriod: true,
+        forecast: rev?.forecastVsPct,
+        forecastMode: 'pct',
+        period: rev?.yoyPct,
+        periodLabel: '전년대비',
+        periodMode: 'deltaPct'
+      },
+      {
+        key: 'gm',
+        title: '매출 총이익률',
+        hint: '최근 6개월 · 순마진÷수주액',
+        value: `${gm?.ratePct ?? 0}%`,
+        icon: 'percent',
+        showForecast: true,
+        showPeriod: true,
+        forecast: gm?.forecastVsPP,
+        forecastMode: 'pp',
+        period: gm?.yoyPP,
+        periodLabel: '전년대비',
+        periodMode: 'deltaPP'
+      },
+      {
+        key: 'goal',
+        title: '목표 달성률',
+        hint: (() => {
+          const m = stats.taskCompletionMeta;
+          if (m && typeof m.totalOpportunities === 'number') {
+            return `전체 기회 ${m.totalOpportunities}건 중 수주 ${Number(m.wonCount) || 0}건`;
+          }
+          return '기회 대비 수주 성공 비율';
+        })(),
+        value: `${goal?.taskCompletion ?? 0}%`,
+        icon: 'flag',
+        showForecast: false,
+        showPeriod: false,
+        goalPct: Math.min(100, Math.max(0, Number(goal?.taskCompletion) || 0))
+      },
+      {
+        key: 'lead',
+        title: '신규 리드 건수',
+        hint: '최근 30일 신규 기회(생성일 기준)',
+        value: `${nl?.count30d ?? 0}건`,
+        icon: 'person_add',
+        showForecast: false,
+        showPeriod: true,
+        forecast: nl?.forecastVsPct,
+        forecastMode: 'pct',
+        period: nl?.yoyPct,
+        periodLabel: '전월대비',
+        periodMode: 'deltaPct'
+      },
+      {
+        key: 'deal',
+        title: '진행 중인 딜',
+        hint: '파이프라인 · 수주·종료·유기 제외',
+        value: `${ip?.count ?? 0}건`,
+        icon: 'handshake',
+        showForecast: false,
+        showPeriod: true,
+        forecast: ip?.forecastVsPct,
+        forecastMode: 'pct',
+        period: ip?.yoyPct,
+        periodLabel: '전년대비',
+        periodMode: 'deltaPct'
+      }
+    ];
+  }, [stats.kpiSummary, stats.taskCompletionMeta, selectedGraphCurrency]);
 
   const pipelineColumns = useMemo(() => {
     const cols = pipelineMainStages.map((stage) => {
@@ -1641,6 +1724,81 @@ export default function Home() {
                   </p>
                 ) : null}
               </div>
+              <div className="home-kpi-strip" aria-label="핵심 실적 요약">
+                {homeKpiCards.map((card) => {
+                  if (card.skeleton) {
+                    return (
+                      <div key={card.key} className="home-kpi-card home-kpi-card--skeleton" aria-busy="true">
+                        <div className="home-kpi-skel-line home-kpi-skel-line--short" />
+                        <div className="home-kpi-skel-line home-kpi-skel-line--value" />
+                        <div className="home-kpi-skel-line" />
+                        <div className="home-kpi-skel-line" />
+                      </div>
+                    );
+                  }
+                  const showForecast = card.showForecast === true;
+                  const showPeriod = card.showPeriod === true;
+                  const forecastText =
+                    card.forecastMode === 'pp'
+                      ? formatHomeKpiForecastPP(card.forecast)
+                      : formatHomeKpiForecastPct(card.forecast);
+                  const periodIsPP = card.periodMode === 'deltaPP';
+                  const delta = formatHomeKpiDeltaPct(card.period, periodIsPP);
+                  return (
+                    <article key={card.key} className="home-kpi-card">
+                      <div className="home-kpi-card-head">
+                        <span className="home-kpi-card-title">{card.title}</span>
+                        <span className="material-symbols-outlined home-kpi-card-icon" aria-hidden>
+                          {card.icon}
+                        </span>
+                      </div>
+                      <p className="home-kpi-card-value">{loading ? '—' : card.value}</p>
+                      <p className="home-kpi-card-hint">{card.hint}</p>
+                      {card.goalPct != null ? (
+                        <div className="home-kpi-goal-bar" aria-hidden>
+                          <div
+                            className="home-kpi-goal-fill"
+                            style={{ width: `${card.goalPct}%` }}
+                          />
+                        </div>
+                      ) : null}
+                      {showForecast || showPeriod ? (
+                        <div className="home-kpi-card-metrics">
+                          {showForecast ? (
+                            <div className="home-kpi-metric-line">
+                              <span className="home-kpi-dot home-kpi-dot--forecast" aria-hidden />
+                              <span className="home-kpi-metric-label">Forecast 대비</span>
+                              <span className="home-kpi-metric-val">{loading ? '—' : forecastText}</span>
+                            </div>
+                          ) : null}
+                          {showPeriod ? (
+                            <div className="home-kpi-metric-line">
+                              <span className="home-kpi-dot home-kpi-dot--period" aria-hidden />
+                              <span className="home-kpi-metric-label">{card.periodLabel}</span>
+                              <span
+                                className={`home-kpi-metric-trend ${
+                                  delta.dir === 'up' ? 'is-up' : delta.dir === 'down' ? 'is-down' : ''
+                                }`}
+                              >
+                                {delta.dir === 'up' ? (
+                                  <span className="material-symbols-outlined" aria-hidden>
+                                    trending_up
+                                  </span>
+                                ) : delta.dir === 'down' ? (
+                                  <span className="material-symbols-outlined" aria-hidden>
+                                    trending_down
+                                  </span>
+                                ) : null}{' '}
+                                {loading ? '—' : delta.text}
+                              </span>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </article>
+                  );
+                })}
+              </div>
               {renderChartPanel(
                 '소비자가 기준 그래프',
                 '수주 성공 건의 최근 6개월 소비자가 합계입니다. 꺾은선에서는 전년 동월과 같은 눈금으로 비교합니다.',
@@ -1730,123 +1888,6 @@ export default function Home() {
             </>
           )}
         </section>
-
-        <div className="home-top-grid">
-          <div className="panel home-lead-channel-panel home-chart-panel">
-            <div className="panel-head home-chart-head">
-              <div>
-                <h2>캡처 채널별 리드 수신</h2>
-                <p className="home-chart-subtitle">
-                  최근 6주간 주간 수신 건수입니다. 꺾은선은 추이, 막대는 주간 비교에 적합합니다.
-                </p>
-              </div>
-              <div className="home-chart-actions">
-                <div className="home-chart-view-toggle">
-                  <button
-                    type="button"
-                    className="home-chart-type-icon active"
-                    onClick={() => setLeadChannelChartMode(leadChannelChartMode === 'bar' ? 'line' : 'bar')}
-                    aria-label={
-                      leadChannelChartMode === 'bar'
-                        ? '막대 그래프로 보는 중입니다. 꺾은선으로 전환합니다.'
-                        : '꺾은선 그래프로 보는 중입니다. 막대로 전환합니다.'
-                    }
-                    title={leadChannelChartMode === 'bar' ? '꺾은선 그래프로 전환' : '막대 그래프로 전환'}
-                  >
-                    <span className="material-symbols-outlined" aria-hidden>
-                      {leadChannelChartMode === 'bar' ? 'bar_chart' : 'show_chart'}
-                    </span>
-                  </button>
-                </div>
-                {isMobile ? (
-                  <button
-                    type="button"
-                    className="home-pipeline-link home-pipeline-link--btn"
-                    onClick={() => openHomeView('channels')}
-                  >
-                    전체 보기
-                  </button>
-                ) : (
-                  <Link to="/lead-capture" className="home-pipeline-link">
-                    채널 관리
-                  </Link>
-                )}
-              </div>
-            </div>
-            <div className="home-chart-body home-lead-channel-body home-lead-channel-body--chart">
-              {leadChannelsLoading ? (
-                <p className="home-chart-empty">채널 데이터 불러오는 중…</p>
-              ) : recentCaptureLeads.length === 0 ? (
-                <p className="home-chart-empty">표시할 캡처 리드가 없습니다.</p>
-              ) : leadChannelChartMode === 'line' ? (
-                <div className="home-line-chart-wrap">
-                  <WeeklyLeadCountLineChart series={leadWeeklySeries} title="home-lead-weekly" />
-                  <div className="home-line-chart-legend" aria-hidden>
-                    <span>
-                      <span className="home-line-legend-swatch current" /> 주간 수신 건수
-                    </span>
-                  </div>
-                  <div className="home-line-chart-labels">
-                    {leadWeeklySeries.map((item) => (
-                      <span key={`home-lw-lbl-${item.label}`}>{item.label}</span>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="home-bar-chart-wrap">
-                  <div className="home-mini-chart">
-                    {leadWeeklyBarSeries.map((item, idx) => (
-                      <div
-                        key={`home-lw-bar-${item.label}-${idx}`}
-                        className="home-mini-chart-col home-mini-chart-col--tip"
-                      >
-                        <div className="home-mini-chart-track">
-                          <div className="home-mini-chart-bar-hit">
-                            <div
-                              className={`home-mini-chart-bar ${item.value < 0 ? 'negative' : ''}`}
-                              style={{
-                                height: `${Math.max(12, item.height * 2)}%`,
-                                backgroundColor:
-                                  item.value < 0 ? CHART_PASTEL_NEGATIVE : chartPastelAt(idx)
-                              }}
-                            />
-                            <div className="home-chart-tooltip-fly home-chart-tooltip-fly--bar" role="tooltip">
-                              <strong>{item.label}</strong>
-                              <span>{Number(item.value) || 0}건</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="home-bar-chart-labels">
-                    {leadWeeklyBarSeries.map((item) => (
-                      <span key={`home-lw-x-${item.label}`}>{item.label}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="cards-grid cards-grid-compact home-metrics-bento">
-            {cards.map((card, idx) => (
-              <div key={card.label} className={`stat-card stat-card--bento stat-card--bento-${idx}`}>
-                <div className="stat-card-top">
-                  <p className="stat-label">{card.label}</p>
-                  <span className="material-symbols-outlined stat-card-icon" aria-hidden>{card.icon}</span>
-                </div>
-                <h3 className="stat-value">
-                  {card.fromPipeline ? (pipelineLoading ? '—' : card.value) : loading ? '—' : card.value}
-                </h3>
-                <p className="stat-subtext">{card.subtext}</p>
-                <div className="stat-bar-wrap">
-                  <div className={`stat-bar stat-bar-${card.color}`} style={{ width: typeof card.value === 'string' && card.value.includes('%') ? card.value : '65%' }} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
 
         <div className="home-schedule-split">
           <div className="home-schedule-left-stack">

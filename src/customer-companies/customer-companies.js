@@ -41,7 +41,7 @@ function formatBusinessNumber(num) {
   return `${s.slice(0, 3)}-${s.slice(3, 5)}-${s.slice(5, 10)}`;
 }
 
-/** 고객사명 아바타 이니셜 (연락처 리스트 getNameInitials 와 동일 규칙) */
+/** 기업명 아바타 이니셜 (연락처 리스트 getNameInitials 와 동일 규칙) */
 function getNameInitials(name) {
   const s = (name || '?').trim();
   if (!s) return '?';
@@ -112,7 +112,7 @@ export default function CustomerCompanies() {
   const [handoverCtx, setHandoverCtx] = useState(null);
   const [showCustomFieldsManageModal, setShowCustomFieldsManageModal] = useState(false);
   const SEARCH_FIELD_OPTIONS = [
-    { key: 'name', label: '고객사명' },
+    { key: 'name', label: '기업명' },
     { key: 'representativeName', label: '대표자' },
     { key: 'businessNumber', label: '사업자 번호' },
     { key: 'industry', label: '업종' },
@@ -553,7 +553,7 @@ export default function CustomerCompanies() {
         const ids = Array.isArray(row.assigneeUserIds) ? row.assigneeUserIds : [];
         const assignees = ids.map((id) => assigneeIdToName[String(id)] || String(id)).filter(Boolean).join(', ');
         const out = {
-          고객사명: row.name || '',
+          기업명: row.name || '',
           대표자: row.representativeName || '',
           사업자번호: formatBusinessNumber(row.businessNumber),
           업종: row.industry || '',
@@ -585,7 +585,7 @@ export default function CustomerCompanies() {
               .filter(Boolean)
               .join(', ');
             employeeRows.push({
-              고객사명: row.name || '',
+              기업명: row.name || '',
               이름: emp.name || '',
               이메일: emp.email || '',
               전화: emp.phone || '',
@@ -631,7 +631,7 @@ export default function CustomerCompanies() {
           <form id="customer-companies-search-form" onSubmit={runSearch} className="header-search-form">
             <input
               type="text"
-              placeholder={searchField ? `${SEARCH_FIELD_OPTIONS.find((o) => o.key === searchField)?.label || searchField} 검색...` : '모든 필드 검색 (고객사명, 대표자, 주소, 메모, 커스텀 필드 등)...'}
+              placeholder={searchField ? `${SEARCH_FIELD_OPTIONS.find((o) => o.key === searchField)?.label || searchField} 검색...` : '모든 필드 검색 (기업명, 대표자, 주소, 메모, 커스텀 필드 등)...'}
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               aria-label="고객사 검색"
@@ -659,7 +659,7 @@ export default function CustomerCompanies() {
       <div className="page-content">
         <div className="customer-companies-top">
           <div>
-            <h2>고객사 리스트</h2>
+            <h2>기업 리스트</h2>
             <p className="page-desc">
               총 {pagination.total || 0}개 고객사를 관리 중입니다
             </p>
@@ -717,7 +717,7 @@ export default function CustomerCompanies() {
                 필드 추가
               </button>
             ) : null}
-            <button type="button" className="btn-primary" onClick={openAddModal}><span className="material-symbols-outlined">add</span> 고객사 추가</button>
+            <button type="button" className="btn-primary" onClick={openAddModal}><span className="material-symbols-outlined">add</span> 기업 추가</button>
           </div>
         </div>
         {selectedCompanyIds.size > 0 && (

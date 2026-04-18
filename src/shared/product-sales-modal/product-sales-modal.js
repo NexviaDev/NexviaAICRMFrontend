@@ -4,7 +4,9 @@ import './product-sales-modal.css';
 const STAGE_LABELS = {
   NewLead: '신규 리드',
   Contacted: '접촉 완료',
-  ProposalSent: '제안서 발송',
+  ProposalSent: '제안서 전달 완료',
+  TechDemo: '기술 시연',
+  Quotation: '견적',
   Closed: '종료',
   Lost: '기회 상실',
   Abandoned: '보류',
@@ -76,7 +78,7 @@ export default function ProductSalesModal({ companyName, companyId, items, drive
           <div className="product-sales-modal-body">
             {list.length === 0 ? (
               <p className="product-sales-modal-empty">
-                이 고객사에 대한 제품 판매 기회가 없습니다.
+                제품판매 이력이 없습니다. 
                 {onAddSale && (
                   <button type="button" className="product-sales-modal-empty-btn" onClick={onAddSale}>
                     추가하기

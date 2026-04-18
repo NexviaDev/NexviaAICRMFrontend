@@ -657,6 +657,17 @@
   background: none;
   border: none;
   box-shadow: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.add-contact-modal .register-sale-docs-section-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
 }
 
 .add-contact-modal .customer-company-detail-section.register-sale-docs .customer-company-detail-section-title {
@@ -699,13 +710,18 @@
   overflow: hidden;
   border: 1px solid rgba(0, 0, 0, 0.08);
   background: none;
-  min-height: 120px;
-  max-height: 260px;
+  min-height: 180px;
+  max-height: 340px;
   box-shadow: none;
   padding: 0.75rem;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+}
+
+.add-contact-modal .register-sale-docs-list-wrap.register-sale-docs-dropzone-disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
 }
 
 .add-contact-modal .register-sale-docs-breadcrumb {
@@ -800,6 +816,78 @@
   gap: 0.15rem;
 }
 
+.add-contact-modal .register-sale-docs-file-list--empty {
+  flex: 1;
+  min-height: 4rem;
+  justify-content: center;
+}
+
+.add-contact-modal .register-sale-docs-file-li--empty {
+  width: 100%;
+}
+
+.add-contact-modal .register-sale-docs-file-row--empty {
+  color: var(--text-muted);
+  font-weight: 400;
+  justify-content: center;
+  padding: 0.65rem 0.5rem;
+}
+
+.add-contact-modal .register-sale-docs-file-row--empty:hover:not(:disabled) {
+  color: var(--primary);
+}
+
+.add-contact-modal .register-sale-docs-file-row--empty:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.add-contact-modal .register-sale-docs-file-name--empty {
+  font-weight: 400;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.35;
+}
+
+.add-contact-modal .register-sale-docs-file-li {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.add-contact-modal .register-sale-docs-file-li .register-sale-docs-file-row {
+  flex: 1;
+  min-width: 0;
+}
+
+.add-contact-modal .register-sale-docs-file-delete {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem;
+  border: none;
+  background: transparent;
+  color: #c97a7a;
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+
+.add-contact-modal .register-sale-docs-file-delete:hover:not(:disabled) {
+  color: #b85c5c;
+  background: rgba(200, 120, 120, 0.12);
+}
+
+.add-contact-modal .register-sale-docs-file-delete:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.add-contact-modal .register-sale-docs-file-delete .material-symbols-outlined {
+  font-size: 1.15rem;
+}
+
 .add-contact-modal .register-sale-docs-file-list::-webkit-scrollbar {
   width: 6px;
 }
@@ -847,6 +935,22 @@
   color: var(--primary);
 }
 
+.add-contact-modal .register-sale-docs-file-row--folder .register-sale-docs-file-icon {
+  color: var(--text-muted);
+}
+
+.add-contact-modal .register-sale-docs-file-row--folder:hover .register-sale-docs-file-icon {
+  color: var(--primary);
+}
+
+.add-contact-modal .register-sale-docs-file-row--file .register-sale-docs-file-icon {
+  color: var(--text-muted);
+}
+
+.add-contact-modal .register-sale-docs-file-row--file:hover .register-sale-docs-file-icon {
+  color: var(--primary);
+}
+
 .add-contact-modal .register-sale-docs-file-name {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -877,4 +981,13 @@
 .add-contact-modal .register-sale-docs-dropzone-icon {
   font-size: 1.5rem;
   color: var(--text-muted);
+}
+
+.add-contact-modal .register-sale-docs-error {
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--danger, #c53030);
+  padding: 0;
+  border-radius: 0;
+  background: none;
 }

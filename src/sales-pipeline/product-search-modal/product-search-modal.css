@@ -16,9 +16,21 @@
   to { opacity: 1; }
 }
 
+.product-search-modal-hint {
+  margin: 0.65rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text-muted, #64748b);
+}
+
+.product-search-modal-hint strong {
+  color: var(--text, #334155);
+  font-weight: 700;
+}
+
 .product-search-modal {
   width: 100%;
-  max-width: 28rem;
+  max-width: 36rem;
   max-height: 85vh;
   background: var(--card);
   border-radius: 0.75rem;

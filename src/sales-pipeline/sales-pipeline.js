@@ -9,6 +9,7 @@ import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-head
 import { API_BASE } from '@/config';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { getSavedTemplate, patchListTemplate, LIST_IDS } from '@/lib/list-templates';
+import { buildStageForecastPercentMap } from './pipeline-forecast-utils';
 
 const SALES_PIPELINE_LIST_ID = LIST_IDS.SALES_PIPELINE;
 const MODAL_PARAM = 'oppModal';
@@ -25,11 +26,21 @@ function getAuthHeader() {
 const DEFAULT_STAGE_LABELS = {
   NewLead: '신규 리드',
   Contacted: '연락 완료',
-  ProposalSent: '제안서 발송',
+  ProposalSent: '제안서 전달 완료',
+  TechDemo: '기술 시연',
+  Quotation: '견적',
   Negotiation: '최종 협상',
   Won: '수주 성공'
 };
-const DEFAULT_ACTIVE_STAGES = ['NewLead', 'Contacted', 'ProposalSent', 'Negotiation', 'Won'];
+const DEFAULT_ACTIVE_STAGES = [
+  'NewLead',
+  'Contacted',
+  'ProposalSent',
+  'TechDemo',
+  'Quotation',
+  'Negotiation',
+  'Won'
+];
 
 const DROP_ZONE_CONFIG = {
   Won: { icon: 'emoji_events', label: '수주 성공', colorClass: 'dz-green' },
@@ -88,6 +99,14 @@ function nameInitials(name) {
   const parts = s.split(/\s+/).filter(Boolean);
   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
   return s.slice(0, 2).toUpperCase();
+}
+
+/** 고객사가 없는 개인구매면 연락처(담당자) 이름, 아니면 고객사명 */
+function dealTitlePrimaryLabel(opp) {
+  const company = opp.customerCompanyName && String(opp.customerCompanyName).trim();
+  const contact = opp.contactName && String(opp.contactName).trim();
+  if (!company && contact) return contact;
+  return company || '';
 }
 
 export default function SalesPipeline() {
@@ -170,6 +189,14 @@ export default function SalesPipeline() {
 
   useEffect(() => {
     fetchStageDefinitions();
+  }, [fetchStageDefinitions]);
+
+  useEffect(() => {
+    const onStagesUpdated = () => {
+      fetchStageDefinitions();
+    };
+    window.addEventListener('nexvia-pipeline-stages-updated', onStagesUpdated);
+    return () => window.removeEventListener('nexvia-pipeline-stages-updated', onStagesUpdated);
   }, [fetchStageDefinitions]);
 
   useEffect(() => {
@@ -364,10 +391,11 @@ export default function SalesPipeline() {
   const stageLabels = stageDefinitions.length > 0
     ? Object.fromEntries(stageDefinitions.map((d) => [d.key, d.label]))
     : DEFAULT_STAGE_LABELS;
+  const stageForecastPercent = useMemo(() => buildStageForecastPercentMap(stageDefinitions), [stageDefinitions]);
   const stageToneByKey = useMemo(() => {
     const tone = {};
     boardStages.forEach((stage, idx) => {
-      tone[stage] = `tone-${idx % 5}`;
+      tone[stage] = `tone-${idx % 6}`;
     });
     return tone;
   }, [boardStages]);
@@ -540,10 +568,17 @@ export default function SalesPipeline() {
                 {mobileStageItems.map((opp, i) => {
                   const pillClass = `sp-mobile-deal-pill--${i % 3}`;
                   const pillText = (opp.productName && String(opp.productName).trim()) || '기회';
-                  const sub =
-                    (opp.contactName && String(opp.contactName).trim()) ||
-                    (opp.title && String(opp.title).trim()) ||
-                    '—';
+                  const primary = dealTitlePrimaryLabel(opp);
+                  const isPersonalNoCompany =
+                    !(opp.customerCompanyName && String(opp.customerCompanyName).trim()) &&
+                    !!(opp.contactName && String(opp.contactName).trim());
+                  const sub = isPersonalNoCompany
+                    ? (opp.productName && String(opp.productName).trim()) ||
+                      (opp.title && String(opp.title).trim()) ||
+                      '—'
+                    : (opp.contactName && String(opp.contactName).trim()) ||
+                      (opp.title && String(opp.title).trim()) ||
+                      '—';
                   return (
                     <div
                       key={opp._id}
@@ -556,7 +591,7 @@ export default function SalesPipeline() {
                       <div className="sp-mobile-deal-top">
                         <div>
                           <h3 className="sp-mobile-deal-title">
-                            {[opp.customerCompanyName, opp.title].filter(Boolean).join(' · ') || '—'}
+                            {[primary, opp.title].filter(Boolean).join(' · ') || '—'}
                           </h3>
                           <p className="sp-mobile-deal-sub">{sub}</p>
                         </div>
@@ -610,7 +645,14 @@ export default function SalesPipeline() {
                   onDrop={(e) => handleDrop(e, stage)}
                 >
                   <div className={`sp-stage-overview-card ${stageToneByKey[stage] || 'tone-0'}`}>
-                    <span className="sp-stage-overview-title">{stageLabels[stage] ?? stage}</span>
+                    <div className="sp-stage-overview-head-text">
+                      <span className="sp-stage-overview-title">{stageLabels[stage] ?? stage}</span>
+                      {stageForecastPercent[stage] != null ? (
+                        <span className="sp-stage-forecast-pct" title="Forecast (expected probability)">
+                          Forecast {stageForecastPercent[stage]}%
+                        </span>
+                      ) : null}
+                    </div>
                     <button className="sp-column-add" title="이 단계에 추가" onClick={() => openAddModal(stage)} aria-label="추가">
                       <span className="material-symbols-outlined">add</span>
                     </button>
@@ -635,7 +677,7 @@ export default function SalesPipeline() {
                         onClick={() => openEditModal(opp._id)}
                       >
                         <div className="sp-card-top">
-                          <h4 className="sp-card-title">{opp.customerCompanyName || '\u00A0'}-{opp.title || '\u00A0'}</h4>
+                          <h4 className="sp-card-title">{dealTitlePrimaryLabel(opp) || '\u00A0'}-{opp.title || '\u00A0'}</h4>
                           <div className="sp-card-top-right">
                             <div className="sp-card-value-col">
                               <span className="sp-card-value">{formatOppValue(opp)}</span>
@@ -648,7 +690,9 @@ export default function SalesPipeline() {
                             ) : null}
                           </div>
                         </div>
-                        {opp.contactName && <p className="sp-card-contact">{opp.contactName}</p>}
+                        {opp.contactName && dealTitlePrimaryLabel(opp) !== String(opp.contactName).trim() ? (
+                          <p className="sp-card-contact">{opp.contactName}</p>
+                        ) : null}
                         <div className="sp-card-bottom">
                           <span className="sp-card-assignee">{opp.assignedToName || '\u00A0'}</span>
                         </div>
@@ -685,7 +729,14 @@ export default function SalesPipeline() {
                       style={{ cursor: items.length > 0 ? 'pointer' : 'default' }}
                     >
                       <span className="material-symbols-outlined sp-dz-icon">{cfg.icon}</span>
-                      <span className="sp-dz-label">{cfg.label}</span>
+                      <span className="sp-dz-label-wrap">
+                        <span className="sp-dz-label">{cfg.label}</span>
+                        {Number.isFinite(stageForecastPercent[stage]) ? (
+                          <span className="sp-dz-forecast" title="Forecast (expected probability)">
+                            Forecast {stageForecastPercent[stage]}%
+                          </span>
+                        ) : null}
+                      </span>
                       {items.length > 0 && (
                         <span className="sp-dz-count">
                           {items.length}건
@@ -707,14 +758,16 @@ export default function SalesPipeline() {
                             onClick={(e) => { e.stopPropagation(); openEditModal(opp._id); }}
                           >
                             <div className="sp-card-top">
-                              <h4 className="sp-card-title">{opp.customerCompanyName || '\u00A0'}-{opp.title || '\u00A0'}</h4>
+                              <h4 className="sp-card-title">{dealTitlePrimaryLabel(opp) || '\u00A0'}-{opp.title || '\u00A0'}</h4>
                               {canViewAdminContent ? (
                                 <button className="sp-card-delete" title="삭제" onClick={(e) => { e.stopPropagation(); handleDelete(opp._id); }}>
                                   <span className="material-symbols-outlined">close</span>
                                 </button>
                               ) : null}
                             </div>
-                            <p className="sp-card-contact">{opp.contactName || '\u00A0'}</p>
+                            {dealTitlePrimaryLabel(opp) !== String(opp.contactName || '').trim() ? (
+                              <p className="sp-card-contact">{opp.contactName || '\u00A0'}</p>
+                            ) : null}
                             <div className="sp-card-meta">
                               <div className="sp-card-value-col sp-card-value-col--dz">
                                 <span className="sp-card-value">{formatOppValue(opp)}</span>

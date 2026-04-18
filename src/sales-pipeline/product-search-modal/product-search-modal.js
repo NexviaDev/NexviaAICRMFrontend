@@ -1,8 +1,14 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import './product-search-modal.css';
 
 import { API_BASE } from '@/config';
 import { listPriceFromProduct } from '@/lib/product-price-utils';
+import {
+  LIST_IDS,
+  getSavedTemplate,
+  sortProductsByPickerUsage,
+  patchProductSearchModalUsage
+} from '@/lib/list-templates';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -56,46 +62,100 @@ function formatDisplayValue(key, value, product) {
   return String(value);
 }
 
+async function fetchAllProductsForPicker() {
+  const all = [];
+  let page = 1;
+  const limit = 500;
+  while (true) {
+    const params = new URLSearchParams({
+      productPicker: '1',
+      limit: String(limit),
+      page: String(page)
+    });
+    const res = await fetch(`${API_BASE}/products?${params}`, { headers: getAuthHeader() });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || '제품 목록을 불러올 수 없습니다.');
+    }
+    const batch = data.items || [];
+    all.push(...batch);
+    const total = data.pagination?.total ?? all.length;
+    if (batch.length === 0 || all.length >= total) break;
+    page += 1;
+    if (page > 40) break;
+  }
+  return all;
+}
+
+function productMatchesSearch(p, q) {
+  if (!q) return true;
+  const lower = q.toLowerCase();
+  const parts = [
+    p.name,
+    p.code,
+    p.category,
+    p.version,
+    p.status,
+    p.billingType,
+    p.currency,
+    listPriceFromProduct(p)
+  ]
+    .filter((x) => x != null && x !== '')
+    .map((x) => String(x).toLowerCase());
+  if (parts.some((s) => s.includes(lower))) return true;
+  if (p.customFields && typeof p.customFields === 'object') {
+    for (const v of Object.values(p.customFields)) {
+      if (v != null && String(v).toLowerCase().includes(lower)) return true;
+    }
+  }
+  return false;
+}
+
 /**
- * 제품 검색 모달: 가격·전체 필드 표시, 체크박스, Shift+클릭 범위 선택, 선택 완료 시 onSelect(배열)
+ * 제품 검색 모달: 오픈 시 전체 목록, 자주 선택한 순( user.listTemplates.productSearchModal )
  */
 export default function ProductSearchModal({ onClose, onSelect }) {
   const [search, setSearch] = useState('');
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [searched, setSearched] = useState(false);
+  const [allItems, setAllItems] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState(new Set());
   const lastClickedIdx = useRef(null);
 
-  const runSearch = useCallback(async () => {
-    setError('');
-    setLoading(true);
-    setSearched(true);
-    try {
-      const params = new URLSearchParams({ limit: '200' });
-      if (search.trim()) params.set('search', search.trim());
-      const res = await fetch(`${API_BASE}/products?${params}`, { headers: getAuthHeader() });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(data.error || '제품 목록을 불러올 수 없습니다.');
-        setItems([]);
-        return;
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setError('');
+      setLoading(true);
+      try {
+        const raw = await fetchAllProductsForPicker();
+        if (cancelled) return;
+        const tmpl = getSavedTemplate(LIST_IDS.PRODUCT_SEARCH_MODAL);
+        const order = Array.isArray(tmpl?.order) ? tmpl.order : [];
+        const sorted = sortProductsByPickerUsage(raw, order);
+        setAllItems(sorted);
+      } catch (e) {
+        if (!cancelled) {
+          setError(e?.message || '제품 목록을 불러올 수 없습니다.');
+          setAllItems([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-      setItems(data.items || []);
-      setSelected(new Set());
-      lastClickedIdx.current = null;
-    } catch (_) {
-      setError('서버에 연결할 수 없습니다.');
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [search]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const items = useMemo(() => {
+    const q = search.trim();
+    if (!q) return allItems;
+    return allItems.filter((p) => productMatchesSearch(p, q));
+  }, [allItems, search]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    runSearch();
   };
 
   const handleRowClick = (idx, e) => {
@@ -148,15 +208,22 @@ export default function ProductSearchModal({ onClose, onSelect }) {
     lastClickedIdx.current = idx;
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = useCallback(async () => {
     const selectedProducts = items.filter((p) => p._id && selected.has(p._id));
     if (selectedProducts.length === 0) return;
+    try {
+      await patchProductSearchModalUsage(selectedProducts.map((p) => String(p._id)));
+    } catch {
+      /* 저장 실패해도 선택은 진행 */
+    }
     onSelect?.(selectedProducts);
     onClose?.();
-  };
+  }, [items, selected, onSelect, onClose]);
 
   useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
+    const onKey = (e) => {
+      if (e.key === 'Escape') onClose?.();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
@@ -178,22 +245,25 @@ export default function ProductSearchModal({ onClose, onSelect }) {
               className="product-search-modal-input"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="제품명, 코드, 카테고리, 버전으로 검색"
+              placeholder="목록에서 필터 (제품명·코드·카테고리 등)"
               autoFocus
             />
             <button type="submit" className="product-search-modal-btn" disabled={loading}>
-              {loading ? '검색 중...' : '검색'}
+              필터
             </button>
           </div>
+          <p className="product-search-modal-hint">
+            목록은 열 때 전부 불러오며, <strong>자주 선택한 제품</strong>이 위쪽에 옵니다. 선택 시 사용 순서가 계정에 저장됩니다.
+          </p>
           {error && <p className="product-search-modal-error">{error}</p>}
         </form>
         <div className="product-search-modal-list-wrap">
           {loading ? (
-            <p className="product-search-modal-empty">검색 중...</p>
-          ) : !searched ? (
-            <p className="product-search-modal-empty">검색어를 입력한 뒤 검색 버튼을 눌러 주세요.</p>
+            <p className="product-search-modal-empty">목록 불러오는 중...</p>
           ) : items.length === 0 ? (
-            <p className="product-search-modal-empty">검색 조건에 맞는 제품이 없습니다.</p>
+            <p className="product-search-modal-empty">
+              {allItems.length === 0 ? '등록된 제품이 없습니다.' : '검색 조건에 맞는 제품이 없습니다.'}
+            </p>
           ) : (
             <>
               <ul className="product-search-modal-list">
@@ -207,7 +277,12 @@ export default function ProductSearchModal({ onClose, onSelect }) {
                       role="button"
                       tabIndex={0}
                       onClick={(e) => handleRowClick(idx, e)}
-                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleRowClick(idx, e); } }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleRowClick(idx, e);
+                        }
+                      }}
                       aria-label={`${p.name || ''} 선택`}
                     >
                       <div className="product-search-modal-item-check" onClick={(e) => e.stopPropagation()}>
@@ -249,7 +324,7 @@ export default function ProductSearchModal({ onClose, onSelect }) {
               </ul>
               <div className="product-search-modal-footer">
                 <p className="product-search-modal-selected-count">
-                  <strong>{selected.size}</strong>개 선택 (Shift+클릭으로 범위 선택)
+                  <strong>{selected.size}</strong>개 선택 (Shift+클릭으로 범위 선택) · 전체 <strong>{allItems.length}</strong>건
                 </p>
                 <button
                   type="button"

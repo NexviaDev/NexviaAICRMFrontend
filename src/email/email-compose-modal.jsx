@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useMemo } from 'react';
-import { API_BASE } from '@/config';
+import { API_BASE, MAX_DRIVE_JSON_UPLOAD_BYTES } from '@/config';
 import { getEmailSignatureHtmlFromUser, patchEmailSignatureHtml } from '@/lib/list-templates';
 import './email-compose-modal.css';
 import {
@@ -731,8 +731,7 @@ export default function EmailComposeModal({
     e.preventDefault();
     e.currentTarget.classList.remove('email-compose-editor-dragover');
   };
-  const MAX_ATTACH_SIZE = 10 * 1024 * 1024; /* 10MB 이메일 첨부 */
-  const MAX_DRIVE_UPLOAD = 5 * 1024 * 1024; /* 5MB Drive 업로드(API 제한) */
+  const MAX_ATTACH_SIZE = 10 * 1024 * 1024; /* Drive 실패 시 이메일 첨부 폴백 상한 */
 
   const handleDrop = async (e) => {
     e.preventDefault();
@@ -740,25 +739,14 @@ export default function EmailComposeModal({
     e.currentTarget.classList.remove('email-compose-editor-dragover');
     const files = Array.from(e.dataTransfer?.files || []);
     if (files.length === 0) return;
-    const forDrive = files.filter((f) => f.size <= MAX_DRIVE_UPLOAD);
-    const forAttach = files.filter((f) => f.size > MAX_DRIVE_UPLOAD && f.size <= MAX_ATTACH_SIZE);
-    const skipped = files.filter((f) => f.size > MAX_ATTACH_SIZE);
+    const forDrive = files.filter((f) => f.size <= MAX_DRIVE_JSON_UPLOAD_BYTES);
+    const skipped = files.filter((f) => f.size > MAX_DRIVE_JSON_UPLOAD_BYTES);
     if (skipped.length > 0) {
       const names = skipped.map((f) => f.name).slice(0, 2).join(', ');
       const more = skipped.length > 2 ? ` 외 ${skipped.length - 2}개` : '';
-      setSizeWarningModal(`용량 초과(10MB 이하만 첨부 가능). "${names}"${more} 업로드할 수 없습니다. 큰 파일은 Google Drive에 올린 뒤 "Google Drive에서 삽입"으로 링크를 넣어 주세요.`);
-    }
-    if (forAttach.length > 0) {
-      setAttachedFiles((prev) => [
-        ...prev,
-        ...forAttach.map((file) => ({
-          id: Math.random().toString(36).slice(2),
-          file,
-          name: file.name,
-          size: file.size,
-          mimeType: file.type || 'application/octet-stream'
-        }))
-      ]);
+      setSizeWarningModal(
+        `용량 초과(약 ${Math.floor(MAX_DRIVE_JSON_UPLOAD_BYTES / (1024 * 1024))}MB까지 이 경로로 Drive 업로드 가능). "${names}"${more} Google Drive 웹에서 올린 뒤 "Google Drive에서 삽입"으로 링크를 넣어 주세요.`
+      );
     }
     if (forDrive.length === 0) return;
     setDriveUploading(true);
@@ -788,17 +776,21 @@ export default function EmailComposeModal({
           insertDriveLinkBox(data.webViewLink, data.name || file.name);
         } else {
           setError(data.error || 'Drive 업로드 실패. 해당 파일은 이메일 첨부로 추가했습니다.');
+          if (file.size <= MAX_ATTACH_SIZE) {
+            setAttachedFiles((prev) => [
+              ...prev,
+              { id: Math.random().toString(36).slice(2), file, name: file.name, size: file.size, mimeType: file.type || 'application/octet-stream' }
+            ]);
+          }
+        }
+      } catch (_) {
+        setError('Drive 업로드 중 오류가 났습니다. 해당 파일은 이메일 첨부로 추가했습니다.');
+        if (file.size <= MAX_ATTACH_SIZE) {
           setAttachedFiles((prev) => [
             ...prev,
             { id: Math.random().toString(36).slice(2), file, name: file.name, size: file.size, mimeType: file.type || 'application/octet-stream' }
           ]);
         }
-      } catch (_) {
-        setError('Drive 업로드 중 오류가 났습니다. 해당 파일은 이메일 첨부로 추가했습니다.');
-        setAttachedFiles((prev) => [
-          ...prev,
-          { id: Math.random().toString(36).slice(2), file, name: file.name, size: file.size, mimeType: file.type || 'application/octet-stream' }
-        ]);
       }
     }
     setDriveUploading(false);

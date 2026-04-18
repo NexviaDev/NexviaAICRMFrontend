@@ -1259,6 +1259,221 @@
   opacity: 0.5;
 }
 
+/* Drive 메타 → shared/register-sale-docs-drive.css */
+
+/* CRM에 저장된 업로드 인덱스 표 + 드롭존 */
+.register-sale-docs-crm-uploads {
+  position: relative;
+  margin: 0 0 0.85rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.35rem;
+  background: rgba(251, 243, 219, 0.45);
+  border: 1px solid rgba(200, 180, 120, 0.28);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.register-sale-docs-crm-uploads--drop-active {
+  border-color: rgba(129, 199, 132, 0.65);
+  box-shadow: 0 0 0 2px rgba(129, 199, 132, 0.25);
+}
+
+.register-sale-docs-crm-uploads--disabled {
+  opacity: 0.65;
+  pointer-events: none;
+}
+
+.register-sale-docs-crm-uploads-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.register-sale-docs-crm-uploads-title .material-symbols-outlined {
+  font-size: 1.1rem;
+  color: #b8860b;
+}
+
+.register-sale-docs-crm-uploads-hint {
+  margin: 0 0 0.5rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.register-sale-docs-crm-table-wrap {
+  overflow-x: auto;
+  max-height: 220px;
+  overflow-y: auto;
+  border-radius: 0.3rem;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.register-sale-docs-crm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.register-sale-docs-crm-table th,
+.register-sale-docs-crm-table td {
+  padding: 0.4rem 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  vertical-align: top;
+}
+
+.register-sale-docs-crm-table th {
+  font-weight: 600;
+  color: var(--text-muted);
+  background: rgba(99, 102, 241, 0.06);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.register-sale-docs-crm-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.register-sale-docs-crm-table tbody tr.register-sale-docs-crm-row--clickable {
+  cursor: pointer;
+}
+
+.register-sale-docs-crm-table tbody tr.register-sale-docs-crm-row--clickable:hover {
+  background: rgba(99, 102, 241, 0.06);
+}
+
+.register-sale-docs-crm-table tbody tr.register-sale-docs-crm-row--clickable:focus {
+  outline: 2px solid rgba(99, 102, 241, 0.35);
+  outline-offset: -2px;
+}
+
+.register-sale-docs-crm-cell-name {
+  word-break: break-word;
+  max-width: 12rem;
+}
+
+.register-sale-docs-crm-cell-date {
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.register-sale-docs-crm-cell-actions {
+  text-align: center;
+  width: 3rem;
+}
+
+.register-sale-docs-crm-cell-actions--dual {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  width: auto;
+  min-width: 3rem;
+}
+
+.register-sale-docs-crm-cell-delete {
+  text-align: center;
+  width: 2.6rem;
+  vertical-align: middle;
+}
+
+.register-sale-docs-crm-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.15rem;
+  margin: 0;
+  border: none;
+  background: transparent;
+  color: #c97a7a;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.register-sale-docs-crm-delete:hover:not(:disabled) {
+  color: #b85c5c;
+  background: rgba(200, 120, 120, 0.12);
+}
+
+.register-sale-docs-crm-delete:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.register-sale-docs-crm-delete .material-symbols-outlined {
+  font-size: 1.15rem;
+}
+
+.register-sale-docs-crm-download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.15rem;
+  color: #5b6cb8;
+  border-radius: 0.25rem;
+  text-decoration: none;
+  vertical-align: middle;
+}
+
+.register-sale-docs-crm-download:hover {
+  color: #4a58a0;
+  background: rgba(91, 108, 184, 0.12);
+}
+
+.register-sale-docs-crm-download .material-symbols-outlined {
+  font-size: 1.15rem;
+}
+
+.register-sale-docs-crm-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 6.5rem;
+  padding: 1rem 0.75rem 0.25rem;
+  border-radius: 0.3rem;
+  border: 1px dashed rgba(180, 160, 100, 0.45);
+  background: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.register-sale-docs-crm-empty:hover:not(:focus) {
+  border-color: rgba(129, 199, 132, 0.55);
+  background: rgba(255, 255, 255, 0.75);
+}
+
+.register-sale-docs-crm-empty:focus {
+  outline: 2px solid rgba(99, 102, 241, 0.35);
+  outline-offset: 2px;
+}
+
+.register-sale-docs-crm-empty--active {
+  border-color: rgba(129, 199, 132, 0.75);
+  background: rgba(200, 230, 201, 0.35);
+}
+
+.register-sale-docs-crm-empty-icon {
+  font-size: 2rem;
+  color: rgba(160, 140, 90, 0.65);
+}
+
+.register-sale-docs-crm-empty-text {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+  max-width: 18rem;
+}
+
 /* 목록/드롭존 컨테이너 - Google Drive가 보이는 구간만 테두리 */
 .register-sale-docs-embed-wrap,
 .register-sale-docs-list-wrap {
@@ -1556,4 +1771,16 @@
   padding: 0;
   border-radius: 0;
   background: none;
+}
+
+.register-sale-docs-success {
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--success, #2d7a3e);
+  line-height: 1.4;
+}
+
+.register-sale-docs-open-drive--disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }

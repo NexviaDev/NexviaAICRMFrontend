@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AddProductModal from './add-product-modal/add-product-modal';
 import ProductDetailModal from './product-detail-modal/product-detail-modal';
+import ProductExcelImportModal from './product-excel-import-modal/product-excel-import-modal';
 import ListTemplateModal from '../components/list-template-modal/list-template-modal';
 import {
   LIST_IDS,
@@ -26,6 +27,7 @@ const EXPORT_PAGE_LIMIT = 100;
 
 const MODAL_PARAM = 'modal';
 const MODAL_DETAIL = 'detail';
+const MODAL_EXCEL_IMPORT = 'excel-import';
 const DETAIL_ID_PARAM = 'id';
 const STATUS_LABELS = { Active: '활성', EndOfLife: 'End of Life', Draft: '초안' };
 const BILLING_LABELS = { Monthly: '월간', Annual: '연간', Perpetual: '영구' };
@@ -62,6 +64,17 @@ function formatPrice(price, currency) {
 /** 유통시 순 마진(금액) = 유통가 − 원가 — 영업 기회「유통시 순 마진 기준」가격(channelPrice)과 동일 축 */
 function getChannelMargin(row) {
   return (Number(row.channelPrice) || 0) - (Number(row.costPrice) || 0);
+}
+
+/** 유통가가 0이거나 원가 이하이면 유통시 순마진은 표시하지 않음(하이픈) */
+function shouldDashChannelMargin(row) {
+  const chRaw = Number(row.channelPrice);
+  const ch = Number.isFinite(chRaw) ? chRaw : 0;
+  const cost = Number(row.costPrice);
+  const costNum = Number.isFinite(cost) ? cost : 0;
+  if (ch === 0) return true;
+  if (ch <= costNum) return true;
+  return false;
 }
 
 /** 순 마진(금액) = 소비자가 − 원가 — 영업 기회「순 마진 기준」가격(listPrice/price)과 동일 축 */
@@ -155,6 +168,7 @@ export default function ProductList() {
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
+  const [excelImportSeed, setExcelImportSeed] = useState(null);
   const selectionAnchorIdxRef = useRef(null);
   const headerSelectAllRef = useRef(null);
 
@@ -198,7 +212,9 @@ export default function ProductList() {
   const canDeleteProduct = isAdminOrAboveRole(me?.role);
 
   const detailId = searchParams.get(DETAIL_ID_PARAM);
-  const isDetailOpen = searchParams.get(MODAL_PARAM) === MODAL_DETAIL && detailId;
+  const modalParam = searchParams.get(MODAL_PARAM);
+  const isDetailOpen = modalParam === MODAL_DETAIL && detailId;
+  const isExcelImportOpen = modalParam === MODAL_EXCEL_IMPORT;
   const detailProduct = isDetailOpen ? items.find((p) => p._id === detailId) || null : null;
 
   const fetchList = useCallback(async (page = 1) => {
@@ -230,6 +246,12 @@ export default function ProductList() {
   }, [searchApplied, filterStatus, filterBilling, fieldFilterFieldApplied, fieldFilterValueApplied]);
 
   useEffect(() => { fetchList(pagination.page); }, [pagination.page, fetchList]);
+
+  useEffect(() => {
+    const onExcelImported = () => { fetchList(pagination.page); };
+    window.addEventListener('nexvia-product-excel-import-completed', onExcelImported);
+    return () => window.removeEventListener('nexvia-product-excel-import-completed', onExcelImported);
+  }, [fetchList, pagination.page]);
   useEffect(() => { setPagination((p) => ({ ...p, page: 1 })); }, [searchApplied, filterStatus, filterBilling, fieldFilterFieldApplied, fieldFilterValueApplied]);
 
   useEffect(() => {
@@ -261,6 +283,24 @@ export default function ProductList() {
 
   const openAdd = () => setAddModalOpen(true);
   const closeAddModal = () => setAddModalOpen(false);
+
+  const openExcelImportModal = useCallback(() => {
+    setExcelImportSeed(null);
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      p.set(MODAL_PARAM, MODAL_EXCEL_IMPORT);
+      return p;
+    });
+  }, [setSearchParams]);
+
+  const closeExcelImportModal = useCallback(() => {
+    setExcelImportSeed(null);
+    setSearchParams((prev) => {
+      const p = new URLSearchParams(prev);
+      p.delete(MODAL_PARAM);
+      return p;
+    }, { replace: true });
+  }, [setSearchParams]);
   const openDetail = (row) => {
     if (!row?._id) return;
     setSearchParams({ [MODAL_PARAM]: MODAL_DETAIL, [DETAIL_ID_PARAM]: row._id });
@@ -530,7 +570,7 @@ export default function ProductList() {
           원가: row.costPrice ?? '',
           유통가: row.channelPrice ?? '',
           '순 마진': getConsumerMargin(row),
-          '유통시 순 마진': getChannelMargin(row),
+          '유통시 순 마진': shouldDashChannelMargin(row) ? '-' : getChannelMargin(row),
           통화: row.currency || '',
           결제주기: row.billingType ? BILLING_LABELS[row.billingType] || row.billingType : '',
           상태: row.status ? STATUS_LABELS[row.status] || row.status : '',
@@ -689,6 +729,17 @@ export default function ProductList() {
             <p className="page-desc">총 {pagination.total}개 제품</p>
           </div>
           <div className="product-list-top-actions">
+            {canExportExcel ? (
+              <button
+                type="button"
+                className="btn-outline product-list-excel-btn"
+                onClick={openExcelImportModal}
+                title="엑셀 열을 제품 필드에 매핑하여 여러 건을 한 번에 등록합니다. (Owner / Admin 전용)"
+              >
+                <span className="material-symbols-outlined">upload_file</span>
+                엑셀 가져오기
+              </button>
+            ) : null}
             {canExportExcel ? (
               <button
                 type="button"
@@ -960,7 +1011,9 @@ export default function ProductList() {
                             <span className="product-list-price">{formatPrice(getConsumerMargin(row), row.currency)}</span>
                           )}
                           {col.key === 'channelMargin' && (
-                            <span className="product-list-price">{formatPrice(getChannelMargin(row), row.currency)}</span>
+                            <span className="product-list-price">
+                              {shouldDashChannelMargin(row) ? '-' : formatPrice(getChannelMargin(row), row.currency)}
+                            </span>
                           )}
                           {col.key === 'status' && (
                             <span className={`status-badge status-${row.status === 'Active' ? 'active' : row.status === 'EndOfLife' ? 'eol' : 'draft'}`}>
@@ -1000,6 +1053,24 @@ export default function ProductList() {
           product={null}
           onClose={closeAddModal}
           onSaved={() => { fetchList(pagination.page); closeAddModal(); }}
+          onOpenBulkImport={({ rows, fileName }) => {
+            setExcelImportSeed({ rows, fileName: fileName || '' });
+            closeAddModal();
+            setSearchParams((prev) => {
+              const p = new URLSearchParams(prev);
+              p.set(MODAL_PARAM, MODAL_EXCEL_IMPORT);
+              return p;
+            });
+          }}
+        />
+      )}
+      {isExcelImportOpen && (
+        <ProductExcelImportModal
+          open={isExcelImportOpen}
+          onClose={closeExcelImportModal}
+          onImported={() => { fetchList(pagination.page); }}
+          initialExcelRows={excelImportSeed?.rows ?? null}
+          initialFileName={excelImportSeed?.fileName ?? ''}
         />
       )}
       {settingsOpen && (

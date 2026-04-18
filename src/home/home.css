@@ -111,7 +111,7 @@
 
 .home-top-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   align-items: stretch;
   gap: 1.5rem;
   margin-bottom: 2rem;
@@ -297,6 +297,186 @@
 
 .home-insights-top .home-insight-toolbar {
   grid-column: 1 / -1;
+}
+
+.home-insights-top .home-kpi-strip {
+  grid-column: 1 / -1;
+}
+
+/** 필터(회사·팀·개인) 바로 아래 — 유통 CRM 스타일 요약 카드 */
+.home-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+@media (max-width: 1200px) {
+  .home-kpi-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .home-kpi-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .home-kpi-strip {
+    grid-template-columns: 1fr;
+  }
+}
+
+.home-kpi-card {
+  background: #ffffff;
+  border: 1px solid #e2e8ef;
+  border-radius: 0.75rem;
+  padding: 1rem 1.1rem;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+}
+
+.home-kpi-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.home-kpi-card-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #4a6275;
+  margin: 0;
+  line-height: 1.3;
+}
+
+.home-kpi-card-icon {
+  font-size: 1.15rem;
+  color: rgba(55, 85, 111, 0.55);
+}
+
+.home-kpi-card-value {
+  margin: 0 0 0.25rem;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #1e2a35;
+  letter-spacing: -0.02em;
+}
+
+.home-kpi-card-hint {
+  margin: 0 0 0.65rem;
+  font-size: 0.68rem;
+  color: #7a8fa3;
+  line-height: 1.35;
+}
+
+.home-kpi-goal-bar {
+  height: 0.35rem;
+  border-radius: 999px;
+  background: #e8eef4;
+  margin-bottom: 0.65rem;
+  overflow: hidden;
+}
+
+.home-kpi-goal-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: #9ec5e8;
+}
+
+.home-kpi-card-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid #edf1f6;
+}
+
+.home-kpi-metric-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+  font-size: 0.72rem;
+  color: #5c7288;
+}
+
+.home-kpi-dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.home-kpi-dot--forecast {
+  background: #f0b07a;
+}
+
+.home-kpi-dot--period {
+  background: #8ebfe3;
+}
+
+.home-kpi-metric-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.home-kpi-metric-val {
+  font-weight: 600;
+  color: #374c5f;
+}
+
+.home-kpi-metric-trend {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  font-weight: 600;
+}
+
+.home-kpi-metric-trend.is-up {
+  color: #2d8a54;
+}
+
+.home-kpi-metric-trend.is-down {
+  color: #c45c4a;
+}
+
+.home-kpi-metric-trend .material-symbols-outlined {
+  font-size: 0.95rem;
+}
+
+.home-kpi-card--skeleton {
+  min-height: 9.5rem;
+  animation: home-kpi-pulse 1.2s ease-in-out infinite;
+}
+
+.home-kpi-skel-line {
+  height: 0.65rem;
+  border-radius: 0.25rem;
+  background: #e8eef4;
+  margin-bottom: 0.5rem;
+}
+
+.home-kpi-skel-line--short {
+  width: 45%;
+}
+
+.home-kpi-skel-line--value {
+  width: 70%;
+  height: 1.25rem;
+}
+
+@keyframes home-kpi-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.65;
+  }
 }
 
 .home-insight-toolbar {
@@ -1050,18 +1230,33 @@
   align-items: center;
   justify-content: center;
   padding: 0.45rem 0.6rem;
+  background: #e8ecf4;
 }
 
-.pipeline-step-NewLead { background: #b8daf5; }
-.pipeline-step-Contacted { background: #c9e2f6; }
-.pipeline-step-ProposalSent { background: #d6e9f8; }
-.pipeline-step-Negotiation { background: #e5edf4; }
-.pipeline-step-Won { background: #cdecd8; }
+.pipeline-step-card .pipeline-step-title {
+  color: #334155;
+}
+
+/* 세일즈 현황 칸반과 동일 — 수주/상실 색과 구분되는 파스텔 단색 */
+.pipeline-step-NewLead { background: #c7dbf0; }
+.pipeline-step-Contacted { background: #e3daf6; }
+.pipeline-step-ProposalSent { background: #fce8dc; }
+.pipeline-step-TechDemo { background: #cfeaf2; }
+.pipeline-step-Quotation { background: #fff2d2; }
+.pipeline-step-Negotiation { background: #e6e2fa; }
+.pipeline-step-Won { background: #d4f0e8; }
+
+.pipeline-step-NewLead .pipeline-step-title { color: #2a4a6e; }
+.pipeline-step-Contacted .pipeline-step-title { color: #553c7a; }
+.pipeline-step-ProposalSent .pipeline-step-title { color: #7a4a38; }
+.pipeline-step-TechDemo .pipeline-step-title { color: #245a6a; }
+.pipeline-step-Quotation .pipeline-step-title { color: #6b5818; }
+.pipeline-step-Negotiation .pipeline-step-title { color: #4a3d7a; }
+.pipeline-step-Won .pipeline-step-title { color: #1e5f45; }
 
 .pipeline-step-title {
   font-size: 0.78rem;
   font-weight: 700;
-  color: #2e5a79;
   text-align: center;
 }
 

@@ -13,7 +13,7 @@
   transform: translate(-50%, -50%);
   z-index: 51;
   width: 100%;
-  max-width: 28rem;
+  max-width: 38rem;
   max-height: 85vh;
   background: var(--card);
   border-radius: 0.75rem;
@@ -133,11 +133,95 @@
   color: var(--text-muted);
 }
 
-.psm-list-wrap h4 {
-  margin: 0 0 0.5rem;
+.psm-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.psm-list-head h4 {
+  margin: 0;
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--text);
+}
+
+.psm-save-order-btn {
+  flex-shrink: 0;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: 1px solid var(--primary, #5c6bc0);
+  border-radius: 0.5rem;
+  background: rgba(92, 107, 192, 0.12);
+  color: var(--primary, #5c6bc0);
+  cursor: pointer;
+}
+
+.psm-save-order-btn:hover:not(:disabled) {
+  background: rgba(92, 107, 192, 0.2);
+}
+
+.psm-save-order-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.psm-list-order-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+
+.psm-order-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.15rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.35rem;
+  background: var(--bg-light);
+  color: var(--text-muted);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.psm-order-btn .material-symbols-outlined {
+  font-size: 1rem;
+}
+
+.psm-order-btn:hover:not(:disabled) {
+  color: var(--primary, #5c6bc0);
+  border-color: rgba(92, 107, 192, 0.45);
+}
+
+.psm-order-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.psm-won-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0.75rem 0 0;
+  padding: 0.6rem 0.65rem;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+  background: var(--bg-light);
+  border-radius: 0.5rem;
+  border: 1px solid var(--card-border);
+}
+
+.psm-won-note .material-symbols-outlined {
+  font-size: 1rem;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
 }
 
 .psm-list {
@@ -158,11 +242,96 @@
 
 .psm-list-item {
   display: flex;
-  align-items: center;
-  gap: 0.75rem;
+  align-items: flex-start;
+  gap: 0.5rem;
   padding: 0.6rem 0.75rem;
   border-bottom: 1px solid var(--card-border);
   background: var(--card);
+}
+
+.psm-forecast-field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.2rem;
+  flex-shrink: 0;
+  width: 5.25rem;
+}
+
+.psm-forecast-field label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.psm-forecast-field input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.35rem 0.4rem;
+  font-size: 0.8rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.4rem;
+  background: var(--bg);
+  color: var(--text);
+  text-align: right;
+}
+
+.psm-forecast-field input:focus {
+  outline: none;
+  border-color: var(--primary, #5c6bc0);
+}
+
+.psm-seed-btn {
+  width: 100%;
+  margin-bottom: 1rem;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: 1px dashed var(--card-border);
+  border-radius: 0.5rem;
+  background: rgba(92, 107, 192, 0.08);
+  color: var(--primary, #5c6bc0);
+  cursor: pointer;
+}
+
+.psm-seed-btn:hover:not(:disabled) {
+  background: rgba(92, 107, 192, 0.14);
+}
+
+.psm-seed-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.psm-seed-btn--footer {
+  margin-top: 1rem;
+  margin-bottom: 0;
+}
+
+.psm-won-forecast {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+.psm-won-forecast label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.psm-won-forecast input {
+  width: 4.5rem;
+  padding: 0.35rem 0.45rem;
+  font-size: 0.85rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.4rem;
+  background: var(--bg);
+  color: var(--text);
+  text-align: right;
 }
 
 .psm-list-item:last-child {

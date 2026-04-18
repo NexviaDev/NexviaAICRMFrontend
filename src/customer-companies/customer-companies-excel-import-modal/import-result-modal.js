@@ -106,7 +106,7 @@ export default function ImportResultModal({
   const doneSub = isPreviewPhase
     ? isContact
       ? `총 ${total}행 검사 완료 · 아직 MongoDB에는 저장되지 않았습니다. 보류를 모두 적용한 뒤 확인을 누르면 그때 연락처가 일괄 등록됩니다.`
-      : `총 ${total}행 검사 완료 · 아직 MongoDB에는 저장되지 않았습니다. 보류를 모두 적용한 뒤 확인을 누르면, 그때 add-company 모달과 같은 방식으로 주소 기준 위도·경도를 계산한 후 등록합니다.`
+      : `총 ${total}행 검사 완료 · 아직 MongoDB에는 저장되지 않았습니다. 확인을 누르면 add-company 모달과 같은 방식으로 주소 기준 위도·경도를 계산한 후 고객사가 등록됩니다.`
     : isContact
       ? `총 ${total}행 처리 · 연락처 목록`
       : `총 ${total}행 처리 · 고객사 리스트`;
@@ -148,7 +148,7 @@ export default function ImportResultModal({
                 {isPreviewPhase ? `${previewReadyCount}건` : `${completedTotal}건`}
               </p>
               <p className="lc-crm-result-card-label">
-                {isPreviewPhase ? '처리 예정 (신규+보류적용)' : '완료 처리'}
+                {isPreviewPhase ? (isContact ? '처리 예정 (신규+보류적용)' : '처리 예정 (신규)') : '완료 처리'}
               </p>
             </div>
           </div>
@@ -156,7 +156,7 @@ export default function ImportResultModal({
             <span className="material-symbols-outlined">content_copy</span>
             <div>
               <p className="lc-crm-result-card-num">{skipped}건</p>
-              <p className="lc-crm-result-card-label">스킵 (중복·빈 행)</p>
+              <p className="lc-crm-result-card-label">{isContact ? '스킵 (중복·빈 행)' : '스킵 (빈 행)'}</p>
             </div>
           </div>
           <div className="lc-crm-result-card fail">
@@ -166,15 +166,17 @@ export default function ImportResultModal({
               <p className="lc-crm-result-card-label">실패</p>
             </div>
           </div>
-          <div className="lc-crm-result-card warn">
-            <span className="material-symbols-outlined">pending</span>
-            <div>
-              <p className="lc-crm-result-card-num">{onHold}건</p>
-              <p className="lc-crm-result-card-label">
-                {isPreviewPhase ? '보류 (해결 필요)' : '보류'}
-              </p>
+          {(isContact ? onHold > 0 : false) && (
+            <div className="lc-crm-result-card warn">
+              <span className="material-symbols-outlined">pending</span>
+              <div>
+                <p className="lc-crm-result-card-num">{onHold}건</p>
+                <p className="lc-crm-result-card-label">
+                  {isPreviewPhase ? '보류 (해결 필요)' : '보류'}
+                </p>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {failedItems.length > 0 && (
@@ -196,16 +198,18 @@ export default function ImportResultModal({
           </div>
         )}
 
-        {skippedDup > 0 && (
+        {isContact && skippedDup > 0 && (
           <div className="lc-crm-result-detail-section">
             <h3 className="lc-crm-result-detail-title skip">
               <span className="material-symbols-outlined">content_copy</span>
-              {isContact ? '중복 스킵 (이름+전화 동일)' : '중복 스킵 (이름+사업자번호 동일)'}
+              중복 스킵 (이름+전화 동일)
             </h3>
-            <p className="lc-crm-map-save-msg" style={{ marginTop: '0.5rem' }}>
-              빈 행 {emptySk}건은 자동으로 건너뛰었습니다.
-            </p>
           </div>
+        )}
+        {emptySk > 0 && (
+          <p className="lc-crm-map-save-msg" style={{ margin: '0.5rem 0 0', color: '#64748b' }}>
+            빈 행 {emptySk}건은 자동으로 건너뛰었습니다.
+          </p>
         )}
 
         {successItems.length > 0 && (
@@ -217,7 +221,7 @@ export default function ImportResultModal({
           </div>
         )}
 
-        {isPreviewPhase && stagedResolvedItems.length > 0 && (
+        {isPreviewPhase && isContact && stagedResolvedItems.length > 0 && (
           <div className="lc-crm-result-detail-section">
             <h3 className="lc-crm-result-detail-title success">
               <span className="material-symbols-outlined">task_alt</span>
@@ -236,7 +240,7 @@ export default function ImportResultModal({
           </div>
         )}
 
-        {isPreviewPhase && visibleHoldGroups.length > 0 && (
+        {isPreviewPhase && isContact && visibleHoldGroups.length > 0 && (
           <div className="lc-crm-result-detail-section">
             <h3 className="lc-crm-result-detail-title skip" style={{ justifyContent: 'space-between' }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
@@ -415,10 +419,16 @@ export default function ImportResultModal({
               {isPreviewPhase
                 ? (
                   canConfirmPreview
-                    ? isContact
-                      ? '보류 카드가 모두 사라졌습니다. 확인을 누르면 연락처가 저장됩니다.'
-                      : '보류 카드가 모두 사라졌습니다. 확인을 누르면 그때 위도·경도 계산 후 저장합니다.'
-                    : '보류 카드를 모두 적용해 사라지게 만든 뒤 확인을 눌러 주세요. 확인 전에는 MongoDB에 저장되지 않습니다.'
+                    ? (
+                      isContact
+                        ? '보류 카드가 모두 사라졌습니다. 확인을 누르면 연락처가 저장됩니다.'
+                        : '확인을 누르면 주소 기준 위도·경도를 계산한 후 고객사가 등록됩니다.'
+                    )
+                    : (
+                      isContact
+                        ? '보류 카드를 모두 적용해 사라지게 만든 뒤 확인을 눌러 주세요. 확인 전에는 MongoDB에 저장되지 않습니다.'
+                        : '확인을 누르면 주소 기준 위도·경도를 계산한 후 고객사가 등록됩니다.'
+                    )
                 )
                 : '처리가 끝났습니다. 확인을 누르면 결과 화면을 닫습니다.'}
             </p>

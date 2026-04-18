@@ -301,17 +301,50 @@
   gap: 0.35rem;
 }
 
-.sp-stage-overview-card.tone-0 { background: #b8daf5; }
-.sp-stage-overview-card.tone-1 { background: #c9e2f6; }
-.sp-stage-overview-card.tone-2 { background: #d6e9f8; }
-.sp-stage-overview-card.tone-3 { background: #d4efdd; }
-.sp-stage-overview-card.tone-4 { background: #e5edf4; }
+/* 진행 단계 전용 — 수주(Won)·기회 상실(Lost) 드롭존 색과 겹치지 않는 파스텔 단색 */
+.sp-stage-overview-card.tone-0 { background: #c7dbf0; }
+.sp-stage-overview-card.tone-1 { background: #e3daf6; }
+.sp-stage-overview-card.tone-2 { background: #fce8dc; }
+.sp-stage-overview-card.tone-3 { background: #cfeaf2; }
+.sp-stage-overview-card.tone-4 { background: #fff2d2; }
+.sp-stage-overview-card.tone-5 { background: #e6e2fa; }
+
+.sp-stage-overview-card.tone-0 .sp-stage-overview-title { color: #2a4a6e; }
+.sp-stage-overview-card.tone-1 .sp-stage-overview-title { color: #553c7a; }
+.sp-stage-overview-card.tone-2 .sp-stage-overview-title { color: #7a4a38; }
+.sp-stage-overview-card.tone-3 .sp-stage-overview-title { color: #245a6a; }
+.sp-stage-overview-card.tone-4 .sp-stage-overview-title { color: #6b5818; }
+.sp-stage-overview-card.tone-5 .sp-stage-overview-title { color: #4a3d7a; }
+
+.sp-stage-overview-card.tone-0 .sp-stage-forecast-pct { color: #3d6a9a; }
+.sp-stage-overview-card.tone-1 .sp-stage-forecast-pct { color: #6d4d9e; }
+.sp-stage-overview-card.tone-2 .sp-stage-forecast-pct { color: #9a5a42; }
+.sp-stage-overview-card.tone-3 .sp-stage-forecast-pct { color: #2f7a8c; }
+.sp-stage-overview-card.tone-4 .sp-stage-forecast-pct { color: #8a7220; }
+.sp-stage-overview-card.tone-5 .sp-stage-forecast-pct { color: #5c4db0; }
+
+.sp-stage-overview-head-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+}
 
 .sp-stage-overview-title {
   font-size: 0.74rem;
   font-weight: 700;
   color: #2e5a79;
   text-align: center;
+}
+
+.sp-stage-forecast-pct {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .sp-stage-overview-metrics {
@@ -394,23 +427,27 @@
 }
 
 .sp-column-header.tone-0 {
-  background: rgba(184, 218, 245, 0.35);
+  background: rgba(199, 219, 240, 0.42);
 }
 
 .sp-column-header.tone-1 {
-  background: rgba(201, 226, 246, 0.35);
+  background: rgba(227, 218, 246, 0.42);
 }
 
 .sp-column-header.tone-2 {
-  background: rgba(214, 233, 248, 0.35);
+  background: rgba(252, 232, 220, 0.42);
 }
 
 .sp-column-header.tone-3 {
-  background: rgba(212, 239, 221, 0.35);
+  background: rgba(207, 234, 242, 0.42);
 }
 
 .sp-column-header.tone-4 {
-  background: rgba(229, 237, 244, 0.45);
+  background: rgba(255, 242, 210, 0.45);
+}
+
+.sp-column-header.tone-5 {
+  background: rgba(230, 226, 250, 0.42);
 }
 
 .sp-column-title-row {
@@ -700,11 +737,25 @@
   transform: scale(1.1);
 }
 
+.sp-dz-label-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  text-align: center;
+}
+
 .sp-dz-label {
   font-size: 0.875rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.02em;
+}
+
+.sp-dz-forecast {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
 .sp-dz-count {
@@ -813,6 +864,7 @@
 }
 .dz-red .sp-dz-icon { color: #dc2626; }
 .dz-red .sp-dz-label { color: #b91c1c; }
+.dz-red .sp-dz-forecast { color: #991b1b; }
 .dz-red.sp-drop-hover {
   background: rgba(254, 226, 226, 0.8);
   border-color: rgba(248, 113, 113, 0.7);
@@ -839,6 +891,7 @@
 }
 .dz-green .sp-dz-icon { color: #16a34a; }
 .dz-green .sp-dz-label { color: #15803d; }
+.dz-green .sp-dz-forecast { color: #166534; }
 .dz-green.sp-drop-hover {
   background: rgba(220, 252, 231, 0.8);
   border-color: rgba(74, 222, 128, 0.6);

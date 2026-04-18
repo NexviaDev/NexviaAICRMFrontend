@@ -5,14 +5,14 @@ export function listPriceFromProduct(p) {
   return Number(p.price) || 0;
 }
 
-/** 제품 유통가 (제품 목록·유통시 순 마진과 동일 축) */
+/** 제품 유통가 (제품 목록·유통 세일즈와 동일 축) */
 export function channelPriceFromProduct(p) {
   if (!p) return 0;
   return Number(p.channelPrice) || 0;
 }
 
 /**
- * 영업 기회 가격 기준 — 제품 목록의 순 마진 / 유통시 순 마진과 같은 가격 축
+ * 영업 기회 가격 기준 — 제품 목록의 다이렉트 세일즈 / 유통 세일즈와 같은 가격 축
  * @param {'consumer'|'channel'} basis
  */
 export function suggestedPriceFromProduct(product, basis) {
@@ -23,6 +23,6 @@ export function suggestedPriceFromProduct(product, basis) {
 
 /** 제품 목록(list-templates)과 동일한 용어 */
 export const OPPORTUNITY_PRICE_BASIS_OPTIONS = [
-  { value: 'consumer', label: '순 마진 기준', shortLabel: '소비자가', desc: '제품의 소비자가(리스트가)를 가격으로 사용합니다.' },
-  { value: 'channel', label: '유통시 순 마진 기준', shortLabel: '유통가', desc: '제품의 유통가를 가격으로 사용합니다.' }
+  { value: 'consumer', label: '다이렉트 세일즈', shortLabel: '소비자가', desc: '제품의 소비자가(리스트가)를 가격으로 사용합니다.' },
+  { value: 'channel', label: '유통 세일즈', shortLabel: '유통가', desc: '제품의 유통가를 가격으로 사용합니다. 유통사를 지정할 수 있습니다.' }
 ];

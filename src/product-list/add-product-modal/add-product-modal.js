@@ -7,6 +7,12 @@ import './add-product-modal.css';
 
 import { API_BASE } from '@/config';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
+import {
+  excelObjectToProductFormDraft,
+  isExcelRowEffectivelyEmpty,
+  parseExcelFileToRows
+} from '../product-excel-import-modal/product-excel-import-utils';
+import '../../customer-companies/customer-companies-excel-import-modal/customer-companies-excel-import-modal.css';
 const STATUS_OPTIONS = [
   { value: 'Active', label: '활성' },
   { value: 'EndOfLife', label: 'End of Life' },
@@ -104,10 +110,20 @@ function formatPriceWhileTyping(raw) {
   return `${intFmt}.${decRaw}`;
 }
 
-export default function AddProductModal({ product, onClose, onSaved, presentation = 'centered' }) {
+export default function AddProductModal({
+  product,
+  onClose,
+  onSaved,
+  presentation = 'centered',
+  variant,
+  /** 2행 이상 엑셀 시 일괄 등록 모달로 넘김 (제품 목록에서만 전달) */
+  onOpenBulkImport
+}) {
   const isEdit = !!product?._id;
+  const isDuplicate = variant === 'duplicate';
   const canManageCustomFieldDefinitions = isAdminOrAboveRole(getStoredCrmUser()?.role);
-  const isSlidePanel = isEdit && presentation === 'slide';
+  const isSlidePanel = (isEdit || isDuplicate) && presentation === 'slide';
+  const showExcelDrop = !isEdit && typeof onOpenBulkImport === 'function';
   const [form, setForm] = useState({
     name: product?.name ?? '',
     code: product?.code ?? '',
@@ -128,6 +144,8 @@ export default function AddProductModal({ product, onClose, onSaved, presentatio
   const [categoryOther, setCategoryOther] = useState(() => parseCategoryFromStored(product?.category).other);
   const [categoryOpen, setCategoryOpen] = useState(false);
   const categoryPickerRef = useRef(null);
+  const excelFileInputRef = useRef(null);
+  const [excelDragOver, setExcelDragOver] = useState(false);
 
   const fetchCustomDefinitions = async () => {
     try {
@@ -179,6 +197,64 @@ export default function AddProductModal({ product, onClose, onSaved, presentatio
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
     setError('');
+  };
+
+  const applyExcelDraftToForm = (draft) => {
+    setForm((prev) => ({
+      ...prev,
+      ...draft.form,
+      customFields: { ...(prev.customFields || {}), ...(draft.form.customFields || {}) }
+    }));
+    setListPriceInput(formatPriceDisplay(draft.listPrice));
+    setCostPriceInput(formatPriceDisplay(draft.costPrice));
+    setChannelPriceInput(formatPriceDisplay(draft.channelPrice));
+    const cat = parseCategoryFromStored(draft.categoryRaw);
+    setCategoryKey(cat.key);
+    setCategoryOther(cat.other);
+    setError('');
+  };
+
+  const handleExcelFileChosen = async (file) => {
+    if (!file) return;
+    const name = file.name || '';
+    const ok =
+      name.endsWith('.xlsx') ||
+      name.endsWith('.xls') ||
+      name.endsWith('.csv') ||
+      /spreadsheet|excel|csv/i.test(file.type || '');
+    if (!ok) {
+      setError('엑셀(.xlsx, .xls) 또는 CSV만 올려 주세요.');
+      return;
+    }
+    try {
+      const json = await parseExcelFileToRows(file);
+      const dataRows = (Array.isArray(json) ? json : []).filter((r) => !isExcelRowEffectivelyEmpty(r));
+      if (dataRows.length === 0) {
+        setError('데이터가 있는 행이 없습니다.');
+        return;
+      }
+      if (dataRows.length > 1) {
+        onOpenBulkImport({ rows: dataRows.slice(0, 500), fileName: name });
+        return;
+      }
+      const draft = excelObjectToProductFormDraft(dataRows[0], customDefinitions);
+      applyExcelDraftToForm(draft);
+    } catch (e) {
+      setError(e?.message || '파일을 읽지 못했습니다.');
+    }
+  };
+
+  const onExcelInputChange = (e) => {
+    const f = e.target.files?.[0];
+    if (f) void handleExcelFileChosen(f);
+    e.target.value = '';
+  };
+
+  const onExcelDrop = (e) => {
+    e.preventDefault();
+    setExcelDragOver(false);
+    const f = e.dataTransfer?.files?.[0];
+    if (f) void handleExcelFileChosen(f);
   };
 
   const setBillingType = (value) => {
@@ -250,9 +326,15 @@ export default function AddProductModal({ product, onClose, onSaved, presentatio
       <div className={`add-product-modal ${isSlidePanel ? 'add-product-modal--slide' : ''}`}>
         <div className="add-product-modal-header">
           <div className="add-product-modal-header-text">
-            <h2 className="add-product-modal-title">{isEdit ? '제품 수정' : '신규 제품 등록'}</h2>
+            <h2 className="add-product-modal-title">
+              {isEdit ? '제품 수정' : isDuplicate ? '제품 복제' : '신규 제품 등록'}
+            </h2>
             <p className="add-product-modal-subtitle">
-              {isEdit ? '제품 정보를 수정합니다.' : '시스템에 새로운 제품 정보를 입력합니다.'}
+              {isEdit
+                ? '제품 정보를 수정합니다.'
+                : isDuplicate
+                  ? '원본 제품 정보를 불러왔습니다. 수정 후 저장하면 새 제품으로 등록됩니다.'
+                  : '시스템에 새로운 제품 정보를 입력합니다.'}
             </p>
           </div>
           <button type="button" className="add-product-modal-close" onClick={onClose} aria-label="닫기">
@@ -262,6 +344,44 @@ export default function AddProductModal({ product, onClose, onSaved, presentatio
         <form onSubmit={handleSubmit} className="add-product-modal-form">
           <div className="add-product-modal-body">
             {error && <p className="add-product-modal-error">{error}</p>}
+
+            {showExcelDrop ? (
+              <>
+                <input
+                  ref={excelFileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+                  className="visually-hidden"
+                  style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
+                  onChange={onExcelInputChange}
+                />
+                <div
+                  role="button"
+                  tabIndex={0}
+                  className={`cc-excel-dropzone add-product-modal-excel-drop ${excelDragOver ? 'is-dragover' : ''}`}
+                  onDragEnter={(e) => { e.preventDefault(); setExcelDragOver(true); }}
+                  onDragLeave={(e) => {
+                    e.preventDefault();
+                    if (!e.currentTarget.contains(e.relatedTarget)) setExcelDragOver(false);
+                  }}
+                  onDragOver={(e) => { e.preventDefault(); }}
+                  onDrop={onExcelDrop}
+                  onClick={() => excelFileInputRef.current?.click()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      excelFileInputRef.current?.click();
+                    }
+                  }}
+                >
+                  <span className="material-symbols-outlined cc-excel-dropzone-icon">cloud_upload</span>
+                  <p className="cc-excel-dropzone-title">엑셀·CSV를 놓거나 클릭하여 선택</p>
+                  <p className="cc-excel-dropzone-hint">
+                    1행(데이터)이면 아래 양식에 자동 기입 · 2행 이상이면 제품 일괄 등록으로 이동합니다
+                  </p>
+                </div>
+              </>
+            ) : null}
 
             <section className="add-product-modal-section">
               <div className="add-product-modal-section-head add-product-modal-section-head--basic">

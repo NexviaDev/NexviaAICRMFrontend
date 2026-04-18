@@ -78,7 +78,14 @@ export default function CompanyDriveSettingsModal({
       </header>
       <div className="company-drive-settings-body">
         <p className="company-drive-settings-hint">
-          직원 간 증서·자료 공유를 위해 회사에서 사용할 Google Drive 폴더(또는 공유 드라이브) 주소를 입력하세요. 설정 후 CRM에서 업로드한 파일이 이 루트 아래에 저장됩니다.
+          직원 간 증서·자료 공유를 위해 회사에서 사용할 Google Drive 폴더(또는 공유 드라이브) 주소를 입력하세요. 설정 후 CRM에서 업로드한 파일이 이 루트 아래에 저장됩니다. 고객사 상세의 증서·자료 폴더는 이 루트 아래에{' '}
+          <strong>[고객사명]_[사업자번호]</strong> 형식으로 만들어지며, 링크는 MongoDB 고객사 문서에 저장되어 다른 계정으로 로그인한 팀원에게도 동일하게 보입니다.
+        </p>
+        <p className="company-drive-settings-hint company-drive-settings-hint--sub">
+          브라우저에서 해당 폴더를 연 뒤 <strong>주소창의 URL</strong>을 그대로 붙여 넣는 것을 권장합니다. 이 설정이 비어 있거나 ID를 읽을 수 없으면, 예전에는 「내 드라이브」 최상위에 폴더가 생겨 <strong>개인 휴지통</strong>에만 보이는 것처럼 느껴질 수 있습니다.
+        </p>
+        <p className="company-drive-settings-hint company-drive-settings-hint--sub">
+          <strong>팀원이 같은 폴더·파일을 보려면</strong> 각자의 Google 계정이 이 공유 드라이브에 <strong>멤버로 추가</strong>되어 있어야 합니다(Workspace 관리자 또는 드라이브 관리 권한이 있는 사람이 Drive 웹에서 멤버 초대). 멤버가 아니면 CRM에 링크가 있어도 다른 사람 화면에서는 비어 있거나 404에 가깝게 보일 수 있습니다.
         </p>
         <div className="company-drive-settings-row">
           <input

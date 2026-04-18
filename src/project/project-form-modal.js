@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { API_BASE } from '@/config';
+import { API_BASE, MAX_DRIVE_JSON_UPLOAD_BYTES } from '@/config';
 import ParticipantModal from '@/shared/participant-modal/participant-modal';
-import DriveLargeFileWarningModal from '@/shared/drive-large-file-warning-modal/drive-large-file-warning-modal';
 import './project-form-modal.css';
 
 const STAGE_OPTIONS = [
@@ -50,8 +49,6 @@ function formatCommentDate(input) {
 function tempId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
-
-const MAX_DRIVE_API_UPLOAD_SIZE = 5 * 1024 * 1024;
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -135,7 +132,7 @@ export default function ProjectFormModal({
   const [folderStamp, setFolderStamp] = useState('');
   const [driveBusy, setDriveBusy] = useState(false);
   const [driveError, setDriveError] = useState('');
-  const [largeFileWarning, setLargeFileWarning] = useState({ open: false, files: [], folderUrl: '' });
+  const [driveUploadNotice, setDriveUploadNotice] = useState('');
 
   useEffect(() => {
     const initialParticipants = Array.isArray(initialProject?.participants) ? initialProject.participants : [];
@@ -178,7 +175,7 @@ export default function ProjectFormModal({
     setDriveFolderLink(String(initialProject?.driveFolderLink || ''));
     setFolderStamp('');
     setDriveError('');
-    setLargeFileWarning({ open: false, files: [], folderUrl: '' });
+    setDriveUploadNotice('');
     setNewComment('');
     setReplyDraftByCommentId({});
   }, [initialProject, boardStages]);
@@ -443,17 +440,31 @@ export default function ProjectFormModal({
     if (!pendingFiles.length) {
       return { attachmentsToSave: attachments, folderId: driveFolderId, folderLink: driveFolderLink };
     }
+    setDriveUploadNotice('');
     const folder = await ensureAttachmentFolder();
-    const tooLargeFiles = pendingFiles.filter((file) => Number(file?.size || 0) > MAX_DRIVE_API_UPLOAD_SIZE);
-    const apiFiles = pendingFiles.filter((file) => Number(file?.size || 0) <= MAX_DRIVE_API_UPLOAD_SIZE);
+    const tooLargeFiles = pendingFiles.filter((file) => Number(file?.size || 0) > MAX_DRIVE_JSON_UPLOAD_BYTES);
+    const apiFiles = pendingFiles.filter((file) => Number(file?.size || 0) <= MAX_DRIVE_JSON_UPLOAD_BYTES);
 
     if (tooLargeFiles.length) {
-      setLargeFileWarning({
-        open: true,
-        files: tooLargeFiles.map((file) => ({ name: file.name, size: file.size })),
-        folderUrl: folder.webViewLink
-      });
-      window.open(folder.webViewLink, '_blank', 'noopener,noreferrer');
+      const folderUrlForLarge = String(folder.webViewLink || '').trim();
+      const names = tooLargeFiles.slice(0, 3).map((file) => file.name).join(', ');
+      const more = tooLargeFiles.length > 3 ? ` 외 ${tooLargeFiles.length - 3}건` : '';
+      const canOpenFolder =
+        folderUrlForLarge &&
+        folderUrlForLarge.startsWith('https://drive.google.com/') &&
+        !folderUrlForLarge.includes('undefined');
+      if (canOpenFolder) {
+        window.open(folderUrlForLarge, '_blank', 'noopener,noreferrer');
+      }
+      setDriveError(
+        canOpenFolder
+          ? `약 ${Math.floor(MAX_DRIVE_JSON_UPLOAD_BYTES / (1024 * 1024))}MB를 넘는 파일은 이 창에서 한 번에 올릴 수 없습니다. 해당 Google Drive 폴더를 새 창으로 열었으니, 거기에서 직접 업로드해 주세요: ${names}${more}`
+          : `약 ${Math.floor(MAX_DRIVE_JSON_UPLOAD_BYTES / (1024 * 1024))}MB를 넘는 파일은 이 창에서 한 번에 올릴 수 없습니다. 폴더 주소를 확인한 뒤 Drive에서 직접 올려 주세요: ${names}${more}`
+      );
+      if (canOpenFolder && !apiFiles.length) {
+        setDriveUploadNotice('업로드 후 「목록 새로고침」으로 CRM 목록에 반영할 수 있습니다.');
+        window.setTimeout(() => setDriveUploadNotice(''), 8000);
+      }
     }
 
     const uploadedAttachments = [];
@@ -676,6 +687,11 @@ export default function ProjectFormModal({
               ) : null}
 
               {driveError ? <p className="pfm-drive-error">{driveError}</p> : null}
+              {driveUploadNotice && !driveError ? (
+                <p className="pfm-drive-notice" role="status">
+                  {driveUploadNotice}
+                </p>
+              ) : null}
 
               <div className="pfm-drive-list-wrap">
                 <div className="pfm-drive-list-topbar">
@@ -920,17 +936,6 @@ export default function ProjectFormModal({
         />
       ) : null}
 
-      <DriveLargeFileWarningModal
-        open={largeFileWarning.open}
-        files={largeFileWarning.files}
-        onClose={() => setLargeFileWarning({ open: false, files: [], folderUrl: '' })}
-        onConfirm={() => {
-          if (largeFileWarning.folderUrl) {
-            window.open(largeFileWarning.folderUrl, '_blank', 'noopener,noreferrer');
-          }
-          setLargeFileWarning({ open: false, files: [], folderUrl: '' });
-        }}
-      />
     </div>
   );
 }

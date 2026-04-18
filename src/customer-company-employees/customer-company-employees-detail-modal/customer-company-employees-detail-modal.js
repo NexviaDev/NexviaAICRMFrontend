@@ -1,16 +1,24 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import CustomFieldsDisplay from '../../shared/custom-fields-display';
 import CustomFieldsSection from '../../shared/custom-fields-section';
 import ProductSalesModal from '../../shared/product-sales-modal/product-sales-modal';
 import OpportunityModal from '../../sales-pipeline/opportunity-modal/opportunity-modal';
 import AddContactModal from '../add-customer-company-employees-modal/add-customer-company-employees-modal';
-import DriveLargeFileWarningModal from '../../shared/drive-large-file-warning-modal/drive-large-file-warning-modal';
 import './customer-company-employees-detail-modal.css';
 
 import { API_BASE } from '@/config';
 import { getStoredCrmUser, isManagerOrAboveRole, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { pingBackendHealth, BACKEND_KEEPALIVE_INTERVAL_MS, BACKEND_KEEPALIVE_INTERVAL_ENABLED } from '@/lib/backend-wake';
 import { pollJournalFromAudioJob } from '@/lib/journal-from-audio-poll';
+import { pruneDriveUploadedFilesIndex } from '@/lib/drive-uploaded-files-prune';
+import { buildDriveFileDeleteUrl, isValidDriveNodeId, sanitizeDriveFolderWebViewLink } from '@/lib/google-drive-url';
+import {
+  RegisterSaleDocsCrmTable,
+  formatDriveFileDate,
+  keepLatestBusinessCardRowOnlyInDriveUploads,
+  runDriveDirectFileUpload,
+  sortDriveUploadedFiles
+} from '@/shared/register-sale-docs-drive';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -91,9 +99,6 @@ function sanitizeFolderNamePart(s, maxLen = 80) {
   return t.length > maxLen ? t.slice(0, maxLen) : t;
 }
 
-const DRIVE_FOLDER_MIME = 'application/vnd.google-apps.folder';
-const MAX_DRIVE_API_UPLOAD_SIZE = 5 * 1024 * 1024;
-
 function getDriveFolderIdFromLink(url) {
   if (!url || typeof url !== 'string') return null;
   const s = url.trim();
@@ -101,16 +106,24 @@ function getDriveFolderIdFromLink(url) {
   return m ? m[1] : null;
 }
 
-function fileToBase64(file) {
-  return file.arrayBuffer().then((buf) => {
-    const bytes = new Uint8Array(buf);
-    let binary = '';
-    const chunk = 8192;
-    for (let i = 0; i < bytes.length; i += chunk) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-    }
-    return btoa(binary);
-  });
+function buildPersonalDriveFolderName(contactLike) {
+  const namePart = sanitizeFolderNamePart(contactLike?.name || '이름없음', 80);
+  const contactPart = sanitizeFolderNamePart(contactLike?.phone || contactLike?.email || '미등록', 40);
+  return `${namePart}_${contactPart}`;
+}
+
+function buildCompanyDriveFolderName(contactLike) {
+  const namePart = sanitizeFolderNamePart(
+    contactLike?.customerCompanyId?.name || contactLike?.companyName || '미소속',
+    80
+  );
+  const numPart =
+    sanitizeFolderNamePart(
+      contactLike?.customerCompanyId?.businessNumber != null
+        ? String(contactLike.customerCompanyId.businessNumber).replace(/\D/g, '')
+        : ''
+    ) || '미등록';
+  return `${namePart}_${numPart}`;
 }
 
 export default function ContactDetailModal({ contact, onClose, onUpdated }) {
@@ -152,18 +165,13 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   const [driveFolderId, setDriveFolderId] = useState(null);
   const [driveUploading, setDriveUploading] = useState(false);
   const [driveError, setDriveError] = useState('');
-  const [largeFileWarning, setLargeFileWarning] = useState({ open: false, files: [], folderUrl: '' });
-  const [docsDropActive, setDocsDropActive] = useState(false);
+  const [driveUploadNotice, setDriveUploadNotice] = useState('');
+  const [crmListDropActive, setCrmListDropActive] = useState(false);
+  const [crmDriveDeletingId, setCrmDriveDeletingId] = useState('');
   const [dragInModal, setDragInModal] = useState(false);
-  const [driveEmbedKey, setDriveEmbedKey] = useState(0);
-  const [driveCurrentFolderId, setDriveCurrentFolderId] = useState(null);
-  const [driveBreadcrumb, setDriveBreadcrumb] = useState([]);
-  const [driveFilesList, setDriveFilesList] = useState([]);
-  const [loadingDriveFiles, setLoadingDriveFiles] = useState(false);
-  const driveFileInputRef = useRef(null);
+  const fileInputRef = useRef(null);
   const audioInputRef = useRef(null);
-
-  const [driveFolderName, setDriveFolderName] = useState('');
+  const driveRootEnsureInFlightRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -202,8 +210,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   useEffect(() => {
     const onKey = (e) => {
       if (e.key !== 'Escape') return;
-      if (largeFileWarning.open) setLargeFileWarning({ open: false, files: [], folderUrl: '' });
-      else if (showRegisterSaleModal) setShowRegisterSaleModal(false);
+      if (showRegisterSaleModal) setShowRegisterSaleModal(false);
       else if (showProductSalesModal) setShowProductSalesModal(false);
       else if (showCardImageModal) setShowCardImageModal(false);
       else if (showContactCardEmptyPopover) setShowContactCardEmptyPopover(false);
@@ -216,13 +223,21 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, editing, showDeleteConfirm, showCardImageModal, showContactCardEmptyPopover, showProductSalesModal, showRegisterSaleModal, largeFileWarning.open]);
+  }, [onClose, editing, showDeleteConfirm, showCardImageModal, showContactCardEmptyPopover, showProductSalesModal, showRegisterSaleModal]);
 
   useEffect(() => {
     setDisplayedContact((prev) => ({ ...(prev || {}), ...(contact || {}) }));
   }, [contact]);
 
   const contactToShow = displayedContact || contact || {};
+  const companyIdForSales = contactToShow?.customerCompanyId?._id ?? contactToShow?.customerCompanyId ?? null;
+  const companyNameForSales = contactToShow?.customerCompanyId?.name ?? contactToShow?.companyName ?? '';
+  /** 고객사가 DB에서 확인 가능(사업자 번호 있음)일 때만 고객사 Drive 폴더·CRM 리스트 사용 */
+  const hasConfirmedCompany = Boolean(
+    companyIdForSales &&
+      contactToShow?.customerCompanyId?.businessNumber &&
+      String(contactToShow.customerCompanyId.businessNumber).trim()
+  );
   const businessCardImageUrl = contactToShow.businessCardImageUrl || '';
   const businessCardDriveUrl = contactToShow.businessCardDriveUrl || '';
   const hasBusinessCardImage = !!businessCardImageUrl;
@@ -250,6 +265,18 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?._id) return null;
       setDisplayedContact((prev) => ({ ...(prev || {}), ...data }));
+      try {
+        const syncRes = await fetch(`${API_BASE}/customer-company-employees/${contactId}/sync-drive-folder`, {
+          method: 'POST',
+          headers: getAuthHeader(),
+          credentials: 'include'
+        });
+        const syncData = await syncRes.json().catch(() => ({}));
+        if (syncRes.ok && syncData._id) {
+          setDisplayedContact((prev) => ({ ...(prev || {}), ...syncData }));
+          return syncData;
+        }
+      } catch (_) {}
       return data;
     } catch (_) {
       return null;
@@ -279,6 +306,24 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
     fetchContactDetail();
   }, [fetchContactDetail]);
 
+  /** Drive에서만 삭제된 파일이 Mongo driveUploadedFiles 에 남은 경우 제거 */
+  useEffect(() => {
+    const fid = contactToShow?.driveRootFolderId;
+    if (!contactId || !fid || !isValidDriveNodeId(String(fid).trim())) return undefined;
+    let cancelled = false;
+    (async () => {
+      await pruneDriveUploadedFilesIndex({
+        getAuthHeader,
+        folderId: String(fid).trim(),
+        customerCompanyEmployeeId: String(contactId)
+      });
+      if (!cancelled) fetchContactDetail();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [contactId, contactToShow?.driveRootFolderId, fetchContactDetail]);
+
   useEffect(() => {
     if (!contactId) return undefined;
     if (!['queued', 'processing'].includes(contactToShow?.summaryStatus)) return undefined;
@@ -292,13 +337,6 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
     setJournalDateTime(toDatetimeLocalValue(new Date()));
     setSummaryNotice(null);
   }, [contactId]);
-
-  if (!contact) return null;
-
-  const companyIdForSales = contactToShow?.customerCompanyId?._id ?? contactToShow?.customerCompanyId ?? null;
-  const companyNameForSales = contactToShow?.customerCompanyId?.name ?? contactToShow?.companyName ?? '';
-  /** 고객사가 customer-companies에서 확인 가능(사업자 번호 있음)일 때만 소속으로 표시; 아니면 소속 없음으로 간주 */
-  const hasConfirmedCompany = companyIdForSales && contactToShow?.customerCompanyId?.businessNumber && String(contactToShow.customerCompanyId.businessNumber).trim();
 
   const fetchProductSales = async () => {
     if (!contactId) {
@@ -330,203 +368,252 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
     fetchProductSales();
   }, [contactId, companyIdForSales]);
 
-  /**
-   * Drive 폴더 초기화:
-   *  - customerCompanyId가 있으면 → 등록폴더 / [고객사명]_[사업자번호]
-   *  - customerCompanyId가 null 이면 → 등록폴더 / [이름]_[연락처]
-   *  폴더가 없으면 ensure로 새로 만들고, driveRootFolderId를 연락처에 PATCH 저장.
-   */
+  const driveFolderName = useMemo(() => buildPersonalDriveFolderName(contactToShow), [contactToShow]);
+
+  const companyDriveFolderName = useMemo(() => {
+    if (!hasConfirmedCompany) return '';
+    return buildCompanyDriveFolderName(contactToShow);
+  }, [hasConfirmedCompany, contactToShow]);
+
+  const crmDriveUploadsSorted = useMemo(() => {
+    const raw = contactToShow?.driveUploadedFiles;
+    const sorted = sortDriveUploadedFiles(raw);
+    return keepLatestBusinessCardRowOnlyInDriveUploads(sorted, contactToShow);
+  }, [contactToShow?.driveUploadedFiles, contactToShow?.name, contactToShow?.phone, contactToShow?.email]);
+
+  const driveMongoRegisteredUrl = useMemo(() => {
+    const id = contactToShow?.driveRootFolderId || driveFolderId;
+    const raw = contactToShow?.driveRootFolderWebViewLink;
+    const fromDb = id ? sanitizeDriveFolderWebViewLink(raw, id) : '';
+    if (fromDb) return fromDb;
+    return driveFolderLink || '';
+  }, [contactToShow?.driveRootFolderId, contactToShow?.driveRootFolderWebViewLink, driveFolderId, driveFolderLink]);
+
+  const companyDriveRegisteredUrl = useMemo(() => {
+    if (!hasConfirmedCompany) return '';
+    const id =
+      contactToShow?.customerCompanyId?.driveCustomerRootFolderId || contactToShow?.driveCustomerRootFolderId;
+    const raw =
+      contactToShow?.customerCompanyId?.driveCustomerRootFolderWebViewLink ||
+      contactToShow?.driveCustomerRootFolderWebViewLink;
+    const fromDb = id ? sanitizeDriveFolderWebViewLink(raw, id) : '';
+    return fromDb || '';
+  }, [
+    hasConfirmedCompany,
+    contactToShow?.customerCompanyId?.driveCustomerRootFolderId,
+    contactToShow?.customerCompanyId?.driveCustomerRootFolderWebViewLink,
+    contactToShow?.driveCustomerRootFolderId,
+    contactToShow?.driveCustomerRootFolderWebViewLink
+  ]);
+
   useEffect(() => {
-    if (!contact) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const rootRes = await fetch(`${API_BASE}/custom-field-definitions/drive-root`, { headers: getAuthHeader() });
-        const rootJson = await rootRes.json().catch(() => ({}));
-        const driveRootUrl = (rootJson.driveRootUrl != null && String(rootJson.driveRootUrl).trim()) ? String(rootJson.driveRootUrl).trim() : '';
-        if (cancelled || !driveRootUrl) return;
-        const registeredFolderId = getDriveFolderIdFromLink(driveRootUrl);
-        if (!registeredFolderId) return;
+    const id = contactToShow?.driveRootFolderId;
+    const linkRaw = contactToShow?.driveRootFolderWebViewLink;
+    if (!id || !isValidDriveNodeId(String(id))) return;
+    const sanitized = sanitizeDriveFolderWebViewLink(linkRaw, id);
+    if (!sanitized) return;
+    setDriveFolderId(id);
+    setDriveFolderLink(sanitized);
+  }, [contactId, contactToShow?.driveRootFolderId, contactToShow?.driveRootFolderWebViewLink]);
 
-        const ccId = contact.customerCompanyId?._id ?? contact.customerCompanyId ?? null;
-        let folderName;
+  useEffect(() => {
+    setDriveUploadNotice('');
+  }, [contactId]);
 
-        if (ccId) {
-          let ccName = contact.customerCompanyId?.name || contact.companyName || '';
-          let ccBn = contact.customerCompanyId?.businessNumber || '';
-          if (!ccName || !ccBn) {
-            try {
-              const ccRes = await fetch(`${API_BASE}/customer-companies/${ccId}`, { headers: getAuthHeader() });
-              const ccData = await ccRes.json().catch(() => ({}));
-              if (cancelled) return;
-              if (ccRes.ok && ccData._id) {
-                ccName = ccData.name || ccName;
-                ccBn = ccData.businessNumber || ccBn;
-              }
-            } catch (_) {}
-          }
-          const bnPart = String(ccBn || '').replace(/\D/g, '') || '미등록';
-          folderName = `${sanitizeFolderNamePart(ccName || '미소속', 80)}_${sanitizeFolderNamePart(bnPart, 20)}`;
-        } else {
-          const namePart = sanitizeFolderNamePart(contact.name || '이름없음', 80);
-          const contactPart = sanitizeFolderNamePart(contact.phone || contact.email || '미등록', 40);
-          folderName = `${namePart}_${contactPart}`;
-        }
+  const ensureDriveRootFolder = useCallback(
+    async (contactOverride) => {
+      const c = contactOverride || contactToShow;
+      const pid = c?._id ?? c?.id ?? contactId;
+      const personalFolderName = buildPersonalDriveFolderName(c);
+      if (!personalFolderName || !pid) return null;
 
-        if (cancelled) return;
-        setDriveFolderName(folderName);
+      const cc = c?.customerCompanyId;
+      const companyObj = typeof cc === 'object' && cc ? cc : null;
+      const cid = companyObj?._id ?? (typeof cc === 'string' && cc.trim() ? cc : null);
+      const hasBn = companyObj?.businessNumber && String(companyObj.businessNumber).trim();
+      const confirmed = Boolean(cid && hasBn);
 
-        const r = await fetch(`${API_BASE}/drive/folders/ensure`, {
+      if (confirmed && cid) {
+        const cfolderName = buildCompanyDriveFolderName(c);
+        const r1 = await fetch(`${API_BASE}/drive/folders/ensure`, {
           method: 'POST',
           headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ folderName, parentFolderId: registeredFolderId })
+          body: JSON.stringify({
+            folderName: cfolderName,
+            customerCompanyId: String(cid)
+          })
         });
-        const data = await r.json().catch(() => ({}));
-        if (cancelled) return;
-        if (r.ok && data.id) {
-          setDriveFolderId(data.id);
-          setDriveFolderLink(data.webViewLink || `https://drive.google.com/drive/folders/${data.id}`);
-          if (contact.driveRootFolderId !== data.id) {
-            fetch(`${API_BASE}/customer-company-employees/${contact._id}`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-              body: JSON.stringify({ driveRootFolderId: data.id })
-            }).catch(() => {});
-          }
+        const data1 = await r1.json().catch(() => ({}));
+        if (!r1.ok || !data1.id) {
+          throw new Error(data1.error || '고객사 Drive 폴더를 준비할 수 없습니다.');
         }
-      } catch (_) {}
-    })();
-    return () => { cancelled = true; };
-  }, [contactId]);
+        const companyFolderId = String(data1.id);
+        const companyFolderLink = sanitizeDriveFolderWebViewLink(data1.webViewLink, companyFolderId);
+        if (!companyFolderLink) {
+          throw new Error('고객사 Drive 폴더 링크를 만들 수 없습니다.');
+        }
 
-  useEffect(() => {
-    if (driveFolderId && driveFolderName) {
-      setDriveCurrentFolderId(driveFolderId);
-      setDriveBreadcrumb([{ id: driveFolderId, name: driveFolderName }]);
-    } else {
-      setDriveCurrentFolderId(null);
-      setDriveBreadcrumb([]);
-      setDriveFilesList([]);
-    }
-  }, [driveFolderId, driveFolderName]);
-
-  const fetchDriveFiles = useCallback(async () => {
-    if (!driveCurrentFolderId) {
-      setDriveFilesList([]);
-      return;
-    }
-    setLoadingDriveFiles(true);
-    try {
-      const res = await fetch(`${API_BASE}/drive/files?folderId=${encodeURIComponent(driveCurrentFolderId)}&pageSize=100`, {
-        headers: getAuthHeader()
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && Array.isArray(data.files)) {
-        setDriveFilesList(data.files);
-      } else {
-        setDriveFilesList([]);
+        const r2 = await fetch(`${API_BASE}/drive/folders/ensure`, {
+          method: 'POST',
+          headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            folderName: personalFolderName,
+            parentFolderId: companyFolderId,
+            customerCompanyEmployeeId: String(pid)
+          })
+        });
+        const data2 = await r2.json().catch(() => ({}));
+        if (!r2.ok || !data2.id) {
+          throw new Error(data2.error || '연락처 개인 폴더를 준비할 수 없습니다.');
+        }
+        if (!isValidDriveNodeId(String(data2.id))) {
+          throw new Error('Drive 폴더 ID 형식이 올바르지 않습니다.');
+        }
+        const folderLink = sanitizeDriveFolderWebViewLink(data2.webViewLink, data2.id);
+        if (!folderLink) {
+          throw new Error('Drive 폴더 링크를 만들 수 없습니다.');
+        }
+        setDriveFolderId(data2.id);
+        setDriveFolderLink(folderLink);
+        setDisplayedContact((prev) => ({
+          ...(prev || {}),
+          driveRootFolderId: data2.id,
+          driveRootFolderWebViewLink: folderLink,
+          driveCustomerRootFolderId: companyFolderId,
+          driveCustomerRootFolderWebViewLink: companyFolderLink,
+          customerCompanyId: {
+            ...(typeof prev?.customerCompanyId === 'object' && prev.customerCompanyId ? prev.customerCompanyId : {}),
+            _id: cid,
+            name: companyObj?.name ?? prev?.customerCompanyId?.name,
+            businessNumber: companyObj?.businessNumber ?? prev?.customerCompanyId?.businessNumber,
+            driveCustomerRootFolderId: companyFolderId,
+            driveCustomerRootFolderWebViewLink: companyFolderLink
+          }
+        }));
+        return { id: data2.id, webViewLink: folderLink };
       }
-    } catch (_) {
-      setDriveFilesList([]);
-    } finally {
-      setLoadingDriveFiles(false);
-    }
-  }, [driveCurrentFolderId]);
+
+      const rootRes = await fetch(`${API_BASE}/custom-field-definitions/drive-root`, { headers: getAuthHeader() });
+      const rootJson = await rootRes.json().catch(() => ({}));
+      const driveRootUrl =
+        rootJson.driveRootUrl != null && String(rootJson.driveRootUrl).trim() ? String(rootJson.driveRootUrl).trim() : '';
+      if (!driveRootUrl) {
+        throw new Error('회사 공유 드라이브 경로를 먼저 설정해 주세요. (회사 개요 → 전체 공유 드라이브 주소)');
+      }
+      const registeredFolderId = getDriveFolderIdFromLink(driveRootUrl);
+      if (!registeredFolderId) {
+        throw new Error('드라이브 경로 형식이 올바르지 않습니다.');
+      }
+      const r = await fetch(`${API_BASE}/drive/folders/ensure`, {
+        method: 'POST',
+        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          folderName: personalFolderName,
+          parentFolderId: registeredFolderId,
+          customerCompanyEmployeeId: String(pid)
+        })
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || !data.id) {
+        throw new Error(data.error || '폴더를 준비할 수 없습니다.');
+      }
+      if (!isValidDriveNodeId(String(data.id))) {
+        throw new Error('Drive 폴더 ID 형식이 올바르지 않습니다.');
+      }
+      const folderLink = sanitizeDriveFolderWebViewLink(data.webViewLink, data.id);
+      if (!folderLink) {
+        throw new Error('Drive 폴더 링크를 만들 수 없습니다.');
+      }
+      setDriveFolderId(data.id);
+      setDriveFolderLink(folderLink);
+      setDisplayedContact((prev) => ({
+        ...(prev || {}),
+        driveRootFolderId: data.id,
+        driveRootFolderWebViewLink: folderLink,
+        driveCustomerRootFolderId: registeredFolderId,
+        driveCustomerRootFolderWebViewLink: sanitizeDriveFolderWebViewLink(null, registeredFolderId)
+      }));
+      return { id: data.id, webViewLink: folderLink };
+    },
+    [contactId, contactToShow]
+  );
 
   useEffect(() => {
-    fetchDriveFiles();
-  }, [fetchDriveFiles]);
+    if (!contactId || !driveFolderName) return;
+    if (driveRootEnsureInFlightRef.current) return;
+    driveRootEnsureInFlightRef.current = true;
+    (async () => {
+      try {
+        await ensureDriveRootFolder();
+      } catch (err) {
+        setDriveError((prev) => prev || (err?.message || 'Drive 폴더를 준비할 수 없습니다.'));
+      } finally {
+        driveRootEnsureInFlightRef.current = false;
+      }
+    })();
+  }, [contactId, driveFolderName, ensureDriveRootFolder]);
 
   const handleDirectFileUpload = useCallback(
     async (files) => {
-      const filesArray = Array.from(files || []);
-      if (!filesArray.length) return;
-      setDriveUploading(true);
+      await runDriveDirectFileUpload({
+        files,
+        driveFolderId,
+        driveFolderLink,
+        ensureParentFolder: ensureDriveRootFolder,
+        buildUploadBody: (file, contentBase64, parentId) => ({
+          name: file.name,
+          mimeType: file.type || 'application/octet-stream',
+          contentBase64,
+          parentFolderId: parentId,
+          customerCompanyEmployeeId: String(contactId)
+        }),
+        getAuthHeader,
+        setDriveUploading,
+        setDriveError,
+        setDriveUploadNotice,
+        onSuccess: async () => {
+          try {
+            const res = await fetch(`${API_BASE}/customer-company-employees/${contactId}`, { headers: getAuthHeader() });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok && data?._id) setDisplayedContact((prev) => ({ ...(prev || {}), ...data }));
+          } catch (_) {}
+        }
+      });
+    },
+    [contactId, driveFolderId, driveFolderLink, ensureDriveRootFolder]
+  );
+
+  const handleDeleteCrmDriveFile = useCallback(
+    async (row) => {
+      const fid = row?.driveFileId && String(row.driveFileId).trim();
+      if (!fid || !contactId || !isValidDriveNodeId(fid)) return;
+      if (!window.confirm(`「${row.name || '파일'}」을 Drive 휴지통으로 옮기고 목록에서 제거할까요?`)) return;
+      setCrmDriveDeletingId(fid);
       setDriveError('');
       try {
-        let parentId = driveCurrentFolderId || driveFolderId;
-        if (!parentId) {
-          if (!driveFolderName) {
-            setDriveError('Drive 폴더가 아직 준비되지 않았습니다. 잠시 뒤 다시 시도해 주세요.');
-            setDriveUploading(false);
-            return;
-          }
-          const rootRes = await fetch(`${API_BASE}/custom-field-definitions/drive-root`, { headers: getAuthHeader() });
-          const rootJson = await rootRes.json().catch(() => ({}));
-          const driveRootUrl = (rootJson.driveRootUrl != null && String(rootJson.driveRootUrl).trim()) ? String(rootJson.driveRootUrl).trim() : '';
-          if (!driveRootUrl) {
-            setDriveError('회사 공유 드라이브 경로를 먼저 설정해 주세요. (회사 개요 → 전체 공유 드라이브 주소)');
-            setDriveUploading(false);
-            return;
-          }
-          const registeredFolderId = getDriveFolderIdFromLink(driveRootUrl);
-          if (!registeredFolderId) {
-            setDriveError('드라이브 경로 형식이 올바르지 않습니다.');
-            setDriveUploading(false);
-            return;
-          }
-          const r = await fetch(`${API_BASE}/drive/folders/ensure`, {
-            method: 'POST',
-            headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ folderName: driveFolderName, parentFolderId: registeredFolderId })
-          });
-          const data = await r.json().catch(() => ({}));
-          if (!r.ok) {
-            setDriveError(data.error || '폴더를 준비할 수 없습니다.');
-            setDriveUploading(false);
-            return;
-          }
-          parentId = data.id;
-          setDriveFolderId(parentId);
-          setDriveFolderLink(data.webViewLink || `https://drive.google.com/drive/folders/${parentId}`);
-        }
-        const directDriveFiles = filesArray.filter((file) => Number(file?.size || 0) > MAX_DRIVE_API_UPLOAD_SIZE);
-        const apiUploadFiles = filesArray.filter((file) => Number(file?.size || 0) <= MAX_DRIVE_API_UPLOAD_SIZE);
-        if (directDriveFiles.length > 0) {
-          const names = directDriveFiles.slice(0, 3).map((file) => file.name).join(', ');
-          const more = directDriveFiles.length > 3 ? ` 외 ${directDriveFiles.length - 3}건` : '';
-          setDriveError(`5MB 초과 파일은 API로 바로 올릴 수 없습니다: ${names}${more}`);
-          setLargeFileWarning({
-            open: true,
-            files: directDriveFiles.map((file) => ({ name: file.name, size: file.size })),
-            folderUrl: `https://drive.google.com/drive/folders/${parentId}`
-          });
-        }
-        if (!apiUploadFiles.length) {
+        await pingBackendHealth(getAuthHeader);
+        const url = buildDriveFileDeleteUrl(fid, { customerCompanyEmployeeId: String(contactId) });
+        const res = await fetch(url, { method: 'DELETE', headers: getAuthHeader(), credentials: 'include' });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setDriveError(data.error || '삭제에 실패했습니다.');
           return;
         }
-        const uploadOne = async (file) => {
-          const contentBase64 = await fileToBase64(file);
-          if (!contentBase64) {
-            setDriveError((e) => (e ? e : `"${file.name}" 변환 실패`));
-            return;
-          }
-          const up = await fetch(`${API_BASE}/drive/upload`, {
-            method: 'POST',
-            headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-              name: file.name,
-              mimeType: file.type || 'application/octet-stream',
-              contentBase64,
-              parentFolderId: parentId
-            })
-          });
-          const upData = await up.json().catch(() => ({}));
-          if (!up.ok) setDriveError((e) => (e ? e : (upData.error || '업로드 실패')));
-        };
-        await Promise.all(apiUploadFiles.map((file) => uploadOne(file)));
-        fetchDriveFiles();
+        const r2 = await fetch(`${API_BASE}/customer-company-employees/${contactId}`, { headers: getAuthHeader() });
+        const data2 = await r2.json().catch(() => ({}));
+        if (r2.ok && data2?._id) setDisplayedContact((prev) => ({ ...(prev || {}), ...data2 }));
+        setDriveUploadNotice('파일을 삭제했습니다.');
+        window.setTimeout(() => setDriveUploadNotice(''), 5000);
       } catch (_) {
-        setDriveError('Drive에 연결할 수 없습니다.');
+        setDriveError('삭제 중 오류가 났습니다.');
       } finally {
-        setDriveUploading(false);
-        setDriveEmbedKey((k) => k + 1);
+        setCrmDriveDeletingId('');
       }
     },
-    [driveFolderName, driveFolderId, driveCurrentFolderId, fetchDriveFiles, contactId]
+    [contactId]
   );
 
   const handleSaveNote = async () => {
@@ -837,6 +924,8 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   const canMutate = isManagerOrAboveRole(getStoredCrmUser()?.role);
   const canDeleteContact = isAdminOrAboveRole(getStoredCrmUser()?.role);
 
+  if (!contact) return null;
+
   return (
     <>
       {editing && canMutate && (
@@ -1041,7 +1130,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                   {loadingProductSales ? (
                     <p className="customer-company-detail-employees-empty">불러오는 중...</p>
                   ) : productSalesList.length === 0 ? (
-                    <p className="customer-company-detail-employees-empty">이 고객사에 대한 제품 판매 기회가 없습니다.</p>
+                    <p className="customer-company-detail-employees-empty">제품판매 이력이 없습니다. </p>
                   ) : (
                     <div className="customer-company-detail-product-sales-preview">
                       <ul className="customer-company-detail-product-sales-preview-list">
@@ -1055,10 +1144,10 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                   )}
                 </section>
 
-                {/* 증서 · 자료 (Google Drive: [이름]_[연락처] 폴더) */}
+                {/* 증서 · 자료 — 개인 폴더 [이름]_[연락처], 고객사 소속 시 고객사 루트 아래 */}
                 <section className="customer-company-detail-section register-sale-docs">
                   <input
-                    ref={driveFileInputRef}
+                    ref={fileInputRef}
                     type="file"
                     multiple
                     style={{ display: 'none' }}
@@ -1074,7 +1163,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                     <button
                       type="button"
                       className="customer-company-detail-btn-all"
-                      onClick={() => { if (!driveUploading && driveFileInputRef.current) driveFileInputRef.current.click(); }}
+                      onClick={() => { if (!driveUploading && fileInputRef.current) fileInputRef.current.click(); }}
                       disabled={driveUploading}
                       title="파일 추가"
                       aria-label="파일 추가"
@@ -1082,119 +1171,126 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                       <span className="material-symbols-outlined">add</span>
                     </button>
                   </div>
-                  {driveFolderLink && getDriveFolderIdFromLink(driveFolderLink) ? (
-                    <div
-                      className={`register-sale-docs-list-wrap ${docsDropActive ? 'register-sale-docs-dropzone-active' : ''} ${driveUploading ? 'register-sale-docs-dropzone-disabled' : ''}`}
-                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); if (!driveUploading) setDocsDropActive(true); }}
-                      onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDocsDropActive(false); }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setDocsDropActive(false);
-                        if (!driveUploading && e.dataTransfer?.files?.length) handleDirectFileUpload(e.dataTransfer.files);
-                      }}
-                      aria-label="Drive 폴더 (폴더 클릭 시 들어가기, 파일 클릭 시 열기)"
-                    >
-                      {driveBreadcrumb.length > 0 && (
-                        <div className="register-sale-docs-breadcrumb">
-                          {driveBreadcrumb.map((seg, i) => (
-                            <span key={seg.id}>
-                              {i > 0 && <span className="register-sale-docs-breadcrumb-sep"> &gt; </span>}
-                              <button
-                                type="button"
-                                className="register-sale-docs-breadcrumb-btn"
-                                onClick={() => {
-                                  setDriveCurrentFolderId(seg.id);
-                                  setDriveBreadcrumb((b) => b.slice(0, i + 1));
-                                }}
-                              >
-                                {seg.name}
-                              </button>
-                            </span>
-                          ))}
-                          <a
-                            href={driveCurrentFolderId ? `https://drive.google.com/drive/folders/${driveCurrentFolderId}` : driveFolderLink}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="register-sale-docs-open-drive"
-                            title="Drive에서 열기"
-                          >
-                            <span className="material-symbols-outlined">open_in_new</span>
-                          </a>
-                        </div>
-                      )}
-                      {loadingDriveFiles ? (
-                        <p className="register-sale-docs-loading">목록 불러오는 중…</p>
-                      ) : driveFilesList.length === 0 ? (
-                        <div
-                          className={`register-sale-docs-dropzone register-sale-docs-dropzone-inline ${docsDropActive ? 'register-sale-docs-dropzone-active' : ''} ${driveUploading ? 'register-sale-docs-dropzone-disabled' : ''}`}
-                          onClick={() => { if (!driveUploading && driveFileInputRef.current) driveFileInputRef.current.click(); }}
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !driveUploading && driveFileInputRef.current) driveFileInputRef.current.click(); }}
+                  <div className="register-sale-docs-drive-meta" aria-live="polite">
+                    <div className="register-sale-docs-drive-meta-row">
+                      <span className="register-sale-docs-drive-meta-label">개인 폴더명</span>
+                      <code
+                        className="register-sale-docs-drive-meta-code"
+                        title={hasConfirmedCompany ? `고객사 폴더(${companyDriveFolderName}) 아래에 이 이름으로 준비됩니다` : '공유 드라이브 루트 아래 이 이름으로 준비됩니다'}
+                      >
+                        {driveFolderName}
+                      </code>
+                    </div>
+                    {hasConfirmedCompany && companyDriveFolderName ? (
+                      <div className="register-sale-docs-drive-meta-row">
+                        <span className="register-sale-docs-drive-meta-label">고객사 폴더명</span>
+                        <code className="register-sale-docs-drive-meta-code" title="등록 드라이브 루트 아래 고객사 루트">
+                          {companyDriveFolderName}
+                        </code>
+                      </div>
+                    ) : null}
+                    {driveMongoRegisteredUrl ? (
+                      <div className="register-sale-docs-drive-meta-row register-sale-docs-drive-meta-row--link">
+                        <span className="register-sale-docs-drive-meta-label">개인 폴더 CRM 주소</span>
+                        <a
+                          href={driveMongoRegisteredUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="register-sale-docs-drive-meta-link"
                         >
-                          <span className="material-symbols-outlined register-sale-docs-dropzone-icon">upload_file</span>
-                          <span>{driveUploading ? '업로드 중…' : '비어 있음. 클릭하거나 파일을 놓아 추가'}</span>
-                        </div>
-                      ) : (
-                        <ul className="register-sale-docs-file-list">
-                          {driveFilesList.map((item) => {
-                            const isFolder = item.mimeType === DRIVE_FOLDER_MIME;
-                            const link = isFolder
-                              ? null
-                              : (item.webViewLink || `https://drive.google.com/file/d/${item.id}/view`);
-                            return (
-                              <li key={item.id}>
-                                <button
-                                  type="button"
-                                  className={`register-sale-docs-file-row ${isFolder ? 'register-sale-docs-file-row--folder' : 'register-sale-docs-file-row--file'}`}
-                                  onClick={() => {
-                                    if (isFolder) {
-                                      setDriveCurrentFolderId(item.id);
-                                      setDriveBreadcrumb((b) => [...b, { id: item.id, name: item.name || '폴더' }]);
-                                    } else if (link) {
-                                      window.open(link, '_blank', 'noopener,noreferrer');
-                                    }
-                                  }}
-                                >
-                                  <span className="material-symbols-outlined register-sale-docs-file-icon">
-                                    {isFolder ? 'folder' : 'description'}
-                                  </span>
-                                  <span className="register-sale-docs-file-name">{item.name || (isFolder ? '폴더' : '파일')}</span>
-                                </button>
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      )}
-                      {driveUploading ? (
-                        <div className="register-sale-docs-embed-overlay">업로드 중…</div>
-                      ) : docsDropActive ? (
-                        <div className="register-sale-docs-embed-overlay">여기에 놓기</div>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <div
-                      className={`register-sale-docs-dropzone ${docsDropActive ? 'register-sale-docs-dropzone-active' : ''} ${driveUploading ? 'register-sale-docs-dropzone-disabled' : ''}`}
-                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); if (!driveUploading) setDocsDropActive(true); }}
-                      onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setDocsDropActive(false); }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        setDocsDropActive(false);
-                        if (!driveUploading && e.dataTransfer?.files?.length) handleDirectFileUpload(e.dataTransfer.files);
-                      }}
-                      onClick={() => { if (!driveUploading && driveFileInputRef.current) driveFileInputRef.current.click(); }}
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => { if ((e.key === 'Enter' || e.key === ' ') && !driveUploading && driveFileInputRef.current) driveFileInputRef.current.click(); }}
-                      aria-label="파일 업로드 (드래그 앤 드롭 또는 클릭)"
-                    >
-                      <span className="material-symbols-outlined register-sale-docs-dropzone-icon">upload_file</span>
-                      <span>{driveUploading ? '업로드 중…' : '파일을 여기에 놓거나 클릭하여 선택'}</span>
-                    </div>
-                  )}
+                          {driveMongoRegisteredUrl.length > 64
+                            ? `${driveMongoRegisteredUrl.slice(0, 48)}…`
+                            : driveMongoRegisteredUrl}
+                        </a>
+                      </div>
+                    ) : (
+                      <p className="register-sale-docs-drive-meta-pending">
+                        폴더가 준비되면 위 폴더명으로 Drive 링크가 CRM에 저장되어 표시됩니다. 공유 드라이브 루트는 회사 개요의 「전체 공유 드라이브 주소」에서 설정합니다.
+                      </p>
+                    )}
+                    {hasConfirmedCompany && companyDriveRegisteredUrl ? (
+                      <div className="register-sale-docs-drive-meta-row register-sale-docs-drive-meta-row--link">
+                        <span className="register-sale-docs-drive-meta-label">고객사 루트 CRM 주소</span>
+                        <a
+                          href={companyDriveRegisteredUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="register-sale-docs-drive-meta-link"
+                        >
+                          {companyDriveRegisteredUrl.length > 64
+                            ? `${companyDriveRegisteredUrl.slice(0, 48)}…`
+                            : companyDriveRegisteredUrl}
+                        </a>
+                      </div>
+                    ) : null}
+                  </div>
+                  <div
+                    className={`register-sale-docs-crm-uploads ${crmListDropActive ? 'register-sale-docs-crm-uploads--drop-active' : ''} ${driveUploading ? 'register-sale-docs-crm-uploads--disabled' : ''}`}
+                    onDragEnter={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (!driveUploading) setCrmListDropActive(true);
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (!driveUploading) setCrmListDropActive(true);
+                    }}
+                    onDragLeave={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (!e.currentTarget.contains(e.relatedTarget)) setCrmListDropActive(false);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setCrmListDropActive(false);
+                      if (!driveUploading && e.dataTransfer?.files?.length) handleDirectFileUpload(e.dataTransfer.files);
+                    }}
+                  >
+                    <h4 className="register-sale-docs-crm-uploads-title">
+                      <span className="material-symbols-outlined">history_edu</span>
+                      리스트
+                    </h4>
+                    <p className="register-sale-docs-crm-uploads-hint">
+                      업로드가 완료되면 제목·수정일·링크가 MongoDB에 저장되어 여기에 표시됩니다. 파일을 끌어 놓거나 위쪽 「증서 · 자료」의 추가 버튼으로 올릴 수 있습니다.
+                    </p>
+                    {crmDriveUploadsSorted.length === 0 ? (
+                      <div
+                        className={`register-sale-docs-crm-empty ${crmListDropActive ? 'register-sale-docs-crm-empty--active' : ''}`}
+                        onClick={() => {
+                          if (!driveUploading && fileInputRef.current) fileInputRef.current.click();
+                        }}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if ((e.key === 'Enter' || e.key === ' ') && !driveUploading && fileInputRef.current) {
+                            e.preventDefault();
+                            fileInputRef.current.click();
+                          }
+                        }}
+                      >
+                        <span className="material-symbols-outlined register-sale-docs-crm-empty-icon">inbox</span>
+                        <span className="register-sale-docs-crm-empty-text">
+                          {driveUploading ? '업로드 중…' : '등록된 항목이 없습니다. 파일을 여기에 놓거나 위쪽 추가 버튼으로 올리세요.'}
+                        </span>
+                      </div>
+                    ) : (
+                      <RegisterSaleDocsCrmTable
+                        rows={crmDriveUploadsSorted}
+                        formatDriveFileDate={formatDriveFileDate}
+                        driveUploading={driveUploading}
+                        crmDriveDeletingId={crmDriveDeletingId}
+                        onDeleteRow={handleDeleteCrmDriveFile}
+                      />
+                    )}
+                  </div>
                   {driveError && <p className="register-sale-docs-error">{driveError}</p>}
+                  {driveUploadNotice && !driveError && (
+                    <p className="register-sale-docs-success" role="status">
+                      {driveUploadNotice}
+                    </p>
+                  )}
                 </section>
 
                 <section className="contact-detail-section">
@@ -1449,16 +1545,6 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
           </div>
         </div>
       )}
-      <DriveLargeFileWarningModal
-        open={largeFileWarning.open}
-        files={largeFileWarning.files}
-        onClose={() => setLargeFileWarning({ open: false, files: [], folderUrl: '' })}
-        onConfirm={() => {
-          const url = largeFileWarning.folderUrl;
-          setLargeFileWarning({ open: false, files: [], folderUrl: '' });
-          if (url) window.open(url, '_blank', 'noopener,noreferrer');
-        }}
-      />
     </>
   );
 }

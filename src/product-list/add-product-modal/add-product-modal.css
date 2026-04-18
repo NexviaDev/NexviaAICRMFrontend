@@ -1,3 +1,9 @@
+/* 엑셀 드롭존 — 고객사 일괄 가져오기와 동일 cc-excel-dropzone, 여기서만 여백 조정 */
+.add-product-modal-excel-drop {
+  margin-bottom: 1rem;
+  padding: 1.25rem 1rem;
+}
+
 .add-product-modal-overlay {
   position: fixed;
   inset: 0;

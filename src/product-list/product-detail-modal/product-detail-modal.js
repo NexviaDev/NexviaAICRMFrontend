@@ -20,9 +20,22 @@ function formatPrice(price, currency) {
   return `${sym}${Number(price).toLocaleString()}`;
 }
 
+/** 신규 등록용: _id 등 복제하면 안 되는 필드 제거, 커스텀 필드는 얕은 복사 */
+function productToDuplicateDraft(source) {
+  if (!source) return null;
+  const { _id, __v, createdAt, updatedAt, companyId, ...rest } = source;
+  return {
+    ...rest,
+    customFields: source.customFields && typeof source.customFields === 'object'
+      ? { ...source.customFields }
+      : {}
+  };
+}
+
 /** 제품 세부정보 모달 - 행 클릭 시 표시, 수정 시 같은 패널에서 폼 슬라이드 */
 export default function ProductDetailModal({ product, onClose, onUpdated, onDelete }) {
   const [editing, setEditing] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
   const [customDefinitions, setCustomDefinitions] = useState([]);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -44,22 +57,30 @@ export default function ProductDetailModal({ product, onClose, onUpdated, onDele
       if (e.key !== 'Escape') return;
       if (showDeleteConfirm) setShowDeleteConfirm(false);
       else if (editing) setEditing(false);
+      else if (duplicating) setDuplicating(false);
       else onClose?.();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, editing, showDeleteConfirm]);
+  }, [onClose, editing, duplicating, showDeleteConfirm]);
 
   if (!product) return null;
 
-  if (editing) {
+  if (editing || duplicating) {
+    const duplicateDraft = duplicating ? productToDuplicateDraft(product) : null;
     return (
       <AddProductModal
-        product={product}
+        key={duplicating ? `duplicate-${product._id}` : `edit-${product._id}`}
+        product={duplicating ? duplicateDraft : product}
+        variant={duplicating ? 'duplicate' : undefined}
         presentation="slide"
-        onClose={() => setEditing(false)}
+        onClose={() => {
+          setEditing(false);
+          setDuplicating(false);
+        }}
         onSaved={() => {
           setEditing(false);
+          setDuplicating(false);
           onUpdated?.();
         }}
       />
@@ -69,7 +90,13 @@ export default function ProductDetailModal({ product, onClose, onUpdated, onDele
   const statusClass = product.status === 'Active' ? 'active' : product.status === 'EndOfLife' ? 'eol' : 'draft';
 
   const startEdit = () => {
+    setDuplicating(false);
     setEditing(true);
+  };
+
+  const startDuplicate = () => {
+    setEditing(false);
+    setDuplicating(true);
   };
 
   const handleDelete = () => {
@@ -96,6 +123,11 @@ export default function ProductDetailModal({ product, onClose, onUpdated, onDele
               {!editing && onUpdated && (
                 <button type="button" className="product-detail-icon-btn" onClick={startEdit} title="수정">
                   <span className="material-symbols-outlined">edit</span>
+                </button>
+              )}
+              {!editing && onUpdated && (
+                <button type="button" className="product-detail-icon-btn" onClick={startDuplicate} title="복제하여 새 제품 등록">
+                  <span className="material-symbols-outlined">content_copy</span>
                 </button>
               )}
               {!editing && onDelete && (

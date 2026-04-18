@@ -31,7 +31,7 @@ export default function CompanyImportPreviewModal({
             <thead>
               <tr>
                 <th>출처</th>
-                <th>고객사명</th>
+                <th>기업명</th>
                 <th>사업자번호</th>
                 <th>대표</th>
                 <th>업종</th>

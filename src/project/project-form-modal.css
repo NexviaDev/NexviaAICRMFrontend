@@ -370,6 +370,15 @@
   background: none;
 }
 
+.pfm-drive-notice {
+  margin: 0.5rem 0 0;
+  font-size: 0.8125rem;
+  color: #2d7a3e;
+  line-height: 1.4;
+  padding: 0;
+  background: none;
+}
+
 .pfm-drive-list-wrap {
   position: relative;
   margin-bottom: 0.5rem;
