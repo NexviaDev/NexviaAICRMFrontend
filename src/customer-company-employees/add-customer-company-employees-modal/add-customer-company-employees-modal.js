@@ -8,6 +8,7 @@ import './add-customer-company-employees-modal.css';
 import ContactImportPreviewModal from './contact-import-preview-modal';
 
 import { API_BASE } from '@/config';
+import { geocodeAddressForCompanySave } from '@/lib/geocode-company-address';
 import { buildDriveFileDeleteUrl, getDriveFileIdFromUrl, isValidDriveNodeId, sanitizeDriveFolderWebViewLink } from '@/lib/google-drive-url';
 import { pingBackendHealth } from '@/lib/backend-wake';
 import { pruneDriveUploadedFilesIndex } from '@/lib/drive-uploaded-files-prune';
@@ -1132,6 +1133,23 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
       }
       if (form.customFields && Object.keys(form.customFields).length) payload.customFields = form.customFields;
       payload.assigneeUserIds = Array.isArray(form.assigneeUserIds) ? form.assigneeUserIds : [];
+
+      const companyIdStr = String(form.customerCompanyId || '').trim();
+      const companyNameTrim = (form.company || '').trim();
+      const creatingCustomerCompanyByName = !isIndividual && !companyIdStr && !!companyNameTrim;
+      const addrTrim = (form.address || '').trim();
+      if (creatingCustomerCompanyByName) {
+        payload.companyAddress = addrTrim;
+        if (addrTrim) {
+          try {
+            const coords = await geocodeAddressForCompanySave(addrTrim);
+            if (coords?.latitude != null && coords?.longitude != null) {
+              payload.customerCompanyLatitude = coords.latitude;
+              payload.customerCompanyLongitude = coords.longitude;
+            }
+          } catch (_) {}
+        }
+      }
 
       const url = isEditMode ? `${API_BASE}/customer-company-employees/${contact._id || contact.id}` : `${API_BASE}/customer-company-employees`;
       const method = isEditMode ? 'PATCH' : 'POST';

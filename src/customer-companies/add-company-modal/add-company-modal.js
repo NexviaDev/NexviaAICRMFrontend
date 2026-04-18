@@ -29,6 +29,7 @@ import {
   loadGoogleMapsPromise,
   geocodeAddressWithGoogleMaps
 } from '@/lib/google-maps-client';
+import { geocodeAddressForCompanySave } from '@/lib/geocode-company-address';
 
 const GOOGLE_MAPS_API_KEY = getGoogleMapsApiKey();
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.978 };
@@ -48,36 +49,6 @@ function getPickerMarkerIcon(google) {
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
-/**
- * 저장 시 주소만 있고 위·경도가 비었을 때 사용. 서버 geocode → 실패 시 클라이언트 Maps Geocoder.
- * @returns {Promise<{ latitude: number, longitude: number } | null>}
- */
-async function geocodeAddressForCompanySave(addressText) {
-  const address = (addressText || '').trim();
-  if (!address) return null;
-  try {
-    const geoRes = await fetch(`${API_BASE}/customer-companies/geocode`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-      body: JSON.stringify({ address })
-    });
-    const geoData = await geoRes.json().catch(() => ({}));
-    if (geoRes.ok && geoData.latitude != null && geoData.longitude != null) {
-      const latitude = Number(geoData.latitude);
-      const longitude = Number(geoData.longitude);
-      if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
-        return { latitude, longitude };
-      }
-    }
-  } catch (_) {}
-  if (!GOOGLE_MAPS_API_KEY) return null;
-  const google = await loadGoogleMapsPromise();
-  if (!google?.maps?.Geocoder) return null;
-  const coords = await geocodeAddressWithGoogleMaps(google, address);
-  if (coords?.latitude != null && coords?.longitude != null) return coords;
-  return null;
 }
 
 /** 사업자번호: 숫자만 허용, 10자리까지 입력 시 123-45-67890 형식으로 자동 구분 */

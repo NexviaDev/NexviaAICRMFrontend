@@ -348,7 +348,6 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
     try {
       const params = new URLSearchParams();
       params.set('customerCompanyEmployeeId', contactId);
-      if (companyIdForSales) params.set('customerCompanyId', companyIdForSales);
       const res = await fetch(`${API_BASE}/sales-opportunities?${params}`, { headers: getAuthHeader() });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.grouped) {
@@ -366,7 +365,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
 
   useEffect(() => {
     fetchProductSales();
-  }, [contactId, companyIdForSales]);
+  }, [contactId]);
 
   const driveFolderName = useMemo(() => buildPersonalDriveFolderName(contactToShow), [contactToShow]);
 
