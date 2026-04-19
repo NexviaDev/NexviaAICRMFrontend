@@ -1017,10 +1017,10 @@ export default function Home() {
             currencies: ['KRW'],
             chartMeta: {
               kpiPeriod: 'half',
-              title: '당반기 월별(1~6월 또는 7~12월) · 전년 동월',
-              legendCurrent: '올해(당반기)',
-              legendPrev: '전년 동월',
-              granularity: 'month'
+              title: '올해 반기(1~6월·7~12월) · 전년 동반기',
+              legendCurrent: '올해(반기)',
+              legendPrev: '전년 동반기',
+              granularity: 'half'
             },
             consumerByCurrency: { KRW: [] },
             consumerPrevYearByCurrency: { KRW: [] },
@@ -1545,7 +1545,7 @@ export default function Home() {
       const spanSum = posSpan + negSpan;
       const topFr = spanSum > 0 ? posSpan : 1;
       const botFr = spanSum > 0 ? negSpan : 1;
-      /** 주간(8)·연간(12)·당해 월말 8개월 이상 등: minmax(4.5rem) 그리드가 두 줄로 줄바꿈 → 열 수 고정으로 한 줄·좁은 막대 */
+      /** 주간(8)·연간(다연도)·당해 월말 8개월 이상 등: minmax(4.5rem) 그리드가 두 줄로 줄바꿈 → 열 수 고정으로 한 줄·좁은 막대 */
       const barCount = barSeries.length;
       const denseInsightBars = barCount >= 8;
       const denseBarGridStyle = denseInsightBars
