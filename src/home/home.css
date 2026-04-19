@@ -366,6 +366,18 @@
   letter-spacing: -0.02em;
 }
 
+.home-kpi-card-value--insight-anim {
+  font-variant-numeric: tabular-nums;
+}
+
+.home-kpi-goal-fill--insight-anim {
+  transition: width 0.52s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.home-kpi-strip--motion-reduced .home-kpi-goal-fill--insight-anim {
+  transition: none;
+}
+
 .home-kpi-card-hint {
   margin: 0 0 0.65rem;
   font-size: 0.68rem;
@@ -494,6 +506,55 @@
   justify-content: flex-start;
   gap: 0.6rem 1rem;
   width: 100%;
+}
+
+/** 조회 범위(왼쪽) + KPI 기간(오른쪽) 한 행 */
+.home-insight-toolbar-primary-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  width: 100%;
+}
+
+.home-insight-toolbar-scope {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/** KPI 카드 집계 기간 — 인사이트 범위(회사·팀·개인)와 함께 쿼리됨 */
+.home-kpi-period-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding: 0.15rem 0;
+}
+
+.home-insight-toolbar-primary-row .home-kpi-period-toolbar {
+  flex: 0 0 auto;
+  margin-left: auto;
+  width: auto;
+  justify-content: flex-end;
+}
+
+.home-kpi-period-toolbar-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-muted, #64748b);
+  flex-shrink: 0;
+}
+
+.home-kpi-period-switch button {
+  padding: 0.38rem 0.55rem;
+  font-size: 0.74rem;
+}
+
+@media (max-width: 640px) {
+  .home-kpi-period-switch {
+    flex-wrap: wrap;
+  }
 }
 
 .home-insight-leader-filters-inline {
@@ -1057,6 +1118,26 @@
   align-items: end;
 }
 
+/* 막대 많을 때(주 8·연 12 등): 한 줄 유지, 막대·라벨 열 정렬 */
+.home-mini-chart--dense-cols {
+  gap: 0.4rem;
+}
+
+.home-mini-chart--dense-cols .home-mini-chart-track {
+  padding-left: 0.1rem;
+  padding-right: 0.1rem;
+}
+
+.home-bar-chart-labels--dense-cols {
+  gap: 0.4rem;
+}
+
+.home-bar-chart-labels--dense-cols span {
+  font-size: 0.62rem;
+  line-height: 1.2;
+  word-break: keep-all;
+}
+
 .home-mini-chart-col {
   display: flex;
   flex-direction: column;
@@ -1140,6 +1221,15 @@
   min-height: 2px;
   border-radius: 0.75rem 0.75rem 0 0;
   transition: height 0.25s ease;
+}
+
+/* 인사이트 차트: 값 보간(rAF)과 겹치지 않게 높이 전환은 끔 */
+.home-mini-chart-bar.home-mini-chart-bar--insight-anim {
+  transition: none;
+}
+
+.home-chart-panel--motion-reduced .home-mini-chart-bar--insight-anim {
+  transition: none;
 }
 
 /* 막대 색상은 home.js 인라인 backgroundColor (파스텔 단색) */

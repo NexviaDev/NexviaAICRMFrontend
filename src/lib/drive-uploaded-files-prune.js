@@ -3,6 +3,62 @@ import { pingBackendHealth } from '@/lib/backend-wake';
 import { isValidDriveNodeId } from '@/lib/google-drive-url';
 
 /**
+ * Drive 폴더에만 있고 Mongo driveUploadedFiles 에 없는 **파일** 메타를 CRM에 추가합니다 (폴더 MIME 제외, 최대 200건 슬라이스).
+ * Admin 권한 없이 로그인 사용자만 있으면 됩니다.
+ *
+ * @param {object} opts
+ * @param {() => Record<string, string>} opts.getAuthHeader
+ * @param {string} opts.folderId
+ * @param {string} [opts.customerCompanyId]
+ * @param {string} [opts.customerCompanyEmployeeId]
+ * @returns {Promise<{ added: number, error?: string }>}
+ */
+export async function syncDriveUploadedFilesIndex({
+  getAuthHeader,
+  folderId,
+  customerCompanyId,
+  customerCompanyEmployeeId
+}) {
+  const fid = (folderId != null && String(folderId).trim()) || '';
+  if (!fid || !isValidDriveNodeId(fid)) {
+    return { added: 0 };
+  }
+  const cc = customerCompanyId != null && String(customerCompanyId).trim() ? String(customerCompanyId).trim() : '';
+  const cce =
+    customerCompanyEmployeeId != null && String(customerCompanyEmployeeId).trim()
+      ? String(customerCompanyEmployeeId).trim()
+      : '';
+  if (!cc && !cce) {
+    return { added: 0 };
+  }
+  if (cc && cce) {
+    return { added: 0, error: 'customerCompanyId와 customerCompanyEmployeeId는 동시에 지정할 수 없습니다.' };
+  }
+
+  try {
+    await pingBackendHealth(getAuthHeader);
+    const res = await fetch(`${API_BASE}/drive/sync-uploaded-files-index`, {
+      method: 'POST',
+      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        folderId: fid,
+        ...(cc ? { customerCompanyId: cc } : {}),
+        ...(cce ? { customerCompanyEmployeeId: cce } : {})
+      })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = data.error || data.details || 'Drive → CRM 목록 반영에 실패했습니다.';
+      return { added: 0, error: String(msg) };
+    }
+    return { added: Number(data.added) || 0 };
+  } catch {
+    return { added: 0, error: 'Drive → CRM 목록 반영에 실패했습니다.' };
+  }
+}
+
+/**
  * Drive에만 없고 Mongo driveUploadedFiles 에만 남은 행을 제거합니다.
  * Admin 권한 없이 로그인 사용자만 있으면 됩니다.
  *

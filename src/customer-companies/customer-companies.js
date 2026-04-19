@@ -17,6 +17,7 @@ import ListPaginationButtons from '@/components/list-pagination-buttons/list-pag
 import * as XLSX from 'xlsx';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import AssigneeHandoverModal from '@/company-overview/assignee-handover-modal/assignee-handover-modal';
+import MergeCustomerCompaniesModal from './merge-customer-companies-modal/merge-customer-companies-modal';
 import CustomFieldsManageModal from '@/shared/custom-fields-manage-modal/custom-fields-manage-modal';
 
 import { API_BASE } from '@/config';
@@ -109,7 +110,9 @@ export default function CustomerCompanies() {
   const canExportExcel = isAdminOrAboveRole(me?.role);
   const canManageCustomFieldDefinitions = isAdminOrAboveRole(me?.role);
   const canRequestAssigneeHandover = !!(me && String(me.role || '').toLowerCase() !== 'pending');
+  const canMergeCustomerCompanies = isAdminOrAboveRole(me?.role);
   const [handoverCtx, setHandoverCtx] = useState(null);
+  const [mergeModalOpen, setMergeModalOpen] = useState(false);
   const [showCustomFieldsManageModal, setShowCustomFieldsManageModal] = useState(false);
   const SEARCH_FIELD_OPTIONS = [
     { key: 'name', label: '기업명' },
@@ -122,6 +125,11 @@ export default function CustomerCompanies() {
     { key: 'memo', label: '메모' }
   ];
   const sortKey = sort.key;
+  const companiesForMergeModal = useMemo(
+    () => [...selectedCompanyIds].map((id) => selectedCompanyMap[id]).filter(Boolean),
+    [selectedCompanyIds, selectedCompanyMap]
+  );
+
   const assigneeIdToName = useMemo(() => {
     const map = {};
     (companyEmployees || []).forEach((e) => {
@@ -479,6 +487,15 @@ export default function CustomerCompanies() {
     setLastCheckedIndex(null);
   }, []);
 
+  const openMergeCompaniesModal = useCallback(() => {
+    if (!canMergeCustomerCompanies) return;
+    if (selectedCompanyIds.size < 2) {
+      window.alert('병합하려면 고객사를 2곳 이상 선택해 주세요.');
+      return;
+    }
+    setMergeModalOpen(true);
+  }, [canMergeCustomerCompanies, selectedCompanyIds.size]);
+
   const openCompanyHandoverFromSelection = useCallback(() => {
     if (!canRequestAssigneeHandover) return;
     if (selectedCompanyIds.size === 0) return;
@@ -727,6 +744,18 @@ export default function CustomerCompanies() {
               <span className="cc-selection-action-bar-hint">Shift+클릭으로 범위 선택</span>
             </span>
             <div className="cc-selection-action-bar-btns">
+              {canMergeCustomerCompanies ? (
+                <button
+                  type="button"
+                  className="cc-selection-action-bar-merge"
+                  onClick={openMergeCompaniesModal}
+                  disabled={selectedCompanyIds.size < 2}
+                  title="선택한 고객사를 하나로 합칩니다 (2곳 이상, Admin 이상)"
+                >
+                  <span className="material-symbols-outlined" aria-hidden>merge</span>
+                  병합하기
+                </button>
+              ) : null}
               {canRequestAssigneeHandover ? (
                 <button
                   type="button"
@@ -1019,6 +1048,17 @@ export default function CustomerCompanies() {
           }}
         />
       )}
+      {mergeModalOpen ? (
+        <MergeCustomerCompaniesModal
+          open
+          onClose={() => setMergeModalOpen(false)}
+          companies={companiesForMergeModal}
+          onMerged={() => {
+            fetchList(pagination.page);
+            clearCompanySelection();
+          }}
+        />
+      ) : null}
       {handoverCtx && (
         <AssigneeHandoverModal
           open

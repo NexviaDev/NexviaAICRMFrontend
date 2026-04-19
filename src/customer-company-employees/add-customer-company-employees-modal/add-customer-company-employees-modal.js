@@ -11,7 +11,7 @@ import { API_BASE } from '@/config';
 import { geocodeAddressForCompanySave } from '@/lib/geocode-company-address';
 import { buildDriveFileDeleteUrl, getDriveFileIdFromUrl, isValidDriveNodeId, sanitizeDriveFolderWebViewLink } from '@/lib/google-drive-url';
 import { pingBackendHealth } from '@/lib/backend-wake';
-import { pruneDriveUploadedFilesIndex } from '@/lib/drive-uploaded-files-prune';
+import { pruneDriveUploadedFilesIndex, syncDriveUploadedFilesIndex } from '@/lib/drive-uploaded-files-prune';
 import {
   RegisterSaleDocsCrmTable,
   fileToBase64,
@@ -520,12 +520,18 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
     })();
   }, [contactId, driveFolderName, hasConfirmedCompany, isEditMode, ensureDriveRootFolder]);
 
-  /** 수정 모달: Mongo에 등록된 연락처 Drive 폴더 기준으로 목록 정리 */
+  /** 수정 모달: Drive 직속 파일 ↔ Mongo 목록 동기화(추가 후 정리) */
   useEffect(() => {
     const fid = contactToShow?.driveRootFolderId;
     if (!contactId || !fid || !isValidDriveNodeId(String(fid).trim())) return undefined;
     let cancelled = false;
     (async () => {
+      await syncDriveUploadedFilesIndex({
+        getAuthHeader,
+        folderId: String(fid).trim(),
+        customerCompanyEmployeeId: String(contactId)
+      });
+      if (cancelled) return;
       await pruneDriveUploadedFilesIndex({
         getAuthHeader,
         folderId: String(fid).trim(),

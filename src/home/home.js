@@ -163,6 +163,117 @@ function formatHomeKpiDeltaPct(pct, isPP) {
   return { text: isPP ? `${body}%p` : `${body}%`, dir };
 }
 
+function easeOutCubic(t) {
+  return 1 - (1 - t) ** 3;
+}
+
+/** OS「모션 줄이기」— 감소 시 보간 시간 0 */
+function usePrefersReducedMotion() {
+  const [reduced, setReduced] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+      ? true
+      : false
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const fn = () => setReduced(mq.matches);
+    mq.addEventListener('change', fn);
+    return () => mq.removeEventListener('change', fn);
+  }, []);
+  return reduced;
+}
+
+/**
+ * 인사이트 대시보드 `data`가 바뀔 때마다 증가 — 조회 범위·KPI 기간 전환 시 숫자/차트 보간 트리거
+ * (fetch가 loading을 다시 켜지 않으므로 data 참조로만 감지)
+ */
+function useInsightAnimEpoch(data) {
+  const [epoch, setEpoch] = useState(0);
+  const lastRef = useRef(null);
+  useEffect(() => {
+    if (!data || lastRef.current === data) return;
+    lastRef.current = data;
+    setEpoch((e) => e + 1);
+  }, [data]);
+  return epoch;
+}
+
+function useAnimatedScalar(target, animEpoch, durationMs) {
+  const safe = Number.isFinite(Number(target)) ? Number(target) : 0;
+  const [display, setDisplay] = useState(safe);
+  const displayRef = useRef(safe);
+  displayRef.current = display;
+
+  useEffect(() => {
+    if (durationMs <= 0) {
+      setDisplay(safe);
+      return;
+    }
+    const from = displayRef.current;
+    const start = performance.now();
+    let raf = 0;
+    const tick = (now) => {
+      const u = Math.min(1, (now - start) / durationMs);
+      const e = easeOutCubic(u);
+      setDisplay(from + (safe - from) * e);
+      if (u < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [safe, animEpoch, durationMs]);
+
+  return display;
+}
+
+function useTweenedDualSeries(curA, curB, animEpoch, durationMs) {
+  const norm = (s) => (Array.isArray(s) ? s : []);
+  const [outA, setOutA] = useState(() => norm(curA));
+  const [outB, setOutB] = useState(() => norm(curB));
+  const pairRef = useRef({ a: outA, b: outB });
+  pairRef.current = { a: outA, b: outB };
+
+  useEffect(() => {
+    const ta = norm(curA);
+    const tb = norm(curB);
+    if (durationMs <= 0) {
+      setOutA(ta);
+      setOutB(tb);
+      return;
+    }
+    const { a: fa, b: fb } = pairRef.current;
+    const n = Math.max(ta.length, fa.length, tb.length, fb.length);
+    const start = performance.now();
+    let raf = 0;
+    const tick = (now) => {
+      const t = Math.min(1, (now - start) / durationMs);
+      const e = easeOutCubic(t);
+      const na = [];
+      const nb = [];
+      for (let i = 0; i < n; i += 1) {
+        const va = Number(ta[i]?.value) || 0;
+        const vb = Number(tb[i]?.value) || 0;
+        const oa = Number(fa[i]?.value) || 0;
+        const ob = Number(fb[i]?.value) || 0;
+        na.push({
+          label: String(ta[i]?.label ?? fa[i]?.label ?? ''),
+          value: oa + (va - oa) * e
+        });
+        nb.push({
+          label: String(tb[i]?.label ?? fb[i]?.label ?? ''),
+          value: ob + (vb - ob) * e
+        });
+      }
+      setOutA(na);
+      setOutB(nb);
+      if (t < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [curA, curB, animEpoch, durationMs]);
+
+  return [outA, outB];
+}
+
 /** 통화별 합계 — 순마진 등 음수·0 구분 표시 */
 function formatDashboardCurrencyTotals(w) {
   const entries = Object.entries(w || {}).filter(
@@ -599,6 +710,15 @@ function leaderBreakdownModeFromSearchParams(sp) {
 const HOME_INSIGHT_DEPT_PARAM = 'homeInsightDept';
 const HOME_INSIGHT_USER_PARAM = 'homeInsightUser';
 
+/** 홈 KPI 카드 집계 기간 — 백엔드 kpiPeriod (week|month|quarter|half|year) */
+const HOME_KPI_PERIOD_PARAM = 'kpiPeriod';
+
+function normalizeHomeKpiPeriod(raw) {
+  const s = String(raw || '').trim().toLowerCase();
+  if (['week', 'month', 'quarter', 'half', 'year'].includes(s)) return s;
+  return 'half';
+}
+
 function formatLeaderEmployeeOptionLabel(u, departments) {
   const deptLabel = (departments || []).find((d) => d.id === u.departmentId)?.label;
   if (deptLabel) return `${u.name} (${deptLabel})`;
@@ -636,6 +756,7 @@ export default function Home() {
   );
   const insightDeptQ = String(searchParams.get(HOME_INSIGHT_DEPT_PARAM) || '').trim();
   const insightUserQ = String(searchParams.get(HOME_INSIGHT_USER_PARAM) || '').trim();
+  const kpiPeriod = normalizeHomeKpiPeriod(searchParams.get(HOME_KPI_PERIOD_PARAM));
   const isCompanyWideInsight = String(searchParams.get(HOME_INSIGHT_PARAM) || '').toLowerCase() === 'full';
   const leaderInsightViewKind =
     String(searchParams.get(HOME_INSIGHT_VIEW_PARAM) || 'team').toLowerCase() === 'personal'
@@ -788,6 +909,22 @@ export default function Home() {
     );
   }, [setSearchParams]);
 
+  const setHomeKpiPeriod = useCallback(
+    (period) => {
+      const next = normalizeHomeKpiPeriod(period);
+      setSearchParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          if (next === 'half') p.delete(HOME_KPI_PERIOD_PARAM);
+          else p.set(HOME_KPI_PERIOD_PARAM, next);
+          return p;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
+
   const resetLeaderInsightToSelfUser = useCallback(() => {
     setSearchParams(
       (prev) => {
@@ -867,6 +1004,7 @@ export default function Home() {
           }
         }
         q.set('leaderBreakdown', leaderBreakdownView);
+        q.set('kpiPeriod', kpiPeriod);
         const res = await fetch(`${API_BASE}/reports/dashboard?${q.toString()}`, { headers: getAuthHeader() });
         if (!cancelled && res.ok) {
           const json = await res.json();
@@ -877,6 +1015,13 @@ export default function Home() {
           wonRevenue: { KRW: 0, USD: 0 },
           salesGraphs: {
             currencies: ['KRW'],
+            chartMeta: {
+              kpiPeriod: 'half',
+              title: '당반기 월별(1~6월 또는 7~12월) · 전년 동월',
+              legendCurrent: '올해(당반기)',
+              legendPrev: '전년 동월',
+              granularity: 'month'
+            },
             consumerByCurrency: { KRW: [] },
             consumerPrevYearByCurrency: { KRW: [] },
             netMarginByCurrency: { KRW: [] },
@@ -903,7 +1048,8 @@ export default function Home() {
     leaderBreakdownView,
     insightDeptQ,
     insightUserQ,
-    myCrmUserId
+    myCrmUserId,
+    kpiPeriod
   ]);
 
   useEffect(() => {
@@ -1166,6 +1312,10 @@ export default function Home() {
   }, []);
 
   const stats = data || {};
+  const insightAnimEpoch = useInsightAnimEpoch(data);
+  const prefersReducedMotion = usePrefersReducedMotion();
+  const insightAnimMs = prefersReducedMotion ? 0 : 520;
+
   const graphCurrencies = useMemo(() => {
     const currencies = Array.isArray(stats.salesGraphs?.currencies)
       ? stats.salesGraphs.currencies.filter(Boolean)
@@ -1175,6 +1325,33 @@ export default function Home() {
 
   /** 통화 선택 UI 제거 — API 통화 목록의 첫 통화로 그래프 표시 */
   const selectedGraphCurrency = graphCurrencies[0] || 'KRW';
+
+  const kpiAnimSrc = stats.kpiSummary;
+  const revNum = kpiAnimSrc?.revenue?.primaryTotal ?? kpiAnimSrc?.revenue?.last6Total ?? 0;
+  const gmRateNum = kpiAnimSrc?.grossMargin?.ratePct ?? 0;
+  const goalNum = kpiAnimSrc?.goal?.taskCompletion ?? 0;
+  const leadNum = kpiAnimSrc?.newLeads?.count ?? kpiAnimSrc?.newLeads?.count30d ?? 0;
+  const dealNum = kpiAnimSrc?.inProgress?.count ?? 0;
+  const revFcRaw = kpiAnimSrc?.revenue?.forecastVsPct;
+  const gmFcRaw = kpiAnimSrc?.grossMargin?.forecastVsPP;
+  const leadFcRaw = kpiAnimSrc?.newLeads?.forecastVsPct;
+  const revYoyRaw = kpiAnimSrc?.revenue?.yoyPct;
+  const gmYoyRaw = kpiAnimSrc?.grossMargin?.yoyPP;
+  const leadYoyRaw = kpiAnimSrc?.newLeads?.yoyPct;
+  const dealYoyRaw = kpiAnimSrc?.inProgress?.yoyPct;
+
+  const revAnim = useAnimatedScalar(revNum, insightAnimEpoch, insightAnimMs);
+  const gmRateAnim = useAnimatedScalar(gmRateNum, insightAnimEpoch, insightAnimMs);
+  const goalAnim = useAnimatedScalar(goalNum, insightAnimEpoch, insightAnimMs);
+  const leadAnim = useAnimatedScalar(leadNum, insightAnimEpoch, insightAnimMs);
+  const dealAnim = useAnimatedScalar(dealNum, insightAnimEpoch, insightAnimMs);
+  const revFcAnim = useAnimatedScalar(revFcRaw != null ? Number(revFcRaw) : 0, insightAnimEpoch, insightAnimMs);
+  const gmFcAnim = useAnimatedScalar(gmFcRaw != null ? Number(gmFcRaw) : 0, insightAnimEpoch, insightAnimMs);
+  const leadFcAnim = useAnimatedScalar(leadFcRaw != null ? Number(leadFcRaw) : 0, insightAnimEpoch, insightAnimMs);
+  const revYoyAnim = useAnimatedScalar(revYoyRaw != null ? Number(revYoyRaw) : 0, insightAnimEpoch, insightAnimMs);
+  const gmYoyAnim = useAnimatedScalar(gmYoyRaw != null ? Number(gmYoyRaw) : 0, insightAnimEpoch, insightAnimMs);
+  const leadYoyAnim = useAnimatedScalar(leadYoyRaw != null ? Number(leadYoyRaw) : 0, insightAnimEpoch, insightAnimMs);
+  const dealYoyAnim = useAnimatedScalar(dealYoyRaw != null ? Number(dealYoyRaw) : 0, insightAnimEpoch, insightAnimMs);
 
   const homeKpiCards = useMemo(() => {
     const kpi = stats.kpiSummary;
@@ -1193,34 +1370,41 @@ export default function Home() {
     const goal = kpi.goal;
     const nl = kpi.newLeads;
     const ip = kpi.inProgress;
+    const meta = kpi.kpiMeta || {};
+    const revTotal = rev?.primaryTotal ?? rev?.last6Total ?? 0;
+    const revenueYoyLabel = meta.revenueYoyLabel || '전년 동기 대비';
+    const leadHint = meta.leadHint || '해당 기간 신규 기회(생성일 기준)';
+    const leadSeqLabel = meta.leadSeqLabel || '직전 구간 대비';
 
     return [
       {
         key: 'rev',
         title: '매출액',
-        hint: '최근 6개월 수주 합계',
-        value: formatCurrency(rev?.last6Total ?? 0, cur),
+        hint: meta.revenueHint || '수주 합계',
+        value: formatCurrency(revTotal, cur),
         icon: 'payments',
         showForecast: true,
         showPeriod: true,
+        forecastMetricLabel: '기간 후반/전반',
         forecast: rev?.forecastVsPct,
         forecastMode: 'pct',
         period: rev?.yoyPct,
-        periodLabel: '전년대비',
+        periodLabel: revenueYoyLabel,
         periodMode: 'deltaPct'
       },
       {
         key: 'gm',
         title: '매출 총이익률',
-        hint: '최근 6개월 · 순마진÷수주액',
+        hint: meta.marginHint || '순마진÷수주액',
         value: `${gm?.ratePct ?? 0}%`,
         icon: 'percent',
         showForecast: true,
         showPeriod: true,
+        forecastMetricLabel: '기간 후반/전반',
         forecast: gm?.forecastVsPP,
         forecastMode: 'pp',
         period: gm?.yoyPP,
-        periodLabel: '전년대비',
+        periodLabel: revenueYoyLabel,
         periodMode: 'deltaPP'
       },
       {
@@ -1236,31 +1420,31 @@ export default function Home() {
         value: `${goal?.taskCompletion ?? 0}%`,
         icon: 'flag',
         showForecast: false,
-        showPeriod: false,
-        goalPct: Math.min(100, Math.max(0, Number(goal?.taskCompletion) || 0))
+        showPeriod: false
       },
       {
         key: 'lead',
         title: '신규 리드 건수',
-        hint: '최근 30일 신규 기회(생성일 기준)',
-        value: `${nl?.count30d ?? 0}건`,
+        hint: leadHint,
+        value: `${nl?.count ?? nl?.count30d ?? 0}건`,
         icon: 'person_add',
-        showForecast: false,
+        showForecast: true,
         showPeriod: true,
+        forecastMetricLabel: '단기 추세',
         forecast: nl?.forecastVsPct,
         forecastMode: 'pct',
         period: nl?.yoyPct,
-        periodLabel: '전월대비',
+        periodLabel: leadSeqLabel,
         periodMode: 'deltaPct'
       },
       {
         key: 'deal',
         title: '진행 중인 딜',
-        hint: '파이프라인 · 수주·종료·유기 제외',
+        hint: '파이프라인 · 수주·종료·유기 제외 (현재 시점 스냅샷)',
         value: `${ip?.count ?? 0}건`,
         icon: 'handshake',
         showForecast: false,
-        showPeriod: true,
+        showPeriod: false,
         forecast: ip?.forecastVsPct,
         forecastMode: 'pct',
         period: ip?.yoyPct,
@@ -1295,7 +1479,6 @@ export default function Home() {
     () => stats.salesGraphs?.consumerPrevYearByCurrency?.[selectedGraphCurrency] || [],
     [stats.salesGraphs, selectedGraphCurrency]
   );
-  const consumerSeries = useMemo(() => prepareChartSeries(consumerRaw), [consumerRaw]);
   const netMarginRaw = useMemo(
     () => stats.salesGraphs?.netMarginByCurrency?.[selectedGraphCurrency] || [],
     [stats.salesGraphs, selectedGraphCurrency]
@@ -1304,7 +1487,36 @@ export default function Home() {
     () => stats.salesGraphs?.netMarginPrevYearByCurrency?.[selectedGraphCurrency] || [],
     [stats.salesGraphs, selectedGraphCurrency]
   );
-  const netMarginSeries = useMemo(() => prepareChartSeries(netMarginRaw), [netMarginRaw]);
+  const [consumerTween, consumerPrevTween] = useTweenedDualSeries(
+    consumerRaw,
+    consumerPrevRaw,
+    insightAnimEpoch,
+    insightAnimMs
+  );
+  const [netTween, netPrevTween] = useTweenedDualSeries(
+    netMarginRaw,
+    netMarginPrevRaw,
+    insightAnimEpoch,
+    insightAnimMs
+  );
+  const consumerSeries = useMemo(() => prepareChartSeries(consumerTween), [consumerTween]);
+  const netMarginSeries = useMemo(() => prepareChartSeries(netTween), [netTween]);
+
+  const salesChartMeta = stats.salesGraphs?.chartMeta;
+  const insightChartLegendCurrent = salesChartMeta?.legendCurrent || '올해';
+  const insightChartLegendPrev = salesChartMeta?.legendPrev || '전년 동월';
+  const consumerInsightSubtitle = salesChartMeta?.title
+    ? `수주 성공 건의 소비자가(목록가×수량) 합계입니다. ${salesChartMeta.title}.`
+    : '수주 성공 건의 소비자가 합계입니다. KPI 기간에 맞춰 달력 단위로 집계하며, 꺾은선은 전년 동일 구간과 같은 눈금으로 비교합니다.';
+  const marginInsightSubtitle = salesChartMeta?.title
+    ? `수주 금액에서 원가×수량을 뺀 금액입니다. ${salesChartMeta.title}.`
+    : '수주 금액에서 원가×수량을 뺀 금액입니다. KPI 기간에 맞춰 달력 단위로 집계하며, 전년 동일 구간과 비교합니다.';
+  const consumerInsightEmpty = salesChartMeta?.legendCurrent
+    ? `${insightChartLegendCurrent}·${insightChartLegendPrev} 소비자가 데이터가 없습니다.`
+    : '집계 구간·전년 동일 구간 소비자가 데이터가 없습니다.';
+  const marginInsightEmpty = salesChartMeta?.legendCurrent
+    ? `${insightChartLegendCurrent}·${insightChartLegendPrev} 순마진 데이터가 없습니다.`
+    : '집계 구간·전년 동일 구간 순마진 데이터가 없습니다.';
 
   const renderChartPanel = (title, subtitle, series, tone, emptyText, chartOptions = {}) => {
     const {
@@ -1333,10 +1545,19 @@ export default function Home() {
       const spanSum = posSpan + negSpan;
       const topFr = spanSum > 0 ? posSpan : 1;
       const botFr = spanSum > 0 ? negSpan : 1;
+      /** 주간(8)·연간(12)·당해 월말 8개월 이상 등: minmax(4.5rem) 그리드가 두 줄로 줄바꿈 → 열 수 고정으로 한 줄·좁은 막대 */
+      const barCount = barSeries.length;
+      const denseInsightBars = barCount >= 8;
+      const denseBarGridStyle = denseInsightBars
+        ? { gridTemplateColumns: `repeat(${barCount}, minmax(0, 1fr))` }
+        : undefined;
 
       return (
         <div className="home-bar-chart-wrap">
-          <div className="home-mini-chart">
+          <div
+            className={`home-mini-chart${denseInsightBars ? ' home-mini-chart--dense-cols' : ''}`}
+            style={denseBarGridStyle}
+          >
             {barSeries.map((item, idx) => {
               const v = Number(item.value) || 0;
               if (!barHasNegative) {
@@ -1345,7 +1566,9 @@ export default function Home() {
                     <div className="home-mini-chart-track">
                       <div className="home-mini-chart-bar-hit">
                         <div
-                          className={`home-mini-chart-bar ${item.value < 0 ? 'negative' : ''}`}
+                          className={`home-mini-chart-bar home-mini-chart-bar--insight-anim ${
+                            item.value < 0 ? 'negative' : ''
+                          }`}
                           style={{
                             height: `${Math.max(12, item.height * 2)}%`,
                             backgroundColor: item.value < 0 ? CHART_PASTEL_NEGATIVE : chartPastelAt(idx)
@@ -1374,7 +1597,7 @@ export default function Home() {
                       >
                         {v > 0 && posSpan > 0 ? (
                           <div
-                            className="home-mini-chart-bar"
+                            className="home-mini-chart-bar home-mini-chart-bar--insight-anim"
                             style={{
                               height: `${posPct}%`,
                               backgroundColor: chartPastelAt(idx)
@@ -1389,7 +1612,7 @@ export default function Home() {
                       >
                         {v < 0 && negSpan > 0 ? (
                           <div
-                            className="home-mini-chart-bar negative"
+                            className="home-mini-chart-bar home-mini-chart-bar--insight-anim negative"
                             style={{
                               height: `${negPct}%`,
                               backgroundColor: CHART_PASTEL_NEGATIVE
@@ -1407,7 +1630,10 @@ export default function Home() {
               );
             })}
           </div>
-          <div className="home-bar-chart-labels">
+          <div
+            className={`home-bar-chart-labels${denseInsightBars ? ' home-bar-chart-labels--dense-cols' : ''}`}
+            style={denseBarGridStyle}
+          >
             {barSeries.map((item) => (
               <span key={`${title}-x-${item.label}`}>{item.label}</span>
             ))}
@@ -1417,7 +1643,11 @@ export default function Home() {
     };
 
     return (
-      <div className="panel home-chart-panel">
+      <div
+        className={`panel home-chart-panel${
+          prefersReducedMotion ? ' home-chart-panel--motion-reduced' : ''
+        }`}
+      >
         <div className="panel-head home-chart-head">
           <div>
             <h2>{title}</h2>
@@ -1461,10 +1691,10 @@ export default function Home() {
                 />
                 <div className="home-line-chart-legend" aria-hidden>
                   <span>
-                    <span className="home-line-legend-swatch current" /> 올해(최근 6개월)
+                    <span className="home-line-legend-swatch current" /> {insightChartLegendCurrent}
                   </span>
                   <span>
-                    <span className="home-line-legend-swatch prev" /> 전년 동월
+                    <span className="home-line-legend-swatch prev" /> {insightChartLegendPrev}
                   </span>
                 </div>
                 <div className="home-line-chart-labels">
@@ -1490,10 +1720,10 @@ export default function Home() {
               />
               <div className="home-line-chart-legend" aria-hidden>
                 <span>
-                  <span className="home-line-legend-swatch current consumer" /> 올해(최근 6개월)
+                  <span className="home-line-legend-swatch current consumer" /> {insightChartLegendCurrent}
                 </span>
                 <span>
-                  <span className="home-line-legend-swatch prev consumer" /> 전년 동월
+                  <span className="home-line-legend-swatch prev consumer" /> {insightChartLegendPrev}
                 </span>
               </div>
               <div className="home-line-chart-labels">
@@ -1601,121 +1831,153 @@ export default function Home() {
             <>
               <div className="home-insight-toolbar">
                 <div className="home-insight-toolbar-rows">
-                  {data?.insightScope?.leaderSubtree ? (
-                    <>
-                      <div
-                        className="home-insight-mode-switch home-insight-mode-switch--leader home-insight-mode-switch--with-company"
-                        role="tablist"
-                        aria-label="소비자가·순마진 조회 범위"
-                      >
-                        <button
-                          type="button"
-                          className={isCompanyWideInsight ? 'is-active' : ''}
-                          onClick={() => setCompanyWideInsight(true)}
-                          title="회사 전체 수주·파이프라인 기준"
+                  <div className="home-insight-toolbar-primary-row">
+                    <div className="home-insight-toolbar-scope">
+                      {data?.insightScope?.leaderSubtree ? (
+                        <div
+                          className="home-insight-mode-switch home-insight-mode-switch--leader home-insight-mode-switch--with-company"
+                          role="tablist"
+                          aria-label="소비자가·순마진 조회 범위"
                         >
-                          회사 전체
-                        </button>
-                        <button
-                          type="button"
-                          className={!isCompanyWideInsight && leaderInsightViewKind === 'team' ? 'is-active' : ''}
-                          onClick={() => setLeaderInsightViewKind('team')}
-                        >
-                          팀별
-                        </button>
-                        <button
-                          type="button"
-                          className={!isCompanyWideInsight && leaderInsightViewKind === 'personal' ? 'is-active' : ''}
-                          onClick={() => setLeaderInsightViewKind('personal')}
-                        >
-                          개인 보기
-                        </button>
-                      </div>
-                      {!isCompanyWideInsight && data?.insightLeaderFilters ? (
-                        <div className="home-insight-leader-filters-inline" aria-label="팀·직원 범위">
-                          {leaderInsightViewKind === 'team' ? (
-                            <label className="home-insight-filter-field home-insight-filter-field--inline">
-                              <select
-                                className="home-insight-filter-select home-insight-filter-select--inline"
-                                value={insightDeptQ}
-                                onChange={(e) => setHomeInsightDeptFilter(e.target.value)}
-                              >
-                                <option value="">전체 부서 (담당 범위 합산)</option>
-                                {(data.insightLeaderFilters.departments || []).map((d) => (
-                                  <option key={d.id} value={d.id}>
-                                    {d.label}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                          ) : (
-                            <label className="home-insight-filter-field home-insight-filter-field--inline">
-                              <select
-                                className="home-insight-filter-select home-insight-filter-select--inline"
-                                value={insightUserQ || myCrmUserId}
-                                onChange={(e) => setHomeInsightUserFilter(e.target.value)}
-                              >
-                                {(data.insightLeaderFilters.users || []).map((u) => (
-                                  <option key={u.id} value={u.id}>
-                                    {formatLeaderEmployeeOptionLabel(u, data.insightLeaderFilters.departments)}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                          )}
-                          {((leaderInsightViewKind === 'team' && insightDeptQ) ||
-                            (leaderInsightViewKind === 'personal' &&
-                              insightUserQ &&
-                              insightUserQ !== myCrmUserId)) ? (
-                            <button
-                              type="button"
-                              className="home-insight-filter-clear home-insight-filter-clear--inline"
-                              onClick={
-                                leaderInsightViewKind === 'team'
-                                  ? clearHomeInsightLeaderFilters
-                                  : resetLeaderInsightToSelfUser
-                              }
-                            >
-                              {leaderInsightViewKind === 'team' ? '부서 초기화' : '본인으로'}
-                            </button>
-                          ) : null}
+                          <button
+                            type="button"
+                            className={isCompanyWideInsight ? 'is-active' : ''}
+                            onClick={() => setCompanyWideInsight(true)}
+                            title="회사 전체 수주·파이프라인 기준"
+                          >
+                            회사 전체
+                          </button>
+                          <button
+                            type="button"
+                            className={!isCompanyWideInsight && leaderInsightViewKind === 'team' ? 'is-active' : ''}
+                            onClick={() => setLeaderInsightViewKind('team')}
+                          >
+                            팀별
+                          </button>
+                          <button
+                            type="button"
+                            className={!isCompanyWideInsight && leaderInsightViewKind === 'personal' ? 'is-active' : ''}
+                            onClick={() => setLeaderInsightViewKind('personal')}
+                          >
+                            개인 보기
+                          </button>
                         </div>
-                      ) : null}
-                    </>
-                  ) : (
-                    <>
+                      ) : (
+                        <div
+                          className="home-insight-mode-switch home-insight-mode-switch--with-company home-insight-mode-switch--solo-non-leader"
+                          role="tablist"
+                          aria-label="조회 범위"
+                        >
+                          <button
+                            type="button"
+                            className={isCompanyWideInsight ? 'is-active' : ''}
+                            onClick={() => setCompanyWideInsight(true)}
+                            title="회사 전체 수주·파이프라인 기준"
+                          >
+                            회사 전체
+                          </button>
+                          <button
+                            type="button"
+                            className={!isCompanyWideInsight && leaderInsightViewKind === 'team' ? 'is-active' : ''}
+                            onClick={() => setLeaderInsightViewKind('team')}
+                          >
+                            팀별
+                          </button>
+                          <button
+                            type="button"
+                            className={!isCompanyWideInsight && leaderInsightViewKind === 'personal' ? 'is-active' : ''}
+                            onClick={() => setLeaderInsightViewKind('personal')}
+                          >
+                            개인 보기
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="home-kpi-period-toolbar">
                       <div
-                        className="home-insight-mode-switch home-insight-mode-switch--with-company home-insight-mode-switch--solo-non-leader"
+                        className="home-insight-mode-switch home-kpi-period-switch"
                         role="tablist"
-                        aria-label="조회 범위"
+                        aria-label="KPI 집계 기간"
                       >
-                        <button
-                          type="button"
-                          className={isCompanyWideInsight ? 'is-active' : ''}
-                          onClick={() => setCompanyWideInsight(true)}
-                          title="회사 전체 수주·파이프라인 기준"
-                        >
-                          회사 전체
-                        </button>
-                        <button
-                          type="button"
-                          className={!isCompanyWideInsight && leaderInsightViewKind === 'team' ? 'is-active' : ''}
-                          onClick={() => setLeaderInsightViewKind('team')}
-                        >
-                          팀별
-                        </button>
-                        <button
-                          type="button"
-                          className={!isCompanyWideInsight && leaderInsightViewKind === 'personal' ? 'is-active' : ''}
-                          onClick={() => setLeaderInsightViewKind('personal')}
-                        >
-                          개인 보기
-                        </button>
+                        {[
+                          { id: 'week', label: '주간' },
+                          { id: 'month', label: '월간' },
+                          { id: 'quarter', label: '분기' },
+                          { id: 'half', label: '반기' },
+                          { id: 'year', label: '연간' }
+                        ].map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            className={kpiPeriod === opt.id ? 'is-active' : ''}
+                            onClick={() => setHomeKpiPeriod(opt.id)}
+                            title={
+                              opt.id === 'half'
+                                ? '당반기(1~6월 또는 7~12월) 월별 — 아래 그래프 버킷과 동일'
+                                : '매출·이익률·신규 리드는 이 기간으로 집계됩니다. 위 조회 범위(회사 전체·팀·개인)와 함께 적용됩니다.'
+                            }
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
                       </div>
-                      <p className="home-insight-hint home-insight-hint--solo">
-                        본인 담당 실적만 표시됩니다. 부서 팀장으로 지정되면 팀·직원 단위로 볼 수 있습니다.
-                      </p>
-                    </>
+                    </div>
+                  </div>
+                  {data?.insightScope?.leaderSubtree ? (
+                    !isCompanyWideInsight && data?.insightLeaderFilters ? (
+                      <div className="home-insight-leader-filters-inline" aria-label="팀·직원 범위">
+                        {leaderInsightViewKind === 'team' ? (
+                          <label className="home-insight-filter-field home-insight-filter-field--inline">
+                            <select
+                              className="home-insight-filter-select home-insight-filter-select--inline"
+                              value={insightDeptQ}
+                              onChange={(e) => setHomeInsightDeptFilter(e.target.value)}
+                            >
+                              <option value="">전체 부서 (담당 범위 합산)</option>
+                              {(data.insightLeaderFilters.departments || []).map((d) => (
+                                <option key={d.id} value={d.id}>
+                                  {d.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : (
+                          <label className="home-insight-filter-field home-insight-filter-field--inline">
+                            <select
+                              className="home-insight-filter-select home-insight-filter-select--inline"
+                              value={insightUserQ || myCrmUserId}
+                              onChange={(e) => setHomeInsightUserFilter(e.target.value)}
+                            >
+                              {(data.insightLeaderFilters.users || []).map((u) => (
+                                <option key={u.id} value={u.id}>
+                                  {formatLeaderEmployeeOptionLabel(u, data.insightLeaderFilters.departments)}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        )}
+                        {((leaderInsightViewKind === 'team' && insightDeptQ) ||
+                          (leaderInsightViewKind === 'personal' &&
+                            insightUserQ &&
+                            insightUserQ !== myCrmUserId)) ? (
+                          <button
+                            type="button"
+                            className="home-insight-filter-clear home-insight-filter-clear--inline"
+                            onClick={
+                              leaderInsightViewKind === 'team'
+                                ? clearHomeInsightLeaderFilters
+                                : resetLeaderInsightToSelfUser
+                            }
+                          >
+                            {leaderInsightViewKind === 'team' ? '부서 초기화' : '본인으로'}
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null
+                  ) : (
+                    <p className="home-insight-hint home-insight-hint--solo">
+                      본인 담당 실적만 표시됩니다. 부서 팀장으로 지정되면 팀·직원 단위로 볼 수 있습니다.
+                    </p>
                   )}
                 </div>
                 {data?.insightNarrow?.type === 'dept' && data?.insightNarrow?.empty ? (
@@ -1724,7 +1986,10 @@ export default function Home() {
                   </p>
                 ) : null}
               </div>
-              <div className="home-kpi-strip" aria-label="핵심 실적 요약">
+              <div
+                className={`home-kpi-strip${prefersReducedMotion ? ' home-kpi-strip--motion-reduced' : ''}`}
+                aria-label="핵심 실적 요약"
+              >
                 {homeKpiCards.map((card) => {
                   if (card.skeleton) {
                     return (
@@ -1738,12 +2003,39 @@ export default function Home() {
                   }
                   const showForecast = card.showForecast === true;
                   const showPeriod = card.showPeriod === true;
-                  const forecastText =
-                    card.forecastMode === 'pp'
-                      ? formatHomeKpiForecastPP(card.forecast)
-                      : formatHomeKpiForecastPct(card.forecast);
+                  const curD = stats.kpiSummary?.primaryCurrency || selectedGraphCurrency || 'KRW';
+                  let displayMain = card.value;
+                  if (!loading) {
+                    if (card.key === 'rev') displayMain = formatCurrency(Math.round(revAnim), curD);
+                    else if (card.key === 'gm') displayMain = `${gmRateAnim.toFixed(1)}%`;
+                    else if (card.key === 'goal') displayMain = `${Math.round(goalAnim)}%`;
+                    else if (card.key === 'lead') displayMain = `${Math.round(leadAnim)}건`;
+                    else if (card.key === 'deal') displayMain = `${Math.round(dealAnim)}건`;
+                  }
+                  let forecastText = '—';
+                  if (!loading && showForecast) {
+                    if (card.forecastMode === 'pp' && card.key === 'gm') {
+                      forecastText = gmFcRaw == null ? '—' : formatHomeKpiForecastPP(gmFcAnim);
+                    } else if (card.key === 'rev') {
+                      forecastText = revFcRaw == null ? '—' : formatHomeKpiForecastPct(revFcAnim);
+                    } else if (card.key === 'lead') {
+                      forecastText = leadFcRaw == null ? '—' : formatHomeKpiForecastPct(leadFcAnim);
+                    } else {
+                      forecastText =
+                        card.forecastMode === 'pp'
+                          ? formatHomeKpiForecastPP(card.forecast)
+                          : formatHomeKpiForecastPct(card.forecast);
+                    }
+                  }
                   const periodIsPP = card.periodMode === 'deltaPP';
-                  const delta = formatHomeKpiDeltaPct(card.period, periodIsPP);
+                  let delta = formatHomeKpiDeltaPct(null, periodIsPP);
+                  if (!loading && showPeriod) {
+                    if (card.key === 'rev') delta = formatHomeKpiDeltaPct(revYoyRaw == null ? null : revYoyAnim, periodIsPP);
+                    else if (card.key === 'gm') delta = formatHomeKpiDeltaPct(gmYoyRaw == null ? null : gmYoyAnim, periodIsPP);
+                    else if (card.key === 'lead') {
+                      delta = formatHomeKpiDeltaPct(leadYoyRaw == null ? null : leadYoyAnim, periodIsPP);
+                    } else delta = formatHomeKpiDeltaPct(card.period, periodIsPP);
+                  }
                   return (
                     <article key={card.key} className="home-kpi-card">
                       <div className="home-kpi-card-head">
@@ -1752,13 +2044,13 @@ export default function Home() {
                           {card.icon}
                         </span>
                       </div>
-                      <p className="home-kpi-card-value">{loading ? '—' : card.value}</p>
+                      <p className="home-kpi-card-value home-kpi-card-value--insight-anim">{loading ? '—' : displayMain}</p>
                       <p className="home-kpi-card-hint">{card.hint}</p>
-                      {card.goalPct != null ? (
+                      {card.key === 'goal' ? (
                         <div className="home-kpi-goal-bar" aria-hidden>
                           <div
-                            className="home-kpi-goal-fill"
-                            style={{ width: `${card.goalPct}%` }}
+                            className="home-kpi-goal-fill home-kpi-goal-fill--insight-anim"
+                            style={{ width: `${Math.min(100, Math.max(0, goalAnim))}%` }}
                           />
                         </div>
                       ) : null}
@@ -1767,8 +2059,12 @@ export default function Home() {
                           {showForecast ? (
                             <div className="home-kpi-metric-line">
                               <span className="home-kpi-dot home-kpi-dot--forecast" aria-hidden />
-                              <span className="home-kpi-metric-label">Forecast 대비</span>
-                              <span className="home-kpi-metric-val">{loading ? '—' : forecastText}</span>
+                              <span className="home-kpi-metric-label">
+                                {card.forecastMetricLabel || '목표액'}
+                              </span>
+                              <span className="home-kpi-metric-val home-kpi-metric-val--insight-anim">
+                                {loading ? '—' : forecastText}
+                              </span>
                             </div>
                           ) : null}
                           {showPeriod ? (
@@ -1776,7 +2072,7 @@ export default function Home() {
                               <span className="home-kpi-dot home-kpi-dot--period" aria-hidden />
                               <span className="home-kpi-metric-label">{card.periodLabel}</span>
                               <span
-                                className={`home-kpi-metric-trend ${
+                                className={`home-kpi-metric-trend home-kpi-metric-trend--insight-anim ${
                                   delta.dir === 'up' ? 'is-up' : delta.dir === 'down' ? 'is-down' : ''
                                 }`}
                               >
@@ -1801,28 +2097,28 @@ export default function Home() {
               </div>
               {renderChartPanel(
                 '소비자가 기준 그래프',
-                '수주 성공 건의 최근 6개월 소비자가 합계입니다. 꺾은선에서는 전년 동월과 같은 눈금으로 비교합니다.',
+                consumerInsightSubtitle,
                 consumerSeries,
                 'consumer',
-                '최근 6개월·전년 동월 소비자가 데이터가 없습니다.',
+                consumerInsightEmpty,
                 {
                   chartMode: consumerChartMode,
                   onChartModeChange: setConsumerChartMode,
-                  consumerLineCurrent: consumerRaw,
-                  consumerLinePrev: consumerPrevRaw
+                  consumerLineCurrent: consumerTween,
+                  consumerLinePrev: consumerPrevTween
                 }
               )}
               {renderChartPanel(
                 '순마진 그래프',
-                '수주 금액에서 원가×수량을 뺀 금액입니다. 최근 6개월과 전년 동월 6개월을 같은 눈금으로 비교합니다.',
+                marginInsightSubtitle,
                 netMarginSeries,
                 'margin',
-                '최근 6개월·전년 동월 순마진 데이터가 없습니다.',
+                marginInsightEmpty,
                 {
                   chartMode: marginChartMode,
                   onChartModeChange: setMarginChartMode,
-                  marginLineCurrent: netMarginRaw,
-                  marginLinePrev: netMarginPrevRaw
+                  marginLineCurrent: netTween,
+                  marginLinePrev: netPrevTween
                 }
               )}
               {data?.insightScope?.leaderSubtree && data?.leaderScopeBreakdown ? (

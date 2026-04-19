@@ -10,7 +10,7 @@ import { API_BASE } from '@/config';
 import { getStoredCrmUser, isManagerOrAboveRole, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { pingBackendHealth, BACKEND_KEEPALIVE_INTERVAL_MS, BACKEND_KEEPALIVE_INTERVAL_ENABLED } from '@/lib/backend-wake';
 import { pollJournalFromAudioJob } from '@/lib/journal-from-audio-poll';
-import { pruneDriveUploadedFilesIndex } from '@/lib/drive-uploaded-files-prune';
+import { pruneDriveUploadedFilesIndex, syncDriveUploadedFilesIndex } from '@/lib/drive-uploaded-files-prune';
 import { buildDriveFileDeleteUrl, isValidDriveNodeId, sanitizeDriveFolderWebViewLink } from '@/lib/google-drive-url';
 import {
   RegisterSaleDocsCrmTable,
@@ -306,12 +306,18 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
     fetchContactDetail();
   }, [fetchContactDetail]);
 
-  /** Drive에서만 삭제된 파일이 Mongo driveUploadedFiles 에 남은 경우 제거 */
+  /** Drive 폴더 직속 파일 ↔ Mongo driveUploadedFiles 동기화: Drive에만 있는 건 추가 후, Drive에 없는 CRM 행만 제거 */
   useEffect(() => {
     const fid = contactToShow?.driveRootFolderId;
     if (!contactId || !fid || !isValidDriveNodeId(String(fid).trim())) return undefined;
     let cancelled = false;
     (async () => {
+      await syncDriveUploadedFilesIndex({
+        getAuthHeader,
+        folderId: String(fid).trim(),
+        customerCompanyEmployeeId: String(contactId)
+      });
+      if (cancelled) return;
       await pruneDriveUploadedFilesIndex({
         getAuthHeader,
         folderId: String(fid).trim(),

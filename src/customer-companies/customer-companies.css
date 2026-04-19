@@ -157,6 +157,34 @@
   align-items: center;
 }
 
+.cc-selection-action-bar-merge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.95rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #4a5d4c;
+  background: #e6f0e7;
+  border: 1px solid #b8d4bb;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.cc-selection-action-bar-merge:hover:not(:disabled) {
+  background: #d8e8da;
+}
+
+.cc-selection-action-bar-merge:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.cc-selection-action-bar-merge .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
 .cc-selection-action-bar-handover {
   display: inline-flex;
   align-items: center;

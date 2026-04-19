@@ -13,7 +13,7 @@ import {
   sanitizeDriveFolderWebViewLink
 } from '@/lib/google-drive-url';
 import { pingBackendHealth } from '@/lib/backend-wake';
-import { pruneDriveUploadedFilesIndex } from '@/lib/drive-uploaded-files-prune';
+import { pruneDriveUploadedFilesIndex, syncDriveUploadedFilesIndex } from '@/lib/drive-uploaded-files-prune';
 import {
   RegisterSaleDocsCrmTable,
   fileToBase64,
@@ -331,13 +331,19 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
       });
   }, [isEdit, company?._id, driveFolderName, ensureCompanyDriveRootFolder]);
 
-  /** 수정 모달: Mongo에 등록된 고객사 Drive 폴더 기준으로 목록 정리 */
+  /** 수정 모달: Drive 직속 파일 ↔ Mongo 목록 동기화(추가 후 정리) */
   useEffect(() => {
     const cid = companyToShow?._id;
     const fid = companyToShow?.driveCustomerRootFolderId;
     if (!isEdit || !cid || !fid || !isValidDriveNodeId(String(fid).trim())) return undefined;
     let cancelled = false;
     (async () => {
+      await syncDriveUploadedFilesIndex({
+        getAuthHeader,
+        folderId: String(fid).trim(),
+        customerCompanyId: String(cid)
+      });
+      if (cancelled) return;
       await pruneDriveUploadedFilesIndex({
         getAuthHeader,
         folderId: String(fid).trim(),

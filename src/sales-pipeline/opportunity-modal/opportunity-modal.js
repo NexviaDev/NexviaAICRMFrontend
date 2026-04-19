@@ -15,7 +15,7 @@ import {
   sanitizeDriveFolderWebViewLink
 } from '@/lib/google-drive-url';
 import { pingBackendHealth } from '@/lib/backend-wake';
-import { pruneDriveUploadedFilesIndex } from '@/lib/drive-uploaded-files-prune';
+import { pruneDriveUploadedFilesIndex, syncDriveUploadedFilesIndex } from '@/lib/drive-uploaded-files-prune';
 import { pollJournalFromAudioJob } from '@/lib/journal-from-audio-poll';
 import { suggestedPriceFromProduct, OPPORTUNITY_PRICE_BASIS_OPTIONS } from '@/lib/product-price-utils';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
@@ -842,34 +842,21 @@ export default function OpportunityModal({
         : effectiveDriveFolderIdForList;
     const fid = raw && isValidDriveNodeId(raw) ? raw : '';
     if (!fid || (!hasConfirmedCompanyDrive && !isContactOnlyDrive)) return { added: 0 };
-    const body = { folderId: fid };
+    const opts = { getAuthHeader, folderId: fid };
     if (hasConfirmedCompanyDrive && (form.customerCompanyId || '').trim()) {
-      body.customerCompanyId = String(form.customerCompanyId).trim();
+      opts.customerCompanyId = String(form.customerCompanyId).trim();
     } else if (isContactOnlyDrive && (form.customerCompanyEmployeeId || '').trim()) {
-      body.customerCompanyEmployeeId = String(form.customerCompanyEmployeeId).trim();
+      opts.customerCompanyEmployeeId = String(form.customerCompanyEmployeeId).trim();
     } else {
       return { added: 0 };
     }
-    try {
-      await pingBackendHealth(getAuthHeader);
-      const res = await fetch(`${API_BASE}/drive/sync-uploaded-files-index`, {
-        method: 'POST',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(body)
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const msg = data.error || data.details || 'Drive와 CRM 동기화에 실패했습니다.';
-        setDriveListError(String(msg));
-        return { added: 0, error: msg };
-      }
-      setDriveListError('');
-      return { added: Number(data.added) || 0 };
-    } catch {
-      setDriveListError('Drive와 CRM 동기화에 실패했습니다.');
-      return { added: 0 };
+    const { added, error } = await syncDriveUploadedFilesIndex(opts);
+    if (error) {
+      setDriveListError(String(error));
+      return { added: 0, error };
     }
+    setDriveListError('');
+    return { added };
   }, [
     effectiveDriveFolderIdForList,
     hasConfirmedCompanyDrive,
@@ -1071,19 +1058,21 @@ export default function OpportunityModal({
           out?.id && isValidDriveNodeId(String(out.id).trim()) ? String(out.id).trim() : '';
         if (fid && !cancelled) {
           if (hasConfirmedCompanyDrive && (form.customerCompanyId || '').trim()) {
+            await syncCrmDriveUploadedFilesIndex(fid);
+            if (cancelled) return;
             await pruneDriveUploadedFilesIndex({
               getAuthHeader,
               folderId: fid,
               customerCompanyId: String(form.customerCompanyId).trim()
             });
-            await syncCrmDriveUploadedFilesIndex(fid);
           } else if (isContactOnlyDrive && (form.customerCompanyEmployeeId || '').trim()) {
+            await syncCrmDriveUploadedFilesIndex(fid);
+            if (cancelled) return;
             await pruneDriveUploadedFilesIndex({
               getAuthHeader,
               folderId: fid,
               customerCompanyEmployeeId: String(form.customerCompanyEmployeeId).trim()
             });
-            await syncCrmDriveUploadedFilesIndex(fid);
           }
           if (!cancelled) await refreshCrmDriveUploads();
         }
@@ -1245,6 +1234,7 @@ export default function OpportunityModal({
     try {
       await pingBackendHealth(getAuthHeader);
       const fid = effectiveDriveFolderIdForList;
+      const { added } = await syncCrmDriveUploadedFilesIndex();
       if (fid && hasConfirmedCompanyDrive && (form.customerCompanyId || '').trim()) {
         await pruneDriveUploadedFilesIndex({
           getAuthHeader,
@@ -1258,7 +1248,6 @@ export default function OpportunityModal({
           customerCompanyEmployeeId: String(form.customerCompanyEmployeeId).trim()
         });
       }
-      const { added } = await syncCrmDriveUploadedFilesIndex();
       await refreshCrmDriveUploads();
       await refreshDriveFolderList();
       if (added > 0) {

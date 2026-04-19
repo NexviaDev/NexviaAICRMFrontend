@@ -13,7 +13,7 @@ import { API_BASE } from '@/config';
 import { getStoredCrmUser, isManagerOrAboveRole, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { pingBackendHealth, BACKEND_KEEPALIVE_INTERVAL_MS, BACKEND_KEEPALIVE_INTERVAL_ENABLED } from '@/lib/backend-wake';
 import { pollJournalFromAudioJob } from '@/lib/journal-from-audio-poll';
-import { pruneDriveUploadedFilesIndex } from '@/lib/drive-uploaded-files-prune';
+import { pruneDriveUploadedFilesIndex, syncDriveUploadedFilesIndex } from '@/lib/drive-uploaded-files-prune';
 import { getGoogleMapsApiKey } from '@/lib/google-maps-client';
 import {
   buildDriveFileDeleteUrl,
@@ -336,24 +336,90 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
     setDriveVisibility('unknown');
   }, [companyId]);
 
+  /**
+   * 부모(목록)의 company 객체는 driveUploadedFiles·Drive 루트 필드가 최신이 아닐 수 있음.
+   * 동일 고객사로 merge 시 이 필드들을 prop으로 덮어쓰면 prune/GET 직후 목록이 다시 옛 데이터로 돌아감.
+   */
   useEffect(() => {
-    setDisplayedCompany((prev) => ({ ...(prev || {}), ...(company || {}) }));
+    setDisplayedCompany((prev) => {
+      const incoming = company || {};
+      const prevId = String(prev?._id ?? '');
+      const nextId = String(incoming._id ?? '');
+      if (nextId && nextId !== prevId) {
+        return { ...incoming };
+      }
+      const {
+        driveUploadedFiles: _driveFiles,
+        driveCustomerRootFolderId: _rootId,
+        driveCustomerRootFolderWebViewLink: _rootLink,
+        ...rest
+      } = incoming;
+      return { ...(prev || {}), ...rest };
+    });
   }, [company]);
 
-  /* Drive 루트 폴더: 저장된 ID 대신 이름으로 항상 재조회 후 없으면 생성 */
+  /**
+   * Drive 루트 폴더 ensure 후에만 sync/prune 실행 — ensure 전에 sync가 돌면 Mongo의 folderId와 불일치해 추가가 0건으로 끝날 수 있음.
+   * ensure 성공 시 반환 id로 동기화하고, 실패 시에만 GET으로 읽은 driveCustomerRootFolderId 로 재시도.
+   */
   useEffect(() => {
-    if (!companyId || !driveFolderName) return;
-    if (driveRootEnsureInFlightRef.current) return;
+    if (!companyId || !driveFolderName) return undefined;
+    if (driveRootEnsureInFlightRef.current) return undefined;
     driveRootEnsureInFlightRef.current = true;
+    let cancelled = false;
+    const refreshCompanyDriveFields = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/customer-companies/${companyId}`, { headers: getAuthHeader() });
+        const data = await res.json().catch(() => ({}));
+        if (!cancelled && res.ok && data?._id) {
+          setDisplayedCompany((prev) => ({ ...(prev || {}), ...data }));
+        }
+      } catch (_) {}
+    };
+    const runIndexSyncForFolder = async (folderIdRaw) => {
+      const fid = folderIdRaw != null && String(folderIdRaw).trim() ? String(folderIdRaw).trim() : '';
+      if (!fid || !isValidDriveNodeId(fid)) return;
+      const syncRes = await syncDriveUploadedFilesIndex({
+        getAuthHeader,
+        folderId: fid,
+        customerCompanyId: String(companyId)
+      });
+      if (syncRes.error) setDriveError((prev) => prev || syncRes.error);
+      if (cancelled) return;
+      const pruneRes = await pruneDriveUploadedFilesIndex({
+        getAuthHeader,
+        folderId: fid,
+        customerCompanyId: String(companyId)
+      });
+      if (pruneRes.error) setDriveError((prev) => prev || pruneRes.error);
+      if (!cancelled) await refreshCompanyDriveFields();
+    };
     (async () => {
       try {
-        await ensureCompanyDriveRootFolder();
+        const out = await ensureCompanyDriveRootFolder();
+        if (cancelled) return;
+        if (out?.id && isValidDriveNodeId(String(out.id).trim())) {
+          await runIndexSyncForFolder(out.id);
+        }
       } catch (err) {
         setDriveError((prev) => prev || (err?.message || 'Drive 고객사 폴더를 준비할 수 없습니다.'));
+        if (!cancelled) {
+          try {
+            const res = await fetch(`${API_BASE}/customer-companies/${companyId}`, { headers: getAuthHeader() });
+            const data = await res.json().catch(() => ({}));
+            const stored = data?.driveCustomerRootFolderId && String(data.driveCustomerRootFolderId).trim();
+            if (res.ok && stored && isValidDriveNodeId(stored)) {
+              await runIndexSyncForFolder(stored);
+            }
+          } catch (_) {}
+        }
       } finally {
         driveRootEnsureInFlightRef.current = false;
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [companyId, driveFolderName, ensureCompanyDriveRootFolder]);
 
   const handleDirectFileUpload = useCallback(
@@ -530,24 +596,6 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
   useEffect(() => {
     fetchCompanyDetail();
   }, [fetchCompanyDetail]);
-
-  /** Drive에서만 삭제된 파일이 Mongo driveUploadedFiles 에 남은 경우 제거(로그인 사용자면 됨, Admin 불필요) */
-  useEffect(() => {
-    const fid = companyToShow?.driveCustomerRootFolderId;
-    if (!companyId || !fid || !isValidDriveNodeId(String(fid).trim())) return undefined;
-    let cancelled = false;
-    (async () => {
-      await pruneDriveUploadedFilesIndex({
-        getAuthHeader,
-        folderId: String(fid).trim(),
-        customerCompanyId: String(companyId)
-      });
-      if (!cancelled) fetchCompanyDetail();
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [companyId, companyToShow?.driveCustomerRootFolderId, fetchCompanyDetail]);
 
   useEffect(() => {
     if (!companyId) return undefined;
@@ -1099,7 +1147,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                   리스트
                 </h4>
                 <p className="register-sale-docs-crm-uploads-hint">
-                  루트 폴더에 올려 CRM에 기록된 파일만 표시됩니다. 사업자등록증은 상단 회사명 옆에서 확인할 수 있습니다. 여러 파일을 한 번에 놓으면 가장 마지막 파일만 업로드됩니다.
+                  루트 폴더에 올려 CRM에 기록된 파일만 표시됩니다. 사업자등록증은 상단 회사명 옆에서 확인할 수 있습니다. 여러 파일을 한 번에 놓으면 가장 마지막 파일만 업로드됩니다. Drive 웹에서만 넣은 파일은 동기화에 안 잡힐 수 있으니, 가능하면 이 화면에서 업로드해 주세요.
                 </p>
                 {crmDriveUploadsSorted.length === 0 ? (
                   <div
