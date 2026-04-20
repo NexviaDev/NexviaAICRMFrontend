@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
 import GoogleContactsModal from '../google-contacts-modal/google-contacts-modal';
 import CustomerCompanySearchModal from '../../customer-companies/customer-company-search-modal/customer-company-search-modal';
 import CustomFieldsSection from '../../shared/custom-fields-section';
@@ -126,6 +126,43 @@ function shouldUseContactBatchPreview(files) {
   return arr.length >= 2;
 }
 
+/** 다른 앱·브라우저에서 복사한 이미지(캡처 등) → File — Ctrl+V 붙여넣기용 */
+function clipboardDataToImageFile(clipboardData) {
+  if (!clipboardData) return null;
+  const items = clipboardData.items;
+  if (items && items.length) {
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === 'file') {
+        const f = item.getAsFile();
+        if (f && String(f.type || '').startsWith('image/')) return f;
+      }
+      if (item.type && String(item.type).startsWith('image/')) {
+        const blob = item.getAsFile();
+        if (blob) {
+          const t = blob.type || item.type || 'image/png';
+          const ext = t.includes('png')
+            ? 'png'
+            : t.includes('jpeg') || t.includes('jpg')
+              ? 'jpg'
+              : t.includes('webp')
+                ? 'webp'
+                : t.includes('gif')
+                  ? 'gif'
+                  : 'png';
+          return new File([blob], `clipboard-${Date.now()}.${ext}`, { type: t });
+        }
+      }
+    }
+  }
+  const { files } = clipboardData;
+  if (files && files.length) {
+    const f = files[0];
+    if (f && String(f.type || '').startsWith('image/')) return f;
+  }
+  return null;
+}
+
 /** 연락처 담당자 초기값: 수정 시 = 저장된 값만(없으면 빈 배열), 등록 시 = 현재 사용자 1명 */
 function getInitialAssigneeIds(isEditMode, contact) {
   if (isEditMode && contact != null) {
@@ -157,6 +194,7 @@ function buildInitialForm(contact, initialCustomerCompany) {
     email: '',
     phone: '',
     position: '',
+    leadSource: '',
     address: '',
     birthDate: '',
     memo: '',
@@ -178,6 +216,7 @@ function buildInitialForm(contact, initialCustomerCompany) {
       email: contact.email ?? '',
       phone: contact.phone ?? '',
       position: contact.position ?? '',
+      leadSource: contact.leadSource ?? '',
       address: contact.address ?? '',
       birthDate: contact.birthDate ?? '',
       memo: contact.memo ?? '',
@@ -245,6 +284,8 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
   const driveFileInputRef = useRef(null);
   /** 명함 리스트 영역: 드래그·클릭만 로컬 준비(저장 시 업로드) */
   const businessCardListInputRef = useRef(null);
+  /** 연락처 모달 본문 — 클립보드 이미지 붙여넣기 캡처(포커스가 모달 안에 있을 때) */
+  const modalPanelRef = useRef(null);
   const [businessCardFile, setBusinessCardFile] = useState(null);
   const [businessCardDropActive, setBusinessCardDropActive] = useState(false);
   const [extractingBusinessCard, setExtractingBusinessCard] = useState(false);
@@ -697,6 +738,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
     setExtractingBusinessCard(true);
     setError('');
     try {
+      await pingBackendHealth(getAuthHeader);
       const fd = new FormData();
       fd.append('file', file);
       const res = await fetch(`${API_BASE}/customer-company-employees/extract-from-business-card`, {
@@ -733,12 +775,13 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
     }
   };
 
-  /** TXT 1개 → preview-import 후 연락처 1건이면 명함 단건과 동일하게 폼 반영, 2건 이상이면 배치 미리보기 */
+  /** TXT 1개 → preview-import 후 연락처 1건이면 명함 단건과 동일하게 폼 반영, 2건 이상이면 배치 미리보기(수정 모드는 1건만) */
   const extractFromTxtAndFillForm = async (file) => {
-    if (!file || isEditMode) return;
+    if (!file) return;
     setExtractingBusinessCard(true);
     setError('');
     try {
+      await pingBackendHealth(getAuthHeader);
       const fd = new FormData();
       fd.append('files', file);
       const res = await fetch(`${API_BASE}/customer-company-employees/preview-import`, {
@@ -761,6 +804,10 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
         return;
       }
       if (valid.length > 1) {
+        if (isEditMode) {
+          setError('수정 모드에서는 TXT에서 연락처 한 건만 추출된 경우만 폼에 반영할 수 있습니다.');
+          return;
+        }
         setImportPreviewItems(items);
         setShowImportPreview(true);
         return;
@@ -799,6 +846,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
     setImportPreviewLoading(true);
     setError('');
     try {
+      await pingBackendHealth(getAuthHeader);
       const fd = new FormData();
       arr.forEach((f) => fd.append('files', f));
       const res = await fetch(`${API_BASE}/customer-company-employees/preview-import`, {
@@ -901,14 +949,20 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
         return;
       }
       if (isEditMode) {
-        if (arr.length === 1 && !isTxtFile(arr[0]) && (arr[0].type || '').startsWith('image/')) {
+        if (arr.length > 1) {
+          setError('수정 모드에서는 명함 파일을 하나만 선택해 주세요.');
+          return;
+        }
+        if (arr.length === 1 && isTxtFile(arr[0])) {
+          extractFromTxtAndFillForm(arr[0]);
+          return;
+        }
+        if (arr.length === 1 && (arr[0].type || '').startsWith('image/')) {
           setBusinessCardFile(arr[0]);
           extractFromBusinessCardAndFillForm(arr[0]);
-        } else if (arr.length > 1) {
-          setError('수정 모드에서는 명함 파일을 하나만 선택해 주세요.');
-        } else {
-          setError('수정 모드에서는 이미지 한 개만 선택할 수 있습니다.');
+          return;
         }
+        setError('수정 모드에서는 명함 이미지 또는 TXT 한 개만 선택할 수 있습니다.');
         return;
       }
       if (shouldUseContactBatchPreview(arr)) {
@@ -926,6 +980,72 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
     },
     [isEditMode, runContactPreviewImport, fixedCompany]
   );
+
+  /** 수정 모드 · 명함 리스트 드롭: 이미지·TXT → Gemini로 폼 반영, 그 외 → Drive 즉시 업로드(증서·기타) */
+  const handleEditModeBusinessCardListDrop = useCallback(
+    (files) => {
+      const filesArray = Array.from(files || []);
+      if (!filesArray.length) return;
+      const certLike = filesArray.filter((f) => isBusinessCardLikeFile(f));
+      const nonCert = filesArray.filter((f) => !isBusinessCardLikeFile(f));
+      if (!certLike.length) {
+        void handleDirectFileUpload(filesArray);
+        return;
+      }
+      if (nonCert.length > 0) {
+        setDriveError('명함(이미지·TXT)과 다른 형식을 함께 놓을 수 없습니다. 나누어 주세요.');
+        return;
+      }
+      if (certLike.length > 1) {
+        setDriveError('수정 모드에서는 명함 파일을 하나만 놓아 주세요.');
+        return;
+      }
+      const file = certLike[0];
+      if (isTxtFile(file)) {
+        void extractFromTxtAndFillForm(file);
+        return;
+      }
+      setBusinessCardFile(file);
+      setDriveError('');
+      void extractFromBusinessCardAndFillForm(file);
+    },
+    [handleDirectFileUpload, extractFromBusinessCardAndFillForm, extractFromTxtAndFillForm]
+  );
+
+  /** 클립보드에 이미지가 있을 때 붙여넣기 → 드래그 앤 드롭과 동일하게 명함 인식 */
+  useLayoutEffect(() => {
+    const panel = modalPanelRef.current;
+    if (!panel) return undefined;
+    const onPaste = (e) => {
+      if (showBulkGoogle || showImportPreview || showCompanySearchModal || showAssigneePicker) return;
+      if (extractingBusinessCard || importPreviewLoading || driveUploading) return;
+      if (saving) return;
+      const file = clipboardDataToImageFile(e.clipboardData);
+      if (!file) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (isEditMode && contactId) {
+        handleEditModeBusinessCardListDrop([file]);
+      } else {
+        processBusinessCardFileSelection([file]);
+      }
+    };
+    panel.addEventListener('paste', onPaste, true);
+    return () => panel.removeEventListener('paste', onPaste, true);
+  }, [
+    showBulkGoogle,
+    showImportPreview,
+    showCompanySearchModal,
+    showAssigneePicker,
+    extractingBusinessCard,
+    importPreviewLoading,
+    driveUploading,
+    saving,
+    isEditMode,
+    contactId,
+    handleEditModeBusinessCardListDrop,
+    processBusinessCardFileSelection
+  ]);
 
   /**
    * 연락처 저장 후 명함 업로드:
@@ -1118,6 +1238,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
         email: form.email.trim(),
         phone: form.phone.trim(),
         position: (form.position || '').trim() || undefined,
+        leadSource: (form.leadSource || '').trim() || undefined,
         address: (form.address || '').trim() || undefined,
         birthDate: (form.birthDate || '').trim() || undefined,
         memo: (form.memo || '').trim() || undefined,
@@ -1246,7 +1367,12 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
 
   return (
     <div className={`add-contact-modal-overlay ${isEditMode ? 'add-contact-modal-overlay--slide' : ''}`}>
-      <div className={`add-contact-modal ${isEditMode ? 'add-contact-modal--slide' : ''}`} onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={modalPanelRef}
+        className={`add-contact-modal ${isEditMode ? 'add-contact-modal--slide' : ''}`}
+        onClick={(e) => e.stopPropagation()}
+        tabIndex={-1}
+      >
         {showBulkGoogle && (
           <GoogleContactsModal
             mode="bulk"
@@ -1317,15 +1443,12 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
               <input
                 ref={businessCardListInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,.txt,text/plain"
                 style={{ display: 'none' }}
                 onChange={(e) => {
                   const f = e.target.files?.[0] ?? null;
                   e.target.value = '';
-                  if (f) {
-                    setBusinessCardFile(f);
-                    setDriveError('');
-                  }
+                  if (f) handleEditModeBusinessCardListDrop([f]);
                 }}
                 aria-hidden="true"
               />
@@ -1415,16 +1538,16 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
                 ) : null}
               </div>
               <div
-                className={`register-sale-docs-crm-uploads ${crmListDropActive ? 'register-sale-docs-crm-uploads--drop-active' : ''} ${driveUploading || saving ? 'register-sale-docs-crm-uploads--disabled' : ''}`}
+                className={`register-sale-docs-crm-uploads ${crmListDropActive ? 'register-sale-docs-crm-uploads--drop-active' : ''} ${driveUploading || saving || extractingBusinessCard || importPreviewLoading ? 'register-sale-docs-crm-uploads--disabled' : ''}`}
                 onDragEnter={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  if (!driveUploading && !saving) setCrmListDropActive(true);
+                  if (!driveUploading && !saving && !extractingBusinessCard && !importPreviewLoading) setCrmListDropActive(true);
                 }}
                 onDragOver={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  if (!driveUploading && !saving) setCrmListDropActive(true);
+                  if (!driveUploading && !saving && !extractingBusinessCard && !importPreviewLoading) setCrmListDropActive(true);
                 }}
                 onDragLeave={(e) => {
                   e.preventDefault();
@@ -1435,16 +1558,10 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
                   e.preventDefault();
                   e.stopPropagation();
                   setCrmListDropActive(false);
-                  if (driveUploading || saving) return;
+                  if (driveUploading || saving || extractingBusinessCard || importPreviewLoading) return;
                   const list = e.dataTransfer?.files;
                   if (!list?.length) return;
-                  const firstImg = Array.from(list).find((f) => (f?.type || '').startsWith('image/'));
-                  if (!firstImg) {
-                    setDriveError('명함 리스트에는 이미지 파일만 놓을 수 있습니다. 증서·기타 파일은 위쪽 「파일 추가」로 올려 주세요.');
-                    return;
-                  }
-                  setBusinessCardFile(firstImg);
-                  setDriveError('');
+                  handleEditModeBusinessCardListDrop(list);
                 }}
               >
                 <h4 className="register-sale-docs-crm-uploads-title">
@@ -1452,20 +1569,33 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
                   명함 리스트
                 </h4>
                 <p className="register-sale-docs-crm-uploads-hint">
-                  여기에 이미지를 놓거나 클릭하면 <strong>저장하기 전까지</strong> 로컬에만 준비됩니다. 아래 목록이 바뀌며, <strong>저장</strong>을 누르면 그때 Google Drive·CRM에 반영됩니다. 증서·기타 파일은 위 「파일 추가」로 즉시 업로드할 수 있습니다. Drive에 이미 있는 파일명 <code>명함_</code>로 시작하는 항목은 저장 없이도 표시됩니다.
-                </p>
+                  드래그 앤 드롭(다중 가능) 또는 클릭. 캡처 화면을 클립보드에 둔 뒤 이 창을 클릭한 다음 붙여넣기(Ctrl+V)로도 가능합니다.
+               </p>
                 {businessCardTableRows.length === 0 ? (
                   <div
                     className={`register-sale-docs-crm-empty ${crmListDropActive ? 'register-sale-docs-crm-empty--active' : ''}`}
                     onClick={() => {
-                      if (!driveUploading && !saving && businessCardListInputRef.current) {
+                      if (
+                        !driveUploading &&
+                        !saving &&
+                        !extractingBusinessCard &&
+                        !importPreviewLoading &&
+                        businessCardListInputRef.current
+                      ) {
                         businessCardListInputRef.current.click();
                       }
                     }}
                     role="button"
                     tabIndex={0}
                     onKeyDown={(e) => {
-                      if ((e.key === 'Enter' || e.key === ' ') && !driveUploading && !saving && businessCardListInputRef.current) {
+                      if (
+                        (e.key === 'Enter' || e.key === ' ') &&
+                        !driveUploading &&
+                        !saving &&
+                        !extractingBusinessCard &&
+                        !importPreviewLoading &&
+                        businessCardListInputRef.current
+                      ) {
                         e.preventDefault();
                         businessCardListInputRef.current.click();
                       }
@@ -1473,7 +1603,13 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
                   >
                     <span className="material-symbols-outlined register-sale-docs-crm-empty-icon">inbox</span>
                     <span className="register-sale-docs-crm-empty-text">
-                      {saving ? '저장 중…' : driveUploading ? '다른 파일 업로드 중…' : '등록된 명함이 없습니다. 이미지를 여기에 놓거나 클릭해 준비한 뒤 저장하세요.'}
+                      {saving
+                        ? '저장 중…'
+                        : driveUploading
+                          ? '다른 파일 업로드 중…'
+                          : extractingBusinessCard || importPreviewLoading
+                            ? '명함에서 정보를 읽는 중…'
+                            : '등록된 명함이 없습니다. 명함 이미지·TXT를 놓으면 폼에 반영되고, 클릭하면 이미지만 준비합니다.'}
                     </span>
                   </div>
                 ) : (
@@ -1497,7 +1633,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
             <section className="add-company-section" aria-label="명함 등록">
               <h3 className="add-company-section-title">명함 일괄</h3>
               <p className="add-company-upload-hint" style={{ marginBottom: '0.5rem' }}>
-                아래 영역에 명함 이미지·TXT를 드래그 앤 드롭하거나 클릭하여 선택하세요. 여러 장 또는 TXT 한 개면 Gemini로 분류 후 표에서 확인하고 등록합니다. 이미지 한 장만 올리면 폼에 바로 채웁니다.
+                드래그 앤 드롭(다중 가능) 또는 클릭. 캡처 화면을 클립보드에 둔 뒤 이 창을 클릭한 다음 붙여넣기(Ctrl+V)로도 가능합니다.
               </p>
               <input
                 ref={cardInputRef}
@@ -1545,7 +1681,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
                 ) : (
                   <>
                     <p className="add-company-upload-title">파일을 드래그하거나 클릭하여 업로드하세요</p>
-                    <p className="add-company-upload-hint">명함을 올리면 정보를 자동으로 입력합니다. 여러 장·TXT 파일은 미리보기 후 등록합니다. 저장 시 Google Drive business card 폴더에만 등록됩니다.</p>
+                    <p className="add-company-upload-hint">자동 입력·미리보기 후 등록. 저장 시 Drive business card 폴더.</p>
                   </>
                 )}
               </div>
@@ -1623,6 +1759,17 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
           <div className="add-contact-modal-field">
             <label htmlFor="add-contact-position">직책</label>
             <input id="add-contact-position" name="position" type="text" value={form.position} onChange={handleChange} placeholder="예: 과장, 팀장" />
+          </div>
+          <div className="add-contact-modal-field">
+            <label htmlFor="add-contact-lead-source">유입 경로</label>
+            <input
+              id="add-contact-lead-source"
+              name="leadSource"
+              type="text"
+              value={form.leadSource}
+              onChange={handleChange}
+              placeholder="예: 웹, 지인 소개, 전시회"
+            />
           </div>
           <div className="add-contact-modal-field">
             <label htmlFor="add-contact-address">주소</label>

@@ -208,6 +208,34 @@
   font-size: 1.05rem;
 }
 
+.cc-selection-action-bar-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.95rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #8b4a52;
+  background: #fce8ea;
+  border: 1px solid #e8b8bf;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.cc-selection-action-bar-delete:hover:not(:disabled) {
+  background: #f8d9dd;
+}
+
+.cc-selection-action-bar-delete:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.cc-selection-action-bar-delete .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
 .cc-selection-action-bar-cancel {
   padding: 0.45rem 0.85rem;
   font-size: 0.8rem;

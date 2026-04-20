@@ -332,155 +332,55 @@
   color: #f5f9ff;
 }
 
-.kpi-summary-grid {
-  display: grid;
+/* KPI 요약: 홈 insights `home-kpi-card` 타이포·패딩(home.css), 4열 그리드 */
+.kpi-page .kpi-page-kpi-summary.home-kpi-strip {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 1.2rem;
+  gap: 1rem;
   margin-bottom: 1.7rem;
 }
 
-.kpi-summary-card {
+@media (max-width: 1200px) {
+  .kpi-page .kpi-page-kpi-summary.home-kpi-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .kpi-page .kpi-page-kpi-summary.home-kpi-strip {
+    grid-template-columns: 1fr;
+  }
+}
+
+.kpi-page .home-kpi-card.kpi-summary-card-button {
   display: flex;
   flex-direction: column;
-  gap: 2rem;
-  min-height: 11.75rem;
-  padding: 1.45rem;
-  background: #ffffff;
-  border-radius: 1.5rem;
-  box-shadow: 0 18px 36px rgba(44, 100, 133, 0.06);
-}
-
-.kpi-summary-card-button {
+  align-items: stretch;
   width: 100%;
-  border: none;
-  text-align: left;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
   cursor: pointer;
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  text-align: left;
+  appearance: none;
+  -webkit-appearance: none;
+  transition: box-shadow 0.18s ease, border-color 0.18s ease;
 }
 
-.kpi-summary-card-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 22px 40px rgba(44, 100, 133, 0.1);
+.kpi-page .home-kpi-card.kpi-summary-card-button:hover {
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.1);
+  border-color: #d8e0ea;
 }
 
-.kpi-summary-card-button:focus-visible {
-  outline: 2px solid rgba(44, 100, 133, 0.26);
+.kpi-page .home-kpi-card.kpi-summary-card-button:focus-visible {
+  outline: 2px solid rgba(44, 100, 133, 0.35);
   outline-offset: 2px;
 }
 
-.kpi-summary-card-loading {
-  justify-content: space-between;
-}
-
-.kpi-skeleton {
-  border-radius: 999px;
-  background: rgba(220, 228, 232, 0.95);
-  animation: kpi-skeleton 1.2s ease-in-out infinite;
-}
-
-.kpi-skeleton-icon {
-  width: 3rem;
-  height: 3rem;
-  border-radius: 1rem;
-}
-
-.kpi-skeleton-title {
-  width: 55%;
-  height: 0.95rem;
-}
-
-.kpi-skeleton-value {
-  width: 72%;
-  height: 2rem;
-}
-
-@keyframes kpi-skeleton {
-  0%, 100% { opacity: 0.55; }
-  50% { opacity: 1; }
-}
-
-.kpi-summary-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 0.75rem;
-}
-
-.kpi-summary-icon {
-  width: 3rem;
-  height: 3rem;
-  border-radius: 1rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.kpi-summary-icon .material-symbols-outlined {
-  font-size: 1.35rem;
-}
-
-.kpi-summary-icon.tone-sky {
-  background: #cde5ff;
-  color: #20567c;
-}
-
-.kpi-summary-icon.tone-blue {
-  background: #d7ebfb;
-  color: #2c6485;
-}
-
-.kpi-summary-icon.tone-mint {
-  background: #cbf9db;
-  color: #3f6750;
-}
-
-.kpi-summary-delta {
-  padding: 0.28rem 0.55rem;
-  border-radius: 999px;
-  font-size: 0.68rem;
-  font-weight: 700;
-}
-
-.kpi-summary-delta.is-positive {
-  background: #e6f8ee;
-  color: #2d9d78;
-}
-
-.kpi-summary-delta.is-negative {
-  background: rgba(250, 116, 111, 0.14);
-  color: #a83836;
-}
-
-.kpi-summary-copy p {
-  margin: 0;
-  font-size: 0.95rem;
-  color: #596064;
-}
-
-.kpi-summary-subline {
-  margin: 0.35rem 0 0;
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: #5a6b78;
-}
-
-.kpi-summary-copy h2 {
-  margin: 0.45rem 0 0;
-  font-family: 'Manrope', 'Inter', system-ui, sans-serif;
-  font-size: 2rem;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  color: #2c3437;
-}
-
-.kpi-summary-copy h2 span {
-  font-family: 'Inter', system-ui, sans-serif;
-  font-size: 0.95rem;
-  font-weight: 500;
-  color: #7c8a96;
-  display: block;
-  margin-top: 0.35rem;
-  line-height: 1.45;
+.kpi-page .home-kpi-card .kpi-summary-footer {
+  padding-top: 0.65rem;
+  border-top: 1px solid #edf1f6;
 }
 
 .kpi-summary-footer {
@@ -1197,10 +1097,6 @@
 }
 
 @media (max-width: 1180px) {
-  .kpi-summary-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .kpi-main-grid {
     grid-template-columns: 1fr;
   }
@@ -1308,20 +1204,8 @@
     font-size: 0.6rem;
   }
 
-  .kpi-summary-grid {
-    grid-template-columns: 1fr;
-    gap: 0.95rem;
-  }
-
   .kpi-insight-grid {
     grid-template-columns: 1fr;
-  }
-
-  .kpi-summary-card {
-    min-height: auto;
-    gap: 1.25rem;
-    padding: 1.2rem;
-    border-radius: 1.25rem;
   }
 
   .kpi-panel,

@@ -69,7 +69,9 @@ const CUSTOM_FIELDS_PREFIX = 'customFields.';
 export default function CustomerCompanyEmployees() {
   const me = useMemo(() => getStoredCrmUser(), []);
   const canManageCustomFieldDefinitions = isAdminOrAboveRole(me?.role);
+  const canBulkDeleteSelected = isAdminOrAboveRole(me?.role);
   const canRequestAssigneeHandover = !!(me && String(me.role || '').toLowerCase() !== 'pending');
+  const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
   const [handoverCtx, setHandoverCtx] = useState(null);
   const [showCustomFieldsManageModal, setShowCustomFieldsManageModal] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -124,6 +126,7 @@ export default function CustomerCompanyEmployees() {
     { key: 'email', label: '이메일' },
     { key: 'phone', label: '연락처' },
     { key: 'position', label: '직책' },
+    { key: 'leadSource', label: '유입 경로' },
     { key: 'address', label: '주소' },
     { key: 'status', label: '상태' },
     { key: 'assigneeUserIds', label: '담당자' },
@@ -419,6 +422,7 @@ export default function CustomerCompanyEmployees() {
     if (key === 'name') return (row.name || '').toLowerCase();
     if (key === 'email') return (row.email || '').toLowerCase();
     if (key === 'phone') return (row.phone || '').toLowerCase();
+    if (key === 'leadSource') return (row.leadSource || '').toLowerCase();
     if (key === 'status') return (row.status || '').toLowerCase();
     if (key === 'assigneeUserIds') {
       const ids = Array.isArray(row.assigneeUserIds) ? row.assigneeUserIds : [];
@@ -533,6 +537,61 @@ export default function CustomerCompanyEmployees() {
     });
   }, [canRequestAssigneeHandover, selected, sortedItems]);
 
+  const handleBulkDeleteSelectedContacts = useCallback(async () => {
+    if (!canBulkDeleteSelected) {
+      window.alert('선택 항목 삭제는 Owner / Admin만 가능합니다.');
+      return;
+    }
+    const ids = [...selected].map((id) => String(id));
+    if (ids.length === 0) return;
+    const confirmed = window.confirm(
+      `선택한 연락처 ${ids.length}명을 삭제합니다.\n` +
+        '고객사에 연결된 경우 목록에서도 제거되며, 이 작업은 되돌릴 수 없습니다.\n' +
+        '계속할까요?'
+    );
+    if (!confirmed) return;
+    setBulkDeleteLoading(true);
+    let ok = 0;
+    const errors = [];
+    try {
+      for (const id of ids) {
+        const res = await fetch(`${API_BASE}/customer-company-employees/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+          headers: getAuthHeader()
+        });
+        if (res.status === 204 || res.ok) {
+          ok += 1;
+        } else {
+          const data = await res.json().catch(() => ({}));
+          errors.push({ id, error: data.error || `HTTP ${res.status}` });
+        }
+      }
+    } finally {
+      setBulkDeleteLoading(false);
+    }
+    if (detailId && ids.includes(String(detailId))) {
+      closeDetailModal();
+    }
+    clearSelection();
+    await fetchContacts(pagination.page);
+    if (errors.length === 0) {
+      window.alert(`삭제했습니다. (${ok}명)`);
+    } else {
+      const extra = errors.length > 1 ? ` 외 ${errors.length - 1}건` : '';
+      window.alert(
+        `처리 결과: 성공 ${ok}명, 실패 ${errors.length}건.\n첫 오류: ${errors[0].error}${extra}`
+      );
+    }
+  }, [
+    canBulkDeleteSelected,
+    selected,
+    detailId,
+    closeDetailModal,
+    clearSelection,
+    fetchContacts,
+    pagination.page
+  ]);
+
   const fetchAllContactsForExport = useCallback(async () => {
     let page = 1;
     let totalPages = 1;
@@ -626,6 +685,7 @@ export default function CustomerCompanyEmployees() {
           이메일: row.email || '',
           전화: row.phone || '',
           직책: row.position || '',
+          '유입 경로': row.leadSource || '',
           주소: row.address || '',
           상태: row.status ? statusLabel[row.status] || row.status : '',
           담당자,
@@ -807,6 +867,11 @@ export default function CustomerCompanyEmployees() {
               )}
             </div>
             <p className="cce-mobile-card-company">{row.company || '—'}</p>
+            {row.leadSource ? (
+              <p className="cce-mobile-card-lead-source text-muted" title={String(row.leadSource)}>
+                유입: {String(row.leadSource)}
+              </p>
+            ) : null}
           </div>
           <span className="cce-mobile-card-chevron material-symbols-outlined" aria-hidden>chevron_right</span>
         </div>
@@ -829,7 +894,7 @@ export default function CustomerCompanyEmployees() {
           <form id="customer-company-employees-search-form" onSubmit={onSearch}>
             <input
               type="text"
-              placeholder={searchFieldDraft ? `${SEARCH_FIELD_OPTIONS.find((o) => o.key === searchFieldDraft)?.label || searchFieldDraft} 검색...` : '모든 필드 검색 (이름, 회사, 이메일, 전화, 직책, 메모, 커스텀 필드 등)...'}
+              placeholder={searchFieldDraft ? `${SEARCH_FIELD_OPTIONS.find((o) => o.key === searchFieldDraft)?.label || searchFieldDraft} 검색...` : '모든 필드 검색 (이름, 회사, 이메일, 전화, 직책, 유입 경로, 메모, 커스텀 필드 등)...'}
               value={searchDraft}
               onChange={(e) => setSearchDraft(e.target.value)}
             />
@@ -943,7 +1008,7 @@ export default function CustomerCompanyEmployees() {
                 title="동일 본문으로 문자 앱에 수신자를 한꺼번에 넣습니다 (기기·앱에 따라 다를 수 있음). 연락처마다 이름이 필요하면 모달에서 개별 발송을 선택하세요."
               >
                 <span className="material-symbols-outlined" aria-hidden>sms</span>
-                선택 {selected.size}명에게 문자 (단체)
+                문자 (단체)
               </button>
               <button
                 type="button"
@@ -952,7 +1017,7 @@ export default function CustomerCompanyEmployees() {
                 title="이메일이 있는 연락처만 받는 사람 칸에 넣고 새 메일 작성을 엽니다 (중복 주소는 한 번만)."
               >
                 <span className="material-symbols-outlined" aria-hidden>mail</span>
-                선택 {selected.size}명에게 메일 (단체)
+                메일 (단체)
               </button>
               <button
                 type="button"
@@ -972,6 +1037,18 @@ export default function CustomerCompanyEmployees() {
                 >
                   <span className="material-symbols-outlined" aria-hidden>swap_horiz</span>
                   인수인계
+                </button>
+              ) : null}
+              {canBulkDeleteSelected ? (
+                <button
+                  type="button"
+                  className="cce-action-bar-delete"
+                  onClick={handleBulkDeleteSelectedContacts}
+                  disabled={bulkDeleteLoading}
+                  title="선택한 연락처를 삭제합니다 (Owner / Admin)"
+                >
+                  <span className="material-symbols-outlined" aria-hidden>delete</span>
+                  {bulkDeleteLoading ? '삭제 중…' : '선택 항목 삭제'}
                 </button>
               ) : null}
               <button type="button" className="cce-action-bar-cancel" onClick={clearSelection}>선택 해제</button>
@@ -1324,6 +1401,7 @@ export default function CustomerCompanyEmployees() {
                                 </div>
                               );
                             })()}
+                            {col.key === 'leadSource' && (row.leadSource ? String(row.leadSource) : '—')}
                             {col.key === 'status' && (
                               <span className={`status-badge ${statusClass[row.status] || ''}`}>{statusLabel[row.status] || row.status || '—'}</span>
                             )}

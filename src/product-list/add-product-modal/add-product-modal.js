@@ -7,6 +7,7 @@ import './add-product-modal.css';
 
 import { API_BASE } from '@/config';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
+import { getSavedAddProductModalDefaults, patchAddProductModalDefaults } from '@/lib/list-templates';
 import {
   excelObjectToProductFormDraft,
   isExcelRowEffectivelyEmpty,
@@ -67,8 +68,8 @@ function getCategoryTriggerLabel(categoryKey, categoryOther) {
 }
 
 const CURRENCY_OPTIONS = [
-  { value: 'KRW', label: 'KRW (₩)' },
-  { value: 'USD', label: 'USD ($)' }
+  { value: 'KRW', label: '원' },
+  { value: 'USD', label: '달러' }
 ];
 
 function getAuthHeader() {
@@ -121,17 +122,22 @@ export default function AddProductModal({
 }) {
   const isEdit = !!product?._id;
   const isDuplicate = variant === 'duplicate';
+  /** 신규 제품 등록(목록에서 열기)일 때만 listTemplates.addProductModal 저장·복원 */
+  const isNewProductRegistration = !isEdit && !isDuplicate;
   const canManageCustomFieldDefinitions = isAdminOrAboveRole(getStoredCrmUser()?.role);
   const isSlidePanel = (isEdit || isDuplicate) && presentation === 'slide';
   const showExcelDrop = !isEdit && typeof onOpenBulkImport === 'function';
-  const [form, setForm] = useState({
-    name: product?.name ?? '',
-    code: product?.code ?? '',
-    version: product?.version ?? '',
-    currency: product?.currency ?? 'KRW',
-    billingType: product?.billingType ?? 'Monthly',
-    status: product?.status ?? 'Active',
-    customFields: product?.customFields ? { ...product.customFields } : {}
+  const [form, setForm] = useState(() => {
+    const savedNew = isNewProductRegistration ? getSavedAddProductModalDefaults() : null;
+    return {
+      name: product?.name ?? '',
+      code: product?.code ?? '',
+      version: product?.version ?? '',
+      currency: product?.currency ?? 'KRW',
+      billingType: product?.billingType ?? savedNew?.billingType ?? 'Monthly',
+      status: product?.status ?? 'Active',
+      customFields: product?.customFields ? { ...product.customFields } : {}
+    };
   });
   const [customDefinitions, setCustomDefinitions] = useState([]);
   const [showCustomFieldsModal, setShowCustomFieldsModal] = useState(false);
@@ -140,8 +146,14 @@ export default function AddProductModal({
   const [listPriceInput, setListPriceInput] = useState(() => formatPriceDisplay(listPriceFromProduct(product)));
   const [costPriceInput, setCostPriceInput] = useState(() => formatPriceDisplay(Number(product?.costPrice) || 0));
   const [channelPriceInput, setChannelPriceInput] = useState(() => formatPriceDisplay(Number(product?.channelPrice) || 0));
-  const [categoryKey, setCategoryKey] = useState(() => parseCategoryFromStored(product?.category).key);
-  const [categoryOther, setCategoryOther] = useState(() => parseCategoryFromStored(product?.category).other);
+  const [categoryKey, setCategoryKey] = useState(() => {
+    if (isEdit || isDuplicate) return parseCategoryFromStored(product?.category).key;
+    return getSavedAddProductModalDefaults().categoryKey;
+  });
+  const [categoryOther, setCategoryOther] = useState(() => {
+    if (isEdit || isDuplicate) return parseCategoryFromStored(product?.category).other;
+    return getSavedAddProductModalDefaults().categoryOther;
+  });
   const [categoryOpen, setCategoryOpen] = useState(false);
   const categoryPickerRef = useRef(null);
   const excelFileInputRef = useRef(null);
@@ -166,10 +178,13 @@ export default function AddProductModal({
   }, [product?._id, product?.price, product?.listPrice, product?.costPrice, product?.channelPrice]);
 
   useEffect(() => {
+    if (!isEdit && !isDuplicate) return;
     const p = parseCategoryFromStored(product?.category);
     setCategoryKey(p.key);
     setCategoryOther(p.other);
-  }, [product?._id, product?.category]);
+  }, [isEdit, isDuplicate, product?._id, product?.category]);
+
+  /** 신규 등록 모달이 열릴 때마다 마운트되며, 초기 state에서 listTemplates.addProductModal 복원됨. 저장 시 변경분만 서버·crm_user 갱신. */
 
   useEffect(() => {
     const onKey = (e) => {
@@ -277,6 +292,7 @@ export default function AddProductModal({
     const listP = parsePriceInput(listPriceInput);
     const costP = parsePriceInput(costPriceInput);
     const channelP = parsePriceInput(channelPriceInput);
+    const addModalSnapshot = isNewProductRegistration ? getSavedAddProductModalDefaults() : null;
     setSaving(true);
     try {
       const url = isEdit ? `${API_BASE}/products/${product._id}` : `${API_BASE}/products`;
@@ -309,6 +325,23 @@ export default function AddProductModal({
         const data = await res.json().catch(() => ({}));
         setError(data.error || '저장에 실패했습니다.');
         return;
+      }
+      if (addModalSnapshot && !isEdit) {
+        const billingChanged = addModalSnapshot.billingType !== form.billingType;
+        const catChanged =
+          addModalSnapshot.categoryKey !== categoryKey ||
+          String(addModalSnapshot.categoryOther || '') !== String(categoryOther || '');
+        if (billingChanged || catChanged) {
+          try {
+            await patchAddProductModalDefaults({
+              categoryKey,
+              categoryOther,
+              billingType: form.billingType
+            });
+          } catch {
+            /* listTemplates 갱신 실패해도 제품 저장은 완료된 상태 */
+          }
+        }
       }
       onSaved?.();
       onClose?.();

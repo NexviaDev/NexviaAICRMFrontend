@@ -111,6 +111,8 @@ export default function CustomerCompanies() {
   const canManageCustomFieldDefinitions = isAdminOrAboveRole(me?.role);
   const canRequestAssigneeHandover = !!(me && String(me.role || '').toLowerCase() !== 'pending');
   const canMergeCustomerCompanies = isAdminOrAboveRole(me?.role);
+  const canBulkDeleteSelected = isAdminOrAboveRole(me?.role);
+  const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
   const [handoverCtx, setHandoverCtx] = useState(null);
   const [mergeModalOpen, setMergeModalOpen] = useState(false);
   const [showCustomFieldsManageModal, setShowCustomFieldsManageModal] = useState(false);
@@ -496,6 +498,61 @@ export default function CustomerCompanies() {
     setMergeModalOpen(true);
   }, [canMergeCustomerCompanies, selectedCompanyIds.size]);
 
+  const handleBulkDeleteSelectedCompanies = useCallback(async () => {
+    if (!canBulkDeleteSelected) {
+      window.alert('선택 항목 삭제는 Owner / Admin만 가능합니다.');
+      return;
+    }
+    const ids = [...selectedCompanyIds].map((id) => String(id));
+    if (ids.length === 0) return;
+    const confirmed = window.confirm(
+      `선택한 고객사 ${ids.length}곳을 삭제합니다.\n` +
+        '연결된 연락처는 해당 고객사와의 연결이 해제되고, 업무·판매 기록 등의 고객사 참조는 비워집니다.\n' +
+        '이 작업은 되돌릴 수 없습니다. 계속할까요?'
+    );
+    if (!confirmed) return;
+    setBulkDeleteLoading(true);
+    let ok = 0;
+    const errors = [];
+    try {
+      for (const id of ids) {
+        const res = await fetch(`${API_BASE}/customer-companies/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+          headers: getAuthHeader()
+        });
+        if (res.status === 204 || res.ok) {
+          ok += 1;
+        } else {
+          const data = await res.json().catch(() => ({}));
+          errors.push({ id, error: data.error || `HTTP ${res.status}` });
+        }
+      }
+    } finally {
+      setBulkDeleteLoading(false);
+    }
+    if (detailId && ids.includes(String(detailId))) {
+      closeDetailModal();
+    }
+    clearCompanySelection();
+    await fetchList(pagination.page);
+    if (errors.length === 0) {
+      window.alert(`삭제했습니다. (${ok}곳)`);
+    } else {
+      const extra = errors.length > 1 ? ` 외 ${errors.length - 1}건` : '';
+      window.alert(
+        `처리 결과: 성공 ${ok}곳, 실패 ${errors.length}건.\n첫 오류: ${errors[0].error}${extra}`
+      );
+    }
+  }, [
+    canBulkDeleteSelected,
+    selectedCompanyIds,
+    detailId,
+    closeDetailModal,
+    clearCompanySelection,
+    fetchList,
+    pagination.page
+  ]);
+
   const openCompanyHandoverFromSelection = useCallback(() => {
     if (!canRequestAssigneeHandover) return;
     if (selectedCompanyIds.size === 0) return;
@@ -765,6 +822,18 @@ export default function CustomerCompanies() {
                 >
                   <span className="material-symbols-outlined" aria-hidden>swap_horiz</span>
                   인수인계
+                </button>
+              ) : null}
+              {canBulkDeleteSelected ? (
+                <button
+                  type="button"
+                  className="cc-selection-action-bar-delete"
+                  onClick={handleBulkDeleteSelectedCompanies}
+                  disabled={bulkDeleteLoading}
+                  title="선택한 고객사를 삭제합니다 (Owner / Admin). 연락처는 고객사 연결만 해제됩니다."
+                >
+                  <span className="material-symbols-outlined" aria-hidden>delete</span>
+                  {bulkDeleteLoading ? '삭제 중…' : '선택 항목 삭제'}
                 </button>
               ) : null}
               <button type="button" className="cc-selection-action-bar-cancel" onClick={clearCompanySelection}>

@@ -5,6 +5,7 @@ import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-head
 import ParticipantModal from '@/shared/participant-modal/participant-modal';
 import KpiDetailModal from './kpi-detail-modal/kpi-detail-modal';
 import KpiTargetModal from './kpi-target-modal/kpi-target-modal';
+import '../home/home.css';
 import './kpi.css';
 
 const PERIODS = [
@@ -786,52 +787,58 @@ export default function Kpi() {
     const opAmtPrev = Number(metrics?.otherPerformance?.amountPrevious) || 0;
     const opDelta = formatDelta(opAmtCur, opAmtPrev);
     const opCnt = Number(metrics?.otherPerformance?.countCurrent) || 0;
+    const wonHint = [
+      `수주 성공 ${formatNumber(metrics?.wonDeals?.current)}건`,
+      target?.targetRevenue > 0 ? `목표 ${formatRevenue(target?.targetRevenue)}` : '목표 미설정'
+    ].join(' · ');
+    const projHint = target?.targetProjects > 0 ? `목표 ${formatNumber(target?.targetProjects)}개` : '목표 미설정';
+    const workHint = `이전 ${formatNumber(metrics?.workLogs?.previous)}건`;
+    const otherHint = `${formatNumber(opCnt)}건 등록 · 직접 등록`;
+
     return [
       {
         key: 'wonSales',
         detailKey: 'wonSales',
         label: '수주 매출',
-        subLine: `수주 성공 ${formatNumber(metrics?.wonDeals?.current)}건`,
+        hint: wonHint,
         value: formatRevenue(metrics?.revenue?.current),
-        unit: target?.targetRevenue > 0 ? `목표 ${formatRevenue(target?.targetRevenue)}` : '목표 미설정',
         delta: revenueDelta.text,
+        deltaNeutral: revenueDelta.text.includes('변동 없음'),
         positive: revenueDelta.positive,
-        icon: 'payments',
-        tone: 'mint'
+        icon: 'payments'
       },
       {
         key: 'projects',
         detailKey: 'projects',
         label: '완료 프로젝트',
+        hint: projHint,
         value: `${formatNumber(metrics?.completedProjects?.current)}개`,
-        unit: target?.targetProjects > 0 ? `목표 ${formatNumber(target?.targetProjects)}개` : '목표 미설정',
         delta: projectDelta.text,
+        deltaNeutral: projectDelta.text.includes('변동 없음'),
         positive: projectDelta.positive,
-        icon: 'assignment_turned_in',
-        tone: 'blue'
+        icon: 'assignment_turned_in'
       },
       {
         key: 'workLogs',
         detailKey: 'workLogs',
         label: '업무 기록',
+        hint: workHint,
         value: `${formatNumber(metrics?.workLogs?.current)}건`,
-        unit: `이전 ${formatNumber(metrics?.workLogs?.previous)}건`,
         delta: workDelta.text,
+        deltaNeutral: workDelta.text.includes('변동 없음'),
         positive: workDelta.positive,
-        icon: 'edit_note',
-        tone: 'sky'
+        icon: 'edit_note'
       },
       {
         key: 'otherPerformance',
         detailKey: 'otherPerformance',
         label: '기타 성과',
-        subLine: `${formatNumber(opCnt)}건 등록`,
+        hint: otherHint,
         value: formatRevenue(opAmtCur),
-        unit: '직접 등록',
         delta: opDelta.text,
+        deltaNeutral: opDelta.text.includes('변동 없음'),
         positive: opDelta.positive,
-        icon: 'interests',
-        tone: 'mint'
+        icon: 'interests'
       }
     ];
   }, [metrics, target]);
@@ -1513,7 +1520,7 @@ export default function Kpi() {
           </section>
         ) : null}
 
-        <section className="kpi-summary-grid" aria-label="핵심 KPI">
+        <section className="home-kpi-strip kpi-page-kpi-summary" aria-label="핵심 KPI">
           {(loading ? [] : cards).map((card) => {
             const checklistKey = card.detailKey || card.key;
             const clSummary = checklistSummaryByMetric?.[checklistKey];
@@ -1522,29 +1529,43 @@ export default function Kpi() {
             const totalItems = showCl ? Math.max(0, Number(clSummary.totalCount) || 0) : 0;
             const checkedN = showCl ? Math.max(0, Number(clSummary.checkedCount) || 0) : 0;
             const checkedPts = showCl ? Math.max(0, Number(clSummary.checkedScore) || 0) : 0;
+            const deltaUp = !card.deltaNeutral && card.positive;
+            const deltaDown = !card.deltaNeutral && !card.positive;
             return (
               <button
                 key={card.key}
                 type="button"
-                className="kpi-summary-card kpi-summary-card-button"
+                className="home-kpi-card kpi-summary-card-button"
                 onClick={() => openListModal(checklistKey)}
               >
-                <div className="kpi-summary-top">
-                  <div className={`kpi-summary-icon tone-${card.tone}`}>
-                    <span className="material-symbols-outlined" aria-hidden>{card.icon}</span>
-                  </div>
-                  <span className={`kpi-summary-delta ${card.positive ? 'is-positive' : 'is-negative'}`}>
-                    {card.delta}
+                <div className="home-kpi-card-head">
+                  <span className="home-kpi-card-title">{card.label}</span>
+                  <span className="material-symbols-outlined home-kpi-card-icon" aria-hidden>
+                    {card.icon}
                   </span>
                 </div>
-                <div className="kpi-summary-copy">
-                  <p>{card.label}</p>
-                  <h2>
-                    {card.value} <span>{card.unit}</span>
-                  </h2>
-                  {card.subLine ? (
-                    <p className="kpi-summary-subline">{card.subLine}</p>
-                  ) : null}
+                <p className="home-kpi-card-value">{card.value}</p>
+                <p className="home-kpi-card-hint">{card.hint}</p>
+                <div className="home-kpi-card-metrics">
+                  <div className="home-kpi-metric-line">
+                    <span className="home-kpi-dot home-kpi-dot--period" aria-hidden />
+                    <span className="home-kpi-metric-label">전기 대비</span>
+                    <span
+                      className={`home-kpi-metric-trend ${deltaUp ? 'is-up' : ''} ${deltaDown ? 'is-down' : ''}`}
+                    >
+                      {deltaUp ? (
+                        <span className="material-symbols-outlined" aria-hidden>
+                          trending_up
+                        </span>
+                      ) : null}
+                      {deltaDown ? (
+                        <span className="material-symbols-outlined" aria-hidden>
+                          trending_down
+                        </span>
+                      ) : null}{' '}
+                      {card.delta}
+                    </span>
+                  </div>
                 </div>
                 {showCl ? (
                   <div className="kpi-summary-footer">
@@ -1564,11 +1585,12 @@ export default function Kpi() {
           })}
           {loading ? (
             Array.from({ length: 4 }).map((_, idx) => (
-              <article key={`loading-${idx}`} className="kpi-summary-card kpi-summary-card-loading">
-                <div className="kpi-skeleton kpi-skeleton-icon" />
-                <div className="kpi-skeleton kpi-skeleton-title" />
-                <div className="kpi-skeleton kpi-skeleton-value" />
-              </article>
+              <div key={`loading-${idx}`} className="home-kpi-card home-kpi-card--skeleton" aria-busy="true">
+                <div className="home-kpi-skel-line home-kpi-skel-line--short" />
+                <div className="home-kpi-skel-line home-kpi-skel-line--value" />
+                <div className="home-kpi-skel-line" />
+                <div className="home-kpi-skel-line" />
+              </div>
             ))
           ) : null}
         </section>

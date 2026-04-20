@@ -462,6 +462,129 @@
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 }
 
+.calendar-filter-sync-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.calendar-sync-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.42rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--cal-primary, #3d7a9c);
+  background: rgba(184, 212, 240, 0.35);
+  border: 1px solid rgba(125, 168, 206, 0.45);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+  white-space: nowrap;
+}
+
+.calendar-sync-btn:hover:not(:disabled) {
+  background: rgba(184, 212, 240, 0.55);
+  border-color: rgba(90, 140, 180, 0.5);
+}
+
+.calendar-sync-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.calendar-sync-btn .material-symbols-outlined {
+  font-size: 1.1rem;
+}
+
+.calendar-sync-btn-spinner {
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid rgba(125, 168, 206, 0.35);
+  border-top-color: var(--cal-primary, #3d7a9c);
+  border-radius: 50%;
+  animation: calendar-sync-spin 0.75s linear infinite;
+}
+
+@keyframes calendar-sync-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.calendar-sync-hint {
+  position: relative;
+  margin: 0 0 0.5rem;
+  padding: 0.5rem 2.25rem 0.5rem 0.75rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--text-muted, #64748b);
+  background: rgba(184, 212, 240, 0.2);
+  border-radius: 0.5rem;
+  border: 1px solid rgba(125, 168, 206, 0.25);
+}
+
+.calendar-sync-hint-text {
+  margin: 0;
+  white-space: pre-line;
+  padding-right: 0;
+}
+
+.calendar-sync-hint-close {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: var(--text-muted, #64748b);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.calendar-sync-hint-close:hover {
+  background: rgba(125, 168, 206, 0.2);
+  color: var(--cal-primary, #3d7a9c);
+}
+
+.calendar-sync-hint-close .material-symbols-outlined {
+  font-size: 1.125rem;
+  line-height: 1;
+}
+
+.calendar-sync-hint--warn {
+  background: rgba(254, 243, 199, 0.6);
+  border-color: rgba(234, 179, 8, 0.35);
+  color: #92400e;
+}
+
+.calendar-sync-hint--warn .calendar-sync-hint-close {
+  color: #92400e;
+}
+
+.calendar-sync-hint--warn .calendar-sync-hint-close:hover {
+  background: rgba(234, 179, 8, 0.2);
+  color: #78350f;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .calendar-sync-btn-spinner {
+    animation: none;
+    border-color: rgba(125, 168, 206, 0.55);
+    border-top-color: var(--cal-primary, #3d7a9c);
+  }
+}
+
 /* 월 / 일 보기 전환 (히어로 우측) */
 .calendar-view-tabs {
   display: flex;

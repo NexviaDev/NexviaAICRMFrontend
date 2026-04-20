@@ -201,8 +201,29 @@ export default function ContactExcelImportMappingModal({
                         {isConst ? 'add_circle' : 'input'}
                       </span>
                     </div>
-                    <p>{isConst ? '고정값' : '엑셀 열'}</p>
                     <div style={{ minWidth: 0, flex: 1 }}>
+                      <div
+                        className="lc-crm-map-source-mode-toggle"
+                        role="group"
+                        aria-label="소스: 엑셀 열 또는 고정값"
+                      >
+                        <button
+                          type="button"
+                          className={!isConst ? 'is-active' : ''}
+                          onClick={() => updateRow(row.id, { sourceType: 'field' })}
+                          disabled={disabled}
+                        >
+                          엑셀 열
+                        </button>
+                        <button
+                          type="button"
+                          className={isConst ? 'is-active' : ''}
+                          onClick={() => updateRow(row.id, { sourceType: 'constant' })}
+                          disabled={disabled}
+                        >
+                          고정값
+                        </button>
+                      </div>
                       {isConst ? (
                         <input
                           className="lc-crm-map-input"
@@ -210,6 +231,7 @@ export default function ContactExcelImportMappingModal({
                           placeholder="값 입력…"
                           value={row.constantValue}
                           onChange={(e) => updateRow(row.id, { constantValue: e.target.value })}
+                          disabled={disabled}
                         />
                       ) : (
                         <>
@@ -217,6 +239,7 @@ export default function ContactExcelImportMappingModal({
                             className="lc-crm-map-select"
                             value={row.sourceKey}
                             onChange={(e) => updateRow(row.id, { sourceKey: e.target.value })}
+                            disabled={disabled}
                           >
                             <option value="">소스 선택…</option>
                             {sourceOptions.map((source) => (
@@ -240,6 +263,7 @@ export default function ContactExcelImportMappingModal({
                       className="lc-crm-map-select"
                       value={row.targetKey}
                       onChange={(e) => updateRow(row.id, { targetKey: e.target.value })}
+                      disabled={disabled}
                     >
                       <option value="">대상 선택…</option>
                       {effectiveTargetOptions.map((target) => (
@@ -263,22 +287,21 @@ export default function ContactExcelImportMappingModal({
                       flexWrap: 'wrap'
                     }}
                   >
-                    {!isConst && (
-                      <span
-                        className={`lc-crm-map-badge ${status.type === 'ok' ? 'ok' : status.type === 'warn' ? 'warn' : status.type === 'err' ? 'err' : 'muted'}`}
-                      >
-                        {status.type === 'ok' && <span className="material-symbols-outlined">check_circle</span>}
-                        {status.type === 'warn' && <span className="material-symbols-outlined">priority_high</span>}
-                        {status.type === 'err' && <span className="material-symbols-outlined">error</span>}
-                        {status.label}
-                      </span>
-                    )}
+                    <span
+                      className={`lc-crm-map-badge ${status.type === 'ok' ? 'ok' : status.type === 'warn' ? 'warn' : status.type === 'err' ? 'err' : 'muted'}`}
+                    >
+                      {status.type === 'ok' && <span className="material-symbols-outlined">check_circle</span>}
+                      {status.type === 'warn' && <span className="material-symbols-outlined">priority_high</span>}
+                      {status.type === 'err' && <span className="material-symbols-outlined">error</span>}
+                      {status.label}
+                    </span>
                     {rows.length > 1 && (
                       <button
                         type="button"
                         className="lc-crm-map-row-delete"
                         onClick={() => removeRow(row.id)}
                         aria-label="행 삭제"
+                        disabled={disabled}
                       >
                         <span className="material-symbols-outlined">delete</span>
                       </button>
@@ -295,18 +318,24 @@ export default function ContactExcelImportMappingModal({
                 <span className="material-symbols-outlined">lightbulb</span>
               </div>
               <div>
-                <p>동적 필드</p>
+                <p>동적 필드 · 소스 전환</p>
                 <span>
-                  연락처 스키마·커스텀 필드 정의는 API에서 가져옵니다. 새 필드를 DB에 추가하면 다음에 모달을 열 때 대상
-                  목록에 자동 반영됩니다.
+                  연락처 스키마·커스텀 필드 정의는 API에서 가져옵니다. 각 매핑 행에서 <strong>엑셀 열</strong>과{' '}
+                  <strong>고정값</strong>을 전환할 수 있어, 같은 행에서 엑셀 소스 선택과 수기 입력을 골라 쓸 수 있습니다.
                 </span>
               </div>
             </div>
-            <button type="button" className="lc-crm-map-btn-add-const" onClick={addConstantRow}>
+            <button
+              type="button"
+              className="lc-crm-map-btn-add-const"
+              onClick={addConstantRow}
+              disabled={disabled}
+              title="기본은 고정값이며, 각 행에서 엑셀 열로 바꿀 수 있습니다."
+            >
               <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>
                 add
               </span>
-              고정값 추가
+              매핑 행 추가
             </button>
           </div>
 

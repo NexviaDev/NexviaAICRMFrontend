@@ -314,8 +314,6 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
   const [previewChecking, setPreviewChecking] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null);
   const [importResult, setImportResult] = useState(null);
-  const [showHoldList, setShowHoldList] = useState(false);
-  const [holdGroupSelection, setHoldGroupSelection] = useState({});
   const [resolvedHoldActions, setResolvedHoldActions] = useState([]);
   const [appliedHoldGroupKeys, setAppliedHoldGroupKeys] = useState({});
   const [showAssigneePicker, setShowAssigneePicker] = useState(false);
@@ -325,21 +323,9 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
     const id = getCurrentUserId();
     return id ? [id] : [];
   });
-  const holdGroupSelectionRef = useRef({});
   const previewRawSessionRef = useRef(null);
 
   const registerTarget = 'contact';
-
-  const updateHoldGroupSelection = useCallback((groupKey, selection) => {
-    holdGroupSelectionRef.current = {
-      ...(holdGroupSelectionRef.current || {}),
-      [String(groupKey)]: selection
-    };
-    setHoldGroupSelection((prev) => ({
-      ...prev,
-      [String(groupKey)]: selection
-    }));
-  }, []);
 
   const excelHeaders = useMemo(() => {
     if (!excelRows.length) return [];
@@ -437,9 +423,6 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
       setDragOver(false);
       setSaveMsg(null);
       setImportResult(null);
-      setShowHoldList(false);
-      setHoldGroupSelection({});
-      holdGroupSelectionRef.current = {};
       setResolvedHoldActions([]);
       setAppliedHoldGroupKeys({});
       setShowAssigneePicker(false);
@@ -447,9 +430,6 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
     }
     setSaveMsg(null);
     setImportResult(null);
-    setShowHoldList(false);
-    setHoldGroupSelection({});
-    holdGroupSelectionRef.current = {};
     setResolvedHoldActions([]);
     setAppliedHoldGroupKeys({});
     const initial = stripContactMappingRows(
@@ -562,9 +542,6 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
     setPreviewChecking(true);
     setSaveMsg(null);
     setImportResult(null);
-    setShowHoldList(false);
-    setHoldGroupSelection({});
-    holdGroupSelectionRef.current = {};
     setResolvedHoldActions([]);
     setAppliedHoldGroupKeys({});
 
@@ -646,12 +623,6 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
   const handleResultConfirm = useCallback(async () => {
     if (importResult?.phase === 'preview') {
       const results = Array.isArray(importResult.results) ? importResult.results : [];
-      const holdItems = results.filter((r) => r && r.hold);
-      const visibleHoldGroups = buildHoldGroups(holdItems).filter((group) => !appliedHoldGroupKeys[group.key]);
-      if (visibleHoldGroups.length > 0) {
-        setSaveMsg('보류를 모두 적용한 뒤 확인을 눌러 주세요.');
-        return;
-      }
       const stagedActions = Array.isArray(resolvedHoldActions) ? resolvedHoldActions : [];
       await commitExcelImport({ stagedActions });
       return;
@@ -659,17 +630,14 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
 
     if (importResult) onImported?.(importResult);
     setImportResult(null);
-    setShowHoldList(false);
-    setHoldGroupSelection({});
     setResolvedHoldActions([]);
     setAppliedHoldGroupKeys({});
     onClose?.();
-  }, [importResult, onClose, onImported, resolvedHoldActions, appliedHoldGroupKeys, commitExcelImport]);
+  }, [importResult, onClose, onImported, resolvedHoldActions, commitExcelImport]);
 
   useEffect(() => {
     if (!importResult) {
       previewRawSessionRef.current = null;
-      holdGroupSelectionRef.current = {};
       return;
     }
     const raw = importResult.rawPreviewResults;
@@ -684,50 +652,34 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
     const results = Array.isArray(importResult.results) ? importResult.results : [];
     const holdItems = results.filter((r) => r && r.hold);
     const groups = buildHoldGroups(holdItems);
-    const defaults = {};
+
+    let allActions = [];
+    const appliedKeys = {};
     groups.forEach((g) => {
       const existing = buildExistingCandidatesForContactGroup(g);
-      if (existing.length > 0) {
-        defaults[g.key] = { type: 'existing', key: String(existing[0].employeeId) };
-      } else if (g.items.length > 0) {
-        // 기본은 첫 번째 행을 add(나머지 merge)로
-        defaults[g.key] = { type: 'hold', key: String(g.items[0].rowIndex) };
-      }
+      const selected =
+        existing.length > 0
+          ? { type: 'existing', key: String(existing[0].employeeId) }
+          : { type: 'hold', key: String(g.items[0].rowIndex) };
+      const actions = buildResolveActionsForGroup(g, selected);
+      allActions = allActions.concat(actions);
+      appliedKeys[g.key] = true;
     });
-    holdGroupSelectionRef.current = defaults;
-    setHoldGroupSelection(defaults);
-    setResolvedHoldActions([]);
-    setAppliedHoldGroupKeys({});
-    if (holdItems.length > 0) setShowHoldList(true);
-  }, [importResult]);
-
-  const handleResolveSingleHoldGroup = useCallback((group) => {
-    const defaultSelection = { type: 'hold', key: String(group.items?.[0]?.rowIndex ?? '') };
-    const selected = holdGroupSelectionRef.current?.[group.key] || holdGroupSelection[group.key] || defaultSelection;
-    const actions = buildResolveActionsForGroup(group, selected);
-    if (!actions.length) {
-      setSaveMsg('이 그룹에 적용할 동작을 만들 수 없습니다. 다시 선택해 주세요.');
-      return;
+    setResolvedHoldActions(allActions);
+    setAppliedHoldGroupKeys(appliedKeys);
+    if (allActions.length > 0) {
+      setImportResult((prev) => {
+        if (!prev || prev.phase !== 'preview') return prev;
+        return {
+          ...prev,
+          results: applyResolvedActionsToPreviewResults(prev.results, allActions)
+        };
+      });
+    } else {
+      setResolvedHoldActions([]);
+      setAppliedHoldGroupKeys({});
     }
-    const rowIndexesInGroup = new Set(
-      (group.items || [])
-        .map((item) => Number(item?.rowIndex))
-        .filter((n) => Number.isFinite(n))
-    );
-    setResolvedHoldActions((prev) => {
-      const rest = (Array.isArray(prev) ? prev : []).filter((action) => !rowIndexesInGroup.has(Number(action?.rowIndex)));
-      return [...rest, ...actions];
-    });
-    setAppliedHoldGroupKeys((prev) => ({ ...prev, [String(group.key)]: true }));
-    setImportResult((prev) => {
-      if (!prev || prev.phase !== 'preview') return prev;
-      return {
-        ...prev,
-        results: applyResolvedActionsToPreviewResults(prev.results, actions)
-      };
-    });
-    setSaveMsg('이 그룹이 적용되었습니다. 보류가 0건이 되면 확인 버튼으로 등록할 수 있습니다.');
-  }, [holdGroupSelection]);
+  }, [importResult]);
 
   if (previewChecking) {
     return (
@@ -789,12 +741,6 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
         emptySk={emptySk}
         successItems={successItems}
         stagedResolvedItems={stagedResolvedItems}
-        visibleHoldGroups={visibleHoldGroups}
-        showHoldList={showHoldList}
-        onToggleHoldList={() => setShowHoldList((v) => !v)}
-        holdGroupSelection={holdGroupSelection}
-        updateHoldGroupSelection={updateHoldGroupSelection}
-        onApplyHoldGroup={handleResolveSingleHoldGroup}
         saving={saving}
         canConfirmPreview={canConfirmPreview}
         onConfirm={handleResultConfirm}

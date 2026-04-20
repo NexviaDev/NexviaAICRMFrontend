@@ -32,6 +32,22 @@
   .product-list-page .header-search {
     flex: 1 1 100%;
     max-width: none;
+    min-width: 0;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  .product-list-page .header-search-form {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .product-list-page .pl-search-field-select {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: none;
+    font-size: 0.8rem;
+    padding: 0.4rem 0.6rem;
   }
 
   .product-list-page .header-search-form input {
@@ -55,6 +71,33 @@
 
   .product-list-page .page-content {
     padding: 1rem 1rem 5.5rem;
+  }
+
+  /* 선택 액션 바 — 연락처 목록과 동일 반응형 */
+  .product-list-page .cce-action-bar {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0.5rem 1rem;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .product-list-page .cce-action-bar-count {
+    font-size: 0.8rem;
+  }
+
+  .product-list-page .cce-action-bar-hint {
+    display: block;
+    margin-left: 0;
+    margin-top: 0.2rem;
+  }
+
+  .product-list-page .cce-action-bar-btns {
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-left: 0;
+    justify-content: flex-end;
+    width: 100%;
   }
 
   .product-list-page .pl-desktop-only {
@@ -141,72 +184,6 @@
 
   .product-list-page .pl-mobile-bento-card--peach .pl-mobile-bento-value {
     color: #644b32;
-  }
-
-  .product-list-page .pl-mobile-field-filter {
-    margin-bottom: 1rem;
-  }
-
-  .product-list-page .pl-mobile-field-filter-row {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .product-list-page .pl-mobile-field-filter-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    margin-top: 0.5rem;
-  }
-
-  /* 필터 칩 */
-  .product-list-page .pl-mobile-chips-block {
-    margin-bottom: 1rem;
-  }
-
-  .product-list-page .pl-mobile-chips-label {
-    margin: 0 0 0.35rem;
-    font-size: 0.65rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: #757c7d;
-  }
-
-  .product-list-page .pl-mobile-chips-label--spaced {
-    margin-top: 0.65rem;
-  }
-
-  .product-list-page .pl-mobile-chips-row {
-    display: flex;
-    gap: 0.5rem;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 0.25rem;
-    scrollbar-width: none;
-  }
-
-  .product-list-page .pl-mobile-chips-row::-webkit-scrollbar {
-    display: none;
-  }
-
-  .product-list-page .pl-mobile-chip {
-    flex-shrink: 0;
-    padding: 0.5rem 1rem;
-    border: none;
-    border-radius: 9999px;
-    font-size: 0.8125rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.15s ease, color 0.15s ease;
-    background: #eaefef;
-    color: #596061;
-  }
-
-  .product-list-page .pl-mobile-chip.is-active {
-    background: #8ff6d0;
-    color: #005d47;
   }
 
   /* 패널 / 테이블 */

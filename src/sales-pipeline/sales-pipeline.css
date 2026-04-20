@@ -1,26 +1,74 @@
-/* ========== Sales Pipeline Container (전체창 높이 고정, 스크롤 없음) ========== */
+/* ========== Sales Pipeline — Sample sales-pipeline22 (Lucid / Ethereal) ========== */
 .sp-container {
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  background: var(--background-light, #f6f7f7);
+  background: #f8f9fb;
 }
 
-/* ========== Header ========== */
+/* ========== Header (세일즈 현황 + 검색 + CTA) ========== */
 .sp-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 4rem;
+  min-height: 5rem;
   padding: 0 2rem;
-  background: rgba(255, 255, 255, 0.8);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--card-border);
+  background: rgba(248, 249, 251, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(172, 179, 183, 0.18);
   flex-shrink: 0;
   gap: 1rem;
   flex-wrap: wrap;
+}
+
+.sp-header-brand {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.sp-header-filters {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.sp-filter-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  font-size: 0.8125rem;
+  color: #5a6b72;
+}
+
+.sp-filter-label-text {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.sp-filter-select {
+  min-width: 7rem;
+  max-width: 12rem;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.8125rem;
+  border: 1px solid rgba(172, 179, 183, 0.35);
+  border-radius: 0.45rem;
+  background: #eef3f6;
+  color: #2c3437;
+  cursor: pointer;
+  outline: none;
+}
+
+.sp-filter-select:focus {
+  box-shadow: 0 0 0 1px rgba(44, 100, 133, 0.25);
 }
 
 .sp-list-cap-notice {
@@ -45,6 +93,26 @@
   display: flex;
   align-items: center;
   gap: 20px;
+}
+
+.sp-header-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: #596064;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.sp-header-icon-btn:hover {
+  background: #eaeff2;
+  color: #2c6485;
 }
 
 .sp-stages-manage-btn {
@@ -73,10 +141,13 @@
 }
 
 .sp-title {
-  font-size: 1.125rem;
-  font-weight: 700;
+  font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
   margin: 0;
-  color: var(--text);
+  color: #2c6485;
+  flex-shrink: 0;
 }
 
 .sp-filter-group {
@@ -169,7 +240,9 @@
 
 .sp-search-wrap {
   position: relative;
-  width: 16rem;
+  width: min(20rem, 100%);
+  flex: 0 1 20rem;
+  max-width: 100%;
 }
 
 .sp-search-icon {
@@ -183,40 +256,46 @@
 
 .sp-search {
   width: 100%;
-  padding: 0.375rem 1rem 0.375rem 2.5rem;
+  padding: 0.5rem 1rem 0.5rem 2.5rem;
   font-size: 0.875rem;
-  background: var(--bg-light, #f1f5f9);
+  background: #f0f4f7;
   border: none;
   border-radius: 0.5rem;
   outline: none;
+  color: #2c3437;
   transition: box-shadow 0.2s;
 }
 
 .sp-search:focus {
-  box-shadow: 0 0 0 2px rgba(29, 40, 58, 0.2);
+  box-shadow: 0 0 0 1px rgba(44, 100, 133, 0.22);
 }
 
 .sp-add-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  background: var(--primary, #1d283a);
-  color: #fff;
+  gap: 0.35rem;
+  background: #2c6485;
+  color: #f5f9ff;
   border: none;
   border-radius: 0.5rem;
-  padding: 0.5rem 1rem;
+  padding: 0.5rem 1.15rem;
   font-size: 0.875rem;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
-  transition: opacity 0.2s;
+  box-shadow: 0 4px 14px -4px rgba(44, 100, 133, 0.35);
+  transition: filter 0.15s ease, transform 0.1s ease;
 }
 
 .sp-add-btn:hover {
-  opacity: 0.9;
+  filter: brightness(1.05);
+}
+
+.sp-add-btn:active {
+  transform: scale(0.98);
 }
 
 .sp-add-btn .material-symbols-outlined {
-  font-size: 0.875rem;
+  font-size: 1.05rem;
 }
 
 /* ========== Loading ========== */
@@ -258,133 +337,156 @@
   overflow: hidden;
 }
 
-/* 홈(대시보드) 파이프라인 단계 카드 톤을 반영한 상단 요약 */
-.sp-stage-overview {
+/* Lucid 칸반 — 샘플 sales-pipeline22: 컬럼 헤더(도트·제목·카운트) + 카드 리스트 */
+.sp-kanban {
   flex: 1;
   min-height: 0;
   margin-top: 1rem;
   display: flex;
   flex-wrap: nowrap;
-  align-items: flex-start;
-  align-content: flex-start;
-  gap: 1rem;
-  overflow-x: hidden;
-  overflow-y: auto;
+  align-items: stretch;
+  gap: 1.5rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 0.25rem;
+  scrollbar-width: thin;
 }
 
-.sp-stage-overview-item {
-  position: relative;
+.sp-kanban-col {
   flex: 1 1 0;
-  min-width: 0;
+  min-width: min(300px, 92vw);
+  max-width: 100%;
   display: flex;
   flex-direction: column;
-  align-items: stretch;
-  height: 100%;
+  gap: 0.75rem;
   min-height: 0;
-  gap: 0.45rem;
-  padding: 0.35rem;
   border-radius: 0.75rem;
+  padding: 0.15rem 0.25rem 0.35rem;
 }
 
-.sp-stage-overview-item.sp-drop-hover {
-  background: rgba(29, 40, 58, 0.04);
+.sp-kanban-col.sp-drop-hover {
+  background: rgba(44, 100, 133, 0.04);
 }
 
-.sp-stage-overview-card {
-  width: 100%;
-  min-height: 2.2rem;
-  border-radius: 0.5rem;
+.sp-kanban-col-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.35rem 0.5rem;
-  gap: 0.35rem;
+  gap: 0.5rem;
+  padding: 0 0.35rem;
+  flex-shrink: 0;
 }
 
-/* 진행 단계 전용 — 수주(Won)·기회 상실(Lost) 드롭존 색과 겹치지 않는 파스텔 단색 */
-.sp-stage-overview-card.tone-0 { background: #c7dbf0; }
-.sp-stage-overview-card.tone-1 { background: #e3daf6; }
-.sp-stage-overview-card.tone-2 { background: #fce8dc; }
-.sp-stage-overview-card.tone-3 { background: #cfeaf2; }
-.sp-stage-overview-card.tone-4 { background: #fff2d2; }
-.sp-stage-overview-card.tone-5 { background: #e6e2fa; }
-
-.sp-stage-overview-card.tone-0 .sp-stage-overview-title { color: #2a4a6e; }
-.sp-stage-overview-card.tone-1 .sp-stage-overview-title { color: #553c7a; }
-.sp-stage-overview-card.tone-2 .sp-stage-overview-title { color: #7a4a38; }
-.sp-stage-overview-card.tone-3 .sp-stage-overview-title { color: #245a6a; }
-.sp-stage-overview-card.tone-4 .sp-stage-overview-title { color: #6b5818; }
-.sp-stage-overview-card.tone-5 .sp-stage-overview-title { color: #4a3d7a; }
-
-.sp-stage-overview-card.tone-0 .sp-stage-forecast-pct { color: #3d6a9a; }
-.sp-stage-overview-card.tone-1 .sp-stage-forecast-pct { color: #6d4d9e; }
-.sp-stage-overview-card.tone-2 .sp-stage-forecast-pct { color: #9a5a42; }
-.sp-stage-overview-card.tone-3 .sp-stage-forecast-pct { color: #2f7a8c; }
-.sp-stage-overview-card.tone-4 .sp-stage-forecast-pct { color: #8a7220; }
-.sp-stage-overview-card.tone-5 .sp-stage-forecast-pct { color: #5c4db0; }
-
-.sp-stage-overview-head-text {
+.sp-kanban-col-head-main {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.sp-kanban-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+
+.sp-kanban-dot.tone-0 { background: #31638a; }
+.sp-kanban-dot.tone-1 { background: #92c7ed; }
+.sp-kanban-dot.tone-2 { background: #2c6485; }
+.sp-kanban-dot.tone-3 { background: #3f6750; }
+.sp-kanban-dot.tone-4 { background: #fa746f; }
+.sp-kanban-dot.tone-5 { background: #a0d5fb; }
+
+.sp-kanban-col-title {
+  font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0;
+  color: #2c3437;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sp-kanban-count {
+  font-size: 0.625rem;
+  font-weight: 800;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  background: #dce4e8;
+  color: #596064;
+  flex-shrink: 0;
+}
+
+.sp-kanban-add {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.15rem;
-  flex: 1;
-  min-width: 0;
-  text-align: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: #747c80;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
-.sp-stage-overview-title {
-  font-size: 0.74rem;
-  font-weight: 700;
-  color: #2e5a79;
-  text-align: center;
+.sp-kanban-add:hover {
+  background: #eaeff2;
+  color: #2c6485;
 }
 
-.sp-stage-forecast-pct {
-  font-size: 0.62rem;
+.sp-kanban-add .material-symbols-outlined {
+  font-size: 1.125rem;
+}
+
+.sp-kanban-forecast {
+  margin: 0;
+  padding: 0 0.35rem;
+  font-size: 0.65rem;
   font-weight: 700;
+  color: #596064;
   letter-spacing: -0.02em;
 }
 
-.sp-stage-overview-metrics {
+.sp-kanban-forecast-expected {
+  margin: 0.15rem 0 0;
+  padding: 0 0.35rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #2c6485;
+  letter-spacing: -0.02em;
+}
+
+.sp-kanban-cards {
+  flex: 1;
+  min-height: 8rem;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 0.05rem;
-}
-
-.sp-stage-overview-metrics p {
-  margin: 0;
-  font-size: 1.2rem;
-  font-weight: 800;
-  color: #2d3c4c;
-}
-
-.sp-stage-overview-metrics span {
-  font-size: 0.64rem;
-  color: #8b97a3;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  text-align: center;
-}
-
-.sp-stage-overview-arrow {
-  position: absolute;
-  right: -0.55rem;
-  top: 50%;
-  transform: translateY(-50%);
-  color: rgba(46, 90, 121, 0.45);
-  font-size: 0.95rem;
-  pointer-events: none;
-}
-
-.sp-cards-inline {
-  flex: 1 1 auto;
-  min-height: 12rem;
-  max-height: none;
+  gap: 0.75rem;
   overflow-y: auto;
-  padding-right: 0.1rem;
+  overflow-x: hidden;
+  padding-right: 0.15rem;
+}
+
+.sp-kanban-empty {
+  flex: 1;
+  min-height: 10rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #9a9d9f;
+  border: 2px dashed rgba(172, 179, 183, 0.45);
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.35);
 }
 
 /* 칸반 컬럼만 스크롤, 남은 높이만 사용 → Quick Actions가 항상 보이게 */
@@ -646,13 +748,175 @@
   color: var(--text-muted);
 }
 
-/* ========== Drop Zones (Quick Actions) - 항상 화면 하단에 표시 ========== */
+/* Lucid editorial cards (데스크톱 칸반) — sales-pipeline22 */
+.sp-card--lucid {
+  background: #ffffff;
+  border: 1px solid rgba(220, 228, 232, 0.85);
+  border-radius: 0.75rem;
+  padding: 1.15rem 1.25rem;
+  box-shadow: 0 4px 20px -4px rgba(44, 100, 133, 0.06);
+  border-bottom: 2px solid transparent;
+  cursor: grab;
+}
+
+.sp-card--lucid:hover {
+  background: #f8f9fb;
+  border-color: rgba(44, 100, 133, 0.18);
+  border-bottom-color: rgba(44, 100, 133, 0.2);
+  box-shadow: 0 6px 24px -6px rgba(44, 100, 133, 0.1);
+}
+
+.sp-card--lucid:active {
+  cursor: grabbing;
+}
+
+.sp-card-lucid-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
+.sp-card-tag {
+  display: inline-block;
+  font-size: 0.625rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.45rem;
+  border-radius: 0.25rem;
+  line-height: 1.2;
+}
+
+.sp-card-tag--0 {
+  color: #22577e;
+  background: #cde5ff;
+}
+
+.sp-card-tag--1 {
+  color: #335b45;
+  background: #cbf9db;
+}
+
+.sp-card-tag--2 {
+  color: #034b6a;
+  background: #a0d5fb;
+}
+
+.sp-card-tag--3 {
+  color: #67040d;
+  background: rgba(250, 116, 111, 0.35);
+}
+
+.sp-card-more {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #acb3b7;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease;
+}
+
+.sp-card--lucid:hover .sp-card-more {
+  opacity: 1;
+}
+
+.sp-card-more:hover {
+  color: #2c6485;
+}
+
+.sp-card-more .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
+.sp-card-lucid-title {
+  font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+  margin: 0 0 0.25rem;
+  font-size: 0.9rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #2c3437;
+  line-height: 1.25;
+}
+
+.sp-card-lucid-sub {
+  margin: 0 0 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #596064;
+  line-height: 1.35;
+}
+
+.sp-card-lucid-contact {
+  margin: -0.35rem 0 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: #747c80;
+}
+
+.sp-card-lucid-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-top: 0.85rem;
+  margin-top: 0.15rem;
+  border-top: 1px solid #e3e9ed;
+}
+
+.sp-card-lucid-footer-left {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.sp-card--lucid .sp-card-net-margin {
+  align-items: flex-start;
+}
+
+.sp-card-lucid-value {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #2c6485;
+}
+
+.sp-card-lucid-avatar {
+  flex-shrink: 0;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 9999px;
+  border: 1px solid #e3e9ed;
+  background: #eaeff2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.55rem;
+  font-weight: 800;
+  color: #596064;
+}
+
+/* ========== Drop Zones (Won / Lost / 보류) — 전체 너비 · 등간격 그리드 ========== */
 .sp-dropzones-section {
   flex-shrink: 0;
+  box-sizing: border-box;
+  width: calc(100% + 3rem);
+  max-width: none;
+  margin-left: -1.5rem;
+  margin-right: -1.5rem;
   margin-top: 0;
-  padding: 1rem 1.5rem 1.25rem;
-  border-top: 1px solid var(--card-border);
-  background: var(--background-light, #f6f7f7);
+  padding: 0.75rem 1.5rem 1rem;
+  border-top: 1px solid rgba(172, 179, 183, 0.2);
+  background: #f0f4f7;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 .sp-dropzones-title {
@@ -670,86 +934,72 @@
 }
 
 .sp-dropzones {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1.5rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  align-items: stretch;
 }
 
 .sp-dropzone {
-  min-height: 6rem;
-  padding: 1.5rem;
-  border: 2px dashed var(--card-border);
-  border-radius: 1rem;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 3.75rem;
+  padding: 0.55rem 0.75rem;
+  border: 2px dashed rgba(172, 179, 183, 0.4);
+  border-radius: 0.75rem;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  flex-wrap: nowrap;
   align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
+  justify-content: flex-start;
+  gap: 0.5rem;
   cursor: default;
-  transition: background 0.3s, border-color 0.3s, transform 0.2s;
+  box-shadow: 0 1px 4px rgba(44, 52, 55, 0.05);
+  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.sp-dropzone:hover {
+  box-shadow: 0 2px 10px rgba(44, 100, 133, 0.08);
 }
 
 .sp-dropzone.sp-drop-hover {
-  transform: scale(1.02);
-}
-
-/* 수주 성공: sp-dz-main은 행 기준 가운데, 전체보기는 오른쪽(서로 영향 없음) */
-.sp-dropzone-won {
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  padding-left: 1rem;
-  padding-right: 1rem;
-}
-
-.sp-dropzone-won .sp-dz-main-spacer {
-  flex: 1;
-  min-width: 0;
-}
-
-.sp-dropzone-won .sp-dz-main {
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-}
-
-.sp-dropzone-won .sp-dz-viewall-wrap {
-  flex: 1;
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  min-width: 0;
-}
-
-.sp-dropzone-won .sp-dz-viewall-header-btn {
-  flex-shrink: 0;
+  filter: brightness(1.02);
 }
 
 .sp-dz-icon {
-  font-size: 1.5rem;
+  font-size: 1.35rem;
+  flex-shrink: 0;
   transition: transform 0.2s;
 }
 
+.sp-dz-icon--fill {
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
 .sp-dropzone:hover .sp-dz-icon {
-  transform: scale(1.1);
+  transform: scale(1.06);
 }
 
 .sp-dz-label-wrap {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.2rem;
+  justify-content: center;
+  gap: 0.12rem;
   text-align: center;
+  flex: 1;
+  min-width: 0;
 }
 
 .sp-dz-label {
-  font-size: 0.875rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
+  font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+  font-size: 0.8125rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  text-transform: none;
 }
 
 .sp-dz-forecast {
@@ -758,47 +1008,320 @@
   letter-spacing: -0.02em;
 }
 
+.sp-dz-forecast-expected {
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: #2c6485;
+  line-height: 1.2;
+}
+
 .sp-dz-count {
   display: flex;
   align-items: center;
   gap: 2px;
+  margin-left: auto;
+  flex-shrink: 0;
   font-size: 0.65rem;
   font-weight: 600;
-  opacity: 0.8;
+  opacity: 0.85;
+  color: #596064;
 }
 
 .sp-dz-chevron {
   font-size: 0.9rem;
 }
 
-/* Wrapper */
+/* Wrapper (그리드 셀) */
 .sp-dz-wrapper {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  width: 100%;
 }
 
-.sp-dz-expanded {
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
+/* 결과 드롭존 기회 목록 모달 (인라인 펼침 대체) */
+.sp-dz-list-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(1rem, env(safe-area-inset-top, 0px))
+    max(1rem, env(safe-area-inset-right, 0px))
+    max(1rem, env(safe-area-inset-bottom, 0px))
+    max(1rem, env(safe-area-inset-left, 0px));
+  background: rgba(44, 52, 55, 0.38);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 
-/* Expanded items list */
-.sp-dz-items {
-  border: 1px solid var(--card-border);
-  border-top: none;
-  border-bottom-left-radius: 12px;
-  border-bottom-right-radius: 12px;
-  padding: 10px;
+.sp-dz-list-modal {
+  width: min(28rem, 100%);
+  max-height: min(88vh, 42rem);
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-height: 280px;
-  overflow-y: auto;
+  background: #ffffff;
+  border-radius: 0.75rem;
+  box-shadow: 0 20px 50px rgba(44, 52, 55, 0.14);
+  border: 1px solid rgba(220, 228, 232, 0.95);
+  overflow: hidden;
+}
+
+.sp-dz-list-modal--extended {
+  width: min(36rem, 100%);
+  max-height: min(90vh, 46rem);
+}
+
+.sp-dz-list-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1rem 0.9rem;
+  border-bottom: 1px solid #e3e9ed;
+  flex-shrink: 0;
+}
+
+.sp-dz-list-modal-head.dz-green {
+  background: rgba(220, 252, 231, 0.42);
+}
+
+.sp-dz-list-modal-head.dz-red {
+  background: rgba(254, 226, 226, 0.45);
+}
+
+.sp-dz-list-modal-head.dz-blue {
+  background: rgba(241, 245, 249, 0.65);
+}
+
+.sp-dz-list-modal-head.dz-green .sp-dz-list-modal-icon {
+  color: #16a34a;
+}
+
+.sp-dz-list-modal-head.dz-red .sp-dz-list-modal-icon {
+  color: #dc2626;
+}
+
+.sp-dz-list-modal-head.dz-blue .sp-dz-list-modal-icon {
+  color: #64748b;
+}
+
+.sp-dz-list-modal-head-main {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.sp-dz-list-modal-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.sp-dz-list-modal-title {
+  font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #2c3437;
+  line-height: 1.25;
+}
+
+.sp-dz-list-modal-sub {
+  margin: 0.2rem 0 0;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #596064;
+}
+
+.sp-dz-list-modal-close {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.65);
+  color: #596064;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.sp-dz-list-modal-close:hover {
+  background: #eaeff2;
+  color: #2c6485;
+}
+
+.sp-dz-list-modal-close .material-symbols-outlined {
+  font-size: 1.25rem;
+}
+
+.sp-dz-list-modal-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.55rem;
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid #e8edf1;
+  background: #f4f7f9;
+}
+
+.sp-dz-list-modal-search-wrap {
+  flex: 0 0 auto;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  min-height: 0;
+  padding: 0.22rem 0.45rem;
+  border-radius: 0.45rem;
+  border: 1px solid #dce4e8;
   background: #fff;
 }
 
-.sp-dz-wrapper .sp-dz-items {
-  border-color: var(--card-border);
+.sp-dz-list-modal-search-icon {
+  font-size: 1rem;
+  color: #8b969b;
+  flex-shrink: 0;
+}
+
+.sp-dz-list-modal-search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  padding: 0.12rem 0;
+  color: #2c3437;
+  outline: none;
+}
+
+.sp-dz-list-modal-search-input::placeholder {
+  color: #9aa4a8;
+}
+
+.sp-dz-list-modal-date-toolbar {
+  width: 100%;
+}
+
+.sp-dz-list-modal-date-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.45rem 0.5rem;
+}
+
+.sp-dz-list-modal-date-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex-shrink: 0;
+}
+
+.sp-dz-list-modal-date-field-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #7a8488;
+  letter-spacing: 0.02em;
+}
+
+.sp-dz-list-modal-date-input {
+  min-width: 10.5rem;
+  padding: 0.4rem 0.45rem;
+  font-size: 0.8125rem;
+  border-radius: 0.45rem;
+  border: 1px solid #dce4e8;
+  background: #fff;
+  color: #2c3437;
+}
+
+.sp-dz-list-modal-date-sep {
+  padding: 0 0.1rem 0.35rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #9aa4a8;
+  align-self: center;
+}
+
+.sp-dz-list-modal-date-clear {
+  align-self: flex-end;
+  margin-left: auto;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 0.4rem;
+  border: 1px solid #dce4e8;
+  background: #fff;
+  color: #5c6b70;
+  cursor: pointer;
+}
+
+.sp-dz-list-modal-date-clear:hover {
+  background: #eef3f6;
+  color: #2c6485;
+}
+
+.sp-dz-list-modal-date-hint {
+  margin: 0;
+  font-size: 0.65rem;
+  line-height: 1.4;
+  color: #8b969b;
+}
+
+.sp-dz-list-modal-footer {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.65rem;
+  border-top: 1px solid #e8edf1;
+  background: #fafcfd;
+}
+
+.sp-dz-list-modal-page-info {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #596064;
+}
+
+.sp-dz-list-modal-page-info strong {
+  color: #2c3437;
+  font-weight: 700;
+}
+
+.sp-dz-list-modal-footer .pagination-btns {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.sp-dz-list-modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: #f8f9fb;
+}
+
+.sp-dz-list-modal-empty {
+  margin: 0;
+  padding: 2rem 1rem;
+  text-align: center;
+  font-size: 0.875rem;
+  color: #747c80;
 }
 
 .sp-dz-viewall-row {
@@ -905,25 +1428,42 @@
     align-items: stretch;
   }
 
+  .sp-header-brand {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
   .sp-header-left,
   .sp-header-right {
     width: 100%;
+  }
+
+  .sp-search-wrap {
+    flex: 1 1 auto;
+    max-width: none;
   }
 
   .sp-search {
     width: 100%;
   }
 
+  .sp-header-filters {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
   .sp-columns {
     gap: 12px;
   }
 
-  .sp-stage-overview {
-    gap: 0.55rem;
+  .sp-kanban {
+    gap: 0.85rem;
+    padding-bottom: 0.35rem;
   }
 
-  .sp-stage-overview-arrow {
-    display: none;
+  .sp-kanban-col {
+    min-width: min(280px, 88vw);
   }
 
   .sp-column {
@@ -932,5 +1472,14 @@
 
   .sp-dropzones {
     grid-template-columns: 1fr;
+    gap: 0.65rem;
+  }
+
+  .sp-dropzones-section {
+    width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 1rem;
+    padding-right: 1rem;
   }
 }

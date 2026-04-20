@@ -18,6 +18,7 @@ import ListPaginationButtons from '@/components/list-pagination-buttons/list-pag
 import * as XLSX from 'xlsx';
 
 import { API_BASE } from '@/config';
+import { pingBackendHealth } from '@/lib/backend-wake';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { listPriceFromProduct } from '@/lib/product-price-utils';
 import { CATEGORY_AVATAR_RULES } from './product-category-avatar-config';
@@ -32,6 +33,11 @@ const DETAIL_ID_PARAM = 'id';
 const STATUS_LABELS = { Active: '활성', EndOfLife: 'End of Life', Draft: '초안' };
 const BILLING_LABELS = { Monthly: '월간', Annual: '연간', Perpetual: '영구' };
 const CUSTOM_FIELDS_PREFIX = 'customFields.';
+
+/** API JSON의 _id(ObjectId/문자열)와 Set 비교 시 동일하게 문자열로 통일 */
+function productIdKey(id) {
+  return id != null && id !== '' ? String(id) : '';
+}
 
 /** API filterField 값 — 백엔드 Product 스키마 + customFields.xxx */
 const PRODUCT_FIELD_FILTER_STATIC = [
@@ -155,8 +161,9 @@ export default function ProductList() {
   const [pagination, setPagination] = useState({ page: 1, limit: LIMIT, total: 0, totalPages: 0 });
   const [searchInput, setSearchInput] = useState('');
   const [searchApplied, setSearchApplied] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
-  const [filterBilling, setFilterBilling] = useState('');
+  /** 연락처 목록과 동일: 제출 시점의 검색 필드 (빈 값 = 전체 필드) */
+  const [searchFieldDraft, setSearchFieldDraft] = useState('');
+  const [appliedSearchField, setAppliedSearchField] = useState('');
   const [loading, setLoading] = useState(true);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [customFieldColumns, setCustomFieldColumns] = useState([]);
@@ -168,14 +175,10 @@ export default function ProductList() {
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
+  const [bulkCopyLoading, setBulkCopyLoading] = useState(false);
   const [excelImportSeed, setExcelImportSeed] = useState(null);
   const selectionAnchorIdxRef = useRef(null);
   const headerSelectAllRef = useRef(null);
-
-  const [fieldFilterSelect, setFieldFilterSelect] = useState('name');
-  const [fieldFilterInput, setFieldFilterInput] = useState('');
-  const [fieldFilterFieldApplied, setFieldFilterFieldApplied] = useState('');
-  const [fieldFilterValueApplied, setFieldFilterValueApplied] = useState('');
 
   const sortKey = sort.key;
   const sortDir = sort.dir;
@@ -190,7 +193,8 @@ export default function ProductList() {
     return m;
   }, [customFieldColumns]);
 
-  const fieldFilterOptions = useMemo(() => {
+  /** 헤더 검색 필드 셀렉트 — API searchField 쿼리와 동일 키 */
+  const searchFieldOptions = useMemo(() => {
     const customOpts = customFieldColumns.map((c) => {
       const k = c.key?.startsWith(CUSTOM_FIELDS_PREFIX)
         ? `customFields.${c.key.slice(CUSTOM_FIELDS_PREFIX.length)}`
@@ -207,6 +211,14 @@ export default function ProductList() {
     return out;
   }, [customFieldColumns]);
 
+  const searchFieldPlaceholderHint = useMemo(() => {
+    if (!searchFieldDraft) {
+      return '모든 필드 검색 (제품명, 코드, 카테고리, 버전, 가격, 통화, 결제·상태, 커스텀 필드 등)…';
+    }
+    const opt = searchFieldOptions.find((o) => o.value === searchFieldDraft);
+    return `${opt?.label || searchFieldDraft} 검색…`;
+  }, [searchFieldDraft, searchFieldOptions]);
+
   const me = useMemo(() => getStoredCrmUser(), []);
   const canExportExcel = isAdminOrAboveRole(me?.role);
   const canDeleteProduct = isAdminOrAboveRole(me?.role);
@@ -221,12 +233,9 @@ export default function ProductList() {
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(LIMIT) });
-      if (searchApplied) params.set('search', searchApplied);
-      if (filterStatus) params.set('status', filterStatus);
-      if (filterBilling) params.set('billingType', filterBilling);
-      if (fieldFilterFieldApplied && fieldFilterValueApplied) {
-        params.set('filterField', fieldFilterFieldApplied);
-        params.set('filterValue', fieldFilterValueApplied);
+      if (searchApplied) {
+        params.set('search', searchApplied);
+        if (appliedSearchField) params.set('searchField', appliedSearchField);
       }
       const res = await fetch(`${API_BASE}/products?${params}`, { headers: getAuthHeader() });
       if (res.ok) {
@@ -243,7 +252,7 @@ export default function ProductList() {
     } finally {
       setLoading(false);
     }
-  }, [searchApplied, filterStatus, filterBilling, fieldFilterFieldApplied, fieldFilterValueApplied]);
+  }, [searchApplied, appliedSearchField]);
 
   useEffect(() => { fetchList(pagination.page); }, [pagination.page, fetchList]);
 
@@ -252,12 +261,12 @@ export default function ProductList() {
     window.addEventListener('nexvia-product-excel-import-completed', onExcelImported);
     return () => window.removeEventListener('nexvia-product-excel-import-completed', onExcelImported);
   }, [fetchList, pagination.page]);
-  useEffect(() => { setPagination((p) => ({ ...p, page: 1 })); }, [searchApplied, filterStatus, filterBilling, fieldFilterFieldApplied, fieldFilterValueApplied]);
+  useEffect(() => { setPagination((p) => ({ ...p, page: 1 })); }, [searchApplied, appliedSearchField]);
 
   useEffect(() => {
     setSelectedIds(new Set());
     selectionAnchorIdxRef.current = null;
-  }, [searchApplied, filterStatus, filterBilling, fieldFilterFieldApplied, fieldFilterValueApplied]);
+  }, [searchApplied, appliedSearchField]);
 
   /** 제품 커스텀 필드 정의 → 리스트 템플릿 열에 반영 (열 설정 모달·표시 순서) */
   useEffect(() => {
@@ -278,6 +287,7 @@ export default function ProductList() {
   const runSearch = (e) => {
     e?.preventDefault();
     setSearchApplied(searchInput.trim());
+    setAppliedSearchField(searchFieldDraft);
     setPagination((p) => ({ ...p, page: 1 }));
   };
 
@@ -417,7 +427,10 @@ export default function ProductList() {
     });
   }, []);
 
-  const pageRowIds = useMemo(() => sortedItems.map((r) => r._id).filter(Boolean), [sortedItems]);
+  const pageRowIds = useMemo(
+    () => sortedItems.map((r) => productIdKey(r._id)).filter(Boolean),
+    [sortedItems]
+  );
   const allOnPageSelected = pageRowIds.length > 0 && pageRowIds.every((id) => selectedIds.has(id));
   const someOnPageSelected = pageRowIds.some((id) => selectedIds.has(id)) && !allOnPageSelected;
 
@@ -428,9 +441,10 @@ export default function ProductList() {
 
   const handleRowCheckboxClick = useCallback((e, rowIdx, rowId) => {
     e.stopPropagation();
-    e.preventDefault();
+    /* preventDefault 금지: controlled checkbox와 충돌 시 체크 표시가 한 박자 밀림 */
     const list = sortedItems;
-    if (!rowId) return;
+    const sid = productIdKey(rowId);
+    if (!sid) return;
     if (e.shiftKey && selectionAnchorIdxRef.current != null) {
       const a = selectionAnchorIdxRef.current;
       const start = Math.min(a, rowIdx);
@@ -438,7 +452,7 @@ export default function ProductList() {
       setSelectedIds((prev) => {
         const next = new Set(prev);
         for (let i = start; i <= end; i++) {
-          const id = list[i]?._id;
+          const id = productIdKey(list[i]?._id);
           if (id) next.add(id);
         }
         return next;
@@ -446,8 +460,8 @@ export default function ProductList() {
     } else {
       setSelectedIds((prev) => {
         const next = new Set(prev);
-        if (next.has(rowId)) next.delete(rowId);
-        else next.add(rowId);
+        if (next.has(sid)) next.delete(sid);
+        else next.add(sid);
         return next;
       });
       selectionAnchorIdxRef.current = rowIdx;
@@ -456,34 +470,20 @@ export default function ProductList() {
 
   const toggleSelectAllOnPage = useCallback((e) => {
     e.stopPropagation();
-    e.preventDefault();
-    const ids = sortedItems.map((r) => r._id).filter(Boolean);
-    const allSelected = ids.length > 0 && ids.every((id) => selectedIds.has(id));
+    const ids = sortedItems.map((r) => productIdKey(r._id)).filter(Boolean);
     setSelectedIds((prev) => {
+      const allSelected = ids.length > 0 && ids.every((id) => prev.has(id));
       const next = new Set(prev);
       if (allSelected) ids.forEach((id) => next.delete(id));
       else ids.forEach((id) => next.add(id));
       return next;
     });
     selectionAnchorIdxRef.current = null;
-  }, [sortedItems, selectedIds]);
+  }, [sortedItems]);
 
-  const applyFieldFilter = useCallback(() => {
-    const v = fieldFilterInput.trim();
-    if (!fieldFilterSelect || !v) {
-      alert('필드와 검색 값을 입력해 주세요.');
-      return;
-    }
-    setFieldFilterFieldApplied(fieldFilterSelect);
-    setFieldFilterValueApplied(v);
-    setPagination((p) => ({ ...p, page: 1 }));
-  }, [fieldFilterInput, fieldFilterSelect]);
-
-  const clearFieldFilter = useCallback(() => {
-    setFieldFilterFieldApplied('');
-    setFieldFilterValueApplied('');
-    setFieldFilterInput('');
-    setPagination((p) => ({ ...p, page: 1 }));
+  const clearSelection = useCallback(() => {
+    setSelectedIds(new Set());
+    selectionAnchorIdxRef.current = null;
   }, []);
 
   const confirmBulkDelete = useCallback(async () => {
@@ -501,7 +501,7 @@ export default function ProductList() {
         alert(data.error || '삭제에 실패했습니다.');
         return;
       }
-      if (detailId && ids.includes(detailId)) closeDetail();
+      if (detailId && ids.includes(String(detailId))) closeDetail();
       setSelectedIds(new Set());
       selectionAnchorIdxRef.current = null;
       setBulkDeleteOpen(false);
@@ -513,18 +513,81 @@ export default function ProductList() {
     }
   }, [canDeleteProduct, selectedIds, detailId, fetchList, pagination.page, closeDetail]);
 
+  /** 일괄 복사: 원본 GET 후 신규 POST — 제품명 끝에 ` (복사본)` 추가, 코드는 비움(충돌 방지) */
+  const runBulkCopy = useCallback(async () => {
+    if (selectedIds.size === 0 || bulkCopyLoading) return;
+    const n = selectedIds.size;
+    if (!window.confirm(`선택한 ${n}개 제품을 복사해 새로 등록할까요?\n제품명 끝에 「 (복사본)」이 붙습니다.`)) return;
+    setBulkCopyLoading(true);
+    await pingBackendHealth(getAuthHeader);
+    const ids = [...selectedIds];
+    let ok = 0;
+    let fail = 0;
+    try {
+      for (const id of ids) {
+        try {
+          const res = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}`, { headers: getAuthHeader() });
+          const src = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            fail += 1;
+            continue;
+          }
+          const baseName = String(src.name || '').trim();
+          const newName = baseName ? `${baseName} (복사본)` : '(복사본)';
+          const lp = listPriceFromProduct(src) ?? Number(src.listPrice ?? src.price) ?? 0;
+          const costP = Number(src.costPrice) || 0;
+          const channelP = Number(src.channelPrice) || 0;
+          const createRes = await fetch(`${API_BASE}/products`, {
+            method: 'POST',
+            headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: newName,
+              code: '',
+              category: src.category != null ? String(src.category) : '',
+              version: src.version != null ? String(src.version) : '',
+              listPrice: lp,
+              price: lp,
+              costPrice: costP,
+              channelPrice: channelP,
+              currency: src.currency || 'KRW',
+              billingType: src.billingType || 'Monthly',
+              status: src.status || 'Active',
+              customFields:
+                src.customFields && typeof src.customFields === 'object' && Object.keys(src.customFields).length
+                  ? { ...src.customFields }
+                  : undefined
+            })
+          });
+          if (createRes.ok) ok += 1;
+          else fail += 1;
+        } catch {
+          fail += 1;
+        }
+      }
+      setSelectedIds(new Set());
+      selectionAnchorIdxRef.current = null;
+      fetchList(pagination.page);
+      if (fail > 0) {
+        window.alert(`${ok}건 복사 완료, ${fail}건 실패했습니다.`);
+      } else {
+        window.alert(`${ok}건 복사되었습니다.`);
+      }
+    } catch {
+      window.alert('복사 중 오류가 발생했습니다.');
+    } finally {
+      setBulkCopyLoading(false);
+    }
+  }, [selectedIds, fetchList, pagination.page]);
+
   const fetchAllProductsForExport = useCallback(async () => {
     let page = 1;
     let totalPages = 1;
     const all = [];
     do {
       const params = new URLSearchParams({ page: String(page), limit: String(EXPORT_PAGE_LIMIT) });
-      if (searchApplied) params.set('search', searchApplied);
-      if (filterStatus) params.set('status', filterStatus);
-      if (filterBilling) params.set('billingType', filterBilling);
-      if (fieldFilterFieldApplied && fieldFilterValueApplied) {
-        params.set('filterField', fieldFilterFieldApplied);
-        params.set('filterValue', fieldFilterValueApplied);
+      if (searchApplied) {
+        params.set('search', searchApplied);
+        if (appliedSearchField) params.set('searchField', appliedSearchField);
       }
       const res = await fetch(`${API_BASE}/products?${params}`, { headers: getAuthHeader() });
       if (!res.ok) {
@@ -538,7 +601,7 @@ export default function ProductList() {
       page += 1;
     } while (page <= totalPages);
     return all;
-  }, [searchApplied, filterStatus, filterBilling, fieldFilterFieldApplied, fieldFilterValueApplied]);
+  }, [searchApplied, appliedSearchField]);
 
   const handleDownloadExcel = useCallback(async () => {
     const viewer = getStoredCrmUser();
@@ -628,7 +691,8 @@ export default function ProductList() {
             <input
               type="checkbox"
               className="pl-mcard-row-cb"
-              checked={selectedIds.has(row._id)}
+              checked={selectedIds.has(productIdKey(row._id))}
+              onChange={() => {}}
               onClick={(e) => handleRowCheckboxClick(e, idx, row._id)}
               aria-label={`${row.name || '제품'} 선택`}
             />
@@ -672,25 +736,25 @@ export default function ProductList() {
           <form id="product-list-search-form" onSubmit={runSearch} className="header-search-form">
             <input
               type="text"
-              placeholder="모든 필드 검색 (제품명, 코드, 카테고리, 버전, 가격, 통화, 결제·상태, 커스텀 필드 등)…"
+              placeholder={searchFieldPlaceholderHint}
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               aria-label="제품 검색"
             />
           </form>
+          <select
+            className="pl-search-field-select"
+            value={searchFieldDraft}
+            onChange={(e) => setSearchFieldDraft(e.target.value)}
+            aria-label="검색 필드"
+          >
+            <option value="">전체 필드</option>
+            {searchFieldOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
         </div>
         <div className="header-actions">
-          {canDeleteProduct && selectedIds.size > 0 ? (
-            <button
-              type="button"
-              className="icon-btn product-list-header-delete-btn"
-              aria-label="선택한 제품 삭제"
-              title="선택한 제품 삭제"
-              onClick={() => setBulkDeleteOpen(true)}
-            >
-              <span className="material-symbols-outlined">delete</span>
-            </button>
-          ) : null}
           <button
             type="button"
             className="icon-btn"
@@ -707,6 +771,46 @@ export default function ProductList() {
         </div>
       </header>
       <div className="page-content">
+        {selectedIds.size > 0 ? (
+          <div className="cce-action-bar">
+            <span className="cce-action-bar-count">
+              <strong>{selectedIds.size}</strong>개 선택됨
+              <span className="cce-action-bar-hint">Shift+클릭으로 범위 선택</span>
+            </span>
+            <div className="cce-action-bar-btns">
+              <button
+                type="button"
+                className="cce-action-bar-copy-bulk"
+                onClick={runBulkCopy}
+                disabled={bulkCopyLoading || bulkDeleteLoading}
+                title="선택한 제품을 복사해 새로 등록합니다. 제품명 끝에 (복사본)이 붙습니다."
+              >
+                <span
+                  className={`material-symbols-outlined${bulkCopyLoading ? ' cce-action-bar-copy-icon--spin' : ''}`}
+                  aria-hidden
+                >
+                  {bulkCopyLoading ? 'progress_activity' : 'content_copy'}
+                </span>
+                {bulkCopyLoading ? '복사 중…' : '복사하기'}
+              </button>
+              {canDeleteProduct ? (
+                <button
+                  type="button"
+                  className="cce-action-bar-delete"
+                  onClick={() => setBulkDeleteOpen(true)}
+                  disabled={bulkDeleteLoading || bulkCopyLoading}
+                  title="선택한 제품을 삭제합니다 (Owner / Admin)"
+                >
+                  <span className="material-symbols-outlined" aria-hidden>delete</span>
+                  {bulkDeleteLoading ? '삭제 중…' : '선택 항목 삭제'}
+                </button>
+              ) : null}
+              <button type="button" className="cce-action-bar-cancel" onClick={clearSelection}>
+                선택 해제
+              </button>
+            </div>
+          </div>
+        ) : null}
         <section className="pl-mobile-hero pl-mobile-only" aria-label="포트폴리오 요약">
           <p className="pl-mobile-kicker">제품 개요</p>
           <h2 className="pl-mobile-title">현재 포트폴리오</h2>
@@ -757,143 +861,6 @@ export default function ProductList() {
             </button>
           </div>
         </div>
-        <div className="product-list-toolbar">
-          <div className="product-list-filters pl-desktop-only">
-            <select
-              className="product-list-filter-select"
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              aria-label="상태 필터"
-            >
-              <option value="">상태: 전체</option>
-              <option value="Active">활성</option>
-              <option value="EndOfLife">End of Life</option>
-              <option value="Draft">초안</option>
-            </select>
-            <select
-              className="product-list-filter-select"
-              value={filterBilling}
-              onChange={(e) => setFilterBilling(e.target.value)}
-              aria-label="결제 주기 필터"
-            >
-              <option value="">결제: 전체</option>
-              <option value="Monthly">월간</option>
-              <option value="Annual">연간</option>
-              <option value="Perpetual">영구</option>
-            </select>
-            <div className="product-list-field-filter" role="group" aria-label="필드별 필터">
-              <select
-                className="product-list-filter-select product-list-field-filter-select"
-                value={fieldFilterSelect}
-                onChange={(e) => setFieldFilterSelect(e.target.value)}
-                aria-label="필터 필드"
-              >
-                {fieldFilterOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-              <input
-                type="text"
-                className="product-list-field-filter-input"
-                value={fieldFilterInput}
-                onChange={(e) => setFieldFilterInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    applyFieldFilter();
-                  }
-                }}
-                placeholder="해당 필드 값"
-                aria-label="필드 검색 값"
-              />
-              <button type="button" className="btn-outline product-list-field-filter-apply" onClick={applyFieldFilter}>
-                필터 적용
-              </button>
-              {fieldFilterFieldApplied && fieldFilterValueApplied ? (
-                <button type="button" className="btn-outline product-list-field-filter-clear" onClick={clearFieldFilter}>
-                  필터 해제
-                </button>
-              ) : null}
-            </div>
-          </div>
-          <div className="pl-mobile-field-filter pl-mobile-only">
-            <p className="pl-mobile-chips-label">필드 필터</p>
-            <div className="pl-mobile-field-filter-row">
-              <select
-                className="product-list-filter-select product-list-field-filter-select"
-                value={fieldFilterSelect}
-                onChange={(e) => setFieldFilterSelect(e.target.value)}
-                aria-label="필터 필드"
-              >
-                {fieldFilterOptions.map((opt) => (
-                  <option key={`m-${opt.value}`} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-              <input
-                type="text"
-                className="product-list-field-filter-input"
-                value={fieldFilterInput}
-                onChange={(e) => setFieldFilterInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    applyFieldFilter();
-                  }
-                }}
-                placeholder="값"
-                aria-label="필드 검색 값"
-              />
-            </div>
-            <div className="pl-mobile-field-filter-actions">
-              <button type="button" className="btn-outline product-list-field-filter-apply" onClick={applyFieldFilter}>
-                적용
-              </button>
-              {fieldFilterFieldApplied && fieldFilterValueApplied ? (
-                <button type="button" className="btn-outline product-list-field-filter-clear" onClick={clearFieldFilter}>
-                  해제
-                </button>
-              ) : null}
-            </div>
-          </div>
-          <div className="pl-mobile-chips-block pl-mobile-only">
-            <p className="pl-mobile-chips-label">상태</p>
-            <div className="pl-mobile-chips-row">
-              {[
-                { value: '', label: '전체' },
-                { value: 'Active', label: '활성' },
-                { value: 'EndOfLife', label: 'EOL' },
-                { value: 'Draft', label: '초안' }
-              ].map((opt) => (
-                <button
-                  key={`st-${opt.value || 'all'}`}
-                  type="button"
-                  className={`pl-mobile-chip ${filterStatus === opt.value ? 'is-active' : ''}`}
-                  onClick={() => setFilterStatus(opt.value)}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-            <p className="pl-mobile-chips-label pl-mobile-chips-label--spaced">결제</p>
-            <div className="pl-mobile-chips-row">
-              {[
-                { value: '', label: '전체' },
-                { value: 'Monthly', label: '월간' },
-                { value: 'Annual', label: '연간' },
-                { value: 'Perpetual', label: '영구' }
-              ].map((opt) => (
-                <button
-                  key={`bl-${opt.value || 'all'}`}
-                  type="button"
-                  className={`pl-mobile-chip ${filterBilling === opt.value ? 'is-active' : ''}`}
-                  onClick={() => setFilterBilling(opt.value)}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
         <div className="panel table-panel">
           <div className="pl-mobile-cards-wrap">
             {loading ? (
@@ -916,6 +883,7 @@ export default function ProductList() {
                       type="checkbox"
                       className="pl-row-checkbox"
                       checked={allOnPageSelected}
+                      onChange={() => {}}
                       onClick={toggleSelectAllOnPage}
                       title="현재 페이지 전체 선택"
                     />
@@ -964,7 +932,8 @@ export default function ProductList() {
                         <input
                           type="checkbox"
                           className="pl-row-checkbox"
-                          checked={selectedIds.has(row._id)}
+                          checked={selectedIds.has(productIdKey(row._id))}
+                          onChange={() => {}}
                           onClick={(e) => handleRowCheckboxClick(e, rowIdx, row._id)}
                           aria-label={`${row.name || '제품'} 선택`}
                         />

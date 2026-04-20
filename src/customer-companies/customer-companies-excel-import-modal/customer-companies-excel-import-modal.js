@@ -24,6 +24,7 @@ import {
   rowsFromSavedMappings
 } from '../../lead-capture/lead-capture-crm-mapping/lead-capture-crm-mapping-utils';
 import { buildExcelSourceOptions, previewExcelMappedValue } from './excel-import-mapping-utils';
+import { mapWithConcurrency } from '@/lib/map-with-concurrency';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -62,6 +63,8 @@ const FALLBACK_TARGET_OPTIONS = [
 const GOOGLE_MAPS_API_KEY = getGoogleMapsApiKey();
 const CLIENT_GEO_LAT_KEY = '__nexvia_client_latitude__';
 const CLIENT_GEO_LNG_KEY = '__nexvia_client_longitude__';
+/** 가져오기 직전 클라이언트 지오코딩 동시 요청 상한 */
+const EXCEL_IMPORT_GEOCODE_CONCURRENCY = 4;
 
 function digitsOnly(value) {
   if (value == null) return '';
@@ -238,8 +241,6 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
   const [saveMsg, setSaveMsg] = useState(null);
   const [importResult, setImportResult] = useState(null);
   const [inProgressJob, setInProgressJob] = useState(null);
-  const [showHoldList, setShowHoldList] = useState(false);
-  const [holdGroupSelection, setHoldGroupSelection] = useState({});
   const [resolvedHoldActions, setResolvedHoldActions] = useState([]);
   const [appliedHoldGroupKeys, setAppliedHoldGroupKeys] = useState({});
   const [showAssigneePicker, setShowAssigneePicker] = useState(false);
@@ -250,22 +251,10 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
     return id ? [id] : [];
   });
   const previewRawSessionRef = useRef(null);
-  const holdGroupSelectionRef = useRef({});
   /** 사용자가 확인을 눌러 실제 저장을 시작한 현재 작업만 폴링 결과로 반영 */
   const activeImportJobRef = useRef(null);
 
   const registerTarget = 'company';
-
-  const updateHoldGroupSelection = useCallback((groupKey, selection) => {
-    holdGroupSelectionRef.current = {
-      ...(holdGroupSelectionRef.current || {}),
-      [String(groupKey)]: selection
-    };
-    setHoldGroupSelection((prev) => ({
-      ...prev,
-      [String(groupKey)]: selection
-    }));
-  }, []);
 
   const excelHeaders = useMemo(() => {
     if (!excelRows.length) return [];
@@ -367,9 +356,6 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
     setSaveMsg(null);
     setImportResult(null);
     setInProgressJob(null);
-    setShowHoldList(false);
-    setHoldGroupSelection({});
-    holdGroupSelectionRef.current = {};
     setResolvedHoldActions([]);
     setAppliedHoldGroupKeys({});
     activeImportJobRef.current = null;
@@ -473,9 +459,6 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
     setSaveMsg(null);
     setInProgressJob(null);
     setImportResult(null);
-    setShowHoldList(false);
-    setHoldGroupSelection({});
-    holdGroupSelectionRef.current = {};
     setResolvedHoldActions([]);
     setAppliedHoldGroupKeys({});
     activeImportJobRef.current = null;
@@ -554,31 +537,36 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
     const hasLongitudeMapping = mappings.some((m) => String(m?.targetKey || '') === 'company.longitude');
     const google = GOOGLE_MAPS_API_KEY ? await loadGoogleMapsPromise() : null;
     let geocodedCount = 0;
-    let processed = 0;
     let firstGeocodeError = '';
     let addressedRows = 0;
 
-    for (const item of rowsToGeocode) {
-      processed += 1;
+    const geoResults = await mapWithConcurrency(rowsToGeocode, EXCEL_IMPORT_GEOCODE_CONCURRENCY, async (item) => {
       const rowIndex = Number(item?.rowIndex);
-      if (!Number.isFinite(rowIndex) || !enrichedRows[rowIndex] || typeof enrichedRows[rowIndex] !== 'object') continue;
-
+      if (!Number.isFinite(rowIndex) || !enrichedRows[rowIndex] || typeof enrichedRows[rowIndex] !== 'object') {
+        return { type: 'skip' };
+      }
       const address =
         String(item?.companyPayload?.address || '').trim() ||
         readCompanyFieldValueFromExcelRow(enrichedRows[rowIndex], mappings, 'company.address');
-      if (!address) continue;
-      addressedRows += 1;
-
-
+      if (!address) return { type: 'skip' };
       try {
         const coords = await geocodeAddressForImport(google, address);
-        if (!coords) continue;
-
-        enrichedRows[rowIndex][CLIENT_GEO_LAT_KEY] = coords.latitude;
-        enrichedRows[rowIndex][CLIENT_GEO_LNG_KEY] = coords.longitude;
-        geocodedCount += 1;
+        if (!coords) return { type: 'no_coords' };
+        return { type: 'ok', rowIndex, coords };
       } catch (e) {
-        if (!firstGeocodeError) firstGeocodeError = e.message || '위도·경도 계산 실패';
+        return { type: 'err', error: e.message || '위도·경도 계산 실패' };
+      }
+    });
+
+    for (const r of geoResults) {
+      if (r.type === 'skip') continue;
+      if (r.type === 'no_coords' || r.type === 'ok' || r.type === 'err') addressedRows += 1;
+      if (r.type === 'ok' && r.coords && Number.isFinite(r.rowIndex)) {
+        enrichedRows[r.rowIndex][CLIENT_GEO_LAT_KEY] = r.coords.latitude;
+        enrichedRows[r.rowIndex][CLIENT_GEO_LNG_KEY] = r.coords.longitude;
+        geocodedCount += 1;
+      } else if (r.type === 'err' && r.error && !firstGeocodeError) {
+        firstGeocodeError = r.error;
       }
     }
 
@@ -638,8 +626,6 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
         if (!res.ok) throw new Error(data.error || '가져오기 실패');
 
         setImportResult(null);
-        setShowHoldList(false);
-        setHoldGroupSelection({});
         setResolvedHoldActions([]);
         setAppliedHoldGroupKeys({});
 
@@ -679,13 +665,6 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
   const handleResultConfirm = useCallback(async () => {
     if (importResult?.phase === 'preview') {
       const results = Array.isArray(importResult.results) ? importResult.results : [];
-      const holdItems = results.filter((r) => r && r.hold);
-      const visibleHoldGroups = buildHoldGroups(holdItems).filter((group) => !appliedHoldGroupKeys[group.key]);
-      if (visibleHoldGroups.length > 0) {
-        setSaveMsg('보류를 모두 적용한 뒤 확인을 눌러 주세요.');
-        return;
-      }
-
       const stagedActions = Array.isArray(resolvedHoldActions) ? resolvedHoldActions : [];
       setSaving(true);
       try {
@@ -708,12 +687,10 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
 
     if (importResult) onImported?.(importResult);
     setImportResult(null);
-    setShowHoldList(false);
-    setHoldGroupSelection({});
     setResolvedHoldActions([]);
     setAppliedHoldGroupKeys({});
     onClose?.();
-  }, [importResult, onClose, onImported, resolvedHoldActions, appliedHoldGroupKeys, buildClientGeocodedImportPayload, commitExcelImport]);
+  }, [importResult, onClose, onImported, resolvedHoldActions, buildClientGeocodedImportPayload, commitExcelImport]);
 
   useEffect(() => {
     if (!inProgressJob?.jobId || !open) return;
@@ -770,7 +747,6 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
   useEffect(() => {
     if (!importResult) {
       previewRawSessionRef.current = null;
-      holdGroupSelectionRef.current = {};
       return;
     }
     const raw = importResult.rawPreviewResults;
@@ -787,52 +763,34 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
     const results = Array.isArray(importResult.results) ? importResult.results : [];
     const holdItems = results.filter((r) => r && r.hold);
     const groups = buildHoldGroups(holdItems);
-    const defaults = {};
+
+    let allActions = [];
+    const appliedKeys = {};
     groups.forEach((g) => {
       const existing = buildExistingCandidatesForGroup(g);
-      if (existing.length > 0) {
-        defaults[g.key] = { type: 'existing', key: String(existing[0].companyId) };
-      } else if (g.items.length > 0) {
-        defaults[g.key] = { type: 'hold', key: String(g.items[0].rowIndex) };
-      }
+      const selected =
+        existing.length > 0
+          ? { type: 'existing', key: String(existing[0].companyId) }
+          : { type: 'hold', key: String(g.items[0].rowIndex) };
+      const actions = buildResolveActionsForGroup(g, selected);
+      allActions = allActions.concat(actions);
+      appliedKeys[g.key] = true;
     });
-    holdGroupSelectionRef.current = defaults;
-    setHoldGroupSelection(defaults);
-    setResolvedHoldActions([]);
-    setAppliedHoldGroupKeys({});
-    if (holdItems.length > 0) setShowHoldList(true);
-  }, [importResult]);
-
-  const handleResolveSingleHoldGroup = useCallback((group) => {
-    const existing = buildExistingCandidatesForGroup(group);
-    const defaultSelection = existing.length > 0
-      ? { type: 'existing', key: String(existing[0].companyId) }
-      : { type: 'hold', key: String(group.items?.[0]?.rowIndex ?? '') };
-    const selected = holdGroupSelectionRef.current?.[group.key] || holdGroupSelection[group.key] || defaultSelection;
-    const actions = buildResolveActionsForGroup(group, selected);
-    if (!actions.length) {
-      setSaveMsg('이 그룹에 적용할 동작을 만들 수 없습니다. 다시 선택해 주세요.');
-      return;
+    setResolvedHoldActions(allActions);
+    setAppliedHoldGroupKeys(appliedKeys);
+    if (allActions.length > 0) {
+      setImportResult((prev) => {
+        if (!prev || prev.phase !== 'preview') return prev;
+        return {
+          ...prev,
+          results: applyResolvedActionsToPreviewResults(prev.results, allActions)
+        };
+      });
+    } else {
+      setResolvedHoldActions([]);
+      setAppliedHoldGroupKeys({});
     }
-    const rowIndexesInGroup = new Set(
-      (group.items || [])
-        .map((item) => Number(item?.rowIndex))
-        .filter((n) => Number.isFinite(n))
-    );
-    setResolvedHoldActions((prev) => {
-      const rest = (Array.isArray(prev) ? prev : []).filter((action) => !rowIndexesInGroup.has(Number(action?.rowIndex)));
-      return [...rest, ...actions];
-    });
-    setAppliedHoldGroupKeys((prev) => ({ ...prev, [String(group.key)]: true }));
-    setImportResult((prev) => {
-      if (!prev || prev.phase !== 'preview') return prev;
-      return {
-        ...prev,
-        results: applyResolvedActionsToPreviewResults(prev.results, actions)
-      };
-    });
-    setSaveMsg('이 그룹이 적용되었습니다. 보류가 0건이 되면 확인 버튼으로 위도·경도 계산 후 등록할 수 있습니다.');
-  }, [holdGroupSelection]);
+  }, [importResult]);
 
   if (!open) return null;
 
@@ -905,12 +863,6 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
         emptySk={emptySk}
         successItems={successItems}
         stagedResolvedItems={stagedResolvedItems}
-        visibleHoldGroups={visibleHoldGroups}
-        showHoldList={showHoldList}
-        onToggleHoldList={() => setShowHoldList((v) => !v)}
-        holdGroupSelection={holdGroupSelection}
-        updateHoldGroupSelection={updateHoldGroupSelection}
-        onApplyHoldGroup={handleResolveSingleHoldGroup}
         saving={saving}
         canConfirmPreview={canConfirmPreview}
         onConfirm={handleResultConfirm}

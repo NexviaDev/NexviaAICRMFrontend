@@ -1080,6 +1080,12 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                           <span>{contact.position}</span>
                         </div>
                       )}
+                      {contact.leadSource && (
+                        <div className="customer-company-detail-meta-item">
+                          <span className="material-symbols-outlined">travel_explore</span>
+                          <span>{contact.leadSource}</span>
+                        </div>
+                      )}
                       {contact.address && (
                         <div className="customer-company-detail-meta-item full">
                           <span className="material-symbols-outlined">location_on</span>
@@ -1098,7 +1104,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                           <span className="contact-detail-memo-value">{contact.memo}</span>
                         </div>
                       )}
-                      {!contact.company && !contact.companyName && !contact.email && !contact.phone && !contact.position && !contact.address && !contact.birthDate && !contact.memo && (
+                      {!contact.company && !contact.companyName && !contact.email && !contact.phone && !contact.position && !contact.leadSource && !contact.address && !contact.birthDate && !contact.memo && (
                         <div className="customer-company-detail-meta-item">
                           <span className="material-symbols-outlined">info</span>
                           <span>등록된 연락처 정보가 없습니다.</span>

@@ -18,6 +18,20 @@ import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import HomeLeadDetailModal from './home-lead-detail-modal';
 import HomeFullViewModal from './home-full-view-modal';
 
+/** 인사이트 권한 확인·차트 로딩 — 파스텔 링 스피너 (그라데이션 없음) */
+function HomePastelSpinner({ size = 'md', label, reducedMotion, className = '' }) {
+  return (
+    <span
+      className={`home-pastel-spinner home-pastel-spinner--${size}${reducedMotion ? ' home-pastel-spinner--reduced' : ''} ${className}`.trim()}
+      role="status"
+      aria-live="polite"
+    >
+      <span className="home-pastel-spinner-ring" aria-hidden />
+      {label ? <span className="home-pastel-spinner-label">{label}</span> : null}
+    </span>
+  );
+}
+
 function getGreetingForHome() {
   const h = new Date().getHours();
   if (h < 12) return '좋은 아침입니다';
@@ -241,7 +255,8 @@ function useTweenedDualSeries(curA, curB, animEpoch, durationMs) {
       return;
     }
     const { a: fa, b: fb } = pairRef.current;
-    const n = Math.max(ta.length, fa.length, tb.length, fb.length);
+    /** 새 집계 구간(주간↔반기 등) 버킷 수는 ta/tb 기준이어야 함. 이전 프레임(fa)이 더 길면 n을 늘리면 막대 개수가 남습니다. */
+    const n = Math.max(ta.length, tb.length);
     const start = performance.now();
     let raf = 0;
     const tick = (now) => {
@@ -252,8 +267,8 @@ function useTweenedDualSeries(curA, curB, animEpoch, durationMs) {
       for (let i = 0; i < n; i += 1) {
         const va = Number(ta[i]?.value) || 0;
         const vb = Number(tb[i]?.value) || 0;
-        const oa = Number(fa[i]?.value) || 0;
-        const ob = Number(fb[i]?.value) || 0;
+        const oa = i < fa.length ? Number(fa[i]?.value) || 0 : 0;
+        const ob = i < fb.length ? Number(fb[i]?.value) || 0 : 0;
         na.push({
           label: String(ta[i]?.label ?? fa[i]?.label ?? ''),
           value: oa + (va - oa) * e
@@ -895,20 +910,6 @@ export default function Home() {
     [setSearchParams]
   );
 
-  const clearHomeInsightLeaderFilters = useCallback(() => {
-    setSearchParams(
-      (prev) => {
-        const p = new URLSearchParams(prev);
-        p.delete(HOME_INSIGHT_DEPT_PARAM);
-        p.delete(HOME_INSIGHT_USER_PARAM);
-        p.delete(HOME_INSIGHT_PARAM);
-        p.set(HOME_INSIGHT_VIEW_PARAM, 'team');
-        return p;
-      },
-      { replace: true }
-    );
-  }, [setSearchParams]);
-
   const setHomeKpiPeriod = useCallback(
     (period) => {
       const next = normalizeHomeKpiPeriod(period);
@@ -924,21 +925,6 @@ export default function Home() {
     },
     [setSearchParams]
   );
-
-  const resetLeaderInsightToSelfUser = useCallback(() => {
-    setSearchParams(
-      (prev) => {
-        const p = new URLSearchParams(prev);
-        p.delete(HOME_INSIGHT_PARAM);
-        p.set(HOME_INSIGHT_VIEW_PARAM, 'personal');
-        p.delete(HOME_INSIGHT_DEPT_PARAM);
-        const uid = String(getStoredCrmUser()?._id || '').trim();
-        if (uid) p.set(HOME_INSIGHT_USER_PARAM, uid);
-        return p;
-      },
-      { replace: true }
-    );
-  }, [setSearchParams]);
 
   const setHomeLeaderBreakdownMode = useCallback(
     (mode) => {
@@ -1824,74 +1810,163 @@ export default function Home() {
 
         <section className="home-insights-top" aria-label="소비자가·순마진 인사이트">
           {!insightAccess.checked ? (
-            <div className="panel home-chart-panel home-insights-role-loading" aria-busy="true">
-              <p className="home-chart-empty">권한 확인 중…</p>
-            </div>
+            <>
+              <div className="home-insight-toolbar home-insight-toolbar--access-loading" aria-busy="true">
+                <div className="home-insight-toolbar-access-placeholder">
+                  <HomePastelSpinner
+                    size="sm"
+                    label="조회 범위·기간 불러오는 중"
+                    reducedMotion={prefersReducedMotion}
+                  />
+                </div>
+              </div>
+              <div
+                className={`home-kpi-strip${prefersReducedMotion ? ' home-kpi-strip--motion-reduced' : ''}`}
+                aria-label="핵심 실적 요약"
+              >
+                {['rev', 'gm', 'goal', 'lead', 'deal'].map((key) => (
+                  <div
+                    key={key}
+                    className="home-kpi-card home-kpi-card--access-loading"
+                    aria-busy="true"
+                    aria-label="권한 확인 중"
+                  >
+                    <div className="home-kpi-card-access-spin">
+                      <HomePastelSpinner size="kpi" reducedMotion={prefersReducedMotion} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="panel home-chart-panel home-chart-panel--access-loading" aria-busy="true">
+                <div className="panel-head home-chart-head">
+                  <div>
+                    <h2>소비자가 기준 그래프</h2>
+                    <p className="home-chart-subtitle">수주·파이프라인 기준 (확인 후 표시)</p>
+                  </div>
+                </div>
+                <div className="home-chart-body home-chart-body--access-loading">
+                  <HomePastelSpinner label="권한 확인 중" reducedMotion={prefersReducedMotion} />
+                </div>
+              </div>
+              <div className="panel home-chart-panel home-chart-panel--access-loading" aria-busy="true">
+                <div className="panel-head home-chart-head">
+                  <div>
+                    <h2>순마진 그래프</h2>
+                    <p className="home-chart-subtitle">동일 기간·범위 (확인 후 표시)</p>
+                  </div>
+                </div>
+                <div className="home-chart-body home-chart-body--access-loading">
+                  <HomePastelSpinner label="권한 확인 중" reducedMotion={prefersReducedMotion} />
+                </div>
+              </div>
+            </>
           ) : (
             <>
               <div className="home-insight-toolbar">
                 <div className="home-insight-toolbar-rows">
                   <div className="home-insight-toolbar-primary-row">
                     <div className="home-insight-toolbar-scope">
-                      {data?.insightScope?.leaderSubtree ? (
-                        <div
-                          className="home-insight-mode-switch home-insight-mode-switch--leader home-insight-mode-switch--with-company"
-                          role="tablist"
-                          aria-label="소비자가·순마진 조회 범위"
-                        >
-                          <button
-                            type="button"
-                            className={isCompanyWideInsight ? 'is-active' : ''}
-                            onClick={() => setCompanyWideInsight(true)}
-                            title="회사 전체 수주·파이프라인 기준"
+                      <div className="home-insight-toolbar-scope-cluster">
+                        {data?.insightScope?.leaderSubtree ? (
+                          <div
+                            className="home-insight-mode-switch home-insight-mode-switch--leader home-insight-mode-switch--with-company"
+                            role="tablist"
+                            aria-label="소비자가·순마진 조회 범위"
                           >
-                            회사 전체
-                          </button>
-                          <button
-                            type="button"
-                            className={!isCompanyWideInsight && leaderInsightViewKind === 'team' ? 'is-active' : ''}
-                            onClick={() => setLeaderInsightViewKind('team')}
+                            <button
+                              type="button"
+                              className={isCompanyWideInsight ? 'is-active' : ''}
+                              onClick={() => setCompanyWideInsight(true)}
+                              title="회사 전체 수주·파이프라인 기준"
+                            >
+                              회사 전체
+                            </button>
+                            <button
+                              type="button"
+                              className={!isCompanyWideInsight && leaderInsightViewKind === 'team' ? 'is-active' : ''}
+                              onClick={() => setLeaderInsightViewKind('team')}
+                            >
+                              팀별
+                            </button>
+                            <button
+                              type="button"
+                              className={!isCompanyWideInsight && leaderInsightViewKind === 'personal' ? 'is-active' : ''}
+                              onClick={() => setLeaderInsightViewKind('personal')}
+                            >
+                              개인 보기
+                            </button>
+                          </div>
+                        ) : (
+                          <div
+                            className="home-insight-mode-switch home-insight-mode-switch--with-company home-insight-mode-switch--solo-non-leader"
+                            role="tablist"
+                            aria-label="조회 범위"
                           >
-                            팀별
-                          </button>
-                          <button
-                            type="button"
-                            className={!isCompanyWideInsight && leaderInsightViewKind === 'personal' ? 'is-active' : ''}
-                            onClick={() => setLeaderInsightViewKind('personal')}
-                          >
-                            개인 보기
-                          </button>
-                        </div>
-                      ) : (
-                        <div
-                          className="home-insight-mode-switch home-insight-mode-switch--with-company home-insight-mode-switch--solo-non-leader"
-                          role="tablist"
-                          aria-label="조회 범위"
-                        >
-                          <button
-                            type="button"
-                            className={isCompanyWideInsight ? 'is-active' : ''}
-                            onClick={() => setCompanyWideInsight(true)}
-                            title="회사 전체 수주·파이프라인 기준"
-                          >
-                            회사 전체
-                          </button>
-                          <button
-                            type="button"
-                            className={!isCompanyWideInsight && leaderInsightViewKind === 'team' ? 'is-active' : ''}
-                            onClick={() => setLeaderInsightViewKind('team')}
-                          >
-                            팀별
-                          </button>
-                          <button
-                            type="button"
-                            className={!isCompanyWideInsight && leaderInsightViewKind === 'personal' ? 'is-active' : ''}
-                            onClick={() => setLeaderInsightViewKind('personal')}
-                          >
-                            개인 보기
-                          </button>
-                        </div>
-                      )}
+                            <button
+                              type="button"
+                              className={isCompanyWideInsight ? 'is-active' : ''}
+                              onClick={() => setCompanyWideInsight(true)}
+                              title="회사 전체 수주·파이프라인 기준"
+                            >
+                              회사 전체
+                            </button>
+                            <button
+                              type="button"
+                              className={!isCompanyWideInsight && leaderInsightViewKind === 'team' ? 'is-active' : ''}
+                              onClick={() => setLeaderInsightViewKind('team')}
+                            >
+                              팀별
+                            </button>
+                            <button
+                              type="button"
+                              className={!isCompanyWideInsight && leaderInsightViewKind === 'personal' ? 'is-active' : ''}
+                              onClick={() => setLeaderInsightViewKind('personal')}
+                            >
+                              개인 보기
+                            </button>
+                          </div>
+                        )}
+                        {data?.insightScope?.leaderSubtree ? (
+                          !isCompanyWideInsight && data?.insightLeaderFilters ? (
+                            <div className="home-insight-leader-filters-inline" aria-label="팀·직원 범위">
+                              {leaderInsightViewKind === 'team' ? (
+                                <label className="home-insight-filter-field home-insight-filter-field--inline">
+                                  <select
+                                    className="home-insight-filter-select home-insight-filter-select--inline"
+                                    value={insightDeptQ}
+                                    onChange={(e) => setHomeInsightDeptFilter(e.target.value)}
+                                  >
+                                    <option value="">전체 부서 (담당 범위 합산)</option>
+                                    {(data.insightLeaderFilters.departments || []).map((d) => (
+                                      <option key={d.id} value={d.id}>
+                                        {d.label}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              ) : (
+                                <label className="home-insight-filter-field home-insight-filter-field--inline">
+                                  <select
+                                    className="home-insight-filter-select home-insight-filter-select--inline"
+                                    value={insightUserQ || myCrmUserId}
+                                    onChange={(e) => setHomeInsightUserFilter(e.target.value)}
+                                  >
+                                    {(data.insightLeaderFilters.users || []).map((u) => (
+                                      <option key={u.id} value={u.id}>
+                                        {formatLeaderEmployeeOptionLabel(u, data.insightLeaderFilters.departments)}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              )}
+                            </div>
+                          ) : null
+                        ) : (
+                          <p className="home-insight-hint home-insight-hint--solo">
+                            본인 담당 실적만 표시됩니다. 부서 팀장으로 지정되면 팀·직원 단위로 볼 수 있습니다.
+                          </p>
+                        )}
+                      </div>
                     </div>
                     <div className="home-kpi-period-toolbar">
                       <div
@@ -1923,62 +1998,6 @@ export default function Home() {
                       </div>
                     </div>
                   </div>
-                  {data?.insightScope?.leaderSubtree ? (
-                    !isCompanyWideInsight && data?.insightLeaderFilters ? (
-                      <div className="home-insight-leader-filters-inline" aria-label="팀·직원 범위">
-                        {leaderInsightViewKind === 'team' ? (
-                          <label className="home-insight-filter-field home-insight-filter-field--inline">
-                            <select
-                              className="home-insight-filter-select home-insight-filter-select--inline"
-                              value={insightDeptQ}
-                              onChange={(e) => setHomeInsightDeptFilter(e.target.value)}
-                            >
-                              <option value="">전체 부서 (담당 범위 합산)</option>
-                              {(data.insightLeaderFilters.departments || []).map((d) => (
-                                <option key={d.id} value={d.id}>
-                                  {d.label}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        ) : (
-                          <label className="home-insight-filter-field home-insight-filter-field--inline">
-                            <select
-                              className="home-insight-filter-select home-insight-filter-select--inline"
-                              value={insightUserQ || myCrmUserId}
-                              onChange={(e) => setHomeInsightUserFilter(e.target.value)}
-                            >
-                              {(data.insightLeaderFilters.users || []).map((u) => (
-                                <option key={u.id} value={u.id}>
-                                  {formatLeaderEmployeeOptionLabel(u, data.insightLeaderFilters.departments)}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        )}
-                        {((leaderInsightViewKind === 'team' && insightDeptQ) ||
-                          (leaderInsightViewKind === 'personal' &&
-                            insightUserQ &&
-                            insightUserQ !== myCrmUserId)) ? (
-                          <button
-                            type="button"
-                            className="home-insight-filter-clear home-insight-filter-clear--inline"
-                            onClick={
-                              leaderInsightViewKind === 'team'
-                                ? clearHomeInsightLeaderFilters
-                                : resetLeaderInsightToSelfUser
-                            }
-                          >
-                            {leaderInsightViewKind === 'team' ? '부서 초기화' : '본인으로'}
-                          </button>
-                        ) : null}
-                      </div>
-                    ) : null
-                  ) : (
-                    <p className="home-insight-hint home-insight-hint--solo">
-                      본인 담당 실적만 표시됩니다. 부서 팀장으로 지정되면 팀·직원 단위로 볼 수 있습니다.
-                    </p>
-                  )}
                 </div>
                 {data?.insightNarrow?.type === 'dept' && data?.insightNarrow?.empty ? (
                   <p className="home-insight-filter-warn home-insight-filter-warn--toolbar" role="status">

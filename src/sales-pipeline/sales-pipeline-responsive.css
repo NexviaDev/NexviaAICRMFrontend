@@ -268,6 +268,13 @@
     color: #596061;
   }
 
+  .sp-mobile-deals-forecast-expected {
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: none;
+    color: #2c6485;
+  }
+
   .sp-mobile-deals-list {
     display: flex;
     flex-direction: column;
@@ -422,6 +429,10 @@
   }
 
   .sp-dropzones-section {
+    width: 100%;
+    max-width: 100%;
+    margin-left: 0;
+    margin-right: 0;
     margin-top: 0.5rem;
     padding: 1rem;
     border-top: none;

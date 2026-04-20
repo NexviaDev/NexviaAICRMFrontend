@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import CustomerCompanySearchModal from '../../customer-companies/customer-company-search-modal/customer-company-search-modal';
 import CustomerCompanyEmployeesSearchModal from '../../customer-company-employees/customer-company-employees-search-modal/customer-company-employees-search-modal';
 import ProductSearchModal from '../product-search-modal/product-search-modal';
+import AssigneePickerModal from '../../company-overview/assignee-picker-modal/assignee-picker-modal';
 import '../../customer-companies/customer-company-detail-modal/customer-company-detail-modal.css';
 import './opportunity-modal.css';
 import { RegisterSaleDocsCrmTable, formatDriveFileDate } from '@/shared/register-sale-docs-drive';
@@ -39,13 +40,24 @@ const STAGE_OPTIONS = [
 ];
 
 const CURRENCY_OPTIONS = [
-  { value: 'KRW', label: 'KRW' },
-  { value: 'USD', label: 'USD' },
-  { value: 'JPY', label: 'JPY' }
+  { value: 'KRW', label: '원' },
+  { value: 'USD', label: '달러' },
+  { value: 'JPY', label: '엔' }
 ];
 
 const PRODUCT_BILLING_LABELS = { Monthly: '월간', Annual: '연간', Perpetual: '영구' };
 
+function getInitialInternalAssignee() {
+  try {
+    const u = getStoredCrmUser();
+    return {
+      assignedToUserId: u?._id ? String(u._id) : '',
+      assignedToName: (u?.name && String(u.name).trim()) || ''
+    };
+  } catch (_) {
+    return { assignedToUserId: '', assignedToName: '' };
+  }
+}
 
 function formatNumberInput(val) {
   const num = String(val).replace(/[^0-9]/g, '');
@@ -330,7 +342,7 @@ export default function OpportunityModal({
   const isEdit = mode === 'edit';
   const stageSelectOptions = Array.isArray(stageOptions) && stageOptions.length > 0 ? stageOptions : STAGE_OPTIONS;
   const firstStageValue = stageSelectOptions[0]?.value || 'NewLead';
-  const [form, setForm] = useState({
+  const [form, setForm] = useState(() => ({
     customerCompanyId: '',
     customerCompanyName: '',
     customerCompanyEmployeeId: '',
@@ -338,8 +350,9 @@ export default function OpportunityModal({
     currency: 'KRW',
     stage: defaultStage || 'NewLead',
     description: '',
-    saleDate: todayDateInputValue()
-  });
+    saleDate: todayDateInputValue(),
+    ...getInitialInternalAssignee()
+  }));
   /** 제품별 행: 가격 기준·단가·수량·할인·매입원가(표시용) */
   const [lineItems, setLineItems] = useState([]);
   /** productId → 제품 문서(필드 표시·순마진) */
@@ -379,6 +392,9 @@ export default function OpportunityModal({
   const [showCompanySearchModal, setShowCompanySearchModal] = useState(false);
   const [showContactSearchModal, setShowContactSearchModal] = useState(false);
   const [showProductSearchModal, setShowProductSearchModal] = useState(false);
+  const [showInternalAssigneePicker, setShowInternalAssigneePicker] = useState(false);
+  /** 사내 담당자 이름 매핑용 (/companies/overview employees) */
+  const [companyEmployees, setCompanyEmployees] = useState([]);
   const [saving, setSaving] = useState(false);
   const [loadingOpp, setLoadingOpp] = useState(false);
   const [error, setError] = useState('');
@@ -443,6 +459,13 @@ export default function OpportunityModal({
       const product = data.productId;
       const loadedStage = data.stage || 'NewLead';
       stageAtLoadRef.current = loadedStage;
+      const rawAt = data.assignedTo;
+      const atId =
+        rawAt && typeof rawAt === 'object' && rawAt._id != null
+          ? String(rawAt._id)
+          : rawAt
+            ? String(rawAt)
+            : '';
       setForm({
         customerCompanyId: cc?._id || cc || '',
         customerCompanyName: cc?.name || '',
@@ -451,7 +474,9 @@ export default function OpportunityModal({
         currency: data.currency || 'KRW',
         stage: loadedStage,
         description: data.description || '',
-        saleDate: toDateInputValue(data.saleDate) || todayDateInputValue()
+        saleDate: toDateInputValue(data.saleDate) || todayDateInputValue(),
+        assignedToUserId: atId,
+        assignedToName: (data.assignedToName && String(data.assignedToName).trim()) || ''
       });
       purchaseCostEditedLineIdsRef.current = new Set();
 
@@ -589,6 +614,28 @@ export default function OpportunityModal({
   }, [fetchOpp]);
 
   useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE}/companies/overview`, { headers: getAuthHeader() })
+      .then((r) => r.json().catch(() => ({})))
+      .then((data) => {
+        if (!cancelled && Array.isArray(data?.employees)) setCompanyEmployees(data.employees);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /** 편집 시 서버에 이름만 비어 있는 경우 overview 직원 목록으로 보강 */
+  useEffect(() => {
+    const uid = (form.assignedToUserId || '').trim();
+    if (!uid || (form.assignedToName || '').trim()) return;
+    const emp = companyEmployees.find((e) => e?.id != null && String(e.id) === uid);
+    if (!emp?.name) return;
+    setForm((f) => ({ ...f, assignedToName: String(emp.name).trim() }));
+  }, [companyEmployees, form.assignedToUserId, form.assignedToName]);
+
+  useEffect(() => {
     if (isEdit) return;
     if (initialCustomerCompany?._id || initialCustomerCompany?.name) {
       setForm((f) => ({
@@ -628,13 +675,20 @@ export default function OpportunityModal({
     const onKey = (e) => {
       if (e.key !== 'Escape') return;
       if (showProductSearchModal) setShowProductSearchModal(false);
+      else if (showInternalAssigneePicker) setShowInternalAssigneePicker(false);
       else if (showContactSearchModal) setShowContactSearchModal(false);
       else if (showCompanySearchModal) setShowCompanySearchModal(false);
       else onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, showCompanySearchModal, showContactSearchModal, showProductSearchModal]);
+  }, [
+    onClose,
+    showCompanySearchModal,
+    showContactSearchModal,
+    showProductSearchModal,
+    showInternalAssigneePicker
+  ]);
 
   /** 단계 미선택(또는 현재 단계가 옵션에 없음)인 경우 첫 번째 단계를 자동 선택 */
   useEffect(() => {
@@ -1503,7 +1557,8 @@ export default function OpportunityModal({
         description: form.description.trim(),
         documentRefs: documentRefs.filter((d) => d?.url),
         driveFolderLink: (driveFolderLink || '').trim() || undefined,
-        saleDate: saleDatePayload
+        saleDate: saleDatePayload,
+        assignedTo: (form.assignedToUserId || '').trim() || null
       };
       const url = isEdit
         ? `${API_BASE}/sales-opportunities/${oppId}`
@@ -1619,6 +1674,93 @@ export default function OpportunityModal({
     }
   }, [isEdit, oppId, form.stage, lineItems]);
 
+  /**
+   * 고객사·연락처 지원/업무 기록 API — 메모 저장·코멘트 답글 등에서 동일 규칙으로 사용.
+   * @returns {Promise<{ journalSummaryNotice: { type: string, text: string } | null }>}
+   */
+  const postSupportHistoryForOpportunity = useCallback(
+    async (content, { createdAt } = {}) => {
+      const trimmed = String(content || '').trim();
+      if (!trimmed) throw new Error('내용이 비어 있습니다.');
+      const companyId = form.customerCompanyId;
+      const contactEmpId = form.customerCompanyEmployeeId;
+      if (!companyId && !contactEmpId) {
+        throw new Error('고객사 또는 담당자(연락처)를 선택해 주세요.');
+      }
+      const requestBody = JSON.stringify({
+        content: trimmed,
+        ...(createdAt ? { createdAt } : {})
+      });
+
+      let empRecord = null;
+      if (contactEmpId) {
+        try {
+          const er = await fetch(`${API_BASE}/customer-company-employees/${contactEmpId}`, { headers: getAuthHeader() });
+          empRecord = await er.json().catch(() => ({}));
+          if (!er.ok || !empRecord?._id) empRecord = null;
+        } catch {
+          empRecord = null;
+        }
+      }
+      const empCc = empRecord?.customerCompanyId?._id ?? empRecord?.customerCompanyId;
+      const skipCompanyPostBecauseEmployeeCovers =
+        Boolean(contactEmpId && empCc && companyId && String(empCc) === String(companyId));
+
+      let journalSummaryNotice = null;
+
+      if (contactEmpId && empRecord) {
+        const resEmp = await fetch(`${API_BASE}/customer-company-employees/${contactEmpId}/history`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+          ...(requestBody.length <= 60 * 1024 ? { keepalive: true } : {}),
+          body: requestBody
+        });
+        const dataEmp = await resEmp.json().catch(() => ({}));
+        if (!resEmp.ok) throw new Error(dataEmp.error || '연락처 업무 기록 저장에 실패했습니다.');
+        if (dataEmp.summaryQueued) {
+          journalSummaryNotice = {
+            type: 'info',
+            text:
+              '연락처 업무 기록이 저장되었습니다. 최신 기록 기준으로 Gemini 요약을 요청했으면 연락처 상세에서 확인할 수 있습니다.'
+          };
+        } else if (dataEmp.summarySkippedReason === 'older_than_latest_history') {
+          journalSummaryNotice = {
+            type: 'muted',
+            text: '등록한 업무 기록 일시가 기존 최신 기록보다 과거라서, 이번 기록은 요약 갱신 대상에서 제외되었습니다.'
+          };
+        }
+      } else if (contactEmpId && !empRecord) {
+        throw new Error('담당자(연락처) 정보를 불러올 수 없습니다.');
+      }
+
+      if (companyId && !skipCompanyPostBecauseEmployeeCovers) {
+        const res = await fetch(`${API_BASE}/customer-companies/${companyId}/history`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+          ...(requestBody.length <= 60 * 1024 ? { keepalive: true } : {}),
+          body: requestBody
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || '고객사 업무 기록 저장에 실패했습니다.');
+        if (data.summaryQueued) {
+          journalSummaryNotice = {
+            type: 'info',
+            text:
+              '최신 고객사 업무 기록을 기준으로 Gemini 요약을 요청했습니다. 고객사 상세에서 확인할 수 있습니다.'
+          };
+        } else if (data.summarySkippedReason === 'older_than_latest_history') {
+          journalSummaryNotice = {
+            type: 'muted',
+            text: '등록한 업무 기록 일시가 기존 최신 기록보다 과거라서, 이번 기록은 요약 갱신 대상에서 제외되었습니다.'
+          };
+        }
+      }
+
+      return { journalSummaryNotice };
+    },
+    [form.customerCompanyId, form.customerCompanyEmployeeId]
+  );
+
   const handleSaveOppJournal = async () => {
     const content = newComment.trim();
     const companyId = form.customerCompanyId;
@@ -1636,69 +1778,8 @@ export default function OpportunityModal({
         journalDateTime && !Number.isNaN(new Date(journalDateTime).getTime())
           ? new Date(journalDateTime).toISOString()
           : undefined;
-      const requestBody = JSON.stringify({ content, ...(createdAt ? { createdAt } : {}) });
-
-      let empRecord = null;
-      if (contactEmpId) {
-        try {
-          const er = await fetch(`${API_BASE}/customer-company-employees/${contactEmpId}`, { headers: getAuthHeader() });
-          empRecord = await er.json().catch(() => ({}));
-          if (!er.ok || !empRecord?._id) empRecord = null;
-        } catch {
-          empRecord = null;
-        }
-      }
-      const empCc = empRecord?.customerCompanyId?._id ?? empRecord?.customerCompanyId;
-      const skipCompanyPostBecauseEmployeeCovers =
-        Boolean(contactEmpId && empCc && companyId && String(empCc) === String(companyId));
-
-      if (contactEmpId && empRecord) {
-        const resEmp = await fetch(`${API_BASE}/customer-company-employees/${contactEmpId}/history`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-          ...(requestBody.length <= 60 * 1024 ? { keepalive: true } : {}),
-          body: requestBody
-        });
-        const dataEmp = await resEmp.json().catch(() => ({}));
-        if (!resEmp.ok) throw new Error(dataEmp.error || '연락처 업무 기록 저장에 실패했습니다.');
-        if (dataEmp.summaryQueued) {
-          setJournalSummaryNotice({
-            type: 'info',
-            text:
-              '연락처 업무 기록이 저장되었습니다. 최신 기록 기준으로 Gemini 요약을 요청했으면 연락처 상세에서 확인할 수 있습니다.'
-          });
-        } else if (dataEmp.summarySkippedReason === 'older_than_latest_history') {
-          setJournalSummaryNotice({
-            type: 'muted',
-            text: '등록한 업무 기록 일시가 기존 최신 기록보다 과거라서, 이번 기록은 요약 갱신 대상에서 제외되었습니다.'
-          });
-        }
-      } else if (contactEmpId && !empRecord) {
-        throw new Error('담당자(연락처) 정보를 불러올 수 없습니다.');
-      }
-
-      if (companyId && !skipCompanyPostBecauseEmployeeCovers) {
-        const res = await fetch(`${API_BASE}/customer-companies/${companyId}/history`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-          ...(requestBody.length <= 60 * 1024 ? { keepalive: true } : {}),
-          body: requestBody
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || '고객사 업무 기록 저장에 실패했습니다.');
-        if (data.summaryQueued) {
-          setJournalSummaryNotice({
-            type: 'info',
-            text:
-              '최신 고객사 업무 기록을 기준으로 Gemini 요약을 요청했습니다. 고객사 상세에서 확인할 수 있습니다.'
-          });
-        } else if (data.summarySkippedReason === 'older_than_latest_history') {
-          setJournalSummaryNotice({
-            type: 'muted',
-            text: '등록한 업무 기록 일시가 기존 최신 기록보다 과거라서, 이번 기록은 요약 갱신 대상에서 제외되었습니다.'
-          });
-        }
-      }
+      const { journalSummaryNotice: noticeFromHistory } = await postSupportHistoryForOpportunity(content, { createdAt });
+      if (noticeFromHistory) setJournalSummaryNotice(noticeFromHistory);
 
       const resComment = await fetch(`${API_BASE}/sales-opportunities/${oppId}/comments`, {
         method: 'POST',
@@ -1806,6 +1887,10 @@ export default function OpportunityModal({
     setCommentBusy(true);
     setCommentError('');
     try {
+      if (isEdit && (form.customerCompanyId || form.customerCompanyEmployeeId)) {
+        const historyText = parentCommentId ? `[기회 코멘트 답글] ${text}` : text;
+        await postSupportHistoryForOpportunity(historyText, {});
+      }
       const res = await fetch(`${API_BASE}/sales-opportunities/${oppId}/comments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
@@ -2115,6 +2200,21 @@ export default function OpportunityModal({
                       검색
                     </button>
                   </div>
+                </div>
+              </div>
+
+              <div className="opp-label">
+                <span>기회 담당 (사내)</span>
+                <div className="opp-company-wrap">
+                  <span className="opp-company-display">{form.assignedToName || '담당자 선택'}</span>
+                  <button
+                    type="button"
+                    className="opp-company-search-btn"
+                    onClick={() => setShowInternalAssigneePicker(true)}
+                  >
+                    <span className="material-symbols-outlined">search</span>
+                    선택
+                  </button>
                 </div>
               </div>
 
@@ -2638,7 +2738,9 @@ export default function OpportunityModal({
               {isEdit && oppId ? (
                 <div className="opp-comments-section">
                   <div className="opp-comments-heading">코멘트</div>
-                  <p className="opp-comments-hint">기회에 대한 메모와 답글을 남깁니다. 본인이 작성한 코멘트만 수정·삭제할 수 있습니다.</p>
+                  <p className="opp-comments-hint">
+                    기회에 대한 메모와 답글을 남깁니다. 본인이 작성한 코멘트만 수정·삭제할 수 있습니다. 답글은 해당 고객사·연락처의 지원·업무 기록에도 같은 규칙으로 남습니다.
+                  </p>
                   <ul className="opp-comments-list">
                     {roots.map((c) => renderCommentItem(c))}
                   </ul>
@@ -2858,6 +2960,22 @@ export default function OpportunityModal({
             }}
           />
         )}
+        <AssigneePickerModal
+          open={showInternalAssigneePicker}
+          onClose={() => setShowInternalAssigneePicker(false)}
+          selectedIds={(form.assignedToUserId || '').trim() ? [String(form.assignedToUserId).trim()] : []}
+          onConfirm={(ids) => {
+            const raw = Array.isArray(ids) && ids.length ? ids[ids.length - 1] : '';
+            const id = raw != null ? String(raw).trim() : '';
+            const emp = companyEmployees.find((e) => e?.id != null && String(e.id) === id);
+            const nameFromList = emp?.name != null ? String(emp.name).trim() : '';
+            setForm((f) => ({
+              ...f,
+              assignedToUserId: id,
+              assignedToName: nameFromList || (id ? f.assignedToName : '')
+            }));
+          }}
+        />
       </div>
     </div>
   );

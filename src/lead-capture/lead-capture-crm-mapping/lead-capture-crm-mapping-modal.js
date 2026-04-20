@@ -457,24 +457,45 @@ export default function LeadCaptureCrmMappingModal({
                         {isConst ? 'add_circle' : 'input'}
                       </span>
                     </div>
-                    <p>고정값</p>
                     <div style={{ minWidth: 0, flex: 1 }}>
+                      <div
+                        className="lc-crm-map-source-mode-toggle"
+                        role="group"
+                        aria-label="소스: 리드 필드 또는 고정값"
+                      >
+                        <button
+                          type="button"
+                          className={!isConst ? 'is-active' : ''}
+                          onClick={() => updateRow(row.id, { sourceType: 'field' })}
+                          disabled={saving}
+                        >
+                          리드 필드
+                        </button>
+                        <button
+                          type="button"
+                          className={isConst ? 'is-active' : ''}
+                          onClick={() => updateRow(row.id, { sourceType: 'constant' })}
+                          disabled={saving}
+                        >
+                          고정값
+                        </button>
+                      </div>
                       {isConst ? (
-                        <>
-                          <input
-                            className="lc-crm-map-input"
-                            style={{ marginTop: '0.35rem' }}
-                            placeholder="값 입력…"
-                            value={row.constantValue}
-                            onChange={(e) => updateRow(row.id, { constantValue: e.target.value })}
-                          />
-                        </>
+                        <input
+                          className="lc-crm-map-input"
+                          style={{ marginTop: '0.35rem' }}
+                          placeholder="값 입력…"
+                          value={row.constantValue}
+                          onChange={(e) => updateRow(row.id, { constantValue: e.target.value })}
+                          disabled={saving}
+                        />
                       ) : (
                         <>
                           <select
                             className="lc-crm-map-select"
                             value={row.sourceKey}
                             onChange={(e) => updateRow(row.id, { sourceKey: e.target.value })}
+                            disabled={saving}
                           >
                             <option value="">소스 선택…</option>
                             {sourceOptions.map((s) => (
@@ -510,16 +531,14 @@ export default function LeadCaptureCrmMappingModal({
                     <span>{preview || '—'}</span>
                   </div>
                   <div className="lc-crm-map-status" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.35rem', flexWrap: 'wrap' }}>
-                    {!isConst && (
-                      <span
-                        className={`lc-crm-map-badge ${st.type === 'ok' ? 'ok' : st.type === 'warn' ? 'warn' : st.type === 'err' ? 'err' : 'muted'}`}
-                      >
-                        {st.type === 'ok' && <span className="material-symbols-outlined">check_circle</span>}
-                        {st.type === 'warn' && <span className="material-symbols-outlined">priority_high</span>}
-                        {st.type === 'err' && <span className="material-symbols-outlined">error</span>}
-                        {st.label}
-                      </span>
-                    )}
+                    <span
+                      className={`lc-crm-map-badge ${st.type === 'ok' ? 'ok' : st.type === 'warn' ? 'warn' : st.type === 'err' ? 'err' : 'muted'}`}
+                    >
+                      {st.type === 'ok' && <span className="material-symbols-outlined">check_circle</span>}
+                      {st.type === 'warn' && <span className="material-symbols-outlined">priority_high</span>}
+                      {st.type === 'err' && <span className="material-symbols-outlined">error</span>}
+                      {st.label}
+                    </span>
                     {rows.length > 1 && row.targetKey !== BUSINESS_CARD_AUTO_TARGET && (
                       <button type="button" className="lc-crm-map-row-delete" onClick={() => removeRow(row.id)} aria-label="행 삭제">
                         <span className="material-symbols-outlined">delete</span>

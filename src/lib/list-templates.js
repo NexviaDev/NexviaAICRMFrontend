@@ -15,8 +15,30 @@ export const LIST_IDS = {
   /** 세일즈 파이프라인 «내 기회만» 필터 — listTemplates.salesPipeline.assigneeMeOnly */
   SALES_PIPELINE: 'salesPipeline',
   /** 제품 검색 모달 선택 빈도 — listTemplates.productSearchModal { usage, order } */
-  PRODUCT_SEARCH_MODAL: 'productSearchModal'
+  PRODUCT_SEARCH_MODAL: 'productSearchModal',
+  /** 신규 제품 등록 모달 기본값 — listTemplates.addProductModal { categoryKey, categoryOther, billingType } */
+  ADD_PRODUCT_MODAL: 'addProductModal'
 };
+
+const ADD_PRODUCT_BILLING = new Set(['Monthly', 'Annual', 'Perpetual']);
+
+/** 로컬 crm_user — 신규 제품 등록 시 복원할 카테고리·결제 주기 */
+export function getSavedAddProductModalDefaults() {
+  try {
+    const raw = localStorage.getItem('crm_user');
+    const user = raw ? JSON.parse(raw) : null;
+    const d = user?.listTemplates?.addProductModal;
+    if (d && typeof d === 'object') {
+      const billingType = ADD_PRODUCT_BILLING.has(d.billingType) ? d.billingType : 'Monthly';
+      return {
+        categoryKey: typeof d.categoryKey === 'string' ? d.categoryKey : '',
+        categoryOther: typeof d.categoryOther === 'string' ? d.categoryOther : '',
+        billingType
+      };
+    }
+  } catch (_) {}
+  return { categoryKey: '', categoryOther: '', billingType: 'Monthly' };
+}
 
 const CALENDAR_VIEW_MODES = new Set(['month', 'week', 'day']);
 
@@ -72,6 +94,7 @@ export const DEFAULT_COLUMNS = {
     { key: 'name', label: '이름' },
     { key: 'phone', label: '연락처' },
     { key: 'email', label: '이메일' },
+    { key: 'leadSource', label: '유입 경로' },
     { key: 'status', label: '상태', defaultVisible: false },
     { key: 'assigneeUserIds', label: '담당자' },
     { key: 'lastSupportedAt', label: '최근 지원 일자' }
@@ -95,6 +118,30 @@ export const DEFAULT_COLUMNS = {
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+/**
+ * PATCH /api/auth/list-templates — 신규 제품 등록 모달만 사용 (categoryKey, categoryOther, billingType)
+ */
+export async function patchAddProductModalDefaults({ categoryKey, categoryOther, billingType }) {
+  const res = await fetch(`${API_BASE}/auth/list-templates`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    credentials: 'include',
+    body: JSON.stringify({
+      listId: LIST_IDS.ADD_PRODUCT_MODAL,
+      categoryKey,
+      categoryOther,
+      billingType
+    })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || '저장에 실패했습니다.');
+  const userRaw = localStorage.getItem('crm_user');
+  const user = userRaw ? JSON.parse(userRaw) : {};
+  user.listTemplates = data.listTemplates || user.listTemplates || {};
+  localStorage.setItem('crm_user', JSON.stringify(user));
+  return data;
 }
 
 /**

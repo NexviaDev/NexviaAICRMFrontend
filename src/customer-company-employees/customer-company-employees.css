@@ -674,6 +674,8 @@
   flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
+  margin-left: auto;
+  justify-content: flex-end;
 }
 
 .cce-action-bar-sms-bulk {
@@ -742,6 +744,34 @@
 }
 
 .cce-action-bar-handover .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
+.cce-action-bar-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.95rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #8b4a52;
+  background: #fce8ea;
+  border: 1px solid #e8b8bf;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.cce-action-bar-delete:hover:not(:disabled) {
+  background: #f8d9dd;
+}
+
+.cce-action-bar-delete:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.cce-action-bar-delete .material-symbols-outlined {
   font-size: 1.05rem;
 }
 

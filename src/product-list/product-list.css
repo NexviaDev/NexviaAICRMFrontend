@@ -17,10 +17,16 @@
 
 .product-list-page .header-search {
   flex: 1;
-  max-width: 28rem;
+  max-width: min(40rem, 100%);
   position: relative;
   display: flex;
   align-items: center;
+  gap: 0.5rem;
+}
+
+.product-list-page .header-search-form {
+  flex: 1;
+  min-width: 0;
 }
 
 .product-list-page .header-search .material-symbols-outlined {
@@ -59,6 +65,19 @@
   border-radius: 0.5rem;
   background: var(--bg-light);
   font-size: 0.8125rem;
+}
+
+.product-list-page .pl-search-field-select {
+  flex-shrink: 0;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  border: 1px solid var(--card-border, #e0e0e0);
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--text);
+  min-width: 6.5rem;
+  max-width: 11rem;
 }
 
 .product-list-page .header-actions {
@@ -115,33 +134,6 @@
   margin: 0.25rem 0 0;
   font-size: 0.8125rem;
   color: var(--text-muted);
-}
-
-.product-list-toolbar {
-  margin-bottom: 1rem;
-}
-
-.product-list-filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.product-list-filter-select {
-  padding: 0.5rem 2rem 0.5rem 0.75rem;
-  font-size: 0.8125rem;
-  border: 1px solid var(--card-border);
-  border-radius: 0.5rem;
-  background: var(--card);
-  color: var(--text);
-  cursor: pointer;
-  transition: border-color 0.2s;
-}
-
-.product-list-filter-select:hover,
-.product-list-filter-select:focus {
-  outline: none;
-  border-color: var(--primary);
 }
 
 .product-list-row-clickable {
@@ -434,7 +426,7 @@
   color: var(--text-muted);
 }
 
-/* 행 선택 · 필드 필터 · 일괄 삭제 모달 */
+/* 행 선택 · 일괄 삭제 모달 */
 .product-list-page .pl-th-checkbox,
 .product-list-page .pl-td-checkbox {
   width: 2.75rem;
@@ -455,40 +447,128 @@
   accent-color: #3d8b7a;
 }
 
-.product-list-page .product-list-header-delete-btn:hover {
-  background: rgba(255, 182, 193, 0.35);
-  color: #8b3a4c;
+/* 선택 액션 바 — 연락처 목록(cce-action-bar)과 동일 패턴 (단색 파스텔, 그라데이션 없음) */
+.product-list-page .cce-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.65rem 1.25rem;
+  margin-bottom: 1rem;
+  background: var(--primary-pastel, #e8eaf6);
+  border: 1px solid rgba(92, 107, 192, 0.2);
+  border-radius: 0.5rem;
+  user-select: none;
 }
 
-.product-list-filters .product-list-field-filter {
+.product-list-page .cce-action-bar-count {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text, #333);
+}
+
+.product-list-page .cce-action-bar-count strong {
+  color: var(--primary, #5c6bc0);
+}
+
+.product-list-page .cce-action-bar-hint {
+  margin-left: 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--text-muted, #888);
+}
+
+.product-list-page .cce-action-bar-btns {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
   gap: 0.5rem;
-  flex: 1 1 100%;
-  margin-top: 0.5rem;
+  align-items: center;
+  margin-left: auto;
+  justify-content: flex-end;
 }
 
-.product-list-field-filter-input {
-  min-width: 8rem;
-  flex: 1 1 10rem;
-  max-width: 16rem;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.8125rem;
-  border: 1px solid var(--card-border);
+.product-list-page .cce-action-bar-copy-bulk {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.95rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #2c6485;
+  background: #d8ecf5;
+  border: 1px solid #9cc4dc;
   border-radius: 0.5rem;
-  background: var(--bg-light);
+  cursor: pointer;
+  transition: filter 0.15s, background 0.15s;
 }
 
-.product-list-field-filter-input:focus {
-  outline: none;
-  border-color: var(--primary);
+.product-list-page .cce-action-bar-copy-bulk:hover:not(:disabled) {
+  filter: brightness(0.98);
+  background: #cce8f4;
 }
 
-.product-list-field-filter-apply,
-.product-list-field-filter-clear {
-  font-size: 0.8125rem;
-  padding: 0.45rem 0.75rem;
+.product-list-page .cce-action-bar-copy-bulk:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.product-list-page .cce-action-bar-copy-bulk .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
+.cce-action-bar-copy-icon--spin {
+  animation: product-list-copy-spin 0.75s linear infinite;
+}
+
+@keyframes product-list-copy-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.product-list-page .cce-action-bar-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.95rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #8b4a52;
+  background: #fce8ea;
+  border: 1px solid #e8b8bf;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.product-list-page .cce-action-bar-delete:hover:not(:disabled) {
+  background: #f8d9dd;
+}
+
+.product-list-page .cce-action-bar-delete:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.product-list-page .cce-action-bar-delete .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
+.product-list-page .cce-action-bar-cancel {
+  padding: 0.45rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-muted, #666);
+  background: var(--bg-light, #f0f0f0);
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.product-list-page .cce-action-bar-cancel:hover {
+  background: #e0e0e0;
 }
 
 .product-bulk-delete-overlay {

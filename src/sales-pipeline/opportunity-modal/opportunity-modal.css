@@ -13,6 +13,12 @@
 
 /* ========== Modal (sample: max-w-2xl, rounded-lg, shadow-2xl) ========== */
 .opp-modal {
+  --opp-f-body: 0.875rem;
+  --opp-f-sm: 0.8125rem;
+  --opp-f-cap: 0.75rem;
+  --opp-f-lg: 1.125rem;
+  --opp-f-xl: 1.375rem;
+  --opp-f-2xl: 1.5rem;
   background: var(--card, #fff);
   border-radius: 8px;
   width: 100%;
@@ -95,9 +101,12 @@
   padding: 48px 24px;
   text-align: center;
   color: var(--text-muted);
+  font-size: var(--opp-f-body);
+  line-height: 1.45;
 }
 
 /* ========== Form body (scrollable, sample: p-6 space-y-6) ========== */
+/* 본문 기본 글자 크기·줄간격 (헤더·푸터 폰트 규칙은 변경하지 않음) */
 .opp-modal-form {
   flex: 1;
   overflow-y: auto;
@@ -105,6 +114,9 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
+  font-family: inherit;
+  font-size: var(--opp-f-body);
+  line-height: 1.45;
 }
 
 .opp-form-grid-2 {
@@ -141,7 +153,7 @@
 }
 
 .opp-label-top > span {
-  font-size: 0.875rem;
+  font-size: var(--opp-f-body);
   font-weight: 600;
   color: var(--text-muted, #475569);
 }
@@ -153,7 +165,7 @@
 }
 
 .opp-label > span {
-  font-size: 0.875rem;
+  font-size: var(--opp-f-body);
   font-weight: 600;
   color: var(--text-muted, #475569);
 }
@@ -169,7 +181,7 @@
   border: 1px solid var(--card-border, #e2e8f0);
   border-radius: 8px;
   padding: 10px 12px;
-  font-size: 0.875rem;
+  font-size: var(--opp-f-body);
   background: var(--bg-light, #fff);
   color: var(--text);
   outline: none;
@@ -205,7 +217,7 @@
 /* 가격 기준 — 제품 목록의 순 마진·유통시 순 마진과 동일 가격 축 */
 .opp-price-basis-hint {
   margin: 0 0 0.6rem;
-  font-size: 0.75rem;
+  font-size: var(--opp-f-cap);
   color: var(--text-muted, #64748b);
   line-height: 1.45;
 }
@@ -240,13 +252,13 @@
 }
 
 .opp-price-basis-btn-label {
-  font-size: 0.8125rem;
+  font-size: var(--opp-f-sm);
   font-weight: 600;
   color: var(--text);
 }
 
 .opp-price-basis-btn-sub {
-  font-size: 0.7rem;
+  font-size: var(--opp-f-cap);
   color: var(--text-muted, #64748b);
 }
 
@@ -266,7 +278,7 @@
   width: 90px;
   background: var(--bg-light, #f8fafc);
   color: var(--text-muted, #64748b);
-  font-size: 0.8125rem;
+  font-size: var(--opp-f-sm);
 }
 
 .opp-company-wrap {
@@ -282,7 +294,7 @@
 
 .opp-company-display {
   flex: 1;
-  font-size: 0.875rem;
+  font-size: var(--opp-f-body);
   color: var(--text);
   min-width: 0;
   overflow: hidden;
@@ -295,7 +307,7 @@
   align-items: center;
   gap: 0.35rem;
   padding: 0.4rem 0.75rem;
-  font-size: 0.8125rem;
+  font-size: var(--opp-f-sm);
   font-weight: 500;
   color: #fff;
   background: var(--primary, #1d283a);
@@ -331,7 +343,7 @@
 }
 
 .opp-personal-purchase-check-text {
-  font-size: 0.65rem;
+  font-size: var(--opp-f-cap);
   font-weight: 600;
   color: var(--text-muted, #64748b);
   line-height: 1.15;
@@ -382,7 +394,7 @@
   align-items: center;
   gap: 4px;
   padding: 4px 8px 4px 10px;
-  font-size: 0.75rem;
+  font-size: var(--opp-f-cap);
   background: #f1f5f9;
   border: 1px solid #e2e8f0;
   border-radius: 999px;
@@ -403,7 +415,7 @@
   width: 1.25rem;
   height: 1.25rem;
   padding: 0;
-  font-size: 0.95rem;
+  font-size: var(--opp-f-body);
   line-height: 1;
   color: #64748b;
   background: transparent;
@@ -437,7 +449,7 @@
 }
 
 .opp-label--nested > span {
-  font-size: 0.875rem;
+  font-size: var(--opp-f-body);
   font-weight: 600;
   color: var(--text-muted, #475569);
 }
@@ -465,7 +477,7 @@
   align-items: center;
   gap: 0.25rem;
   padding: 0.35rem 0.65rem;
-  font-size: 0.75rem;
+  font-size: var(--opp-f-cap);
   font-weight: 500;
   color: var(--primary, #334155);
   background: #e8f0fe;
@@ -491,7 +503,7 @@
 
 .opp-modal-docs-folder-hint {
   margin: 0 0 0.5rem;
-  font-size: 0.75rem;
+  font-size: var(--opp-f-cap);
   color: var(--text-muted, #64748b);
 }
 
@@ -523,7 +535,7 @@
   padding: 4px 12px;
   background: var(--primary, #1d283a);
   color: #fff;
-  font-size: 0.75rem;
+  font-size: var(--opp-f-cap);
   font-weight: 500;
   border-radius: 9999px;
 }
@@ -546,7 +558,7 @@
 }
 
 .opp-product-pill .material-symbols-outlined {
-  font-size: 14px;
+  font-size: var(--opp-f-body);
 }
 
 .opp-product-add-btn {
@@ -554,7 +566,7 @@
   align-items: center;
   gap: 4px;
   padding: 4px 8px;
-  font-size: 0.75rem;
+  font-size: var(--opp-f-cap);
   font-weight: 500;
   color: var(--primary, #1d283a);
   background: none;
@@ -568,7 +580,7 @@
 }
 
 .opp-product-add-btn .material-symbols-outlined {
-  font-size: 16px;
+  font-size: 1rem;
 }
 
 /* ========== 단계 버튼 그룹 (sample: pill buttons) ========== */
@@ -582,7 +594,7 @@
   flex: 1;
   min-width: 0;
   padding: 8px 12px;
-  font-size: 0.75rem;
+  font-size: var(--opp-f-cap);
   font-weight: 600;
   border-radius: 8px;
   border: 1px solid transparent;
@@ -613,7 +625,7 @@
 .opp-renewal-cal-btn {
   align-self: flex-start;
   padding: 8px 14px;
-  font-size: 0.75rem;
+  font-size: var(--opp-f-cap);
   font-weight: 600;
   border-radius: 8px;
   border: 1px solid rgba(125, 211, 192, 0.55);
@@ -635,7 +647,7 @@
 
 .opp-renewal-cal-hint {
   margin: 0;
-  font-size: 0.7rem;
+  font-size: var(--opp-f-cap);
   line-height: 1.45;
   color: #64748b;
 }
@@ -699,21 +711,21 @@
 }
 
 .opp-summary-net-margin-label {
-  font-size: 0.65rem;
-  font-weight: 800;
+  font-size: var(--opp-f-cap);
+  font-weight: 700;
   color: #7f1d1d;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
 .opp-summary-net-margin-value {
-  font-size: 0.8125rem;
-  font-weight: 800;
+  font-size: var(--opp-f-sm);
+  font-weight: 700;
   color: #991b1b;
 }
 
 .opp-summary-label {
-  font-size: 0.75rem;
+  font-size: var(--opp-f-cap);
   color: var(--text-muted, #64748b);
   font-weight: 600;
   text-transform: uppercase;
@@ -721,7 +733,7 @@
 }
 
 .opp-summary-value {
-  font-size: 1.125rem;
+  font-size: var(--opp-f-lg);
   font-weight: 500;
   color: var(--text, #334155);
 }
@@ -731,7 +743,7 @@
 }
 
 .opp-summary-item--end .opp-summary-value {
-  font-size: 1.5rem;
+  font-size: var(--opp-f-2xl);
   font-weight: 700;
   color: var(--primary, #1d283a);
 }
@@ -797,7 +809,7 @@
 }
 
 .opp-product-fields-title {
-  font-size: 0.78rem;
+  font-size: var(--opp-f-sm);
   font-weight: 600;
   color: var(--text-muted);
   margin-bottom: 8px;
@@ -808,7 +820,7 @@
   grid-template-columns: auto 1fr;
   gap: 4px 16px;
   margin: 0;
-  font-size: 0.85rem;
+  font-size: var(--opp-f-body);
 }
 
 .opp-product-fields-list dt {
@@ -851,7 +863,7 @@
 }
 
 .opp-line-block-title {
-  font-size: 0.9rem;
+  font-size: var(--opp-f-body);
   font-weight: 700;
   color: var(--text, #334155);
 }
@@ -867,7 +879,7 @@
 }
 
 .opp-summary-per-line-title {
-  font-size: 0.8rem;
+  font-size: var(--opp-f-body);
   font-weight: 700;
   color: var(--text-muted, #64748b);
   margin-bottom: 8px;
@@ -908,16 +920,16 @@
 }
 
 .opp-summary-grand-final-label {
-  font-size: 0.875rem;
-  font-weight: 800;
+  font-size: var(--opp-f-body);
+  font-weight: 700;
   color: var(--primary, #1d283a);
   letter-spacing: 0.02em;
   white-space: nowrap;
 }
 
 .opp-summary-grand-final-value {
-  font-size: 1.65rem;
-  font-weight: 800;
+  font-size: var(--opp-f-2xl);
+  font-weight: 700;
   color: var(--primary, #1d283a);
   line-height: 1.2;
   text-align: right;
@@ -937,16 +949,16 @@
 }
 
 .opp-summary-total-net-label {
-  font-size: 0.7rem;
-  font-weight: 800;
+  font-size: var(--opp-f-cap);
+  font-weight: 700;
   color: #7f1d1d;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
 .opp-summary-total-net-value {
-  font-size: 0.95rem;
-  font-weight: 800;
+  font-size: var(--opp-f-body);
+  font-weight: 700;
   color: #991b1b;
 }
 
@@ -978,15 +990,15 @@
 }
 
 .opp-summary-forecast-expected-label {
-  font-size: 0.72rem;
-  font-weight: 800;
+  font-size: var(--opp-f-cap);
+  font-weight: 700;
   color: #334155;
   letter-spacing: 0.03em;
   text-transform: uppercase;
 }
 
 .opp-summary-forecast-expected-meta {
-  font-size: 0.7rem;
+  font-size: var(--opp-f-cap);
   font-weight: 600;
   color: #64748b;
   line-height: 1.3;
@@ -994,8 +1006,8 @@
 }
 
 .opp-summary-forecast-expected-value {
-  font-size: 1.05rem;
-  font-weight: 800;
+  font-size: var(--opp-f-lg);
+  font-weight: 700;
   color: #1e3a5f;
   text-align: right;
   flex-shrink: 0;
@@ -1011,14 +1023,14 @@
 }
 
 .opp-comments-heading {
-  font-size: 0.875rem;
-  font-weight: 700;
+  font-size: var(--opp-f-body);
+  font-weight: 600;
   color: var(--text-muted, #475569);
 }
 
 .opp-comments-hint {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: var(--opp-f-cap);
   color: var(--text-muted, #64748b);
   line-height: 1.45;
 }
@@ -1026,6 +1038,19 @@
 /* 고객사 상세와 동일 업무 기록 UI (customer-company-detail-modal.css 클래스 재사용) */
 .opp-modal-journal-like-company-detail {
   margin-top: 6px;
+}
+
+/* 재사용 컴포넌트 기본 글자(0.9375rem 등)를 기회 모달 본문 스케일에 맞춤 */
+.opp-modal-form .customer-company-detail-journal-input {
+  font-size: var(--opp-f-body);
+}
+
+.opp-modal-form .customer-company-detail-journal-datetime {
+  font-size: var(--opp-f-body);
+}
+
+.opp-modal-form .customer-company-detail-journal-datetime-label {
+  font-size: var(--opp-f-sm);
 }
 
 .opp-modal-journal-hint {
@@ -1065,7 +1090,7 @@
   align-items: center;
   gap: 4px;
   margin: 0 0 8px;
-  font-size: 0.72rem;
+  font-size: var(--opp-f-cap);
   color: var(--text-muted, #64748b);
 }
 
@@ -1080,7 +1105,7 @@
   align-items: baseline;
   gap: 6px 10px;
   margin-bottom: 6px;
-  font-size: 0.75rem;
+  font-size: var(--opp-f-cap);
 }
 
 .opp-comment-author {
@@ -1102,7 +1127,7 @@
   background: rgba(255, 255, 255, 0.7);
   border: 1px solid rgba(165, 180, 252, 0.6);
   color: #4f46e5;
-  font-size: 0.72rem;
+  font-size: var(--opp-f-cap);
   font-weight: 600;
   padding: 3px 8px;
   border-radius: 6px;
@@ -1126,7 +1151,7 @@
 
 .opp-comment-text {
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: var(--opp-f-sm);
   line-height: 1.5;
   color: var(--text, #334155);
   white-space: pre-wrap;
@@ -1156,7 +1181,7 @@
   color: var(--text-muted);
   padding: 6px 12px;
   border-radius: 6px;
-  font-size: 0.78rem;
+  font-size: var(--opp-f-sm);
   cursor: pointer;
 }
 
@@ -1166,7 +1191,7 @@
   color: #fff;
   padding: 6px 14px;
   border-radius: 6px;
-  font-size: 0.78rem;
+  font-size: var(--opp-f-sm);
   font-weight: 600;
   cursor: pointer;
 }
@@ -1237,7 +1262,7 @@
 }
 
 .opp-comment-add-btn .material-symbols-outlined {
-  font-size: 22px;
+  font-size: var(--opp-f-xl);
   line-height: 1;
 }
 
@@ -1266,7 +1291,7 @@
   background: rgba(254, 202, 202, 0.35);
   color: #b91c1c;
   border-radius: 8px;
-  font-size: 0.78rem;
+  font-size: var(--opp-f-sm);
 }
 
 /* ========== Error ========== */
@@ -1276,7 +1301,7 @@
   background: rgba(220, 38, 38, 0.08);
   color: var(--danger);
   border-radius: 8px;
-  font-size: 0.8125rem;
+  font-size: var(--opp-f-sm);
 }
 
 .opp-delete-btn {

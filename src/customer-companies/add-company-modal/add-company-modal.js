@@ -30,8 +30,11 @@ import {
   geocodeAddressWithGoogleMaps
 } from '@/lib/google-maps-client';
 import { geocodeAddressForCompanySave } from '@/lib/geocode-company-address';
+import { mapWithConcurrency } from '@/lib/map-with-concurrency';
 
 const GOOGLE_MAPS_API_KEY = getGoogleMapsApiKey();
+/** 일괄 등록 시 주소→좌표 보완을 동시에 처리할 최대 개수 */
+const BULK_IMPORT_GEOCODE_CONCURRENCY = 4;
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.978 };
 const DEFAULT_ZOOM = 14;
 function getPickerMarkerIcon(google) {
@@ -640,12 +643,13 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
   /** 지도 모달 열기 — 항상 클릭/드래그로 좌표 선택 가능 */
   const openMapPicker = () => setShowMapPicker(true);
 
-  /** 사업자 등록증 파일로 Gemini 추출 → 폼 기입 → 주소로 위·경도 자동 조회 */
+  /** 사업자 등록증 파일로 Gemini 추출 → 폼 기입 → 주소로 위·경도 자동 조회 (신규·수정 공통) */
   const extractFromCertificateAndFillForm = async (file) => {
-    if (!file || isEdit) return;
+    if (!file) return;
     setExtractingCertificate(true);
     setError('');
     try {
+      await pingBackendHealth(getAuthHeader);
       const fd = new FormData();
       fd.append('file', file);
       const res = await fetch(`${API_BASE}/customer-companies/extract-from-certificate`, {
@@ -696,12 +700,13 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
     }
   };
 
-  /** TXT 1개 → preview-import로 추출 후, 고객사 1건이면 PDF 단건과 동일하게 폼·위경도 반영 (2건 이상이면 배치 미리보기) */
+  /** TXT 1개 → preview-import로 추출 후, 고객사 1건이면 PDF 단건과 동일하게 폼·위경도 반영 (2건 이상이면 배치 미리보기; 수정 모드는 1건만) */
   const extractFromTxtAndFillForm = async (file) => {
-    if (!file || isEdit) return;
+    if (!file) return;
     setExtractingCertificate(true);
     setError('');
     try {
+      await pingBackendHealth(getAuthHeader);
       const fd = new FormData();
       fd.append('files', file);
       const res = await fetch(`${API_BASE}/customer-companies/preview-import`, {
@@ -724,6 +729,10 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
         return;
       }
       if (valid.length > 1) {
+        if (isEdit) {
+          setError('수정 모드에서는 TXT에서 고객사 한 건만 추출된 경우만 폼에 반영할 수 있습니다.');
+          return;
+        }
         setImportPreviewItems(items);
         setShowImportPreview(true);
         return;
@@ -771,6 +780,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
     setImportPreviewLoading(true);
     setError('');
     try {
+      await pingBackendHealth(getAuthHeader);
       const fd = new FormData();
       arr.forEach((f) => fd.append('files', f));
       const res = await fetch(`${API_BASE}/customer-companies/preview-import`, {
@@ -808,22 +818,27 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
     let ok = 0;
     let fail = 0;
     const assigneeUserIds = Array.isArray(form.assigneeUserIds) ? form.assigneeUserIds : [];
-    for (const row of rows) {
-      try {
-        const bn = row.businessNumber ? String(row.businessNumber).replace(/\D/g, '').slice(0, 10) : '';
-        const addressTrimmed = row.address ? String(row.address).trim() : '';
-        let latitudeNum =
-          row.latitude != null && Number.isFinite(Number(row.latitude)) ? Number(row.latitude) : null;
-        let longitudeNum =
-          row.longitude != null && Number.isFinite(Number(row.longitude)) ? Number(row.longitude) : null;
-        // 단건 저장(handleSubmit)과 동일: 주소는 있는데 위·경도가 비었으면 서버/클라이언트 지오코딩 보완
-        if (addressTrimmed && (latitudeNum == null || longitudeNum == null)) {
-          const coords = await geocodeAddressForCompanySave(addressTrimmed);
-          if (coords) {
-            latitudeNum = coords.latitude;
-            longitudeNum = coords.longitude;
-          }
+    await pingBackendHealth(getAuthHeader);
+    const rowsPrepared = await mapWithConcurrency(rows, BULK_IMPORT_GEOCODE_CONCURRENCY, async (row) => {
+      const bn = row.businessNumber ? String(row.businessNumber).replace(/\D/g, '').slice(0, 10) : '';
+      const addressTrimmed = row.address ? String(row.address).trim() : '';
+      let latitudeNum =
+        row.latitude != null && Number.isFinite(Number(row.latitude)) ? Number(row.latitude) : null;
+      let longitudeNum =
+        row.longitude != null && Number.isFinite(Number(row.longitude)) ? Number(row.longitude) : null;
+      if (addressTrimmed && (latitudeNum == null || longitudeNum == null)) {
+        const coords = await geocodeAddressForCompanySave(addressTrimmed);
+        if (coords) {
+          latitudeNum = coords.latitude;
+          longitudeNum = coords.longitude;
         }
+      }
+      return { row, bn, addressTrimmed, latitudeNum, longitudeNum };
+    });
+
+    for (const prep of rowsPrepared) {
+      try {
+        const { row, bn, addressTrimmed, latitudeNum, longitudeNum } = prep;
         const body = {
           name: String(row.name || '').trim(),
           representativeName: row.representativeName ? String(row.representativeName).trim() : undefined,
@@ -871,13 +886,17 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
         return;
       }
       if (isEdit) {
-        if (arr.length === 1 && !isTxtFile(arr[0])) {
+        if (arr.length > 1) {
+          setError('수정 모드에서는 증빙 파일을 하나만 선택해 주세요.');
+          return;
+        }
+        if (arr.length === 1 && isTxtFile(arr[0])) {
+          extractFromTxtAndFillForm(arr[0]);
+          return;
+        }
+        if (arr.length === 1) {
           queueCertificateFile(arr[0]);
           extractFromCertificateAndFillForm(arr[0]);
-        } else if (arr.length > 1) {
-          setError('수정 모드에서는 증빙 파일을 하나만 선택해 주세요.');
-        } else {
-          setError('수정 모드에서는 이미지 또는 PDF 한 개만 선택할 수 있습니다.');
         }
         return;
       }
@@ -910,17 +929,34 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
     setError('');
   };
 
-  const handleEditModeDrop = useCallback((files) => {
-    const filesArray = Array.from(files || []);
-    if (!filesArray.length) return;
-    const picked = filesArray.length > 1 ? [filesArray[filesArray.length - 1]] : filesArray;
-    const file = picked[0];
-    if (picked.length === 1 && isCertificateLikeFile(file) && !isTxtFile(file)) {
+  const handleEditModeDrop = useCallback(
+    (files) => {
+      const filesArray = Array.from(files || []);
+      if (!filesArray.length) return;
+      const certLike = filesArray.filter((f) => isCertificateLikeFile(f));
+      const nonCert = filesArray.filter((f) => !isCertificateLikeFile(f));
+      if (!certLike.length) {
+        handleDirectFileUpload(filesArray);
+        return;
+      }
+      if (nonCert.length > 0) {
+        setError('증빙(이미지·PDF·TXT)과 다른 형식을 함께 놓을 수 없습니다. 나누어 주세요.');
+        return;
+      }
+      if (certLike.length > 1) {
+        setError('수정 모드에서는 증빙 파일을 하나만 놓아 주세요.');
+        return;
+      }
+      const file = certLike[0];
+      if (isTxtFile(file)) {
+        void extractFromTxtAndFillForm(file);
+        return;
+      }
       queueCertificateFile(file);
-      return;
-    }
-    handleDirectFileUpload(picked);
-  }, [queueCertificateFile, handleDirectFileUpload]);
+      void extractFromCertificateAndFillForm(file);
+    },
+    [queueCertificateFile, extractFromCertificateAndFillForm, extractFromTxtAndFillForm, handleDirectFileUpload]
+  );
 
 
   const handleSubmit = async (e) => {
@@ -1137,21 +1173,21 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
                 </div>
               ) : (
                 <p className="register-sale-docs-drive-meta-pending">
-                  폴더가 준비되면 위 폴더명으로 Drive 링크가 CRM에 저장되어 표시됩니다. 공유 드라이브 루트는 회사 개요의 「전체 공유 드라이브 주소」에서 설정합니다.
+                  저장 후 CRM에 Drive 링크가 표시됩니다. 공유 드라이브 루트는 회사 개요 「전체 공유 드라이브 주소」에서 설정합니다.
                 </p>
               )}
             </div>
             <div
-              className={`register-sale-docs-crm-uploads ${crmListDropActive ? 'register-sale-docs-crm-uploads--drop-active' : ''} ${driveUploading ? 'register-sale-docs-crm-uploads--disabled' : ''}`}
+              className={`register-sale-docs-crm-uploads ${crmListDropActive ? 'register-sale-docs-crm-uploads--drop-active' : ''} ${driveUploading || extractingCertificate || importPreviewLoading ? 'register-sale-docs-crm-uploads--disabled' : ''}`}
               onDragEnter={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                if (!driveUploading) setCrmListDropActive(true);
+                if (!driveUploading && !extractingCertificate && !importPreviewLoading) setCrmListDropActive(true);
               }}
               onDragOver={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                if (!driveUploading) setCrmListDropActive(true);
+                if (!driveUploading && !extractingCertificate && !importPreviewLoading) setCrmListDropActive(true);
               }}
               onDragLeave={(e) => {
                 e.preventDefault();
@@ -1162,7 +1198,9 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
                 e.preventDefault();
                 e.stopPropagation();
                 setCrmListDropActive(false);
-                if (!driveUploading && e.dataTransfer?.files?.length) handleEditModeDrop(e.dataTransfer.files);
+                if (!driveUploading && !extractingCertificate && !importPreviewLoading && e.dataTransfer?.files?.length) {
+                  handleEditModeDrop(e.dataTransfer.files);
+                }
               }}
             >
               <h4 className="register-sale-docs-crm-uploads-title">
@@ -1170,18 +1208,26 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
                 리스트
               </h4>
               <p className="register-sale-docs-crm-uploads-hint">
-                루트 폴더에 올린 자료와, 저장 시 연결한 사업자등록증 파일이 함께 표시됩니다. 여러 파일을 한 번에 놓으면 가장 마지막 파일만 업로드됩니다.
+                드래그 앤 드롭 또는 클릭. 증빙(이미지·PDF·TXT)은 한 번에 한 개만, AI로 폼 반영.
               </p>
               {crmDriveTableRows.length === 0 ? (
                 <div
                   className={`register-sale-docs-crm-empty ${crmListDropActive ? 'register-sale-docs-crm-empty--active' : ''}`}
                   onClick={() => {
-                    if (!driveUploading && fileInputRef.current) fileInputRef.current.click();
+                    if (!driveUploading && !extractingCertificate && !importPreviewLoading && fileInputRef.current) {
+                      fileInputRef.current.click();
+                    }
                   }}
                   role="button"
                   tabIndex={0}
                   onKeyDown={(e) => {
-                    if ((e.key === 'Enter' || e.key === ' ') && !driveUploading && fileInputRef.current) {
+                    if (
+                      (e.key === 'Enter' || e.key === ' ') &&
+                      !driveUploading &&
+                      !extractingCertificate &&
+                      !importPreviewLoading &&
+                      fileInputRef.current
+                    ) {
                       e.preventDefault();
                       fileInputRef.current.click();
                     }
@@ -1189,7 +1235,11 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
                 >
                   <span className="material-symbols-outlined register-sale-docs-crm-empty-icon">inbox</span>
                   <span className="register-sale-docs-crm-empty-text">
-                    {driveUploading ? '업로드 중…' : '등록된 항목이 없습니다. 파일을 여기에 놓거나 위쪽 추가 버튼으로 올리세요.'}
+                    {driveUploading
+                      ? '업로드 중…'
+                      : extractingCertificate || importPreviewLoading
+                        ? 'AI가 증빙에서 정보를 읽는 중…'
+                        : '등록된 항목이 없습니다. 증빙을 놓으면 폼 반영, 일반 파일은 위 추가.'}
                   </span>
                 </div>
               ) : (
@@ -1213,7 +1263,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
           <section className="add-company-section">
             <h3 className="add-company-section-title">사업자등록증 일괄</h3>
             <p className="add-company-upload-hint" style={{ marginBottom: '0.5rem' }}>
-              아래 영역에 이미지·PDF·TXT를 드래그 앤 드롭하거나 클릭하여 선택하세요. 여러 개 또는 TXT 한 개면 AI로 분류 후 표에서 확인하고 등록합니다. 이미지·PDF 한 개만 올리면 폼에 바로 채웁니다.
+              드래그 앤 드롭(다중 가능) 또는 클릭. 이미지·PDF·TXT.
             </p>
             <input
               ref={certificateInputRef}
@@ -1256,7 +1306,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
               ) : (
                 <>
                   <p className="add-company-upload-title">파일을 드래그하거나 클릭 (여러 개 가능)</p>
-                  <p className="add-company-upload-hint">이미지·PDF·TXT. 2개 이상 또는 TXT 한 개는 미리보기 후 등록.</p>
+                  <p className="add-company-upload-hint">자동 입력·미리보기 후 등록. 저장 시 Drive 폴더.</p>
                 </>
               )}
             </div>

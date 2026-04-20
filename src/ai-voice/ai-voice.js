@@ -544,7 +544,7 @@ export default function AiVoice() {
                     <h4 className="ai-voice-card-title">AI 요약</h4>
                   </div>
                   {selectedDetail?.status === 'completed' && (selectedDetail.transcriptText || selectedDetail.utterances?.length) && (
-                    <button type="button" className="ai-voice-text-btn" onClick={handleRequestSummary} disabled={summaryLoading} title={selectedDetail.summary ? 'Gemini로 요약을 다시 생성합니다' : 'Gemini 2.5 Flash로 요약을 생성합니다'}>
+                    <button type="button" className="ai-voice-text-btn" onClick={handleRequestSummary} disabled={summaryLoading} title={selectedDetail.summary ? 'AI로 요약을 다시 생성합니다' : 'Gemini 2.5 Flash로 요약을 생성합니다'}>
                       {summaryLoading ? '요약 생성 중…' : selectedDetail.summary ? '다시 요약' : '요약 생성'}
                     </button>
                   )}

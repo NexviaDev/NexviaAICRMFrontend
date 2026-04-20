@@ -272,6 +272,9 @@
   .customer-company-employees-page .cce-action-bar-btns {
     flex-wrap: wrap;
     gap: 0.35rem;
+    margin-left: 0;
+    justify-content: flex-end;
+    width: 100%;
   }
 
   .customer-company-employees-page .cce-action-bar-google {

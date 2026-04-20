@@ -491,6 +491,110 @@
   }
 }
 
+/* 인사이트 권한 확인 중 — 섹션별 파스텔 스피너 (그라데이션 없음) */
+.home-pastel-spinner {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  text-align: center;
+}
+
+.home-pastel-spinner-ring {
+  display: block;
+  box-sizing: border-box;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  border: 3px solid rgba(184, 212, 240, 0.5);
+  border-top-color: #7eb8e0;
+  animation: home-pastel-spin 0.88s linear infinite;
+}
+
+.home-pastel-spinner--sm .home-pastel-spinner-ring {
+  width: 1.35rem;
+  height: 1.35rem;
+  border-width: 2px;
+}
+
+.home-pastel-spinner--kpi .home-pastel-spinner-ring {
+  width: 1.7rem;
+  height: 1.7rem;
+  border-width: 2px;
+}
+
+.home-pastel-spinner--reduced .home-pastel-spinner-ring {
+  animation: none;
+  border-color: rgba(184, 212, 240, 0.65);
+  border-top-color: #6aa8d4;
+}
+
+.home-pastel-spinner-label {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #64748b;
+  line-height: 1.35;
+  max-width: 14rem;
+}
+
+@keyframes home-pastel-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-pastel-spinner-ring {
+    animation: none;
+    border-color: rgba(184, 212, 240, 0.65);
+    border-top-color: #6aa8d4;
+  }
+}
+
+.home-insight-toolbar--access-loading {
+  margin-bottom: 0.35rem;
+}
+
+.home-insight-toolbar-access-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 3.25rem;
+  padding: 0.65rem 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid #e2e8ef;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+}
+
+.home-kpi-card--access-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 7.5rem;
+  padding: 1rem;
+}
+
+.home-kpi-card-access-spin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 4rem;
+}
+
+.home-chart-body--access-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 12rem;
+}
+
+.home-chart-panel--access-loading .home-chart-head h2 {
+  font-size: 1.125rem;
+}
+
 .home-insight-toolbar {
   display: flex;
   flex-direction: column;
@@ -519,7 +623,16 @@
 }
 
 .home-insight-toolbar-scope {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/** 조회 범위 탭 + 부서·직원 셀렉트(또는 비팀장 안내) 한 줄 */
+.home-insight-toolbar-scope-cluster {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
   min-width: 0;
 }
 
@@ -577,11 +690,6 @@
 .home-insight-filter-select--inline {
   max-width: min(24rem, 100%);
   min-width: 11rem;
-}
-
-.home-insight-filter-clear--inline {
-  margin-left: 0;
-  align-self: center;
 }
 
 /** 팀별·개인별·회사 전체 3분할 */
@@ -676,24 +784,6 @@
   background: #fff;
   color: var(--text);
   max-width: 16rem;
-}
-
-.home-insight-filter-clear {
-  align-self: center;
-  margin-left: auto;
-  padding: 0.4rem 0.75rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  border: 1px solid var(--card-border);
-  border-radius: 0.4rem;
-  background: rgba(255, 255, 255, 0.85);
-  color: var(--text-muted);
-  cursor: pointer;
-}
-
-.home-insight-filter-clear:hover {
-  background: rgba(143, 246, 208, 0.25);
-  color: #0d5c48;
 }
 
 .home-insight-filter-warn {
