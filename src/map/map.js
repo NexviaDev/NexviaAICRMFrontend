@@ -6,6 +6,7 @@ import './map.css';
 import { API_BASE } from '@/config';
 // 지도 도메인 경고("이 웹사이트의 소유자이신가요?") 제거: Google Cloud Console → API 및 서비스 → 사용자 인증 정보 → 해당 키 → 애플리케이션 제한사항 → HTTP 리퍼러에 http://localhost:3000/*, https://실서비스도메인/* 추가
 // Geolocation API(대략 위치): Console에서 「Geolocation API」 사용 설정 필요(Maps JavaScript API와 별도)
+// Places Autocomplete 미사용 — 과금·요청 폭주 방지. 주소는 엔터/검색 버튼 → Geocoding만(세션 캐시).
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 const DEFAULT_CENTER = { lat: 37.5665, lng: 126.978 }; // 서울
 const DEFAULT_ZOOM = 11; // 주변 약 30km 이내가 보이도록
@@ -113,6 +114,22 @@ const MY_LOCATION_CIRCLE_FIT_PADDING = { top: 56, right: 48, bottom: 100, left: 
 
 /** 한 프레임에 추가할 고객사 마커 수 — 전부 한꺼번에 그리면 메인 스레드가 멈춰 첫 화면이 느려짐 */
 const MAP_MARKER_CHUNK_SIZE = 32;
+
+/**
+ * 고객사 위치 — 원형 대신 압정형 핀(SVG). 내 담당: 노랑, 그 외: 연녹 (기존 색상 유지).
+ * 좌표는 핀 끝(anchor)이 위치에 오도록 맞춤.
+ */
+function buildCompanyPinMarkerIcon(google, mine) {
+  const fill = mine ? '#fff176' : '#a5d6a7';
+  const stroke = mine ? '#5d4037' : '#2e7d32';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="48" viewBox="0 0 36 48"><path d="M18 2C9.7 2 3 8.5 3 16.8c0 7.5 15 29.2 15 29.2S33 24.3 33 16.8C33 8.5 26.3 2 18 2z" fill="${fill}" stroke="${stroke}" stroke-width="1.25" stroke-linejoin="round"/><circle cx="18" cy="16.5" r="5" fill="#ffffff" stroke="${stroke}" stroke-width="0.9"/></svg>`;
+  const url = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+  return {
+    url,
+    scaledSize: new google.maps.Size(30, 40),
+    anchor: new google.maps.Point(15, 40)
+  };
+}
 
 /**
  * PWA·브라우저: navigator.geolocation.
@@ -287,7 +304,7 @@ function loadGoogleMaps(onLoad) {
   };
   window.__googleMapsLoading = true;
   const script = document.createElement('script');
-  script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&language=ko&libraries=places&loading=async&callback=${callbackName}`;
+  script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&language=ko&loading=async&callback=${callbackName}`;
   script.async = true;
   script.defer = true;
   script.onerror = () => {
@@ -353,6 +370,69 @@ function zoomForGoogleIpAccuracyMeters(acc) {
   return 12;
 }
 
+/** Geocoding API 호출 줄이기 — 동일 검색어는 세션 동안 재사용 */
+const GEOCODE_CACHE_STORAGE_KEY = 'nexvia_map_geocode_v1';
+const GEOCODE_CACHE_MAX_ENTRIES = 80;
+const GEOCODE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+function normalizeGeocodeCacheKey(raw) {
+  return String(raw || '').trim().toLowerCase();
+}
+
+function loadGeocodeCacheObject() {
+  if (typeof sessionStorage === 'undefined') return {};
+  try {
+    const raw = sessionStorage.getItem(GEOCODE_CACHE_STORAGE_KEY);
+    if (!raw) return {};
+    const obj = JSON.parse(raw);
+    if (!obj || typeof obj !== 'object') return {};
+    const now = Date.now();
+    const out = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (
+        v &&
+        typeof v.lat === 'number' &&
+        typeof v.lng === 'number' &&
+        typeof v.ts === 'number' &&
+        now - v.ts < GEOCODE_CACHE_TTL_MS
+      ) {
+        out[k] = v;
+      }
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function getGeocodeFromCache(queryKey) {
+  const k = normalizeGeocodeCacheKey(queryKey);
+  if (!k) return null;
+  const obj = loadGeocodeCacheObject();
+  const hit = obj[k];
+  if (!hit) return null;
+  return { lat: hit.lat, lng: hit.lng, label: typeof hit.label === 'string' ? hit.label : '' };
+}
+
+function saveGeocodeToCache(queryKey, { lat, lng, label }) {
+  const k = normalizeGeocodeCacheKey(queryKey);
+  if (!k || typeof lat !== 'number' || typeof lng !== 'number' || Number.isNaN(lat) || Number.isNaN(lng)) return;
+  try {
+    const obj = loadGeocodeCacheObject();
+    obj[k] = { lat, lng, label: label != null ? String(label) : '', ts: Date.now() };
+    const keys = Object.keys(obj);
+    if (keys.length > GEOCODE_CACHE_MAX_ENTRIES) {
+      keys.sort((a, b) => (obj[a].ts || 0) - (obj[b].ts || 0));
+      for (let i = 0; i < keys.length - GEOCODE_CACHE_MAX_ENTRIES; i++) {
+        delete obj[keys[i]];
+      }
+    }
+    sessionStorage.setItem(GEOCODE_CACHE_STORAGE_KEY, JSON.stringify(obj));
+  } catch {
+    /* 할당량 초과·사생활 모드 */
+  }
+}
+
 /** 검색어로 등록 고객사 매칭 (위·경도가 있는 항목만). 부분 일치·완전 일치 */
 function matchCompaniesBySearchQuery(companies, rawQuery) {
   const q = String(rawQuery || '').trim().toLowerCase();
@@ -396,7 +476,6 @@ export default function Map({
   const mapContainerRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const searchInputRef = useRef(null);
-  const autocompleteRef = useRef(null);
   const markersRef = useRef([]);
   const koreaLabelMarkersRef = useRef([]);
   const koreaLabelListenersRef = useRef([]);
@@ -841,39 +920,6 @@ export default function Map({
     return () => observer.disconnect();
   }, []);
 
-  // Google Places 자동완성: 주소·장소명 검색 시 구글 제안 목록 표시
-  useEffect(() => {
-    if (!mapReady || !window.google?.maps?.places || !searchInputRef.current) return;
-    if (autocompleteRef.current) return; // 이미 붙였으면 스킵
-    const autocomplete = new window.google.maps.places.Autocomplete(searchInputRef.current, {
-      types: ['establishment', 'geocode'],
-      fields: ['geometry', 'name', 'formatted_address'],
-      language: 'ko'
-    });
-    autocomplete.addListener('place_changed', () => {
-      const place = autocomplete.getPlace();
-      if (!place?.geometry?.location) return;
-      const lat = place.geometry.location.lat();
-      const lng = place.geometry.location.lng();
-      const label = place.name || place.formatted_address || searchInput.trim();
-      setSearchPlace({ lat, lng, label });
-      setShowSearchPlaceMarker(true); // 구글 검색 장소에 뱃지 자동 표시
-      setSearchInput(place.formatted_address || place.name || label);
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.panTo({ lat, lng });
-        mapInstanceRef.current.setZoom(14);
-        initialViewAppliedRef.current = true; // 검색 결과로 화면 고정, 이후 초기 뷰로 덮어쓰지 않음
-      }
-    });
-    autocompleteRef.current = autocomplete;
-    return () => {
-      if (window.google?.maps?.event && autocompleteRef.current) {
-        window.google.maps.event.clearInstanceListeners(autocompleteRef.current);
-      }
-      autocompleteRef.current = null;
-    };
-  }, [mapReady]);
-
   /** 내 위치가 먼저 잡히면 지도 중심만 1회 이동 (GPS 틱마다 마커 전체 재생성하지 않도록 myLocation은 마커 effect에서 제외) */
   useEffect(() => {
     if (!mapReady || !mapInstanceRef.current || !myLocation || initialViewAppliedRef.current) return;
@@ -943,20 +989,15 @@ export default function Map({
           optimized: true,
           /** 겹침 시 내 담당 마커가 다른 마커보다 위(앞)에 그려지도록 */
           zIndex: mine ? 2000 + idx : 100,
-          icon: {
-            path: window.google.maps.SymbolPath.CIRCLE,
-            scale: 10,
-            fillColor: mine ? '#fff176' : '#a5d6a7',
-            fillOpacity: 1,
-            strokeColor: mine ? '#5d4037' : '#2e7d32',
-            strokeWeight: 2
-          }
+          icon: buildCompanyPinMarkerIcon(window.google, mine)
         });
         marker.addListener('click', () => setSelected(company));
         if (showMarkerLabels) {
           const iw = new window.google.maps.InfoWindow({
             content: labelContent(company.name),
-            pixelOffset: new window.google.maps.Size(0, -10)
+            pixelOffset: new window.google.maps.Size(0, -10),
+            /** 다수 말주머니 연속 open 시 지도가 마지막 창으로 맞춰지며 뷰가 뒤로 튀는 것 방지 */
+            disableAutoPan: true
           });
           iw.open(map, marker);
           markerLabelsRef.current.push(iw);
@@ -1215,6 +1256,26 @@ export default function Map({
     }
 
     if (!window.google.maps.Geocoder) return;
+
+    const cachedGeo = getGeocodeFromCache(query);
+    if (cachedGeo) {
+      clearFocusParamsFromUrl();
+      setSearchPlace(null);
+      if (searchPlaceMarkerRef.current) {
+        searchPlaceMarkerRef.current.setMap(null);
+        searchPlaceMarkerRef.current = null;
+      }
+      const label = cachedGeo.label || query;
+      setSearchPlace({ lat: cachedGeo.lat, lng: cachedGeo.lng, label });
+      setShowSearchPlaceMarker(true);
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.panTo({ lat: cachedGeo.lat, lng: cachedGeo.lng });
+        mapInstanceRef.current.setZoom(14);
+        initialViewAppliedRef.current = true;
+      }
+      return;
+    }
+
     clearFocusParamsFromUrl();
     setSearchPlaceLoading(true);
     setSearchPlace(null);
@@ -1232,6 +1293,7 @@ export default function Map({
       const lat = loc.lat();
       const lng = loc.lng();
       const label = results[0].formatted_address || query;
+      saveGeocodeToCache(query, { lat, lng, label });
       setSearchPlace({ lat, lng, label });
       setShowSearchPlaceMarker(true); // 구글 검색 장소에 뱃지 자동 표시
       if (mapInstanceRef.current) {
@@ -1360,7 +1422,7 @@ export default function Map({
                   ref={searchInputRef}
                   type="text"
                   className="map-search-input"
-                  placeholder="등록 고객사명·주소·장소 검색 (엔터 시 고객사 우선, 없으면 주소 지오코딩)"
+                  placeholder="등록 고객사명 또는 주소·장소 (엔터·검색: 고객사 우선, 없으면 지오코딩 1회)"
                   value={searchInput}
                   onChange={(e) => {
                     setSearchInput(e.target.value);
@@ -1379,7 +1441,7 @@ export default function Map({
                   className="map-search-go-btn"
                   onClick={goToSearchPlace}
                   disabled={!searchInput.trim() || searchPlaceLoading}
-                  title="입력한 주소·장소로 지도 이동 (Google 검색)"
+                  title="입력한 주소·장소로 지도 이동 (지오코딩, 동일 검색은 캐시)"
                   aria-label="장소로 이동"
                 >
                   {searchPlaceLoading ? (

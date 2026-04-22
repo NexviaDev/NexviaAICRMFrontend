@@ -113,7 +113,6 @@ function EmailHtmlFrame({ html }) {
 }
 
 export default function Email() {
-  const [searchInput, setSearchInput] = useState('');
   const [listItems, setListItems] = useState([]);
   const [nextPageToken, setNextPageToken] = useState(null);
   const [pageTokenUsed, setPageTokenUsed] = useState(null);
@@ -142,7 +141,6 @@ export default function Email() {
       if (selectedLabelId) params.set('labelId', selectedLabelId);
       else params.set('folder', 'inbox');
       params.set('maxResults', '15');
-      if (searchInput.trim()) params.set('q', searchInput.trim());
       if (pageToken) params.set('pageToken', pageToken);
       const res = await fetch(`${API_BASE}/gmail/messages?${params}`, { headers: getAuthHeader() });
       const data = await res.json().catch(() => ({}));
@@ -173,7 +171,7 @@ export default function Email() {
     } finally {
       setLoading(false);
     }
-  }, [selectedLabelId, searchInput]);
+  }, [selectedLabelId]);
 
   useEffect(() => {
     fetchList();
@@ -278,12 +276,6 @@ export default function Email() {
     }
   };
 
-  const handleSearch = (e) => {
-    e?.preventDefault();
-    if (gmailWebOnly) return;
-    fetchList();
-  };
-
   const handleLabelToggle = async (labelId) => {
     if (!selectedId || !selectedEmail) return;
     const current = selectedEmail.labelIds || [];
@@ -357,18 +349,6 @@ export default function Email() {
   return (
     <div className={`email-page${detailChromeOpen ? ' email-page--detail-open' : ''}`}>
       <header className="email-header">
-        <form className="email-header-search-wrap" onSubmit={handleSearch}>
-          <span className="material-symbols-outlined email-header-search-icon">search</span>
-          <input
-            type="text"
-            className="email-header-search"
-            placeholder={gmailWebOnly ? '받은편지함 미연동 — 발송만 가능' : '이메일, 연락처 검색...'}
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            disabled={gmailWebOnly}
-            aria-disabled={gmailWebOnly}
-          />
-        </form>
         <div className="email-header-actions">
           <button type="button" className="email-header-icon-btn" aria-label="설정">
             <span className="material-symbols-outlined">settings</span>

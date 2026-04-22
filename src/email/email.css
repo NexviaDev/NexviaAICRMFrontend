@@ -20,48 +20,11 @@
   border-bottom: 1px solid var(--card-border);
 }
 
-.email-header-search-wrap {
-  flex: 1;
-  max-width: 28rem;
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.email-header-search-icon {
-  position: absolute;
-  left: 0.75rem;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 1.25rem;
-  color: var(--text-muted);
-}
-
-.email-header-search {
-  width: 100%;
-  padding: 0.5rem 1rem 0.5rem 2.5rem;
-  font-size: 0.875rem;
-  border: none;
-  border-radius: 0.5rem;
-  background: var(--bg-light);
-  color: var(--text);
-  transition: background 0.2s, box-shadow 0.2s;
-}
-
-.email-header-search::placeholder {
-  color: var(--text-muted);
-}
-
-.email-header-search:focus {
-  outline: none;
-  background: var(--card);
-  box-shadow: 0 0 0 2px rgba(91, 124, 153, 0.15);
-}
-
 .email-header-actions {
   display: flex;
   align-items: center;
   gap: 0.25rem;
+  margin-left: auto;
 }
 
 .email-header-notify-chat {
@@ -216,11 +179,6 @@
 /* 받은편지함 API 없을 때 — 빈 목록 열 숨기고 작성 패널만 넓게 */
 .email-body--send-only .email-list-panel {
   display: none;
-}
-
-.email-header-search:disabled {
-  opacity: 0.65;
-  cursor: not-allowed;
 }
 
 /* Left sidebar: Compose + folders */
@@ -1080,16 +1038,6 @@
     padding: 0.65rem 1rem;
     height: auto;
     min-height: 3.5rem;
-  }
-
-  .email-header-search {
-    background: #e3e9ea;
-    border-radius: 0.75rem;
-  }
-
-  .email-header-search:focus {
-    background: #fff;
-    box-shadow: 0 0 0 2px rgba(0, 108, 83, 0.12);
   }
 
   .email-banner {
