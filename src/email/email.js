@@ -134,6 +134,8 @@ export default function Email() {
   const [sendLoading, setSendLoading] = useState(false);
   const [error, setError] = useState('');
   const [needsReauth, setNeedsReauth] = useState(false);
+  /** OAuth에서 gmail.readonly / gmail.modify 제거 시 API 대신 웹 Gmail 안내 */
+  const [gmailWebOnly, setGmailWebOnly] = useState(false);
   const [gmailLabels, setGmailLabels] = useState([]);
   const [showLabelPicker, setShowLabelPicker] = useState(false);
   const [labelPickerLoading, setLabelPickerLoading] = useState(false);
@@ -156,10 +158,22 @@ export default function Email() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (data.needsReauth) setNeedsReauth(true);
+        setGmailWebOnly(false);
         setError(data.error || '메일 목록을 불러올 수 없습니다.');
         setListItems([]);
         return;
       }
+      if (data.gmailWebOnly) {
+        setGmailWebOnly(true);
+        setListItems([]);
+        setNextPageToken(null);
+        setPageTokenUsed(null);
+        setSelectedId(null);
+        setSelectedEmail(null);
+        setError('');
+        return;
+      }
+      setGmailWebOnly(false);
       setListItems(data.items || []);
       setNextPageToken(data.nextPageToken || null);
       setPageTokenUsed(pageToken || null);
@@ -179,13 +193,26 @@ export default function Email() {
     try {
       const res = await fetch(`${API_BASE}/gmail/labels`, { headers: getAuthHeader() });
       const data = await res.json().catch(() => ({}));
-      if (res.ok && Array.isArray(data.labels)) setGmailLabels(data.labels);
+      if (!res.ok) return;
+      if (data.gmailWebOnly) {
+        setGmailWebOnly(true);
+        setGmailLabels([]);
+      } else if (Array.isArray(data.labels)) {
+        setGmailLabels(data.labels);
+      }
     } catch (_) {}
   }, []);
 
   useEffect(() => {
     fetchLabels();
   }, [fetchLabels]);
+
+  /** 받은편지함 API 없음(gmailWebOnly) — 안내 카드 대신 CRM에서 바로 새 메일 작성만 */
+  useEffect(() => {
+    if (!gmailWebOnly) return;
+    if (detailCompose === 'reply' || detailCompose === 'forward') return;
+    if (!detailCompose) setDetailCompose('new');
+  }, [gmailWebOnly, detailCompose]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -197,6 +224,12 @@ export default function Email() {
     fetch(`${API_BASE}/gmail/messages/${selectedId}`, { headers: getAuthHeader() })
       .then((r) => r.json().catch(() => ({})))
       .then((data) => {
+        if (data.gmailWebOnly) {
+          setGmailWebOnly(true);
+          setSelectedEmail(null);
+          setSelectedId(null);
+          return;
+        }
         if (data.error) {
           setError(data.error);
           setSelectedEmail(null);
@@ -217,7 +250,15 @@ export default function Email() {
       setDetailLoading(true);
       fetch(`${API_BASE}/gmail/messages/${selectedId}`, { headers: getAuthHeader() })
         .then((r) => r.json().catch(() => ({})))
-        .then((data) => { if (!data.error) setSelectedEmail(data); })
+        .then((data) => {
+          if (data.gmailWebOnly) {
+            setGmailWebOnly(true);
+            setSelectedId(null);
+            setSelectedEmail(null);
+            return;
+          }
+          if (!data.error) setSelectedEmail(data);
+        })
         .finally(() => setDetailLoading(false));
     }
   };
@@ -249,6 +290,7 @@ export default function Email() {
 
   const handleSearch = (e) => {
     e?.preventDefault();
+    if (gmailWebOnly) return;
     fetchList();
   };
 
@@ -330,9 +372,11 @@ export default function Email() {
           <input
             type="text"
             className="email-header-search"
-            placeholder="이메일, 연락처 검색..."
+            placeholder={gmailWebOnly ? '받은편지함 미연동 — 발송만 가능' : '이메일, 연락처 검색...'}
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
+            disabled={gmailWebOnly}
+            aria-disabled={gmailWebOnly}
           />
         </form>
         <div className="email-header-actions">
@@ -352,46 +396,50 @@ export default function Email() {
         </div>
       )}
 
-      <div className="email-body">
+      <div className={`email-body${gmailWebOnly ? ' email-body--send-only' : ''}`}>
         <aside className="email-sidebar">
           <button type="button" className="email-compose-btn" onClick={() => setDetailCompose('new')}>
             <span className="material-symbols-outlined">edit</span>
             새 메일 작성
           </button>
-          <nav className="email-folders">
-            {FOLDERS.map((f) => (
-              <button
-                key={f.id}
-                type="button"
-                className={`email-folder-item ${!selectedLabelId && folder === f.id ? 'active' : ''}`}
-                onClick={() => { setFolder(f.id); setSelectedLabelId(null); setSelectedId(null); }}
-              >
-                <span className="material-symbols-outlined">{f.icon}</span>
-                <span>{f.label}</span>
-              </button>
-            ))}
-          </nav>
-          {gmailLabels.length > 0 && (
-            <nav className="email-labels-nav">
-              <div className="email-labels-title">
-                <span>라벨</span>
-              </div>
-              <div className="email-labels-list">
-                {gmailLabels
-                  .filter((l) => l.type === 'user')
-                  .map((l) => (
-                    <button
-                      key={l.id}
-                      type="button"
-                      className={`email-label-item ${selectedLabelId === l.id ? 'active' : ''}`}
-                      onClick={() => { setSelectedLabelId(l.id); setFolder('inbox'); setSelectedId(null); }}
-                    >
-                      <span className="email-label-dot" style={{ backgroundColor: (l.color && l.color.backgroundColor) ? (String(l.color.backgroundColor).startsWith('#') ? l.color.backgroundColor : `#${l.color.backgroundColor}`) : 'var(--text-muted)' }} />
-                      <span className="email-label-name">{l.name}</span>
-                    </button>
-                  ))}
-              </div>
-            </nav>
+          {!gmailWebOnly && (
+            <>
+              <nav className="email-folders">
+                {FOLDERS.map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    className={`email-folder-item ${!selectedLabelId && folder === f.id ? 'active' : ''}`}
+                    onClick={() => { setFolder(f.id); setSelectedLabelId(null); setSelectedId(null); }}
+                  >
+                    <span className="material-symbols-outlined">{f.icon}</span>
+                    <span>{f.label}</span>
+                  </button>
+                ))}
+              </nav>
+              {gmailLabels.length > 0 && (
+                <nav className="email-labels-nav">
+                  <div className="email-labels-title">
+                    <span>라벨</span>
+                  </div>
+                  <div className="email-labels-list">
+                    {gmailLabels
+                      .filter((l) => l.type === 'user')
+                      .map((l) => (
+                        <button
+                          key={l.id}
+                          type="button"
+                          className={`email-label-item ${selectedLabelId === l.id ? 'active' : ''}`}
+                          onClick={() => { setSelectedLabelId(l.id); setFolder('inbox'); setSelectedId(null); }}
+                        >
+                          <span className="email-label-dot" style={{ backgroundColor: (l.color && l.color.backgroundColor) ? (String(l.color.backgroundColor).startsWith('#') ? l.color.backgroundColor : `#${l.color.backgroundColor}`) : 'var(--text-muted)' }} />
+                          <span className="email-label-name">{l.name}</span>
+                        </button>
+                      ))}
+                  </div>
+                </nav>
+              )}
+            </>
           )}
         </aside>
 
