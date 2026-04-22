@@ -45,7 +45,6 @@ const SUBMENU_ITEMS = [
   { to: '/project', icon: 'folder', label: '프로젝트', category: 'schedule' },
   { to: '/todo-list', icon: 'checklist', label: 'Todo List', category: 'schedule' },
   { to: '/ai-voice', icon: 'mic', label: 'AI 음성 기록', category: 'etc' },
-  { to: '/messenger', icon: 'chat_bubble', label: '메신저', category: 'etc' },
   { to: '/email', icon: 'mail', label: '이메일', category: 'etc' },
   { to: '/subscription', icon: 'subscriptions', label: '구독관리', category: 'etc' }
 ];

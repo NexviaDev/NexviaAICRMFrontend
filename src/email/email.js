@@ -68,15 +68,6 @@ function buildEmailListSections(items) {
   return out;
 }
 
-const FOLDERS = [
-  { id: 'inbox', icon: 'inbox', label: '받은편지함' },
-  { id: 'starred', icon: 'star', label: '별표편지함' },
-  { id: 'sent', icon: 'send', label: '보낸편지함' },
-  { id: 'drafts', icon: 'draft', label: '임시보관' },
-  { id: 'spam', icon: 'report', label: '스팸함' },
-  { id: 'trash', icon: 'delete', label: '휴지통' }
-];
-
 /** 보낸/받은 메일 본문에서 링크를 박스·버튼 형태로 보여주는 스타일 */
 const EMAIL_VIEW_LINK_STYLES = `
   a.email-compose-drive-link-inline,
@@ -122,7 +113,6 @@ function EmailHtmlFrame({ html }) {
 }
 
 export default function Email() {
-  const [folder, setFolder] = useState('inbox');
   const [searchInput, setSearchInput] = useState('');
   const [listItems, setListItems] = useState([]);
   const [nextPageToken, setNextPageToken] = useState(null);
@@ -150,7 +140,7 @@ export default function Email() {
     try {
       const params = new URLSearchParams();
       if (selectedLabelId) params.set('labelId', selectedLabelId);
-      else params.set('folder', folder);
+      else params.set('folder', 'inbox');
       params.set('maxResults', '15');
       if (searchInput.trim()) params.set('q', searchInput.trim());
       if (pageToken) params.set('pageToken', pageToken);
@@ -183,7 +173,7 @@ export default function Email() {
     } finally {
       setLoading(false);
     }
-  }, [folder, selectedLabelId, searchInput]);
+  }, [selectedLabelId, searchInput]);
 
   useEffect(() => {
     fetchList();
@@ -404,25 +394,20 @@ export default function Email() {
           </button>
           {!gmailWebOnly && (
             <>
-              <nav className="email-folders">
-                {FOLDERS.map((f) => (
-                  <button
-                    key={f.id}
-                    type="button"
-                    className={`email-folder-item ${!selectedLabelId && folder === f.id ? 'active' : ''}`}
-                    onClick={() => { setFolder(f.id); setSelectedLabelId(null); setSelectedId(null); }}
-                  >
-                    <span className="material-symbols-outlined">{f.icon}</span>
-                    <span>{f.label}</span>
-                  </button>
-                ))}
-              </nav>
               {gmailLabels.length > 0 && (
                 <nav className="email-labels-nav">
                   <div className="email-labels-title">
                     <span>라벨</span>
                   </div>
                   <div className="email-labels-list">
+                    <button
+                      type="button"
+                      className={`email-label-item ${!selectedLabelId ? 'active' : ''}`}
+                      onClick={() => { setSelectedLabelId(null); setSelectedId(null); }}
+                    >
+                      <span className="email-label-dot" style={{ backgroundColor: 'var(--text-muted)' }} />
+                      <span className="email-label-name">받은편지함</span>
+                    </button>
                     {gmailLabels
                       .filter((l) => l.type === 'user')
                       .map((l) => (
@@ -430,7 +415,7 @@ export default function Email() {
                           key={l.id}
                           type="button"
                           className={`email-label-item ${selectedLabelId === l.id ? 'active' : ''}`}
-                          onClick={() => { setSelectedLabelId(l.id); setFolder('inbox'); setSelectedId(null); }}
+                          onClick={() => { setSelectedLabelId(l.id); setSelectedId(null); }}
                         >
                           <span className="email-label-dot" style={{ backgroundColor: (l.color && l.color.backgroundColor) ? (String(l.color.backgroundColor).startsWith('#') ? l.color.backgroundColor : `#${l.color.backgroundColor}`) : 'var(--text-muted)' }} />
                           <span className="email-label-name">{l.name}</span>
@@ -448,7 +433,7 @@ export default function Email() {
             <h2 className="email-list-title">
               {selectedLabelId
                 ? (gmailLabels.find((l) => l.id === selectedLabelId)?.name || selectedLabelId)
-                : (FOLDERS.find((f) => f.id === folder)?.label || '받은편지함')}
+                : '받은편지함'}
             </h2>
             <div className="email-list-toolbar">
               <button type="button" className="email-list-toolbar-btn" title="새로고침" onClick={handleRefresh} disabled={loading}>

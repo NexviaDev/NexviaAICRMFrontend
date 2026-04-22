@@ -249,6 +249,9 @@ export default function Messenger() {
   const [sendLoading, setSendLoading] = useState(false);
   const [error, setError] = useState('');
   const [needsReauth, setNeedsReauth] = useState(false);
+  /** OAuth에서 chat.messages* 제거 시 — REST 메시지·전송 불가, 웹 Chat 안내 */
+  const [chatWebOnly, setChatWebOnly] = useState(false);
+  const [chatWebOnlyNotice, setChatWebOnlyNotice] = useState('');
   const [listFilter, setListFilter] = useState('');
   const [newChatOpen, setNewChatOpen] = useState(false);
   const [newChatLoading, setNewChatLoading] = useState(false);
@@ -877,24 +880,36 @@ export default function Messenger() {
       if (!msgRes.ok) {
         if (!silent) {
           if (msgData.needsReauth) setNeedsReauth(true);
+          if (msgData.chatWebOnly) {
+            setChatWebOnly(true);
+            setChatWebOnlyNotice(typeof msgData.notice === 'string' ? msgData.notice : '');
+          }
           setError(msgData.error || '메시지를 불러오지 못했습니다.');
           setMessages([]);
           setMembers([]);
         }
         return;
       }
-      const raw = Array.isArray(msgData.messages) ? msgData.messages : [];
-      const sorted = [...raw].sort((a, b) => {
-        const ta = new Date(a.createTime || 0).getTime();
-        const tb = new Date(b.createTime || 0).getTime();
-        return ta - tb;
-      });
-      setMessages(sorted);
+      if (msgData.chatWebOnly) {
+        setChatWebOnly(true);
+        setChatWebOnlyNotice(typeof msgData.notice === 'string' ? msgData.notice : '');
+        setMessages([]);
+      } else {
+        setChatWebOnly(false);
+        setChatWebOnlyNotice('');
+        const raw = Array.isArray(msgData.messages) ? msgData.messages : [];
+        const sorted = [...raw].sort((a, b) => {
+          const ta = new Date(a.createTime || 0).getTime();
+          const tb = new Date(b.createTime || 0).getTime();
+          return ta - tb;
+        });
+        setMessages(sorted);
 
-      const last = sorted[sorted.length - 1];
-      if (last) {
-        const preview = extractMessageText(last) || (attachmentsOf(last).length ? '첨부' : '메시지');
-        setPreviews((p) => ({ ...p, [spaceFullName]: { text: preview, time: last.createTime } }));
+        const last = sorted[sorted.length - 1];
+        if (last) {
+          const preview = extractMessageText(last) || (attachmentsOf(last).length ? '첨부' : '메시지');
+          setPreviews((p) => ({ ...p, [spaceFullName]: { text: preview, time: last.createTime } }));
+        }
       }
 
       if (memRes) {
@@ -932,6 +947,8 @@ export default function Messenger() {
     if (!selectedName) {
       setMessages([]);
       setMembers([]);
+      setChatWebOnly(false);
+      setChatWebOnlyNotice('');
       return undefined;
     }
     setMessages([]);
@@ -999,6 +1016,10 @@ export default function Messenger() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (data.needsReauth) setNeedsReauth(true);
+        if (data.chatWebOnly) {
+          setChatWebOnly(true);
+          setChatWebOnlyNotice(typeof data.notice === 'string' ? data.notice : '');
+        }
         setError(data.error || '전송에 실패했습니다.');
         return;
       }
@@ -1195,9 +1216,28 @@ export default function Messenger() {
 
       {needsReauth && (
         <div className="messenger-banner-soft">
-          Chat 스코프(chat.messages, chat.spaces.create 등)가 없거나 refresh token이 없으면 이 화면이 동작하지 않을 수 있습니다. Google 로그인으로 다시 인증해 주세요.
+          Chat 스코프(chat.spaces*, chat.memberships 등)가 없거나 refresh token이 없으면 일부 기능이 동작하지 않을 수 있습니다. Google 로그인으로 다시 인증해 주세요.
         </div>
       )}
+
+      {chatWebOnly && !needsReauth ? (
+        <div className="messenger-banner-chat-web" role="status">
+          <p className="messenger-banner-chat-web-text">
+            {chatWebOnlyNotice ||
+              '메시지 읽기·전송에는 chat.messages OAuth 스코프가 필요합니다. 대화 내용은 Google Chat 웹에서 확인해 주세요.'}
+          </p>
+          <button
+            type="button"
+            className="messenger-banner-chat-web-btn"
+            onClick={() => window.open('https://chat.google.com', '_blank', 'noopener,noreferrer')}
+          >
+            <span className="material-symbols-outlined" aria-hidden>
+              open_in_new
+            </span>
+            Google Chat 열기
+          </button>
+        </div>
+      ) : null}
 
       <div className={`messenger-layout ${isMobile ? 'messenger-layout--mobile' : ''}`}>
         <aside
@@ -1660,18 +1700,18 @@ export default function Messenger() {
                   <textarea
                     className="messenger-input-field"
                     rows={1}
-                    placeholder="메시지를 입력하세요…"
+                    placeholder={chatWebOnly ? '메시지 전송은 Google Chat 웹에서…' : '메시지를 입력하세요…'}
                     value={compose}
                     onChange={(e) => setCompose(e.target.value)}
                     onKeyDown={onKeyDownInput}
-                    disabled={needsReauth || sendLoading}
+                    disabled={needsReauth || sendLoading || chatWebOnly}
                   />
                   <div className="messenger-input-tools">
                     <button
                       type="button"
                       className="messenger-send-btn"
                       aria-label="전송"
-                      disabled={needsReauth || sendLoading || !compose.trim()}
+                      disabled={needsReauth || sendLoading || chatWebOnly || !compose.trim()}
                       onClick={() => void sendMessage()}
                     >
                       <span className="material-symbols-outlined" style={{ fontSize: '20px' }}>
