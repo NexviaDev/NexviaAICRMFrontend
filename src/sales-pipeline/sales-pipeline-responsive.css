@@ -60,9 +60,20 @@
   }
 
   .sp-search-wrap {
-    flex: 1 1 100%;
-    width: 100%;
+    flex: 1 1 8rem;
+    min-width: 6rem;
+    width: auto;
     max-width: none;
+  }
+
+  .sp-header-brand {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .sp-header-filters {
+    flex-wrap: nowrap;
+    flex-shrink: 0;
   }
 
   .sp-search {

@@ -2122,11 +2122,22 @@ export default function Home() {
               {!loading && Array.isArray(data?.forecastPipelineRows) ? (
                 <div className="panel home-forecast-panel" aria-label="Forecast 파이프라인">
                   <div className="home-forecast-head">
-                    <h3 className="home-forecast-title">Forecast</h3>
-                    <p className="home-forecast-sub">
-                      진행 중 기회(수주 성공·상실·보류 제외)입니다. 위 조회 범위(회사 전체·팀·개인) 및 부서·직원 필터와 동일하게 반영됩니다.
-                      {data.forecastPipelineMeta?.capped ? ' 일부만 표시됩니다.' : ''}
-                    </p>
+                    <div className="home-forecast-head-text">
+                      <h3 className="home-forecast-title">Forecast</h3>
+                      <p className="home-forecast-sub">
+                        진행 중 기회(수주 성공·상실·보류 제외)입니다. 위 조회 범위(회사 전체·팀·개인) 및 부서·직원 필터와 동일하게 반영됩니다.
+                        {data.forecastPipelineMeta?.capped ? ' 일부만 표시됩니다.' : ''}
+                      </p>
+                    </div>
+                    <Link
+                      to="/sales-pipeline"
+                      className="home-pipeline-link home-forecast-pipeline-link"
+                    >
+                      세일즈 현황으로 넘어가기
+                      <span className="material-symbols-outlined" aria-hidden>
+                        arrow_forward
+                      </span>
+                    </Link>
                   </div>
                   <div className="home-forecast-table-wrap">
                     {data.forecastPipelineRows.length === 0 ? (
