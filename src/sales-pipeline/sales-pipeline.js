@@ -116,13 +116,22 @@ function computeOppNetMargin(opp) {
   return Math.round(toMoneyNumber(opp.value) - costPerUnit * qty);
 }
 
-function renderOppNetMargin(opp) {
+function renderOppAdminCardFooter(opp, forecastPercentMap) {
   const m = computeOppNetMargin(opp);
-  if (m == null) return null;
+  const fp = forecastPercentMap ? forecastPercentMap[opp.stage] : null;
+  const marginVal = m != null ? formatCurrency(m, opp.currency) : '—';
+  const forecastVal =
+    Number.isFinite(fp) && fp != null ? formatCurrency(Math.round(toMoneyNumber(opp.value) * (fp / 100)), opp.currency) : '—';
   return (
-    <div className="sp-card-net-margin" aria-label="순마진">
-      <span className="sp-card-net-margin-label">순마진</span>
-      <span className="sp-card-net-margin-value">{formatCurrency(m, opp.currency)}</span>
+    <div className="sp-card-metrics-inline" aria-label="순마진·Forecast 예상 금액">
+      <div className="sp-card-metric-inline">
+        <span className="sp-card-net-margin-label">순마진</span>
+        <span className="sp-card-net-margin-value">{marginVal}</span>
+      </div>
+      <div className="sp-card-metric-inline sp-card-metric-inline--forecast">
+        <span className="sp-card-net-margin-label">Forecast 예상 금액</span>
+        <span className="sp-card-net-margin-value">{forecastVal}</span>
+      </div>
     </div>
   );
 }
@@ -723,7 +732,7 @@ export default function SalesPipeline() {
                         </div>
                         <div className="sp-mobile-deal-value-wrap">
                           <p className="sp-mobile-deal-value">{formatOppValue(opp)}</p>
-                          {canViewAdminContent ? renderOppNetMargin(opp) : null}
+                          {canViewAdminContent ? renderOppAdminCardFooter(opp, stageForecastPercent) : null}
                         </div>
                       </div>
                       {canViewAdminContent ? (
@@ -834,7 +843,7 @@ export default function SalesPipeline() {
                                 <div className="sp-card-lucid-footer">
                                   <div className="sp-card-lucid-footer-left">
                                     <span className="sp-card-lucid-value">{formatOppValue(opp)}</span>
-                                    {canViewAdminContent ? renderOppNetMargin(opp) : null}
+                                    {canViewAdminContent ? renderOppAdminCardFooter(opp, stageForecastPercent) : null}
                                   </div>
                                   <span className="sp-card-lucid-avatar" title={opp.assignedToName || ''} aria-hidden>
                                     {nameInitials(opp.assignedToName)}
@@ -950,7 +959,7 @@ export default function SalesPipeline() {
           onDragEnd={handleDragEnd}
           formatOppValue={formatOppValue}
           dealTitlePrimaryLabel={dealTitlePrimaryLabel}
-          renderOppNetMargin={renderOppNetMargin}
+          renderOppNetMargin={(opp) => renderOppAdminCardFooter(opp, stageForecastPercent)}
         />
       ) : null}
     </div>

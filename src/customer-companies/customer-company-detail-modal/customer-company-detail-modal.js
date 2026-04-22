@@ -1027,10 +1027,19 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
 
             <section className="customer-company-detail-section">
               <div className="customer-company-detail-section-head">
-                <h3 className="customer-company-detail-section-title">
-                  <span className="material-symbols-outlined">inventory_2</span>
-                  제품 판매 현황
-                </h3>
+                <div className="customer-company-detail-section-title-with-sales">
+                  <h3 className="customer-company-detail-section-title">
+                    <span className="material-symbols-outlined">inventory_2</span>
+                    제품 판매 현황
+                  </h3>
+                  <button
+                    type="button"
+                    className="customer-company-detail-btn-sales-add"
+                    onClick={() => setShowRegisterSaleModal(true)}
+                  >
+                    <span className="material-symbols-outlined">add</span> 세일즈 추가
+                  </button>
+                </div>
                 {!loadingProductSales && (
                   <button
                     type="button"

@@ -337,7 +337,7 @@ function organizeComments(comments) {
 
 export default function OpportunityModal({
   mode, oppId, defaultStage, stageOptions, onClose, onSaved,
-  initialCustomerCompany = null, initialContact = null
+  initialCustomerCompany = null, initialContact = null, initialPersonalPurchase = false
 }) {
   const isEdit = mode === 'edit';
   const stageSelectOptions = Array.isArray(stageOptions) && stageOptions.length > 0 ? stageOptions : STAGE_OPTIONS;
@@ -351,6 +351,9 @@ export default function OpportunityModal({
     stage: defaultStage || 'NewLead',
     description: '',
     saleDate: todayDateInputValue(),
+    expectedCloseMonth: '',
+    startDate: '',
+    targetDate: '',
     ...getInitialInternalAssignee()
   }));
   /** 제품별 행: 가격 기준·단가·수량·할인·매입원가(표시용) */
@@ -466,6 +469,7 @@ export default function OpportunityModal({
           : rawAt
             ? String(rawAt)
             : '';
+      const ym = data.expectedCloseMonth != null ? String(data.expectedCloseMonth).trim() : '';
       setForm({
         customerCompanyId: cc?._id || cc || '',
         customerCompanyName: cc?.name || '',
@@ -475,6 +479,9 @@ export default function OpportunityModal({
         stage: loadedStage,
         description: data.description || '',
         saleDate: toDateInputValue(data.saleDate) || todayDateInputValue(),
+        expectedCloseMonth: /^\d{4}-\d{2}$/.test(ym) ? ym : '',
+        startDate: toDateInputValue(data.startDate),
+        targetDate: toDateInputValue(data.targetDate),
         assignedToUserId: atId,
         assignedToName: (data.assignedToName && String(data.assignedToName).trim()) || ''
       });
@@ -647,12 +654,14 @@ export default function OpportunityModal({
     } else if (initialContact?._id || initialContact?.name) {
       const icc = initialContact?.customerCompanyId;
       const hasIc = !!(icc && (typeof icc === 'object' ? icc._id : icc));
-      if (!hasIc) setPersonalPurchase(true);
+      const forcePersonal = initialPersonalPurchase === true;
+      if (!hasIc || forcePersonal) setPersonalPurchase(true);
+      const attachCompany = hasIc && !forcePersonal;
       setForm((f) => ({
         ...f,
         contactName: initialContact?.name || f.contactName,
         customerCompanyEmployeeId: initialContact?._id || f.customerCompanyEmployeeId,
-        ...(hasIc
+        ...(attachCompany
           ? {
               customerCompanyId: typeof icc === 'object' ? icc._id : icc,
               customerCompanyName: (typeof icc === 'object' ? icc.name : '') || initialContact?.customerCompanyName || ''
@@ -660,7 +669,7 @@ export default function OpportunityModal({
           : { customerCompanyId: '', customerCompanyName: '' })
       }));
       setBusinessNumber(
-        hasIc
+        attachCompany
           ? String(
               initialContact?.customerCompanyBusinessNumber ??
                 (typeof icc === 'object' && icc != null ? icc.businessNumber : '') ??
@@ -669,7 +678,7 @@ export default function OpportunityModal({
           : ''
       );
     }
-  }, [isEdit, initialCustomerCompany, initialContact]);
+  }, [isEdit, initialCustomerCompany, initialContact, initialPersonalPurchase]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -1503,9 +1512,16 @@ export default function OpportunityModal({
       setError('고객사·담당자·제품 중 하나는 선택해 주세요.');
       return;
     }
+    const selectedStage = stageSelectOptions.some((s) => s.value === form.stage) ? form.stage : firstStageValue;
+    if (selectedStage === 'Won') {
+      const sdWon = String(form.saleDate || '').trim();
+      if (!sdWon) {
+        setError('수주 성공으로 저장하려면 본문 상단의 수주·판매일을 입력하거나, 안내 배너에서 「오늘 날짜로 적용」을 눌러 주세요.');
+        return;
+      }
+    }
     setSaving(true);
     setError('');
-    const selectedStage = stageSelectOptions.some((s) => s.value === form.stage) ? form.stage : firstStageValue;
     try {
       await pingBackendHealth(getAuthHeader);
       const distsToRegister = new Set();
@@ -1535,6 +1551,15 @@ export default function OpportunityModal({
         saleDatePayload = !Number.isNaN(parsed.getTime()) ? parsed.toISOString() : null;
       }
 
+      const toIsoDate = (v) => {
+        const s = String(v || '').trim();
+        if (!s) return null;
+        const parsed = new Date(`${s}T12:00:00`);
+        return !Number.isNaN(parsed.getTime()) ? parsed.toISOString() : null;
+      };
+      const ym = String(form.expectedCloseMonth || '').trim();
+      const expectedCloseMonthPayload = /^\d{4}-\d{2}$/.test(ym) ? ym : '';
+
       const lineItemsPayload = lineItems.map((li) => ({
         productId: li.productId || null,
         productName: li.productName?.trim() || '',
@@ -1558,7 +1583,10 @@ export default function OpportunityModal({
         documentRefs: documentRefs.filter((d) => d?.url),
         driveFolderLink: (driveFolderLink || '').trim() || undefined,
         saleDate: saleDatePayload,
-        assignedTo: (form.assignedToUserId || '').trim() || null
+        assignedTo: (form.assignedToUserId || '').trim() || null,
+        expectedCloseMonth: expectedCloseMonthPayload,
+        startDate: toIsoDate(form.startDate),
+        targetDate: toIsoDate(form.targetDate)
       };
       const url = isEdit
         ? `${API_BASE}/sales-opportunities/${oppId}`
@@ -2135,26 +2163,82 @@ export default function OpportunityModal({
         <div className="opp-modal-header">
           <div className="opp-modal-header-left">
             <h3 className="opp-modal-title">{isEdit ? '기회 수정' : '새 영업 기회 추가'}</h3>
-            <label className="opp-modal-sale-date-label">
-              <input
-                type="date"
-                className="opp-modal-sale-date-input"
-                value={form.saleDate}
-                onChange={(e) => handleChange('saleDate', e.target.value)}
-                aria-label="수주·판매일"
-              />
-            </label>
           </div>
           <button type="button" className="opp-modal-close" onClick={onClose}>
             <span className="material-symbols-outlined">close</span>
           </button>
         </div>
 
+        {form.stage === 'Won' ? (
+          <div className="opp-won-sale-date-banner" role="region" aria-label="수주 일자 안내">
+            <p className="opp-won-sale-date-banner-text">
+              수주 성공으로 저장할 때 반영되는 <strong>수주·판매일</strong>입니다. 오늘 날짜로 할지, 본문 상단의 수주·판매일 입력란에 적어 둔 날짜를 그대로 쓸지 선택하세요. 비어 있으면 저장할 수 없습니다.
+            </p>
+            <div className="opp-won-sale-date-banner-actions">
+              <button
+                type="button"
+                className="opp-won-sale-date-btn opp-won-sale-date-btn--primary"
+                onClick={() => handleChange('saleDate', todayDateInputValue())}
+              >
+                오늘 날짜로 적용
+              </button>
+              <span className="opp-won-sale-date-banner-hint-inline">
+                그대로 두려면 본문 상단의 수주·판매일만 맞춰 두면 됩니다.
+              </span>
+            </div>
+            {!String(form.saleDate || '').trim() ? (
+              <p className="opp-won-sale-date-banner-warn" role="alert">
+                수주·판매일이 비어 있습니다. 위에서 오늘로 채우거나 본문 상단의 수주·판매일을 입력해 주세요.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
         {loadingOpp ? (
           <div className="opp-modal-loading">로딩 중...</div>
         ) : (
           <>
             <form className="opp-modal-form" onSubmit={handleSubmit} id="opp-form">
+              <div className="opp-form-dates-top" aria-label="기회 일정">
+                <div className="opp-form-dates-top-field">
+                  <span className="opp-form-dates-top-label">시작일</span>
+                  <input
+                    type="date"
+                    className="opp-input opp-input--date"
+                    value={form.startDate}
+                    onChange={(e) => handleChange('startDate', e.target.value)}
+                  />
+                </div>
+                <div className="opp-form-dates-top-field">
+                  <span className="opp-form-dates-top-label">목표일</span>
+                  <input
+                    type="date"
+                    className="opp-input opp-input--date"
+                    value={form.targetDate}
+                    onChange={(e) => handleChange('targetDate', e.target.value)}
+                  />
+                </div>
+                <div className="opp-form-dates-top-field">
+                  <span className="opp-form-dates-top-label">수주·판매일</span>
+                  <input
+                    type="date"
+                    className="opp-input opp-input--date"
+                    value={form.saleDate}
+                    onChange={(e) => handleChange('saleDate', e.target.value)}
+                    aria-label="수주·판매일"
+                  />
+                </div>
+              </div>
+              <div className="opp-label opp-label--expected-month">
+                <span>예상 월 (Forecast)</span>
+                <input
+                  type="month"
+                  className="opp-input opp-input--month"
+                  value={form.expectedCloseMonth}
+                  onChange={(e) => handleChange('expectedCloseMonth', e.target.value)}
+                  aria-label="예상 마감 월"
+                />
+              </div>
               {/* 고객사 / 담당자 2열 — 라벨·줄 높이 동일 */}
               <div className="opp-form-grid-2 opp-form-grid-2--company-contact">
                 <div className="opp-label">

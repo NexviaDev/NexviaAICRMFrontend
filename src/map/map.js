@@ -489,9 +489,8 @@ export default function Map({
     };
   }, [fetchCompanies, fetchFocusedCompanyOnly, focusedOnlyBoot, focusCompanyId]);
 
-  useEffect(() => {
-    initialViewAppliedRef.current = false;
-  }, [assigneeMeOnly]);
+  // assigneeMeOnly 전환 시 initialViewAppliedRef 를 리셋하지 않음 — 리셋하면 마커 effect 가
+  // fitBounds / setZoom(14) 를 다시 호출해 사용자가 확대해 둔 뷰가 풀림.
 
   // 지도 탭/창을 다시 열었을 때 최신 고객사 목록 반영
   useEffect(() => {

@@ -97,7 +97,7 @@ export const DEFAULT_COLUMNS = {
     { key: 'leadSource', label: '유입 경로' },
     { key: 'status', label: '상태', defaultVisible: false },
     { key: 'assigneeUserIds', label: '담당자' },
-    { key: 'lastSupportedAt', label: '최근 지원 일자' }
+    { key: 'lastSupportedAt', label: '최근 지원 일자', defaultVisible: false }
   ],
   [LIST_IDS.PRODUCT_LIST]: [
     { key: 'name', label: '제품명' },

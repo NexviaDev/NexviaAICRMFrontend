@@ -554,6 +554,39 @@
   color: var(--primary);
 }
 
+.contact-detail-panel .customer-company-detail-section-title-with-sales {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.contact-detail-panel .customer-company-detail-btn-sales-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0;
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text);
+  background: none;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.2s;
+}
+
+.contact-detail-panel .customer-company-detail-btn-sales-add:hover {
+  color: var(--primary);
+}
+
+.contact-detail-panel .customer-company-detail-btn-sales-add .material-symbols-outlined {
+  font-size: 1rem;
+}
+
 .contact-detail-panel .customer-company-detail-btn-all {
   display: inline-flex;
   align-items: center;

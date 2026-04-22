@@ -57,7 +57,15 @@
 
 .opp-modal-sale-date-label {
   display: inline-flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+}
+
+.opp-modal-sale-date-label-text {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--text-muted, #64748b);
 }
 
 .opp-modal-sale-date-input {
@@ -1399,6 +1407,102 @@
   }
 
   .opp-discount-purchase-split-inner {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 수주 성공 시 수주·판매일 안내 */
+.opp-won-sale-date-banner {
+  margin: 0 1.25rem 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid #bae6fd;
+  background: #f0f9ff;
+  color: #0c4a6e;
+}
+
+.opp-won-sale-date-banner-text {
+  margin: 0 0 0.5rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.opp-won-sale-date-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.opp-won-sale-date-banner-hint-inline {
+  font-size: 0.75rem;
+  color: #0c4a6e;
+  opacity: 0.9;
+}
+
+.opp-won-sale-date-btn {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 0.4rem;
+  border: 1px solid #bae6fd;
+  background: #fff;
+  color: #0369a1;
+  cursor: pointer;
+}
+
+.opp-won-sale-date-btn--primary {
+  background: #e0f2fe;
+  border-color: #7dd3fc;
+}
+
+.opp-won-sale-date-btn:hover {
+  border-color: #38bdf8;
+}
+
+.opp-won-sale-date-banner-warn {
+  margin: 0.5rem 0 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #b45309;
+}
+
+/* body 최상단: 시작·목표·완료일 */
+.opp-form-dates-top {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--card-border, #e2e8f0);
+}
+
+.opp-form-dates-top-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.opp-form-dates-top-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-muted, #64748b);
+}
+
+.opp-label--expected-month {
+  margin-bottom: 1rem;
+}
+
+.opp-input--date,
+.opp-input--month {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 640px) {
+  .opp-form-dates-top {
     grid-template-columns: 1fr;
   }
 }

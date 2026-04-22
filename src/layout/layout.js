@@ -10,11 +10,14 @@ import './layout.css';
 const NEXVIA_LOGO_CDN_URL =
   'https://res.cloudinary.com/djcsvvhly/image/upload/v1774253552/NexviaLogo_pid8kz.png';
 
-/** 예전 분할뷰 세션 키 제거 */
+/** 예전 앱 내 분할(iframe)·세션 키 정리 — 브라우저 새 탭·분할 사용으로 전환됨 */
 function clearLegacySplitSession() {
   try {
     sessionStorage.removeItem('nexvia_inapp_split_mode');
     sessionStorage.removeItem('nexvia_inapp_split_path');
+    sessionStorage.removeItem('nexvia_layout_split_view');
+    sessionStorage.removeItem('nexvia_split_secondary_path');
+    sessionStorage.removeItem('nexvia_split_secondary_width_px');
   } catch {
     /* noop */
   }
@@ -118,10 +121,7 @@ export default function Layout() {
   }, []);
 
   const needsFullHeightMain = isSalesPipeline || isMessenger || isProjectGantt;
-  const mainContentClassName = [
-    'app-main-content',
-    needsFullHeightMain ? 'app-main-content--fullheight' : ''
-  ]
+  const mainContentClassName = ['app-main-content', needsFullHeightMain ? 'app-main-content--fullheight' : '']
     .filter(Boolean)
     .join(' ');
 
@@ -168,7 +168,9 @@ export default function Layout() {
           </button>
         </header>
         <div className={mainContentClassName}>
-          <Outlet />
+          <div className="app-main-outlet">
+            <Outlet />
+          </div>
         </div>
       </main>
     </div>

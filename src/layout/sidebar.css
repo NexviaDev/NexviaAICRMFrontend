@@ -320,6 +320,15 @@
   color: #fff;
 }
 
+.sidebar-link.sidebar-link-external {
+  width: 100%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
 .sidebar-link-locked {
   opacity: 0.62;
 }

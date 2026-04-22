@@ -875,11 +875,13 @@ export default function CustomerCompanyEmployees() {
           </div>
           <span className="cce-mobile-card-chevron material-symbols-outlined" aria-hidden>chevron_right</span>
         </div>
-        <div className="cce-mobile-card-details">
-          <p className="cce-mobile-card-meta">
-            최근 지원: {row.lastSupportedAt ? formatDate(row.lastSupportedAt) : '—'}
-          </p>
-        </div>
+        {template.visible?.lastSupportedAt ? (
+          <div className="cce-mobile-card-details">
+            <p className="cce-mobile-card-meta">
+              최근 지원: {row.lastSupportedAt ? formatDate(row.lastSupportedAt) : '—'}
+            </p>
+          </div>
+        ) : null}
       </div>
     );
   };

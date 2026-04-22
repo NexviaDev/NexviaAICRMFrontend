@@ -678,6 +678,37 @@
   color: var(--primary, #1d283a);
 }
 
+/* 순마진 + Forecast — 한 줄에 라벨·값 나란히 */
+.sp-card-metrics-inline {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  width: 100%;
+  margin-top: 0.15rem;
+}
+
+.sp-card-metric-inline {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+}
+
+.sp-card-metric-inline .sp-card-net-margin-label {
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+.sp-card-metric-inline--forecast .sp-card-net-margin-label {
+  color: #1e3a5f;
+}
+
+.sp-card-metric-inline--forecast .sp-card-net-margin-value {
+  color: #1d4ed8;
+}
+
 /* opportunity-modal .opp-summary-net-margin 과 동일 톤 — 다크 레드 */
 .sp-card-net-margin {
   display: flex;
@@ -878,7 +909,8 @@
   min-width: 0;
 }
 
-.sp-card--lucid .sp-card-net-margin {
+.sp-card--lucid .sp-card-net-margin,
+.sp-card--lucid .sp-card-metrics-inline {
   align-items: flex-start;
 }
 

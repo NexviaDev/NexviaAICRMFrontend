@@ -1123,10 +1123,19 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                 {/* 제품 판매 현황 - customer-company-detail-modal (368-403)과 동일 구조·디자인·로직 */}
                 <section className="customer-company-detail-section">
                   <div className="customer-company-detail-section-head">
-                    <h3 className="customer-company-detail-section-title">
-                      <span className="material-symbols-outlined">inventory_2</span>
-                      제품 판매 현황
-                    </h3>
+                    <div className="customer-company-detail-section-title-with-sales">
+                      <h3 className="customer-company-detail-section-title">
+                        <span className="material-symbols-outlined">inventory_2</span>
+                        제품 판매 현황
+                      </h3>
+                      <button
+                        type="button"
+                        className="customer-company-detail-btn-sales-add"
+                        onClick={() => setShowRegisterSaleModal(true)}
+                      >
+                        <span className="material-symbols-outlined">add</span>세일즈 추가
+                      </button>
+                    </div>
                     {!loadingProductSales && (
                       <button
                         type="button"
@@ -1520,6 +1529,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
         <OpportunityModal
           mode="create"
           defaultStage="Won"
+          initialPersonalPurchase
           initialContact={{
             _id: contactId,
             name: contactToShow?.name,

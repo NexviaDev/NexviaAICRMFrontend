@@ -826,10 +826,6 @@
   max-width: 42rem;
 }
 
-.home-leader-breakdown-toggle.home-insight-mode-switch {
-  flex-shrink: 0;
-}
-
 .home-leader-breakdown-table-wrap {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -863,6 +859,44 @@
   padding: 0.75rem 0;
   font-size: 0.8125rem;
   color: var(--text-muted);
+}
+
+.home-insights-top .home-forecast-panel {
+  grid-column: 1 / -1;
+}
+
+.home-forecast-panel {
+  padding: 1rem 1.25rem 1.25rem;
+  margin-bottom: 0.35rem;
+}
+
+.home-forecast-head {
+  margin-bottom: 0.75rem;
+}
+
+.home-forecast-title {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-main, #1a2b3c);
+}
+
+.home-forecast-sub {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+  max-width: 48rem;
+}
+
+.home-forecast-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.home-forecast-table th:nth-child(n + 3),
+.home-forecast-table td:nth-child(n + 3) {
+  white-space: nowrap;
 }
 
 /* Senior 미만: 인사이트 그래프 대체 안내 (한 줄 전체 폭) */

@@ -72,6 +72,27 @@
   min-height: 0;
 }
 
+/* 메인 라우트 영역 (전체 높이 페이지에서 자식 flex 채움) */
+.app-main-outlet {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-main-content--fullheight .app-main-outlet {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-main-content--fullheight .app-main-outlet > * {
+  flex: 1;
+  min-height: 0;
+}
+
 /* 우측 상단 햄버거: 작은 화면에서만 표시 */
 .app-main-header {
   display: none;

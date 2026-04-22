@@ -116,6 +116,14 @@ function formatCurrency(value, currency) {
   return prefix + Number(value).toLocaleString();
 }
 
+/** Forecast 표 — 예상 월(YYYY-MM) 표기 */
+function formatForecastExpectedMonthCell(ym) {
+  const s = String(ym || '').trim();
+  if (!/^\d{4}-\d{2}$/.test(s)) return '—';
+  const [y, m] = s.split('-');
+  return `${y}년 ${Number(m)}월`;
+}
+
 /** 대시보드 매출 객체 → 표시 문자열 (통화 혼합 시 · 구분) */
 function formatLeadReceivedAt(iso) {
   if (!iso) return '—';
@@ -714,24 +722,17 @@ const HOME_INSIGHT_PARAM = 'homeInsight';
 /** 팀장·관리자 «팀별 / 개인 보기» — 백엔드는 insightDept(팀) 또는 insightUser(개인)로 반영 */
 const HOME_INSIGHT_VIEW_PARAM = 'homeInsightView';
 
-/** 팀장 대시보드: 직원별 / 부서별 실적 표 — 조직도 트리 노드 id 기준 부서 집계 */
-const HOME_LEADER_BREAKDOWN_PARAM = 'homeLeaderBreakdown';
-function leaderBreakdownModeFromSearchParams(sp) {
-  const v = String(sp.get(HOME_LEADER_BREAKDOWN_PARAM) || '').toLowerCase();
-  return v === 'department' ? 'department' : 'employee';
-}
-
 /** 팀장 전용: 하위 부서·직원으로 인사이트 범위 좁히기 (백엔드 insightDept / insightUser) */
 const HOME_INSIGHT_DEPT_PARAM = 'homeInsightDept';
 const HOME_INSIGHT_USER_PARAM = 'homeInsightUser';
 
-/** 홈 KPI 카드 집계 기간 — 백엔드 kpiPeriod (week|month|quarter|half|year) */
+/** 홈 KPI 카드 집계 기간 — 백엔드 kpiPeriod (week|month|quarter|half|year). URL 없음 = 월간 */
 const HOME_KPI_PERIOD_PARAM = 'kpiPeriod';
 
 function normalizeHomeKpiPeriod(raw) {
   const s = String(raw || '').trim().toLowerCase();
   if (['week', 'month', 'quarter', 'half', 'year'].includes(s)) return s;
-  return 'half';
+  return 'month';
 }
 
 function formatLeaderEmployeeOptionLabel(u, departments) {
@@ -766,9 +767,6 @@ export default function Home() {
   const pipelineMounted = useRef(true);
   /** 인사이트 그래프: 서버 /auth/me 기준 (localStorage만 쓰면 DB 역할 변경·오래된 캐시와 어긋날 수 있음) */
   const [insightAccess, setInsightAccess] = useState({ checked: false, seniorPlus: false });
-  const [leaderBreakdownView, setLeaderBreakdownView] = useState(() =>
-    leaderBreakdownModeFromSearchParams(searchParams)
-  );
   const insightDeptQ = String(searchParams.get(HOME_INSIGHT_DEPT_PARAM) || '').trim();
   const insightUserQ = String(searchParams.get(HOME_INSIGHT_USER_PARAM) || '').trim();
   const kpiPeriod = normalizeHomeKpiPeriod(searchParams.get(HOME_KPI_PERIOD_PARAM));
@@ -821,10 +819,6 @@ export default function Home() {
       cancelled = true;
     };
   }, []);
-
-  useEffect(() => {
-    setLeaderBreakdownView(leaderBreakdownModeFromSearchParams(searchParams));
-  }, [searchParams]);
 
   const setCompanyWideInsight = useCallback(
     (enable) => {
@@ -916,25 +910,8 @@ export default function Home() {
       setSearchParams(
         (prev) => {
           const p = new URLSearchParams(prev);
-          if (next === 'half') p.delete(HOME_KPI_PERIOD_PARAM);
+          if (next === 'month') p.delete(HOME_KPI_PERIOD_PARAM);
           else p.set(HOME_KPI_PERIOD_PARAM, next);
-          return p;
-        },
-        { replace: true }
-      );
-    },
-    [setSearchParams]
-  );
-
-  const setHomeLeaderBreakdownMode = useCallback(
-    (mode) => {
-      const next = mode === 'department' ? 'department' : 'employee';
-      setLeaderBreakdownView(next);
-      setSearchParams(
-        (prev) => {
-          const p = new URLSearchParams(prev);
-          if (next === 'employee') p.delete(HOME_LEADER_BREAKDOWN_PARAM);
-          else p.set(HOME_LEADER_BREAKDOWN_PARAM, 'department');
           return p;
         },
         { replace: true }
@@ -989,7 +966,8 @@ export default function Home() {
             q.set('insightDept', insightDeptQ);
           }
         }
-        q.set('leaderBreakdown', leaderBreakdownView);
+        /* 팀 실적 요약: 직원별 집계만 (상단 insight 필터로 범위는 이미 좁혀짐) */
+        q.set('leaderBreakdown', 'employee');
         q.set('kpiPeriod', kpiPeriod);
         const res = await fetch(`${API_BASE}/reports/dashboard?${q.toString()}`, { headers: getAuthHeader() });
         if (!cancelled && res.ok) {
@@ -1020,7 +998,9 @@ export default function Home() {
           taskCompletion: 0,
           taskCompletionMeta: { totalOpportunities: 0, wonCount: 0 },
           kpiSummary: null,
-          pipelineKpi: null
+          pipelineKpi: null,
+          forecastPipelineRows: [],
+          forecastPipelineMeta: { maxRows: 0, returnedRows: 0, capped: false }
         });
       } finally {
         if (!cancelled) setLoading(false);
@@ -1031,7 +1011,6 @@ export default function Home() {
   }, [
     isCompanyWideInsight,
     leaderInsightViewKind,
-    leaderBreakdownView,
     insightDeptQ,
     insightUserQ,
     myCrmUserId,
@@ -2140,34 +2119,59 @@ export default function Home() {
                   marginLinePrev: netPrevTween
                 }
               )}
+              {!loading && Array.isArray(data?.forecastPipelineRows) ? (
+                <div className="panel home-forecast-panel" aria-label="Forecast 파이프라인">
+                  <div className="home-forecast-head">
+                    <h3 className="home-forecast-title">Forecast</h3>
+                    <p className="home-forecast-sub">
+                      진행 중 기회(수주 성공·상실·보류 제외)입니다. 위 조회 범위(회사 전체·팀·개인) 및 부서·직원 필터와 동일하게 반영됩니다.
+                      {data.forecastPipelineMeta?.capped ? ' 일부만 표시됩니다.' : ''}
+                    </p>
+                  </div>
+                  <div className="home-forecast-table-wrap">
+                    {data.forecastPipelineRows.length === 0 ? (
+                      <p className="home-leader-breakdown-empty">표시할 진행 중 기회가 없습니다.</p>
+                    ) : (
+                      <table className="home-leader-breakdown-table home-forecast-table">
+                        <thead>
+                          <tr>
+                            <th scope="col">업체명</th>
+                            <th scope="col">제안 소프트웨어</th>
+                            <th scope="col">금액</th>
+                            <th scope="col">수량</th>
+                            <th scope="col">최종 가격</th>
+                            <th scope="col">확률</th>
+                            <th scope="col">Forcast</th>
+                            <th scope="col">예상 월</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {data.forecastPipelineRows.map((row) => (
+                            <tr key={row.id}>
+                              <td>{row.companyLabel}</td>
+                              <td>{row.softwareLabel}</td>
+                              <td>{formatCurrency(row.unitPrice, row.currency)}</td>
+                              <td>{row.quantity}</td>
+                              <td>{formatCurrency(row.finalPrice, row.currency)}</td>
+                              <td>{Number.isFinite(row.probabilityPct) ? `${row.probabilityPct}%` : '—'}</td>
+                              <td>{formatCurrency(row.forecastAmount, row.currency)}</td>
+                              <td>{formatForecastExpectedMonthCell(row.expectedCloseMonth)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
+              ) : null}
               {data?.insightScope?.leaderSubtree && data?.leaderScopeBreakdown ? (
                 <div className="panel home-leader-breakdown-panel" aria-label="팀 실적 요약">
                   <div className="home-leader-breakdown-head">
                     <div>
                       <h3 className="home-leader-breakdown-title">팀 실적 요약</h3>
                       <p className="home-leader-breakdown-sub">
-                        위 그래프와 동일한 기간·필터(수주 성공·담당 기준)입니다. 부서는 회사 조직도에 등록된 노드만 집계합니다.
+                        위 그래프와 동일한 기간·필터(수주 성공·담당 기준)입니다. 범위는 상단 조회 설정을 따르며, 표는 직원별로 집계합니다. 부서는 회사 조직도에 등록된 노드만 반영됩니다.
                       </p>
-                    </div>
-                    <div
-                      className="home-insight-mode-switch home-leader-breakdown-toggle"
-                      role="tablist"
-                      aria-label="팀 실적 보기 방식"
-                    >
-                      <button
-                        type="button"
-                        className={leaderBreakdownView === 'employee' ? 'is-active' : ''}
-                        onClick={() => setHomeLeaderBreakdownMode('employee')}
-                      >
-                        직원별
-                      </button>
-                      <button
-                        type="button"
-                        className={leaderBreakdownView === 'department' ? 'is-active' : ''}
-                        onClick={() => setHomeLeaderBreakdownMode('department')}
-                      >
-                        부서별
-                      </button>
                     </div>
                   </div>
                   <div className="home-leader-breakdown-table-wrap">
@@ -2179,7 +2183,9 @@ export default function Home() {
                       <table className="home-leader-breakdown-table">
                         <thead>
                           <tr>
-                            <th scope="col">{leaderBreakdownView === 'department' ? '부서' : '직원'}</th>
+                            <th scope="col">
+                              {data.leaderScopeBreakdown.mode === 'department' ? '부서' : '직원'}
+                            </th>
                             <th scope="col">건수</th>
                             <th scope="col">수주액</th>
                             <th scope="col">순마진</th>
