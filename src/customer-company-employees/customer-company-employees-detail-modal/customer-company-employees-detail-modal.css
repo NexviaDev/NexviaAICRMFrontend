@@ -1,9 +1,32 @@
+.contact-detail-root {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  pointer-events: none;
+}
+
+.contact-detail-root > .contact-detail-overlay,
+.contact-detail-root > .contact-detail-panel {
+  pointer-events: auto;
+}
+
+.contact-detail-root--center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: max(0.2rem, env(safe-area-inset-top, 0px));
+  padding-right: max(0.2rem, env(safe-area-inset-right, 0px));
+  padding-bottom: max(0.2rem, env(safe-area-inset-bottom, 0px));
+  padding-left: max(0.2rem, env(safe-area-inset-left, 0px));
+  box-sizing: border-box;
+}
+
 .contact-detail-overlay {
   position: fixed;
   inset: 0;
   background: rgba(15, 23, 42, 0.4);
   backdrop-filter: blur(4px);
-  z-index: 50;
+  z-index: 1100;
   animation: contactDetailOverlayIn 0.2s ease-out;
 }
 
@@ -27,9 +50,29 @@
   background: var(--card);
   box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
   border-left: 1px solid var(--card-border);
-  z-index: 51;
+  z-index: 1101;
   overflow: hidden;
   animation: contactDetailPanelIn 0.25s ease-out;
+}
+
+.contact-detail-root--center .contact-detail-overlay {
+  position: absolute;
+  inset: 0;
+}
+
+.contact-detail-root--center .contact-detail-panel {
+  position: relative;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  width: min(calc(100vw - 0.2rem), 118rem);
+  max-width: none;
+  height: min(97dvh, 76rem);
+  max-height: min(97dvh, 76rem);
+  border-left: none;
+  border-radius: 0.85rem;
+  box-shadow: 0 18px 48px rgba(29, 40, 58, 0.14);
 }
 
 @keyframes contactDetailPanelIn {
@@ -47,6 +90,10 @@
   flex-direction: column;
   height: 100%;
   overflow-y: auto;
+}
+
+.contact-detail-inner--center {
+  overflow: hidden;
 }
 
 .contact-detail-header {
@@ -173,12 +220,55 @@
   opacity: 1;
 }
 
+.contact-detail-google-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.85rem 1.25rem;
+  margin: 0 1.5rem;
+  background: rgba(59, 130, 246, 0.07);
+  border: 1px solid rgba(59, 130, 246, 0.14);
+  border-radius: 0.75rem;
+}
+
+.contact-detail-google-confirm > .material-symbols-outlined {
+  font-size: 1.25rem;
+  color: #2563eb;
+}
+
+.contact-detail-google-confirm p {
+  flex: 1;
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--text);
+}
+
+.contact-detail-google-confirm-btns {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .contact-detail-body {
   flex: 1;
   padding: 1.5rem;
   padding-bottom: 4rem;
   margin-bottom: 1.5rem;
   min-height: 0;
+}
+
+.contact-detail-body--center {
+  display: grid;
+  grid-template-columns: minmax(0, 1.18fr) minmax(24rem, 0.9fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  column-gap: 1.25rem;
+  row-gap: 1.25rem;
+  align-items: start;
+  margin-bottom: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .contact-detail-profile {
@@ -341,6 +431,12 @@
   gap: 1.25rem;
   padding: 1.5rem;
   margin-bottom: 2rem;
+}
+
+.contact-detail-body--center .contact-detail-main-card.customer-company-detail-card {
+  margin-bottom: 0;
+  grid-column: 1;
+  grid-row: 1;
 }
 
 @media (min-width: 640px) {
@@ -1209,16 +1305,79 @@
 }
 
 .contact-detail-summary-head {
+  margin-bottom: 0.5rem;
+}
+
+.contact-detail-summary-title-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.contact-detail-summary-title-with-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  min-width: 0;
+  flex: 0 1 auto;
 }
 
 .contact-detail-summary-head strong {
   font-size: 0.9375rem;
   color: var(--text);
+}
+
+.contact-detail-summary-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: #5a6d8a;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.contact-detail-summary-refresh-btn:focus-visible {
+  outline: 2px solid rgba(100, 116, 139, 0.45);
+  outline-offset: 1px;
+}
+
+.contact-detail-summary-refresh-btn-icon {
+  font-size: 1.35rem;
+  line-height: 1;
+  font-variation-settings: 'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+}
+
+.contact-detail-summary-refresh-btn-icon--spin {
+  animation: contact-detail-summary-refresh-spin 0.8s linear infinite;
+}
+
+@keyframes contact-detail-summary-refresh-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.contact-detail-summary-refresh-btn:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.14);
+  color: #3d4f6f;
+}
+
+.contact-detail-summary-refresh-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .contact-detail-summary-status {
@@ -1250,9 +1409,9 @@
 
 .contact-detail-summary-text {
   margin: 0;
-  font-size: 0.875rem;
+  font-size: 0.98rem;
   color: var(--text);
-  line-height: 1.6;
+  line-height: 1.72;
   white-space: pre-wrap;
 }
 
@@ -1456,7 +1615,7 @@
 .contact-detail-timeline-empty {
   margin: 0;
   padding: 1.5rem 0;
-  font-size: 0.875rem;
+  font-size: 0.98rem;
   color: var(--text-muted);
 }
 
@@ -1512,7 +1671,7 @@
 }
 
 .contact-detail-timeline-user {
-  font-size: 0.8125rem;
+  font-size: 0.95rem;
   font-weight: 700;
   color: var(--text);
 }
@@ -1539,15 +1698,80 @@
   background: var(--pastel-peach);
 }
 
+/* 상세 모달 2열 레이아웃: 좌측 정보/세일즈/자료, 우측 업무 기록 */
+.contact-detail-body--center .contact-detail-custom-fields {
+  grid-column: 1;
+  grid-row: 2;
+  min-height: 0;
+  max-height: min(24dvh, 14rem);
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.contact-detail-body--center .contact-detail-sales-section {
+  grid-column: 1;
+  grid-row: 3;
+}
+
+.contact-detail-body--center .contact-detail-drive-section {
+  grid-column: 1;
+  grid-row: 4;
+}
+
+.contact-detail-body--center .contact-detail-section--journal-column {
+  grid-column: 2;
+  grid-row: 1 / span 4;
+  align-self: stretch;
+  min-height: 100%;
+  margin-bottom: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.contact-detail-body--center .contact-detail-section--journal-column .contact-detail-summary-card,
+.contact-detail-body--center .contact-detail-section--journal-column .contact-detail-journal-input-wrap {
+  flex-shrink: 0;
+}
+
+.contact-detail-body--center .contact-detail-section--journal-column .contact-detail-timeline {
+  flex: 0 0 auto;
+  min-height: auto;
+  overflow: visible;
+}
+
+.contact-detail-body--center .customer-company-detail-section.contact-detail-sales-section,
+.contact-detail-body--center .customer-company-detail-section.contact-detail-drive-section,
+.contact-detail-body--center .contact-detail-section.contact-detail-section--journal-column {
+  margin-bottom: 0;
+}
+
+@media (max-width: 1180px) {
+  .contact-detail-body--center {
+    display: flex;
+    flex-direction: column;
+    row-gap: 0;
+    column-gap: 0;
+  }
+
+  .contact-detail-body--center .contact-detail-custom-fields {
+    max-height: none;
+  }
+
+  .contact-detail-body--center .contact-detail-section--journal-column .contact-detail-timeline {
+    overflow: visible;
+  }
+}
+
 .contact-detail-timeline-delete .material-symbols-outlined {
   font-size: 1.125rem;
 }
 
 .contact-detail-timeline-text {
   margin: 0;
-  font-size: 0.875rem;
+  font-size: 1rem;
   color: var(--text);
-  line-height: 1.5;
+  line-height: 1.72;
 }
 
 .contact-detail-timeline-text-wrap {
@@ -1556,9 +1780,9 @@
 
 .contact-detail-timeline-paragraph {
   margin: 0 0 0.5rem;
-  font-size: 0.875rem;
+  font-size: 1rem;
   color: var(--text);
-  line-height: 1.6;
+  line-height: 1.76;
 }
 
 .contact-detail-timeline-paragraph:last-child {
@@ -1631,8 +1855,25 @@
   opacity: 0.9;
 }
 
+.contact-detail-confirm-submit {
+  padding: 0.45rem 0.9rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--primary, #2563eb);
+  border: none;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.contact-detail-confirm-submit:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
 .contact-detail-confirm-cancel:disabled,
-.contact-detail-confirm-delete:disabled {
+.contact-detail-confirm-delete:disabled,
+.contact-detail-confirm-submit:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

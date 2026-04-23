@@ -1745,18 +1745,6 @@ export default function OpportunityModal({
         });
         const dataEmp = await resEmp.json().catch(() => ({}));
         if (!resEmp.ok) throw new Error(dataEmp.error || '연락처 업무 기록 저장에 실패했습니다.');
-        if (dataEmp.summaryQueued) {
-          journalSummaryNotice = {
-            type: 'info',
-            text:
-              '연락처 업무 기록이 저장되었습니다. 최신 기록 기준으로 Gemini 요약을 요청했으면 연락처 상세에서 확인할 수 있습니다.'
-          };
-        } else if (dataEmp.summarySkippedReason === 'older_than_latest_history') {
-          journalSummaryNotice = {
-            type: 'muted',
-            text: '등록한 업무 기록 일시가 기존 최신 기록보다 과거라서, 이번 기록은 요약 갱신 대상에서 제외되었습니다.'
-          };
-        }
       } else if (contactEmpId && !empRecord) {
         throw new Error('담당자(연락처) 정보를 불러올 수 없습니다.');
       }
@@ -1770,18 +1758,6 @@ export default function OpportunityModal({
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || '고객사 업무 기록 저장에 실패했습니다.');
-        if (data.summaryQueued) {
-          journalSummaryNotice = {
-            type: 'info',
-            text:
-              '최신 고객사 업무 기록을 기준으로 Gemini 요약을 요청했습니다. 고객사 상세에서 확인할 수 있습니다.'
-          };
-        } else if (data.summarySkippedReason === 'older_than_latest_history') {
-          journalSummaryNotice = {
-            type: 'muted',
-            text: '등록한 업무 기록 일시가 기존 최신 기록보다 과거라서, 이번 기록은 요약 갱신 대상에서 제외되었습니다.'
-          };
-        }
       }
 
       return { journalSummaryNotice };

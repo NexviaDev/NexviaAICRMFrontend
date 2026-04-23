@@ -17,8 +17,80 @@ export const LIST_IDS = {
   /** 제품 검색 모달 선택 빈도 — listTemplates.productSearchModal { usage, order } */
   PRODUCT_SEARCH_MODAL: 'productSearchModal',
   /** 신규 제품 등록 모달 기본값 — listTemplates.addProductModal { categoryKey, categoryOther, billingType } */
-  ADD_PRODUCT_MODAL: 'addProductModal'
+  ADD_PRODUCT_MODAL: 'addProductModal',
+  /** 고객사 상세 모달 표시 — listTemplates.customerCompanyDetailModal { presentation: 'side' | 'center' } */
+  CUSTOMER_COMPANY_DETAIL_MODAL: 'customerCompanyDetailModal',
+  /** 연락처 상세 모달 표시 — listTemplates.customerCompanyEmployeesDetailModal { presentation: 'side' | 'center' } */
+  CUSTOMER_COMPANY_EMPLOYEES_DETAIL_MODAL: 'customerCompanyEmployeesDetailModal'
 };
+
+const CUSTOMER_COMPANY_DETAIL_MODAL_PRESENTATIONS = new Set(['side', 'center']);
+
+/** 고객사 상세: 우측 슬라이드(side) · 화면 중앙(center). 기본 side */
+export function getSavedCustomerCompanyDetailModalPresentation() {
+  try {
+    const raw = localStorage.getItem('crm_user');
+    const user = raw ? JSON.parse(raw) : null;
+    const p = user?.listTemplates?.customerCompanyDetailModal?.presentation;
+    if (CUSTOMER_COMPANY_DETAIL_MODAL_PRESENTATIONS.has(p)) return p;
+  } catch (_) {}
+  return 'side';
+}
+
+/**
+ * PATCH /api/auth/list-templates — listId: customerCompanyDetailModal, presentation: side | center
+ */
+export async function patchCustomerCompanyDetailModalTemplate({ presentation }) {
+  if (!CUSTOMER_COMPANY_DETAIL_MODAL_PRESENTATIONS.has(presentation)) {
+    throw new Error('presentation은 side 또는 center여야 합니다.');
+  }
+  const res = await fetch(`${API_BASE}/auth/list-templates`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    credentials: 'include',
+    body: JSON.stringify({ listId: LIST_IDS.CUSTOMER_COMPANY_DETAIL_MODAL, presentation })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || '저장에 실패했습니다.');
+  const userRaw = localStorage.getItem('crm_user');
+  const user = userRaw ? JSON.parse(userRaw) : {};
+  user.listTemplates = data.listTemplates || user.listTemplates || {};
+  localStorage.setItem('crm_user', JSON.stringify(user));
+  return data;
+}
+
+/** 연락처 상세: 우측 슬라이드(side) · 화면 중앙(center). 기본 side */
+export function getSavedCustomerCompanyEmployeesDetailModalPresentation() {
+  try {
+    const raw = localStorage.getItem('crm_user');
+    const user = raw ? JSON.parse(raw) : null;
+    const p = user?.listTemplates?.customerCompanyEmployeesDetailModal?.presentation;
+    if (CUSTOMER_COMPANY_DETAIL_MODAL_PRESENTATIONS.has(p)) return p;
+  } catch (_) {}
+  return 'side';
+}
+
+/**
+ * PATCH /api/auth/list-templates — listId: customerCompanyEmployeesDetailModal, presentation: side | center
+ */
+export async function patchCustomerCompanyEmployeesDetailModalTemplate({ presentation }) {
+  if (!CUSTOMER_COMPANY_DETAIL_MODAL_PRESENTATIONS.has(presentation)) {
+    throw new Error('presentation은 side 또는 center여야 합니다.');
+  }
+  const res = await fetch(`${API_BASE}/auth/list-templates`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    credentials: 'include',
+    body: JSON.stringify({ listId: LIST_IDS.CUSTOMER_COMPANY_EMPLOYEES_DETAIL_MODAL, presentation })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || '저장에 실패했습니다.');
+  const userRaw = localStorage.getItem('crm_user');
+  const user = userRaw ? JSON.parse(userRaw) : {};
+  user.listTemplates = data.listTemplates || user.listTemplates || {};
+  localStorage.setItem('crm_user', JSON.stringify(user));
+  return data;
+}
 
 const ADD_PRODUCT_BILLING = new Set(['Monthly', 'Annual', 'Perpetual']);
 
@@ -305,7 +377,8 @@ export async function patchListTemplate(listId, { columnOrder, visible, assignee
  * 사이드바 라우트 목록이 바뀔 때마다 1씩 올리면, Sidebar가 저장값을 다시 병합합니다.
  * (신규 메뉴 누락·PWA 구버전 번들 이슈 완화)
  */
-export const SIDEBAR_MENU_EPOCH = 4;
+/** 사이드바 기본 순서·구조를 다시 적용할 때마다 1 올림(저장된 순서 무시 = 초기화) */
+export const SIDEBAR_MENU_EPOCH = 5;
 
 function dedupeRoutesPreserveOrder(paths) {
   const seen = new Set();
@@ -336,28 +409,31 @@ function normalizeByDefaults(defaultOrder, savedOrder) {
  * @param {object | null} saved
  */
 export function normalizeSidebar2LevelConfig(categories, itemsByCategory, saved) {
+  const savedEpoch = saved && typeof saved.menuEpoch === 'number' ? saved.menuEpoch : null;
+  const s = savedEpoch === SIDEBAR_MENU_EPOCH ? saved : null;
+
   const categoryKeys = categories.map((c) => c.key);
   const defaultCategoryOrder = categoryKeys.slice();
   const savedCategoryOrder =
-    Array.isArray(saved?.categoryOrder) ? saved.categoryOrder : null;
+    Array.isArray(s?.categoryOrder) ? s.categoryOrder : null;
   const categoryOrder = normalizeByDefaults(defaultCategoryOrder, savedCategoryOrder);
   const legacyRouteOrder = dedupeRoutesPreserveOrder([
-    ...(Array.isArray(saved?.order) ? saved.order : []),
-    ...(Array.isArray(saved?.overflow) ? saved.overflow : [])
+    ...(Array.isArray(s?.order) ? s.order : []),
+    ...(Array.isArray(s?.overflow) ? s.overflow : [])
   ]);
 
   const itemOrdersByCategory = {};
   for (const categoryKey of categoryKeys) {
     const defaultItemOrder = (itemsByCategory?.[categoryKey] || []).map((item) => item.to);
-    const savedOrder = saved?.itemOrdersByCategory?.[categoryKey]
+    const savedOrder = s?.itemOrdersByCategory?.[categoryKey]
       || (legacyRouteOrder.length > 0
         ? legacyRouteOrder.filter((to) => defaultItemOrder.includes(to))
         : null);
     itemOrdersByCategory[categoryKey] = normalizeByDefaults(defaultItemOrder, savedOrder);
   }
 
-  const activeCategory = categoryOrder.includes(saved?.activeCategory)
-    ? saved.activeCategory
+  const activeCategory = categoryOrder.includes(s?.activeCategory)
+    ? s.activeCategory
     : categoryOrder[0] || null;
 
   return { categoryOrder, itemOrdersByCategory, activeCategory };
@@ -444,7 +520,8 @@ export function setSavedSidebar2LevelConfigLocally({ categoryOrder, itemOrdersBy
       ...(itemOrdersByCategory && typeof itemOrdersByCategory === 'object'
         ? { itemOrdersByCategory }
         : {}),
-      ...(typeof activeCategory === 'string' || activeCategory == null ? { activeCategory } : {})
+      ...(typeof activeCategory === 'string' || activeCategory == null ? { activeCategory } : {}),
+      menuEpoch: SIDEBAR_MENU_EPOCH
     };
     user.listTemplates = templates;
     localStorage.setItem('crm_user', JSON.stringify(user));

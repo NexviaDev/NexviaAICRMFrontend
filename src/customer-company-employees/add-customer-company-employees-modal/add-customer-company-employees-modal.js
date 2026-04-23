@@ -1484,59 +1484,6 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
                   </button>
                 </div>
               </div>
-              <div className="register-sale-docs-drive-meta" aria-live="polite">
-                <div className="register-sale-docs-drive-meta-row">
-                  <span className="register-sale-docs-drive-meta-label">개인 폴더명</span>
-                  <code
-                    className="register-sale-docs-drive-meta-code"
-                    title={hasConfirmedCompany ? `고객사 폴더(${companyDriveFolderName}) 아래에 이 이름으로 준비됩니다` : '공유 드라이브 루트 아래 이 이름으로 준비됩니다'}
-                  >
-                    {driveFolderName}
-                  </code>
-                </div>
-                {hasConfirmedCompany && companyDriveFolderName ? (
-                  <div className="register-sale-docs-drive-meta-row">
-                    <span className="register-sale-docs-drive-meta-label">고객사 폴더명</span>
-                    <code className="register-sale-docs-drive-meta-code" title="등록 드라이브 루트 아래 고객사 루트">
-                      {companyDriveFolderName}
-                    </code>
-                  </div>
-                ) : null}
-                {driveMongoRegisteredUrl ? (
-                  <div className="register-sale-docs-drive-meta-row register-sale-docs-drive-meta-row--link">
-                    <span className="register-sale-docs-drive-meta-label">개인 폴더 CRM 주소</span>
-                    <a
-                      href={driveMongoRegisteredUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="register-sale-docs-drive-meta-link"
-                    >
-                      {driveMongoRegisteredUrl.length > 64
-                        ? `${driveMongoRegisteredUrl.slice(0, 48)}…`
-                        : driveMongoRegisteredUrl}
-                    </a>
-                  </div>
-                ) : (
-                  <p className="register-sale-docs-drive-meta-pending">
-                    폴더가 준비되면 위 폴더명으로 Drive 링크가 CRM에 저장되어 표시됩니다. 공유 드라이브 루트는 회사 개요의 「전체 공유 드라이브 주소」에서 설정합니다.
-                  </p>
-                )}
-                {hasConfirmedCompany && companyDriveRegisteredUrl ? (
-                  <div className="register-sale-docs-drive-meta-row register-sale-docs-drive-meta-row--link">
-                    <span className="register-sale-docs-drive-meta-label">고객사 루트 CRM 주소</span>
-                    <a
-                      href={companyDriveRegisteredUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="register-sale-docs-drive-meta-link"
-                    >
-                      {companyDriveRegisteredUrl.length > 64
-                        ? `${companyDriveRegisteredUrl.slice(0, 48)}…`
-                        : companyDriveRegisteredUrl}
-                    </a>
-                  </div>
-                ) : null}
-              </div>
               <div
                 className={`register-sale-docs-crm-uploads ${crmListDropActive ? 'register-sale-docs-crm-uploads--drop-active' : ''} ${driveUploading || saving || extractingBusinessCard || importPreviewLoading ? 'register-sale-docs-crm-uploads--disabled' : ''}`}
                 onDragEnter={(e) => {

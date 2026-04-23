@@ -3,7 +3,7 @@
   inset: 0;
   background: rgba(29, 40, 58, 0.4);
   backdrop-filter: blur(4px);
-  z-index: 52;
+  z-index: 1200;
   animation: productSalesOverlayIn 0.2s ease-out;
 }
 
@@ -23,7 +23,7 @@
   border-radius: 0.75rem;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
   border: 1px solid var(--card-border);
-  z-index: 53;
+  z-index: 1201;
   display: flex;
   flex-direction: column;
   animation: productSalesModalIn 0.2s ease-out;

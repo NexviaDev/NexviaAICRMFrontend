@@ -19,6 +19,7 @@ import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-head
 import ListPaginationButtons from '@/components/list-pagination-buttons/list-pagination-buttons';
 import CustomerCompanyEmployeesExcelImportModal from './customer-company-employees-excel-import-modal/customer-company-employees-excel-import-modal';
 import AssigneeHandoverModal from '@/company-overview/assignee-handover-modal/assignee-handover-modal';
+import GoogleContactsSaveResultModal from './google-contacts-save-result-modal/google-contacts-save-result-modal';
 import CustomFieldsManageModal from '@/shared/custom-fields-manage-modal/custom-fields-manage-modal';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 
@@ -1058,26 +1059,6 @@ export default function CustomerCompanyEmployees() {
           </div>
         )}
 
-        {/* Google 저장 결과 */}
-        {googleResult && (
-          <div className={`cce-google-result ${googleResult.error ? 'error' : googleResult.fail > 0 ? 'warn' : 'ok'}`}>
-            <span className="material-symbols-outlined">
-              {googleResult.error ? 'error' : googleResult.fail > 0 ? 'info' : 'check_circle'}
-            </span>
-            {googleResult.error
-              ? <>{googleResult.error}{googleResult.needsReauth && <> (Google 계정으로 재로그인 필요)</>}</>
-              : <>
-                  총 {googleResult.total}명 중 <strong>{googleResult.success}명</strong> 저장 완료
-                  {googleResult.fail > 0 && <>, {googleResult.fail}명 실패</>}
-                  {googleResult.errors?.length > 0 && (
-                    <span className="cce-google-result-detail"> — {googleResult.errors[0].detail?.slice(0, 80)}</span>
-                  )}
-                </>
-            }
-            <button type="button" className="cce-google-result-dismiss" onClick={() => setGoogleResult(null)}>×</button>
-          </div>
-        )}
-
         <div className="panel table-panel">
           {/* 모바일 전용 카드 목록 (customerForMobile.html 구조) */}
           <div className="cce-mobile-cards-wrap">
@@ -1554,6 +1535,9 @@ export default function CustomerCompanyEmployees() {
           companyEmployeesLoaded={companyEmployeesLoaded}
         />
       )}
+      {googleResult ? (
+        <GoogleContactsSaveResultModal result={googleResult} onClose={() => setGoogleResult(null)} />
+      ) : null}
     </div>
   );
 }

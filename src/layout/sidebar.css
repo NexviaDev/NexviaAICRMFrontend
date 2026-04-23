@@ -235,7 +235,8 @@
   align-items: stretch;
   border-radius: 0.5rem;
   transition: background 0.15s;
-  cursor: grab;
+  cursor: default;
+  min-width: 0;
 }
 
 .sidebar-nav-item-drag-over {
@@ -288,8 +289,13 @@
   color: rgba(255, 255, 255, 0.7);
 }
 
+.sidebar-drag-handle[draggable='false'] {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 .sidebar-drag-handle .material-symbols-outlined {
-  font-size: 1rem;
+  font-size: 1.15rem;
 }
 
 .sidebar-nav-item .sidebar-link {
@@ -310,6 +316,14 @@
   text-decoration: none;
 }
 
+/* 메뉴 글자 선택·드래그(새 탭에 URL 놓기 등) — 순서 변경은 왼쪽 핸들만 */
+.sidebar-link-label {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+  min-width: 0;
+}
+
 .sidebar-link:hover {
   background: rgba(255, 255, 255, 0.1);
   color: #fff;
@@ -320,12 +334,13 @@
   color: #fff;
 }
 
+/* 외부 링크(<a>)도 NavLink와 동일한 타이포 — `font: inherit`는 .sidebar-link의 크기·굵기를 지워 버림 */
 .sidebar-link.sidebar-link-external {
   width: 100%;
+  min-width: 0;
   border: none;
   background: transparent;
   cursor: pointer;
-  font: inherit;
   text-align: left;
 }
 

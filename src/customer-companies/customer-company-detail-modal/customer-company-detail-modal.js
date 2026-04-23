@@ -28,6 +28,10 @@ import {
   runDriveDirectFileUpload,
   sortDriveUploadedFiles
 } from '@/shared/register-sale-docs-drive';
+import {
+  getSavedCustomerCompanyDetailModalPresentation,
+  patchCustomerCompanyDetailModalTemplate
+} from '@/lib/list-templates';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -132,6 +136,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
   const [audioDropActive, setAudioDropActive] = useState(false);
   const [journalError, setJournalError] = useState('');
   const [summaryNotice, setSummaryNotice] = useState(null);
+  const [summaryRefreshLoading, setSummaryRefreshLoading] = useState(false);
   const [employees, setEmployees] = useState([]);
   const [loadingEmployees, setLoadingEmployees] = useState(true);
   const [showAllEmployeesModal, setShowAllEmployeesModal] = useState(false);
@@ -165,6 +170,13 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
   const companyNameButtonRef = useRef(null);
   const registeredNamePopoverRef = useRef(null);
   const [displayedCompany, setDisplayedCompany] = useState(company);
+  /** listTemplates.customerCompanyDetailModal.presentation — 우측 패널(side) · 중앙(center) */
+  const [detailPresentation, setDetailPresentation] = useState(() =>
+    getSavedCustomerCompanyDetailModalPresentation()
+  );
+  const [detailPresentationSaving, setDetailPresentationSaving] = useState(false);
+  /** 가운데 모달: 왼쪽 레일 탭 — 직원 / 제품판매 / Drive */
+  const [centerMainTab, setCenterMainTab] = useState('employees');
   const companyToShow = displayedCompany || company || {};
   const companyId = companyToShow?._id || company?._id;
   const hasMapCoords = Number.isFinite(Number(companyToShow?.latitude)) && Number.isFinite(Number(companyToShow?.longitude));
@@ -189,6 +201,27 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
     setStaticMapLoadFailed(false);
   }, [companyId, staticMapPreviewUrl]);
 
+  useEffect(() => {
+    setDetailPresentation(getSavedCustomerCompanyDetailModalPresentation());
+  }, [companyId]);
+
+  useEffect(() => {
+    setCenterMainTab('employees');
+  }, [companyId]);
+
+  const toggleDetailPresentation = useCallback(async () => {
+    const next = detailPresentation === 'center' ? 'side' : 'center';
+    setDetailPresentationSaving(true);
+    try {
+      await patchCustomerCompanyDetailModalTemplate({ presentation: next });
+      setDetailPresentation(next);
+    } catch (err) {
+      window.alert(err?.message || '표시 방식 저장에 실패했습니다.');
+    } finally {
+      setDetailPresentationSaving(false);
+    }
+  }, [detailPresentation]);
+
   const useStaticPreview = Boolean(staticMapPreviewUrl) && !staticMapLoadFailed;
 
   const [mapEmbedSrcDeferred, setMapEmbedSrcDeferred] = useState(null);
@@ -205,12 +238,19 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
     if (!companyId) return;
     const q = new URLSearchParams();
     q.set('focusCompanyId', String(companyId));
-    q.set('zoom', '16');
+    q.set('zoom', '18');
     const nm = (companyToShow?.name && String(companyToShow.name).trim()) || '';
     if (nm) q.set('focusName', nm);
-    /** 경로 이동만 수행 — onClose에서 setSearchParams만 호출하면 같은 틱에 navigate가 무시되어 /map으로 가지 못함 */
-    navigate(`/map?${q.toString()}`);
-  }, [companyId, companyToShow?.name, navigate]);
+    const path = `/map?${q.toString()}`;
+    /**
+     * 지도 페이지는 `openCompanyModal=1`이면 포커스 직후 상세 모달을 다시 띄움 — 이미 상세에서 온 경우 지도만 가리게 됨.
+     * 고객사 목록 URL 정리(onClose)와 navigate가 한 틱에서 겹치면 이동이 묻히는 경우가 있어 navigate는 microtask로 분리.
+     */
+    onClose?.();
+    queueMicrotask(() => {
+      navigate(path);
+    });
+  }, [companyId, companyToShow?.name, navigate, onClose]);
 
   /* 등록된 사업자 등록증 팝오버: 바깥 클릭 시 닫기 */
   useEffect(() => {
@@ -661,23 +701,6 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
       if (res.ok) {
         setJournalText('');
         setJournalDateTime(toDatetimeLocalValue(new Date()));
-        if (data.summaryQueued) {
-          setDisplayedCompany((prev) => ({
-            ...(prev || {}),
-            summaryStatus: 'queued',
-            summaryError: '',
-            summaryQueuedForHistoryAt: data.summaryQueuedForHistoryAt || createdAt || new Date().toISOString()
-          }));
-          setSummaryNotice({
-            type: 'info',
-            text: '최신 고객사 업무 기록을 기준으로 Gemini 요약을 요청했습니다. 모달을 닫아도 서버에서 계속 처리됩니다.'
-          });
-        } else if (data.summarySkippedReason === 'older_than_latest_history') {
-          setSummaryNotice({
-            type: 'muted',
-            text: '등록한 업무 기록 일시가 기존 최신 기록보다 과거라서, 이번 기록은 요약 갱신 대상에서 제외되었습니다.'
-          });
-        }
         fetchHistory();
         fetchCompanyDetail();
       } else {
@@ -750,6 +773,51 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
     error: '요약 실패'
   };
 
+  const requestWorkSummaryGemini = useCallback(async () => {
+    if (!companyId || summaryRefreshLoading) return;
+    if (!historyItems.length) {
+      setSummaryNotice({ type: 'muted', text: '요약할 업무 기록을 먼저 등록해 주세요.' });
+      return;
+    }
+    setSummaryNotice(null);
+    setSummaryRefreshLoading(true);
+    try {
+      await pingBackendHealth(getAuthHeader);
+      const res = await fetch(`${API_BASE}/customer-companies/${companyId}/work-summary/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() }
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSummaryNotice({ type: 'muted', text: data.error || '요약 요청에 실패했습니다.' });
+        return;
+      }
+      if (data.alreadyPending) {
+        setSummaryNotice({
+          type: 'info',
+          text: '이미 요약이 진행 중입니다. 잠시 후 다시 확인해 주세요.'
+        });
+        await fetchCompanyDetail();
+        return;
+      }
+      setDisplayedCompany((prev) => ({
+        ...(prev || {}),
+        summaryStatus: 'queued',
+        summaryError: '',
+        summaryQueuedForHistoryAt: data.summaryQueuedForHistoryAt || new Date().toISOString()
+      }));
+      setSummaryNotice({
+        type: 'info',
+        text: '최신 고객사 업무 기록을 기준으로 Gemini 요약을 요청했습니다. 모달을 닫아도 서버에서 계속 처리됩니다.'
+      });
+      await fetchCompanyDetail();
+    } catch (_) {
+      setSummaryNotice({ type: 'muted', text: '서버에 연결할 수 없습니다.' });
+    } finally {
+      setSummaryRefreshLoading(false);
+    }
+  }, [companyId, fetchCompanyDetail, historyItems.length, summaryRefreshLoading]);
+
   const handleDeleteCompany = async () => {
     if (!companyId) return;
     if (!isAdminOrAboveRole(getStoredCrmUser()?.role)) {
@@ -781,8 +849,238 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
   const canMutate = isManagerOrAboveRole(getStoredCrmUser()?.role);
   const canDeleteCompany = isAdminOrAboveRole(getStoredCrmUser()?.role);
 
+  function renderJournalAside(extraAsideClass) {
+    return (
+      <aside
+        className={`ccd-center-journal${extraAsideClass ? ` ${extraAsideClass}` : ''}`}
+        aria-label="지원 및 업무 기록"
+      >
+        <section className="customer-company-detail-section customer-company-detail-section--journal-rail">
+          <div className="customer-company-detail-section-head">
+            <h3 className="customer-company-detail-section-title">
+              <span className="material-symbols-outlined">history_edu</span>
+              지원 및 업무 기록
+            </h3>
+            {!loadingHistory && historyItems.length > 0 && (
+              <button
+                type="button"
+                className="customer-company-detail-btn-all"
+                onClick={() => setShowAllHistoryModal(true)}
+              >
+                전체 보기
+                <span className="material-symbols-outlined">arrow_forward</span>
+              </button>
+            )}
+          </div>
+          <div className={`customer-company-detail-summary-card ${companyToShow?.summaryStatus === 'error' ? 'is-error' : ''}`}>
+            <div className="customer-company-detail-summary-head">
+              <div className="customer-company-detail-summary-title-row">
+                <div className="customer-company-detail-summary-title-with-refresh">
+                  <strong>최근 전체 업무 요약</strong>
+                  <button
+                    type="button"
+                    className={`customer-company-detail-summary-refresh-btn${summaryRefreshLoading ? ' is-loading' : ''}`}
+                    onClick={requestWorkSummaryGemini}
+                    disabled={
+                      summaryRefreshLoading
+                      || !historyItems.length
+                      || companyToShow?.summaryStatus === 'queued'
+                      || companyToShow?.summaryStatus === 'processing'
+                    }
+                    aria-busy={summaryRefreshLoading}
+                    aria-label={summaryRefreshLoading ? '요약 최신화 요청 중' : '업무 요약 최신화 (Gemini)'}
+                    title={summaryRefreshLoading ? '요청 중…' : '업무 요약 최신화 (Gemini)'}
+                  >
+                    <span
+                      className={`material-symbols-outlined customer-company-detail-summary-refresh-btn-icon${
+                        summaryRefreshLoading ? ' customer-company-detail-summary-refresh-btn-icon--spin' : ''
+                      }`}
+                      aria-hidden
+                    >
+                      {summaryRefreshLoading ? 'progress_activity' : 'sync'}
+                    </span>
+                  </button>
+                </div>
+                <span className={`customer-company-detail-summary-status is-${companyToShow?.summaryStatus || 'idle'}`}>
+                  {summaryStatusText[companyToShow?.summaryStatus || 'idle'] || '요약 대기'}
+                </span>
+              </div>
+            </div>
+            <p className="customer-company-detail-summary-text">
+              {companyToShow?.summary?.trim()
+                ? companyToShow.summary
+                : (companyToShow?.summaryStatus === 'queued' || companyToShow?.summaryStatus === 'processing'
+                  ? '최신 고객사 업무 기록을 기준으로 Gemini가 요약을 만드는 중입니다. 모달을 닫아도 나중에 다시 확인할 수 있습니다.'
+                  : '아직 저장된 고객사 업무 요약이 없습니다. 업무 기록을 쌓은 뒤 위 최신화 아이콘으로 필요할 때만 요약을 요청해 주세요.')}
+            </p>
+            {companyToShow?.summaryUpdatedAt && (
+              <p className="customer-company-detail-summary-meta">
+                마지막 요약: {formatHistoryDate(companyToShow.summaryUpdatedAt)}
+              </p>
+            )}
+            {companyToShow?.summaryError && (
+              <p className="customer-company-detail-summary-error">{companyToShow.summaryError}</p>
+            )}
+            {summaryNotice?.text && (
+              <p className={`customer-company-detail-summary-notice is-${summaryNotice.type || 'info'}`}>
+                {summaryNotice.text}
+              </p>
+            )}
+            {Array.isArray(companyToShow.relatedCalendarVisits) && companyToShow.relatedCalendarVisits.length > 0 ? (
+              <div className="customer-company-detail-summary-calendar" aria-label="연결된 캘린더 방문">
+                <div className="customer-company-detail-summary-calendar-title">
+                  <span className="material-symbols-outlined" aria-hidden>calendar_month</span>
+                  예정된 방문 (캘린더)
+                </div>
+                <ul className="customer-company-detail-summary-calendar-list">
+                  {companyToShow.relatedCalendarVisits.map((v) => (
+                    <li key={String(v._id)}>
+                      <span className="customer-company-detail-summary-calendar-when">{formatCalendarVisitWhen(v)}</span>
+                      <span className="customer-company-detail-summary-calendar-event">{v.title || '일정'}</span>
+                      {v.assigneeLine ? (
+                        <span className="customer-company-detail-summary-calendar-who"> · {v.assigneeLine}</span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+          <div className="customer-company-detail-journal-input-wrap">
+            {journalError && <p className="customer-company-detail-journal-error">{journalError}</p>}
+            <div className="customer-company-detail-journal-datetime-row">
+              <label htmlFor="customer-company-detail-journal-datetime" className="customer-company-detail-journal-datetime-label">등록일시</label>
+              <input
+                id="customer-company-detail-journal-datetime"
+                type="datetime-local"
+                className="customer-company-detail-journal-datetime"
+                value={journalDateTime}
+                onChange={(e) => setJournalDateTime(e.target.value)}
+                aria-label="업무 기록 등록일시"
+              />
+            </div>
+            <textarea
+              className="customer-company-detail-journal-input"
+              placeholder="회사 단위 메모 또는 업무 기록 (여러 직원 미팅 등)..."
+              rows={3}
+              value={journalText}
+              onChange={(e) => setJournalText(e.target.value)}
+            />
+            <input
+              ref={audioInputRef}
+              type="file"
+              accept="audio/*,.mp3,.wav,.m4a,.webm"
+              className="customer-company-detail-audio-input-hidden"
+              onChange={(e) => {
+                if (e.target.files?.length) uploadAudioForJournal(e.target.files);
+                e.target.value = '';
+              }}
+              aria-hidden="true"
+            />
+            <div
+              className={`customer-company-detail-journal-audio-drop ${audioDropActive ? 'is-dragover' : ''} ${audioUploading ? 'is-uploading' : ''}`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!audioUploading && !savingNote) setAudioDropActive(true);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!e.currentTarget.contains(e.relatedTarget)) setAudioDropActive(false);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setAudioDropActive(false);
+                if (!audioUploading && !savingNote && e.dataTransfer?.files?.length) {
+                  uploadAudioForJournal(e.dataTransfer.files);
+                }
+              }}
+            >
+              <span className="material-symbols-outlined">audio_file</span>
+              <span>
+                {audioUploading
+                  ? '음성 처리 중... (AssemblyAI 전사 → Gemini 분류/요약)'
+                  : '음성 파일 드래그앤드롭 또는 선택 (MP3/WAV/M4A/WebM)'}
+              </span>
+              <button
+                type="button"
+                className="customer-company-detail-journal-audio-btn"
+                onClick={() => audioInputRef.current?.click()}
+                disabled={audioUploading || savingNote}
+              >
+                파일 선택
+              </button>
+            </div>
+            <div className="customer-company-detail-journal-actions">
+              <button
+                type="button"
+                className="customer-company-detail-journal-save"
+                onClick={handleSaveNote}
+                disabled={savingNote || audioUploading || !journalText.trim()}
+              >
+                {savingNote ? '저장 중...' : '메모 저장'}
+              </button>
+            </div>
+          </div>
+          <div className="customer-company-detail-timeline">
+            {loadingHistory ? (
+              <p className="customer-company-detail-timeline-empty">불러오는 중...</p>
+            ) : historyItems.length === 0 ? (
+              <p className="customer-company-detail-timeline-empty">등록된 업무 기록이 없습니다.</p>
+            ) : (
+              historyItems.map((entry) => (
+                <div key={entry._id} className="customer-company-detail-timeline-item">
+                  <div className="customer-company-detail-timeline-dot" />
+                  <div className="customer-company-detail-timeline-card">
+                    <div className="customer-company-detail-timeline-head">
+                      <div>
+                        {entry.employeeName && <span className="customer-company-detail-timeline-emp">{entry.employeeName}</span>}
+                        <time>{formatHistoryDate(entry.createdAt)}</time>
+                      </div>
+                      {canMutate ? (
+                        <button
+                          type="button"
+                          className="customer-company-detail-timeline-delete"
+                          onClick={() => handleDeleteHistory(entry._id)}
+                          aria-label="삭제"
+                          title="업무 기록 삭제 (Owner / Admin)"
+                        >
+                          <span className="material-symbols-outlined">delete</span>
+                        </button>
+                      ) : null}
+                    </div>
+                    <div className="customer-company-detail-timeline-content-wrap">
+                      {splitContentIntoBlocks(entry.content).map((paragraphSentences, pIdx) => (
+                        <p key={pIdx} className="customer-company-detail-timeline-paragraph">
+                          {paragraphSentences.map((sentence, sIdx) => (
+                            <span key={sIdx} className="customer-company-detail-timeline-sentence">{sentence}{sIdx < paragraphSentences.length - 1 ? ' ' : ''}</span>
+                          ))}
+                        </p>
+                      ))}
+                    </div>
+                    <div className="customer-company-detail-timeline-footer">
+                      <span className="customer-company-detail-timeline-logged">
+                        등록: {(entry.createdByCurrentName !== undefined ? entry.createdByCurrentName : entry.createdByName) || '—'}
+                        {(entry.createdByCurrentContact !== undefined ? entry.createdByCurrentContact : entry.createdByContact) ? ' · ' + (entry.createdByCurrentContact !== undefined ? entry.createdByCurrentContact : entry.createdByContact) : ''}
+                        {entry.createdByChanged && <span className="customer-company-detail-timeline-changed"> 변경됨</span>}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+      </aside>
+    );
+  }
+
   return (
-    <>
+    <div
+      className={`customer-company-detail-root customer-company-detail-root--${detailPresentation}`}
+    >
       <div className="customer-company-detail-overlay" aria-hidden="true" />
       <div
         ref={modalContentRef}
@@ -790,13 +1088,43 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
         onDragEnter={(e) => { e.preventDefault(); setDragInModal(true); }}
         onDragLeave={(e) => { if (!modalContentRef.current?.contains(e.relatedTarget)) setDragInModal(false); }}
       >
-        <div className="customer-company-detail-inner">
+        <div
+          className={`customer-company-detail-inner${detailPresentation === 'center' ? ' customer-company-detail-inner--center' : ''}`}
+        >
           <header className="customer-company-detail-header">
             <div className="customer-company-detail-header-title">
               <span className="material-symbols-outlined">business</span>
               <h2>기업 세부정보</h2>
             </div>
             <div className="customer-company-detail-header-actions">
+              <button
+                type="button"
+                className={`customer-company-detail-icon-btn customer-company-detail-layout-toggle${detailPresentation === 'center' ? ' is-layout-center' : ''}`}
+                onClick={toggleDetailPresentation}
+                disabled={detailPresentationSaving}
+                title={
+                  detailPresentation === 'side'
+                    ? '가운데 모달로 전환 (내 설정에 저장)'
+                    : '우측 패널로 전환 (내 설정에 저장)'
+                }
+                aria-label={
+                  detailPresentation === 'side'
+                    ? '고객사 상세를 화면 가운데 모달로 표시'
+                    : '고객사 상세를 우측에서 슬라이드 패널로 표시'
+                }
+                aria-pressed={detailPresentation === 'center'}
+              >
+                <span
+                  className={`material-symbols-outlined${detailPresentationSaving ? ' customer-company-detail-layout-toggle-spin' : ''}`}
+                  aria-hidden
+                >
+                  {detailPresentationSaving
+                    ? 'progress_activity'
+                    : detailPresentation === 'side'
+                      ? 'filter_center_focus'
+                      : 'dock_to_right'}
+                </span>
+              </button>
               {canMutate ? (
                 <button type="button" className="customer-company-detail-icon-btn" onClick={() => setShowEditModal(true)} title="수정 (Manager 이상)">
                   <span className="material-symbols-outlined">edit</span>
@@ -826,7 +1154,11 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
             </div>
           )}
 
-          <div className="customer-company-detail-body">
+          <div
+            className={`customer-company-detail-body${detailPresentation === 'center' ? ' customer-company-detail-body--center' : ''}`}
+          >
+            <div className={`ccd-top-pair${detailPresentation === 'center' ? ' ccd-top-pair--split' : ''}`}>
+              <div className="ccd-top-pair-left">
             <section className="customer-company-detail-card">
               <div className="customer-company-detail-card-map-col">
                 <div className="customer-company-detail-card-map">
@@ -967,6 +1299,10 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                 </div>
               </div>
             </section>
+              </div>
+            </div>
+
+            {detailPresentation === 'center' && renderJournalAside('ccd-center-journal--top-row')}
 
             <CustomFieldsDisplay
               definitions={customDefinitions}
@@ -974,6 +1310,45 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
               className="customer-company-detail-custom-fields"
             />
 
+            <div className="ccd-main-grid">
+              <nav className="ccd-center-rail" aria-label="본문 구역">
+                <button
+                  type="button"
+                  className={`ccd-center-rail-btn${centerMainTab === 'employees' ? ' is-active' : ''}`}
+                  onClick={() => setCenterMainTab('employees')}
+                  aria-pressed={detailPresentation === 'center' && centerMainTab === 'employees'}
+                  title="직원 리스트"
+                >
+                  <span className="material-symbols-outlined">groups</span>
+                </button>
+                <button
+                  type="button"
+                  className={`ccd-center-rail-btn${centerMainTab === 'products' ? ' is-active' : ''}`}
+                  onClick={() => setCenterMainTab('products')}
+                  aria-pressed={detailPresentation === 'center' && centerMainTab === 'products'}
+                  title="제품 판매 현황"
+                >
+                  <span className="material-symbols-outlined">inventory_2</span>
+                </button>
+                <button
+                  type="button"
+                  className={`ccd-center-rail-btn${centerMainTab === 'drive' ? ' is-active' : ''}`}
+                  onClick={() => setCenterMainTab('drive')}
+                  aria-pressed={detailPresentation === 'center' && centerMainTab === 'drive'}
+                  title="증서 · 자료 (Google Drive)"
+                >
+                  <span className="material-symbols-outlined">folder_open</span>
+                </button>
+              </nav>
+
+              <div className="ccd-middle-column">
+            <div
+              className={`ccd-tab-panel${detailPresentation === 'center' && centerMainTab === 'employees' ? ' is-active' : ''}`}
+              data-ccd-tab="employees"
+              role="tabpanel"
+              id="ccd-tabpanel-employees"
+              aria-hidden={detailPresentation === 'center' && centerMainTab !== 'employees'}
+            >
             <section className="customer-company-detail-section">
               <div className="customer-company-detail-section-head">
                 <h3 className="customer-company-detail-section-title">
@@ -1024,7 +1399,15 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                 </div>
               )}
             </section>
+            </div>
 
+            <div
+              className={`ccd-tab-panel${detailPresentation === 'center' && centerMainTab === 'products' ? ' is-active' : ''}`}
+              data-ccd-tab="products"
+              role="tabpanel"
+              id="ccd-tabpanel-products"
+              aria-hidden={detailPresentation === 'center' && centerMainTab !== 'products'}
+            >
             <section className="customer-company-detail-section">
               <div className="customer-company-detail-section-head">
                 <div className="customer-company-detail-section-title-with-sales">
@@ -1054,8 +1437,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
               {loadingProductSales ? (
                 <p className="customer-company-detail-employees-empty">불러오는 중...</p>
               ) : productSalesList.length === 0 ? (
-                <p className="customer-company-detail-employees-empty">제품판매 이력이 없습니다. 
-</p>
+                <p className="customer-company-detail-employees-empty">제품판매 이력이 없습니다.</p>
               ) : (
                 <div className="customer-company-detail-product-sales-preview">
                   <ul className="customer-company-detail-product-sales-preview-list">
@@ -1068,7 +1450,15 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                 </div>
               )}
             </section>
+            </div>
 
+            <div
+              className={`ccd-tab-panel${detailPresentation === 'center' && centerMainTab === 'drive' ? ' is-active' : ''}`}
+              data-ccd-tab="drive"
+              role="tabpanel"
+              id="ccd-tabpanel-drive"
+              aria-hidden={detailPresentation === 'center' && centerMainTab !== 'drive'}
+            >
             {/* 증서 · 자료 (Google Drive: [고객사]_[사업자번호] 폴더) */}
             <section className="customer-company-detail-section register-sale-docs">
               <input
@@ -1095,33 +1485,6 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                 >
                   <span className="material-symbols-outlined">add</span>
                 </button>
-              </div>
-              <div className="register-sale-docs-drive-meta" aria-live="polite">
-                <div className="register-sale-docs-drive-meta-row">
-                  <span className="register-sale-docs-drive-meta-label">폴더명</span>
-                  <code className="register-sale-docs-drive-meta-code" title="공유 드라이브 루트 아래 이 이름으로 준비됩니다">
-                    {driveFolderName}
-                  </code>
-                </div>
-                {driveMongoRegisteredUrl ? (
-                  <div className="register-sale-docs-drive-meta-row register-sale-docs-drive-meta-row--link">
-                    <span className="register-sale-docs-drive-meta-label">CRM 저장 주소</span>
-                    <a
-                      href={driveMongoRegisteredUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="register-sale-docs-drive-meta-link"
-                    >
-                      {driveMongoRegisteredUrl.length > 64
-                        ? `${driveMongoRegisteredUrl.slice(0, 48)}…`
-                        : driveMongoRegisteredUrl}
-                    </a>
-                  </div>
-                ) : (
-                  <p className="register-sale-docs-drive-meta-pending">
-                    폴더가 준비되면 위 폴더명으로 Drive 링크가 CRM에 저장되어 표시됩니다. 공유 드라이브 루트는 회사 개요의 「전체 공유 드라이브 주소」에서 설정합니다.
-                  </p>
-                )}
               </div>
               <div
                 className={`register-sale-docs-crm-uploads ${crmListDropActive ? 'register-sale-docs-crm-uploads--drop-active' : ''} ${driveUploading ? 'register-sale-docs-crm-uploads--disabled' : ''}`}
@@ -1152,7 +1515,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                 }}
               >
                 <h4 className="register-sale-docs-crm-uploads-title">
-                  <span className="material-symbols-outlined">history_edu</span>
+                  <span className="material-symbols-outlined"></span>
                   리스트
                 </h4>
                 <p className="register-sale-docs-crm-uploads-hint">
@@ -1195,7 +1558,11 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                 </p>
               )}
             </section>
+            </div>
+              </div>
 
+            {detailPresentation === 'side' && renderJournalAside('ccd-center-journal--side-below')}
+            </div>
             {showProductSalesModal && (
               <ProductSalesModal
                 companyName={companyToShow.name}
@@ -1225,7 +1592,6 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                 onSaved={() => { setSelectedSaleForEdit(null); fetchProductSales(); }}
               />
             )}
-
             {showAllEmployeesModal && (
               <AllEmployeesModal
                 employees={employees}
@@ -1238,7 +1604,6 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                 onRefreshEmployees={fetchEmployees}
               />
             )}
-
             {contactForDetailModal && (
               <ContactDetailModal
                 contact={contactForDetailModal}
@@ -1250,7 +1615,6 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                 }}
               />
             )}
-
             {showEditModal && canMutate && (
               <AddCompanyModal
                 company={companyToShow}
@@ -1262,7 +1626,6 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                 }}
               />
             )}
-
             {showAllHistoryModal && (
               <AllHistoryModal
                 historyItems={historyItems}
@@ -1271,201 +1634,9 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                 onRefresh={fetchHistory}
               />
             )}
-
-            <section className="customer-company-detail-section">
-              <div className="customer-company-detail-section-head">
-                <h3 className="customer-company-detail-section-title">
-                  <span className="material-symbols-outlined">history_edu</span>
-                  지원 및 업무 기록
-                </h3>
-                {!loadingHistory && historyItems.length > 0 && (
-                  <button
-                    type="button"
-                    className="customer-company-detail-btn-all"
-                    onClick={() => setShowAllHistoryModal(true)}
-                  >
-                    전체 보기
-                    <span className="material-symbols-outlined">arrow_forward</span>
-                  </button>
-                )}
-              </div>
-              <div className={`customer-company-detail-summary-card ${companyToShow?.summaryStatus === 'error' ? 'is-error' : ''}`}>
-                <div className="customer-company-detail-summary-head">
-                  <strong>최근 전체 업무 요약</strong>
-                  <span className={`customer-company-detail-summary-status is-${companyToShow?.summaryStatus || 'idle'}`}>
-                    {summaryStatusText[companyToShow?.summaryStatus || 'idle'] || '요약 대기'}
-                  </span>
-                </div>
-                <p className="customer-company-detail-summary-text">
-                  {companyToShow?.summary?.trim()
-                    ? companyToShow.summary
-                    : (companyToShow?.summaryStatus === 'queued' || companyToShow?.summaryStatus === 'processing'
-                      ? '최신 고객사 업무 기록을 기준으로 Gemini가 요약을 만드는 중입니다. 모달을 닫아도 나중에 다시 확인할 수 있습니다.'
-                      : '아직 저장된 고객사 업무 요약이 없습니다. 최신 업무 기록을 등록하면 자동으로 요약됩니다.')}
-                </p>
-                {companyToShow?.summaryUpdatedAt && (
-                  <p className="customer-company-detail-summary-meta">
-                    마지막 요약: {formatHistoryDate(companyToShow.summaryUpdatedAt)}
-                  </p>
-                )}
-                {companyToShow?.summaryError && (
-                  <p className="customer-company-detail-summary-error">{companyToShow.summaryError}</p>
-                )}
-                {summaryNotice?.text && (
-                  <p className={`customer-company-detail-summary-notice is-${summaryNotice.type || 'info'}`}>
-                    {summaryNotice.text}
-                  </p>
-                )}
-                {Array.isArray(companyToShow.relatedCalendarVisits) && companyToShow.relatedCalendarVisits.length > 0 ? (
-                  <div className="customer-company-detail-summary-calendar" aria-label="연결된 캘린더 방문">
-                    <div className="customer-company-detail-summary-calendar-title">
-                      <span className="material-symbols-outlined" aria-hidden>calendar_month</span>
-                      예정된 방문 (캘린더)
-                    </div>
-                    <ul className="customer-company-detail-summary-calendar-list">
-                      {companyToShow.relatedCalendarVisits.map((v) => (
-                        <li key={String(v._id)}>
-                          <span className="customer-company-detail-summary-calendar-when">{formatCalendarVisitWhen(v)}</span>
-                          <span className="customer-company-detail-summary-calendar-event">{v.title || '일정'}</span>
-                          {v.assigneeLine ? (
-                            <span className="customer-company-detail-summary-calendar-who"> · {v.assigneeLine}</span>
-                          ) : null}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-              </div>
-              <div className="customer-company-detail-journal-input-wrap">
-                {journalError && <p className="customer-company-detail-journal-error">{journalError}</p>}
-                <div className="customer-company-detail-journal-datetime-row">
-                  <label htmlFor="customer-company-detail-journal-datetime" className="customer-company-detail-journal-datetime-label">등록일시</label>
-                  <input
-                    id="customer-company-detail-journal-datetime"
-                    type="datetime-local"
-                    className="customer-company-detail-journal-datetime"
-                    value={journalDateTime}
-                    onChange={(e) => setJournalDateTime(e.target.value)}
-                    aria-label="업무 기록 등록일시"
-                  />
-                </div>
-                <textarea
-                  className="customer-company-detail-journal-input"
-                  placeholder="회사 단위 메모 또는 업무 기록 (여러 직원 미팅 등)..."
-                  rows={3}
-                  value={journalText}
-                  onChange={(e) => setJournalText(e.target.value)}
-                />
-                <input
-                  ref={audioInputRef}
-                  type="file"
-                  accept="audio/*,.mp3,.wav,.m4a,.webm"
-                  className="customer-company-detail-audio-input-hidden"
-                  onChange={(e) => {
-                    if (e.target.files?.length) uploadAudioForJournal(e.target.files);
-                    e.target.value = '';
-                  }}
-                  aria-hidden="true"
-                />
-                <div
-                  className={`customer-company-detail-journal-audio-drop ${audioDropActive ? 'is-dragover' : ''} ${audioUploading ? 'is-uploading' : ''}`}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (!audioUploading && !savingNote) setAudioDropActive(true);
-                  }}
-                  onDragLeave={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (!e.currentTarget.contains(e.relatedTarget)) setAudioDropActive(false);
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setAudioDropActive(false);
-                    if (!audioUploading && !savingNote && e.dataTransfer?.files?.length) {
-                      uploadAudioForJournal(e.dataTransfer.files);
-                    }
-                  }}
-                >
-                  <span className="material-symbols-outlined">audio_file</span>
-                  <span>
-                    {audioUploading
-                      ? '음성 처리 중... (AssemblyAI 전사 → Gemini 분류/요약)'
-                      : '음성 파일 드래그앤드롭 또는 선택 (MP3/WAV/M4A/WebM)'}
-                  </span>
-                  <button
-                    type="button"
-                    className="customer-company-detail-journal-audio-btn"
-                    onClick={() => audioInputRef.current?.click()}
-                    disabled={audioUploading || savingNote}
-                  >
-                    파일 선택
-                  </button>
-                </div>
-                <div className="customer-company-detail-journal-actions">
-                  <button
-                    type="button"
-                    className="customer-company-detail-journal-save"
-                    onClick={handleSaveNote}
-                    disabled={savingNote || audioUploading || !journalText.trim()}
-                  >
-                    {savingNote ? '저장 중...' : '메모 저장'}
-                  </button>
-                </div>
-              </div>
-              <div className="customer-company-detail-timeline">
-                {loadingHistory ? (
-                  <p className="customer-company-detail-timeline-empty">불러오는 중...</p>
-                ) : historyItems.length === 0 ? (
-                  <p className="customer-company-detail-timeline-empty">등록된 업무 기록이 없습니다.</p>
-                ) : (
-                  historyItems.map((entry) => (
-                    <div key={entry._id} className="customer-company-detail-timeline-item">
-                      <div className="customer-company-detail-timeline-dot" />
-                      <div className="customer-company-detail-timeline-card">
-                        <div className="customer-company-detail-timeline-head">
-                          <div>
-                            {entry.employeeName && <span className="customer-company-detail-timeline-emp">{entry.employeeName}</span>}
-                            <time>{formatHistoryDate(entry.createdAt)}</time>
-                          </div>
-                          {canMutate ? (
-                            <button
-                              type="button"
-                              className="customer-company-detail-timeline-delete"
-                              onClick={() => handleDeleteHistory(entry._id)}
-                              aria-label="삭제"
-                              title="업무 기록 삭제 (Owner / Admin)"
-                            >
-                              <span className="material-symbols-outlined">delete</span>
-                            </button>
-                          ) : null}
-                        </div>
-                        <div className="customer-company-detail-timeline-content-wrap">
-                          {splitContentIntoBlocks(entry.content).map((paragraphSentences, pIdx) => (
-                            <p key={pIdx} className="customer-company-detail-timeline-paragraph">
-                              {paragraphSentences.map((sentence, sIdx) => (
-                                <span key={sIdx} className="customer-company-detail-timeline-sentence">{sentence}{sIdx < paragraphSentences.length - 1 ? ' ' : ''}</span>
-                              ))}
-                            </p>
-                          ))}
-                        </div>
-                        <div className="customer-company-detail-timeline-footer">
-                          <span className="customer-company-detail-timeline-logged">
-                            등록: {(entry.createdByCurrentName !== undefined ? entry.createdByCurrentName : entry.createdByName) || '—'}
-                            {(entry.createdByCurrentContact !== undefined ? entry.createdByCurrentContact : entry.createdByContact) ? ' · ' + (entry.createdByCurrentContact !== undefined ? entry.createdByCurrentContact : entry.createdByContact) : ''}
-                            {entry.createdByChanged && <span className="customer-company-detail-timeline-changed"> 변경됨</span>}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </section>
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }

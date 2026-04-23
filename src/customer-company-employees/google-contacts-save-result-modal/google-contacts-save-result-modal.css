@@ -1,0 +1,132 @@
+.gc-save-result-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: rgba(15, 23, 42, 0.35);
+  /* 오버레이 클릭으로 닫지 않음 — 사용자 규칙 */
+}
+
+.gc-save-result-modal {
+  width: 100%;
+  max-width: 22rem;
+  border-radius: 0.85rem;
+  border: 1px solid #e2e8f0;
+  background: #fdfefe;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.12);
+  overflow: hidden;
+}
+
+.gc-save-result-modal--ok {
+  border-color: rgba(134, 239, 172, 0.65);
+  background: #f4fcf6;
+}
+
+.gc-save-result-modal--warn {
+  border-color: rgba(253, 224, 171, 0.9);
+  background: #fffbf5;
+}
+
+.gc-save-result-modal--error {
+  border-color: rgba(252, 165, 165, 0.65);
+  background: #fff8f8;
+}
+
+.gc-save-result-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 1rem 1.1rem 0.5rem;
+}
+
+.gc-save-result-modal-icon {
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+.gc-save-result-modal--ok .gc-save-result-modal-icon {
+  color: #16a34a;
+}
+
+.gc-save-result-modal--warn .gc-save-result-modal-icon {
+  color: #d97706;
+}
+
+.gc-save-result-modal--error .gc-save-result-modal-icon {
+  color: #dc2626;
+}
+
+.gc-save-result-modal-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #1e293b;
+  line-height: 1.35;
+}
+
+.gc-save-result-modal-body {
+  padding: 0.35rem 1.1rem 1rem;
+}
+
+.gc-save-result-modal-message,
+.gc-save-result-modal-lead,
+.gc-save-result-modal-stats,
+.gc-save-result-modal-detail {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: #475569;
+}
+
+.gc-save-result-modal-lead {
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: #334155;
+}
+
+.gc-save-result-modal-stats {
+  margin-bottom: 0.35rem;
+}
+
+.gc-save-result-modal-stats strong {
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.gc-save-result-modal-detail {
+  margin-top: 0.65rem;
+  font-size: 0.8rem;
+  color: #64748b;
+  word-break: break-word;
+}
+
+.gc-save-result-modal-footer {
+  padding: 0 1.1rem 1.1rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.gc-save-result-modal-btn {
+  padding: 0.5rem 1.35rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #1e3a5f;
+  background: #dbeafe;
+  border: 1px solid #bfdbfe;
+  border-radius: 0.55rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.gc-save-result-modal-btn:hover {
+  background: #bfdbfe;
+  border-color: #93c5fd;
+}
+
+.gc-save-result-modal-btn:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}

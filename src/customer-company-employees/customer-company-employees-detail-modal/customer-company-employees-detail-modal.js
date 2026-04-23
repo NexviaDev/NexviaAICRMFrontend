@@ -19,6 +19,10 @@ import {
   runDriveDirectFileUpload,
   sortDriveUploadedFiles
 } from '@/shared/register-sale-docs-drive';
+import {
+  getSavedCustomerCompanyEmployeesDetailModalPresentation,
+  patchCustomerCompanyEmployeesDetailModalTemplate
+} from '@/lib/list-templates';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -136,6 +140,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   const [audioDropActive, setAudioDropActive] = useState(false);
   const [error, setError] = useState('');
   const [summaryNotice, setSummaryNotice] = useState(null);
+  const [summaryRefreshLoading, setSummaryRefreshLoading] = useState(false);
 
   const [editing, setEditing] = useState(false);
   const [editForm, setEditForm] = useState({});
@@ -156,6 +161,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   const contactNameCardPopoverRef = useRef(null);
   const [googleSaving, setGoogleSaving] = useState(false);
   const [googleResult, setGoogleResult] = useState(null);
+  const [showGoogleConfirm, setShowGoogleConfirm] = useState(false);
   const [showProductSalesModal, setShowProductSalesModal] = useState(false);
   const [showRegisterSaleModal, setShowRegisterSaleModal] = useState(false);
   const [selectedSaleForEdit, setSelectedSaleForEdit] = useState(null);
@@ -171,7 +177,13 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   const [dragInModal, setDragInModal] = useState(false);
   const fileInputRef = useRef(null);
   const audioInputRef = useRef(null);
+  const modalContentRef = useRef(null);
   const driveRootEnsureInFlightRef = useRef(false);
+  /** listTemplates.customerCompanyEmployeesDetailModal.presentation — 우측 패널(side) · 중앙(center) */
+  const [detailPresentation, setDetailPresentation] = useState(() =>
+    getSavedCustomerCompanyEmployeesDetailModalPresentation()
+  );
+  const [detailPresentationSaving, setDetailPresentationSaving] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -214,6 +226,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
       else if (showProductSalesModal) setShowProductSalesModal(false);
       else if (showCardImageModal) setShowCardImageModal(false);
       else if (showContactCardEmptyPopover) setShowContactCardEmptyPopover(false);
+      else if (showGoogleConfirm) setShowGoogleConfirm(false);
       else if (showDeleteConfirm) setShowDeleteConfirm(false);
       else if (editing) {
         setEditing(false);
@@ -223,7 +236,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, editing, showDeleteConfirm, showCardImageModal, showContactCardEmptyPopover, showProductSalesModal, showRegisterSaleModal]);
+  }, [onClose, editing, showDeleteConfirm, showCardImageModal, showContactCardEmptyPopover, showGoogleConfirm, showProductSalesModal, showRegisterSaleModal]);
 
   useEffect(() => {
     setDisplayedContact((prev) => ({ ...(prev || {}), ...(contact || {}) }));
@@ -257,6 +270,23 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   const status = contactToShow.status || 'Lead';
   const displayStatus = statusLabel[status] || status;
   const contactId = contact?._id;
+
+  useEffect(() => {
+    setDetailPresentation(getSavedCustomerCompanyEmployeesDetailModalPresentation());
+  }, [contactId]);
+
+  const toggleDetailPresentation = useCallback(async () => {
+    const next = detailPresentation === 'center' ? 'side' : 'center';
+    setDetailPresentationSaving(true);
+    try {
+      await patchCustomerCompanyEmployeesDetailModalTemplate({ presentation: next });
+      setDetailPresentation(next);
+    } catch (err) {
+      window.alert(err?.message || '표시 방식 저장에 실패했습니다.');
+    } finally {
+      setDetailPresentationSaving(false);
+    }
+  }, [detailPresentation]);
 
   const fetchContactDetail = useCallback(async () => {
     if (!contactId) return null;
@@ -375,24 +405,11 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
 
   const driveFolderName = useMemo(() => buildPersonalDriveFolderName(contactToShow), [contactToShow]);
 
-  const companyDriveFolderName = useMemo(() => {
-    if (!hasConfirmedCompany) return '';
-    return buildCompanyDriveFolderName(contactToShow);
-  }, [hasConfirmedCompany, contactToShow]);
-
   const crmDriveUploadsSorted = useMemo(() => {
     const raw = contactToShow?.driveUploadedFiles;
     const sorted = sortDriveUploadedFiles(raw);
     return keepLatestBusinessCardRowOnlyInDriveUploads(sorted, contactToShow);
   }, [contactToShow?.driveUploadedFiles, contactToShow?.name, contactToShow?.phone, contactToShow?.email]);
-
-  const driveMongoRegisteredUrl = useMemo(() => {
-    const id = contactToShow?.driveRootFolderId || driveFolderId;
-    const raw = contactToShow?.driveRootFolderWebViewLink;
-    const fromDb = id ? sanitizeDriveFolderWebViewLink(raw, id) : '';
-    if (fromDb) return fromDb;
-    return driveFolderLink || '';
-  }, [contactToShow?.driveRootFolderId, contactToShow?.driveRootFolderWebViewLink, driveFolderId, driveFolderLink]);
 
   const companyDriveRegisteredUrl = useMemo(() => {
     if (!hasConfirmedCompany) return '';
@@ -640,23 +657,6 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
       if (res.ok) {
         setJournalText('');
         setJournalDateTime(toDatetimeLocalValue(new Date()));
-        if (data.summaryQueued) {
-          setDisplayedContact((prev) => ({
-            ...(prev || {}),
-            summaryStatus: 'queued',
-            summaryError: '',
-            summaryQueuedForHistoryAt: data.summaryQueuedForHistoryAt || createdAt || new Date().toISOString()
-          }));
-          setSummaryNotice({
-            type: 'info',
-            text: '최신 업무 기록을 기준으로 Gemini 요약을 요청했습니다. 모달을 닫아도 서버에서 계속 처리됩니다.'
-          });
-        } else if (data.summarySkippedReason === 'older_than_latest_history') {
-          setSummaryNotice({
-            type: 'muted',
-            text: '등록한 업무 기록 일시가 기존 최신 업무 기록보다 과거라서, 이번 기록은 요약 갱신 대상에서 제외되었습니다.'
-          });
-        }
         fetchHistory();
         fetchContactDetail();
       } else {
@@ -747,7 +747,53 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
     error: '요약 실패'
   };
 
+  const requestWorkSummaryGemini = useCallback(async () => {
+    if (!contactId || summaryRefreshLoading) return;
+    if (!historyItems.length) {
+      setSummaryNotice({ type: 'muted', text: '요약할 업무 기록을 먼저 등록해 주세요.' });
+      return;
+    }
+    setSummaryNotice(null);
+    setSummaryRefreshLoading(true);
+    try {
+      await pingBackendHealth(getAuthHeader);
+      const res = await fetch(`${API_BASE}/customer-company-employees/${contactId}/work-summary/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() }
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSummaryNotice({ type: 'muted', text: data.error || '요약 요청에 실패했습니다.' });
+        return;
+      }
+      if (data.alreadyPending) {
+        setSummaryNotice({
+          type: 'info',
+          text: '이미 요약이 진행 중입니다. 잠시 후 다시 확인해 주세요.'
+        });
+        await fetchContactDetail();
+        return;
+      }
+      setDisplayedContact((prev) => ({
+        ...(prev || {}),
+        summaryStatus: 'queued',
+        summaryError: '',
+        summaryQueuedForHistoryAt: data.summaryQueuedForHistoryAt || new Date().toISOString()
+      }));
+      setSummaryNotice({
+        type: 'info',
+        text: '최신 업무 기록을 기준으로 Gemini 요약을 요청했습니다. 모달을 닫아도 서버에서 계속 처리됩니다.'
+      });
+      await fetchContactDetail();
+    } catch (_) {
+      setSummaryNotice({ type: 'muted', text: '서버에 연결할 수 없습니다.' });
+    } finally {
+      setSummaryRefreshLoading(false);
+    }
+  }, [contactId, fetchContactDetail, historyItems.length, summaryRefreshLoading]);
+
   const handleAddToGoogleContacts = async () => {
+    setShowGoogleConfirm(false);
     const c = displayedContact || contact;
     const companyName = c.customerCompanyId?.name ?? c.companyName ?? '';
     const payload = {
@@ -932,7 +978,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   if (!contact) return null;
 
   return (
-    <>
+    <div className={`contact-detail-root contact-detail-root--${detailPresentation}`}>
       {editing && canMutate && (
         <AddContactModal
           contact={contact}
@@ -945,23 +991,52 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
       )}
       <div className="contact-detail-overlay" aria-hidden="true" />
       <div
+        ref={modalContentRef}
         className="contact-detail-panel"
         onDragEnter={(e) => { e.preventDefault(); setDragInModal(true); }}
-        onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDragInModal(false); }}
+        onDragLeave={(e) => { if (!modalContentRef.current?.contains(e.relatedTarget)) setDragInModal(false); }}
       >
-        <div className="contact-detail-inner">
+        <div className={`contact-detail-inner${detailPresentation === 'center' ? ' contact-detail-inner--center' : ''}`}>
           <header className="contact-detail-header">
             <div className="contact-detail-header-title">
               <span className="material-symbols-outlined">account_circle</span>
-              <h2>{editing ? '연락처 수정' : '연락처 세부정보'}</h2>
+              <h2>연락처 세부정보</h2>
             </div>
             <div className="contact-detail-header-actions">
               {!editing && (
                 <>
                   <button
                     type="button"
+                    className={`contact-detail-icon-btn contact-detail-layout-toggle${detailPresentation === 'center' ? ' is-layout-center' : ''}`}
+                    onClick={toggleDetailPresentation}
+                    disabled={detailPresentationSaving}
+                    title={
+                      detailPresentation === 'side'
+                        ? '가운데 모달로 전환 (내 설정에 저장)'
+                        : '우측 패널로 전환 (내 설정에 저장)'
+                    }
+                    aria-label={
+                      detailPresentation === 'side'
+                        ? '연락처 상세를 화면 가운데 모달로 표시'
+                        : '연락처 상세를 우측에서 슬라이드 패널로 표시'
+                    }
+                    aria-pressed={detailPresentation === 'center'}
+                  >
+                    <span
+                      className={`material-symbols-outlined${detailPresentationSaving ? ' contact-detail-layout-toggle-spin' : ''}`}
+                      aria-hidden
+                    >
+                      {detailPresentationSaving
+                        ? 'progress_activity'
+                        : detailPresentation === 'side'
+                          ? 'filter_center_focus'
+                          : 'dock_to_right'}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
                     className="contact-detail-icon-btn contact-detail-google-btn"
-                    onClick={handleAddToGoogleContacts}
+                    onClick={() => setShowGoogleConfirm(true)}
                     disabled={googleSaving}
                     title="구글 주소록에 등록"
                     aria-label="구글 주소록에 등록"
@@ -998,6 +1073,31 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
             </div>
           )}
 
+          {showGoogleConfirm && (
+            <div className="contact-detail-google-confirm">
+              <span className="material-symbols-outlined">help</span>
+              <p>이 연락처를 구글 주소록에 등록하시겠습니까?</p>
+              <div className="contact-detail-google-confirm-btns">
+                <button
+                  type="button"
+                  className="contact-detail-confirm-cancel"
+                  onClick={() => setShowGoogleConfirm(false)}
+                  disabled={googleSaving}
+                >
+                  아니오
+                </button>
+                <button
+                  type="button"
+                  className="contact-detail-confirm-submit"
+                  onClick={handleAddToGoogleContacts}
+                  disabled={googleSaving}
+                >
+                  {googleSaving ? '등록 중...' : '예'}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* 삭제 확인 */}
           {showDeleteConfirm && canDeleteContact && (
             <div className="contact-detail-delete-confirm">
@@ -1012,7 +1112,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
             </div>
           )}
 
-          <div className="contact-detail-body">
+          <div className={`contact-detail-body${detailPresentation === 'center' ? ' contact-detail-body--center' : ''}`}>
             {editing ? null : (
               /* ── 조회 모드: 고객사 상세와 동일한 한 장 카드 + 메타 리스트 구조 ── */
               <>
@@ -1121,7 +1221,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                 />
 
                 {/* 제품 판매 현황 - customer-company-detail-modal (368-403)과 동일 구조·디자인·로직 */}
-                <section className="customer-company-detail-section">
+                <section className="customer-company-detail-section contact-detail-sales-section">
                   <div className="customer-company-detail-section-head">
                     <div className="customer-company-detail-section-title-with-sales">
                       <h3 className="customer-company-detail-section-title">
@@ -1165,7 +1265,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                 </section>
 
                 {/* 증서 · 자료 — 개인 폴더 [이름]_[연락처], 고객사 소속 시 고객사 루트 아래 */}
-                <section className="customer-company-detail-section register-sale-docs">
+                <section className="customer-company-detail-section register-sale-docs contact-detail-drive-section">
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -1190,59 +1290,6 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                     >
                       <span className="material-symbols-outlined">add</span>
                     </button>
-                  </div>
-                  <div className="register-sale-docs-drive-meta" aria-live="polite">
-                    <div className="register-sale-docs-drive-meta-row">
-                      <span className="register-sale-docs-drive-meta-label">개인 폴더명</span>
-                      <code
-                        className="register-sale-docs-drive-meta-code"
-                        title={hasConfirmedCompany ? `고객사 폴더(${companyDriveFolderName}) 아래에 이 이름으로 준비됩니다` : '공유 드라이브 루트 아래 이 이름으로 준비됩니다'}
-                      >
-                        {driveFolderName}
-                      </code>
-                    </div>
-                    {hasConfirmedCompany && companyDriveFolderName ? (
-                      <div className="register-sale-docs-drive-meta-row">
-                        <span className="register-sale-docs-drive-meta-label">고객사 폴더명</span>
-                        <code className="register-sale-docs-drive-meta-code" title="등록 드라이브 루트 아래 고객사 루트">
-                          {companyDriveFolderName}
-                        </code>
-                      </div>
-                    ) : null}
-                    {driveMongoRegisteredUrl ? (
-                      <div className="register-sale-docs-drive-meta-row register-sale-docs-drive-meta-row--link">
-                        <span className="register-sale-docs-drive-meta-label">개인 폴더 CRM 주소</span>
-                        <a
-                          href={driveMongoRegisteredUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="register-sale-docs-drive-meta-link"
-                        >
-                          {driveMongoRegisteredUrl.length > 64
-                            ? `${driveMongoRegisteredUrl.slice(0, 48)}…`
-                            : driveMongoRegisteredUrl}
-                        </a>
-                      </div>
-                    ) : (
-                      <p className="register-sale-docs-drive-meta-pending">
-                        폴더가 준비되면 위 폴더명으로 Drive 링크가 CRM에 저장되어 표시됩니다. 공유 드라이브 루트는 회사 개요의 「전체 공유 드라이브 주소」에서 설정합니다.
-                      </p>
-                    )}
-                    {hasConfirmedCompany && companyDriveRegisteredUrl ? (
-                      <div className="register-sale-docs-drive-meta-row register-sale-docs-drive-meta-row--link">
-                        <span className="register-sale-docs-drive-meta-label">고객사 루트 CRM 주소</span>
-                        <a
-                          href={companyDriveRegisteredUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="register-sale-docs-drive-meta-link"
-                        >
-                          {companyDriveRegisteredUrl.length > 64
-                            ? `${companyDriveRegisteredUrl.slice(0, 48)}…`
-                            : companyDriveRegisteredUrl}
-                        </a>
-                      </div>
-                    ) : null}
                   </div>
                   <div
                     className={`register-sale-docs-crm-uploads ${crmListDropActive ? 'register-sale-docs-crm-uploads--drop-active' : ''} ${driveUploading ? 'register-sale-docs-crm-uploads--disabled' : ''}`}
@@ -1313,24 +1360,51 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                   )}
                 </section>
 
-                <section className="contact-detail-section">
+                <section className="contact-detail-section contact-detail-section--journal-column">
                   <div className="contact-detail-section-head">
                     <h3>업무 기록</h3>
                     <span className="contact-detail-section-badge">{historyItems.length}건</span>
                   </div>
                   <div className={`contact-detail-summary-card ${contactToShow?.summaryStatus === 'error' ? 'is-error' : ''}`}>
                     <div className="contact-detail-summary-head">
-                      <strong>업무 요약</strong>
-                      <span className={`contact-detail-summary-status is-${contactToShow?.summaryStatus || 'idle'}`}>
-                        {summaryStatusText[contactToShow?.summaryStatus || 'idle'] || '요약 대기'}
-                      </span>
+                      <div className="contact-detail-summary-title-row">
+                        <div className="contact-detail-summary-title-with-refresh">
+                          <strong>업무 요약</strong>
+                          <button
+                            type="button"
+                            className={`contact-detail-summary-refresh-btn${summaryRefreshLoading ? ' is-loading' : ''}`}
+                            onClick={requestWorkSummaryGemini}
+                            disabled={
+                              summaryRefreshLoading
+                              || !historyItems.length
+                              || contactToShow?.summaryStatus === 'queued'
+                              || contactToShow?.summaryStatus === 'processing'
+                            }
+                            aria-busy={summaryRefreshLoading}
+                            aria-label={summaryRefreshLoading ? '요약 최신화 요청 중' : '업무 요약 최신화 (Gemini)'}
+                            title={summaryRefreshLoading ? '요청 중…' : '업무 요약 최신화 (Gemini)'}
+                          >
+                            <span
+                              className={`material-symbols-outlined contact-detail-summary-refresh-btn-icon${
+                                summaryRefreshLoading ? ' contact-detail-summary-refresh-btn-icon--spin' : ''
+                              }`}
+                              aria-hidden
+                            >
+                              {summaryRefreshLoading ? 'progress_activity' : 'sync'}
+                            </span>
+                          </button>
+                        </div>
+                        <span className={`contact-detail-summary-status is-${contactToShow?.summaryStatus || 'idle'}`}>
+                          {summaryStatusText[contactToShow?.summaryStatus || 'idle'] || '요약 대기'}
+                        </span>
+                      </div>
                     </div>
                     <p className="contact-detail-summary-text">
                       {contactToShow?.summary?.trim()
                         ? contactToShow.summary
                         : (contactToShow?.summaryStatus === 'queued' || contactToShow?.summaryStatus === 'processing'
                           ? '최신 업무 기록을 기준으로 Gemini가 요약을 만드는 중입니다. 모달을 닫아도 나중에 다시 확인할 수 있습니다.'
-                          : '아직 저장된 업무 요약이 없습니다. 최신 업무 기록을 등록하면 자동으로 요약됩니다.')}
+                          : '아직 저장된 업무 요약이 없습니다. 업무 기록을 쌓은 뒤 위 최신화 아이콘으로 필요할 때만 요약을 요청해 주세요.')}
                     </p>
                     {contactToShow?.summaryUpdatedAt && (
                       <p className="contact-detail-summary-meta">
@@ -1566,6 +1640,6 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

@@ -5,7 +5,8 @@ import {
   getSavedSidebarConfig,
   patchSidebarLayout,
   setSavedSidebar2LevelConfigLocally,
-  normalizeSidebar2LevelConfig
+  normalizeSidebar2LevelConfig,
+  SIDEBAR_MENU_EPOCH
 } from '@/lib/list-templates';
 import { API_BASE } from '@/config';
 import { resolveDepartmentDisplayFromChart } from '@/lib/org-chart-tree-utils';
@@ -19,15 +20,16 @@ function getAuthHeader() {
 const NEXVIA_LOGO_CDN_URL =
   'https://res.cloudinary.com/djcsvvhly/image/upload/v1774253552/NexviaLogo_pid8kz.png';
 
-const DROP_END = '__end__';
-const SIDEBAR_DRAG_ITEM_MIME = 'application/x-nexvia-sidebar-item';
-
 const CATEGORY_ITEMS = [
   { key: 'inhouse', label: '사내 업무', icon: 'arrow_circle_left' },
   { key: 'outside', label: '사외 업무', icon: 'globe' },
   { key: 'schedule', label: '일정', icon: 'event' },
   { key: 'etc', label: '기타', icon: 'more_horiz' }
 ];
+
+/** 사이드바 전용 외부 링크 키(라우터와 충돌 방지). 저장된 itemOrders에 `to`로 쓰임 */
+const SIDEBAR_EXT_GMAIL = '__sidebar_ext_gmail__';
+const GOOGLE_GMAIL_INBOX_URL = 'https://mail.google.com/mail/u/0/#inbox';
 
 const SUBMENU_ITEMS = [
   { to: '/', icon: 'dashboard', label: '대시보드', category: 'inhouse' },
@@ -45,7 +47,14 @@ const SUBMENU_ITEMS = [
   { to: '/project', icon: 'folder', label: '프로젝트', category: 'schedule' },
   { to: '/todo-list', icon: 'checklist', label: 'Todo List', category: 'schedule' },
   { to: '/ai-voice', icon: 'mic', label: 'AI 음성 기록', category: 'etc' },
-  { to: '/email', icon: 'mail', label: '이메일', category: 'etc' },
+  {
+    to: SIDEBAR_EXT_GMAIL,
+    href: GOOGLE_GMAIL_INBOX_URL,
+    external: true,
+    icon: 'mail',
+    label: '이메일',
+    category: 'etc'
+  },
   { to: '/subscription', icon: 'subscriptions', label: '구독관리', category: 'etc' }
 ];
 
@@ -54,6 +63,8 @@ const SUBMENU_BY_CATEGORY = CATEGORY_ITEMS.reduce((acc, category) => {
   acc[category.key] = SUBMENU_ITEMS.filter((item) => item.category === category.key);
   return acc;
 }, {});
+
+const SUBMENU_DROP_ZONE = 'submenu';
 
 function pathMatchesMenuItem(to, pathname) {
   if (to === '/') return pathname === '/';
@@ -73,8 +84,11 @@ function getSidebarDepartmentLabel(user, orgChartRoot) {
   return resolveDepartmentDisplayFromChart(orgChartRoot, raw) || raw;
 }
 
-function isPendingBlockedMenu(user, to) {
+function isPendingBlockedMenu(user, itemOrTo) {
   if (user?.role !== 'pending') return false;
+  const item = typeof itemOrTo === 'object' && itemOrTo != null && 'to' in itemOrTo ? itemOrTo : null;
+  if (item?.external) return false;
+  const to = item ? item.to : itemOrTo;
   return to !== '/company-overview';
 }
 
@@ -87,46 +101,28 @@ function canShowMenuByRole(user, item) {
   return true;
 }
 
-function reorderWithin(list, draggedKey, dropTargetKey) {
+/**
+ * 같은 리스트 안에서 순서만 바꿈 (to 기준).
+ * 드롭한 행 위치에 맞춤: 한 칸 제거한 뒤 원래 dropIdx 자리에 넣으면 위·아래 이동이 모두 맞음.
+ */
+function reorderWithin(list, draggedTo, dropTargetTo) {
   const next = [...list];
-  const fromIdx = next.indexOf(draggedKey);
+  const fromIdx = next.indexOf(draggedTo);
   if (fromIdx === -1) return list;
+  const dropIdx = next.indexOf(dropTargetTo);
+  if (dropIdx === -1) return list;
+  if (fromIdx === dropIdx) return list;
   next.splice(fromIdx, 1);
-  let toIdx = dropTargetKey === DROP_END ? next.length : next.indexOf(dropTargetKey);
-  if (dropTargetKey !== DROP_END && toIdx === -1) return list;
-  if (dropTargetKey !== DROP_END && fromIdx < toIdx) toIdx -= 1;
-  next.splice(toIdx, 0, draggedKey);
+  next.splice(dropIdx, 0, draggedTo);
   return next;
 }
 
-function reorderByPlacement(list, draggedKey, dropTargetKey, place = 'before') {
-  if (dropTargetKey === DROP_END) {
-    return reorderWithin(list, draggedKey, DROP_END);
+function isSidebarHandleReorderDrag(dataTransfer) {
+  try {
+    return Boolean(dataTransfer?.types && Array.from(dataTransfer.types).includes('application/x-sidebar-to'));
+  } catch {
+    return false;
   }
-  const next = [...list];
-  const fromIdx = next.indexOf(draggedKey);
-  const targetIdx = next.indexOf(dropTargetKey);
-  if (fromIdx === -1 || targetIdx === -1) return list;
-  next.splice(fromIdx, 1);
-  let insertIdx = place === 'after' ? targetIdx + 1 : targetIdx;
-  if (fromIdx < targetIdx) insertIdx -= 1;
-  if (insertIdx < 0) insertIdx = 0;
-  if (insertIdx > next.length) insertIdx = next.length;
-  next.splice(insertIdx, 0, draggedKey);
-  return next;
-}
-
-function moveItemBetweenCategories(itemOrdersByCategory, itemTo, targetCategoryKey) {
-  const next = {};
-  const sourceEntries = Object.entries(itemOrdersByCategory || {});
-  for (const [categoryKey, order] of sourceEntries) {
-    const safeOrder = Array.isArray(order) ? order : [];
-    next[categoryKey] = safeOrder.filter((to) => to !== itemTo);
-  }
-  const targetOrder = Array.isArray(next[targetCategoryKey]) ? next[targetCategoryKey] : [];
-  if (!targetOrder.includes(itemTo)) targetOrder.push(itemTo);
-  next[targetCategoryKey] = targetOrder;
-  return next;
 }
 
 function normalizeFromAnySavedConfig(saved) {
@@ -148,10 +144,13 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
   const userSyncKey = user?._id || user?.id || user?.email || '';
   const [organizationChart, setOrganizationChart] = useState(null);
   const [savingOrder, setSavingOrder] = useState(false);
-  const [draggingItemTo, setDraggingItemTo] = useState(null);
-  const [itemDropHint, setItemDropHint] = useState(null);
-  const [itemCrossMoveCategory, setItemCrossMoveCategory] = useState(null);
-  const draggingItemToRef = useRef(null);
+
+  const [draggingTo, setDraggingTo] = useState(null);
+  const [dragOverDrop, setDragOverDrop] = useState(null);
+  const draggedToRef = useRef(null);
+  const itemOrdersByCategoryRef = useRef(null);
+  const activeCategoryRef = useRef(null);
+  const categoryOrderRef = useRef(null);
 
   const initialConfig = useMemo(() => {
     const modern = getSavedSidebar2LevelConfig();
@@ -163,6 +162,10 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
   const [categoryOrder, setCategoryOrder] = useState(initialConfig.categoryOrder);
   const [itemOrdersByCategory, setItemOrdersByCategory] = useState(initialConfig.itemOrdersByCategory);
   const [activeCategory, setActiveCategory] = useState(initialConfig.activeCategory);
+
+  itemOrdersByCategoryRef.current = itemOrdersByCategory;
+  activeCategoryRef.current = activeCategory;
+  categoryOrderRef.current = categoryOrder;
 
   useEffect(() => {
     let cancelled = false;
@@ -178,7 +181,9 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
         /* 조직도 없어도 사이드바는 동작 */
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const departmentLabel = useMemo(
@@ -190,7 +195,8 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
     const payload = {
       categoryOrder: nextCategoryOrder,
       itemOrdersByCategory: nextItemOrdersByCategory,
-      activeCategory: nextActiveCategory
+      activeCategory: nextActiveCategory,
+      menuEpoch: SIDEBAR_MENU_EPOCH
     };
     setSavedSidebar2LevelConfigLocally(payload);
     setSavingOrder(true);
@@ -244,52 +250,69 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
     });
   }, []);
 
-  const handleItemDragStart = useCallback((e, itemTo) => {
+  const handleDragEnd = useCallback(() => {
+    draggedToRef.current = null;
+    setDraggingTo(null);
+    setDragOverDrop(null);
+  }, []);
+
+  const applySubmenuReorder = useCallback(
+    (dropTargetTo) => {
+      const dragged = draggedToRef.current;
+      const cat = activeCategoryRef.current;
+      if (!dragged || !cat) return;
+      const main = itemOrdersByCategoryRef.current?.[cat] || [];
+      const nextList = reorderWithin(main, dragged, dropTargetTo);
+      const nextByCategory = { ...itemOrdersByCategoryRef.current, [cat]: nextList };
+      setItemOrdersByCategory(nextByCategory);
+      persistSidebarLayout(categoryOrderRef.current, nextByCategory, cat);
+    },
+    [persistSidebarLayout]
+  );
+
+  const handleDragStart = useCallback((e, itemTo) => {
     e.stopPropagation();
-    draggingItemToRef.current = itemTo;
-    setDraggingItemTo(itemTo);
-    e.dataTransfer.setData(SIDEBAR_DRAG_ITEM_MIME, itemTo);
+    draggedToRef.current = itemTo;
+    setDraggingTo(itemTo);
     e.dataTransfer.setData('text/plain', itemTo);
+    e.dataTransfer.setData('application/x-sidebar-to', itemTo);
     e.dataTransfer.effectAllowed = 'move';
   }, []);
 
-  const handleItemDragEnd = useCallback(() => {
-    draggingItemToRef.current = null;
-    setDraggingItemTo(null);
-    setItemDropHint(null);
-    setItemCrossMoveCategory(null);
+  const handleSubmenuDrop = useCallback(
+    (e, explicitTargetTo) => {
+      if (!draggedToRef.current) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const row = e.target.closest?.(`[data-sidebar-drop-zone="${SUBMENU_DROP_ZONE}"]`);
+      const dropTo = explicitTargetTo ?? row?.getAttribute?.('data-sidebar-drop-to');
+      if (dropTo == null) return;
+      applySubmenuReorder(dropTo);
+      handleDragEnd();
+    },
+    [applySubmenuReorder, handleDragEnd]
+  );
+
+  const setDropHighlight = useCallback((to) => {
+    setDragOverDrop(to != null ? { zone: SUBMENU_DROP_ZONE, to } : null);
   }, []);
 
-  const handleItemDrop = useCallback((e, dropTargetTo, place = 'before') => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!activeCategory) return;
-    const dragged = draggingItemToRef.current ||
-      e.dataTransfer.getData(SIDEBAR_DRAG_ITEM_MIME) ||
-      e.dataTransfer.getData('text/plain');
-    if (!dragged) return;
-    const current = itemOrdersByCategory?.[activeCategory] || [];
-    const next = reorderByPlacement(current, dragged, dropTargetTo, place);
-    const nextByCategory = { ...itemOrdersByCategory, [activeCategory]: next };
-    setItemOrdersByCategory(nextByCategory);
-    persistSidebarLayout(categoryOrder, nextByCategory, activeCategory);
-    handleItemDragEnd();
-  }, [activeCategory, categoryOrder, handleItemDragEnd, itemOrdersByCategory, persistSidebarLayout]);
+  const handleSubmenuRowDragOver = useCallback(
+    (e, itemTo) => {
+      const reorderDrag =
+        isSidebarHandleReorderDrag(e.dataTransfer) || Boolean(draggedToRef.current);
+      if (!reorderDrag) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = 'move';
+      if (itemTo !== draggingTo) setDropHighlight(itemTo);
+    },
+    [draggingTo, setDropHighlight]
+  );
 
-  const handleItemDropToCategory = useCallback((e, targetCategoryKey) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const dragged = draggingItemToRef.current ||
-      e.dataTransfer.getData(SIDEBAR_DRAG_ITEM_MIME) ||
-      e.dataTransfer.getData('text/plain');
-    if (!dragged || !targetCategoryKey) return;
-    const nextByCategory = moveItemBetweenCategories(itemOrdersByCategory, dragged, targetCategoryKey);
-    setItemOrdersByCategory(nextByCategory);
-    setActiveCategory(targetCategoryKey);
-    setSavedSidebar2LevelConfigLocally({ activeCategory: targetCategoryKey });
-    persistSidebarLayout(categoryOrder, nextByCategory, targetCategoryKey);
-    handleItemDragEnd();
-  }, [categoryOrder, handleItemDragEnd, itemOrdersByCategory, persistSidebarLayout]);
+  const navDragLeave = useCallback((e) => {
+    if (!e.currentTarget.contains(e.relatedTarget)) setDragOverDrop(null);
+  }, []);
 
   return (
     <aside className={`sidebar ${drawerOpen ? 'sidebar-drawer-open' : ''}`}>
@@ -326,27 +349,8 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
               <div key={category.key} className="sidebar-category-wrap">
                 <button
                   type="button"
-                  className={`sidebar-category-button ${isActive ? 'sidebar-category-button-active' : ''} ${itemCrossMoveCategory === category.key ? 'sidebar-category-button-drop-target' : ''}`}
-                  onDragOver={(e) => {
-                    if (!draggingItemToRef.current) return;
-                    e.preventDefault();
-                    e.stopPropagation();
-                    e.dataTransfer.dropEffect = 'move';
-                    setItemCrossMoveCategory(category.key);
-                  }}
-                  onDrop={(e) => {
-                    if (!draggingItemToRef.current) return;
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleItemDropToCategory(e, category.key);
-                  }}
-                  onClick={(e) => {
-                    if (draggingItemToRef.current) {
-                      e.preventDefault();
-                      return;
-                    }
-                    handleCategoryClick(category.key);
-                  }}
+                  className={`sidebar-category-button ${isActive ? 'sidebar-category-button-active' : ''}`}
+                  onClick={() => handleCategoryClick(category.key)}
                   title={category.label}
                   aria-label={category.label}
                 >
@@ -359,60 +363,96 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
 
         <div
           className="sidebar-submenu-pane"
-          onDragOver={(e) => {
-            if (!draggingItemTo) return;
-            e.preventDefault();
-            setItemDropHint({ to: DROP_END, place: 'after' });
-          }}
-          onDrop={(e) => {
-            if (!draggingItemTo) return;
-            handleItemDrop(e, DROP_END, 'after');
-          }}
+          onDragLeave={activeCategory ? navDragLeave : undefined}
         >
           {!activeCategory ? (
             <div className="sidebar-submenu-empty">대분류 아이콘을 선택해 주세요.</div>
           ) : (
             <>
               {activeItems.map((item) => {
-                const isLocked = isPendingBlockedMenu(user, item.to);
-                const isOver = itemDropHint?.to === item.to;
-                const overBefore = isOver && itemDropHint?.place === 'before';
-                const overAfter = isOver && itemDropHint?.place === 'after';
+                const isLocked = isPendingBlockedMenu(user, item);
+                const over =
+                  dragOverDrop?.zone === SUBMENU_DROP_ZONE && dragOverDrop?.to === item.to;
+                const linkTitle = isLocked
+                  ? undefined
+                  : item.external
+                    ? `${item.label} — 클릭: 새 탭(Gmail). 분할 탭은 페이지에서 자동 지정 불가(Chrome: 링크 우클릭 →「분할 화면에서 링크 열기」또는 링크를 창 왼쪽·오른쪽 끝으로 드래그, 설정에서 가장자리 드롭 허용 필요).`
+                    : `${item.label} — 링크를 끌면 새 탭·Chrome 분할 보기(창 좌우 끝·우클릭「분할 화면에서 링크 열기」). 글자만 선택해 끌면 URL이 아닙니다.`;
                 return (
                   <div
                     key={item.to}
-                    className={`sidebar-nav-item ${draggingItemTo === item.to ? 'sidebar-nav-item-dragging' : ''} ${isOver ? 'sidebar-nav-item-drag-over' : ''} ${overBefore ? 'sidebar-drop-before' : ''} ${overAfter ? 'sidebar-drop-after' : ''}`}
-                    draggable
-                    onDragStart={(e) => handleItemDragStart(e, item.to)}
-                    onDragEnd={handleItemDragEnd}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      if (draggingItemTo === item.to) return;
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      const place = e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
-                      setItemDropHint({ to: item.to, place });
-                    }}
-                    onDrop={(e) => handleItemDrop(e, item.to, itemDropHint?.place || 'before')}
+                    data-sidebar-drop-zone={SUBMENU_DROP_ZONE}
+                    data-sidebar-drop-to={item.to}
+                    className={`sidebar-nav-item ${draggingTo === item.to ? 'sidebar-nav-item-dragging' : ''} ${over ? 'sidebar-nav-item-drag-over' : ''}`}
+                    onDragOver={(e) => handleSubmenuRowDragOver(e, item.to)}
+                    onDrop={(e) => handleSubmenuDrop(e, item.to)}
                   >
-                    <NavLink
-                      to={item.to}
-                      className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''} ${isLocked ? 'sidebar-link-locked' : ''}`}
-                      end={item.to === '/'}
-                      draggable={false}
-                      onClick={(e) => {
-                        if (isLocked) {
-                          e.preventDefault();
-                          window.alert('현재 계정은 권한 대기 상태입니다. 사내 현황에서 회사의 허용을 받아야 다른 메뉴에 접근할 수 있습니다.');
-                          return;
-                        }
-                        onCloseDrawer?.();
-                      }}
+                    <span
+                      className="sidebar-drag-handle"
+                      draggable={!isLocked}
+                      onDragStart={isLocked ? undefined : (e) => handleDragStart(e, item.to)}
+                      onDragEnd={handleDragEnd}
+                      title={isLocked ? '권한 대기 중에는 순서를 바꿀 수 없습니다' : '드래그하여 순서 변경'}
+                      aria-label={`${item.label} 순서 변경`}
                     >
-                      <span className="material-symbols-outlined">{item.icon}</span>
-                      <span>{item.label}</span>
-                      {isLocked ? <span className="material-symbols-outlined sidebar-lock-icon" aria-hidden>lock</span> : null}
-                    </NavLink>
+                      <span className="material-symbols-outlined" aria-hidden>
+                        drag_indicator
+                      </span>
+                    </span>
+                    {item.external && item.href ? (
+                      <a
+                        href={item.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`sidebar-link sidebar-link-external ${isLocked ? 'sidebar-link-locked' : ''}`}
+                        draggable={!isLocked}
+                        title={linkTitle}
+                        onClick={(e) => {
+                          if (isLocked) {
+                            e.preventDefault();
+                            window.alert(
+                              '현재 계정은 권한 대기 상태입니다. 사내 현황에서 회사의 허용을 받아야 다른 메뉴에 접근할 수 있습니다.'
+                            );
+                            return;
+                          }
+                          onCloseDrawer?.();
+                        }}
+                      >
+                        <span className="sidebar-link-label">{item.label}</span>
+                        {isLocked ? (
+                          <span className="material-symbols-outlined sidebar-lock-icon" aria-hidden>
+                            lock
+                          </span>
+                        ) : null}
+                      </a>
+                    ) : (
+                      <NavLink
+                        to={item.to}
+                        className={({ isActive }) =>
+                          `sidebar-link ${isActive ? 'active' : ''} ${isLocked ? 'sidebar-link-locked' : ''}`
+                        }
+                        end={item.to === '/'}
+                        draggable={!isLocked}
+                        title={linkTitle}
+                        onClick={(e) => {
+                          if (isLocked) {
+                            e.preventDefault();
+                            window.alert(
+                              '현재 계정은 권한 대기 상태입니다. 사내 현황에서 회사의 허용을 받아야 다른 메뉴에 접근할 수 있습니다.'
+                            );
+                            return;
+                          }
+                          onCloseDrawer?.();
+                        }}
+                      >
+                        <span className="sidebar-link-label">{item.label}</span>
+                        {isLocked ? (
+                          <span className="material-symbols-outlined sidebar-lock-icon" aria-hidden>
+                            lock
+                          </span>
+                        ) : null}
+                      </NavLink>
+                    )}
                   </div>
                 );
               })}

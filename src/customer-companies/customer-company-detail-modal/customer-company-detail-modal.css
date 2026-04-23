@@ -33,6 +33,409 @@
   to { transform: translateX(0); }
 }
 
+@keyframes ccDetailPanelCenterIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* 고객사 상세 루트 — side: 기존 우측 슬라이드, center: 화면 중앙 모달 (listTemplates) */
+.customer-company-detail-root {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  pointer-events: none;
+}
+
+.customer-company-detail-root > .customer-company-detail-overlay,
+.customer-company-detail-root > .customer-company-detail-panel {
+  pointer-events: auto;
+}
+
+.customer-company-detail-root--center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: max(0.2rem, env(safe-area-inset-top, 0px));
+  padding-right: max(0.2rem, env(safe-area-inset-right, 0px));
+  padding-bottom: max(0.2rem, env(safe-area-inset-bottom, 0px));
+  padding-left: max(0.2rem, env(safe-area-inset-left, 0px));
+  box-sizing: border-box;
+}
+
+.customer-company-detail-root--center .customer-company-detail-overlay {
+  position: absolute;
+  inset: 0;
+}
+
+.customer-company-detail-root--center .customer-company-detail-panel {
+  position: relative;
+  top: auto;
+  right: auto;
+  bottom: auto;
+  left: auto;
+  max-width: none;
+  width: min(calc(100vw - 0.1rem), 152rem);
+  height: min(97dvh, 76rem);
+  max-height: min(97dvh, 76rem);
+  border-left: none;
+  border-radius: 0.85rem;
+  box-shadow: 0 18px 48px rgba(29, 40, 58, 0.14);
+  animation: ccDetailPanelCenterIn 0.22s ease-out;
+}
+
+@media (max-width: 639px) {
+  .customer-company-detail-root--center .customer-company-detail-panel {
+    width: 100%;
+    height: min(94dvh, 100%);
+    max-height: min(94dvh, 100%);
+    border-radius: 0.65rem;
+  }
+}
+
+/* 가운데 모달 본문: 좌 아이콘 레일 · 중앙 탭 영역 · 우측 업무일지 전열 (Sample Design customer-company-detail-modal2) */
+.ccd-main-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.ccd-center-rail {
+  display: none;
+}
+
+.ccd-middle-column {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.ccd-tab-panel {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.ccd-center-journal {
+  display: block;
+  flex: 0 0 auto;
+}
+
+.customer-company-detail-inner--center {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.customer-company-detail-body--center {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(24rem, 0.88fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
+  column-gap: 1.25rem;
+  row-gap: 1.25rem;
+  align-items: start;
+  /* 상단(카드+업무기록)+커스텀필드가 길어도 직원/제품/Drive까지 스크롤로 도달 가능 */
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 가운데 모달: 본문 flex 영역이 잘리지 않도록 하단 마진 제거(일반 body의 margin-bottom은 높이 계산을 깨뜨릴 수 있음) */
+.customer-company-detail-inner--center .customer-company-detail-body--center {
+  margin-bottom: 0;
+  padding-bottom: 1.25rem;
+}
+
+.customer-company-detail-body--center .ccd-top-pair {
+  grid-column: 1;
+  grid-row: 1;
+  flex-shrink: 0;
+}
+
+.customer-company-detail-body--center .customer-company-detail-custom-fields {
+  grid-column: 1;
+  grid-row: 2;
+  flex-shrink: 1;
+  min-height: 0;
+  max-height: min(26dvh, 15rem);
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 가운데 모달 상단: 회사 카드(좌) + 지원·업무 기록(우), 상단 정렬로 높이는 서로 독립 */
+.ccd-top-pair {
+  display: block;
+}
+
+.ccd-top-pair-left {
+  display: block;
+}
+
+.customer-company-detail-body--center .ccd-top-pair--split {
+  display: block;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.customer-company-detail-body--center .ccd-top-pair-left {
+  display: block;
+  flex: none;
+  min-width: 0;
+}
+
+.customer-company-detail-body--center .ccd-top-pair--split .customer-company-detail-card {
+  margin-bottom: 0;
+}
+
+/* 상단 우측 업무 기록: 높이 상한 + 내부 스크롤(본문이 레일·탭을 0높이로 밀어내지 않게) */
+.customer-company-detail-body--center .ccd-center-journal.ccd-center-journal--top-row {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  align-self: stretch;
+  justify-self: stretch;
+  flex: none;
+  width: auto;
+  max-height: none;
+  overflow: visible;
+}
+
+.customer-company-detail-body:not(.customer-company-detail-body--center) .ccd-center-journal--side-below {
+  margin-top: 1.25rem;
+  width: 100%;
+}
+
+.customer-company-detail-body--center .ccd-main-grid {
+  grid-column: 1;
+  grid-row: 3;
+  flex-direction: row;
+  align-items: stretch;
+  /* 남는 높이를 탭 영역에 확실히 할당(기본 min-height:auto 자식이 메인 그리드를 0으로 밀어내는 현상 방지) */
+  flex: 1 1 0%;
+  flex-shrink: 0;
+  /* 상단 블록이 커도 레일·탭이 완전히 사라지지 않도록 최소 높이 확보 */
+  min-height: min(13rem, 32dvh);
+  overflow: hidden;
+}
+
+.customer-company-detail-body--center .ccd-center-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 0 0 5rem;
+  width: 5rem;
+  padding: 1.25rem 0.45rem;
+  gap: 0.85rem;
+  background: #f0f4f7;
+  border-right: 1px solid #e2e8f0;
+  box-sizing: border-box;
+}
+
+.ccd-center-rail-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.55rem;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+
+.ccd-center-rail-btn:hover {
+  background: #e2e8f0;
+  color: #2c6485;
+}
+
+.ccd-center-rail-btn.is-active {
+  background: #dbeafe;
+  color: #1e4d72;
+  box-shadow: 0 1px 4px rgba(44, 100, 133, 0.12);
+}
+
+.ccd-center-rail-btn .material-symbols-outlined {
+  font-size: 1.35rem;
+}
+
+.customer-company-detail-body--center .ccd-middle-column {
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0.5rem 0 0;
+}
+
+.customer-company-detail-body--center .ccd-tab-panel {
+  display: none;
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0 1.1rem 1rem;
+  -webkit-overflow-scrolling: touch;
+}
+
+.customer-company-detail-body--center .ccd-tab-panel.is-active {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 탭 패널 스크롤이 동작하도록 섹션 기본 min-height:auto를 깨고 하단 여백만 정리 */
+.customer-company-detail-body--center .ccd-tab-panel.is-active > .customer-company-detail-section {
+  min-height: 0;
+  margin-bottom: 0;
+}
+
+.customer-company-detail-body--center .ccd-center-journal {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 clamp(21rem, 25vw, 30rem);
+  width: clamp(21rem, 25vw, 30rem);
+  min-width: 0;
+  min-height: 0;
+  background: #f8fafb;
+  border-left: 1px solid #e2e8f0;
+  overflow: hidden;
+}
+
+/* 상단 우측은 고정폭이 아니라 남은 가로폭을 끝까지 사용 */
+.customer-company-detail-body--center .ccd-center-journal.ccd-center-journal--top-row {
+  min-width: 0;
+  border-left: 1px solid #e2e8f0;
+}
+
+.customer-company-detail-section--journal-rail {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-bottom: 0;
+  border-bottom: none;
+}
+
+.customer-company-detail-body--center .ccd-center-journal .customer-company-detail-summary-card,
+.customer-company-detail-body--center .ccd-center-journal .customer-company-detail-journal-input-wrap {
+  flex-shrink: 0;
+}
+
+.customer-company-detail-body--center .ccd-center-journal .customer-company-detail-section-head {
+  flex-shrink: 0;
+}
+
+.customer-company-detail-body--center .ccd-center-journal .customer-company-detail-timeline {
+  flex: 0 0 auto;
+  min-height: auto;
+  overflow: visible;
+}
+
+/* 상단 우측 업무 기록은 내부 스크롤 대신 모달 전체 스크롤을 사용 */
+.customer-company-detail-body--center .ccd-center-journal--top-row .customer-company-detail-section--journal-rail,
+.customer-company-detail-body--center .ccd-center-journal--top-row .customer-company-detail-timeline {
+  min-height: auto;
+  overflow: visible;
+}
+
+@media (max-width: 767px) {
+  .customer-company-detail-body--center {
+    display: flex;
+    flex-direction: column;
+    row-gap: 0;
+    column-gap: 0;
+  }
+
+  .customer-company-detail-body--center .ccd-top-pair--split {
+    flex-direction: column;
+  }
+
+  .customer-company-detail-body--center .ccd-center-journal--top-row {
+    width: 100%;
+    flex: 1 1 auto;
+    max-height: none;
+    border-left: none;
+    border-top: 1px solid #e2e8f0;
+  }
+
+  .customer-company-detail-body--center .ccd-main-grid {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .customer-company-detail-body--center .ccd-center-rail {
+    flex-direction: row;
+    justify-content: center;
+    width: 100%;
+    flex: 0 0 auto;
+    padding: 0.65rem 0.75rem;
+    gap: 0.75rem;
+    border-right: none;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .customer-company-detail-body--center .ccd-middle-column {
+    flex: 1 1 auto;
+    min-height: 12rem;
+    overflow: visible;
+  }
+
+  .customer-company-detail-body--center .ccd-tab-panel.is-active {
+    min-height: 14rem;
+  }
+
+  .customer-company-detail-body--center .ccd-center-journal {
+    width: 100%;
+    flex: 1 1 auto;
+    min-height: 16rem;
+    border-left: none;
+    border-top: 1px solid #e2e8f0;
+  }
+}
+
+@media (max-width: 1180px) {
+  .customer-company-detail-body--center {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto auto;
+  }
+
+  .customer-company-detail-body--center .ccd-top-pair {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .customer-company-detail-body--center .ccd-center-journal.ccd-center-journal--top-row {
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: stretch;
+  }
+
+  .customer-company-detail-body--center .customer-company-detail-custom-fields {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  .customer-company-detail-body--center .ccd-main-grid {
+    grid-column: 1;
+    grid-row: 4;
+  }
+
+  .customer-company-detail-body--center .ccd-center-journal.ccd-center-journal--top-row {
+    width: 100%;
+    min-width: 0;
+    max-height: none;
+    border-left: none;
+    border-top: 1px solid #e2e8f0;
+  }
+}
+
 .customer-company-detail-inner {
   display: flex;
   flex-direction: column;
@@ -89,6 +492,21 @@
 .customer-company-detail-icon-btn:hover {
   background: var(--bg-light);
   color: var(--text);
+}
+
+.customer-company-detail-layout-toggle.is-layout-center {
+  background: rgba(44, 100, 133, 0.1);
+  color: var(--primary, #2c6485);
+}
+
+.customer-company-detail-layout-toggle-spin {
+  animation: ccDetailLayoutSpin 0.85s linear infinite;
+}
+
+@keyframes ccDetailLayoutSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .customer-company-detail-delete-btn:hover {
@@ -181,14 +599,13 @@
 @media (min-width: 640px) {
   .customer-company-detail-card {
     flex-direction: row;
-    flex-wrap: wrap;
-    align-items: center;
+    flex-wrap: nowrap;
+    align-items: flex-start;
   }
 
   .customer-company-detail-card-map-col {
     width: 8.75rem;
     flex: 0 0 8.75rem;
-    margin-left: auto;
     align-self: flex-start;
     display: flex;
     flex-direction: column;
@@ -371,18 +788,23 @@
 
 .customer-company-detail-name-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
   gap: 0.75rem;
   margin-bottom: 0.75rem;
 }
 
 .customer-company-detail-name-wrap {
   position: relative;
+  flex: 1 1 16rem;
+  min-width: 0;
 }
 
 .customer-company-detail-name-link {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
+  flex-wrap: wrap;
   gap: 0.35rem;
   padding: 0;
   margin: 0;
@@ -415,9 +837,12 @@
 
 .customer-company-detail-name {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: clamp(1.3rem, 1rem + 1vw, 2rem);
   font-weight: 700;
   color: var(--primary);
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
 }
 
 /* 등록된 사업자명 / 사업자 등록증 팝오버 */
@@ -539,6 +964,9 @@
   font-size: 0.75rem;
   font-weight: 600;
   border-radius: 9999px;
+  flex: 0 0 auto;
+  align-self: flex-start;
+  white-space: nowrap;
 }
 
 .customer-company-detail-status-badge.status-active {
@@ -563,10 +991,12 @@
 
 .customer-company-detail-meta-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.5rem;
   font-size: 0.875rem;
   color: var(--text-muted);
+  min-width: 0;
+  line-height: 1.45;
 }
 
 .customer-company-detail-meta-item.full {
@@ -577,6 +1007,7 @@
   font-size: 1rem;
   flex-shrink: 0;
   color: var(--text-muted);
+  margin-top: 0.08rem;
 }
 
 .customer-company-detail-actions {
@@ -830,16 +1261,79 @@
 }
 
 .customer-company-detail-summary-head {
+  margin-bottom: 0.5rem;
+}
+
+.customer-company-detail-summary-title-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.customer-company-detail-summary-title-with-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  min-width: 0;
+  flex: 0 1 auto;
 }
 
 .customer-company-detail-summary-head strong {
   font-size: 0.9375rem;
   color: var(--text);
+}
+
+.customer-company-detail-summary-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: #5a6d8a;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.customer-company-detail-summary-refresh-btn:focus-visible {
+  outline: 2px solid rgba(100, 116, 139, 0.45);
+  outline-offset: 1px;
+}
+
+.customer-company-detail-summary-refresh-btn-icon {
+  font-size: 1.35rem;
+  line-height: 1;
+  font-variation-settings: 'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 24;
+}
+
+.customer-company-detail-summary-refresh-btn-icon--spin {
+  animation: customer-company-detail-summary-refresh-spin 0.8s linear infinite;
+}
+
+@keyframes customer-company-detail-summary-refresh-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.customer-company-detail-summary-refresh-btn:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.14);
+  color: #3d4f6f;
+}
+
+.customer-company-detail-summary-refresh-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .customer-company-detail-summary-status {
@@ -871,9 +1365,9 @@
 
 .customer-company-detail-summary-text {
   margin: 0;
-  font-size: 0.875rem;
+  font-size: 0.98rem;
   color: var(--text);
-  line-height: 1.6;
+  line-height: 1.72;
   white-space: pre-wrap;
 }
 
@@ -1131,7 +1625,7 @@
 .customer-company-detail-timeline-empty {
   margin: 0;
   padding: 1.5rem 0;
-  font-size: 0.875rem;
+  font-size: 0.98rem;
   color: var(--text-muted);
 }
 
@@ -1173,7 +1667,7 @@
 }
 
 .customer-company-detail-timeline-emp {
-  font-size: 0.875rem;
+  font-size: 0.98rem;
   font-weight: 700;
   color: var(--text);
   display: block;
@@ -1207,9 +1701,9 @@
 
 .customer-company-detail-timeline-content {
   margin: 0;
-  font-size: 0.875rem;
+  font-size: 1rem;
   color: var(--text);
-  line-height: 1.5;
+  line-height: 1.72;
 }
 
 .customer-company-detail-timeline-content-wrap {
@@ -1218,9 +1712,9 @@
 
 .customer-company-detail-timeline-paragraph {
   margin: 0 0 0.5rem;
-  font-size: 0.875rem;
+  font-size: 1rem;
   color: var(--text);
-  line-height: 1.6;
+  line-height: 1.76;
 }
 
 .customer-company-detail-timeline-paragraph:last-child {

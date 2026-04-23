@@ -285,17 +285,6 @@
     font-size: 0.75rem;
   }
 
-  .customer-company-employees-page .cce-google-result {
-    padding: 0.5rem 0.75rem;
-    font-size: 0.78rem;
-    flex-wrap: wrap;
-  }
-
-  .customer-company-employees-page .cce-google-result-dismiss {
-    margin-left: 0;
-    flex: 0 0 auto;
-  }
-
   .customer-company-employees-page .panel {
     margin-bottom: 1rem;
     border-radius: 0.5rem;

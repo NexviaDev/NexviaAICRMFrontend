@@ -42,6 +42,23 @@ function matchesDateRange(opp, dateStart, dateEnd) {
   return true;
 }
 
+/** 수정일/생성일이 해당 연-월(로컬 달력) 안에 있는지 */
+function matchesMonth(opp, monthStr) {
+  const s = String(monthStr || '').trim();
+  if (!s) return true;
+  const inst = getOppFilterInstant(opp);
+  if (!inst) return false;
+  const m = s.match(/^(\d{4})-(\d{2})$/);
+  if (!m) return true;
+  const y = parseInt(m[1], 10);
+  const mo = parseInt(m[2], 10);
+  if (!y || mo < 1 || mo > 12) return false;
+  const ms = inst.getTime();
+  const startMs = new Date(y, mo - 1, 1, 0, 0, 0, 0).getTime();
+  const endMs = new Date(y, mo, 0, 23, 59, 59, 999).getTime();
+  return ms >= startMs && ms <= endMs;
+}
+
 function matchesLocalSearch(opp, q) {
   const t = String(q || '').trim().toLowerCase();
   if (!t) return true;
@@ -58,7 +75,7 @@ function matchesLocalSearch(opp, q) {
 }
 
 /**
- * Won / Lost / Abandoned 드롭존에서 연 기회 목록 — 검색·기간(시작~마감) 필터·페이지당 15건
+ * Won / Lost / Abandoned 드롭존에서 연 기회 목록 — 검색·기간(시작~마감)·월별 필터·페이지당 15건
  */
 export default function DropZoneListModal({
   stageKey,
@@ -78,20 +95,25 @@ export default function DropZoneListModal({
   const [listSearch, setListSearch] = useState('');
   const [dateStart, setDateStart] = useState('');
   const [dateEnd, setDateEnd] = useState('');
+  const [filterMonth, setFilterMonth] = useState('');
   const [page, setPage] = useState(1);
 
   useEffect(() => {
     setListSearch('');
     setDateStart('');
     setDateEnd('');
+    setFilterMonth('');
     setPage(1);
   }, [stageKey]);
 
   const filtered = useMemo(() => {
     return (items || []).filter(
-      (opp) => matchesLocalSearch(opp, listSearch) && matchesDateRange(opp, dateStart, dateEnd)
+      (opp) =>
+        matchesLocalSearch(opp, listSearch) &&
+        matchesDateRange(opp, dateStart, dateEnd) &&
+        matchesMonth(opp, filterMonth)
     );
-  }, [items, listSearch, dateStart, dateEnd]);
+  }, [items, listSearch, dateStart, dateEnd, filterMonth]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
 
@@ -130,9 +152,15 @@ export default function DropZoneListModal({
     setPage(1);
   }, []);
 
+  const handleFilterMonthChange = useCallback((e) => {
+    setFilterMonth(e.target.value);
+    setPage(1);
+  }, []);
+
   const clearDateRange = useCallback(() => {
     setDateStart('');
     setDateEnd('');
+    setFilterMonth('');
     setPage(1);
   }, []);
 
@@ -203,18 +231,28 @@ export default function DropZoneListModal({
                   aria-label="기간 마감일"
                 />
               </label>
-              {(dateStart || dateEnd) ? (
+              <label className="sp-dz-list-modal-date-field">
+                <span className="sp-dz-list-modal-date-field-label">월별</span>
+                <input
+                  type="month"
+                  className="sp-dz-list-modal-date-input"
+                  value={filterMonth}
+                  onChange={handleFilterMonthChange}
+                  aria-label="연·월로 필터"
+                />
+              </label>
+              {(dateStart || dateEnd || filterMonth) ? (
                 <button
                   type="button"
                   className="sp-dz-list-modal-date-clear"
                   onClick={clearDateRange}
                 >
-                  기간 초기화
+                  기간·월 초기화
                 </button>
               ) : null}
             </div>
             <p className="sp-dz-list-modal-date-hint">
-              기준: 마지막 수정일(없으면 등록일)이 위 기간에 포함된 기회만 표시합니다.
+              기준: 마지막 수정일(없으면 등록일)입니다. 시작일·마감일·월별을 함께 쓰면 모두 만족할 때만 표시됩니다.
             </p>
           </div>
         </div>
