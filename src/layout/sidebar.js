@@ -30,6 +30,8 @@ const CATEGORY_ITEMS = [
 /** 사이드바 전용 외부 링크 키(라우터와 충돌 방지). 저장된 itemOrders에 `to`로 쓰임 */
 const SIDEBAR_EXT_GMAIL = '__sidebar_ext_gmail__';
 const GOOGLE_GMAIL_INBOX_URL = 'https://mail.google.com/mail/u/0/#inbox';
+const SIDEBAR_EXT_GOOGLE_CHAT = '__sidebar_ext_google_chat__';
+const GOOGLE_CHAT_URL = 'https://chat.google.com/';
 
 const SUBMENU_ITEMS = [
   { to: '/', icon: 'dashboard', label: '대시보드', category: 'inhouse' },
@@ -53,6 +55,14 @@ const SUBMENU_ITEMS = [
     external: true,
     icon: 'mail',
     label: '이메일',
+    category: 'etc'
+  },
+  {
+    to: SIDEBAR_EXT_GOOGLE_CHAT,
+    href: GOOGLE_CHAT_URL,
+    external: true,
+    icon: 'chat',
+    label: '메신저',
     category: 'etc'
   },
   { to: '/subscription', icon: 'subscriptions', label: '구독관리', category: 'etc' }
@@ -376,7 +386,7 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
                 const linkTitle = isLocked
                   ? undefined
                   : item.external
-                    ? `${item.label} — 클릭: 새 탭(Gmail). 분할 탭은 페이지에서 자동 지정 불가(Chrome: 링크 우클릭 →「분할 화면에서 링크 열기」또는 링크를 창 왼쪽·오른쪽 끝으로 드래그, 설정에서 가장자리 드롭 허용 필요).`
+                    ? `${item.label} — 클릭: 새 탭. 분할 탭은 페이지에서 자동 지정 불가(Chrome: 링크 우클릭 →「분할 화면에서 링크 열기」또는 창 왼쪽·오른쪽 끝으로 드래그, 설정에서 가장자리 드롭 허용 필요).`
                     : `${item.label} — 링크를 끌면 새 탭·Chrome 분할 보기(창 좌우 끝·우클릭「분할 화면에서 링크 열기」). 글자만 선택해 끌면 URL이 아닙니다.`;
                 return (
                   <div
