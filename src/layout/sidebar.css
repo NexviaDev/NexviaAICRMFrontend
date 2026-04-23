@@ -314,13 +314,13 @@
   font-weight: 500;
   transition: background 0.2s, color 0.2s;
   text-decoration: none;
+  cursor: pointer;
 }
 
-/* 메뉴 글자 선택·드래그(새 탭에 URL 놓기 등) — 순서 변경은 왼쪽 핸들만 */
+/* 메뉴 라벨은 탐색용: I-beam·실수 선택 방지. 순서 변경은 왼쪽 핸들만 */
 .sidebar-link-label {
-  user-select: text;
-  -webkit-user-select: text;
-  cursor: text;
+  user-select: none;
+  -webkit-user-select: none;
   min-width: 0;
 }
 

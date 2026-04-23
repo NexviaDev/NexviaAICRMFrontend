@@ -387,7 +387,7 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
                   ? undefined
                   : item.external
                     ? `${item.label} — 클릭: 새 탭. 분할 탭은 페이지에서 자동 지정 불가(Chrome: 링크 우클릭 →「분할 화면에서 링크 열기」또는 창 왼쪽·오른쪽 끝으로 드래그, 설정에서 가장자리 드롭 허용 필요).`
-                    : `${item.label} — 링크를 끌면 새 탭·Chrome 분할 보기(창 좌우 끝·우클릭「분할 화면에서 링크 열기」). 글자만 선택해 끌면 URL이 아닙니다.`;
+                    : `${item.label} — 링크를 끌면 새 탭·Chrome 분할 보기(창 좌우 끝·우클릭「분할 화면에서 링크 열기」).`;
                 return (
                   <div
                     key={item.to}

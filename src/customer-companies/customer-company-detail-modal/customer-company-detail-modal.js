@@ -1001,8 +1001,8 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
               <span className="material-symbols-outlined">audio_file</span>
               <span>
                 {audioUploading
-                  ? '음성 처리 중... (AssemblyAI 전사 → Gemini 분류/요약)'
-                  : '음성 파일 드래그앤드롭 또는 선택 (MP3/WAV/M4A/WebM)'}
+                  ? '음성 처리 중… 전사·요약이 끝나면 AssemblyAI에 올린 음성 원본은 서버에서 자동 삭제됩니다.'
+                  : '음성 파일 드래그앤드롭 또는 선택 (MP3/WAV/M4A/WebM). 처리가 끝나면 AssemblyAI 쪽 음성·전사 원본은 삭제됩니다.'}
               </span>
               <button
                 type="button"

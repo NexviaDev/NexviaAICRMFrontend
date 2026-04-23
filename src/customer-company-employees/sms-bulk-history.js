@@ -48,15 +48,6 @@ export function removeSmsBulkHistoryEntry(id) {
   return list;
 }
 
-/** 같은 연락처·전화 중복 제거용 키 */
-export function contactSnapshotKey(c) {
-  if (c?._id != null && String(c._id).trim() !== '') return `id:${String(c._id)}`;
-  const p = String(c?.phone ?? '')
-    .trim()
-    .replace(/[^\d+]/g, '');
-  return `ph:${p}`;
-}
-
 /**
  * @param {string} id
  * @param {Partial<{ title: string, body: string, contacts: unknown[], lastSentAt: string }>} patch

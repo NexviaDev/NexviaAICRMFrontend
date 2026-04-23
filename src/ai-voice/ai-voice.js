@@ -9,6 +9,9 @@ import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-head
 import { pingBackendHealth } from '@/lib/backend-wake';
 import { AI_VOICE_LIST_POLL_MS } from '@/lib/polling-intervals';
 
+/** 백엔드 단일 POST 상한과 동일 — 초과 시 청크 API로 나눔 */
+const VOICE_DIRECT_UPLOAD_MAX_BYTES = 12 * 1024 * 1024;
+
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -42,6 +45,23 @@ function formatTimestamp(ms) {
   return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 }
 
+/** 전사 사용량(초) → 표시용 */
+function formatHoursMinutesShort(sec) {
+  if (sec == null || Number.isNaN(Number(sec))) return '—';
+  const n = Math.max(0, Math.floor(Number(sec)));
+  const h = Math.floor(n / 3600);
+  const m = Math.floor((n % 3600) / 60);
+  if (h > 0) return `${h}시간 ${m}분`;
+  return `${m}분`;
+}
+
+function formatMonthKeyLabel(monthKey) {
+  if (!monthKey || typeof monthKey !== 'string') return '';
+  const [y, mo] = monthKey.split('-');
+  if (!y || !mo) return monthKey;
+  return `${y}년 ${Number(mo)}월`;
+}
+
 const STATUS_MAP = {
   completed: { label: '완료', class: 'completed', icon: 'description' },
   processing: { label: '전사 중', class: 'transcribing', icon: 'sync' },
@@ -60,6 +80,7 @@ export default function AiVoice() {
   const [searchInput, setSearchInput] = useState('');
   const [listError, setListError] = useState('');
   const [uploadError, setUploadError] = useState('');
+  const [uploadSplitStatus, setUploadSplitStatus] = useState('');
   const [uploadZoneDragOver, setUploadZoneDragOver] = useState(false);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState('');
@@ -67,6 +88,9 @@ export default function AiVoice() {
   const [showSendToContact, setShowSendToContact] = useState(false);
   const [sendToLoading, setSendToLoading] = useState(false);
   const [sendToMessage, setSendToMessage] = useState('');
+  const [usageStats, setUsageStats] = useState(null);
+  const [usageLoading, setUsageLoading] = useState(true);
+  const [usageError, setUsageError] = useState('');
   const fileInputRef = useRef(null);
   const pollRef = useRef(null);
   const navigate = useNavigate();
@@ -113,21 +137,49 @@ export default function AiVoice() {
     }
   }, [searchQuery]);
 
+  const fetchUsage = useCallback(async (opts = {}) => {
+    const silent = opts.silent === true;
+    if (!silent) {
+      setUsageLoading(true);
+      setUsageError('');
+    }
+    try {
+      const res = await fetch(`${API_BASE}/voice-recordings/usage-stats`, { headers: getAuthHeader() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || '사용량 조회 실패');
+      setUsageStats(data);
+    } catch (e) {
+      if (!silent) {
+        setUsageError(e.message || '사용량 조회 실패');
+        setUsageStats(null);
+      }
+    } finally {
+      if (!silent) setUsageLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchList();
   }, [fetchList]);
+
+  useEffect(() => {
+    void fetchUsage();
+  }, [fetchUsage]);
 
   const listHasPendingTranscription = useMemo(
     () => items.some((i) => i.status === 'processing' || i.status === 'queued'),
     [items]
   );
 
-  /** 화면을 유지한 채 전사가 끝나도 목록이 갱신되도록(백엔드 목록 동기화와 함께) */
+  /** 화면을 유지한 채 전사가 끝나도 목록·사용량이 갱신되도록 */
   useEffect(() => {
     if (!listHasPendingTranscription) return undefined;
-    const t = setInterval(() => void fetchList({ silent: true }), AI_VOICE_LIST_POLL_MS);
+    const t = setInterval(() => {
+      void fetchList({ silent: true });
+      void fetchUsage({ silent: true });
+    }, AI_VOICE_LIST_POLL_MS);
     return () => clearInterval(t);
-  }, [listHasPendingTranscription, fetchList]);
+  }, [listHasPendingTranscription, fetchList, fetchUsage]);
 
   const fetchDetail = useCallback(async (id, opts = {}) => {
     const silent = opts.silent === true;
@@ -158,11 +210,12 @@ export default function AiVoice() {
     const onVis = () => {
       if (document.visibilityState !== 'visible') return;
       void fetchList({ silent: true });
+      void fetchUsage({ silent: true });
       if (selectedId) void fetchDetail(selectedId, { silent: true });
     };
     document.addEventListener('visibilitychange', onVis);
     return () => document.removeEventListener('visibilitychange', onVis);
-  }, [fetchList, fetchDetail, selectedId]);
+  }, [fetchList, fetchUsage, fetchDetail, selectedId]);
 
   useEffect(() => {
     setSummaryError('');
@@ -183,6 +236,7 @@ export default function AiVoice() {
             setItems((prev) =>
               prev.map((i) => (String(i._id) === String(id) ? { ...i, ...data } : i))
             );
+            if (data.status === 'completed') void fetchUsage({ silent: true });
           }
         })
         .catch(() => {});
@@ -190,11 +244,23 @@ export default function AiVoice() {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [selectedDetail?._id, selectedDetail?.status]);
+  }, [selectedDetail?._id, selectedDetail?.status, fetchUsage]);
 
-  const handleUploadClick = () => fileInputRef.current?.click();
+  const uploadQuotaExceeded = useMemo(() => {
+    if (!usageStats?.limitSeconds) return false;
+    return usageStats.remainingSeconds <= 0 || usageStats.usedSeconds >= usageStats.limitSeconds;
+  }, [usageStats]);
+
+  const handleUploadClick = () => {
+    if (uploadQuotaExceeded) return;
+    fileInputRef.current?.click();
+  };
 
   const uploadFiles = async (fileList) => {
+    if (uploadQuotaExceeded) {
+      setUploadError('이번 달 전사 사용 한도(40시간)에 도달했습니다. 다음 달에 다시 이용해 주세요.');
+      return;
+    }
     const files = Array.from(fileList || []).filter((f) => f && f instanceof File);
     if (!files.length) return;
     const accept = /\.(mp3|wav|m4a|webm)$/i;
@@ -205,29 +271,106 @@ export default function AiVoice() {
       return;
     }
     setUploadError('');
+    setUploadSplitStatus('');
     setUploading(true);
     try {
       await pingBackendHealth(getAuthHeader);
       for (const file of allowed) {
-        const form = new FormData();
-        form.append('audio', file);
-        form.append('title', file.name.replace(/\.[^.]+$/, '') || '녹음');
-        const res = await fetch(`${API_BASE}/voice-recordings`, {
-          method: 'POST',
-          headers: getAuthHeader(),
-          body: form
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || '업로드 실패');
+        const baseTitle = file.name.replace(/\.[^.]+$/, '') || '녹음';
+        let data;
+
+        const uploadChunked = async () => {
+          const s = await fetch(`${API_BASE}/voice-recordings/chunked/session`, {
+            method: 'POST',
+            headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fileName: file.name,
+              totalBytes: file.size,
+              mimeType: file.type || ''
+            })
+          });
+          const sData = await s.json().catch(() => ({}));
+          if (!s.ok) throw new Error(sData.error || '분할 업로드 준비 실패');
+          const { sessionId, chunkSizeBytes } = sData;
+          if (!sessionId || !Number(chunkSizeBytes)) throw new Error('분할 업로드 준비 실패');
+
+          const totalChunks = Math.max(1, Math.ceil(file.size / chunkSizeBytes));
+          let offset = 0;
+          let chunkIdx = 0;
+          while (offset < file.size) {
+            chunkIdx += 1;
+            setUploadSplitStatus(`긴 파일 분할 전송 ${chunkIdx}/${totalChunks}…`);
+            const end = Math.min(offset + chunkSizeBytes, file.size);
+            const slice = file.slice(offset, end);
+            const form = new FormData();
+            form.append('chunk', slice, file.name);
+            form.append('offset', String(offset));
+            const r = await fetch(`${API_BASE}/voice-recordings/chunked/${encodeURIComponent(sessionId)}/chunk`, {
+              method: 'POST',
+              headers: getAuthHeader(),
+              body: form
+            });
+            const rData = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(rData.error || '조각 전송 실패');
+            offset = Number(rData.receivedBytes) || offset + slice.size;
+            if (rData.done || offset >= file.size) break;
+          }
+
+          setUploadSplitStatus('서버에서 전사 요청 중…');
+          const done = await fetch(`${API_BASE}/voice-recordings/chunked/${encodeURIComponent(sessionId)}/complete`, {
+            method: 'POST',
+            headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: baseTitle })
+          });
+          const doneData = await done.json().catch(() => ({}));
+          if (!done.ok) {
+            if (done.status === 403 && doneData.code === 'TRANSCRIPTION_QUOTA_EXCEEDED') {
+              void fetchUsage({ silent: true });
+            }
+            throw new Error(doneData.error || '등록 실패');
+          }
+          return doneData;
+        };
+
+        if (file.size > VOICE_DIRECT_UPLOAD_MAX_BYTES) {
+          data = await uploadChunked();
+        } else {
+          const form = new FormData();
+          form.append('audio', file);
+          form.append('title', baseTitle);
+          const res = await fetch(`${API_BASE}/voice-recordings`, {
+            method: 'POST',
+            headers: getAuthHeader(),
+            body: form
+          });
+          let resData = await res.json().catch(() => ({}));
+          if (!res.ok && res.status === 413 && resData.useChunkedUpload) {
+            data = await uploadChunked();
+          } else if (!res.ok) {
+            if (res.status === 403 && resData.code === 'TRANSCRIPTION_QUOTA_EXCEEDED') {
+              void fetchUsage({ silent: true });
+            }
+            if (res.status === 413 || resData.code === 'FILE_TOO_LARGE') {
+              throw new Error(resData.error || '파일이 허용 크기를 초과했습니다.');
+            }
+            throw new Error(resData.error || '업로드 실패');
+          } else {
+            data = resData;
+          }
+        }
+
         setItems((prev) => [data, ...prev]);
         setSelectedId(data._id);
         setSelectedDetail(data);
+        setUploadSplitStatus('');
       }
-      fetchList();
+      await fetchList();
+      await fetchUsage({ silent: true });
     } catch (err) {
       setUploadError(err.message);
     } finally {
       setUploading(false);
+      setUploadSplitStatus('');
     }
   };
 
@@ -239,6 +382,7 @@ export default function AiVoice() {
   };
 
   const handleUploadDragOver = (e) => {
+    if (uploadQuotaExceeded) return;
     e.preventDefault();
     e.stopPropagation();
     setUploadZoneDragOver(true);
@@ -251,6 +395,7 @@ export default function AiVoice() {
   };
 
   const handleUploadDrop = (e) => {
+    if (uploadQuotaExceeded) return;
     e.preventDefault();
     e.stopPropagation();
     setUploadZoneDragOver(false);
@@ -277,6 +422,7 @@ export default function AiVoice() {
         setSelectedId(next?._id || null);
         setSelectedDetail(null);
       }
+      void fetchUsage({ silent: true });
     } catch (e) {
       alert(e.message);
     }
@@ -396,9 +542,17 @@ export default function AiVoice() {
               aria-label="녹음 검색"
             />
           </form>
-          <button type="button" className="ai-voice-btn ai-voice-btn-primary" title="새 녹음" onClick={handleUploadClick} disabled={uploading}>
+          <button
+            type="button"
+            className="ai-voice-btn ai-voice-btn-primary"
+            title={uploadQuotaExceeded ? '이번 달 전사 한도(40시간) 초과' : '새 녹음'}
+            onClick={handleUploadClick}
+            disabled={uploading || uploadQuotaExceeded}
+          >
             <span className="material-symbols-outlined">add</span>
-            <span>{uploading ? '업로드 중…' : '새 녹음'}</span>
+            <span>
+              {uploading ? uploadSplitStatus || '업로드 중…' : uploadQuotaExceeded ? '한도 도달' : '새 녹음'}
+            </span>
           </button>
           <PageHeaderNotifyChat buttonClassName="ai-voice-icon-btn" wrapperClassName="ai-voice-header-notify-chat" />
         </div>
@@ -406,6 +560,51 @@ export default function AiVoice() {
 
       <div className="ai-voice-body">
         <aside className="ai-voice-side">
+          <div className="ai-voice-usage-section">
+            <div className="ai-voice-usage-head">
+              <span className="material-symbols-outlined" aria-hidden>
+                analytics
+              </span>
+              <span className="ai-voice-usage-head-title">전사 사용량</span>
+            </div>
+            {usageLoading && !usageStats ? (
+              <div className="ai-voice-usage-skeleton" aria-busy="true" aria-label="이번 달 전사 사용량 불러오는 중">
+                <div className="ai-voice-usage-skeleton-row">
+                  <span className="ai-voice-usage-skeleton-chip" />
+                  <span className="ai-voice-usage-skeleton-chip ai-voice-usage-skeleton-chip--wide" />
+                  <span className="ai-voice-usage-skeleton-chip ai-voice-usage-skeleton-chip--mid" />
+                </div>
+                <div className="ai-voice-usage-skeleton-bar" />
+                <div className="ai-voice-usage-skeleton-note" />
+              </div>
+            ) : null}
+            {usageError ? <p className="ai-voice-usage-err">{usageError}</p> : null}
+            {usageStats ? (
+              <>
+                <p className="ai-voice-usage-current">
+                  <span className="ai-voice-usage-current-label">{formatMonthKeyLabel(usageStats.currentMonthKey)}</span>
+                  <span className="ai-voice-usage-current-value">
+                    {formatHoursMinutesShort(usageStats.usedSeconds)} / {formatHoursMinutesShort(usageStats.limitSeconds)}
+                  </span>
+                  <span className="ai-voice-usage-current-remain">
+                    남음 <strong>{formatHoursMinutesShort(usageStats.remainingSeconds)}</strong>
+                  </span>
+                </p>
+                <div className="ai-voice-usage-bar-wrap" aria-hidden>
+                  <div
+                    className={`ai-voice-usage-bar-fill ${uploadQuotaExceeded ? 'ai-voice-usage-bar-fill--full' : ''}`}
+                    style={{
+                      width: `${Math.min(100, (usageStats.usedSeconds / Math.max(1, usageStats.limitSeconds)) * 100)}%`
+                    }}
+                  />
+                </div>
+                <p className="ai-voice-usage-note">
+                  본인이 업로드한 녹음 길이 합산 · 달력은 한국(서울) 기준 · 월 최대 40시간
+                </p>
+              </>
+            ) : null}
+          </div>
+
           <div className="ai-voice-upload-section">
             <input
               ref={fileInputRef}
@@ -415,27 +614,46 @@ export default function AiVoice() {
               className="ai-voice-file-input"
               onChange={handleFileChange}
               aria-label="음성 파일 선택"
+              disabled={uploadQuotaExceeded || uploading}
             />
             <div
-              className={`ai-voice-upload-zone ${uploadZoneDragOver ? 'ai-voice-upload-zone-dragover' : ''}`}
-              onClick={handleUploadClick}
-              onKeyDown={(e) => e.key === 'Enter' && handleUploadClick()}
+              className={`ai-voice-upload-zone ${uploadZoneDragOver ? 'ai-voice-upload-zone-dragover' : ''} ${uploadQuotaExceeded ? 'ai-voice-upload-zone--disabled' : ''}`}
+              onClick={uploadQuotaExceeded ? undefined : handleUploadClick}
+              onKeyDown={(e) => {
+                if (uploadQuotaExceeded) return;
+                if (e.key === 'Enter') handleUploadClick();
+              }}
               onDragOver={handleUploadDragOver}
               onDragLeave={handleUploadDragLeave}
               onDrop={handleUploadDrop}
-              role="button"
-              tabIndex={0}
-              aria-label="음성 녹음 업로드"
+              role={uploadQuotaExceeded ? 'region' : 'button'}
+              tabIndex={uploadQuotaExceeded ? -1 : 0}
+              aria-label={uploadQuotaExceeded ? '이번 달 전사 한도 도달로 업로드 비활성' : '음성 녹음 업로드'}
             >
               <div className="ai-voice-upload-icon-wrap">
                 <span className="material-symbols-outlined">cloud_upload</span>
               </div>
-              <h3 className="ai-voice-upload-title">음성 녹음 업로드</h3>
+              <h3 className="ai-voice-upload-title">{uploadQuotaExceeded ? '이번 달 한도 도달' : '음성 녹음 업로드'}</h3>
               <p className="ai-voice-upload-hint">
-                MP3, WAV, M4A 파일을 끌어다 놓거나 클릭하여 선택하세요. (AssemblyAI 전사)
+                {uploadQuotaExceeded
+                  ? '월 40시간 전사 한도를 모두 사용했습니다. 다음 달 초에 다시 업로드할 수 있습니다.'
+                  : 'MP3, WAV, M4A, WebM을 끌어다 놓거나 클릭하여 선택하세요. 긴 파일은 여러 조각으로 나누어 올린 뒤 서버에서 이어 붙입니다.'}
               </p>
-              <button type="button" className="ai-voice-upload-btn" disabled={uploading} onClick={(e) => { e.stopPropagation(); handleUploadClick(); }}>
-                {uploading ? '업로드 중…' : '파일 선택'}
+              {uploadSplitStatus ? <p className="ai-voice-upload-split-status">{uploadSplitStatus}</p> : null}
+              <button
+                type="button"
+                className="ai-voice-upload-btn"
+                disabled={uploading || uploadQuotaExceeded}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!uploadQuotaExceeded) handleUploadClick();
+                }}
+              >
+                {uploading
+                  ? uploadSplitStatus || '업로드 중…'
+                  : uploadQuotaExceeded
+                    ? '업로드 불가'
+                    : '파일 선택'}
               </button>
               {uploadError && <p className="ai-voice-upload-error">{uploadError}</p>}
             </div>

@@ -13,7 +13,7 @@ const SYSTEM_FIXED_STAGE_KEY = 'Won';
 
 /** DB에 단계가 없을 때 한 번에 올릴 기본 진행 단계 + Won (Forecast %) */
 const DEFAULT_STAGE_SEED = [
-  { key: 'NewLead', label: '신규 리드', forecastPercent: 20 },
+  { key: 'NewLead', label: '신규 리드 & 추가 구매건', forecastPercent: 20 },
   { key: 'Contacted', label: '연락 완료', forecastPercent: 30 },
   { key: 'ProposalSent', label: '제안서 전달 완료', forecastPercent: 50 },
   { key: 'TechDemo', label: '기술 시연', forecastPercent: 60 },
@@ -336,7 +336,7 @@ export default function PipelineStagesManageModal({ onClose, onSaved }) {
       alert('Won 단계는 시스템 고정 단계로 삭제할 수 없습니다.');
       return;
     }
-    if (!window.confirm('이 단계를 삭제하시겠습니까? 해당 단계에 있는 기회는 "신규 리드"로 보이지 않을 수 있습니다.')) return;
+    if (!window.confirm('이 단계를 삭제하시겠습니까? 해당 단계에 있는 기회는 "신규 리드 & 추가 구매건"으로 보이지 않을 수 있습니다.')) return;
     setDeletingId(id);
     try {
       const res = await fetch(`${API_BASE}/custom-field-definitions/${id}`, {
@@ -382,7 +382,7 @@ export default function PipelineStagesManageModal({ onClose, onSaved }) {
                   type="text"
                   value={newLabel}
                   onChange={(e) => setNewLabel(e.target.value)}
-                  placeholder="예: 신규 리드"
+                  placeholder="예: 신규 리드 & 추가 구매건"
                   required
                 />
               </div>

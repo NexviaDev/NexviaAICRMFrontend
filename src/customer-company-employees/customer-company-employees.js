@@ -3,8 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import AddContactModal from './add-customer-company-employees-modal/add-customer-company-employees-modal';
 import ContactDetailModal from './customer-company-employees-detail-modal/customer-company-employees-detail-modal';
 import SmsDraftModal, { phoneToSmsHref } from './sms-draft-modal/sms-draft-modal';
-import { loadSmsBulkHistory, removeSmsBulkHistoryEntry, saveBulkSmsAfterSend, updateSmsBulkHistoryEntry } from './sms-bulk-history';
-import SmsBulkHistoryModal from './sms-bulk-history-modal/sms-bulk-history-modal.jsx';
+import { saveBulkSmsAfterSend } from './sms-bulk-history';
 import EmailComposeModal from '../email/email-compose-modal.jsx';
 import ListTemplateModal from '../components/list-template-modal/list-template-modal';
 import {
@@ -111,8 +110,6 @@ export default function CustomerCompanyEmployees() {
   const [bulkSmsPrefill, setBulkSmsPrefill] = useState(null);
   /** 기록에서 연 경우 문자 앱 열 때 같은 기록만 갱신 */
   const [bulkSmsHistoryEntryId, setBulkSmsHistoryEntryId] = useState(null);
-  const [smsHistoryOpen, setSmsHistoryOpen] = useState(false);
-  const [smsHistoryTick, setSmsHistoryTick] = useState(0);
   /** `{ initialTo }` — 단체 시 쉼표로 구분된 수신자 */
   const [emailCompose, setEmailCompose] = useState(null);
   const sortKey = sort.key;
@@ -349,8 +346,6 @@ export default function CustomerCompanyEmployees() {
     return date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' });
   };
 
-  const smsBulkHistoryList = useMemo(() => loadSmsBulkHistory(), [smsHistoryTick]);
-
   /** 모바일 Ethereal 스타일: 전체 / 즐겨찾기 / 내 담당 칩 */
   const [mobileChipFilter, setMobileChipFilter] = useState(() =>
     getSavedTemplate(LIST_ID)?.assigneeMeOnly === true ? 'assignee' : 'all'
@@ -358,29 +353,6 @@ export default function CustomerCompanyEmployees() {
 
   const handleBulkSmsOpened = useCallback((payload) => {
     saveBulkSmsAfterSend(payload);
-    setSmsHistoryTick((t) => t + 1);
-  }, []);
-
-  const resendBulkSmsFromHistory = useCallback((entry) => {
-    const withPhone = (entry.contacts || []).filter((r) => phoneToSmsHref(r?.phone, ''));
-    if (withPhone.length === 0) {
-      window.alert('저장된 연락처에 전화번호가 있는 사람이 없어 다시 보낼 수 없습니다.');
-      return;
-    }
-    setBulkSmsPrefill({ title: entry.title || '', body: entry.body ?? '' });
-    setBulkSmsRows(withPhone);
-    setBulkSmsHistoryEntryId(entry.id);
-    setSmsHistoryOpen(false);
-  }, []);
-
-  const handleHistoryContactsUpdate = useCallback((entryId, contacts) => {
-    updateSmsBulkHistoryEntry(entryId, { contacts });
-    setSmsHistoryTick((t) => t + 1);
-  }, []);
-
-  const deleteSmsBulkHistoryEntryCb = useCallback((id) => {
-    removeSmsBulkHistoryEntry(id);
-    setSmsHistoryTick((t) => t + 1);
   }, []);
 
   const saveTemplate = useCallback(async (payload) => {
@@ -915,20 +887,6 @@ export default function CustomerCompanyEmployees() {
           </select>
         </div>
         <div className="header-actions">
-          <button
-            type="button"
-            className="icon-btn cce-sms-history-header-btn"
-            aria-label="단체 문자 기록"
-            title="문자 앱으로 열었던 단체 문자 기록 (이 브라우저에만 저장)"
-            onClick={() => setSmsHistoryOpen(true)}
-          >
-            <span className="material-symbols-outlined">chat</span>
-            {smsBulkHistoryList.length > 0 ? (
-              <span className="cce-sms-history-badge" aria-hidden>
-                {smsBulkHistoryList.length > 99 ? '99+' : smsBulkHistoryList.length}
-              </span>
-            ) : null}
-          </button>
           <button type="button" className="icon-btn" aria-label="리스트 열 설정" onClick={() => { setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), customFieldColumns)); setSettingsOpen(true); }} title="리스트 열 설정">
             <span className="material-symbols-outlined">settings</span>
           </button>
@@ -1125,13 +1083,6 @@ export default function CustomerCompanyEmployees() {
                     <div>
                       <p className="cce-mobile-activity-value">{pagination.total ?? 0}</p>
                       <p className="cce-mobile-activity-label">전체 연락처</p>
-                    </div>
-                  </div>
-                  <div className="cce-mobile-activity-card cce-mobile-activity-card--peach">
-                    <span className="material-symbols-outlined cce-mobile-activity-icon" aria-hidden>sms</span>
-                    <div>
-                      <p className="cce-mobile-activity-value">{smsBulkHistoryList.length}</p>
-                      <p className="cce-mobile-activity-label">단체 문자 기록</p>
                     </div>
                   </div>
                 </div>
@@ -1441,15 +1392,6 @@ export default function CustomerCompanyEmployees() {
         initialBulkBody={bulkSmsPrefill?.body}
         onBulkSmsOpened={bulkSmsRows ? handleBulkSmsOpened : undefined}
         bulkHistoryEntryId={bulkSmsHistoryEntryId}
-      />
-      <SmsBulkHistoryModal
-        open={smsHistoryOpen}
-        onClose={() => setSmsHistoryOpen(false)}
-        entries={smsBulkHistoryList}
-        pickableContacts={items}
-        onResend={resendBulkSmsFromHistory}
-        onDeleteEntry={deleteSmsBulkHistoryEntryCb}
-        onUpdateEntryContacts={handleHistoryContactsUpdate}
       />
       {emailCompose ? (
         <EmailComposeModal

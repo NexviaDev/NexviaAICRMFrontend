@@ -25,7 +25,7 @@ function getAuthHeader() {
 }
 
 const DEFAULT_STAGE_LABELS = {
-  NewLead: '신규 리드',
+  NewLead: '신규 리드 & 추가 구매건',
   Contacted: '연락 완료',
   ProposalSent: '제안서 전달 완료',
   TechDemo: '기술 시연',

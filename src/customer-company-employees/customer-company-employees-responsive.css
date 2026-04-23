@@ -123,7 +123,7 @@
   /* Recent activity 벤토 */
   .customer-company-employees-page .cce-mobile-activity-bento {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
     gap: 1rem;
     margin-bottom: 1.25rem;
   }
@@ -142,10 +142,6 @@
     background: #e1e1f5;
   }
 
-  .customer-company-employees-page .cce-mobile-activity-card--peach {
-    background: #fed9b8;
-  }
-
   .customer-company-employees-page .cce-mobile-activity-icon {
     font-size: 1.35rem;
     opacity: 0.85;
@@ -153,10 +149,6 @@
 
   .customer-company-employees-page .cce-mobile-activity-card--lavender .cce-mobile-activity-icon {
     color: #4f5161;
-  }
-
-  .customer-company-employees-page .cce-mobile-activity-card--peach .cce-mobile-activity-icon {
-    color: #755a40;
   }
 
   .customer-company-employees-page .cce-mobile-activity-value {
