@@ -20,10 +20,15 @@ export async function geocodeAddressForCompanySave(addressText) {
     const geoRes = await fetch(`${API_BASE}/customer-companies/geocode`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-      body: JSON.stringify({ address })
+      body: JSON.stringify({ address, soft: true })
     });
     const geoData = await geoRes.json().catch(() => ({}));
-    if (geoRes.ok && geoData.latitude != null && geoData.longitude != null) {
+    if (
+      geoRes.ok &&
+      geoData.ok !== false &&
+      geoData.latitude != null &&
+      geoData.longitude != null
+    ) {
       const latitude = Number(geoData.latitude);
       const longitude = Number(geoData.longitude);
       if (Number.isFinite(latitude) && Number.isFinite(longitude)) {

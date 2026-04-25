@@ -73,6 +73,10 @@ function newOppLineId() {
   return `line-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
+function newCollectionEntryId() {
+  return `collection-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
 function computeLineFinalAmount(line) {
   const qty = Math.max(0, Number(line.quantity) || 1);
   const unit = parseNumber(line.unitPrice) || 0;
@@ -354,8 +358,15 @@ export default function OpportunityModal({
     expectedCloseMonth: '',
     startDate: '',
     targetDate: '',
+    contractAmount: '',
+    contractAmountDate: '',
+    invoiceAmount: '',
+    invoiceAmountDate: '',
     ...getInitialInternalAssignee()
   }));
+  const [collectionEntries, setCollectionEntries] = useState(() => ([
+    { id: newCollectionEntryId(), amount: '', date: '' }
+  ]));
   /** 제품별 행: 가격 기준·단가·수량·할인·매입원가(표시용) */
   const [lineItems, setLineItems] = useState([]);
   /** productId → 제품 문서(필드 표시·순마진) */
@@ -470,6 +481,8 @@ export default function OpportunityModal({
             ? String(rawAt)
             : '';
       const ym = data.expectedCloseMonth != null ? String(data.expectedCloseMonth).trim() : '';
+      const contractAmountValue = Number(data.contractAmount) > 0 ? Number(data.contractAmount).toLocaleString() : '';
+      const invoiceAmountValue = Number(data.invoiceAmount) > 0 ? Number(data.invoiceAmount).toLocaleString() : '';
       setForm({
         customerCompanyId: cc?._id || cc || '',
         customerCompanyName: cc?.name || '',
@@ -482,9 +495,23 @@ export default function OpportunityModal({
         expectedCloseMonth: /^\d{4}-\d{2}$/.test(ym) ? ym : '',
         startDate: toDateInputValue(data.startDate),
         targetDate: toDateInputValue(data.targetDate),
+        contractAmount: contractAmountValue,
+        contractAmountDate: toDateInputValue(data.contractAmountDate),
+        invoiceAmount: invoiceAmountValue,
+        invoiceAmountDate: toDateInputValue(data.invoiceAmountDate),
         assignedToUserId: atId,
         assignedToName: (data.assignedToName && String(data.assignedToName).trim()) || ''
       });
+      const loadedCollections = Array.isArray(data.collectionEntries) ? data.collectionEntries : [];
+      setCollectionEntries(
+        loadedCollections.length > 0
+          ? loadedCollections.map((entry) => ({
+            id: newCollectionEntryId(),
+            amount: Number(entry?.amount) > 0 ? Number(entry.amount).toLocaleString() : '',
+            date: toDateInputValue(entry?.date)
+          }))
+          : [{ id: newCollectionEntryId(), amount: '', date: '' }]
+      );
       purchaseCostEditedLineIdsRef.current = new Set();
 
       const mapServerLineToClient = (li, idx) => {
@@ -711,6 +738,30 @@ export default function OpportunityModal({
   const handleChange = (key, val) => {
     setForm((f) => ({ ...f, [key]: val }));
     setError('');
+  };
+
+  const handleCollectionAmountChange = (entryId, value) => {
+    const nextValue = formatNumberInput(value);
+    setCollectionEntries((prev) => prev.map((entry) => (
+      entry.id === entryId ? { ...entry, amount: nextValue } : entry
+    )));
+  };
+
+  const handleCollectionDateChange = (entryId, value) => {
+    setCollectionEntries((prev) => prev.map((entry) => (
+      entry.id === entryId ? { ...entry, date: value } : entry
+    )));
+  };
+
+  const addCollectionEntry = () => {
+    setCollectionEntries((prev) => [...prev, { id: newCollectionEntryId(), amount: '', date: '' }]);
+  };
+
+  const removeCollectionEntry = (entryId) => {
+    setCollectionEntries((prev) => {
+      if (prev.length <= 1) return [{ id: newCollectionEntryId(), amount: '', date: '' }];
+      return prev.filter((entry) => entry.id !== entryId);
+    });
   };
 
   const driveFolderName = useMemo(() => {
@@ -1557,8 +1608,14 @@ export default function OpportunityModal({
         const parsed = new Date(`${s}T12:00:00`);
         return !Number.isNaN(parsed.getTime()) ? parsed.toISOString() : null;
       };
-      const ym = String(form.expectedCloseMonth || '').trim();
-      const expectedCloseMonthPayload = /^\d{4}-\d{2}$/.test(ym) ? ym : '';
+      const targetDateRaw = String(form.targetDate || '').trim();
+      const targetYm = /^\d{4}-\d{2}-\d{2}$/.test(targetDateRaw) ? targetDateRaw.slice(0, 7) : '';
+      const ymFallback = String(form.expectedCloseMonth || '').trim();
+      const expectedCloseMonthPayload = /^\d{4}-\d{2}$/.test(targetYm)
+        ? targetYm
+        : /^\d{4}-\d{2}$/.test(ymFallback)
+          ? ymFallback
+          : '';
 
       const lineItemsPayload = lineItems.map((li) => ({
         productId: li.productId || null,
@@ -1570,6 +1627,14 @@ export default function OpportunityModal({
         discountRate: Math.max(0, Math.min(100, Number(li.discountRate) || 0)),
         discountAmount: parseNumber(li.discountAmount) || 0
       }));
+      const collectionEntriesPayload = collectionEntries
+        .map((entry) => {
+          const amount = parseNumber(entry.amount);
+          const date = toIsoDate(entry.date);
+          if (amount <= 0 && !date) return null;
+          return { amount: Math.max(0, amount), date };
+        })
+        .filter(Boolean);
 
       const body = {
         title: titleToUse,
@@ -1586,7 +1651,12 @@ export default function OpportunityModal({
         assignedTo: (form.assignedToUserId || '').trim() || null,
         expectedCloseMonth: expectedCloseMonthPayload,
         startDate: toIsoDate(form.startDate),
-        targetDate: toIsoDate(form.targetDate)
+        targetDate: toIsoDate(form.targetDate),
+        contractAmount: parseNumber(form.contractAmount) || 0,
+        contractAmountDate: toIsoDate(form.contractAmountDate),
+        invoiceAmount: parseNumber(form.invoiceAmount) || 0,
+        invoiceAmountDate: toIsoDate(form.invoiceAmountDate),
+        collectionEntries: collectionEntriesPayload
       };
       const url = isEdit
         ? `${API_BASE}/sales-opportunities/${oppId}`
@@ -2132,13 +2202,59 @@ export default function OpportunityModal({
       : null;
   const forecastStageLabel =
     stageSelectOptions.find((s) => s.value === form.stage)?.label || form.stage;
+  const isWonStage = form.stage === 'Won';
+  const modalTitle = isWonStage
+    ? (isEdit ? '계약 완료 수정' : '새 계약 완료 추가')
+    : (isEdit ? '기회 수정' : '새 영업 기회 추가');
+  const contractTargetAmount = Math.max(0, Number(totalFinalForForecast) || 0);
+  const collectedTotalAmount = collectionEntries.reduce(
+    (sum, entry) => sum + Math.max(0, parseNumber(entry?.amount)),
+    0
+  );
+  const latestFinanceDateRaw = [
+    String(form.contractAmountDate || '').trim(),
+    String(form.invoiceAmountDate || '').trim(),
+    ...collectionEntries.map((entry) => String(entry?.date || '').trim())
+  ]
+    .filter((v) => /^\d{4}-\d{2}-\d{2}$/.test(v))
+    .sort()
+    .at(-1) || '';
+  const latestCollectionDateRaw = collectionEntries
+    .map((entry) => String(entry?.date || '').trim())
+    .filter((v) => /^\d{4}-\d{2}-\d{2}$/.test(v))
+    .sort()
+    .at(-1) || '';
+  const financeBaseDateLabel = latestFinanceDateRaw ? latestFinanceDateRaw.replace(/-/g, '.') : '-';
+  const collectionCompletionDateLabel =
+    collectedTotalAmount > contractTargetAmount && latestCollectionDateRaw
+      ? latestCollectionDateRaw.replace(/-/g, '.')
+      : '-';
+
+  useEffect(() => {
+    if (!isWonStage) return;
+    const targetFormatted = contractTargetAmount > 0 ? Number(contractTargetAmount).toLocaleString() : '';
+    setForm((prev) => {
+      if (prev.contractAmount === targetFormatted) return prev;
+      return { ...prev, contractAmount: targetFormatted };
+    });
+  }, [isWonStage, contractTargetAmount]);
 
   return (
     <div className="opp-modal-overlay">
       <div className="opp-modal" onClick={(e) => e.stopPropagation()}>
         <div className="opp-modal-header">
           <div className="opp-modal-header-left">
-            <h3 className="opp-modal-title">{isEdit ? '기회 수정' : '새 영업 기회 추가'}</h3>
+            <div className="opp-modal-title-wrap">
+              <h3 className="opp-modal-title">{modalTitle}</h3>
+              <p className="opp-modal-finance-mini">
+                계산서 {formatCurrencyDisplay(parseNumber(form.invoiceAmount), form.currency)} · 수금 {formatCurrencyDisplay(collectedTotalAmount, form.currency)}
+                {' · 기준일 '}
+                {financeBaseDateLabel}
+                {' · 수금 완료일 '}
+                {collectionCompletionDateLabel}
+              </p>
+              <p className="opp-modal-finance-mini-note">계약·계산서·수금 관리의 최종 날짜 기준으로 표기됩니다.</p>
+            </div>
           </div>
           <button type="button" className="opp-modal-close" onClick={onClose}>
             <span className="material-symbols-outlined">close</span>
@@ -2204,16 +2320,6 @@ export default function OpportunityModal({
                     aria-label="수주·판매일"
                   />
                 </div>
-              </div>
-              <div className="opp-label opp-label--expected-month">
-                <span>예상 월 (Forecast)</span>
-                <input
-                  type="month"
-                  className="opp-input opp-input--month"
-                  value={form.expectedCloseMonth}
-                  onChange={(e) => handleChange('expectedCloseMonth', e.target.value)}
-                  aria-label="예상 마감 월"
-                />
               </div>
               {/* 고객사 / 담당자 2열 — 라벨·줄 높이 동일 */}
               <div className="opp-form-grid-2 opp-form-grid-2--company-contact">
@@ -2638,6 +2744,120 @@ export default function OpportunityModal({
                 />
               </label>
 
+              
+
+              <section className="opp-finance-section">
+                <div className="opp-finance-heading">계약·계산서·수금 관리</div>
+                <div className="opp-finance-cards">
+                  <div className="opp-finance-card">
+                    <div className="opp-finance-card-title">계약금액</div>
+                    <div className="opp-finance-grid">
+                      <label className="opp-label">
+                        <span>금액</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9,]*"
+                          className="opp-input"
+                          placeholder="숫자만 입력"
+                          value={form.contractAmount}
+                          readOnly={isWonStage}
+                          onChange={(e) => handleChange('contractAmount', formatNumberInput(e.target.value))}
+                        />
+                      </label>
+                      <label className="opp-label">
+                        <span>날짜</span>
+                        <input
+                          type="date"
+                          className="opp-input opp-input--date"
+                          value={form.contractAmountDate}
+                          onChange={(e) => handleChange('contractAmountDate', e.target.value)}
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="opp-finance-card">
+                    <div className="opp-finance-card-title">계산서 금액</div>
+                    <div className="opp-finance-grid">
+                      <label className="opp-label">
+                        <span>금액</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9,]*"
+                          className="opp-input"
+                          placeholder="숫자만 입력"
+                          value={form.invoiceAmount}
+                          onChange={(e) => handleChange('invoiceAmount', formatNumberInput(e.target.value))}
+                        />
+                      </label>
+                      <label className="opp-label">
+                        <span>날짜</span>
+                        <input
+                          type="date"
+                          className="opp-input opp-input--date"
+                          value={form.invoiceAmountDate}
+                          onChange={(e) => handleChange('invoiceAmountDate', e.target.value)}
+                        />
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="opp-finance-card">
+                    <div className="opp-finance-collection-head">
+                      <span className="opp-finance-subheading">수금 완료금액 (누적)</span>
+                      <button
+                        type="button"
+                        className="opp-btn-light opp-btn-icon"
+                        onClick={addCollectionEntry}
+                        aria-label="수금 항목 추가"
+                        title="수금 항목 추가"
+                      >
+                        <span className="material-symbols-outlined" aria-hidden="true">add</span>
+                      </button>
+                    </div>
+                    <div className="opp-finance-collection-list">
+                      {collectionEntries.map((entry, index) => (
+                        <div key={entry.id} className="opp-finance-collection-row">
+                          <label className="opp-label">
+                            <span>{`수금 ${index + 1} 금액`}</span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9,]*"
+                              className="opp-input"
+                              placeholder="숫자만 입력"
+                              value={entry.amount}
+                              onChange={(e) => handleCollectionAmountChange(entry.id, e.target.value)}
+                            />
+                          </label>
+                          <label className="opp-label">
+                            <span>{`수금 ${index + 1} 날짜`}</span>
+                            <input
+                              type="date"
+                              className="opp-input opp-input--date"
+                              value={entry.date}
+                              onChange={(e) => handleCollectionDateChange(entry.id, e.target.value)}
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            className="opp-btn-light opp-btn-light--danger opp-btn-icon"
+                            onClick={() => removeCollectionEntry(entry.id)}
+                            disabled={collectionEntries.length <= 1}
+                            aria-label={`수금 ${index + 1} 항목 삭제`}
+                            title="수금 항목 삭제"
+                          >
+                            <span className="material-symbols-outlined" aria-hidden="true">delete</span>
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </section>
+
               {/* 증서 · 자료 — 저장된 기회(수정)에서만. Drive 테이블은 shared/register-sale-docs-drive.js */}
               {isEdit ? (
                 <section className="customer-company-detail-section register-sale-docs opp-modal-register-sale-docs">
@@ -2672,51 +2892,7 @@ export default function OpportunityModal({
                       <span className="material-symbols-outlined">add</span>
                     </button>
                   </div>
-                  <div className="register-sale-docs-drive-meta" aria-live="polite">
-                    <div className="register-sale-docs-drive-meta-row">
-                      <span className="register-sale-docs-drive-meta-label">폴더명</span>
-                      <code className="register-sale-docs-drive-meta-code" title="공유 드라이브 루트 아래 이 이름으로 준비됩니다">
-                        {driveFolderNameDisplay}
-                      </code>
-                    </div>
-                    {hasConfirmedCompanyDrive ? (
-                      <p className="register-sale-docs-drive-meta-pending">
-                        선택한 고객사와 동일한 Drive 폴더·CRM 리스트를 사용합니다.
-                      </p>
-                    ) : null}
-                    {personalPurchase && isContactOnlyDrive ? (
-                      <p className="register-sale-docs-drive-meta-pending">
-                        개인 구매 시 [이름]_[연락처] 폴더를 사용합니다.
-                      </p>
-                    ) : null}
-                    {!personalPurchase && isContactOnlyDrive ? (
-                      <p className="register-sale-docs-drive-meta-pending">
-                        고객사를 선택하면 폴더명에 고객사명이 표시됩니다. 고객사·사업자번호가 확정되면 고객사 Drive와 동일한 폴더를 사용합니다.
-                      </p>
-                    ) : null}
-                    {driveMongoRegisteredUrl ? (
-                      <div className="register-sale-docs-drive-meta-row register-sale-docs-drive-meta-row--link">
-                        <span className="register-sale-docs-drive-meta-label">CRM 저장 주소</span>
-                        <a
-                          href={driveMongoRegisteredUrl}
-                          className="register-sale-docs-drive-meta-link"
-                          onClick={handleCrmDriveRegisteredLinkClick}
-                          aria-busy={driveOpeningRegisteredLink}
-                          title="클릭 시 폴더 존재 여부를 확인한 뒤 Drive를 엽니다. 없으면 새 폴더로 다시 연결합니다."
-                        >
-                          {driveOpeningRegisteredLink
-                            ? '폴더 확인 중…'
-                            : driveMongoRegisteredUrl.length > 64
-                              ? `${driveMongoRegisteredUrl.slice(0, 48)}…`
-                              : driveMongoRegisteredUrl}
-                        </a>
-                      </div>
-                    ) : (
-                      <p className="register-sale-docs-drive-meta-pending">
-                        폴더가 준비되면 위 폴더명으로 Drive 링크가 CRM에 저장되어 표시됩니다. 공유 드라이브 루트는 회사 개요의 「전체 공유 드라이브 주소」에서 설정합니다.
-                      </p>
-                    )}
-                  </div>
+                  
                   <div
                     className={`register-sale-docs-crm-uploads ${crmListDropActive ? 'register-sale-docs-crm-uploads--drop-active' : ''} ${driveUploading || !canDocsUpload ? 'register-sale-docs-crm-uploads--disabled' : ''}`}
                     onDragEnter={handleDocsDragEnter}
@@ -2798,9 +2974,7 @@ export default function OpportunityModal({
               {isEdit && oppId ? (
                 <div className="opp-comments-section">
                   <div className="opp-comments-heading">코멘트</div>
-                  <p className="opp-comments-hint">
-                    기회에 대한 메모와 답글을 남깁니다. 본인이 작성한 코멘트만 수정·삭제할 수 있습니다. 답글은 해당 고객사·연락처의 지원·업무 기록에도 같은 규칙으로 남습니다.
-                  </p>
+
                   <ul className="opp-comments-list">
                     {roots.map((c) => renderCommentItem(c))}
                   </ul>

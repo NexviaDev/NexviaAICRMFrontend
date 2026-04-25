@@ -65,6 +65,12 @@ function extractWebhookSecretFromUrl(webhookUrl) {
   return m ? decodeURIComponent(m[1]) : '';
 }
 
+function getPublicFormRouteToken(form) {
+  const publicCode = String(form?.publicCode || '').trim();
+  if (publicCode) return publicCode;
+  return extractWebhookSecretFromUrl(form?.webhookUrl);
+}
+
 function formatLastActivity(date) {
   if (!date) return '—';
   const d = new Date(date);
@@ -374,7 +380,8 @@ export default function LeadCapture() {
           companyName: (cf.company && String(cf.company).trim()) || '',
           address: (cf.address && String(cf.address).trim()) || '',
           status: 'Lead',
-          isIndividual: true
+          isIndividual: true,
+          returnExistingOnDuplicate: true
         };
         const res = await fetch(`${API_BASE}/customer-company-employees`, {
           method: 'POST',
@@ -384,6 +391,10 @@ export default function LeadCapture() {
         });
         if (res.ok) {
           const created = await res.json().catch(() => ({}));
+          if (created?.duplicate) {
+            success++;
+            continue;
+          }
           const businessCard = cf.business_card;
           const isImageUrl = typeof businessCard === 'string' && (businessCard.startsWith('data:image') || businessCard.startsWith('http'));
           if (created._id && isImageUrl) {
@@ -541,11 +552,9 @@ export default function LeadCapture() {
   }
 
   function getPublicFormPageUrl() {
-    const wUrl = selectedForm?.webhookUrl;
-    if (!wUrl || typeof window === 'undefined') return '';
-    const sec = extractWebhookSecretFromUrl(wUrl);
-    if (!sec) return '';
-    return `${window.location.origin}/lead-form/${encodeURIComponent(sec)}`;
+    const token = getPublicFormRouteToken(selectedForm);
+    if (!token || typeof window === 'undefined') return '';
+    return `${window.location.origin}/lead-form/${encodeURIComponent(token)}`;
   }
 
   function handleCopyPublicLink() {

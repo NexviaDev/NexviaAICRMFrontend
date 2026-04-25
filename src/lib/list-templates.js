@@ -1,7 +1,7 @@
 /**
  * 리스트 컬럼 템플릿: User listTemplates와 기본 컬럼 정의.
  * customerCompanies, customerCompanyEmployees, productList 열 순서·표시 여부,
- * calendar 보기(월/주/일), salesPipeline 필터 저장/복원.
+ * calendar 보기(월/주/일), salesPipeline 필터 저장/복원, 홈 대시보드 인사이트(homeDashboard).
  */
 
 import { API_BASE } from '@/config';
@@ -21,10 +21,49 @@ export const LIST_IDS = {
   /** 고객사 상세 모달 표시 — listTemplates.customerCompanyDetailModal { presentation: 'side' | 'center' } */
   CUSTOMER_COMPANY_DETAIL_MODAL: 'customerCompanyDetailModal',
   /** 연락처 상세 모달 표시 — listTemplates.customerCompanyEmployeesDetailModal { presentation: 'side' | 'center' } */
-  CUSTOMER_COMPANY_EMPLOYEES_DETAIL_MODAL: 'customerCompanyEmployeesDetailModal'
+  CUSTOMER_COMPANY_EMPLOYEES_DETAIL_MODAL: 'customerCompanyEmployeesDetailModal',
+  /** 홈 일일 대시보드 — listTemplates.homeDashboard { companyWideInsight, kpiPeriod, consumerChartMode, marginChartMode, … } */
+  HOME_DASHBOARD: 'homeDashboard'
 };
 
+/** 로컬 crm_user — 홈 인사이트·차트 표현 저장값 */
+export function getSavedHomeDashboardTemplate() {
+  try {
+    const raw = localStorage.getItem('crm_user');
+    const user = raw ? JSON.parse(raw) : null;
+    const h = user?.listTemplates?.homeDashboard;
+    if (h && typeof h === 'object') return h;
+  } catch (_) {}
+  return null;
+}
+
+/**
+ * PATCH /api/auth/list-templates — listId: homeDashboard (부분 갱신, 서버에서 기존 값과 병합)
+ * @param {object} patch — kpiPeriod, companyWideInsight, leaderInsightViewKind, insightDeptId, insightUserId, consumerChartMode, marginChartMode
+ */
+export async function patchHomeDashboardTemplate(patch) {
+  if (!patch || typeof patch !== 'object') {
+    throw new Error('저장할 값이 없습니다.');
+  }
+  const body = { listId: LIST_IDS.HOME_DASHBOARD, ...patch };
+  const res = await fetch(`${API_BASE}/auth/list-templates`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    credentials: 'include',
+    body: JSON.stringify(body)
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || '저장에 실패했습니다.');
+  const userRaw = localStorage.getItem('crm_user');
+  const user = userRaw ? JSON.parse(userRaw) : {};
+  user.listTemplates = data.listTemplates || user.listTemplates || {};
+  localStorage.setItem('crm_user', JSON.stringify(user));
+  return data;
+}
+
 const CUSTOMER_COMPANY_DETAIL_MODAL_PRESENTATIONS = new Set(['side', 'center']);
+const CUSTOMER_COMPANY_DETAIL_MODAL_WORK_CATEGORIES = new Set(['tech', 'sales', 'marketing']);
+const CUSTOMER_COMPANY_DETAIL_MODAL_CONTACT_CHANNELS = new Set(['phone', 'visit', 'email', 'sms']);
 
 /** 고객사 상세: 우측 슬라이드(side) · 화면 중앙(center). 기본 side */
 export function getSavedCustomerCompanyDetailModalPresentation() {
@@ -49,6 +88,48 @@ export async function patchCustomerCompanyDetailModalTemplate({ presentation }) 
     headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
     credentials: 'include',
     body: JSON.stringify({ listId: LIST_IDS.CUSTOMER_COMPANY_DETAIL_MODAL, presentation })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || '저장에 실패했습니다.');
+  const userRaw = localStorage.getItem('crm_user');
+  const user = userRaw ? JSON.parse(userRaw) : {};
+  user.listTemplates = data.listTemplates || user.listTemplates || {};
+  localStorage.setItem('crm_user', JSON.stringify(user));
+  return data;
+}
+
+/** 고객사 상세 업무기록 기본값 — 분류/방식 */
+export function getSavedCustomerCompanyDetailModalJournalDefaults() {
+  try {
+    const raw = localStorage.getItem('crm_user');
+    const user = raw ? JSON.parse(raw) : null;
+    const saved = user?.listTemplates?.customerCompanyDetailModal;
+    const workCategory = CUSTOMER_COMPANY_DETAIL_MODAL_WORK_CATEGORIES.has(saved?.journalWorkCategory)
+      ? saved.journalWorkCategory
+      : 'tech';
+    const contactChannel = CUSTOMER_COMPANY_DETAIL_MODAL_CONTACT_CHANNELS.has(saved?.journalContactChannel)
+      ? saved.journalContactChannel
+      : 'phone';
+    return { workCategory, contactChannel };
+  } catch (_) {}
+  return { workCategory: 'tech', contactChannel: 'phone' };
+}
+
+/**
+ * PATCH /api/auth/list-templates — listId: customerCompanyDetailModal, journalWorkCategory / journalContactChannel
+ */
+export async function patchCustomerCompanyDetailModalJournalDefaults({ workCategory, contactChannel }) {
+  const normalizedWorkCategory = CUSTOMER_COMPANY_DETAIL_MODAL_WORK_CATEGORIES.has(workCategory) ? workCategory : 'tech';
+  const normalizedContactChannel = CUSTOMER_COMPANY_DETAIL_MODAL_CONTACT_CHANNELS.has(contactChannel) ? contactChannel : 'phone';
+  const res = await fetch(`${API_BASE}/auth/list-templates`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    credentials: 'include',
+    body: JSON.stringify({
+      listId: LIST_IDS.CUSTOMER_COMPANY_DETAIL_MODAL,
+      journalWorkCategory: normalizedWorkCategory,
+      journalContactChannel: normalizedContactChannel
+    })
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || '저장에 실패했습니다.');

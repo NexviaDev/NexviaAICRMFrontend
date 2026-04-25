@@ -1469,14 +1469,25 @@
   min-width: 0;
 }
 
+.customer-company-detail-journal-select {
+  font-size: 0.8125rem;
+  padding: 0.34rem 0.45rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--bg-light);
+  color: var(--text);
+  min-width: 6.25rem;
+}
+
 .customer-company-detail-journal-input {
   width: 100%;
   border: none;
   background: transparent;
   font-size: 0.9375rem;
   color: var(--text);
-  resize: none;
-  min-height: 4rem;
+  resize: vertical;
+  min-height: 15rem;
+  max-height: 30rem;
   padding: 0;
 }
 
@@ -1678,6 +1689,24 @@
   font-weight: 500;
   color: var(--text-muted);
   text-transform: uppercase;
+}
+
+.customer-company-detail-timeline-tags {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: 0.35rem;
+}
+
+.customer-company-detail-timeline-tags em {
+  font-style: normal;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #334155;
+  background: #f1f5f9;
+  border: 1px solid #dbeafe;
+  border-radius: 999px;
+  padding: 0.08rem 0.42rem;
 }
 
 .customer-company-detail-timeline-delete {

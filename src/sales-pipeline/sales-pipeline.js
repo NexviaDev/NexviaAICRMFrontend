@@ -46,7 +46,7 @@ const DEFAULT_ACTIVE_STAGES = [
 const DROP_ZONE_CONFIG = {
   Won: { icon: 'check_circle', label: '수주 성공 (Won)', colorClass: 'dz-green' },
   Lost: { icon: 'cancel', label: '기회 상실 (Lost)', colorClass: 'dz-red' },
-  Abandoned: { icon: 'pause_circle', label: '보류 (On Hold)', colorClass: 'dz-blue' }
+  Abandoned: { icon: 'pause_circle', label: '이월 (On Hold)', colorClass: 'dz-blue' }
 };
 
 /** 샘플 카드 상단 태그 — 제품명 일부 또는 플레이스홀더 */

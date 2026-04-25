@@ -237,14 +237,14 @@ div[class*="gm-style-cc"] {
   pointer-events: auto;
 }
 
-/* 검색창: 지도 하단 정중앙 (위로 올림) */
+/* 검색창: 지도 하단 정중앙 (위로 올림) — 보조 버튼 행 포함 */
 .map-search-bar {
   position: absolute;
-  bottom: 4rem;
+  bottom: 5.25rem;
   left: 50%;
   transform: translateX(-50%);
   width: 100%;
-  max-width: 36rem;
+  max-width: 38rem;
   padding: 0 1.5rem;
   display: flex;
   justify-content: center;
@@ -312,6 +312,55 @@ div[class*="gm-style-cc"] {
   position: relative;
 }
 
+.map-search-picker-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 500;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(129, 199, 132, 0.45);
+  background: rgba(255, 255, 255, 0.96);
+  color: #2e7d32;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.map-search-picker-btn:hover {
+  background: rgba(200, 230, 201, 0.55);
+  border-color: rgba(76, 175, 80, 0.5);
+}
+
+.map-search-picker-btn .material-symbols-outlined {
+  font-size: 1.2rem;
+}
+
+.map-search-picker-btn-label {
+  max-width: 4.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 420px) {
+  .map-search-picker-btn-label {
+    display: none;
+  }
+
+  .map-search-picker-btn {
+    padding: 0.5rem;
+  }
+}
+
+.map-search-input-shell {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
 .map-search-row .map-search-input {
   flex: 1;
   min-width: 0;
@@ -357,7 +406,61 @@ div[class*="gm-style-cc"] {
   padding-left: 0.25rem;
 }
 
-.map-search-icon {
+.map-search-secondary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
+.map-search-secondary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(129, 199, 132, 0.4);
+  background: rgba(255, 255, 255, 0.96);
+  color: #2e7d32;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.map-search-secondary-btn:hover {
+  background: rgba(200, 230, 201, 0.55);
+  border-color: rgba(76, 175, 80, 0.5);
+}
+
+.map-search-secondary-btn .material-symbols-outlined {
+  font-size: 1.125rem;
+}
+
+.map-search-secondary-btn-primary {
+  border-color: rgba(100, 181, 246, 0.55);
+  color: #1565c0;
+  background: rgba(227, 242, 253, 0.95);
+}
+
+.map-search-secondary-btn-primary:hover {
+  background: rgba(187, 222, 251, 0.95);
+  border-color: rgba(25, 118, 210, 0.45);
+}
+
+.map-search-secondary-btn-muted {
+  border-color: rgba(148, 163, 184, 0.45);
+  color: #475569;
+  background: rgba(241, 245, 249, 0.96);
+}
+
+.map-search-secondary-btn-muted:hover {
+  background: rgba(226, 232, 240, 0.95);
+}
+
+.map-search-input-shell .map-search-icon {
   position: absolute;
   left: 0.75rem;
   top: 50%;
@@ -365,6 +468,7 @@ div[class*="gm-style-cc"] {
   color: var(--text-muted);
   font-size: 1.25rem;
   pointer-events: none;
+  z-index: 1;
 }
 
 .map-search-input {
@@ -750,4 +854,39 @@ div[class*="gm-style-cc"] {
 }
 .gm-style-iw-tc {
   display: none !important;
+}
+
+/* 업체명 InfoWindow: 구글 기본 카드 테두리·패딩 최소화 + 본문은 작은 필만(이중 테두리 제거) */
+.map-page .gm-style-iw-c {
+  padding: 0 !important;
+  max-width: none !important;
+  border-radius: 5px !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+.map-page .gm-style-iw-d {
+  overflow: hidden !important;
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+}
+.map-page .gm-style-iw-chr {
+  display: none !important;
+}
+.map-page .map-company-iw-label {
+  display: block;
+  box-sizing: border-box;
+  max-width: 10.5rem;
+  padding: 0.15rem 0.4rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.25;
+  color: #f8f7ff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+  border: none;
+  border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(76, 29, 149, 0.35);
 }

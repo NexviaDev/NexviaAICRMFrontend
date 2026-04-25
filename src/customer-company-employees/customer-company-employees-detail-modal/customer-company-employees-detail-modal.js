@@ -10,6 +10,7 @@ import { API_BASE } from '@/config';
 import { getStoredCrmUser, isManagerOrAboveRole, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { pingBackendHealth, BACKEND_KEEPALIVE_INTERVAL_MS, BACKEND_KEEPALIVE_INTERVAL_ENABLED } from '@/lib/backend-wake';
 import { pollJournalFromAudioJob } from '@/lib/journal-from-audio-poll';
+import { uploadJournalAudioFromFile, JOURNAL_AUDIO_CHUNK_THRESHOLD } from '@/lib/upload-journal-audio-from-file';
 import { pruneDriveUploadedFilesIndex, syncDriveUploadedFilesIndex } from '@/lib/drive-uploaded-files-prune';
 import { buildDriveFileDeleteUrl, isValidDriveNodeId, sanitizeDriveFolderWebViewLink } from '@/lib/google-drive-url';
 import {
@@ -52,6 +53,27 @@ function splitContentIntoBlocks(text) {
     const sentences = para.split(/(?<=[.!?。？！])\s+/).map((s) => s.trim()).filter(Boolean);
     return sentences.length ? sentences : [para];
   });
+}
+
+const WORK_CATEGORY_OPTIONS = [
+  { value: 'tech', label: '기술' },
+  { value: 'sales', label: '영업' },
+  { value: 'marketing', label: '마케팅' }
+];
+
+const CONTACT_CHANNEL_OPTIONS = [
+  { value: 'phone', label: '전화' },
+  { value: 'visit', label: '방문' },
+  { value: 'email', label: '이메일' },
+  { value: 'sms', label: '문자' }
+];
+
+function getWorkCategoryLabel(value) {
+  return WORK_CATEGORY_OPTIONS.find((opt) => opt.value === value)?.label || '';
+}
+
+function getContactChannelLabel(value) {
+  return CONTACT_CHANNEL_OPTIONS.find((opt) => opt.value === value)?.label || '';
 }
 
 function formatPhoneInput(value) {
@@ -133,10 +155,14 @@ function buildCompanyDriveFolderName(contactLike) {
 export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   const [journalText, setJournalText] = useState('');
   const [journalDateTime, setJournalDateTime] = useState(() => toDatetimeLocalValue(new Date()));
+  const [journalWorkCategory, setJournalWorkCategory] = useState('tech');
+  const [journalContactChannel, setJournalContactChannel] = useState('phone');
   const [historyItems, setHistoryItems] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [savingNote, setSavingNote] = useState(false);
   const [audioUploading, setAudioUploading] = useState(false);
+  /** 큰 파일 청크 업로드 시 진행률 (bytes) */
+  const [audioUploadProgress, setAudioUploadProgress] = useState(null);
   const [audioDropActive, setAudioDropActive] = useState(false);
   const [error, setError] = useState('');
   const [summaryNotice, setSummaryNotice] = useState(null);
@@ -646,7 +672,12 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
     setSavingNote(true);
     try {
       const createdAt = journalDateTime ? new Date(journalDateTime).toISOString() : undefined;
-      const requestBody = JSON.stringify({ content, ...(createdAt && !Number.isNaN(new Date(journalDateTime).getTime()) ? { createdAt } : {}) });
+      const requestBody = JSON.stringify({
+        content,
+        ...(createdAt && !Number.isNaN(new Date(journalDateTime).getTime()) ? { createdAt } : {}),
+        ...(journalWorkCategory ? { workCategory: journalWorkCategory } : {}),
+        ...(journalContactChannel ? { contactChannel: journalContactChannel } : {})
+      });
       const res = await fetch(`${API_BASE}/customer-company-employees/${contactId}/history`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
@@ -657,6 +688,8 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
       if (res.ok) {
         setJournalText('');
         setJournalDateTime(toDatetimeLocalValue(new Date()));
+        setJournalWorkCategory('tech');
+        setJournalContactChannel('phone');
         fetchHistory();
         fetchContactDetail();
       } else {
@@ -680,29 +713,30 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
       return;
     }
     setError('');
+    setAudioUploadProgress(null);
     setSummaryNotice({
       type: 'info',
       text:
-        '음성 파일을 올렸습니다. 전사·요약은 서버에서 진행하며, 진행 중에도 연결이 끊기지 않도록 짧게 상태를 확인합니다.'
+        file.size > JOURNAL_AUDIO_CHUNK_THRESHOLD
+          ? '큰 음성 파일은 청크로 나누어 올린 뒤 서버에서 합쳐 전사·요약합니다. 업로드 중에도 연결이 끊기지 않도록 주기적으로 서버를 깨웁니다.'
+          : '음성 파일을 올렸습니다. 전사·요약은 서버에서 진행하며, 진행 중에도 연결이 끊기지 않도록 짧게 상태를 확인합니다.'
     });
     await pingBackendHealth(getAuthHeader);
     setAudioUploading(true);
     try {
-      const form = new FormData();
-      form.append('audio', file);
-      const res = await fetch(`${API_BASE}/customer-company-employees/${contactId}/history/from-audio`, {
-        method: 'POST',
-        headers: getAuthHeader(),
-        credentials: 'include',
-        body: form
+      const data = await uploadJournalAudioFromFile({
+        collectionBasePath: `${API_BASE}/customer-company-employees`,
+        targetId: contactId,
+        file,
+        getAuthHeader,
+        onProgress: ({ sent, total }) => setAudioUploadProgress({ sent, total })
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || '음성 업로드 처리에 실패했습니다.');
-      if (res.status === 202 && data.jobId) {
+      if (data.jobId) {
         setSummaryNotice({
           type: 'info',
           text: 'AssemblyAI 전사 및 Gemini 요약 진행 중입니다. 잠시만 기다려 주세요…'
         });
+        setAudioUploadProgress(null);
         const pollUrl = `${API_BASE}/customer-company-employees/${contactId}/history/from-audio/jobs/${encodeURIComponent(data.jobId)}`;
         const result = await pollJournalFromAudioJob(pollUrl, getAuthHeader);
         setJournalText(result.content || '');
@@ -718,6 +752,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
       setError(e.message || '음성 업로드 처리에 실패했습니다.');
     } finally {
       setAudioUploading(false);
+      setAudioUploadProgress(null);
     }
   }, [audioUploading, contactId, savingNote]);
 
@@ -1362,7 +1397,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
 
                 <section className="contact-detail-section contact-detail-section--journal-column">
                   <div className="contact-detail-section-head">
-                    <h3>업무 기록</h3>
+                  <h3>지원 및 업무 기록</h3>
                     <span className="contact-detail-section-badge">{historyItems.length}건</span>
                   </div>
                   <div className={`contact-detail-summary-card ${contactToShow?.summaryStatus === 'error' ? 'is-error' : ''}`}>
@@ -1451,11 +1486,31 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                         onChange={(e) => setJournalDateTime(e.target.value)}
                         aria-label="업무 기록 등록일시"
                       />
+                      <select
+                        className="contact-detail-journal-select"
+                        value={journalWorkCategory}
+                        onChange={(e) => setJournalWorkCategory(e.target.value)}
+                        aria-label="업무 분류 선택"
+                      >
+                        {WORK_CATEGORY_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                      <select
+                        className="contact-detail-journal-select"
+                        value={journalContactChannel}
+                        onChange={(e) => setJournalContactChannel(e.target.value)}
+                        aria-label="업무 방식 선택"
+                      >
+                        {CONTACT_CHANNEL_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
                     </div>
                     <textarea
                       className="contact-detail-journal-input"
                       placeholder="새 메모 또는 기록을 입력하세요..."
-                      rows={3}
+                      rows={6}
                       value={journalText}
                       onChange={(e) => setJournalText(e.target.value)}
                     />
@@ -1494,8 +1549,10 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                       <span className="material-symbols-outlined">audio_file</span>
                       <span>
                         {audioUploading
-                          ? '음성 처리 중… 전사·요약이 끝나면 AssemblyAI에 올린 음성 원본은 서버에서 자동 삭제됩니다.'
-                          : '음성 파일 드래그앤드롭 또는 선택 (MP3/WAV/M4A/WebM). 처리가 끝나면 AssemblyAI 쪽 음성·전사 원본은 삭제됩니다.'}
+                          ? (audioUploadProgress?.total
+                            ? `음성 업로드 ${Math.min(100, Math.round((audioUploadProgress.sent / audioUploadProgress.total) * 100))}% · 이후 전사·요약 진행(AssemblyAI 원본은 처리 후 삭제됩니다).`
+                            : '음성 처리 중… 전사·요약이 끝나면 AssemblyAI에 올린 음성 원본은 서버에서 자동 삭제됩니다.')
+                          : '음성 파일 드래그앤드롭 또는 선택 (MP3/WAV/M4A/WebM). 큰 파일은 자동으로 청크 업로드됩니다.'}
                       </span>
                       <button
                         type="button"
@@ -1536,6 +1593,12 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                                 {entry.createdByChanged && <span className="contact-detail-timeline-changed"> 변경됨</span>}
                               </span>
                               <time>{formatHistoryDate(entry.createdAt)}</time>
+                              {(entry.workCategory || entry.contactChannel) ? (
+                                <span className="contact-detail-timeline-tags">
+                                  {entry.workCategory ? <em>{getWorkCategoryLabel(entry.workCategory)}</em> : null}
+                                  {entry.contactChannel ? <em>{getContactChannelLabel(entry.contactChannel)}</em> : null}
+                                </span>
+                              ) : null}
                               {canMutate ? (
                                 <button
                                   type="button"

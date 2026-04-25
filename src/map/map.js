@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import CustomerCompanyDetailModal from '../customer-companies/customer-company-detail-modal/customer-company-detail-modal';
+import MapCompanyPickerModal from './map-company-picker-modal';
 import './map.css';
 
 import { API_BASE } from '@/config';
@@ -47,11 +48,15 @@ function getCurrentUserIdFromStorage() {
   }
 }
 
-/** assigneeUserIds 에 로그인 사용자가 있으면 내 담당 */
-function isCompanyAssigneeMine(company, myUserId) {
-  if (!myUserId) return false;
+/**
+ * 담당자 기준 마커 색 구분
+ * @returns {'mine'|'other'|'none'}
+ */
+function getCompanyAssigneePinKind(company, myUserId) {
   const ids = Array.isArray(company.assigneeUserIds) ? company.assigneeUserIds : [];
-  return ids.some((id) => String(id) === myUserId);
+  if (!ids.length) return 'none';
+  if (myUserId && ids.some((id) => String(id) === myUserId)) return 'mine';
+  return 'other';
 }
 
 /**
@@ -116,12 +121,23 @@ const MY_LOCATION_CIRCLE_FIT_PADDING = { top: 56, right: 48, bottom: 100, left: 
 const MAP_MARKER_CHUNK_SIZE = 32;
 
 /**
- * 고객사 위치 — 원형 대신 압정형 핀(SVG). 내 담당: 노랑, 그 외: 연녹 (기존 색상 유지).
+ * 고객사 위치 — 압정형 핀(SVG). 내 담당: 빨강, 타인 담당: 노랑, 미담당: 녹색(채도 높은 색).
  * 좌표는 핀 끝(anchor)이 위치에 오도록 맞춤.
+ * @param {'mine'|'other'|'none'} pinKind
  */
-function buildCompanyPinMarkerIcon(google, mine) {
-  const fill = mine ? '#fff176' : '#a5d6a7';
-  const stroke = mine ? '#5d4037' : '#2e7d32';
+function buildCompanyPinMarkerIcon(google, pinKind) {
+  let fill;
+  let stroke;
+  if (pinKind === 'mine') {
+    fill = '#e53935';
+    stroke = '#7f0000';
+  } else if (pinKind === 'other') {
+    fill = '#ffeb3b';
+    stroke = '#f57f17';
+  } else {
+    fill = '#43a047';
+    stroke = '#1b5e20';
+  }
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="48" viewBox="0 0 36 48"><path d="M18 2C9.7 2 3 8.5 3 16.8c0 7.5 15 29.2 15 29.2S33 24.3 33 16.8C33 8.5 26.3 2 18 2z" fill="${fill}" stroke="${stroke}" stroke-width="1.25" stroke-linejoin="round"/><circle cx="18" cy="16.5" r="5" fill="#ffffff" stroke="${stroke}" stroke-width="0.9"/></svg>`;
   const url = `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
   return {
@@ -446,6 +462,18 @@ function matchCompaniesBySearchQuery(companies, rawQuery) {
   });
 }
 
+function isCompanyStaleByUpdatedAt(company, months = 3) {
+  const refRaw = company?.updatedAt || company?.createdAt;
+  if (!refRaw) return false;
+  const ref = new Date(refRaw);
+  if (Number.isNaN(ref.getTime())) return false;
+  const threshold = new Date();
+  threshold.setMonth(threshold.getMonth() - months);
+  return ref.getTime() < threshold.getTime();
+}
+
+const MAP_SHOW_IDS_QUERY = 'mapShowIds';
+
 export default function Map({
   embedded = false,
   initialFocusCompanyId = null,
@@ -485,7 +513,6 @@ export default function Map({
   const [showMarkerLabels, setShowMarkerLabels] = useState(false); // 업체명 말주머니 표시 (기본 끔)
   const [searchPlace, setSearchPlace] = useState(null); // Google 검색한 장소 { lat, lng, label }
   const [searchPlaceLoading, setSearchPlaceLoading] = useState(false);
-  const [showSearchPlaceMarker, setShowSearchPlaceMarker] = useState(false); // 구글 검색 장소 뱃지 표시 (검색 시 자동 켜짐)
   const [grayscaleMode, setGrayscaleMode] = useState(false); // 지도 흑백 모드
   const [headingFollowOn, setHeadingFollowOn] = useState(false); // 기기 방향에 맞춰 지도 회전 (북이 항상 위가 아님)
   const orientationHandlerRef = useRef(null);
@@ -502,6 +529,11 @@ export default function Map({
   const skipStripFocusParamsRef = useRef(false);
   /** 상세 모달에서 /map 진입 시: 해당 고객사 1건을 먼저 그리고, 잠시 뒤 전체 목록 로딩 */
   const [focusedOnlyBoot, setFocusedOnlyBoot] = useState(() => !embedded && Boolean(focusCompanyId));
+
+  /** null = 위·경도 있는 고객사 전부 표시, Set = 해당 id만 마커 표시 */
+  const [mapOnlyShowIds, setMapOnlyShowIds] = useState(null);
+  const [mapPickerOpen, setMapPickerOpen] = useState(false);
+  const [staleOnlyMode, setStaleOnlyMode] = useState(false);
 
   useEffect(() => {
     focusRequestHandledRef.current = false;
@@ -706,8 +738,71 @@ export default function Map({
     () => companies.filter((c) => c.latitude != null && c.longitude != null),
     [companies]
   );
-  // 지도에는 위경도 있는 고객사는 항상 전부 표시 (검색창은 구글 장소 이동용이라 고객사 필터에 쓰지 않음)
-  const companiesToShowOnMap = companiesWithCoords;
+
+  const companiesWithCoordsByUpdatedAt = useMemo(() => {
+    if (!staleOnlyMode) return companiesWithCoords;
+    return companiesWithCoords.filter((c) => isCompanyStaleByUpdatedAt(c, 3));
+  }, [companiesWithCoords, staleOnlyMode]);
+
+  const companiesToShowOnMap = useMemo(() => {
+    if (!mapOnlyShowIds || mapOnlyShowIds.size === 0) return companiesWithCoordsByUpdatedAt;
+    return companiesWithCoordsByUpdatedAt.filter((c) => mapOnlyShowIds.has(String(c._id)));
+  }, [companiesWithCoordsByUpdatedAt, mapOnlyShowIds]);
+
+  /** 고객사 목록에서 `/map?mapShowIds=...` 로 넘어온 경우: 선택만 표시 후 URL 정리 */
+  useEffect(() => {
+    if (embedded) return;
+    const raw = searchParams.get(MAP_SHOW_IDS_QUERY);
+    if (!raw || !String(raw).trim()) return;
+    const ids = String(raw)
+      .split(/[,;\s]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (ids.length) setMapOnlyShowIds(new Set(ids));
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete(MAP_SHOW_IDS_QUERY);
+        return next;
+      },
+      { replace: true }
+    );
+  }, [embedded, searchParams, setSearchParams]);
+
+  const mapFilterFitKey = useMemo(() => {
+    if (!mapOnlyShowIds || mapOnlyShowIds.size === 0) return '';
+    const pts = companiesWithCoords
+      .filter((c) => mapOnlyShowIds.has(String(c._id)))
+      .map((c) => `${String(c._id)}:${Number(c.latitude)},${Number(c.longitude)}`);
+    return pts.sort().join('|');
+  }, [mapOnlyShowIds, companiesWithCoords]);
+
+  useEffect(() => {
+    if (!mapReady || !mapInstanceRef.current || !window.google?.maps) return;
+    if (!mapFilterFitKey) return;
+    const withCoord = companiesWithCoords.filter(
+      (c) => mapOnlyShowIds?.has(String(c._id)) && Number.isFinite(Number(c.latitude)) && Number.isFinite(Number(c.longitude))
+    );
+    if (withCoord.length === 0) return;
+    const map = mapInstanceRef.current;
+    if (withCoord.length === 1) {
+      const c = withCoord[0];
+      map.panTo({ lat: Number(c.latitude), lng: Number(c.longitude) });
+      map.setZoom(15);
+      return;
+    }
+    const bounds = new window.google.maps.LatLngBounds();
+    withCoord.forEach((c) => bounds.extend({ lat: Number(c.latitude), lng: Number(c.longitude) }));
+    if (!bounds.isEmpty()) map.fitBounds(bounds, { top: 72, right: 56, bottom: 140, left: 56 });
+  }, [mapReady, mapFilterFitKey, companiesWithCoords, mapOnlyShowIds]);
+
+  const openMapCompanyPicker = useCallback(() => {
+    setMapPickerOpen(true);
+  }, []);
+
+  const clearMapOnlyFilter = useCallback(() => {
+    setMapOnlyShowIds(null);
+  }, []);
 
   // 기기 방향(나침반)에 맞춰 지도 회전 — 핸드폰에서 보는 방향이 위쪽
   useEffect(() => {
@@ -968,10 +1063,14 @@ export default function Map({
     }
 
     const companyName = (name) => (name && String(name).trim()) || '(업체명 없음)';
+    const escapeIw = (s) =>
+      String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
     const labelContent = (name) =>
-      '<div style="padding:6px 10px;font-size:13px;max-width:220px;border-radius:8px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,0.15);border:1px solid #e0e0e0;">' +
-      (companyName(name).replace(/</g, '&lt;').replace(/>/g, '&gt;')) +
-      '</div>';
+      `<div class="map-company-iw-label" title="${escapeIw(companyName(name))}">${escapeIw(companyName(name))}</div>`;
 
     let idx = 0;
     const addChunk = () => {
@@ -981,21 +1080,22 @@ export default function Map({
         const company = list[idx];
         const lat = company.latitude;
         const lng = company.longitude;
-        const mine = isCompanyAssigneeMine(company, myUserId);
+        const pinKind = getCompanyAssigneePinKind(company, myUserId);
+        const zBase = pinKind === 'mine' ? 2000 : pinKind === 'other' ? 1200 : 400;
         const marker = new window.google.maps.Marker({
           position: { lat, lng },
           map,
           title: company.name || '',
           optimized: true,
-          /** 겹침 시 내 담당 마커가 다른 마커보다 위(앞)에 그려지도록 */
-          zIndex: mine ? 2000 + idx : 100,
-          icon: buildCompanyPinMarkerIcon(window.google, mine)
+          /** 겹침 시 내 담당 → 타인 담당 → 미담당 순으로 앞에 그려짐 */
+          zIndex: zBase + idx,
+          icon: buildCompanyPinMarkerIcon(window.google, pinKind)
         });
         marker.addListener('click', () => setSelected(company));
         if (showMarkerLabels) {
           const iw = new window.google.maps.InfoWindow({
             content: labelContent(company.name),
-            pixelOffset: new window.google.maps.Size(0, -10),
+            pixelOffset: new window.google.maps.Size(0, -6),
             /** 다수 말주머니 연속 open 시 지도가 마지막 창으로 맞춰지며 뷰가 뒤로 튀는 것 방지 */
             disableAutoPan: true
           });
@@ -1141,14 +1241,14 @@ export default function Map({
     };
   }, [mapReady, liveLocationOn, myLocation]);
 
-  // Google 검색한 장소 마커 (주황색) — showSearchPlaceMarker 켜져 있을 때만 표시
+  // Google 검색·고객사 1건 포커스 등으로 잡힌 위치 마커 (주황색) — searchPlace 가 있을 때만
   useEffect(() => {
     if (!mapReady || !mapInstanceRef.current || !window.google) return;
     if (searchPlaceMarkerRef.current) {
       searchPlaceMarkerRef.current.setMap(null);
       searchPlaceMarkerRef.current = null;
     }
-    if (!showSearchPlaceMarker || !searchPlace) return;
+    if (!searchPlace) return;
     const marker = new window.google.maps.Marker({
       position: { lat: searchPlace.lat, lng: searchPlace.lng },
       map: mapInstanceRef.current,
@@ -1170,7 +1270,7 @@ export default function Map({
         searchPlaceMarkerRef.current = null;
       }
     };
-  }, [mapReady, searchPlace, showSearchPlaceMarker]);
+  }, [mapReady, searchPlace]);
 
   const clearFocusParamsFromUrl = useCallback(() => {
     if (embedded) return;
@@ -1215,7 +1315,6 @@ export default function Map({
         const lng = Number(c.longitude);
         if (Number.isFinite(lat) && Number.isFinite(lng)) {
           setSearchPlace({ lat, lng, label: c.name || query });
-          setShowSearchPlaceMarker(true);
           map.panTo({ lat, lng });
           map.setZoom(16);
           initialViewAppliedRef.current = true;
@@ -1248,7 +1347,6 @@ export default function Map({
           clearFocusParamsFromUrl();
           map.fitBounds(bounds, { top: 72, right: 56, bottom: 100, left: 56 });
           initialViewAppliedRef.current = true;
-          setShowSearchPlaceMarker(false);
           setSearchPlace(null);
           return;
         }
@@ -1267,7 +1365,6 @@ export default function Map({
       }
       const label = cachedGeo.label || query;
       setSearchPlace({ lat: cachedGeo.lat, lng: cachedGeo.lng, label });
-      setShowSearchPlaceMarker(true);
       if (mapInstanceRef.current) {
         mapInstanceRef.current.panTo({ lat: cachedGeo.lat, lng: cachedGeo.lng });
         mapInstanceRef.current.setZoom(14);
@@ -1295,7 +1392,6 @@ export default function Map({
       const label = results[0].formatted_address || query;
       saveGeocodeToCache(query, { lat, lng, label });
       setSearchPlace({ lat, lng, label });
-      setShowSearchPlaceMarker(true); // 구글 검색 장소에 뱃지 자동 표시
       if (mapInstanceRef.current) {
         mapInstanceRef.current.panTo({ lat, lng });
         mapInstanceRef.current.setZoom(14);
@@ -1367,15 +1463,6 @@ export default function Map({
               </button>
               <button
                 type="button"
-                className={`map-ctrl-btn map-ctrl-btn-circle ${showSearchPlaceMarker ? 'active' : ''}`}
-                onClick={() => setShowSearchPlaceMarker((v) => !v)}
-                aria-label={showSearchPlaceMarker ? '검색 위치 마커 끄기' : '검색 위치 마커 켜기'}
-                title={showSearchPlaceMarker ? '검색 위치 마커 끄기' : '검색 위치 마커 켜기'}
-              >
-                <span className="material-symbols-outlined">place</span>
-              </button>
-              <button
-                type="button"
                 className={`map-ctrl-btn map-ctrl-btn-circle ${grayscaleMode ? 'active' : ''}`}
                 onClick={() => setGrayscaleMode((v) => !v)}
                 aria-label={grayscaleMode ? '지도 컬러 모드' : '지도 흑백 모드'}
@@ -1410,6 +1497,18 @@ export default function Map({
                   {assigneeMeOnly ? 'person_pin_circle' : 'public'}
                 </span>
               </button>
+              <button
+                type="button"
+                className={`map-ctrl-btn map-ctrl-btn-circle ${staleOnlyMode ? 'active' : ''}`}
+                onClick={() => setStaleOnlyMode((v) => !v)}
+                aria-pressed={staleOnlyMode}
+                title={staleOnlyMode ? '지금: 3개월 이상 미갱신만 표시 — 클릭하면 전체' : '지금: 전체 표시 — 클릭하면 3개월 이상 미갱신만'}
+                aria-label={staleOnlyMode ? '전체 업체 표시로 전환' : '3개월 이상 미갱신 업체만 보기로 전환'}
+              >
+                <span className="material-symbols-outlined">
+                  {staleOnlyMode ? 'event_busy' : 'schedule'}
+                </span>
+              </button>
               </div>
             </div>
           </div>
@@ -1417,25 +1516,41 @@ export default function Map({
           <div className="map-search-bar">
             <div className="map-search-wrap">
               <div className="map-search-row">
-                <span className="material-symbols-outlined map-search-icon">search</span>
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  className="map-search-input"
-                  placeholder="등록 고객사명 또는 주소·장소 (엔터·검색: 고객사 우선, 없으면 지오코딩 1회)"
-                  value={searchInput}
-                  onChange={(e) => {
-                    setSearchInput(e.target.value);
-                    if (!e.target.value.trim()) setSearchPlace(null);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      goToSearchPlace();
-                    }
-                  }}
-                  aria-label="지도 검색"
-                />
+                {!embedded ? (
+                  <button
+                    type="button"
+                    className="map-search-picker-btn"
+                    onClick={openMapCompanyPicker}
+                    title="체크한 고객사만 지도 마커로 표시"
+                    aria-label="고객사 선택"
+                  >
+                    <span className="material-symbols-outlined" aria-hidden>
+                      filter_list
+                    </span>
+                    <span className="map-search-picker-btn-label">고객사 선택</span>
+                  </button>
+                ) : null}
+                <div className="map-search-input-shell">
+                  <span className="material-symbols-outlined map-search-icon">search</span>
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    className="map-search-input"
+                    placeholder="등록 고객사명 또는 주소·장소 (엔터·검색: 고객사 우선, 없으면 지오코딩 1회)"
+                    value={searchInput}
+                    onChange={(e) => {
+                      setSearchInput(e.target.value);
+                      if (!e.target.value.trim()) setSearchPlace(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        goToSearchPlace();
+                      }
+                    }}
+                    aria-label="지도 검색"
+                  />
+                </div>
                 <button
                   type="button"
                   className="map-search-go-btn"
@@ -1451,14 +1566,28 @@ export default function Map({
                   )}
                 </button>
               </div>
-              {searchInput.trim() && (
+              {(searchInput.trim() || (mapOnlyShowIds && mapOnlyShowIds.size > 0)) && (
                 <span className="map-search-result-count">
-                  {assigneeMeOnly ? '내 담당 고객사' : '전체 고객사'} {companiesToShowOnMap.length}건
-                  {searchPlace && (
-                    <> · 검색한 구글 장소 뱃지 {showSearchPlaceMarker ? '표시 중' : '끔 (우측 place 버튼으로 켜기)'}</>
-                  )}
+                  {mapOnlyShowIds && mapOnlyShowIds.size > 0 ? (
+                    <>마커 표시: 선택 {companiesToShowOnMap.length}곳 · </>
+                  ) : null}
+                  {assigneeMeOnly ? '내 담당(좌표)' : '전체(좌표)'} {companiesWithCoordsByUpdatedAt.length}곳
+                  {staleOnlyMode ? ' · 3개월 이상 미갱신 필터' : null}
+                  {searchInput.trim() && searchPlace ? <> · 검색 위치 마커 표시 중</> : null}
                 </span>
               )}
+              {!embedded && mapOnlyShowIds && mapOnlyShowIds.size > 0 ? (
+                <div className="map-search-secondary">
+                  <button
+                    type="button"
+                    className="map-search-secondary-btn map-search-secondary-btn-muted"
+                    onClick={clearMapOnlyFilter}
+                    title="좌표 있는 고객사 전부 다시 표시"
+                  >
+                    전체 마커
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -1485,6 +1614,19 @@ export default function Map({
           />
         )}
       </div>
+
+      <MapCompanyPickerModal
+        open={mapPickerOpen}
+        companies={companiesWithCoords}
+        initialSelectedIds={mapOnlyShowIds}
+        getAuthHeader={getAuthHeader}
+        onClose={() => setMapPickerOpen(false)}
+        onConfirm={(idSet) => {
+          setMapOnlyShowIds(idSet.size > 0 ? idSet : null);
+          setMapPickerOpen(false);
+        }}
+      />
+
       {!mapReady && (
         <div className="map-loading">
           <span className="material-symbols-outlined">progress_activity</span>

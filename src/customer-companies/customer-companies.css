@@ -15,6 +15,10 @@
   border-bottom: 1px solid var(--card-border);
 }
 
+.customer-companies-page .page-header {
+  overflow: visible;
+}
+
 .header-search {
   flex: 1;
   max-width: 32rem;
@@ -22,6 +26,12 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+/* 고객사: 검색창 + 필드 셀렉트(긴 라벨·optgroup) 공간 — 드롭다운이 헤더에 가려지지 않도록 */
+.customer-companies-page .header-search {
+  max-width: none;
+  overflow: visible;
 }
 
 /* customer-company-employees와 동일: 돋보기 아이콘 위치 */
@@ -82,7 +92,13 @@
   border-radius: 0.5rem;
   background: var(--card);
   color: var(--text);
-  min-width: 7rem;
+  min-width: 9.5rem;
+  max-width: min(18rem, 40vw);
+  text-overflow: ellipsis;
+}
+
+.customer-companies-page .cc-sort-column-select {
+  max-width: min(20rem, 44vw);
 }
 
 .customer-companies-actions .cc-assignee-filter-btn {
@@ -205,6 +221,30 @@
 }
 
 .cc-selection-action-bar-handover .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
+.cc-selection-action-bar-map {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.95rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #1565c0;
+  background: #e3f2fd;
+  border: 1px solid #90caf9;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.cc-selection-action-bar-map:hover {
+  background: #bbdefb;
+  border-color: #42a5f5;
+}
+
+.cc-selection-action-bar-map .material-symbols-outlined {
   font-size: 1.05rem;
 }
 

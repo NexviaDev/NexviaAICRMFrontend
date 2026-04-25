@@ -1096,8 +1096,8 @@
 }
 
 .sp-dz-list-modal {
-  width: min(28rem, 100%);
-  max-height: min(88vh, 42rem);
+  width: min(34rem, 100%);
+  max-height: min(90vh, 50rem);
   display: flex;
   flex-direction: column;
   background: #ffffff;
@@ -1108,8 +1108,8 @@
 }
 
 .sp-dz-list-modal--extended {
-  width: min(36rem, 100%);
-  max-height: min(90vh, 46rem);
+  width: min(44rem, 100%);
+  max-height: min(92vh, 56rem);
 }
 
 .sp-dz-list-modal-head {
@@ -1117,7 +1117,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 1rem 1rem 0.9rem;
+  padding: 1.1rem 1.15rem 1rem;
   border-bottom: 1px solid #e3e9ed;
   flex-shrink: 0;
 }
@@ -1154,14 +1154,14 @@
 }
 
 .sp-dz-list-modal-icon {
-  font-size: 1.5rem;
+  font-size: 1.65rem;
   flex-shrink: 0;
 }
 
 .sp-dz-list-modal-title {
   font-family: 'Manrope', 'Inter', system-ui, sans-serif;
   margin: 0;
-  font-size: 1rem;
+  font-size: 1.125rem;
   font-weight: 800;
   letter-spacing: -0.02em;
   color: #2c3437;
@@ -1170,7 +1170,7 @@
 
 .sp-dz-list-modal-sub {
   margin: 0.2rem 0 0;
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   font-weight: 700;
   color: #596064;
 }
@@ -1180,8 +1180,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 2.4rem;
+  height: 2.4rem;
   padding: 0;
   border: none;
   border-radius: 0.5rem;
@@ -1197,7 +1197,7 @@
 }
 
 .sp-dz-list-modal-close .material-symbols-outlined {
-  font-size: 1.25rem;
+  font-size: 1.35rem;
 }
 
 .sp-dz-list-modal-toolbar {
@@ -1206,7 +1206,7 @@
   flex-direction: column;
   align-items: stretch;
   gap: 0.55rem;
-  padding: 0.65rem 0.75rem;
+  padding: 0.75rem 0.9rem;
   border-bottom: 1px solid #e8edf1;
   background: #f4f7f9;
 }
@@ -1226,7 +1226,7 @@
 }
 
 .sp-dz-list-modal-search-icon {
-  font-size: 1rem;
+  font-size: 1.125rem;
   color: #8b969b;
   flex-shrink: 0;
 }
@@ -1236,8 +1236,8 @@
   min-width: 0;
   border: none;
   background: transparent;
-  font-size: 0.8125rem;
-  line-height: 1.3;
+  font-size: 0.9375rem;
+  line-height: 1.35;
   padding: 0.12rem 0;
   color: #2c3437;
   outline: none;
@@ -1266,7 +1266,7 @@
 }
 
 .sp-dz-list-modal-date-field-label {
-  font-size: 0.65rem;
+  font-size: 0.72rem;
   font-weight: 700;
   color: #7a8488;
   letter-spacing: 0.02em;
@@ -1274,8 +1274,8 @@
 
 .sp-dz-list-modal-date-input {
   min-width: 10.5rem;
-  padding: 0.4rem 0.45rem;
-  font-size: 0.8125rem;
+  padding: 0.45rem 0.5rem;
+  font-size: 0.9375rem;
   border-radius: 0.45rem;
   border: 1px solid #dce4e8;
   background: #fff;
@@ -1284,7 +1284,7 @@
 
 .sp-dz-list-modal-date-sep {
   padding: 0 0.1rem 0.35rem;
-  font-size: 0.9rem;
+  font-size: 0.98rem;
   font-weight: 700;
   color: #9aa4a8;
   align-self: center;
@@ -1293,8 +1293,8 @@
 .sp-dz-list-modal-date-clear {
   align-self: flex-end;
   margin-left: auto;
-  padding: 0.35rem 0.55rem;
-  font-size: 0.72rem;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.8rem;
   font-weight: 600;
   border-radius: 0.4rem;
   border: 1px solid #dce4e8;
@@ -1310,8 +1310,8 @@
 
 .sp-dz-list-modal-date-hint {
   margin: 0;
-  font-size: 0.65rem;
-  line-height: 1.4;
+  font-size: 0.73rem;
+  line-height: 1.45;
   color: #8b969b;
 }
 
@@ -1322,14 +1322,14 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  padding: 0.5rem 0.65rem;
+  padding: 0.6rem 0.85rem;
   border-top: 1px solid #e8edf1;
   background: #fafcfd;
 }
 
 .sp-dz-list-modal-page-info {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: 0.84rem;
   color: #596064;
 }
 
@@ -1343,14 +1343,29 @@
   justify-content: flex-end;
 }
 
+.sp-dz-list-modal-footer .pagination-btn {
+  min-width: 2.15rem;
+  height: 2.15rem;
+  font-size: 0.9375rem;
+}
+
+.sp-dz-list-modal-footer .pagination-btn .material-symbols-outlined {
+  font-size: 1.2rem;
+}
+
+.sp-dz-list-modal-footer .pagination-page-jump-input {
+  height: 2.15rem;
+  font-size: 0.9375rem;
+}
+
 .sp-dz-list-modal-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0.75rem;
+  padding: 0.85rem;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.55rem;
   background: #f8f9fb;
 }
 
@@ -1358,8 +1373,37 @@
   margin: 0;
   padding: 2rem 1rem;
   text-align: center;
-  font-size: 0.875rem;
+  font-size: 0.9375rem;
   color: #747c80;
+}
+
+/* 드롭존 목록 모달 안 카드만 — 칸반 본문 .sp-card 크기는 유지 */
+.sp-dz-list-modal-body .sp-card {
+  padding: 0.6rem 0.75rem;
+}
+
+.sp-dz-list-modal-body .sp-card-title {
+  font-size: 0.84rem;
+}
+
+.sp-dz-list-modal-body .sp-card-contact {
+  font-size: 0.73rem;
+}
+
+.sp-dz-list-modal-body .sp-card-value {
+  font-size: 0.78rem;
+}
+
+.sp-dz-list-modal-body .sp-card-net-margin-label {
+  font-size: 0.6rem;
+}
+
+.sp-dz-list-modal-body .sp-card-net-margin-value {
+  font-size: 0.72rem;
+}
+
+.sp-dz-list-modal-body .sp-card-delete .material-symbols-outlined {
+  font-size: 0.82rem;
 }
 
 .sp-dz-viewall-row {

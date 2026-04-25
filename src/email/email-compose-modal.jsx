@@ -1168,7 +1168,12 @@ export default function EmailComposeModal({
         setError(data.error || '전송에 실패했습니다.');
         return;
       }
-      onSent?.();
+      onSent?.({
+        to: to.trim(),
+        cc: cc.trim(),
+        subject: subject.trim() || '(제목 없음)',
+        body: editorRef.current?.innerText ?? ''
+      });
       onClose?.();
     } catch (_) {
       setError('전송할 수 없습니다.');

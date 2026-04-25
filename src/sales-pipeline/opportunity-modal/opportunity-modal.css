@@ -57,6 +57,26 @@
   color: var(--text, #1d283a);
 }
 
+.opp-modal-title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.08rem;
+}
+
+.opp-modal-finance-mini {
+  margin: 0;
+  font-size: 0.64rem;
+  color: var(--text-muted, #64748b);
+  line-height: 1.25;
+}
+
+.opp-modal-finance-mini-note {
+  margin: 0;
+  font-size: 0.6rem;
+  color: var(--text-muted, #94a3b8);
+  line-height: 1.25;
+}
+
 .opp-modal-sale-date-label {
   display: inline-flex;
   flex-direction: column;
@@ -1304,6 +1324,114 @@
   font-size: var(--opp-f-sm);
 }
 
+.opp-finance-section {
+  margin-top: 0.25rem;
+  margin-bottom: 1rem;
+  padding: 0.85rem;
+  border: 1px solid var(--card-border, #e2e8f0);
+  border-radius: 10px;
+  background: var(--bg-light, #f8fafc);
+}
+
+.opp-finance-heading {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--text, #0f172a);
+  margin-bottom: 0.65rem;
+}
+
+.opp-finance-cards {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.9rem;
+}
+
+.opp-finance-card {
+  border: 1px solid var(--card-border, #dbe3ef);
+  border-radius: 12px;
+  background: #fff;
+  padding: 0.65rem 0.7rem;
+}
+
+.opp-finance-card-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-muted, #475569);
+  margin-bottom: 0.45rem;
+}
+
+.opp-finance-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.opp-finance-collection-head {
+  margin-top: 0.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.opp-finance-subheading {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-muted, #64748b);
+}
+
+.opp-finance-collection-list {
+  margin-top: 0.35rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.opp-finance-collection-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: end;
+}
+
+.opp-btn-light {
+  border: 1px solid var(--card-border, #d1d5db);
+  background: #fff;
+  color: var(--text-muted, #475569);
+  border-radius: 8px;
+  padding: 0.42rem 0.7rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.opp-btn-light:hover:not(:disabled) {
+  background: #f8fafc;
+}
+
+.opp-btn-light:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.opp-btn-light--danger {
+  color: #b91c1c;
+  border-color: rgba(220, 38, 38, 0.35);
+}
+
+.opp-btn-icon {
+  width: 2.3rem;
+  height: 2.3rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.opp-btn-icon .material-symbols-outlined {
+  font-size: 1.18rem;
+  line-height: 1;
+}
+
 /* ========== Error ========== */
 .opp-error {
   margin: 0;
@@ -1411,6 +1539,10 @@
   .opp-discount-purchase-split-inner {
     grid-template-columns: 1fr;
   }
+
+  .opp-finance-cards {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* 수주 성공 시 수주·판매일 안내 */
@@ -1490,10 +1622,6 @@
   font-size: 0.7rem;
   font-weight: 700;
   color: var(--text-muted, #64748b);
-}
-
-.opp-label--expected-month {
-  margin-bottom: 1rem;
 }
 
 .opp-input--date,

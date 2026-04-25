@@ -10,6 +10,11 @@
   pointer-events: auto;
 }
 
+/* 상세 모달 위에 중첩되는 연락처 수정 모달도 클릭 가능해야 함 */
+.contact-detail-root > .add-contact-modal-overlay {
+  pointer-events: auto;
+}
+
 .contact-detail-root--center {
   display: flex;
   align-items: center;
@@ -1466,14 +1471,25 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
+.contact-detail-journal-select {
+  font-size: 0.8125rem;
+  padding: 0.34rem 0.45rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--bg-light);
+  color: var(--text);
+  min-width: 6.25rem;
+}
+
 .contact-detail-journal-input {
   width: 100%;
   border: none;
   background: transparent;
   font-size: 0.9375rem;
   color: var(--text);
-  resize: none;
-  min-height: 4rem;
+  resize: vertical;
+  min-height: 15rem;
+  max-height: 30rem;
   padding: 0;
 }
 
@@ -1674,6 +1690,23 @@
   font-size: 0.95rem;
   font-weight: 700;
   color: var(--text);
+}
+
+.contact-detail-timeline-tags {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.contact-detail-timeline-tags em {
+  font-style: normal;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #334155;
+  background: #f1f5f9;
+  border: 1px solid #dbeafe;
+  border-radius: 999px;
+  padding: 0.08rem 0.42rem;
 }
 
 .contact-detail-timeline-changed {

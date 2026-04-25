@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import AddCompanyModal from './add-company-modal/add-company-modal';
 import CustomerCompanyDetailModal from './customer-company-detail-modal/customer-company-detail-modal';
 import CustomerCompaniesExcelImportModal from './customer-companies-excel-import-modal/customer-companies-excel-import-modal';
@@ -21,6 +21,7 @@ import MergeCustomerCompaniesModal from './merge-customer-companies-modal/merge-
 import CustomFieldsManageModal from '@/shared/custom-fields-manage-modal/custom-fields-manage-modal';
 
 import { API_BASE } from '@/config';
+import { CUSTOM_FIELDS_PREFIX, BASE_SEARCH_FIELD_OPTIONS } from '@/lib/customer-company-search-fields';
 const MODAL_PARAM = 'modal';
 const MODAL_ADD_COMPANY = 'add-company';
 const MODAL_EXCEL_IMPORT = 'excel-import';
@@ -57,7 +58,6 @@ const LIST_ID = LIST_IDS.CUSTOMER_COMPANIES;
 
 const COMPANY_STATUS_LABEL = { active: '활성', inactive: '비활성', lead: '리드' };
 
-const CUSTOM_FIELDS_PREFIX = 'customFields.';
 /** @param {Record<string, string>} [assigneeIdToName] - userId → 이름 (목록 담당자 셀 표시용) */
 function cellValue(row, key, assigneeIdToName = {}, assigneeNamesReady = false) {
   if (key === 'name') return row.name || '—';
@@ -86,6 +86,7 @@ function cellValue(row, key, assigneeIdToName = {}, assigneeNamesReady = false) 
 
 export default function CustomerCompanies() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [searchInput, setSearchInput] = useState('');
   const [searchApplied, setSearchApplied] = useState('');
@@ -116,16 +117,19 @@ export default function CustomerCompanies() {
   const [handoverCtx, setHandoverCtx] = useState(null);
   const [mergeModalOpen, setMergeModalOpen] = useState(false);
   const [showCustomFieldsManageModal, setShowCustomFieldsManageModal] = useState(false);
-  const SEARCH_FIELD_OPTIONS = [
-    { key: 'name', label: '기업명' },
-    { key: 'representativeName', label: '대표자' },
-    { key: 'businessNumber', label: '사업자 번호' },
-    { key: 'industry', label: '업종' },
-    { key: 'address', label: '주소' },
-    { key: 'status', label: '상태' },
-    { key: 'assigneeUserIds', label: '담당자' },
-    { key: 'memo', label: '메모' }
-  ];
+
+  const searchFieldLabelByKey = useMemo(() => {
+    const map = {};
+    BASE_SEARCH_FIELD_OPTIONS.forEach((o) => {
+      map[o.key] = o.label;
+    });
+    (customFieldColumns || []).forEach((c) => {
+      if (!c?.key) return;
+      map[c.key] = c.label || c.key.replace(CUSTOM_FIELDS_PREFIX, '');
+    });
+    return map;
+  }, [customFieldColumns]);
+
   const sortKey = sort.key;
   const companiesForMergeModal = useMemo(
     () => [...selectedCompanyIds].map((id) => selectedCompanyMap[id]).filter(Boolean),
@@ -250,6 +254,16 @@ export default function CustomerCompanies() {
     return () => window.removeEventListener('cc-excel-import-completed', onExcelImportDone);
   }, [fetchList, pagination.page]);
   useEffect(() => { setPagination((p) => ({ ...p, page: 1 })); }, [searchApplied, searchField, assigneeMeOnly]);
+
+  /** 삭제된 커스텀 필드 등으로 선택값이 목록에 없으면 전체 필드로 되돌림 */
+  useEffect(() => {
+    if (!searchField) return;
+    const valid = new Set(BASE_SEARCH_FIELD_OPTIONS.map((o) => o.key));
+    (customFieldColumns || []).forEach((c) => {
+      if (c?.key) valid.add(c.key);
+    });
+    if (!valid.has(searchField)) setSearchField('');
+  }, [searchField, customFieldColumns]);
 
   const loadCustomerCompanyCustomFieldColumns = useCallback(async () => {
     try {
@@ -705,7 +719,11 @@ export default function CustomerCompanies() {
           <form id="customer-companies-search-form" onSubmit={runSearch} className="header-search-form">
             <input
               type="text"
-              placeholder={searchField ? `${SEARCH_FIELD_OPTIONS.find((o) => o.key === searchField)?.label || searchField} 검색...` : '모든 필드 검색 (기업명, 대표자, 주소, 메모, 커스텀 필드 등)...'}
+              placeholder={
+                searchField
+                  ? `${searchFieldLabelByKey[searchField] || searchField} 검색...`
+                  : '모든 필드 검색 (기업명, 대표자, 주소, 메모, 사용자 정의 필드 등)...'
+              }
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               aria-label="고객사 검색"
@@ -716,11 +734,25 @@ export default function CustomerCompanies() {
             value={searchField}
             onChange={(e) => setSearchField(e.target.value)}
             aria-label="검색 필드"
+            title="기본 필드와 사용자 정의 필드(추가 시 자동 반영) 중에서 검색 대상을 고릅니다."
           >
             <option value="">전체 필드</option>
-            {SEARCH_FIELD_OPTIONS.map((o) => (
-              <option key={o.key} value={o.key}>{o.label}</option>
-            ))}
+            <optgroup label="기본 필드">
+              {BASE_SEARCH_FIELD_OPTIONS.map((o) => (
+                <option key={o.key} value={o.key}>
+                  {o.label}
+                </option>
+              ))}
+            </optgroup>
+            {(customFieldColumns || []).length > 0 ? (
+              <optgroup label="사용자 정의 필드">
+                {customFieldColumns.map((c) => (
+                  <option key={c.key} value={c.key}>
+                    {c.label || c.key.replace(CUSTOM_FIELDS_PREFIX, '')}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
           </select>
         </div>
         <div className="header-actions">
@@ -813,6 +845,19 @@ export default function CustomerCompanies() {
                   병합하기
                 </button>
               ) : null}
+              <button
+                type="button"
+                className="cc-selection-action-bar-map"
+                onClick={() => {
+                  const ids = [...selectedCompanyIds].filter(Boolean);
+                  if (!ids.length) return;
+                  navigate(`/map?mapShowIds=${encodeURIComponent(ids.join(','))}`);
+                }}
+                title="체크한 고객사만 지도에 마커로 표시합니다"
+              >
+                <span className="material-symbols-outlined" aria-hidden>map</span>
+                지도에서 보기
+              </button>
               {canRequestAssigneeHandover ? (
                 <button
                   type="button"

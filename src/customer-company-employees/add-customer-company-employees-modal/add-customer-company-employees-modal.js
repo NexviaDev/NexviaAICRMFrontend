@@ -6,8 +6,11 @@ import AssigneePickerModal from '../../company-overview/assignee-picker-modal/as
 import '../../customer-companies/add-company-modal/add-company-modal.css';
 import './add-customer-company-employees-modal.css';
 import ContactImportPreviewModal from './contact-import-preview-modal';
+import ContactSavePregateModal from './contact-save-pregate-modal';
+import CustomerCompanyDetailModal from '../../customer-companies/customer-company-detail-modal/customer-company-detail-modal';
 
 import { API_BASE } from '@/config';
+import { normalizeBulkImportCompanyGroupKey } from '@/lib/bulk-import-company-group-key';
 import { geocodeAddressForCompanySave } from '@/lib/geocode-company-address';
 import { buildDriveFileDeleteUrl, getDriveFileIdFromUrl, isValidDriveNodeId, sanitizeDriveFolderWebViewLink } from '@/lib/google-drive-url';
 import { pingBackendHealth } from '@/lib/backend-wake';
@@ -25,6 +28,15 @@ function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
+
+const CONTACT_STATUS_PRESET_VALUES = ['Lead', 'Active', 'Pending', 'Inactive'];
+/** 드롭다운에 함께 표시할 설명 (저장값은 왼쪽 키 그대로) */
+const CONTACT_STATUS_DESCRIPTIONS = {
+  Lead: '잠재 리드 · 첫 접촉 전',
+  Active: '진행 중 · 활성',
+  Pending: '대기 · 보류',
+  Inactive: '비활성 · 종료'
+};
 
 function formatPhoneInput(value) {
   const digits = value.replace(/\D/g, '');
@@ -256,6 +268,12 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
   const [showBulkGoogle, setShowBulkGoogle] = useState(false);
   const [bulkSaving, setBulkSaving] = useState(false);
   const [bulkResult, setBulkResult] = useState(null);
+  /** 저장 직전: 이름/전화 OR 중복, 또는 신규 고객사명 유사 중복 */
+  const [preSaveReview, setPreSaveReview] = useState(null);
+  /** 저장 전 확인 중: 유사 고객사 행 클릭 시 상세 모달(상위 z-index) */
+  const [companyDetailPeek, setCompanyDetailPeek] = useState(null);
+  /** 대량(Google/명함): save-preflight 결과 후 사용자 선택 */
+  const [bulkPreReview, setBulkPreReview] = useState(null);
 
   useEffect(() => {
     if (!isEditMode || !contact) {
@@ -279,6 +297,15 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
     const hasCompanyText = !!(form.company || '').trim();
     return !hasId && !hasCompanyText;
   }, [fixedCompany, form.customerCompanyId, form.company]);
+
+  const statusOptions = useMemo(() => {
+    const current = String(form.status || '').trim() || 'Lead';
+    const values = Array.from(new Set([current, ...CONTACT_STATUS_PRESET_VALUES]));
+    return values.map((value) => ({
+      value,
+      label: CONTACT_STATUS_DESCRIPTIONS[value] || '사용자 지정·저장된 키'
+    }));
+  }, [form.status]);
 
   const cardInputRef = useRef(null);
   const driveFileInputRef = useRef(null);
@@ -873,20 +900,47 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
     }
   }, []);
 
-  const confirmBulkContactImport = async () => {
-    const rows = importPreviewItems.filter(
-      (r) => !r.error && ((r.name || '').trim() || (r.email || '').trim() || (r.phone || '').trim())
-    );
-    if (!rows.length) {
-      setError('등록할 유효한 행이 없습니다.');
-      return;
+  const buildBulkEntryFromImportRow = (row) => {
+    const cn = (row.companyName || '').trim();
+    if (fixedCompany && initialCustomerCompany?._id) {
+      return {
+        name: String(row.name || '').replace(/\s/g, '').trim(),
+        phone: row.phone ? formatPhoneInput(String(row.phone)) : '',
+        companyName: '',
+        customerCompanyId: String(initialCustomerCompany._id)
+      };
     }
-    setImportBulkSaving(true);
-    setError('');
-    let ok = 0;
-    let fail = 0;
+    if (cn) {
+      return {
+        name: String(row.name || '').replace(/\s/g, '').trim(),
+        phone: row.phone ? formatPhoneInput(String(row.phone)) : '',
+        companyName: cn,
+        customerCompanyId: ''
+      };
+    }
+    return {
+      name: String(row.name || '').replace(/\s/g, '').trim(),
+      phone: row.phone ? formatPhoneInput(String(row.phone)) : '',
+      companyName: '',
+      customerCompanyId: ''
+    };
+  };
+
+  const runImportRowsBulk = async (rows, preResults, forceAll) => {
     const assigneeUserIds = Array.isArray(form.assigneeUserIds) ? form.assigneeUserIds : [];
-    for (const row of rows) {
+    const batchCustomerCompanyIdByNormKey = new Map();
+    let success = 0;
+    let fail = 0;
+    let skipped = 0;
+    for (let i = 0; i < rows.length; i += 1) {
+      const row = rows[i];
+      const entry = buildBulkEntryFromImportRow(row);
+      const pr = (preResults && preResults[i]) || {};
+      const hold = rowNeedsImportBulkHold(pr, entry);
+      if (hold && !forceAll) {
+        skipped += 1;
+        continue;
+      }
       try {
         const payload = {
           name: String(row.name || '').replace(/\s/g, '').trim(),
@@ -903,8 +957,16 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
         } else {
           const cn = (row.companyName || '').trim();
           if (cn) {
-            payload.customerCompanyId = null;
-            payload.companyName = cn;
+            const gk = normalizeBulkImportCompanyGroupKey(cn);
+            const reuseId = gk ? batchCustomerCompanyIdByNormKey.get(gk) : null;
+            if (reuseId) {
+              payload.customerCompanyId = reuseId;
+              payload.companyName = cn;
+            } else {
+              payload.customerCompanyId = null;
+              payload.companyName = cn;
+              payload.forceCreateNewCustomerCompany = true;
+            }
           } else {
             payload.isIndividual = true;
             payload.customerCompanyId = null;
@@ -918,26 +980,84 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
           fail += 1;
           continue;
         }
+        if (hold && forceAll) {
+          if ((pr.contactCandidates || []).length) payload.forceCreateDespiteContactDuplicate = true;
+        }
         const res = await fetch(`${API_BASE}/customer-company-employees`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
           body: JSON.stringify(payload)
         });
-        if (res.ok) ok += 1;
-        else fail += 1;
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          success += 1;
+          if (!(fixedCompany && initialCustomerCompany?._id)) {
+            const cn = (row.companyName || '').trim();
+            if (cn && data.customerCompanyId) {
+              const gk = normalizeBulkImportCompanyGroupKey(cn);
+              if (gk && !batchCustomerCompanyIdByNormKey.has(gk)) {
+                batchCustomerCompanyIdByNormKey.set(gk, String(data.customerCompanyId));
+              }
+            }
+          }
+        } else fail += 1;
       } catch {
         fail += 1;
       }
     }
-    setImportBulkSaving(false);
-    setShowImportPreview(false);
-    setImportPreviewItems([]);
-    if (ok > 0) {
-      window.alert(`등록 완료: ${ok}건${fail ? `, 실패 ${fail}건` : ''}.`);
-      onSaved?.();
-      onClose?.();
-    } else {
-      setError(`등록에 실패했습니다. (${fail}건)`);
+    return { success, fail, skipped, total: rows.length };
+  };
+
+  const confirmBulkContactImport = async () => {
+    const rows = importPreviewItems.filter(
+      (r) => !r.error && ((r.name || '').trim() || (r.email || '').trim() || (r.phone || '').trim())
+    );
+    if (!rows.length) {
+      setError('등록할 유효한 행이 없습니다.');
+      return;
+    }
+    setImportBulkSaving(true);
+    setError('');
+    setBulkPreReview(null);
+    try {
+      await pingBackendHealth(getAuthHeader);
+      const entries = rows.map((r) => buildBulkEntryFromImportRow(r));
+      const preRes = await fetch(`${API_BASE}/customer-company-employees/save-preflight`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+        body: JSON.stringify({ entries })
+      });
+      const preData = await preRes.json().catch(() => ({}));
+      if (!preRes.ok) {
+        setError(preData.error || '대량 등록을 미리 확인하는 데 실패했습니다.');
+        return;
+      }
+      const preResults = Array.isArray(preData.results) ? preData.results : [];
+      const anyHold = preResults.some((r, i) => rowNeedsImportBulkHold(r, entries[i] || {}));
+      if (anyHold) {
+        setBulkPreReview({
+          source: 'import',
+          importRows: rows,
+          preResults,
+          entries
+        });
+        return;
+      }
+      const { success, fail, skipped, total } = await runImportRowsBulk(rows, preResults, false);
+      setShowImportPreview(false);
+      setImportPreviewItems([]);
+      if (success > 0) {
+        const msg = `등록 ${success}건${skipped ? `, 제외 ${skipped}건` : ''}${fail ? `, 실패 ${fail}건` : ''} (총 ${total}건).`;
+        window.alert(msg);
+        onSaved?.();
+        onClose?.();
+      } else {
+        setError(`등록에 실패했습니다. (${fail}건${skipped ? `, 제외 ${skipped}건` : ''})`);
+      }
+    } catch {
+      setError('서버에 연결할 수 없습니다.');
+    } finally {
+      setImportBulkSaving(false);
     }
   };
 
@@ -1017,7 +1137,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
     const panel = modalPanelRef.current;
     if (!panel) return undefined;
     const onPaste = (e) => {
-      if (showBulkGoogle || showImportPreview || showCompanySearchModal || showAssigneePicker) return;
+      if (showBulkGoogle || showImportPreview || showCompanySearchModal || showAssigneePicker || preSaveReview || bulkPreReview) return;
       if (extractingBusinessCard || importPreviewLoading || driveUploading) return;
       if (saving) return;
       const file = clipboardDataToImageFile(e.clipboardData);
@@ -1037,6 +1157,8 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
     showImportPreview,
     showCompanySearchModal,
     showAssigneePicker,
+    preSaveReview,
+    bulkPreReview,
     extractingBusinessCard,
     importPreviewLoading,
     driveUploading,
@@ -1174,16 +1296,54 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
     return { ok: true, businessCardDriveUrl: uploadData.webViewLink, patchedEmployee };
   }, []);
 
-  const handleBulkImport = async (contacts) => {
-    if (!contacts || contacts.length === 0) return;
-    setBulkSaving(true);
-    setBulkResult(null);
-    setError('');
+  const buildBulkEntryFromGoogle = (c, useFixedCompany) => {
+    const gCompany = (c.company || '').trim();
+    return {
+      name: String(c.name || '').replace(/\s/g, '').trim(),
+      phone: c.phone ? formatPhoneInput(c.phone).trim() : '',
+      companyName: useFixedCompany ? '' : gCompany,
+      customerCompanyId: useFixedCompany && initialCustomerCompany?._id ? String(initialCustomerCompany._id) : ''
+    };
+  };
+
+  const rowNeedsBulkHold = (pr, entry) => {
+    if (!pr) return false;
+    if ((pr.contactCandidates || []).length) return true;
+    const willCo = (entry.companyName || '').trim() && !(String(entry.customerCompanyId || '').trim());
+    if (willCo && (pr.similarCustomerCompanies || []).length) return true;
+    return false;
+  };
+
+  /** 명함 일괄 등록: 고객사 유사는 무시하고 진행 — 이름·전화 중복만 미리보류 */
+  const rowNeedsImportBulkHold = (pr, entry) => {
+    if (!pr) return false;
+    if ((pr.contactCandidates || []).length) return true;
+    return false;
+  };
+
+  const runGoogleBulkLoop = async (contacts, preResults, forceAll) => {
     const useFixedCompany = !!(initialCustomerCompany && initialCustomerCompany._id);
-    const currentUserId = (() => { try { const u = JSON.parse(localStorage.getItem('crm_user') || '{}'); return u?._id ? String(u._id) : null; } catch (_) { return null; } })();
+    const batchCustomerCompanyIdByNormKey = new Map();
+    const currentUserId = (() => {
+      try {
+        const u = JSON.parse(localStorage.getItem('crm_user') || '{}');
+        return u?._id ? String(u._id) : null;
+      } catch (_) {
+        return null;
+      }
+    })();
     let success = 0;
     let fail = 0;
-    for (const c of contacts) {
+    let skipped = 0;
+    for (let i = 0; i < contacts.length; i += 1) {
+      const c = contacts[i];
+      const entry = buildBulkEntryFromGoogle(c, useFixedCompany);
+      const pr = (preResults && preResults[i]) || {};
+      const hold = rowNeedsBulkHold(pr, entry);
+      if (hold && !forceAll) {
+        skipped += 1;
+        continue;
+      }
       try {
         const gCompany = (c.company || '').trim();
         const payload = {
@@ -1202,30 +1362,137 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
           assigneeUserIds: currentUserId ? [currentUserId] : []
         };
         if (useFixedCompany) payload.customerCompanyId = initialCustomerCompany._id;
-        if (!useFixedCompany && gCompany) payload.customerCompanyId = null;
-        if (!payload.name && !payload.email && !payload.phone) { fail++; continue; }
+        if (!useFixedCompany && gCompany) {
+          const gk = normalizeBulkImportCompanyGroupKey(gCompany);
+          const reuseId = gk ? batchCustomerCompanyIdByNormKey.get(gk) : null;
+          payload.customerCompanyId = reuseId || null;
+        }
+        if (!payload.name && !payload.email && !payload.phone) {
+          fail += 1;
+          continue;
+        }
+        if (hold && forceAll) {
+          if ((pr.contactCandidates || []).length) payload.forceCreateDespiteContactDuplicate = true;
+          if (
+            (entry.companyName || '').trim() &&
+            !(String(entry.customerCompanyId || '').trim()) &&
+            (pr.similarCustomerCompanies || []).length
+          ) {
+            payload.forceCreateNewCustomerCompany = true;
+          }
+        }
         const res = await fetch(`${API_BASE}/customer-company-employees`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
           body: JSON.stringify(payload)
         });
-        if (res.ok) success++;
-        else fail++;
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          success += 1;
+          if (!useFixedCompany && gCompany && data.customerCompanyId) {
+            const gk = normalizeBulkImportCompanyGroupKey(gCompany);
+            if (gk && !batchCustomerCompanyIdByNormKey.has(gk)) {
+              batchCustomerCompanyIdByNormKey.set(gk, String(data.customerCompanyId));
+            }
+          }
+        } else fail += 1;
       } catch (_) {
-        fail++;
+        fail += 1;
       }
     }
-    setBulkSaving(false);
-    setBulkResult({ success, fail, total: contacts.length });
-    if (success > 0) onSaved?.();
+    return { success, fail, skipped, total: contacts.length };
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleBulkImport = async (contacts) => {
+    if (!contacts || contacts.length === 0) return;
+    setBulkResult(null);
     setError('');
-    const hasName = !!(form.name && form.name.trim());
-    const hasEmail = !!(form.email && form.email.trim());
-    const hasPhone = !!(form.phone && form.phone.trim());
+    setBulkPreReview(null);
+    const useFixedCompany = !!(initialCustomerCompany && initialCustomerCompany._id);
+    setBulkSaving(true);
+    try {
+      await pingBackendHealth(getAuthHeader);
+      const entries = contacts.map((c) => buildBulkEntryFromGoogle(c, useFixedCompany));
+      const preRes = await fetch(`${API_BASE}/customer-company-employees/save-preflight`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+        body: JSON.stringify({ entries })
+      });
+      const preData = await preRes.json().catch(() => ({}));
+      if (!preRes.ok) {
+        setError(preData.error || '대량 등록을 미리 확인하는 데 실패했습니다.');
+        return;
+      }
+      const preResults = Array.isArray(preData.results) ? preData.results : [];
+      const anyHold = preResults.some((r, i) => rowNeedsBulkHold(r, entries[i] || {}));
+      if (anyHold) {
+        setBulkPreReview({ source: 'google', contacts, preResults, entries });
+        return;
+      }
+      const { success, fail, skipped, total } = await runGoogleBulkLoop(contacts, preResults, false);
+      setBulkResult({ success, fail, skipped, total });
+      if (success > 0) onSaved?.();
+    } catch (_) {
+      setError('서버에 연결할 수 없습니다.');
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
+  const resolveBulkPreReview = async (forceAll) => {
+    if (!bulkPreReview) return;
+    const b = bulkPreReview;
+    setBulkPreReview(null);
+    if (b.source === 'google') {
+      setBulkSaving(true);
+      try {
+        const { success, fail, skipped, total } = await runGoogleBulkLoop(b.contacts, b.preResults, forceAll);
+        setBulkResult({ success, fail, skipped, total });
+        if (success > 0) onSaved?.();
+      } catch (_) {
+        setError('대량 등록 중 오류가 났습니다.');
+      } finally {
+        setBulkSaving(false);
+      }
+      return;
+    }
+    setImportBulkSaving(true);
+    try {
+      const { success, fail, skipped, total } = await runImportRowsBulk(b.importRows, b.preResults, forceAll);
+      setShowImportPreview(false);
+      setImportPreviewItems([]);
+      if (success > 0) {
+        window.alert(
+          `등록 ${success}건${skipped ? `, 제외 ${skipped}건` : ''}${fail ? `, 실패 ${fail}건` : ''} (총 ${total}건).`
+        );
+        onSaved?.();
+        onClose?.();
+      } else {
+        setError(`등록에 실패했습니다. (${fail}건${skipped ? `, 제외 ${skipped}건` : ''})`);
+      }
+    } catch (_) {
+      setError('대량 등록 중 오류가 났습니다.');
+    } finally {
+      setImportBulkSaving(false);
+    }
+  };
+
+  const runContactSave = async (
+    e,
+    {
+      forceCreateDespiteContactDuplicate = false,
+      forceCreateNewCustomerCompany = false,
+      /** 저장 직전에만 병합(React setState 비동기 대비 — 기존 고객사 연결 등) */
+      formPatch = null
+    } = {}
+  ) => {
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+    setError('');
+    setPreSaveReview(null);
+    const f = formPatch && typeof formPatch === 'object' ? { ...form, ...formPatch } : form;
+    const hasName = !!(f.name && f.name.trim());
+    const hasEmail = !!(f.email && f.email.trim());
+    const hasPhone = !!(f.phone && f.phone.trim());
     const hasContactBit = hasName || hasEmail || hasPhone;
     if (!hasContactBit) {
       setError('이름, 이메일, 전화번호 중 최소 한 가지는 입력해 주세요.');
@@ -1234,37 +1501,43 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
     setSaving(true);
     try {
       const payload = {
-        name: form.name.replace(/\s/g, '').trim(),
-        email: form.email.trim(),
-        phone: form.phone.trim(),
-        position: (form.position || '').trim() || undefined,
-        leadSource: (form.leadSource || '').trim() || undefined,
-        address: (form.address || '').trim() || undefined,
-        birthDate: (form.birthDate || '').trim() || undefined,
-        memo: (form.memo || '').trim() || undefined,
-        status: isEditMode ? (form.status || 'Lead') : 'Lead'
+        name: f.name.replace(/\s/g, '').trim(),
+        email: f.email.trim(),
+        phone: f.phone.trim(),
+        position: (f.position || '').trim() || undefined,
+        leadSource: (f.leadSource || '').trim() || undefined,
+        address: (f.address || '').trim() || undefined,
+        birthDate: (f.birthDate || '').trim() || undefined,
+        memo: (f.memo || '').trim() || undefined,
+        status: (f.status && String(f.status).trim()) || 'Lead'
       };
       if (isIndividual) {
         payload.isIndividual = true;
         payload.customerCompanyId = null;
         payload.companyName = '';
       } else {
-        const companyId = String(form.customerCompanyId || '').trim();
+        const companyId = String(f.customerCompanyId || '').trim();
         if (companyId) {
           payload.customerCompanyId = companyId;
-          if ((form.company || '').trim()) payload.companyName = (form.company || '').trim();
+          if ((f.company || '').trim()) payload.companyName = (f.company || '').trim();
         } else {
           payload.customerCompanyId = null;
-          payload.companyName = (form.company || '').trim();
+          payload.companyName = (f.company || '').trim();
         }
       }
-      if (form.customFields && Object.keys(form.customFields).length) payload.customFields = form.customFields;
-      payload.assigneeUserIds = Array.isArray(form.assigneeUserIds) ? form.assigneeUserIds : [];
+      if (f.customFields && Object.keys(f.customFields).length) payload.customFields = f.customFields;
+      payload.assigneeUserIds = Array.isArray(f.assigneeUserIds) ? f.assigneeUserIds : [];
+      if (forceCreateDespiteContactDuplicate) {
+        payload.forceCreateDespiteContactDuplicate = true;
+      }
+      if (forceCreateNewCustomerCompany) {
+        payload.forceCreateNewCustomerCompany = true;
+      }
 
-      const companyIdStr = String(form.customerCompanyId || '').trim();
-      const companyNameTrim = (form.company || '').trim();
+      const companyIdStr = String(f.customerCompanyId || '').trim();
+      const companyNameTrim = (f.company || '').trim();
       const creatingCustomerCompanyByName = !isIndividual && !companyIdStr && !!companyNameTrim;
-      const addrTrim = (form.address || '').trim();
+      const addrTrim = (f.address || '').trim();
       if (creatingCustomerCompanyByName) {
         payload.companyAddress = addrTrim;
         if (addrTrim) {
@@ -1287,8 +1560,14 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        if (res.status === 409 && data.duplicateId) {
-          setError(`동일한 이름·연락처가 이미 존재합니다: ${data.error || '중복된 연락처'}`);
+        if (res.status === 409 && data.code === 'SIMILAR_CUSTOMER_COMPANY' && Array.isArray(data.similarCustomerCompanies)) {
+          setError(data.error || '비슷한 상호의 고객사가 이미 있습니다.');
+          setPreSaveReview({
+            contactCandidates: [],
+            similarCustomerCompanies: data.similarCustomerCompanies
+          });
+        } else if (res.status === 409 && data.duplicateId) {
+          setError(data.error || '동일한 이름·연락처가 이미 있습니다.');
         } else {
           setError(data.error || (isEditMode ? '수정에 실패했습니다.' : '저장에 실패했습니다.'));
         }
@@ -1296,12 +1575,12 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
       }
       const empId = isEditMode ? (contact._id || contact.id) : (data._id || data.id);
       const snapshot = {
-        name: form.name.replace(/\s/g, '').trim(),
-        phone: form.phone.trim(),
-        email: form.email.trim(),
-        customerCompanyId: form.customerCompanyId,
+        name: f.name.replace(/\s/g, '').trim(),
+        phone: f.phone.trim(),
+        email: f.email.trim(),
+        customerCompanyId: f.customerCompanyId,
         isIndividual,
-        companyLabel: form.company.trim()
+        companyLabel: f.company.trim()
       };
       let merged = data;
       try {
@@ -1365,6 +1644,62 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
     }
   };
 
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    const hasName = !!(form.name && form.name.trim());
+    const hasEmail = !!(form.email && form.email.trim());
+    const hasPhone = !!(form.phone && form.phone.trim());
+    const hasContactBit = hasName || hasEmail || hasPhone;
+    if (!hasContactBit) {
+      setError('이름, 이메일, 전화번호 중 최소 한 가지는 입력해 주세요.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await pingBackendHealth(getAuthHeader);
+      const editingEmployeeId =
+        (contact?._id ?? contact?.id ?? displayedContact?._id ?? displayedContact?.id) ?? null;
+      const cParams = new URLSearchParams();
+      cParams.set('name', (form.name || '').replace(/\s/g, '').trim());
+      cParams.set('phone', (form.phone || '').trim());
+      if (editingEmployeeId != null && String(editingEmployeeId).trim() !== '') {
+        cParams.set('excludeEmployeeId', String(editingEmployeeId));
+      }
+      const cRes = await fetch(`${API_BASE}/customer-company-employees/duplicate-candidates?${cParams.toString()}`, {
+        headers: getAuthHeader()
+      });
+      const cData = await cRes.json().catch(() => ({}));
+      let contactCandidates = Array.isArray(cData.candidates) ? cData.candidates : [];
+      if (editingEmployeeId != null && String(editingEmployeeId).trim() !== '') {
+        const ex = String(editingEmployeeId);
+        contactCandidates = contactCandidates.filter((c) => c && String(c._id) !== ex);
+      }
+      const companyIdStrP = String(form.customerCompanyId || '').trim();
+      const companyNameTrimP = (form.company || '').trim();
+      const willCreateCompanyByName = !isIndividual && !companyIdStrP && !!companyNameTrimP;
+      let similarCustomerCompanies = [];
+      if (willCreateCompanyByName) {
+        const sParams = new URLSearchParams({ name: companyNameTrimP });
+        const sRes = await fetch(`${API_BASE}/customer-companies/similar-name-candidates?${sParams.toString()}`, {
+          headers: getAuthHeader()
+        });
+        const sData = await sRes.json().catch(() => ({}));
+        similarCustomerCompanies = Array.isArray(sData.similar) ? sData.similar : [];
+      }
+      if (contactCandidates.length > 0 || similarCustomerCompanies.length > 0) {
+        setPreSaveReview({ contactCandidates, similarCustomerCompanies });
+        return;
+      }
+    } catch (_) {
+      setError('중복·유사 상호를 확인하는 중 오류가 났습니다.');
+      return;
+    } finally {
+      setSaving(false);
+    }
+    await runContactSave(null, {});
+  };
+
   return (
     <div className={`add-contact-modal-overlay ${isEditMode ? 'add-contact-modal-overlay--slide' : ''}`}>
       <div
@@ -1408,6 +1743,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
                 <div className={`add-contact-bulk-result ${bulkResult.fail > 0 ? 'has-fail' : ''}`}>
                   <span className="material-symbols-outlined">{bulkResult.fail > 0 ? 'info' : 'check_circle'}</span>
                   총 {bulkResult.total}명 중 <strong>{bulkResult.success}명</strong> 등록 완료
+                  {bulkResult.skipped > 0 && <>, {bulkResult.skipped}명 제외(중복·유사)</>}
                   {bulkResult.fail > 0 && <>, {bulkResult.fail}명 실패</>}
                   <button type="button" className="add-contact-bulk-dismiss" onClick={() => setBulkResult(null)}>×</button>
                 </div>
@@ -1708,6 +2044,24 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
             <input id="add-contact-position" name="position" type="text" value={form.position} onChange={handleChange} placeholder="예: 과장, 팀장" />
           </div>
           <div className="add-contact-modal-field">
+            <label htmlFor="add-contact-status">상태 키값</label>
+            <div className="add-contact-status-row add-contact-status-row--full">
+              <select
+                id="add-contact-status"
+                name="status"
+                className="add-contact-status-select"
+                value={form.status || 'Lead'}
+                onChange={handleChange}
+              >
+                {statusOptions.map(({ value, label }) => (
+                  <option key={value} value={value}>
+                    {value} — {label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="add-contact-modal-field">
             <label htmlFor="add-contact-lead-source">유입 경로</label>
             <input
               id="add-contact-lead-source"
@@ -1800,7 +2154,100 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
           onClose={() => !importBulkSaving && setShowImportPreview(false)}
           onConfirm={confirmBulkContactImport}
         />
+        <ContactSavePregateModal
+          review={preSaveReview}
+          saving={saving}
+          isEditMode={isEditMode}
+          onClose={() => setPreSaveReview(null)}
+          onConfirmForce={(flags) => {
+            setPreSaveReview(null);
+            void runContactSave(null, flags);
+          }}
+          onOpenCompanyDetail={(co) => setCompanyDetailPeek(co)}
+          onLinkExistingCompany={(co) => {
+            const pr = preSaveReview;
+            const cCount = (pr?.contactCandidates || []).length ?? 0;
+            const id = String(co._id || '').trim();
+            const nm = (co.name || '').trim();
+            const bnRaw = co.businessNumber != null ? String(co.businessNumber).trim() : '';
+            setLinkedCompanyBusinessNumber(bnRaw);
+            setForm((prev) => ({ ...prev, customerCompanyId: id, company: nm || prev.company }));
+            void runContactSave(null, {
+              formPatch: { customerCompanyId: id, company: nm },
+              forceCreateDespiteContactDuplicate: !isEditMode && cCount > 0,
+              forceCreateNewCustomerCompany: false
+            });
+          }}
+        />
+        {bulkPreReview && (bulkPreReview.preResults || []).length > 0 && (
+          <div
+            className="add-contact-pregate-overlay"
+            onClick={() => !bulkSaving && !importBulkSaving && setBulkPreReview(null)}
+            role="dialog"
+            aria-modal="true"
+            aria-label="대량 등록 중복"
+          >
+            <div className="add-contact-pregate-panel" onClick={(e) => e.stopPropagation()}>
+              <h3 className="add-contact-pregate-title">
+                {bulkPreReview.source === 'import' ? '대량 등록 — 연락처 중복' : '대량 등록 — 중복·유사'}
+              </h3>
+              <p className="add-contact-pregate-hint">
+                {bulkPreReview.source === 'import' ? (
+                  <>
+                    일부 행이 기존 연락처(이름·전화)와 겹칩니다. 겹치는 행을 <strong>빼고</strong> 등록할지, <strong>강제로 모두</strong> 넣을지
+                    선택하세요. (고객사 유사는 이 단계에서 막지 않습니다.)
+                  </>
+                ) : (
+                  <>
+                    일부 행이 기존 연락처(이름·전화)와 겹치거나, 비슷한 상호의 고객사가 있습니다. 겹치는 행을 <strong>빼고</strong> 등록할지,{' '}
+                    <strong>강제로 모두</strong> 넣을지 선택하세요.
+                  </>
+                )}
+              </p>
+              <div className="add-contact-pregate-actions add-contact-pregate-actions--bulk">
+                <button
+                  type="button"
+                  className="add-contact-modal-cancel"
+                  onClick={() => setBulkPreReview(null)}
+                  disabled={bulkSaving || importBulkSaving}
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  className="add-contact-modal-save add-contact-pregate-btn-muted"
+                  disabled={bulkSaving || importBulkSaving}
+                  onClick={() => void resolveBulkPreReview(false)}
+                >
+                  {bulkPreReview.source === 'import' ? '중복 행 제외' : '중복·유사 행 제외'}
+                </button>
+                <button
+                  type="button"
+                  className="add-contact-modal-save"
+                  disabled={bulkSaving || importBulkSaving}
+                  onClick={() => void resolveBulkPreReview(true)}
+                >
+                  강제로 모두 등록
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+      {companyDetailPeek ? (
+        <div className="add-cc-emp-company-detail-peek">
+          <CustomerCompanyDetailModal
+            company={companyDetailPeek}
+            onClose={() => setCompanyDetailPeek(null)}
+            onUpdated={(u) => {
+              setCompanyDetailPeek((prev) =>
+                prev && u?._id && String(u._id) === String(prev._id) ? { ...prev, ...u } : prev
+              );
+            }}
+            onDeleted={() => setCompanyDetailPeek(null)}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

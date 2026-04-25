@@ -13,6 +13,7 @@ import { API_BASE } from '@/config';
 import { getStoredCrmUser, isManagerOrAboveRole, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { pingBackendHealth, BACKEND_KEEPALIVE_INTERVAL_MS, BACKEND_KEEPALIVE_INTERVAL_ENABLED } from '@/lib/backend-wake';
 import { pollJournalFromAudioJob } from '@/lib/journal-from-audio-poll';
+import { uploadJournalAudioFromFile, JOURNAL_AUDIO_CHUNK_THRESHOLD } from '@/lib/upload-journal-audio-from-file';
 import { pruneDriveUploadedFilesIndex, syncDriveUploadedFilesIndex } from '@/lib/drive-uploaded-files-prune';
 import { getGoogleMapsApiKey } from '@/lib/google-maps-client';
 import {
@@ -30,7 +31,9 @@ import {
 } from '@/shared/register-sale-docs-drive';
 import {
   getSavedCustomerCompanyDetailModalPresentation,
-  patchCustomerCompanyDetailModalTemplate
+  getSavedCustomerCompanyDetailModalJournalDefaults,
+  patchCustomerCompanyDetailModalTemplate,
+  patchCustomerCompanyDetailModalJournalDefaults
 } from '@/lib/list-templates';
 
 function getAuthHeader() {
@@ -61,6 +64,27 @@ function splitContentIntoBlocks(text) {
     const sentences = para.split(/(?<=[.!?。？！])\s+/).map((s) => s.trim()).filter(Boolean);
     return sentences.length ? sentences : [para];
   });
+}
+
+const WORK_CATEGORY_OPTIONS = [
+  { value: 'tech', label: '기술' },
+  { value: 'sales', label: '영업' },
+  { value: 'marketing', label: '마케팅' }
+];
+
+const CONTACT_CHANNEL_OPTIONS = [
+  { value: 'phone', label: '전화' },
+  { value: 'visit', label: '방문' },
+  { value: 'email', label: '이메일' },
+  { value: 'sms', label: '문자' }
+];
+
+function getWorkCategoryLabel(value) {
+  return WORK_CATEGORY_OPTIONS.find((opt) => opt.value === value)?.label || '';
+}
+
+function getContactChannelLabel(value) {
+  return CONTACT_CHANNEL_OPTIONS.find((opt) => opt.value === value)?.label || '';
 }
 
 function formatBusinessNumber(num) {
@@ -127,12 +151,17 @@ function buildCompanyStaticMapPreviewUrl(company) {
 /** 고객사 세부정보 모달 - customer-companies-detail.html 기반 */
 export default function CustomerCompanyDetailModal({ company, onClose, onUpdated, onDeleted }) {
   const navigate = useNavigate();
+  const savedJournalDefaults = useMemo(() => getSavedCustomerCompanyDetailModalJournalDefaults(), []);
   const [historyItems, setHistoryItems] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [journalText, setJournalText] = useState('');
   const [journalDateTime, setJournalDateTime] = useState(() => toDatetimeLocalValue(new Date()));
+  const [journalWorkCategory, setJournalWorkCategory] = useState(savedJournalDefaults.workCategory);
+  const [journalContactChannel, setJournalContactChannel] = useState(savedJournalDefaults.contactChannel);
+  const [journalTargetEmployeeId, setJournalTargetEmployeeId] = useState('');
   const [savingNote, setSavingNote] = useState(false);
   const [audioUploading, setAudioUploading] = useState(false);
+  const [audioUploadProgress, setAudioUploadProgress] = useState(null);
   const [audioDropActive, setAudioDropActive] = useState(false);
   const [journalError, setJournalError] = useState('');
   const [summaryNotice, setSummaryNotice] = useState(null);
@@ -686,11 +715,21 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
     setJournalError('');
     setSummaryNotice(null);
     setSavingNote(true);
+    void patchCustomerCompanyDetailModalJournalDefaults({
+      workCategory: journalWorkCategory,
+      contactChannel: journalContactChannel
+    }).catch(() => {});
     try {
       const createdAt = journalDateTime && !Number.isNaN(new Date(journalDateTime).getTime())
         ? new Date(journalDateTime).toISOString()
         : undefined;
-      const requestBody = JSON.stringify({ content, ...(createdAt ? { createdAt } : {}) });
+      const requestBody = JSON.stringify({
+        content,
+        ...(createdAt ? { createdAt } : {}),
+        ...(journalWorkCategory ? { workCategory: journalWorkCategory } : {}),
+        ...(journalContactChannel ? { contactChannel: journalContactChannel } : {}),
+        ...(journalTargetEmployeeId ? { targetEmployeeId: journalTargetEmployeeId } : {})
+      });
       const res = await fetch(`${API_BASE}/customer-companies/${companyId}/history`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
@@ -701,6 +740,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
       if (res.ok) {
         setJournalText('');
         setJournalDateTime(toDatetimeLocalValue(new Date()));
+        setJournalTargetEmployeeId('');
         fetchHistory();
         fetchCompanyDetail();
       } else {
@@ -724,29 +764,30 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
       return;
     }
     setJournalError('');
+    setAudioUploadProgress(null);
     setSummaryNotice({
       type: 'info',
       text:
-        '음성 파일을 올렸습니다. 전사·요약은 서버에서 진행하며, 진행 중에도 연결이 끊기지 않도록 짧게 상태를 확인합니다.'
+        file.size > JOURNAL_AUDIO_CHUNK_THRESHOLD
+          ? '큰 음성 파일은 청크로 나누어 올린 뒤 서버에서 합쳐 전사·요약합니다. 업로드 중에도 연결이 끊기지 않도록 주기적으로 서버를 깨웁니다.'
+          : '음성 파일을 올렸습니다. 전사·요약은 서버에서 진행하며, 진행 중에도 연결이 끊기지 않도록 짧게 상태를 확인합니다.'
     });
     await pingBackendHealth(getAuthHeader);
     setAudioUploading(true);
     try {
-      const form = new FormData();
-      form.append('audio', file);
-      const res = await fetch(`${API_BASE}/customer-companies/${companyId}/history/from-audio`, {
-        method: 'POST',
-        headers: getAuthHeader(),
-        credentials: 'include',
-        body: form
+      const data = await uploadJournalAudioFromFile({
+        collectionBasePath: `${API_BASE}/customer-companies`,
+        targetId: companyId,
+        file,
+        getAuthHeader,
+        onProgress: ({ sent, total }) => setAudioUploadProgress({ sent, total })
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || '음성 업로드 처리에 실패했습니다.');
-      if (res.status === 202 && data.jobId) {
+      if (data.jobId) {
         setSummaryNotice({
           type: 'info',
           text: 'AssemblyAI 전사 및 Gemini 요약 진행 중입니다. 잠시만 기다려 주세요…'
         });
+        setAudioUploadProgress(null);
         const pollUrl = `${API_BASE}/customer-companies/${companyId}/history/from-audio/jobs/${encodeURIComponent(data.jobId)}`;
         const result = await pollJournalFromAudioJob(pollUrl, getAuthHeader);
         setJournalText(result.content || '');
@@ -762,6 +803,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
       setJournalError(e.message || '음성 업로드 처리에 실패했습니다.');
     } finally {
       setAudioUploading(false);
+      setAudioUploadProgress(null);
     }
   }, [audioUploading, companyId, fetchCompanyDetail, savingNote]);
 
@@ -958,11 +1000,42 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                 onChange={(e) => setJournalDateTime(e.target.value)}
                 aria-label="업무 기록 등록일시"
               />
+              <select
+                className="customer-company-detail-journal-select"
+                value={journalWorkCategory}
+                onChange={(e) => setJournalWorkCategory(e.target.value)}
+                aria-label="업무 분류 선택"
+              >
+                {WORK_CATEGORY_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+              <select
+                className="customer-company-detail-journal-select"
+                value={journalContactChannel}
+                onChange={(e) => setJournalContactChannel(e.target.value)}
+                aria-label="업무 방식 선택"
+              >
+                {CONTACT_CHANNEL_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+              <select
+                className="customer-company-detail-journal-select"
+                value={journalTargetEmployeeId}
+                onChange={(e) => setJournalTargetEmployeeId(e.target.value)}
+                aria-label="대상자 선택"
+              >
+                <option value="">대상자 미지정 (선택)</option>
+                {employees.map((emp) => (
+                  <option key={emp._id} value={emp._id}>{emp.name || '이름 없음'}</option>
+                ))}
+              </select>
             </div>
             <textarea
               className="customer-company-detail-journal-input"
               placeholder="회사 단위 메모 또는 업무 기록 (여러 직원 미팅 등)..."
-              rows={3}
+              rows={6}
               value={journalText}
               onChange={(e) => setJournalText(e.target.value)}
             />
@@ -1001,8 +1074,10 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
               <span className="material-symbols-outlined">audio_file</span>
               <span>
                 {audioUploading
-                  ? '음성 처리 중… 전사·요약이 끝나면 AssemblyAI에 올린 음성 원본은 서버에서 자동 삭제됩니다.'
-                  : '음성 파일 드래그앤드롭 또는 선택 (MP3/WAV/M4A/WebM). 처리가 끝나면 AssemblyAI 쪽 음성·전사 원본은 삭제됩니다.'}
+                  ? (audioUploadProgress?.total
+                    ? `음성 업로드 ${Math.min(100, Math.round((audioUploadProgress.sent / audioUploadProgress.total) * 100))}% · 이후 전사·요약 진행(AssemblyAI 원본은 처리 후 삭제됩니다).`
+                    : '음성 처리 중… 전사·요약이 끝나면 AssemblyAI에 올린 음성 원본은 서버에서 자동 삭제됩니다.')
+                  : '음성 파일 드래그앤드롭 또는 선택 (MP3/WAV/M4A/WebM). 큰 파일은 자동으로 청크 업로드됩니다.'}
               </span>
               <button
                 type="button"
@@ -1038,6 +1113,13 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                       <div>
                         {entry.employeeName && <span className="customer-company-detail-timeline-emp">{entry.employeeName}</span>}
                         <time>{formatHistoryDate(entry.createdAt)}</time>
+                        {(entry.workCategory || entry.contactChannel || entry.targetEmployeeName) ? (
+                          <span className="customer-company-detail-timeline-tags">
+                            {entry.workCategory ? <em>{getWorkCategoryLabel(entry.workCategory)}</em> : null}
+                            {entry.contactChannel ? <em>{getContactChannelLabel(entry.contactChannel)}</em> : null}
+                            {entry.targetEmployeeName ? <em>대상자: {entry.targetEmployeeName}</em> : null}
+                          </span>
+                        ) : null}
                       </div>
                       {canMutate ? (
                         <button

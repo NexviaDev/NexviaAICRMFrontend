@@ -1,9 +1,12 @@
-/* 돋보기 클릭으로 검색 (위치 고정) */
+/* 돋보기 클릭으로 검색 (위치 고정) — global.css .header-search max-width:32rem 과 동일하게 고객사 목록처럼 전체 가로 사용 */
 .customer-company-employees-page .header-search {
   position: relative;
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  max-width: none;
+  min-width: 0;
+  overflow: visible;
 }
 
 .customer-company-employees-page .header-search .material-symbols-outlined {

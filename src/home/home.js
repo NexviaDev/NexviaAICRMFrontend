@@ -15,6 +15,10 @@ import {
 } from '@/lib/home-capture-leads-visibility';
 import { formatPhone } from '@/register/phoneFormat';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
+import { getSavedHomeDashboardTemplate, patchHomeDashboardTemplate } from '@/lib/list-templates';
+import { pingBackendHealth } from '@/lib/backend-wake';
+import OpportunityModal from '@/sales-pipeline/opportunity-modal/opportunity-modal';
+import '@/sales-pipeline/opportunity-modal/opportunity-modal.css';
 import HomeLeadDetailModal from './home-lead-detail-modal';
 import HomeFullViewModal from './home-full-view-modal';
 
@@ -59,21 +63,47 @@ function filterLeadCaptureFormsForHomeViewer(items, crmUser) {
   });
 }
 
-/** 홈 패널에 표시할 캡처 리드 최대 건수 (오래된 순 정렬 후 앞쪽) */
-const HOME_CAPTURE_LEADS_DISPLAY_MAX = 120;
-
-/** 모바일 홈 「전체 보기」 모달 — URL `?homeView=todo|leads|calendar|channels` */
+/** 모바일 홈 「전체 보기」 모달 — URL `?homeView=todo|leads|calendar|channels|forecast|completed` */
 const HOME_VIEW_PARAM = 'homeView';
-const HOME_VIEW_VALUES = new Set(['todo', 'leads', 'calendar', 'channels']);
+const HOME_VIEW_VALUES = new Set(['todo', 'leads', 'calendar', 'channels', 'forecast', 'completed']);
 const HOME_VIEW_TITLES = {
   todo: '예정 업무',
-  leads: '수신 리드',
+  leads: '신규 리드',
   calendar: '캘린더',
-  channels: '캡처 채널별 리드 수신'
+  channels: '캡처 채널별 리드 수신',
+  forecast: 'Forecast 전체',
+  completed: '완료 기회 전체'
 };
-/** 모바일 미리보기 줄 수 — 나머지는 모달에서만 스크롤 */
-const HOME_MOBILE_PREVIEW_LEADS = 5;
 const HOME_MOBILE_PREVIEW_TODO = 5;
+const HOME_FORECAST_PREVIEW_MAX = 5;
+const HOME_LEAD_COMPLETED_SHARED_PREFIX = 'crm_home_capture_leads_completed_shared_';
+
+function getLeadCompletedCompanyKey() {
+  try {
+    const u = JSON.parse(localStorage.getItem('crm_user') || '{}');
+    return String(u.companyId || u.companyName || 'global');
+  } catch {
+    return 'global';
+  }
+}
+
+function loadSharedCompletedLeadMap() {
+  try {
+    const raw = localStorage.getItem(`${HOME_LEAD_COMPLETED_SHARED_PREFIX}${getLeadCompletedCompanyKey()}`);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveSharedCompletedLeadMap(mapObj) {
+  try {
+    const next = mapObj && typeof mapObj === 'object' ? mapObj : {};
+    localStorage.setItem(`${HOME_LEAD_COMPLETED_SHARED_PREFIX}${getLeadCompletedCompanyKey()}`, JSON.stringify(next));
+  } catch (_) {}
+}
 
 const DEFAULT_STAGE_LABELS = {
   NewLead: '신규 리드',
@@ -116,12 +146,36 @@ function formatCurrency(value, currency) {
   return prefix + Number(value).toLocaleString();
 }
 
+function formatRevenueCompact(value) {
+  const v = Math.round(Number(value) || 0);
+  if (v >= 100000000) return `₩${(v / 100000000).toFixed(1)}억`;
+  if (v >= 10000) return `₩${Math.round(v / 10000)}만`;
+  return `₩${v.toLocaleString('ko-KR')}`;
+}
+
 /** Forecast 표 — 예상 월(YYYY-MM) 표기 */
 function formatForecastExpectedMonthCell(ym) {
   const s = String(ym || '').trim();
   if (!/^\d{4}-\d{2}$/.test(s)) return '—';
   const [y, m] = s.split('-');
   return `${y}년 ${Number(m)}월`;
+}
+
+function renderSoftwareLabelCell(value) {
+  const text = String(value || '').trim();
+  if (!text) return '—';
+  const items = text
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+  if (items.length <= 1) return items[0] || '—';
+  return (
+    <span className="home-forecast-software-lines">
+      {items.map((item, idx) => (
+        <span key={`${item}-${idx}`} className="home-forecast-software-line">{item}</span>
+      ))}
+    </span>
+  );
 }
 
 /** 대시보드 매출 객체 → 표시 문자열 (통화 혼합 시 · 구분) */
@@ -726,13 +780,34 @@ const HOME_INSIGHT_VIEW_PARAM = 'homeInsightView';
 const HOME_INSIGHT_DEPT_PARAM = 'homeInsightDept';
 const HOME_INSIGHT_USER_PARAM = 'homeInsightUser';
 
-/** 홈 KPI 카드 집계 기간 — 백엔드 kpiPeriod (week|month|quarter|half|year). URL 없음 = 월간 */
+/** 홈 KPI 카드 집계 기간 — 백엔드 kpiPeriod (month|quarter|half|year). URL 없음 = 월간. 구값 week 는 월간으로 정리 */
 const HOME_KPI_PERIOD_PARAM = 'kpiPeriod';
+
+/** 홈에서 기회 추가 모달 — 세일즈 현황과 동일 쿼리 키(뒤로가기 시 닫힘) */
+const HOME_OPP_MODAL_PARAM = 'oppModal';
+const HOME_OPP_ID_PARAM = 'oppId';
+const HOME_OPP_STAGE_PARAM = 'stage';
 
 function normalizeHomeKpiPeriod(raw) {
   const s = String(raw || '').trim().toLowerCase();
-  if (['week', 'month', 'quarter', 'half', 'year'].includes(s)) return s;
+  if (s === 'week') return 'month';
+  if (['month', 'quarter', 'half', 'year'].includes(s)) return s;
   return 'month';
+}
+
+function resolveHomeKpiTargetPeriod(kpiPeriod, now = new Date()) {
+  const year = Number(now.getFullYear()) || new Date().getFullYear();
+  const month = (Number(now.getMonth()) || 0) + 1;
+  if (kpiPeriod === 'year') {
+    return { year, periodType: 'annual', periodValue: 1, periodLabel: '연간 목표' };
+  }
+  if (kpiPeriod === 'half') {
+    return { year, periodType: 'semiannual', periodValue: month <= 6 ? 1 : 2, periodLabel: '반기 목표' };
+  }
+  if (kpiPeriod === 'quarter') {
+    return { year, periodType: 'quarterly', periodValue: Math.ceil(month / 3), periodLabel: '분기 목표' };
+  }
+  return { year, periodType: 'monthly', periodValue: month, periodLabel: '월간 목표' };
 }
 
 function formatLeaderEmployeeOptionLabel(u, departments) {
@@ -753,15 +828,25 @@ export default function Home() {
   const [stageDefinitions, setStageDefinitions] = useState([]);
   const [pipelineLoading, setPipelineLoading] = useState(true);
   const [healthPinged, setHealthPinged] = useState(false);
-  /** 인사이트 그래프: 막대 | 꺾은선 (기본 소비자=막대, 순마진=꺾은선) */
-  const [consumerChartMode, setConsumerChartMode] = useState('bar');
-  const [marginChartMode, setMarginChartMode] = useState('line');
+  /** 인사이트 그래프: 막대 | 꺾은선 — User.listTemplates.homeDashboard 와 동기 */
+  const savedHomeDashInit = getSavedHomeDashboardTemplate();
+  const [consumerChartMode, setConsumerChartMode] = useState(() =>
+    savedHomeDashInit?.consumerChartMode === 'line' || savedHomeDashInit?.consumerChartMode === 'bar'
+      ? savedHomeDashInit.consumerChartMode
+      : 'bar'
+  );
+  const [marginChartMode, setMarginChartMode] = useState(() =>
+    savedHomeDashInit?.marginChartMode === 'line' || savedHomeDashInit?.marginChartMode === 'bar'
+      ? savedHomeDashInit.marginChartMode
+      : 'line'
+  );
   /** 홈 캡처 채널 주간 리드: 꺾은선 기본, 막대 옵션 (순마진 그래프와 동일 토글 UX) */
   const [leadChannelChartMode, setLeadChannelChartMode] = useState('line');
   /** 홈 수신 리드: 완료 숨김(permanent) · 1주 스누즈(snoozed ISO) */
   const [leadHomeVisibility, setLeadHomeVisibility] = useState(() =>
     loadHomeCaptureLeadVisibility(getLeadVisibilityUserKey())
   );
+  const [sharedCompletedLeadMap, setSharedCompletedLeadMap] = useState(() => loadSharedCompletedLeadMap());
   const [leadDetailOpen, setLeadDetailOpen] = useState(false);
   const [leadDetailContext, setLeadDetailContext] = useState(null);
   const pipelineMounted = useRef(true);
@@ -776,11 +861,34 @@ export default function Home() {
       ? 'personal'
       : 'team';
   const myCrmUserId = String(getStoredCrmUser()?._id || '').trim();
+  const homeOppModalMode = String(searchParams.get(HOME_OPP_MODAL_PARAM) || '').trim();
+  const homeOppEditId = String(searchParams.get(HOME_OPP_ID_PARAM) || '').trim();
+  const homeOppStageQ = String(searchParams.get(HOME_OPP_STAGE_PARAM) || '').trim();
+  const isHomeOppModalOpen = homeOppModalMode === 'add' || homeOppModalMode === 'edit';
   /** 우수 영업 담당자: sales-opportunities의 수주 성공(Won) — 관리자·대표만 표시 */
   const [wonLeaderboardMode, setWonLeaderboardMode] = useState('month');
   const [wonLeaderboardRows, setWonLeaderboardRows] = useState([]);
   const [wonLeaderboardLoading, setWonLeaderboardLoading] = useState(false);
   const [wonLeaderboardRefreshTick, setWonLeaderboardRefreshTick] = useState(0);
+  const [homeTargetContributionBar, setHomeTargetContributionBar] = useState(null);
+  const [homeKpiTargetSnapshot, setHomeKpiTargetSnapshot] = useState({
+    loading: false,
+    periodLabel: '',
+    reason: '',
+    target: null
+  });
+  /** 대시보드 /reports/dashboard 재조회(기회 저장 등) */
+  const [dashboardRefreshTick, setDashboardRefreshTick] = useState(0);
+  const homeDashboardToolbarPersistTimerRef = useRef(null);
+  const consumerChartTitle = useMemo(() => {
+    const labelMap = {
+      month: '월간',
+      quarter: '분기',
+      half: '반기',
+      year: '연간'
+    };
+    return `${labelMap[kpiPeriod] || '월간'}별 매출액`;
+  }, [kpiPeriod]);
 
   useEffect(() => {
     let cancelled = false;
@@ -797,6 +905,15 @@ export default function Home() {
           try {
             localStorage.setItem('crm_user', JSON.stringify(data.user));
           } catch (_) {}
+          const hd = data.user.listTemplates?.homeDashboard;
+          if (hd && typeof hd === 'object') {
+            if (hd.consumerChartMode === 'bar' || hd.consumerChartMode === 'line') {
+              setConsumerChartMode(hd.consumerChartMode);
+            }
+            if (hd.marginChartMode === 'bar' || hd.marginChartMode === 'line') {
+              setMarginChartMode(hd.marginChartMode);
+            }
+          }
           setInsightAccess({
             checked: true,
             seniorPlus: isAdminOrAboveRole(data.user.role)
@@ -819,6 +936,19 @@ export default function Home() {
       cancelled = true;
     };
   }, []);
+
+  const closeHomeOppModal = useCallback(() => {
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        p.delete(HOME_OPP_MODAL_PARAM);
+        p.delete(HOME_OPP_ID_PARAM);
+        p.delete(HOME_OPP_STAGE_PARAM);
+        return p;
+      },
+      { replace: true }
+    );
+  }, [setSearchParams]);
 
   const setCompanyWideInsight = useCallback(
     (enable) => {
@@ -920,6 +1050,48 @@ export default function Home() {
     [setSearchParams]
   );
 
+  const handleConsumerChartModeChange = useCallback((next) => {
+    setConsumerChartMode(next);
+    patchHomeDashboardTemplate({ consumerChartMode: next }).catch(() => {});
+  }, []);
+
+  const handleMarginChartModeChange = useCallback((next) => {
+    setMarginChartMode(next);
+    patchHomeDashboardTemplate({ marginChartMode: next }).catch(() => {});
+  }, []);
+
+  /** 조회 범위·KPI 기간 변경 시 User.listTemplates.homeDashboard 에 디바운스 저장 */
+  useEffect(() => {
+    if (!insightAccess.checked) return undefined;
+    if (homeDashboardToolbarPersistTimerRef.current) {
+      clearTimeout(homeDashboardToolbarPersistTimerRef.current);
+    }
+    homeDashboardToolbarPersistTimerRef.current = setTimeout(() => {
+      homeDashboardToolbarPersistTimerRef.current = null;
+      const payload = {
+        companyWideInsight: isCompanyWideInsight,
+        kpiPeriod,
+        leaderInsightViewKind
+      };
+      if (insightDeptQ) payload.insightDeptId = insightDeptQ;
+      if (insightUserQ) payload.insightUserId = insightUserQ;
+      patchHomeDashboardTemplate(payload).catch(() => {});
+    }, 450);
+    return () => {
+      if (homeDashboardToolbarPersistTimerRef.current) {
+        clearTimeout(homeDashboardToolbarPersistTimerRef.current);
+        homeDashboardToolbarPersistTimerRef.current = null;
+      }
+    };
+  }, [
+    insightAccess.checked,
+    isCompanyWideInsight,
+    leaderInsightViewKind,
+    insightDeptQ,
+    insightUserQ,
+    kpiPeriod
+  ]);
+
   useEffect(() => {
     if (!insightAccess.checked || !insightAccess.seniorPlus) return undefined;
     let cancelled = false;
@@ -944,8 +1116,11 @@ export default function Home() {
   }, [insightAccess.checked, insightAccess.seniorPlus, wonLeaderboardMode, wonLeaderboardRefreshTick]);
 
   useEffect(() => {
-    if (!insightAccess.checked || !insightAccess.seniorPlus) return undefined;
-    const handler = () => setWonLeaderboardRefreshTick((t) => t + 1);
+    if (!insightAccess.checked) return undefined;
+    const handler = () => {
+      setDashboardRefreshTick((t) => t + 1);
+      if (insightAccess.seniorPlus) setWonLeaderboardRefreshTick((t) => t + 1);
+    };
     window.addEventListener('nexvia-crm-pipeline-refresh', handler);
     return () => window.removeEventListener('nexvia-crm-pipeline-refresh', handler);
   }, [insightAccess.checked, insightAccess.seniorPlus]);
@@ -1014,8 +1189,212 @@ export default function Home() {
     insightDeptQ,
     insightUserQ,
     myCrmUserId,
-    kpiPeriod
+    kpiPeriod,
+    dashboardRefreshTick
   ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchHomeTargetSnapshot = async () => {
+      const period = resolveHomeKpiTargetPeriod(kpiPeriod, new Date());
+      const base = { loading: false, periodLabel: period.periodLabel, reason: '', target: null };
+      const leaderScope = Boolean(data?.insightScope?.leaderSubtree);
+      const fetchTargetByScope = async (scopeType, scopeId = '') => {
+        const q = new URLSearchParams({
+          year: String(period.year),
+          periodType: period.periodType,
+          periodValue: String(period.periodValue),
+          scopeType
+        });
+        if (scopeType !== 'company') q.set('scopeId', scopeId);
+        const res = await fetch(`${API_BASE}/kpi/targets?${q.toString()}`, {
+          headers: getAuthHeader(),
+          credentials: 'include'
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json?.error || '목표 정보를 불러오지 못했습니다.');
+        return json?.target || null;
+      };
+      const fetchCompanyUserIds = async () => {
+        const res = await fetch(`${API_BASE}/companies/overview`, {
+          headers: getAuthHeader(),
+          credentials: 'include'
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json?.error || '회사 직원 목록을 불러오지 못했습니다.');
+        return Array.from(
+          new Set(
+            (Array.isArray(json?.employees) ? json.employees : [])
+              .map((e) => String(e?.id || e?._id || '').trim())
+              .filter(Boolean)
+          )
+        );
+      };
+      const aggregateUserTargets = async (userIds, periodLabelSuffix = '') => {
+        if (!Array.isArray(userIds) || userIds.length === 0) return null;
+        const rows = await Promise.allSettled(userIds.map((uid) => fetchTargetByScope('user', uid)));
+        const aggregate = rows.reduce(
+          (acc, row) => {
+            if (row.status !== 'fulfilled' || !row.value) return acc;
+            acc.targetRevenue += Number(row.value?.targetRevenue || 0);
+            acc.targetProjects += Number(row.value?.targetProjects || 0);
+            return acc;
+          },
+          { targetRevenue: 0, targetProjects: 0 }
+        );
+        return {
+          loading: false,
+          periodLabel: `${period.periodLabel}${periodLabelSuffix}`,
+          reason: '',
+          target: aggregate
+        };
+      };
+      let scopeType = 'company';
+      let scopeId = '';
+      if (!isCompanyWideInsight) {
+        if (leaderScope && leaderInsightViewKind === 'team') {
+          if (!insightDeptQ) {
+            const userIds = Array.from(
+              new Set(
+                (Array.isArray(data?.insightLeaderFilters?.users) ? data.insightLeaderFilters.users : [])
+                  .map((u) => String(u?.id || '').trim())
+                  .filter(Boolean)
+              )
+            );
+            if (userIds.length === 0) {
+              if (!cancelled) setHomeKpiTargetSnapshot(base);
+              return;
+            }
+            if (!cancelled) setHomeKpiTargetSnapshot((prev) => ({ ...prev, loading: true, periodLabel: period.periodLabel, reason: '' }));
+            try {
+              const snapshot = await aggregateUserTargets(userIds, ' (팀 누적)');
+              if (!cancelled) {
+                setHomeKpiTargetSnapshot(snapshot || base);
+              }
+            } catch (err) {
+              if (!cancelled) {
+                setHomeKpiTargetSnapshot({
+                  loading: false,
+                  periodLabel: period.periodLabel,
+                  reason: err.message || '목표 정보를 불러오지 못했습니다.',
+                  target: null
+                });
+              }
+            }
+            return;
+          }
+          scopeType = 'team';
+          scopeId = insightDeptQ;
+        } else {
+          const uid = String((leaderInsightViewKind === 'personal' ? insightUserQ : '') || myCrmUserId || '').trim();
+          if (!uid) {
+            if (!cancelled) {
+              setHomeKpiTargetSnapshot(base);
+            }
+            return;
+          }
+          scopeType = 'user';
+          scopeId = uid;
+        }
+      }
+      if (!cancelled) setHomeKpiTargetSnapshot((prev) => ({ ...prev, loading: true, periodLabel: period.periodLabel, reason: '' }));
+      try {
+        const target = await fetchTargetByScope(scopeType, scopeId);
+        if (scopeType === 'company' && (!target || (!Number(target?.targetRevenue) && !Number(target?.targetProjects)))) {
+          const allUserIds = await fetchCompanyUserIds();
+          const snapshot = await aggregateUserTargets(allUserIds, ' (회사 누적)');
+          if (!cancelled && snapshot) {
+            setHomeKpiTargetSnapshot(snapshot);
+            return;
+          }
+        }
+        if (!cancelled) {
+          setHomeKpiTargetSnapshot({
+            loading: false,
+            periodLabel: period.periodLabel,
+            reason: '',
+            target
+          });
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setHomeKpiTargetSnapshot({
+            loading: false,
+            periodLabel: period.periodLabel,
+            reason: err.message || '목표 정보를 불러오지 못했습니다.',
+            target: null
+          });
+        }
+      }
+    };
+    fetchHomeTargetSnapshot();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isCompanyWideInsight,
+    leaderInsightViewKind,
+    insightDeptQ,
+    insightUserQ,
+    myCrmUserId,
+    kpiPeriod,
+    data?.insightScope?.leaderSubtree,
+    data?.insightLeaderFilters?.users,
+    dashboardRefreshTick
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const buildTargetContribution = async () => {
+      const baseBar = data?.homeContributionBar;
+      const segments = Array.isArray(baseBar?.segments) ? baseBar.segments : [];
+      if (!baseBar || segments.length === 0) {
+        if (!cancelled) setHomeTargetContributionBar(null);
+        return;
+      }
+      const period = resolveHomeKpiTargetPeriod(kpiPeriod, new Date());
+      const scopeType = baseBar.mode === 'team' ? 'team' : 'user';
+      const resolved = await Promise.all(
+        segments.map(async (seg) => {
+          try {
+            const q = new URLSearchParams({
+              year: String(period.year),
+              periodType: period.periodType,
+              periodValue: String(period.periodValue),
+              scopeType,
+              scopeId: String(seg.id || '')
+            });
+            const res = await fetch(`${API_BASE}/kpi/targets?${q.toString()}`, {
+              headers: getAuthHeader(),
+              credentials: 'include'
+            });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok) return { ...seg, achievement: null, targetRevenue: 0 };
+            const targetRevenue = Math.max(0, Number(json?.target?.targetRevenue || 0));
+            const amount = Math.max(0, Number(seg.amount || 0));
+            const achievement = targetRevenue > 0 ? Number(((amount / targetRevenue) * 100).toFixed(1)) : null;
+            return { ...seg, achievement, targetRevenue };
+          } catch {
+            return { ...seg, achievement: null, targetRevenue: 0 };
+          }
+        })
+      );
+      if (cancelled) return;
+      setHomeTargetContributionBar({
+        mode: baseBar.mode === 'team' ? 'team' : 'user',
+        title: baseBar.mode === 'team' ? '팀별 목표대비 달성률' : '개인별 목표대비 달성률',
+        sublabel:
+          baseBar.mode === 'team'
+            ? `${period.periodLabel} 팀별 달성 현황`
+            : `${period.periodLabel} 개인별 달성 현황`,
+        segments: resolved
+      });
+    };
+    buildTargetContribution();
+    return () => {
+      cancelled = true;
+    };
+  }, [data?.homeContributionBar, kpiPeriod]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1140,6 +1519,63 @@ export default function Home() {
     [activeStages]
   );
 
+  /** 홈에서 기회 추가 모달 — opportunity-modal 과 동일 단계 옵션 */
+  const homeOpportunityStageOptions = useMemo(() => {
+    const act = stageDefinitions.length > 0
+      ? stageDefinitions.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((d) => d.key)
+      : DEFAULT_ACTIVE_STAGES;
+    const labels = stageDefinitions.length > 0
+      ? Object.fromEntries(stageDefinitions.map((d) => [d.key, d.label]))
+      : DEFAULT_STAGE_LABELS;
+    const board = act.filter((s) => s !== 'Won');
+    const opts = board.map((key) => ({ value: key, label: labels[key] ?? key }));
+    const wonL = labels.Won || DEFAULT_STAGE_LABELS.Won || '수주 성공';
+    const lostL = labels.Lost || '기회 상실';
+    const abL = labels.Abandoned || '보류';
+    return opts.concat(
+      [{ value: 'Won', label: wonL }],
+      [{ value: 'Lost', label: lostL }, { value: 'Abandoned', label: abL }]
+    );
+  }, [stageDefinitions]);
+
+  const defaultHomeOppStage = useMemo(() => {
+    const first = homeOpportunityStageOptions.find(
+      (o) => o && !['Won', 'Lost', 'Abandoned'].includes(o.value)
+    );
+    return first?.value || 'NewLead';
+  }, [homeOpportunityStageOptions]);
+
+  const homeOppModalDefaultStage = useMemo(() => {
+    if (homeOppStageQ && homeOpportunityStageOptions.some((o) => o.value === homeOppStageQ)) {
+      return homeOppStageQ;
+    }
+    return defaultHomeOppStage;
+  }, [homeOppStageQ, homeOpportunityStageOptions, defaultHomeOppStage]);
+
+  const openHomeAddOpportunity = useCallback(async () => {
+    try {
+      await pingBackendHealth(getAuthHeader);
+    } catch {
+      /* ignore */
+    }
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        p.set(HOME_OPP_MODAL_PARAM, 'add');
+        p.delete(HOME_OPP_ID_PARAM);
+        p.set(HOME_OPP_STAGE_PARAM, defaultHomeOppStage);
+        return p;
+      },
+      { replace: true }
+    );
+  }, [setSearchParams, defaultHomeOppStage]);
+
+  const handleHomeOppSaved = useCallback(() => {
+    closeHomeOppModal();
+    setDashboardRefreshTick((t) => t + 1);
+    fetchPipeline();
+  }, [closeHomeOppModal, fetchPipeline]);
+
   const homeUserDisplay = useMemo(() => {
     const u = getStoredCrmUser();
     const n = (u?.name && String(u.name).trim()) || (u?.email && String(u.email).split('@')[0]) || '사용자';
@@ -1207,20 +1643,23 @@ export default function Home() {
   const visibleHomeCaptureLeads = useMemo(
     () =>
       recentCaptureLeads.filter(
-        (lead) => lead._id != null && isLeadVisibleInHome(lead._id, leadHomeVisibility)
+        (lead) =>
+          lead._id != null &&
+          isLeadVisibleInHome(lead._id, leadHomeVisibility) &&
+          !sharedCompletedLeadMap[String(lead._id)]
       ),
-    [recentCaptureLeads, leadHomeVisibility]
+    [recentCaptureLeads, leadHomeVisibility, sharedCompletedLeadMap]
   );
 
-  const leadsCappedForHome = useMemo(
-    () => visibleHomeCaptureLeads.slice(0, HOME_CAPTURE_LEADS_DISPLAY_MAX),
-    [visibleHomeCaptureLeads]
+  const pendingLeadCount = leadChannelsLoading ? 0 : visibleHomeCaptureLeads.length;
+  const completedHomeCaptureLeads = useMemo(
+    () =>
+      recentCaptureLeads.filter((lead) => {
+        const id = String(lead?._id || '');
+        return !!id && !!sharedCompletedLeadMap[id];
+      }),
+    [recentCaptureLeads, sharedCompletedLeadMap]
   );
-
-  const leadsForHomePanel = useMemo(() => {
-    if (isMobile) return leadsCappedForHome.slice(0, HOME_MOBILE_PREVIEW_LEADS);
-    return leadsCappedForHome;
-  }, [isMobile, leadsCappedForHome]);
 
   /** 캡처 리드 주간(월요일 기준 6주) 집계 — 꺾은선·막대 공용 */
   const leadWeeklySeries = useMemo(
@@ -1230,13 +1669,24 @@ export default function Home() {
   const leadWeeklyBarSeries = useMemo(() => prepareChartSeries(leadWeeklySeries), [leadWeeklySeries]);
 
   const dismissLeadFromHome = useCallback((leadId) => {
+    const id = String(leadId || '');
+    if (!id) return;
+    const actor = getStoredCrmUser();
+    const byUserId = String(actor?._id || actor?.id || '');
+    const byName = String(actor?.name || actor?.email || '사용자').trim() || '사용자';
+    const doneAt = new Date().toISOString();
+
+    setSharedCompletedLeadMap((prev) => {
+      const next = { ...(prev || {}), [id]: { byUserId, byName, doneAt } };
+      saveSharedCompletedLeadMap(next);
+      return next;
+    });
+
     const key = getLeadVisibilityUserKey();
     setLeadHomeVisibility((prev) => {
-      const id = String(leadId);
-      const permanent = [...new Set([...prev.permanent, id])];
-      const snoozed = { ...prev.snoozed };
+      const snoozed = { ...(prev?.snoozed || {}) };
       delete snoozed[id];
-      const next = { permanent, snoozed };
+      const next = { permanent: prev?.permanent || [], snoozed };
       saveHomeCaptureLeadVisibility(key, next);
       return next;
     });
@@ -1340,12 +1790,13 @@ export default function Home() {
     const revenueYoyLabel = meta.revenueYoyLabel || '전년 동기 대비';
     const leadHint = meta.leadHint || '해당 기간 신규 기회(생성일 기준)';
     const leadSeqLabel = meta.leadSeqLabel || '직전 구간 대비';
+    const gmNonMarginAmount = Number(gm?.nonMarginAmount || 0);
 
     return [
       {
         key: 'rev',
         title: '매출액',
-        hint: meta.revenueHint || '수주 합계',
+        hint: meta.revenueHint || '순마진 합계',
         value: formatCurrency(revTotal, cur),
         icon: 'payments',
         showForecast: true,
@@ -1482,6 +1933,39 @@ export default function Home() {
   const marginInsightEmpty = salesChartMeta?.legendCurrent
     ? `${insightChartLegendCurrent}·${insightChartLegendPrev} 순마진 데이터가 없습니다.`
     : '집계 구간·전년 동일 구간 순마진 데이터가 없습니다.';
+  const forecastAllRows = useMemo(
+    () => (Array.isArray(data?.forecastPipelineRows) ? data.forecastPipelineRows : []),
+    [data?.forecastPipelineRows]
+  );
+  const forecastCompletedRows = useMemo(
+    () =>
+      forecastAllRows.filter((row) => {
+        const prob = Number(row?.probabilityPct || 0);
+        const stage = String(row?.stage || row?.stageLabel || '').trim().toLowerCase();
+        return prob >= 100 || stage === 'won' || stage === 'closed';
+      }),
+    [forecastAllRows]
+  );
+  const forecastCompletedPreviewRows = useMemo(
+    () => forecastCompletedRows.slice(0, HOME_FORECAST_PREVIEW_MAX),
+    [forecastCompletedRows]
+  );
+  const forecastActiveRows = useMemo(
+    () => forecastAllRows.filter((row) => !forecastCompletedRows.includes(row)),
+    [forecastAllRows, forecastCompletedRows]
+  );
+  const homeTargetOverallAchievement = useMemo(() => {
+    const segs = Array.isArray(homeTargetContributionBar?.segments) ? homeTargetContributionBar.segments : [];
+    if (segs.length === 0) return null;
+    const totalTarget = segs.reduce((sum, seg) => sum + Math.max(0, Number(seg?.targetRevenue || 0)), 0);
+    const totalAmount = segs.reduce((sum, seg) => sum + Math.max(0, Number(seg?.amount || 0)), 0);
+    if (totalTarget <= 0) return null;
+    return Number(((totalAmount / totalTarget) * 100).toFixed(1));
+  }, [homeTargetContributionBar]);
+  const forecastActivePreviewRows = useMemo(
+    () => forecastActiveRows.slice(0, HOME_FORECAST_PREVIEW_MAX),
+    [forecastActiveRows]
+  );
 
   const renderChartPanel = (title, subtitle, series, tone, emptyText, chartOptions = {}) => {
     const {
@@ -1705,24 +2189,33 @@ export default function Home() {
     );
   };
 
-  const renderCaptureLeadRow = (lead) => (
+  const renderCaptureLeadRow = (lead, options = {}) => {
+    const isCompletedRow = options.completed === true;
+    const completedMeta = isCompletedRow ? sharedCompletedLeadMap[String(lead?._id || '')] : null;
+    return (
     <li
       key={String(lead._id)}
       className="home-todo-leads-item home-todo-leads-item--clickable"
       onClick={() => openLeadDetail(lead)}
     >
-      <button
-        type="button"
-        className="home-lead-check"
-        onClick={(e) => {
-          e.stopPropagation();
-          dismissLeadFromHome(lead._id);
-        }}
-        aria-label="처리 완료·목록에서 숨기기"
-        title="처리 완료·목록에서 숨기기"
-      >
-        <span className="material-symbols-outlined" aria-hidden>radio_button_unchecked</span>
-      </button>
+      {isCompletedRow ? (
+        <span className="home-lead-check home-lead-check--done" aria-hidden>
+          <span className="material-symbols-outlined">check_circle</span>
+        </span>
+      ) : (
+        <button
+          type="button"
+          className="home-lead-check"
+          onClick={(e) => {
+            e.stopPropagation();
+            dismissLeadFromHome(lead._id);
+          }}
+          aria-label="처리 완료"
+          title="처리 완료"
+        >
+          <span className="material-symbols-outlined" aria-hidden>radio_button_unchecked</span>
+        </button>
+      )}
       <div className="home-todo-leads-item-stack">
         <div className="home-todo-leads-item-main">
           <span className="home-todo-leads-channel" title={lead._channelLabel}>
@@ -1734,24 +2227,31 @@ export default function Home() {
           <strong className="home-todo-leads-name">{lead.name || '(이름 없음)'}</strong>
           <span className="home-todo-leads-email">{lead.email || '—'}</span>
           <span className="home-todo-leads-phone">{formatLeadContact(lead)}</span>
+          {isCompletedRow ? (
+            <span className="home-todo-leads-processed-by">
+              처리: {String(completedMeta?.byName || '사용자')} · {formatLeadReceivedAt(completedMeta?.doneAt)}
+            </span>
+          ) : null}
         </div>
       </div>
       <span className="home-todo-leads-chevron" aria-hidden>
         <span className="material-symbols-outlined">chevron_right</span>
       </span>
       <div className="home-todo-leads-item-trailing">
-        <button
-          type="button"
-          className="home-lead-snooze-btn"
-          onClick={(e) => {
-            e.stopPropagation();
-            snoozeLeadHomeOneWeek(lead._id);
-          }}
-          aria-label="일주일 뒤에 다시 표시"
-          title="일주일 뒤에 다시 표시"
-        >
-          1주 보류
-        </button>
+        {!isCompletedRow ? (
+          <button
+            type="button"
+            className="home-lead-snooze-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              snoozeLeadHomeOneWeek(lead._id);
+            }}
+            aria-label="일주일 뒤에 다시 표시"
+            title="일주일 뒤에 다시 표시"
+          >
+            1주 보류
+          </button>
+        ) : null}
         <time
           className="home-todo-leads-time"
           dateTime={lead.receivedAt ? new Date(lead.receivedAt).toISOString() : undefined}
@@ -1761,6 +2261,7 @@ export default function Home() {
       </div>
     </li>
   );
+  };
 
   return (
     <div className={`page home-page${activeHomeView ? ' home-page--full-view-open' : ''}`}>
@@ -1819,7 +2320,7 @@ export default function Home() {
               <div className="panel home-chart-panel home-chart-panel--access-loading" aria-busy="true">
                 <div className="panel-head home-chart-head">
                   <div>
-                    <h2>소비자가 기준 그래프</h2>
+                    <h2>{consumerChartTitle}</h2>
                     <p className="home-chart-subtitle">수주·파이프라인 기준 (확인 후 표시)</p>
                   </div>
                 </div>
@@ -1905,23 +2406,39 @@ export default function Home() {
                             </button>
                           </div>
                         )}
+                        <button
+                          type="button"
+                          className="home-insight-lead-badge"
+                          aria-label="신규 리드 진행 건수"
+                          onClick={() => openHomeView('leads')}
+                        >
+                          <span className="home-insight-lead-badge-label">새로운 수신 리드</span>
+                          <span className="home-insight-lead-badge-count">{pendingLeadCount.toLocaleString('ko-KR')}</span>
+                        </button>
                         {data?.insightScope?.leaderSubtree ? (
                           !isCompanyWideInsight && data?.insightLeaderFilters ? (
                             <div className="home-insight-leader-filters-inline" aria-label="팀·직원 범위">
                               {leaderInsightViewKind === 'team' ? (
                                 <label className="home-insight-filter-field home-insight-filter-field--inline">
+                                  {(() => {
+                                    const deptOptions = Array.isArray(data.insightLeaderFilters.departments)
+                                      ? data.insightLeaderFilters.departments
+                                      : [];
+                                    const selectedDept = insightDeptQ || deptOptions[0]?.id || '';
+                                    return (
                                   <select
                                     className="home-insight-filter-select home-insight-filter-select--inline"
-                                    value={insightDeptQ}
+                                    value={selectedDept}
                                     onChange={(e) => setHomeInsightDeptFilter(e.target.value)}
                                   >
-                                    <option value="">전체 부서 (담당 범위 합산)</option>
-                                    {(data.insightLeaderFilters.departments || []).map((d) => (
+                                    {deptOptions.map((d) => (
                                       <option key={d.id} value={d.id}>
                                         {d.label}
                                       </option>
                                     ))}
                                   </select>
+                                    );
+                                  })()}
                                 </label>
                               ) : (
                                 <label className="home-insight-filter-field home-insight-filter-field--inline">
@@ -1940,11 +2457,7 @@ export default function Home() {
                               )}
                             </div>
                           ) : null
-                        ) : (
-                          <p className="home-insight-hint home-insight-hint--solo">
-                            본인 담당 실적만 표시됩니다. 부서 팀장으로 지정되면 팀·직원 단위로 볼 수 있습니다.
-                          </p>
-                        )}
+                        ) : null}
                       </div>
                     </div>
                     <div className="home-kpi-period-toolbar">
@@ -1954,7 +2467,6 @@ export default function Home() {
                         aria-label="KPI 집계 기간"
                       >
                         {[
-                          { id: 'week', label: '주간' },
                           { id: 'month', label: '월간' },
                           { id: 'quarter', label: '분기' },
                           { id: 'half', label: '반기' },
@@ -1989,6 +2501,7 @@ export default function Home() {
                 aria-label="핵심 실적 요약"
               >
                 {homeKpiCards.map((card) => {
+                  const gmNonMarginAmount = Number(stats.kpiSummary?.grossMargin?.nonMarginAmount || 0);
                   if (card.skeleton) {
                     return (
                       <div key={card.key} className="home-kpi-card home-kpi-card--skeleton" aria-busy="true">
@@ -2034,6 +2547,43 @@ export default function Home() {
                       delta = formatHomeKpiDeltaPct(leadYoyRaw == null ? null : leadYoyAnim, periodIsPP);
                     } else delta = formatHomeKpiDeltaPct(card.period, periodIsPP);
                   }
+                  const showTargetLine = card.key === 'rev' || card.key === 'deal';
+                  const targetRevenue = Number(homeKpiTargetSnapshot?.target?.targetRevenue || 0);
+                  const targetProjects = Number(homeKpiTargetSnapshot?.target?.targetProjects || 0);
+                  let targetMetricText = '—';
+                  let targetMetricPercent = '—';
+                  let targetAmountUnderValue = '';
+                  let targetTrendClass = '';
+                  if (showTargetLine) {
+                    if (homeKpiTargetSnapshot.loading) {
+                      targetMetricText = '집계 중';
+                      targetMetricPercent = '—';
+                    } else if (homeKpiTargetSnapshot.reason) {
+                      targetMetricText = '—';
+                      targetMetricPercent = '—';
+                    } else if (card.key === 'rev') {
+                      if (targetRevenue <= 0) {
+                        targetMetricText = '목표 미설정';
+                        targetMetricPercent = '—';
+                      } else {
+                        const pct = (Number(revNum || 0) / targetRevenue) * 100;
+                        targetAmountUnderValue = `목표 ${formatCurrency(Math.round(targetRevenue), curD)}`;
+                        targetMetricText = homeKpiTargetSnapshot.periodLabel || '목표 대비';
+                        targetMetricPercent = `${Number.isFinite(pct) ? pct.toFixed(1) : '0.0'}%`;
+                        targetTrendClass = pct >= 100 ? 'is-up' : pct > 0 ? 'is-down' : '';
+                      }
+                    } else if (card.key === 'deal') {
+                      if (targetProjects <= 0) {
+                        targetMetricText = '프로젝트 목표 미설정';
+                        targetMetricPercent = '—';
+                      } else {
+                        const pct = (Number(dealNum || 0) / targetProjects) * 100;
+                        targetMetricText = `목표 ${Math.round(targetProjects)}건`;
+                        targetMetricPercent = `${Number.isFinite(pct) ? pct.toFixed(1) : '0.0'}%`;
+                        targetTrendClass = pct >= 100 ? 'is-up' : pct > 0 ? 'is-down' : '';
+                      }
+                    }
+                  }
                   return (
                     <article key={card.key} className="home-kpi-card">
                       <div className="home-kpi-card-head">
@@ -2043,6 +2593,14 @@ export default function Home() {
                         </span>
                       </div>
                       <p className="home-kpi-card-value home-kpi-card-value--insight-anim">{loading ? '—' : displayMain}</p>
+                      {card.key === 'rev' ? (
+                        <p className="home-kpi-card-target-amount">{loading ? '—' : (targetAmountUnderValue || '목표 미설정')}</p>
+                      ) : null}
+                      {card.key === 'gm' ? (
+                        <p className="home-kpi-card-target-amount">
+                          {loading ? '—' : `원가 금액 ${formatCurrency(Math.round(gmNonMarginAmount), curD)}`}
+                        </p>
+                      ) : null}
                       <p className="home-kpi-card-hint">{card.hint}</p>
                       {card.key === 'goal' ? (
                         <div className="home-kpi-goal-bar" aria-hidden>
@@ -2052,7 +2610,7 @@ export default function Home() {
                           />
                         </div>
                       ) : null}
-                      {showForecast || showPeriod ? (
+                      {showForecast || showPeriod || showTargetLine ? (
                         <div className="home-kpi-card-metrics">
                           {showForecast ? (
                             <div className="home-kpi-metric-line">
@@ -2087,34 +2645,214 @@ export default function Home() {
                               </span>
                             </div>
                           ) : null}
+                          {showTargetLine ? (
+                            <div className="home-kpi-metric-line">
+                              <span className="home-kpi-dot home-kpi-dot--target" aria-hidden />
+                              <span className="home-kpi-metric-label">{targetMetricText || '목표 대비'}</span>
+                              <span className={`home-kpi-metric-trend home-kpi-metric-trend--target ${targetTrendClass}`}>
+                                {loading ? '—' : targetMetricPercent}
+                              </span>
+                            </div>
+                          ) : null}
                         </div>
                       ) : null}
                     </article>
                   );
                 })}
               </div>
+              {!loading && homeTargetContributionBar?.segments?.length ? (
+                <section className="home-contribution-panel home-contribution-panel--achievement" aria-labelledby="home-achievement-title">
+                  <div className="home-contribution-head">
+                    <h3 id="home-achievement-title">{homeTargetContributionBar.title}</h3>
+                  </div>
+                  {homeTargetContributionBar.mode === 'team' ? (
+                    <div className="home-contribution-split-wrap">
+                      {(() => {
+                        const totalTarget = homeTargetContributionBar.segments.reduce(
+                          (sum, seg) => sum + Math.max(0, Number(seg?.targetRevenue || 0)),
+                          0
+                        );
+                        const totalAmount = homeTargetContributionBar.segments.reduce(
+                          (sum, seg) => sum + Math.max(0, Number(seg?.amount || 0)),
+                          0
+                        );
+                        const totalAchievement = totalTarget > 0 ? Number(((totalAmount / totalTarget) * 100).toFixed(1)) : null;
+                        return (
+                          <div className="home-contribution-single-caption">
+                            {`전체 목표액 ${formatRevenueCompact(totalTarget)} · 전체 순마진 ${formatRevenueCompact(totalAmount)} · 전체 달성률 ${
+                              totalAchievement == null ? '목표 미설정' : `${totalAchievement}%`
+                            }`}
+                          </div>
+                        );
+                      })()}
+                      <div className="home-contribution-split-bar" role="list" aria-label="팀별 목표 대비 달성률">
+                        {(() => {
+                          const totalDisplayBase = homeTargetContributionBar.segments.reduce(
+                            (sum, seg) =>
+                              sum + Math.max(0, Math.max(Number(seg?.targetRevenue || 0), Number(seg?.amount || 0))),
+                            0
+                          );
+                          return homeTargetContributionBar.segments.map((seg) => {
+                            const displayBase = Math.max(0, Math.max(Number(seg?.targetRevenue || 0), Number(seg?.amount || 0)));
+                            const widthPct = totalDisplayBase > 0
+                              ? (displayBase / totalDisplayBase) * 100
+                              : Math.max(0, Number(seg?.pct || 0));
+                            const achText = `${seg.label} - 전체 목표액 대비 달성률 ${
+                              homeTargetOverallAchievement == null ? '목표 미설정' : `${homeTargetOverallAchievement}%`
+                            } - 개인팀 대비 달성률 ${
+                              seg.achievement == null ? '목표 미설정' : `${seg.achievement}%`
+                            }`;
+                            return (
+                              <div
+                                key={`ach-split-${seg.id}`}
+                                role="listitem"
+                                className="home-contribution-split-seg"
+                                style={{
+                                  flexBasis: `${Math.max(0, widthPct)}%`,
+                                  backgroundColor: seg.color || '#8fa8d8'
+                                }}
+                                title={achText}
+                              >
+                                <span>{achText}</span>
+                              </div>
+                            );
+                          });
+                        })()}
+                      </div>
+                      <div className="home-contribution-split-texts">
+                        {homeTargetContributionBar.segments.map((seg) => (
+                          <span key={`ach-note-${seg.id}`}>
+                            {`${seg.label} 달성률: ${
+                              seg.achievement == null ? '목표 미설정' : `${seg.achievement}%`
+                            } (목표 ${formatRevenueCompact(seg.targetRevenue || 0)})`}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="home-contribution-split-wrap">
+                      {(() => {
+                        const totalTarget = homeTargetContributionBar.segments.reduce(
+                          (sum, seg) => sum + Math.max(0, Number(seg?.targetRevenue || 0)),
+                          0
+                        );
+                        const totalAmount = homeTargetContributionBar.segments.reduce(
+                          (sum, seg) => sum + Math.max(0, Number(seg?.amount || 0)),
+                          0
+                        );
+                        const totalAchievement = totalTarget > 0 ? Number(((totalAmount / totalTarget) * 100).toFixed(1)) : null;
+                        return (
+                          <div className="home-contribution-single-caption">
+                            {`팀 전체 목표액 ${formatRevenueCompact(totalTarget)} · 팀 전체 순마진 ${formatRevenueCompact(totalAmount)} · 팀 전체 달성률 ${
+                              totalAchievement == null ? '목표 미설정' : `${totalAchievement}%`
+                            }`}
+                          </div>
+                        );
+                      })()}
+                      <div className="home-contribution-split-bar" role="list" aria-label="목표대비 달성률">
+                        {homeTargetContributionBar.segments.map((seg) => {
+                          const achText = `${seg.label} - 팀전체 목표액 대비 달성률 ${
+                            homeTargetOverallAchievement == null ? '목표 미설정' : `${homeTargetOverallAchievement}%`
+                          } - 개인 목표액 대비 달성률 ${
+                            seg.achievement == null ? '목표 미설정' : `${seg.achievement}%`
+                          }`;
+                          return (
+                            <div
+                              key={`ach-split-${seg.id}`}
+                              role="listitem"
+                              className="home-contribution-split-seg"
+                              style={{
+                                flexBasis: `${Math.max(0, Number(seg?.pct || 0))}%`,
+                                backgroundColor: seg.color || '#8fa8d8'
+                              }}
+                              title={achText}
+                            >
+                              <span>{achText}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="home-contribution-split-texts">
+                        {homeTargetContributionBar.segments.map((seg) => (
+                          <span key={`ach-user-note-${seg.id}`}>
+                            {`${seg.label} 달성률: ${
+                              seg.achievement == null ? '목표 미설정' : `${seg.achievement}%`
+                            } (목표 ${formatRevenueCompact(seg.targetRevenue || 0)})`}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </section>
+              ) : null}
+              {!loading && data?.homeContributionBar?.segments?.length ? (
+                <section className="home-contribution-panel" aria-labelledby="home-contribution-title">
+                  <div className="home-contribution-head">
+                    <h3 id="home-contribution-title">{data.homeContributionBar.title}</h3>
+                  </div>
+                  {data.homeContributionBar.mode === 'team' ? (
+                    <div className="home-contribution-split-wrap">
+                      <div className="home-contribution-split-bar" role="list" aria-label="팀별 순마진 비중">
+                        {data.homeContributionBar.segments.map((seg) => (
+                          <div
+                            key={`share-split-${seg.id}`}
+                            role="listitem"
+                            className="home-contribution-split-seg"
+                            style={{
+                              flexBasis: `${Math.max(0, Number(seg?.pct || 0))}%`,
+                              backgroundColor: seg.color || '#85b7a8'
+                            }}
+                            title={`${seg.label} · 순마진 ${formatRevenueCompact(seg.amount)} · 비중 ${seg.pct}%`}
+                          >
+                            <span>{`${seg.label} ${seg.pct}%`}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="home-contribution-split-wrap">
+                      <div className="home-contribution-split-bar" role="list" aria-label="순마진 비중">
+                        {data.homeContributionBar.segments.map((seg) => (
+                          <div
+                            key={`share-split-${seg.id}`}
+                            role="listitem"
+                            className="home-contribution-split-seg"
+                            style={{
+                              flexBasis: `${Math.max(0, Number(seg?.pct || 0))}%`,
+                              backgroundColor: seg.color || '#85b7a8'
+                            }}
+                            title={`${seg.label} · 순마진 ${formatRevenueCompact(seg.amount)} · 비중 ${seg.pct}%`}
+                          >
+                            <span>{`${seg.label} ${seg.pct}%`}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </section>
+              ) : null}
               {renderChartPanel(
-                '소비자가 기준 그래프',
+                consumerChartTitle,
                 consumerInsightSubtitle,
                 consumerSeries,
                 'consumer',
                 consumerInsightEmpty,
                 {
                   chartMode: consumerChartMode,
-                  onChartModeChange: setConsumerChartMode,
+                  onChartModeChange: handleConsumerChartModeChange,
                   consumerLineCurrent: consumerTween,
                   consumerLinePrev: consumerPrevTween
                 }
               )}
               {renderChartPanel(
-                '순마진 그래프',
+                '순마진',
                 marginInsightSubtitle,
                 netMarginSeries,
                 'margin',
                 marginInsightEmpty,
                 {
                   chartMode: marginChartMode,
-                  onChartModeChange: setMarginChartMode,
+                  onChartModeChange: handleMarginChartModeChange,
                   marginLineCurrent: netTween,
                   marginLinePrev: netPrevTween
                 }
@@ -2123,24 +2861,46 @@ export default function Home() {
                 <div className="panel home-forecast-panel" aria-label="Forecast 파이프라인">
                   <div className="home-forecast-head">
                     <div className="home-forecast-head-text">
-                      <h3 className="home-forecast-title">Forecast</h3>
+                      <div className="home-forecast-title-row">
+                        <h3 className="home-forecast-title">Forecast</h3>
+                        <button
+                          type="button"
+                          className="home-forecast-add-opp-btn"
+                          onClick={() => openHomeAddOpportunity()}
+                          aria-label="기회 추가"
+                          title="진행 중 기회 추가"
+                        >
+                          <span className="material-symbols-outlined" aria-hidden>
+                            add
+                          </span>
+                        </button>
+                      </div>
                       <p className="home-forecast-sub">
                         진행 중 기회(수주 성공·상실·보류 제외)입니다. 위 조회 범위(회사 전체·팀·개인) 및 부서·직원 필터와 동일하게 반영됩니다.
                         {data.forecastPipelineMeta?.capped ? ' 일부만 표시됩니다.' : ''}
                       </p>
                     </div>
-                    <Link
-                      to="/sales-pipeline"
-                      className="home-pipeline-link home-forecast-pipeline-link"
-                    >
-                      세일즈 현황으로 넘어가기
-                      <span className="material-symbols-outlined" aria-hidden>
-                        arrow_forward
-                      </span>
-                    </Link>
+                    <div className="home-forecast-head-actions">
+                      <button
+                        type="button"
+                        className="home-pipeline-link home-pipeline-link--btn"
+                        onClick={() => openHomeView('forecast')}
+                      >
+                        전체보기
+                      </button>
+                      <Link
+                        to="/sales-pipeline"
+                        className="home-pipeline-link home-forecast-pipeline-link"
+                      >
+                        세일즈 현황으로 넘어가기
+                        <span className="material-symbols-outlined" aria-hidden>
+                          arrow_forward
+                        </span>
+                      </Link>
+                    </div>
                   </div>
                   <div className="home-forecast-table-wrap">
-                    {data.forecastPipelineRows.length === 0 ? (
+                    {forecastActiveRows.length === 0 ? (
                       <p className="home-leader-breakdown-empty">표시할 진행 중 기회가 없습니다.</p>
                     ) : (
                       <table className="home-leader-breakdown-table home-forecast-table">
@@ -2151,24 +2911,200 @@ export default function Home() {
                             <th scope="col">금액</th>
                             <th scope="col">수량</th>
                             <th scope="col">최종 가격</th>
-                            <th scope="col">확률</th>
                             <th scope="col">Forcast</th>
-                            <th scope="col">예상 월</th>
+                            <th scope="col">목표 월</th>
+                            <th scope="col">계약금액</th>
+                            <th scope="col">계산서 금액</th>
+                            <th scope="col">수금 완료 금액</th>
+                            <th scope="col">마진 금액</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {data.forecastPipelineRows.map((row) => (
+                          {(() => {
+                            const totals = forecastActiveRows.reduce(
+                              (acc, row) => {
+                                acc.unitPrice += Number(row?.unitPrice || 0);
+                                acc.quantity += Number(row?.quantity || 0);
+                                acc.finalPrice += Number(row?.finalPrice || 0);
+                                acc.forecast += Number(row?.forecastAmount || 0);
+                                acc.contract += Number(row?.contractAmount || 0);
+                                acc.invoice += Number(row?.invoiceAmount || 0);
+                                acc.collected += Number(row?.collectedAmount || 0);
+                                acc.margin += Number(row?.marginAmount || 0);
+                                return acc;
+                              },
+                              {
+                                unitPrice: 0,
+                                quantity: 0,
+                                finalPrice: 0,
+                                forecast: 0,
+                                contract: 0,
+                                invoice: 0,
+                                collected: 0,
+                                margin: 0
+                              }
+                            );
+                            const sumCurrency = String(forecastActiveRows[0]?.currency || 'KRW').toUpperCase();
+                            return (
+                              <>
+                          {forecastActivePreviewRows.map((row) => (
                             <tr key={row.id}>
                               <td>{row.companyLabel}</td>
-                              <td>{row.softwareLabel}</td>
+                              <td>{renderSoftwareLabelCell(row.softwareLabel)}</td>
                               <td>{formatCurrency(row.unitPrice, row.currency)}</td>
                               <td>{row.quantity}</td>
                               <td>{formatCurrency(row.finalPrice, row.currency)}</td>
-                              <td>{Number.isFinite(row.probabilityPct) ? `${row.probabilityPct}%` : '—'}</td>
                               <td>{formatCurrency(row.forecastAmount, row.currency)}</td>
-                              <td>{formatForecastExpectedMonthCell(row.expectedCloseMonth)}</td>
+                              <td>{formatForecastExpectedMonthCell(row.targetMonth)}</td>
+                              <td>{formatCurrency(row.contractAmount, row.currency)}</td>
+                              <td>{formatCurrency(row.invoiceAmount, row.currency)}</td>
+                              <td>{formatCurrency(row.collectedAmount, row.currency)}</td>
+                              <td>{formatCurrency(row.marginAmount, row.currency)}</td>
                             </tr>
                           ))}
+                                {forecastActiveRows.length > forecastActivePreviewRows.length ? (
+                                  <tr className="home-forecast-more-row">
+                                    <td colSpan={11}>
+                                      <span className="home-forecast-more-dots" aria-hidden>
+                                        <span>.</span>
+                                        <span>.</span>
+                                        <span>.</span>
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ) : null}
+                                <tr className="home-forecast-total-row">
+                                  <td colSpan={2}>합계</td>
+                                  <td>{formatCurrency(totals.unitPrice, sumCurrency)}</td>
+                                  <td>{Number(totals.quantity || 0).toLocaleString('ko-KR')}</td>
+                                  <td>{formatCurrency(totals.finalPrice, sumCurrency)}</td>
+                                  <td>—</td>
+                                  <td>{formatCurrency(totals.forecast, sumCurrency)}</td>
+                                  <td>—</td>
+                                  <td>{formatCurrency(totals.contract, sumCurrency)}</td>
+                                  <td>{formatCurrency(totals.invoice, sumCurrency)}</td>
+                                  <td>{formatCurrency(totals.collected, sumCurrency)}</td>
+                                  <td>{formatCurrency(totals.margin, sumCurrency)}</td>
+                                </tr>
+                              </>
+                            );
+                          })()}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+              {!loading ? (
+                <div className="panel home-forecast-panel" aria-label="완료 기회 목록">
+                  <div className="home-forecast-head">
+                    <div className="home-forecast-head-text">
+                      <div className="home-forecast-title-row">
+                        <h3 className="home-forecast-title">완료</h3>
+                      </div>
+                      <p className="home-forecast-sub">
+                        확률 100% 또는 계약 완료로 판단된 항목입니다.
+                      </p>
+                    </div>
+                    <div className="home-forecast-head-actions">
+                      <button
+                        type="button"
+                        className="home-pipeline-link home-pipeline-link--btn"
+                        onClick={() => openHomeView('completed')}
+                      >
+                        전체보기
+                      </button>
+                    </div>
+                  </div>
+                  <div className="home-forecast-table-wrap">
+                    {forecastCompletedRows.length === 0 ? (
+                      <p className="home-leader-breakdown-empty">표시할 완료 기회가 없습니다.</p>
+                    ) : (
+                      <table className="home-leader-breakdown-table home-forecast-table">
+                        <thead>
+                          <tr>
+                            <th scope="col">업체명</th>
+                            <th scope="col">제안 소프트웨어</th>
+                            <th scope="col">금액</th>
+                            <th scope="col">수량</th>
+                            <th scope="col">최종 가격</th>
+                            <th scope="col">Forcast</th>
+                            <th scope="col">목표 월</th>
+                            <th scope="col">계약금액</th>
+                            <th scope="col">계산서 금액</th>
+                            <th scope="col">수금 완료 금액</th>
+                            <th scope="col">마진 금액</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(() => {
+                            const totals = forecastCompletedRows.reduce(
+                              (acc, row) => {
+                                acc.unitPrice += Number(row?.unitPrice || 0);
+                                acc.quantity += Number(row?.quantity || 0);
+                                acc.finalPrice += Number(row?.finalPrice || 0);
+                                acc.forecast += Number(row?.forecastAmount || 0);
+                                acc.contract += Number(row?.contractAmount || 0);
+                                acc.invoice += Number(row?.invoiceAmount || 0);
+                                acc.collected += Number(row?.collectedAmount || 0);
+                                acc.margin += Number(row?.marginAmount || 0);
+                                return acc;
+                              },
+                              {
+                                unitPrice: 0,
+                                quantity: 0,
+                                finalPrice: 0,
+                                forecast: 0,
+                                contract: 0,
+                                invoice: 0,
+                                collected: 0,
+                                margin: 0
+                              }
+                            );
+                            const sumCurrency = String(forecastCompletedRows[0]?.currency || 'KRW').toUpperCase();
+                            return (
+                              <>
+                                {forecastCompletedPreviewRows.map((row) => (
+                                  <tr key={`done-${row.id}`}>
+                                    <td>{row.companyLabel}</td>
+                                    <td>{renderSoftwareLabelCell(row.softwareLabel)}</td>
+                                    <td>{formatCurrency(row.unitPrice, row.currency)}</td>
+                                    <td>{row.quantity}</td>
+                                    <td>{formatCurrency(row.finalPrice, row.currency)}</td>
+                                    <td>{formatCurrency(row.forecastAmount, row.currency)}</td>
+                                    <td>{formatForecastExpectedMonthCell(row.targetMonth)}</td>
+                                    <td>{formatCurrency(row.contractAmount, row.currency)}</td>
+                                    <td>{formatCurrency(row.invoiceAmount, row.currency)}</td>
+                                    <td>{formatCurrency(row.collectedAmount, row.currency)}</td>
+                                    <td>{formatCurrency(row.marginAmount, row.currency)}</td>
+                                  </tr>
+                                ))}
+                                {forecastCompletedRows.length > forecastCompletedPreviewRows.length ? (
+                                  <tr className="home-forecast-more-row">
+                                    <td colSpan={11}>
+                                      <span className="home-forecast-more-dots" aria-hidden>
+                                        <span>.</span>
+                                        <span>.</span>
+                                        <span>.</span>
+                                      </span>
+                                    </td>
+                                  </tr>
+                                ) : null}
+                                <tr className="home-forecast-total-row">
+                                  <td colSpan={2}>합계</td>
+                                  <td>{formatCurrency(totals.unitPrice, sumCurrency)}</td>
+                                  <td>{Number(totals.quantity || 0).toLocaleString('ko-KR')}</td>
+                                  <td>{formatCurrency(totals.finalPrice, sumCurrency)}</td>
+                                  <td>{formatCurrency(totals.forecast, sumCurrency)}</td>
+                                  <td>—</td>
+                                  <td>{formatCurrency(totals.contract, sumCurrency)}</td>
+                                  <td>{formatCurrency(totals.invoice, sumCurrency)}</td>
+                                  <td>{formatCurrency(totals.collected, sumCurrency)}</td>
+                                  <td>{formatCurrency(totals.margin, sumCurrency)}</td>
+                                </tr>
+                              </>
+                            );
+                          })()}
                         </tbody>
                       </table>
                     )}
@@ -2248,54 +3184,6 @@ export default function Home() {
               <section className="home-todo-upcoming" aria-label="예정 업무">
                 <TodoList embedded previewMax={isMobile ? HOME_MOBILE_PREVIEW_TODO : null} />
               </section>
-            </div>
-            <div className="panel tasks-panel home-leads-panel">
-              <div className="panel-head home-leads-panel-head">
-                <h2>수신 리드</h2>
-                <div className="home-leads-panel-actions">
-                  {isMobile ? (
-                    <button
-                      type="button"
-                      className="home-pipeline-link home-pipeline-link--btn"
-                      onClick={() => openHomeView('leads')}
-                    >
-                      전체 보기
-                    </button>
-                  ) : null}
-                  <Link to="/lead-capture" className="home-pipeline-link">
-                    리드 캡처
-                  </Link>
-                </div>
-              </div>
-
-              <div className="home-todo-leads-scroll" aria-label="캡처 채널 수신 리드 목록">
-                {leadChannelsLoading ? (
-                  <p className="home-todo-leads-empty">불러오는 중…</p>
-                ) : recentCaptureLeads.length === 0 ? (
-                  <p className="home-todo-leads-empty">수신된 리드가 없습니다.</p>
-                ) : visibleHomeCaptureLeads.length === 0 ? (
-                  <p className="home-todo-leads-empty">표시할 리드가 없습니다. (완료·1주 미표시 항목은 숨겨져 있습니다.)</p>
-                ) : (
-                  <>
-                    <ul className="home-todo-leads-list">
-                      {leadsForHomePanel.map(renderCaptureLeadRow)}
-                    </ul>
-                    {isMobile && leadsCappedForHome.length > HOME_MOBILE_PREVIEW_LEADS ? (
-                      <p className="home-todo-leads-more">
-                        상위 {HOME_MOBILE_PREVIEW_LEADS}건만 미리 보여 줍니다. 나머지는 「전체 보기」에서
-                        확인하세요. (숨김 제외 {visibleHomeCaptureLeads.length.toLocaleString()}건)
-                      </p>
-                    ) : !isMobile && visibleHomeCaptureLeads.length > HOME_CAPTURE_LEADS_DISPLAY_MAX ? (
-                      <p className="home-todo-leads-more">
-                        오래된 순 상위 {HOME_CAPTURE_LEADS_DISPLAY_MAX}건만 표시합니다. 전체는{' '}
-                        <Link to="/lead-capture">리드 캡처</Link>에서 확인하세요. (숨김 제외{' '}
-                        {visibleHomeCaptureLeads.length.toLocaleString()}건 · 서버 수신 총{' '}
-                        {recentCaptureLeads.length.toLocaleString()}건)
-                      </p>
-                    ) : null}
-                  </>
-                )}
-              </div>
             </div>
           </div>
           <div className="panel home-dashboard-calendar-panel">
@@ -2457,21 +3345,134 @@ export default function Home() {
       >
         {activeHomeView === 'todo' ? <TodoList embedded /> : null}
         {activeHomeView === 'leads' ? (
-          <div className="home-modal-leads" aria-label="수신 리드 전체">
+          <div className="home-modal-leads" aria-label="신규 리드 전체">
             {leadChannelsLoading ? (
               <p className="home-todo-leads-empty">불러오는 중…</p>
             ) : recentCaptureLeads.length === 0 ? (
               <p className="home-todo-leads-empty">수신된 리드가 없습니다.</p>
-            ) : visibleHomeCaptureLeads.length === 0 ? (
-              <p className="home-todo-leads-empty">
-                표시할 리드가 없습니다. (완료·1주 미표시 항목은 숨겨져 있습니다.)
-              </p>
             ) : (
-              <ul className="home-todo-leads-list home-modal-leads-list">{leadsCappedForHome.map(renderCaptureLeadRow)}</ul>
+              <>
+                <section className="home-modal-leads-section">
+                  <div className="home-modal-leads-section-head">
+                    <h3>지금 확인할 리드</h3>
+                    <span>{visibleHomeCaptureLeads.length.toLocaleString('ko-KR')}건</span>
+                  </div>
+                  {visibleHomeCaptureLeads.length === 0 ? (
+                    <p className="home-todo-leads-empty">진행 중인 리드가 없습니다.</p>
+                  ) : (
+                    <ul className="home-todo-leads-list home-modal-leads-list">
+                      {visibleHomeCaptureLeads.map((lead) => renderCaptureLeadRow(lead, { completed: false }))}
+                    </ul>
+                  )}
+                </section>
+                <section className="home-modal-leads-section home-modal-leads-section--completed">
+                  <div className="home-modal-leads-section-head">
+                    <h3>완료 처리된 리드</h3>
+                    <span>{completedHomeCaptureLeads.length.toLocaleString('ko-KR')}건</span>
+                  </div>
+                  {completedHomeCaptureLeads.length === 0 ? (
+                    <p className="home-todo-leads-empty">완료 처리된 리드가 없습니다.</p>
+                  ) : (
+                    <ul className="home-todo-leads-list home-modal-leads-list">
+                      {completedHomeCaptureLeads.map((lead) => renderCaptureLeadRow(lead, { completed: true }))}
+                    </ul>
+                  )}
+                </section>
+              </>
             )}
           </div>
         ) : null}
         {activeHomeView === 'calendar' ? <Calendar embedded hideBottomSection={false} /> : null}
+        {activeHomeView === 'forecast' ? (
+          <div className="home-modal-forecast" aria-label="Forecast 전체">
+            {forecastActiveRows.length === 0 ? (
+              <p className="home-leader-breakdown-empty">표시할 진행 중 기회가 없습니다.</p>
+            ) : (
+              <div className="home-forecast-table-wrap">
+                <table className="home-leader-breakdown-table home-forecast-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">업체명</th>
+                      <th scope="col">제안 소프트웨어</th>
+                      <th scope="col">금액</th>
+                      <th scope="col">수량</th>
+                      <th scope="col">최종 가격</th>
+                      <th scope="col">Forcast</th>
+                      <th scope="col">목표 월</th>
+                      <th scope="col">계약금액</th>
+                      <th scope="col">계산서 금액</th>
+                      <th scope="col">수금 완료 금액</th>
+                      <th scope="col">마진 금액</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {forecastActiveRows.map((row) => (
+                      <tr key={`modal-forecast-${row.id}`}>
+                        <td>{row.companyLabel}</td>
+                        <td>{renderSoftwareLabelCell(row.softwareLabel)}</td>
+                        <td>{formatCurrency(row.unitPrice, row.currency)}</td>
+                        <td>{row.quantity}</td>
+                        <td>{formatCurrency(row.finalPrice, row.currency)}</td>
+                        <td>{formatCurrency(row.forecastAmount, row.currency)}</td>
+                        <td>{formatForecastExpectedMonthCell(row.targetMonth)}</td>
+                        <td>{formatCurrency(row.contractAmount, row.currency)}</td>
+                        <td>{formatCurrency(row.invoiceAmount, row.currency)}</td>
+                        <td>{formatCurrency(row.collectedAmount, row.currency)}</td>
+                        <td>{formatCurrency(row.marginAmount, row.currency)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        ) : null}
+        {activeHomeView === 'completed' ? (
+          <div className="home-modal-forecast" aria-label="완료 기회 전체">
+            {forecastCompletedRows.length === 0 ? (
+              <p className="home-leader-breakdown-empty">표시할 완료 기회가 없습니다.</p>
+            ) : (
+              <div className="home-forecast-table-wrap">
+                <table className="home-leader-breakdown-table home-forecast-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">업체명</th>
+                      <th scope="col">제안 소프트웨어</th>
+                      <th scope="col">금액</th>
+                      <th scope="col">수량</th>
+                      <th scope="col">최종 가격</th>
+                      <th scope="col">확률</th>
+                      <th scope="col">Forcast</th>
+                      <th scope="col">목표 월</th>
+                      <th scope="col">계약금액</th>
+                      <th scope="col">계산서 금액</th>
+                      <th scope="col">수금 완료 금액</th>
+                      <th scope="col">마진 금액</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {forecastCompletedRows.map((row) => (
+                      <tr key={`modal-completed-${row.id}`}>
+                        <td>{row.companyLabel}</td>
+                        <td>{renderSoftwareLabelCell(row.softwareLabel)}</td>
+                        <td>{formatCurrency(row.unitPrice, row.currency)}</td>
+                        <td>{row.quantity}</td>
+                        <td>{formatCurrency(row.finalPrice, row.currency)}</td>
+                        <td>{Number.isFinite(row.probabilityPct) ? `${row.probabilityPct}%` : '—'}</td>
+                        <td>{formatCurrency(row.forecastAmount, row.currency)}</td>
+                        <td>{formatForecastExpectedMonthCell(row.targetMonth)}</td>
+                        <td>{formatCurrency(row.contractAmount, row.currency)}</td>
+                        <td>{formatCurrency(row.invoiceAmount, row.currency)}</td>
+                        <td>{formatCurrency(row.collectedAmount, row.currency)}</td>
+                        <td>{formatCurrency(row.marginAmount, row.currency)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        ) : null}
         {activeHomeView === 'channels' ? (
           <div className="home-modal-channels home-modal-channels--chart" aria-label="캡처 채널별 리드 주간 그래프">
             {!leadChannelsLoading && recentCaptureLeads.length > 0 ? (
@@ -2560,6 +3561,17 @@ export default function Home() {
           </div>
         ) : null}
       </HomeFullViewModal>
+
+      {isHomeOppModalOpen ? (
+        <OpportunityModal
+          mode={homeOppModalMode === 'edit' ? 'edit' : 'add'}
+          oppId={homeOppModalMode === 'edit' ? homeOppEditId : undefined}
+          defaultStage={homeOppModalDefaultStage}
+          stageOptions={homeOpportunityStageOptions}
+          onClose={closeHomeOppModal}
+          onSaved={handleHomeOppSaved}
+        />
+      ) : null}
 
       <Link to="/lead-capture" className="home-mobile-fab" title="리드 캡처" aria-label="리드 캡처로 이동">
         <span className="material-symbols-outlined" aria-hidden>

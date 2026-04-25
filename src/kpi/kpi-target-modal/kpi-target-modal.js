@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import './kpi-target-modal.css';
+import ProjectTitleEntryModal from './project-title-entry-modal';
 
 /** 목표액: 숫자만 유지(부모 state는 숫자 문자열) */
 function revenueDigitsOnly(value) {
@@ -13,47 +15,105 @@ function formatRevenueDisplay(digitsStr) {
   return n.toLocaleString('ko-KR');
 }
 
-const PERIOD_LABELS = {
-  annual: '연도별',
-  semiannual: '반기별',
-  quarterly: '분기별',
-  monthly: '월별'
-};
+const MONTH_COLUMNS = Array.from({ length: 12 }, (_, idx) => ({ month: idx + 1, label: `${idx + 1}월` }));
 
-/** Sample Design 순서: 연도 → 반기 → 분기 → 월 */
-const PERIOD_TAB_ORDER = ['annual', 'semiannual', 'quarterly', 'monthly'];
+function parseMoney(value) {
+  const n = Number(revenueDigitsOnly(value));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function parseCount(value) {
+  const n = Math.floor(Number(String(value ?? '').replace(/\D/g, '')));
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function sumRange(arr, startIdx, endIdx) {
+  let sum = 0;
+  for (let i = startIdx; i <= endIdx; i += 1) {
+    sum += Number(arr?.[i] || 0);
+  }
+  return sum;
+}
+
+function quarterValues(monthly) {
+  return [sumRange(monthly, 0, 2), sumRange(monthly, 3, 5), sumRange(monthly, 6, 8), sumRange(monthly, 9, 11)];
+}
+
+function halfValues(monthly) {
+  return [sumRange(monthly, 0, 5), sumRange(monthly, 6, 11)];
+}
+
+function yearlyValue(monthly) {
+  return sumRange(monthly, 0, 11);
+}
+
+function isNumericEditingKey(event) {
+  if (event.ctrlKey || event.metaKey || event.altKey) return true;
+  const key = String(event.key || '');
+  if (/^\d$/.test(key)) return true;
+  return ['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Tab', 'Home', 'End'].includes(key);
+}
 
 export default function KpiTargetModal({
   scopeType,
   onScopeTypeChange,
-  periodType,
-  onPeriodTypeChange,
-  periodValue,
-  onPeriodValueChange,
-  periodValueOptions = [],
   year,
   onYearChange,
-  targetRevenue,
-  onTargetRevenueChange,
-  targetProjects,
-  onTargetProjectsChange,
-  targetNote,
-  onTargetNoteChange,
+  monthlyRevenue = [],
+  monthlyProjects = [],
+  monthlyProjectTitles = [],
+  monthlyProjectTitleDrafts = [],
+  monthlyProjectParticipantDrafts = [],
+  onMonthlyRevenueChange,
+  onMonthlyProjectTitleDraftChange,
+  onMonthlyProjectParticipantDraftChange,
+  onAddMonthlyProjectTitle,
+  canSelectTeamProjectParticipants = false,
+  teamProjectParticipantOptions = [],
+  teamMonthlyRevenue = [],
+  teamMonthlyProjects = [],
   departmentId,
   onDepartmentChange = () => {},
   userId,
   onUserChange = () => {},
   departmentOptions = [],
   userOptions = [],
+  scopeNotice = '',
   loading = false,
   saving,
   message,
+  canSubmit = true,
   onSubmit,
   onClose
 }) {
-  const handleTargetRevenueInput = (e) => {
-    onTargetRevenueChange(revenueDigitsOnly(e.target.value));
+  const editable = scopeType === 'user';
+  const monthlyRevenueNumbers = MONTH_COLUMNS.map((item) => parseMoney(monthlyRevenue[item.month - 1]));
+  const monthlyProjectNumbers = MONTH_COLUMNS.map((item) => {
+    const titles = Array.isArray(monthlyProjectTitles[item.month - 1]) ? monthlyProjectTitles[item.month - 1] : [];
+    if (titles.length > 0) return titles.length;
+    return parseCount(monthlyProjects[item.month - 1]);
+  });
+  const monthlyTeamRevenueNumbers = MONTH_COLUMNS.map((item) => Number(teamMonthlyRevenue[item.month - 1] || 0));
+  const monthlyTeamProjectNumbers = MONTH_COLUMNS.map((item) => Number(teamMonthlyProjects[item.month - 1] || 0));
+  const revenueQuarter = quarterValues(monthlyRevenueNumbers);
+  const projectQuarter = quarterValues(monthlyProjectNumbers);
+  const revenueHalf = halfValues(monthlyRevenueNumbers);
+  const projectHalf = halfValues(monthlyProjectNumbers);
+  const teamRevenueQuarter = quarterValues(monthlyTeamRevenueNumbers);
+  const teamProjectQuarter = quarterValues(monthlyTeamProjectNumbers);
+  const teamRevenueHalf = halfValues(monthlyTeamRevenueNumbers);
+  const teamProjectHalf = halfValues(monthlyTeamProjectNumbers);
+  const revenueYear = yearlyValue(monthlyRevenueNumbers);
+  const projectYear = yearlyValue(monthlyProjectNumbers);
+  const teamRevenueYear = yearlyValue(monthlyTeamRevenueNumbers);
+  const teamProjectYear = yearlyValue(monthlyTeamProjectNumbers);
+
+  const handleMonthlyRevenueInput = (month, value) => {
+    onMonthlyRevenueChange(month, revenueDigitsOnly(value));
   };
+  const [projectTitleModalMonth, setProjectTitleModalMonth] = useState(null);
+  const openedMonth = Number(projectTitleModalMonth) || 0;
+  const openedMonthLabel = openedMonth > 0 ? `${openedMonth}월` : '';
 
   const showScopeSelect =
     (scopeType === 'team' && departmentOptions.length > 1) ||
@@ -70,27 +130,11 @@ export default function KpiTargetModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="kpi-target-modal-header">
-          <div>
-            <h2 id="kpi-target-modal-title" className="kpi-target-modal-title">
-              KPI 목표 설정
-            </h2>
-            <p className="kpi-target-modal-subtitle">Strategy Lab · Growth Planning</p>
-          </div>
-          <button type="button" className="kpi-target-modal-close" onClick={onClose} aria-label="목표 설정 모달 닫기">
-            <span className="material-symbols-outlined">close</span>
-          </button>
-        </div>
-
-        <form className="kpi-target-modal-form-wrap" onSubmit={onSubmit}>
-          <div className={`kpi-target-modal-body custom-scrollbar ${loading ? 'is-loading' : ''}`}>
-            {loading ? (
-              <p className="kpi-target-modal-loading-banner" role="status">
-                목표 정보를 불러오는 중…
-              </p>
-            ) : null}
-
-            <div className="kpi-target-modal-section">
-              <label className="kpi-target-modal-field-label">저장 범위</label>
+          <div className="kpi-target-modal-header-copy">
+            <div className="kpi-target-modal-header-title-row">
+              <h2 id="kpi-target-modal-title" className="kpi-target-modal-title">
+                {year}년 KPI 목표 설정
+              </h2>
               <div className="kpi-target-modal-segment" role="tablist" aria-label="저장 범위">
                 <button
                   type="button"
@@ -107,6 +151,41 @@ export default function KpiTargetModal({
                   개인별
                 </button>
               </div>
+            </div>
+          </div>
+          <div className="kpi-target-modal-header-actions">
+            <div className="kpi-target-modal-year-select">
+              <input
+                id="kpi-target-year"
+                type="number"
+                min="2000"
+                max="9999"
+                className="kpi-target-modal-input"
+                value={year}
+                onChange={(e) => onYearChange(e.target.value)}
+                disabled={loading}
+                aria-label="기준 연도"
+              />
+              <span className="material-symbols-outlined kpi-target-modal-input-suffix-icon" aria-hidden>
+                calendar_today
+              </span>
+            </div>
+            <button type="button" className="kpi-target-modal-close" onClick={onClose} aria-label="목표 설정 모달 닫기">
+              <span className="material-symbols-outlined">close</span>
+            </button>
+          </div>
+        </div>
+
+        <form className="kpi-target-modal-form-wrap" onSubmit={onSubmit}>
+          <div className={`kpi-target-modal-body custom-scrollbar ${loading ? 'is-loading' : ''}`}>
+            {loading ? (
+              <p className="kpi-target-modal-loading-banner" role="status">
+                목표 정보를 불러오는 중…
+              </p>
+            ) : null}
+
+            <div className="kpi-target-modal-section">
+              <label className="kpi-target-modal-field-label">대상 선택</label>
               {showScopeSelect ? (
                 <div className="kpi-target-modal-scope-select-wrap">
                   {scopeType === 'team' ? (
@@ -118,7 +197,7 @@ export default function KpiTargetModal({
                     >
                       {departmentOptions.map((item) => (
                         <option key={item.id} value={item.id}>
-                          {item.label}
+                          {item.readOnly ? `${item.label} (조회 전용)` : item.label}
                         </option>
                       ))}
                     </select>
@@ -138,139 +217,124 @@ export default function KpiTargetModal({
                   )}
                 </div>
               ) : null}
+              {scopeNotice ? <p className="kpi-target-modal-message">{scopeNotice}</p> : null}
             </div>
 
             <div className="kpi-target-modal-section">
-              <label className="kpi-target-modal-field-label">목표 구분</label>
-              <div className="kpi-target-modal-segment kpi-target-modal-segment--period" role="tablist" aria-label="목표 기간 유형">
-                {PERIOD_TAB_ORDER.map((key) => (
-                  <button
-                    key={key}
-                    type="button"
-                    className={periodType === key ? 'is-active' : ''}
-                    onClick={() => onPeriodTypeChange(key)}
-                  >
-                    {PERIOD_LABELS[key]}
-                  </button>
-                ))}
+              <label className="kpi-target-modal-field-label">개인별 월간 목표 테이블</label>
+              <div className="kpi-target-monthly-table-wrap">
+                <table className="kpi-target-monthly-table">
+                  <thead>
+                    <tr>
+                      <th>구분</th>
+                      {MONTH_COLUMNS.map((item) => (
+                        <th key={`month-head-${item.month}`}>{item.label}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <th>매출 목표(원)</th>
+                      {MONTH_COLUMNS.map((item) => (
+                        <td key={`revenue-${item.month}`}>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9,]*"
+                            value={formatRevenueDisplay(monthlyRevenue[item.month - 1])}
+                            onChange={(e) => handleMonthlyRevenueInput(item.month, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (!isNumericEditingKey(e)) e.preventDefault();
+                            }}
+                            disabled={!editable || loading}
+                            aria-label={`${item.label} 매출 목표`}
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                    <tr>
+                      <th>프로젝트 목표(개)</th>
+                      {MONTH_COLUMNS.map((item) => (
+                        <td key={`projects-${item.month}`}>
+                          <button
+                            type="button"
+                            className="kpi-target-project-count-button"
+                            onClick={() => setProjectTitleModalMonth(item.month)}
+                            disabled={loading}
+                            aria-label={`${item.label} 프로젝트 목표 상세 열기`}
+                          >
+                            {Number(monthlyProjectNumbers[item.month - 1] || 0).toLocaleString('ko-KR')}개
+                          </button>
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </div>
 
             <div className="kpi-target-modal-section">
-              <div className="kpi-target-modal-subperiod-head">
-                <label className="kpi-target-modal-field-label kpi-target-modal-field-label--inline">세부 기간 선택</label>
-                <span className="kpi-target-modal-active-chip">선택 기간</span>
-              </div>
-              {periodValueOptions.length > 0 ? (
-                <div className="kpi-target-modal-period-pills" role="group" aria-label="세부 기간">
-                  {periodValueOptions.map((item) => (
-                    <button
-                      key={`${periodType}-${item.value}`}
-                      type="button"
-                      className={String(periodValue) === String(item.value) ? 'is-active' : ''}
-                      onClick={() => onPeriodValueChange(String(item.value))}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <p className="kpi-target-modal-subperiod-fallback" role="status">
-                  세부 기간 항목을 불러오는 중이거나 표시할 수 없습니다.
-                </p>
-              )}
-            </div>
-
-            <div className="kpi-target-modal-grid-2">
-              <div className="kpi-target-modal-field">
-                <label className="kpi-target-modal-field-label" htmlFor="kpi-target-year">
-                  기준 연도
-                </label>
-                <div className="kpi-target-modal-input-icon-wrap">
-                  <input
-                    id="kpi-target-year"
-                    type="number"
-                    min="2000"
-                    max="9999"
-                    className="kpi-target-modal-input"
-                    value={year}
-                    onChange={(e) => onYearChange(e.target.value)}
-                    disabled={loading}
-                  />
-                  <span className="material-symbols-outlined kpi-target-modal-input-suffix-icon" aria-hidden>
-                    calendar_today
-                  </span>
-                </div>
-              </div>
-              <div className="kpi-target-modal-field">
-                <span className="kpi-target-modal-field-label">통화 단위</span>
-                <div className="kpi-target-modal-currency-box" aria-readOnly>
-                  <span className="kpi-target-modal-currency-flag" aria-hidden>
-                    🇰🇷
-                  </span>
-                  <span>KRW (대한민국 원)</span>
-                </div>
-              </div>
-
-              <div className="kpi-target-modal-field kpi-target-modal-field--full">
-                <label className="kpi-target-modal-field-label" htmlFor="kpi-target-revenue">
-                  매출 목표액
-                </label>
-                <div className="kpi-target-modal-revenue-field">
-                  <input
-                    id="kpi-target-revenue"
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="off"
-                    className="kpi-target-modal-revenue-input"
-                    value={formatRevenueDisplay(targetRevenue)}
-                    onChange={handleTargetRevenueInput}
-                    placeholder="0"
-                    aria-label="매출 목표액 (원)"
-                    disabled={loading}
-                  />
-                  <span className="kpi-target-modal-revenue-suffix" aria-hidden>
-                    원
-                  </span>
-                </div>
-              </div>
-
-              <div className="kpi-target-modal-field kpi-target-modal-field--full">
-                <label className="kpi-target-modal-field-label" htmlFor="kpi-target-projects">
-                  목표 프로젝트 수
-                </label>
-                <div className="kpi-target-modal-input-icon-wrap">
-                  <input
-                    id="kpi-target-projects"
-                    type="number"
-                    min="0"
-                    className="kpi-target-modal-input"
-                    value={targetProjects}
-                    onChange={(e) => onTargetProjectsChange(e.target.value)}
-                    placeholder="12"
-                    disabled={loading}
-                  />
-                  <span className="material-symbols-outlined kpi-target-modal-input-suffix-icon kpi-target-modal-input-suffix-icon--primary" aria-hidden>
-                    assignment
-                  </span>
-                </div>
-              </div>
-
-              <div className="kpi-target-modal-field kpi-target-modal-field--full">
-                <label className="kpi-target-modal-field-label" htmlFor="kpi-target-note">
-                  전략적 메모
-                </label>
-                <textarea
-                  id="kpi-target-note"
-                  rows={3}
-                  className="kpi-target-modal-textarea"
-                  value={targetNote}
-                  onChange={(e) => onTargetNoteChange(e.target.value)}
-                  placeholder="이번 분기 핵심 성장 동력 및 리스크 관리 계획을 입력하세요..."
-                  disabled={loading}
-                />
+              <label className="kpi-target-modal-field-label">기간 합계</label>
+              <div className="kpi-target-summary-table-wrap">
+                <table className="kpi-target-summary-table">
+                  <thead>
+                    <tr>
+                      <th>합계 구분</th>
+                      <th>1분기</th>
+                      <th>2분기</th>
+                      <th>3분기</th>
+                      <th>4분기</th>
+                      <th>상반기</th>
+                      <th>하반기</th>
+                      <th>연간 합계</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <th>개인 매출 목표</th>
+                      <td>{Number(revenueQuarter[0] || 0).toLocaleString('ko-KR')}원</td>
+                      <td>{Number(revenueQuarter[1] || 0).toLocaleString('ko-KR')}원</td>
+                      <td>{Number(revenueQuarter[2] || 0).toLocaleString('ko-KR')}원</td>
+                      <td>{Number(revenueQuarter[3] || 0).toLocaleString('ko-KR')}원</td>
+                      <td>{Number(revenueHalf[0] || 0).toLocaleString('ko-KR')}원</td>
+                      <td>{Number(revenueHalf[1] || 0).toLocaleString('ko-KR')}원</td>
+                      <td className="is-annual">{Number(revenueYear || 0).toLocaleString('ko-KR')}원</td>
+                    </tr>
+                    <tr>
+                      <th>개인 프로젝트 목표</th>
+                      <td>{Number(projectQuarter[0] || 0).toLocaleString('ko-KR')}개</td>
+                      <td>{Number(projectQuarter[1] || 0).toLocaleString('ko-KR')}개</td>
+                      <td>{Number(projectQuarter[2] || 0).toLocaleString('ko-KR')}개</td>
+                      <td>{Number(projectQuarter[3] || 0).toLocaleString('ko-KR')}개</td>
+                      <td>{Number(projectHalf[0] || 0).toLocaleString('ko-KR')}개</td>
+                      <td>{Number(projectHalf[1] || 0).toLocaleString('ko-KR')}개</td>
+                      <td className="is-annual">{Number(projectYear || 0).toLocaleString('ko-KR')}개</td>
+                    </tr>
+                    <tr>
+                      <th>팀 누적 매출 목표</th>
+                      <td>{Number(teamRevenueQuarter[0] || 0).toLocaleString('ko-KR')}원</td>
+                      <td>{Number(teamRevenueQuarter[1] || 0).toLocaleString('ko-KR')}원</td>
+                      <td>{Number(teamRevenueQuarter[2] || 0).toLocaleString('ko-KR')}원</td>
+                      <td>{Number(teamRevenueQuarter[3] || 0).toLocaleString('ko-KR')}원</td>
+                      <td>{Number(teamRevenueHalf[0] || 0).toLocaleString('ko-KR')}원</td>
+                      <td>{Number(teamRevenueHalf[1] || 0).toLocaleString('ko-KR')}원</td>
+                      <td className="is-annual">{Number(teamRevenueYear || 0).toLocaleString('ko-KR')}원</td>
+                    </tr>
+                    <tr>
+                      <th>팀 누적 프로젝트 목표</th>
+                      <td>{Number(teamProjectQuarter[0] || 0).toLocaleString('ko-KR')}개</td>
+                      <td>{Number(teamProjectQuarter[1] || 0).toLocaleString('ko-KR')}개</td>
+                      <td>{Number(teamProjectQuarter[2] || 0).toLocaleString('ko-KR')}개</td>
+                      <td>{Number(teamProjectQuarter[3] || 0).toLocaleString('ko-KR')}개</td>
+                      <td>{Number(teamProjectHalf[0] || 0).toLocaleString('ko-KR')}개</td>
+                      <td>{Number(teamProjectHalf[1] || 0).toLocaleString('ko-KR')}개</td>
+                      <td className="is-annual">{Number(teamProjectYear || 0).toLocaleString('ko-KR')}개</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </div>
+
 
             {message ? <p className="kpi-target-modal-message">{message}</p> : null}
           </div>
@@ -279,12 +343,29 @@ export default function KpiTargetModal({
             <button type="button" className="kpi-target-modal-cancel" onClick={onClose}>
               취소
             </button>
-            <button type="submit" className="kpi-target-modal-submit" disabled={saving || loading}>
-              <span>{saving ? '저장 중...' : '목표 저장'}</span>
+            <button type="submit" className="kpi-target-modal-submit" disabled={saving || loading || !editable || !canSubmit}>
+              <span>{saving ? '저장 중...' : '개인별 월간 목표 저장'}</span>
             </button>
           </div>
         </form>
       </div>
+      {openedMonth > 0 ? (
+        <ProjectTitleEntryModal
+          month={openedMonth}
+          monthLabel={openedMonthLabel}
+          projectTitles={monthlyProjectTitles[openedMonth - 1] || []}
+          projectTitleDraft={monthlyProjectTitleDrafts[openedMonth - 1] || ''}
+          participantDraftIds={monthlyProjectParticipantDrafts[openedMonth - 1] || []}
+          canSelectParticipants={scopeType === 'team' && canSelectTeamProjectParticipants}
+          participantOptions={teamProjectParticipantOptions}
+          editable={editable}
+          loading={loading}
+          onDraftChange={(value) => onMonthlyProjectTitleDraftChange(openedMonth, value)}
+          onParticipantDraftChange={(nextIds) => onMonthlyProjectParticipantDraftChange(openedMonth, nextIds)}
+          onAdd={() => onAddMonthlyProjectTitle(openedMonth)}
+          onClose={() => setProjectTitleModalMonth(null)}
+        />
+      ) : null}
     </div>
   );
 }

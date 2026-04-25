@@ -128,6 +128,14 @@ function findOrgChartNodeById(node, id) {
   return null;
 }
 
+function collectOrgChartDeptIds(node, acc = []) {
+  if (!node || typeof node !== 'object') return acc;
+  const id = String(node.id || '').trim();
+  if (id) acc.push(id);
+  for (const c of node.children || []) collectOrgChartDeptIds(c, acc);
+  return acc;
+}
+
 function resolveDeptDisplay(orgChartRoot, stored) {
   const s = String(stored || '').trim();
   if (!s) return '';
@@ -219,6 +227,79 @@ function buildPeriodValueOptions(periodType) {
     return [{ value: 1, label: '연간' }];
   }
   return Array.from({ length: 12 }, (_, idx) => ({ value: idx + 1, label: `${idx + 1}월` }));
+}
+
+const KPI_MONTHS = Array.from({ length: 12 }, (_, idx) => idx + 1);
+
+function sumByMonthRange(values, startMonth, endMonth) {
+  let sum = 0;
+  for (let month = startMonth; month <= endMonth; month += 1) {
+    sum += Number(values?.[month - 1] || 0);
+  }
+  return sum;
+}
+
+function aggregateTargetByPeriod(values, periodType, periodValue) {
+  if (periodType === 'annual') return sumByMonthRange(values, 1, 12);
+  if (periodType === 'semiannual') {
+    return Number(periodValue) === 1 ? sumByMonthRange(values, 1, 6) : sumByMonthRange(values, 7, 12);
+  }
+  if (periodType === 'quarterly') {
+    const q = Math.min(4, Math.max(1, Number(periodValue) || 1));
+    const start = (q - 1) * 3 + 1;
+    return sumByMonthRange(values, start, start + 2);
+  }
+  const month = Math.min(12, Math.max(1, Number(periodValue) || 1));
+  return Number(values?.[month - 1] || 0);
+}
+
+function parseMonthlyProjectEntriesFromNote(note) {
+  if (note == null) return [];
+  const raw = String(note || '').trim();
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed?.projectEntries)) {
+      return parsed.projectEntries
+        .map((item) => {
+          const title = String(item?.title || '').trim();
+          const participantIds = Array.isArray(item?.participantIds)
+            ? item.participantIds.map((v) => String(v || '').trim()).filter(Boolean)
+            : [];
+          return title ? { title, participantIds } : null;
+        })
+        .filter(Boolean)
+        .slice(0, 50);
+    }
+    if (Array.isArray(parsed?.projectTitles)) {
+      return parsed.projectTitles
+        .map((v) => String(v || '').trim())
+        .filter(Boolean)
+        .slice(0, 50)
+        .map((title) => ({ title, participantIds: [] }));
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+function buildMonthlyProjectNote(projectEntries = []) {
+  const entries = (Array.isArray(projectEntries) ? projectEntries : [])
+    .map((item) => {
+      const title = String(item?.title || '').trim();
+      if (!title) return null;
+      const participantIds = Array.isArray(item?.participantIds)
+        ? item.participantIds.map((v) => String(v || '').trim()).filter(Boolean)
+        : [];
+      return { title, participantIds };
+    })
+    .filter(Boolean)
+    .slice(0, 50);
+  return JSON.stringify({
+    projectEntries: entries,
+    projectTitles: entries.map((item) => item.title)
+  });
 }
 
 function buildDetailRows(dashboard, metricKey = 'all') {
@@ -384,15 +465,72 @@ function getDetailModalMeta(metricKey) {
   };
 }
 
-function resolveChecklistScope(scopeType, departmentId, userId) {
-  const uid = String(userId || '').trim();
+/**
+ * 체크리스트 API의 scopeType·scopeId.
+ * 대시보드가 «개인» 범위일 때 직원만 바꿔도(전체 직원 ↔ 특정 직원) 동일한 체크리스트 문서를 써야
+ * 입력한 점수가 유지됩니다. 전체 직원일 때는 이미 company였고, 특정 직원일 때만 user로 바뀌며
+ * 빈 문서가 조회되어 0점처럼 보이던 문제가 있었습니다.
+ * 목록·집계 필터는 그대로 kpiUserId 등으로 분리되고, 여기 값은 «누가 어떤 체크리스트 파일에 저장하는지»만 결정합니다.
+ */
+function resolveChecklistScope(scopeType, departmentId) {
   if (scopeType === 'team' && departmentId) {
     return { scopeType: 'team', scopeId: String(departmentId || '').trim() };
   }
-  if (scopeType === 'user' && uid && uid !== KPI_ALL_STAFF_VALUE) {
-    return { scopeType: 'user', scopeId: uid };
+  if (scopeType === 'user') {
+    return { scopeType: 'company', scopeId: '' };
   }
   return { scopeType: 'company', scopeId: '' };
+}
+
+/** ObjectId / { $oid } / 문자열 혼재 시 KPI 참여자 키로 통일 */
+function normalizeMongoIdString(v) {
+  if (v == null || v === '') return '';
+  if (typeof v === 'string') {
+    const t = v.trim();
+    return /^[a-fA-F0-9]{24}$/.test(t) ? t : '';
+  }
+  if (typeof v === 'number' && Number.isFinite(v)) {
+    const t = String(Math.trunc(v));
+    return /^[a-fA-F0-9]{24}$/.test(t) ? t : '';
+  }
+  if (typeof v === 'object') {
+    if (typeof v.$oid === 'string') {
+      const t = v.$oid.trim();
+      return /^[a-fA-F0-9]{24}$/.test(t) ? t : '';
+    }
+    if (v._id != null) return normalizeMongoIdString(v._id);
+  }
+  const t = String(v).trim();
+  return /^[a-fA-F0-9]{24}$/.test(t) ? t : '';
+}
+
+function isProjectKpiRow(row) {
+  return String(row?.key || '').startsWith('project:');
+}
+
+function projectParticipantCountFromRow(row) {
+  const parts = Array.isArray(row?.projectParticipants) ? row.projectParticipants : [];
+  const nList = parts.length;
+  const nField = Math.max(0, Math.floor(Number(row?.projectParticipantCount) || 0));
+  return Math.max(1, nList || nField || 1);
+}
+
+/** 저장된 점수 행을 현재 상세 API의 참여자 목록에 맞춤(재오픈·인원 변동 시 누락 방지) */
+function reconcileParticipantScoresForProject(parts, scores) {
+  const list = Array.isArray(parts) ? parts : [];
+  const byUser = new Map();
+  for (const s of Array.isArray(scores) ? scores : []) {
+    const uid = normalizeMongoIdString(s?.userId);
+    if (!uid) continue;
+    byUser.set(uid, Math.max(0, Number(s?.score) || 0));
+  }
+  return list
+    .map((p) => {
+      const uid = normalizeMongoIdString(p?.userId);
+      if (!uid) return null;
+      return { userId: uid, score: byUser.has(uid) ? byUser.get(uid) : 0 };
+    })
+    .filter(Boolean);
 }
 
 function mergeChecklistItems(rows, checklistItems = []) {
@@ -401,10 +539,68 @@ function mergeChecklistItems(rows, checklistItems = []) {
   );
   return rows.map((row) => {
     const saved = byKey.get(row.key);
-    return {
+    const base = {
       ...row,
       score: Math.max(0, Number(saved?.score) || 0),
       checked: Boolean(saved?.checked)
+    };
+    if (!isProjectKpiRow(row)) return base;
+
+    const parts = Array.isArray(row.projectParticipants) ? row.projectParticipants : [];
+    const nFromRow = projectParticipantCountFromRow(row);
+    const nSaved = Math.max(0, Math.floor(Number(saved?.projectParticipantCount) || 0));
+    const n = Math.max(1, nFromRow, nSaved || 0);
+    const rawMode = String(saved?.projectScoreMode || '').trim();
+    const hasSavedMode = rawMode === 'uniform_each' || rawMode === 'individual' || rawMode === 'flat';
+    let mode = hasSavedMode
+      ? rawMode
+      : (parts.length >= 1 ? 'individual' : 'flat');
+
+    let projectUniformUnit = Math.max(0, Math.floor(Number(saved?.projectUniformUnit) || 0));
+    let participantScores = Array.isArray(saved?.participantScores)
+      ? saved.participantScores.map((p) => ({
+        userId: normalizeMongoIdString(p?.userId),
+        score: Math.max(0, Number(p.score) || 0)
+      })).filter((p) => p.userId)
+      : [];
+
+    if (mode === 'uniform_each' && n < 2) {
+      mode = 'flat';
+      projectUniformUnit = 0;
+      participantScores = [];
+    }
+
+    if (mode === 'uniform_each') {
+      const denom = nSaved > 0 ? nSaved : nFromRow;
+      if (!projectUniformUnit && denom > 0) {
+        projectUniformUnit = Math.max(0, Math.floor(base.score / denom));
+      }
+    } else if (mode === 'individual') {
+      participantScores = reconcileParticipantScoresForProject(parts, participantScores);
+      if (participantScores.length === 0 && parts.length > 0) {
+        const per = n > 0 ? Math.max(0, Math.floor(base.score / n)) : 0;
+        participantScores = parts
+          .map((p) => ({ userId: normalizeMongoIdString(p.userId), score: per }))
+          .filter((p) => p.userId);
+      } else if (participantScores.length > 0 && participantScores.every((r) => r.score === 0) && base.score > 0) {
+        const per = n > 0 ? Math.max(0, Math.floor(base.score / n)) : 0;
+        participantScores = participantScores.map((r) => ({ ...r, score: per }));
+      }
+    }
+
+    const uniformOut = mode === 'uniform_each' ? projectUniformUnit : 0;
+    const scoresOut = mode === 'individual' ? participantScores : [];
+    const scoreOut = mode === 'individual'
+      ? scoresOut.reduce((s, r) => s + Math.max(0, Number(r.score) || 0), 0)
+      : base.score;
+
+    return {
+      ...base,
+      score: scoreOut,
+      projectScoreMode: mode,
+      projectUniformUnit: uniformOut,
+      participantScores: scoresOut,
+      projectParticipantCount: n
     };
   });
 }
@@ -435,8 +631,73 @@ function normalizeDetailItems(items = []) {
     kind: String(item?.kind || '').trim(),
     otherStartAt: String(item?.otherStartAt || ''),
     otherEndAt: String(item?.otherEndAt || ''),
-    otherParticipants: Array.isArray(item?.otherParticipants) ? item.otherParticipants : []
+    otherParticipants: Array.isArray(item?.otherParticipants) ? item.otherParticipants : [],
+    projectParticipants: Array.isArray(item?.projectParticipants)
+      ? item.projectParticipants
+        .map((p) => ({
+          userId: normalizeMongoIdString(p?.userId),
+          name: String(p?.name || '').trim()
+        }))
+        .filter((p) => p.userId)
+      : [],
+    projectParticipantCount: Math.max(
+      1,
+      Number(item?.projectParticipantCount) || (Array.isArray(item?.projectParticipants) ? item.projectParticipants.length : 0) || 1
+    ),
+    projectScoreMode: String(item?.projectScoreMode || 'flat').trim(),
+    projectUniformUnit: Math.max(0, Math.floor(Number(item?.projectUniformUnit) || 0)),
+    participantScores: Array.isArray(item?.participantScores)
+      ? item.participantScores.map((p) => ({
+        userId: normalizeMongoIdString(p?.userId),
+        score: Math.max(0, Number(p?.score) || 0)
+      })).filter((p) => p.userId)
+      : []
   })).filter((item) => item.key);
+}
+
+function buildChecklistPayloadItem(item) {
+  const base = {
+    itemKey: item.key,
+    score: Math.max(0, Number(item.score) || 0),
+    checked: Boolean(item.checked)
+  };
+  if (!isProjectKpiRow(item)) return base;
+  const n = projectParticipantCountFromRow(item);
+  const mode = item.projectScoreMode === 'individual' ? 'individual' : (item.projectScoreMode === 'uniform_each' ? 'uniform_each' : 'flat');
+  if (mode === 'uniform_each') {
+    const unit = Math.max(0, Math.floor(Number(item.projectUniformUnit) || 0));
+    return {
+      ...base,
+      score: unit * n,
+      projectScoreMode: 'uniform_each',
+      projectUniformUnit: unit,
+      projectParticipantCount: n,
+      participantScores: []
+    };
+  }
+  if (mode === 'individual') {
+    const scores = (Array.isArray(item.participantScores) ? item.participantScores : []).map((p) => ({
+      userId: normalizeMongoIdString(p.userId),
+      score: Math.max(0, Number(p.score) || 0)
+    })).filter((p) => p.userId);
+    const total = scores.reduce((sum, row) => sum + row.score, 0);
+    return {
+      ...base,
+      score: total,
+      projectScoreMode: 'individual',
+      projectUniformUnit: 0,
+      projectParticipantCount: n,
+      participantScores: scores
+    };
+  }
+  return {
+    ...base,
+    score: Math.max(0, Number(item.score) || 0),
+    projectScoreMode: 'flat',
+    projectUniformUnit: 0,
+    projectParticipantCount: n,
+    participantScores: []
+  };
 }
 
 function hasChecklistSummary(summary) {
@@ -498,12 +759,25 @@ export default function Kpi() {
   const [targetModalScopeType, setTargetModalScopeType] = useState('team');
   const [targetModalDepartmentId, setTargetModalDepartmentId] = useState('');
   const [targetModalUserId, setTargetModalUserId] = useState('');
-  const [targetModalPeriodType, setTargetModalPeriodType] = useState('monthly');
   const [targetModalYear, setTargetModalYear] = useState(new Date().getFullYear());
-  const [targetModalPeriodValue, setTargetModalPeriodValue] = useState(getCurrentPeriodValueForType('monthly'));
-  const [targetModalRevenue, setTargetModalRevenue] = useState('');
-  const [targetModalProjects, setTargetModalProjects] = useState('');
-  const [targetModalNote, setTargetModalNote] = useState('');
+  const [targetModalMonthlyRevenue, setTargetModalMonthlyRevenue] = useState(() => Array(12).fill(''));
+  const [targetModalMonthlyProjects, setTargetModalMonthlyProjects] = useState(() => Array(12).fill(''));
+  const [targetModalMonthlyProjectTitles, setTargetModalMonthlyProjectTitles] = useState(
+    () => Array.from({ length: 12 }, () => [])
+  );
+  const [targetModalMonthlyProjectEntries, setTargetModalMonthlyProjectEntries] = useState(
+    () => Array.from({ length: 12 }, () => [])
+  );
+  const [targetModalMonthlyProjectTitleDrafts, setTargetModalMonthlyProjectTitleDrafts] = useState(
+    () => Array(12).fill('')
+  );
+  const [targetModalMonthlyProjectParticipantDrafts, setTargetModalMonthlyProjectParticipantDrafts] = useState(
+    () => Array.from({ length: 12 }, () => [])
+  );
+  const [targetModalLoadedUserMonthlyRevenue, setTargetModalLoadedUserMonthlyRevenue] = useState(() => Array(12).fill(0));
+  const [targetModalLoadedUserMonthlyProjects, setTargetModalLoadedUserMonthlyProjects] = useState(() => Array(12).fill(0));
+  const [targetModalTeamMonthlyRevenue, setTargetModalTeamMonthlyRevenue] = useState(() => Array(12).fill(0));
+  const [targetModalTeamMonthlyProjects, setTargetModalTeamMonthlyProjects] = useState(() => Array(12).fill(0));
   const [targetModalLoading, setTargetModalLoading] = useState(false);
   const [targetModalSaving, setTargetModalSaving] = useState(false);
   const [targetModalMessage, setTargetModalMessage] = useState('');
@@ -581,10 +855,13 @@ export default function Kpi() {
     return scopeUserOptions;
   }, [scopeUserOptions, kpiAccess, currentUserId]);
   const selectedScopeUserOption = useMemo(
-    () => filteredScopeUserOptions.find((item) => item.id === selectedScopeUser)
-      || scopeUserOptions.find((item) => item.id === selectedScopeUser)
-      || null,
-    [filteredScopeUserOptions, scopeUserOptions, selectedScopeUser]
+    () => {
+      const hit = filteredScopeUserOptions.find((item) => item.id === selectedScopeUser);
+      if (hit) return hit;
+      if (kpiAccess?.mode === 'self' || kpiAccess?.mode === 'leader') return null;
+      return scopeUserOptions.find((item) => item.id === selectedScopeUser) || null;
+    },
+    [filteredScopeUserOptions, scopeUserOptions, selectedScopeUser, kpiAccess?.mode]
   );
   const participantTeamMembers = useMemo(
     () => overviewEmployees.map((e) => ({
@@ -598,16 +875,145 @@ export default function Kpi() {
     })),
     [overviewEmployees, overviewOrgChart]
   );
-  const targetModalDepartmentOptions = useMemo(() => (
-    currentDepartmentId
-      ? scopeDepartmentOptions.filter((item) => item.id === currentDepartmentId)
-      : []
-  ), [scopeDepartmentOptions, currentDepartmentId]);
-  const targetModalUserOptions = useMemo(() => (
-    currentUserId
-      ? scopeUserOptions.filter((item) => item.id === currentUserId)
-      : []
-  ), [scopeUserOptions, currentUserId]);
+  const targetModalDepartmentOptions = useMemo(
+    () => {
+      const myDept = String(currentDepartmentId || '').trim();
+      if (!myDept) return [];
+
+      const baseById = new Map(filteredScopeDepartmentOptions.map((item) => [item.id, item]));
+      const isDeptLeader = kpiAccess?.mode === 'leader';
+
+      if (!isDeptLeader) {
+        const own = baseById.get(myDept);
+        return own ? [{ ...own, readOnly: false }] : [{ id: myDept, label: resolveDeptDisplay(overviewOrgChart, myDept) || myDept, readOnly: false }];
+      }
+
+      const root = findOrgChartNodeById(overviewOrgChart, myDept);
+      const descendants = root ? collectOrgChartDeptIds(root, []) : [myDept];
+      const allowedIds = new Set(descendants);
+      const out = descendants.map((id) => {
+        const hit = baseById.get(id);
+        return hit
+          ? { ...hit, readOnly: id !== myDept }
+          : { id, label: resolveDeptDisplay(overviewOrgChart, id) || id, readOnly: id !== myDept };
+      });
+      return out.filter((item) => allowedIds.has(item.id));
+    },
+    [filteredScopeDepartmentOptions, currentDepartmentId, kpiAccess?.mode, overviewOrgChart]
+  );
+  const targetModalUserOptions = useMemo(
+    () => {
+      const uid = String(currentUserId || '').trim();
+      if (!uid) return [];
+      return filteredScopeUserOptions.filter((item) => item.id === uid);
+    },
+    [filteredScopeUserOptions, currentUserId]
+  );
+  const targetModalSelectedUserDeptId = useMemo(() => {
+    const uid = String(targetModalUserId || '').trim();
+    if (!uid) return '';
+    const hit = overviewEmployees.find((item) => String(item?.id || '').trim() === uid);
+    return String(hit?.department || hit?.companyDepartment || '').trim();
+  }, [overviewEmployees, targetModalUserId]);
+  const effectiveTeamDeptIdForTargetModal = useMemo(() => {
+    const explicit = String(targetModalDepartmentId || '').trim();
+    if (explicit) return explicit;
+    return targetModalSelectedUserDeptId;
+  }, [targetModalDepartmentId, targetModalSelectedUserDeptId]);
+  const teamUserIdsForTargetModal = useMemo(() => {
+    const dept = String(effectiveTeamDeptIdForTargetModal || '').trim();
+    if (!dept) return [];
+    return overviewEmployees
+      .filter((item) => String(item?.department || item?.companyDepartment || '').trim() === dept)
+      .map((item) => String(item.id || '').trim())
+      .filter(Boolean);
+  }, [overviewEmployees, effectiveTeamDeptIdForTargetModal]);
+  const teamDeptAndDescendantIdsForTargetModal = useMemo(() => {
+    const dept = String(effectiveTeamDeptIdForTargetModal || '').trim();
+    if (!dept) return [];
+    const startNode = findOrgChartNodeById(overviewOrgChart, dept);
+    if (!startNode) return [dept];
+    return collectOrgChartDeptIds(startNode, []);
+  }, [effectiveTeamDeptIdForTargetModal, overviewOrgChart]);
+  const canSelectTeamProjectParticipants = useMemo(() => {
+    if (targetModalScopeType !== 'team') return false;
+    if (kpiAccess?.mode !== 'leader') return false;
+    if (!allowedDeptIdSet) return false;
+    return teamDeptAndDescendantIdsForTargetModal.some((id) => allowedDeptIdSet.has(id));
+  }, [targetModalScopeType, kpiAccess?.mode, allowedDeptIdSet, teamDeptAndDescendantIdsForTargetModal]);
+  const targetModalTeamProjectParticipantOptions = useMemo(() => {
+    if (targetModalScopeType !== 'team') return [];
+    const allowedDepts = new Set(teamDeptAndDescendantIdsForTargetModal);
+    return overviewEmployees
+      .filter((emp) => {
+        const dept = String(emp?.department || emp?.companyDepartment || '').trim();
+        return dept && allowedDepts.has(dept);
+      })
+      .map((emp) => ({
+        id: String(emp.id || '').trim(),
+        label: `${emp.name || emp.email || '사용자'} · ${resolveDeptDisplay(overviewOrgChart, emp?.department || emp?.companyDepartment) || '부서 미배정'}`
+      }))
+      .filter((item) => item.id)
+      .sort((a, b) => a.label.localeCompare(b.label, 'ko'));
+  }, [targetModalScopeType, teamDeptAndDescendantIdsForTargetModal, overviewEmployees, overviewOrgChart]);
+  const targetModalCurrentUserMonthlyRevenueNums = useMemo(
+    () => KPI_MONTHS.map((month) => Number(String(targetModalMonthlyRevenue[month - 1] || '').replace(/\D/g, '')) || 0),
+    [targetModalMonthlyRevenue]
+  );
+  const targetModalCurrentUserMonthlyProjectNums = useMemo(
+    () => KPI_MONTHS.map((month) => Number(String(targetModalMonthlyProjects[month - 1] || '').replace(/\D/g, '')) || 0),
+    [targetModalMonthlyProjects]
+  );
+  const targetModalTeamMonthlyRevenueDisplay = useMemo(() => {
+    const base = Array.isArray(targetModalTeamMonthlyRevenue) ? targetModalTeamMonthlyRevenue : Array(12).fill(0);
+    if (!teamUserIdsForTargetModal.includes(String(targetModalUserId || '').trim())) return base;
+    return base.map((v, idx) =>
+      Math.max(
+        0,
+        Number(v || 0) - Number(targetModalLoadedUserMonthlyRevenue[idx] || 0) + Number(targetModalCurrentUserMonthlyRevenueNums[idx] || 0)
+      )
+    );
+  }, [
+    targetModalTeamMonthlyRevenue,
+    teamUserIdsForTargetModal,
+    targetModalUserId,
+    targetModalLoadedUserMonthlyRevenue,
+    targetModalCurrentUserMonthlyRevenueNums
+  ]);
+  const targetModalTeamMonthlyProjectsDisplay = useMemo(() => {
+    const base = Array.isArray(targetModalTeamMonthlyProjects) ? targetModalTeamMonthlyProjects : Array(12).fill(0);
+    if (!teamUserIdsForTargetModal.includes(String(targetModalUserId || '').trim())) return base;
+    return base.map((v, idx) =>
+      Math.max(
+        0,
+        Number(v || 0) - Number(targetModalLoadedUserMonthlyProjects[idx] || 0) + Number(targetModalCurrentUserMonthlyProjectNums[idx] || 0)
+      )
+    );
+  }, [
+    targetModalTeamMonthlyProjects,
+    teamUserIdsForTargetModal,
+    targetModalUserId,
+    targetModalLoadedUserMonthlyProjects,
+    targetModalCurrentUserMonthlyProjectNums
+  ]);
+  const canSubmitTargetModal = useMemo(
+    () => targetModalScopeType === 'user' && String(targetModalUserId || '').trim() === String(currentUserId || '').trim() && !!currentUserId,
+    [targetModalScopeType, targetModalUserId, currentUserId]
+  );
+  const targetModalScopeNotice = useMemo(() => {
+    if (targetModalScopeType === 'user') {
+      return '개인별은 본인 목표만 조회·수정할 수 있습니다.';
+    }
+    const selectedDept = String(targetModalDepartmentId || '').trim();
+    const myDept = String(currentDepartmentId || '').trim();
+    if (kpiAccess?.mode === 'leader') {
+      if (selectedDept && myDept && selectedDept !== myDept) {
+        return '하위 부서는 조회만 가능합니다. 수정은 본인 부서에서만 가능합니다.';
+      }
+      return '팀별은 본인 팀과 하위 부서를 조회할 수 있습니다.';
+    }
+    return '팀별은 본인 팀 데이터만 조회할 수 있습니다.';
+  }, [targetModalScopeType, targetModalDepartmentId, currentDepartmentId, kpiAccess?.mode]);
 
   const handleScopeTypeChange = useCallback((key) => {
     setScopeType(key);
@@ -739,6 +1145,24 @@ export default function Kpi() {
     setSelectedScopeUser(KPI_ALL_STAFF_VALUE);
   }, [scopeType, selectedScopeUser, scopeUserOptions, kpiAccess?.mode, currentUserId]);
 
+  /**
+   * stale URL·권한 변경 등으로 현재 사용자가 고를 수 없는 직원 id가 남아 있으면
+   * UI에는 다른 직원처럼 보이는데 백엔드는 actorId(로그인 사용자)로 대체할 수 있다.
+   * 이 경우 프론트에서 바로 정리해 실제 요청 대상과 표시가 어긋나지 않게 한다.
+   */
+  useEffect(() => {
+    if (scopeType !== 'user') return;
+    const selected = String(selectedScopeUser || '').trim();
+    if (!selected || selected === KPI_ALL_STAFF_VALUE) return;
+    const allowed = new Set(filteredScopeUserOptions.map((item) => item.id));
+    if (allowed.has(selected)) return;
+    if (kpiAccess?.mode === 'self' && currentUserId) {
+      setSelectedScopeUser(currentUserId);
+      return;
+    }
+    setSelectedScopeUser(KPI_ALL_STAFF_VALUE);
+  }, [scopeType, selectedScopeUser, filteredScopeUserOptions, kpiAccess?.mode, currentUserId]);
+
   useEffect(() => {
     if (!kpiAccess || kpiAccess.mode !== 'self' || !currentUserId) return;
     if (scopeType !== 'user') setScopeType('user');
@@ -754,9 +1178,16 @@ export default function Kpi() {
   const detailModalRows = useMemo(() => buildDetailRows(dashboard, selectedListMetric), [dashboard, selectedListMetric]);
   const detailModalMeta = useMemo(() => getDetailModalMeta(selectedListMetric), [selectedListMetric]);
   const checklistScope = useMemo(
-    () => resolveChecklistScope(scopeType, selectedScopeDepartment, selectedScopeUser),
-    [scopeType, selectedScopeDepartment, selectedScopeUser]
+    () => resolveChecklistScope(scopeType, selectedScopeDepartment),
+    [scopeType, selectedScopeDepartment]
   );
+  /** 개인별 + 특정 직원 선택 시 상세 모달에서 참여자·직원별 점수를 해당 직원만 표시 */
+  const checklistStaffFilterUserId = useMemo(() => {
+    if (scopeType !== 'user') return null;
+    const u = String(selectedScopeUser || '').trim();
+    if (!u || u === KPI_ALL_STAFF_VALUE) return null;
+    return u;
+  }, [scopeType, selectedScopeUser]);
   const checklistPeriod = dashboard?.period?.current || null;
   const leaderboardRows = dashboard?.leaderboard?.items || [];
   const contributionBar = dashboard?.contributionBar || null;
@@ -774,10 +1205,6 @@ export default function Kpi() {
     : isAllStaffUserScope
       ? '회사 목표 현황'
       : targetOverviewScopeLabel ? `${targetOverviewScopeLabel} 목표 현황` : '개인 목표 현황';
-  const targetModalPeriodOptions = useMemo(
-    () => buildPeriodValueOptions(targetModalPeriodType),
-    [targetModalPeriodType]
-  );
 
   const cards = useMemo(() => {
     const revenueDelta = formatDelta(metrics?.revenue?.current, metrics?.revenue?.previous);
@@ -791,7 +1218,9 @@ export default function Kpi() {
       `수주 성공 ${formatNumber(metrics?.wonDeals?.current)}건`,
       target?.targetRevenue > 0 ? `목표 ${formatRevenue(target?.targetRevenue)}` : '목표 미설정'
     ].join(' · ');
-    const projHint = target?.targetProjects > 0 ? `목표 ${formatNumber(target?.targetProjects)}개` : '목표 미설정';
+    const projHint = target?.targetProjects > 0
+      ? `목표 ${formatNumber(target?.targetProjects)}개 · 큰 숫자는 완료 개수`
+      : '목표 미설정 · 큰 숫자는 완료 개수';
     const workHint = `이전 ${formatNumber(metrics?.workLogs?.previous)}건`;
     const otherHint = `${formatNumber(opCnt)}건 등록 · 직접 등록`;
 
@@ -813,6 +1242,7 @@ export default function Kpi() {
         label: '완료 프로젝트',
         hint: projHint,
         value: `${formatNumber(metrics?.completedProjects?.current)}개`,
+        valueMeta: '완료 개수',
         delta: projectDelta.text,
         deltaNeutral: projectDelta.text.includes('변동 없음'),
         positive: projectDelta.positive,
@@ -938,71 +1368,169 @@ export default function Kpi() {
 
   useEffect(() => {
     if (!dashboard?.period?.current) return;
-    setTargetModalPeriodType(period);
     setTargetModalYear(dashboard.period.current.year);
-    setTargetModalPeriodValue(dashboard.period.current.periodValue);
-    setTargetModalScopeType(scopeType);
+    setTargetModalScopeType('user');
     setTargetModalDepartmentId(currentDepartmentId);
     setTargetModalUserId(currentUserId);
   }, [dashboard?.period?.current, period, scopeType, currentDepartmentId, currentUserId]);
 
   useEffect(() => {
-    setTargetModalPeriodValue(getCurrentPeriodValueForType(targetModalPeriodType, new Date(targetModalYear, 0, 1)));
-  }, [targetModalPeriodType, targetModalYear]);
-
-  useEffect(() => {
-    if (targetModalScopeType === 'team') {
-      setTargetModalDepartmentId(currentDepartmentId);
-    } else {
-      setTargetModalUserId(currentUserId);
-    }
-  }, [targetModalScopeType, currentDepartmentId, currentUserId]);
-
-  useEffect(() => {
-    const activeScopeId = targetModalScopeType === 'team' ? targetModalDepartmentId : targetModalUserId;
     if (!isTargetModalOpen) return;
-    if (!activeScopeId) {
-      setTargetModalRevenue('');
-      setTargetModalProjects('');
-      setTargetModalNote('');
-      setTargetModalMessage('');
+    if (targetModalScopeType === 'user') {
+      const uid = String(currentUserId || '').trim();
+      if (uid && String(targetModalUserId || '').trim() !== uid) setTargetModalUserId(uid);
+      return;
+    }
+    const deptIds = targetModalDepartmentOptions.map((item) => String(item.id || '').trim()).filter(Boolean);
+    const current = String(targetModalDepartmentId || '').trim();
+    if (deptIds.length === 0) {
+      if (current) setTargetModalDepartmentId('');
+      return;
+    }
+    if (!deptIds.includes(current)) {
+      setTargetModalDepartmentId(deptIds[0]);
+    }
+  }, [
+    isTargetModalOpen,
+    targetModalScopeType,
+    currentUserId,
+    targetModalUserId,
+    targetModalDepartmentId,
+    targetModalDepartmentOptions
+  ]);
+
+  useEffect(() => {
+    if (!isTargetModalOpen) return;
+    if (!targetModalUserId) {
+      setTargetModalMonthlyRevenue(Array(12).fill(''));
+      setTargetModalMonthlyProjects(Array(12).fill(''));
+      setTargetModalMonthlyProjectTitles(Array.from({ length: 12 }, () => []));
+      setTargetModalMonthlyProjectEntries(Array.from({ length: 12 }, () => []));
+      setTargetModalMonthlyProjectTitleDrafts(Array(12).fill(''));
+      setTargetModalMonthlyProjectParticipantDrafts(Array.from({ length: 12 }, () => []));
+      setTargetModalLoadedUserMonthlyRevenue(Array(12).fill(0));
+      setTargetModalLoadedUserMonthlyProjects(Array(12).fill(0));
+      setTargetModalMessage('직원을 먼저 선택해 주세요.');
       return;
     }
     let cancelled = false;
-    const fetchTarget = async () => {
+    const fetchTargetMonthly = async () => {
       setTargetModalLoading(true);
       try {
-        const params = new URLSearchParams({
-          year: String(targetModalYear),
-          periodType: targetModalPeriodType,
-          periodValue: String(targetModalPeriodValue),
-          scopeType: targetModalScopeType,
-          scopeId: activeScopeId
-        });
-        const res = await fetch(`${API_BASE}/kpi/targets?${params.toString()}`, {
-          headers: getAuthHeader(),
-          credentials: 'include'
-        });
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(json?.error || '목표 정보를 불러오지 못했습니다.');
+        const rows = await Promise.all(
+          KPI_MONTHS.map(async (month) => {
+            const params = new URLSearchParams({
+              year: String(targetModalYear),
+              periodType: 'monthly',
+              periodValue: String(month),
+              scopeType: 'user',
+              scopeId: targetModalUserId
+            });
+            const res = await fetch(`${API_BASE}/kpi/targets?${params.toString()}`, {
+              headers: getAuthHeader(),
+              credentials: 'include'
+            });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(json?.error || '월별 개인 목표 정보를 불러오지 못했습니다.');
+            return json?.target || null;
+          })
+        );
         if (cancelled) return;
-        setTargetModalRevenue(String(Number(json?.target?.targetRevenue) || 0));
-        setTargetModalProjects(String(Number(json?.target?.targetProjects) || 0));
-        setTargetModalNote(String(json?.target?.note || ''));
+        const loadedRevenueNums = rows.map((row) => Number(row?.targetRevenue) || 0);
+        const loadedProjectNums = rows.map((row) => Number(row?.targetProjects) || 0);
+        const loadedProjectEntries = rows.map((row) => parseMonthlyProjectEntriesFromNote(row?.note));
+        const loadedProjectTitles = loadedProjectEntries.map((entries) => entries.map((item) => item.title));
+        setTargetModalLoadedUserMonthlyRevenue(loadedRevenueNums);
+        setTargetModalLoadedUserMonthlyProjects(loadedProjectNums);
+        setTargetModalMonthlyProjectEntries(loadedProjectEntries);
+        setTargetModalMonthlyProjectTitles(loadedProjectTitles);
+        setTargetModalMonthlyProjectTitleDrafts(Array(12).fill(''));
+        setTargetModalMonthlyProjectParticipantDrafts(Array.from({ length: 12 }, () => []));
+        setTargetModalMonthlyRevenue(
+          loadedRevenueNums.map((n) => {
+            return n > 0 ? String(n) : '';
+          })
+        );
+        setTargetModalMonthlyProjects(
+          loadedProjectTitles.map((titles, idx) => {
+            const fromTitles = Array.isArray(titles) ? titles.length : 0;
+            const n = fromTitles > 0 ? fromTitles : loadedProjectNums[idx] || 0;
+            return n > 0 ? String(n) : '';
+          })
+        );
+        setTargetModalMessage('');
       } catch (err) {
         if (!cancelled) {
-          setTargetModalRevenue('');
-          setTargetModalProjects('');
-          setTargetModalNote('');
+          setTargetModalMonthlyRevenue(Array(12).fill(''));
+          setTargetModalMonthlyProjects(Array(12).fill(''));
+          setTargetModalMonthlyProjectEntries(Array.from({ length: 12 }, () => []));
+          setTargetModalMonthlyProjectTitles(Array.from({ length: 12 }, () => []));
+          setTargetModalMonthlyProjectTitleDrafts(Array(12).fill(''));
+          setTargetModalMonthlyProjectParticipantDrafts(Array.from({ length: 12 }, () => []));
+          setTargetModalLoadedUserMonthlyRevenue(Array(12).fill(0));
+          setTargetModalLoadedUserMonthlyProjects(Array(12).fill(0));
           setTargetModalMessage(err.message || '목표 정보를 불러오지 못했습니다.');
         }
       } finally {
         if (!cancelled) setTargetModalLoading(false);
       }
     };
-    fetchTarget();
+    fetchTargetMonthly();
     return () => { cancelled = true; };
-  }, [isTargetModalOpen, targetModalScopeType, targetModalDepartmentId, targetModalUserId, targetModalYear, targetModalPeriodType, targetModalPeriodValue]);
+  }, [isTargetModalOpen, targetModalUserId, targetModalYear, saveMessage]);
+
+  useEffect(() => {
+    if (!isTargetModalOpen) return;
+    if (!effectiveTeamDeptIdForTargetModal || teamUserIdsForTargetModal.length === 0) {
+      setTargetModalTeamMonthlyRevenue(Array(12).fill(0));
+      setTargetModalTeamMonthlyProjects(Array(12).fill(0));
+      return;
+    }
+    let cancelled = false;
+    const fetchTeamTotals = async () => {
+      try {
+        const baseRevenue = Array(12).fill(0);
+        const baseProjects = Array(12).fill(0);
+        await Promise.all(
+          teamUserIdsForTargetModal.map(async (uid) => {
+            const monthlyRows = await Promise.all(
+              KPI_MONTHS.map(async (month) => {
+                const params = new URLSearchParams({
+                  year: String(targetModalYear),
+                  periodType: 'monthly',
+                  periodValue: String(month),
+                  scopeType: 'user',
+                  scopeId: uid
+                });
+                const res = await fetch(`${API_BASE}/kpi/targets?${params.toString()}`, {
+                  headers: getAuthHeader(),
+                  credentials: 'include'
+                });
+                const json = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(json?.error || '팀 누적 목표를 불러오지 못했습니다.');
+                return json?.target || null;
+              })
+            );
+            for (let i = 0; i < 12; i += 1) {
+              baseRevenue[i] += Number(monthlyRows[i]?.targetRevenue || 0);
+              baseProjects[i] += Number(monthlyRows[i]?.targetProjects || 0);
+            }
+          })
+        );
+        if (cancelled) return;
+        setTargetModalTeamMonthlyRevenue(baseRevenue);
+        setTargetModalTeamMonthlyProjects(baseProjects);
+      } catch (err) {
+        if (!cancelled) {
+          setTargetModalTeamMonthlyRevenue(Array(12).fill(0));
+          setTargetModalTeamMonthlyProjects(Array(12).fill(0));
+          setTargetModalMessage(err.message || '팀 누적 목표를 불러오지 못했습니다.');
+        }
+      }
+    };
+    fetchTeamTotals();
+    return () => { cancelled = true; };
+  }, [isTargetModalOpen, effectiveTeamDeptIdForTargetModal, teamUserIdsForTargetModal, targetModalYear, saveMessage]);
 
   useEffect(() => {
     const overviewParams = (() => {
@@ -1061,6 +1589,9 @@ export default function Kpi() {
           scopeType: checklistScope.scopeType
         });
         if (checklistScope.scopeId) params.set('scopeId', checklistScope.scopeId);
+        params.set('kpiFilterScopeType', scopeType);
+        if (scopeType === 'team' && selectedScopeDepartment) params.set('kpiDepartmentId', selectedScopeDepartment);
+        if (scopeType === 'user' && selectedScopeUser) params.set('kpiUserId', selectedScopeUser);
         const res = await fetch(`${API_BASE}/kpi/checklists/summary?${params.toString()}`, {
           headers: getAuthHeader(),
           credentials: 'include'
@@ -1074,7 +1605,16 @@ export default function Kpi() {
     };
     fetchChecklistSummary();
     return () => { cancelled = true; };
-  }, [checklistPeriod?.year, checklistPeriod?.periodType, checklistPeriod?.periodValue, checklistScope.scopeType, checklistScope.scopeId]);
+  }, [
+    checklistPeriod?.year,
+    checklistPeriod?.periodType,
+    checklistPeriod?.periodValue,
+    checklistScope.scopeType,
+    checklistScope.scopeId,
+    scopeType,
+    selectedScopeDepartment,
+    selectedScopeUser
+  ]);
 
   useEffect(() => {
     if (!isListModalOpen) return;
@@ -1290,10 +1830,96 @@ export default function Kpi() {
     }
   };
 
+  const handleChecklistItemPatch = useCallback((itemKey, patch) => {
+    setDetailChecklistItems((prev) => prev.map((item) => (item.key === itemKey ? { ...item, ...patch } : item)));
+  }, []);
+
+  const handleTargetMonthlyRevenueChange = useCallback((month, next) => {
+    const idx = Number(month) - 1;
+    if (idx < 0 || idx > 11) return;
+    setTargetModalMonthlyRevenue((prev) => {
+      const out = [...prev];
+      out[idx] = String(next ?? '');
+      return out;
+    });
+  }, []);
+
+  const handleTargetMonthlyProjectsChange = useCallback((month, next) => {
+    const idx = Number(month) - 1;
+    if (idx < 0 || idx > 11) return;
+    setTargetModalMonthlyProjects((prev) => {
+      const out = [...prev];
+      out[idx] = String(next ?? '');
+      return out;
+    });
+  }, []);
+
+  const handleTargetProjectTitleDraftChange = useCallback((month, next) => {
+    const idx = Number(month) - 1;
+    if (idx < 0 || idx > 11) return;
+    setTargetModalMonthlyProjectTitleDrafts((prev) => {
+      const out = [...prev];
+      out[idx] = String(next || '');
+      return out;
+    });
+  }, []);
+
+  const handleTargetProjectParticipantDraftChange = useCallback((month, nextIds) => {
+    const idx = Number(month) - 1;
+    if (idx < 0 || idx > 11) return;
+    setTargetModalMonthlyProjectParticipantDrafts((prev) => {
+      const out = prev.map((arr) => (Array.isArray(arr) ? [...arr] : []));
+      out[idx] = Array.isArray(nextIds)
+        ? nextIds.map((v) => String(v || '').trim()).filter(Boolean)
+        : [];
+      return out;
+    });
+  }, []);
+
+  const handleAddTargetProjectTitle = useCallback((month) => {
+    const idx = Number(month) - 1;
+    if (idx < 0 || idx > 11) return;
+    const raw = String(targetModalMonthlyProjectTitleDrafts[idx] || '').trim();
+    if (!raw) return;
+    const participantIds = canSelectTeamProjectParticipants
+      ? (Array.isArray(targetModalMonthlyProjectParticipantDrafts[idx]) ? targetModalMonthlyProjectParticipantDrafts[idx] : [])
+      : [];
+    setTargetModalMonthlyProjectEntries((prev) => {
+      const out = prev.map((arr) => (Array.isArray(arr) ? [...arr] : []));
+      out[idx] = [...out[idx], { title: raw, participantIds }].slice(0, 50);
+      setTargetModalMonthlyProjectTitles((prevTitles) => {
+        const nextTitles = prevTitles.map((arr) => (Array.isArray(arr) ? [...arr] : []));
+        nextTitles[idx] = out[idx].map((item) => String(item?.title || '').trim()).filter(Boolean);
+        return nextTitles;
+      });
+      setTargetModalMonthlyProjects((prevCounts) => {
+        const nextCounts = [...prevCounts];
+        nextCounts[idx] = String(out[idx].length || 0);
+        return nextCounts;
+      });
+      return out;
+    });
+    setTargetModalMonthlyProjectTitleDrafts((prev) => {
+      const out = [...prev];
+      out[idx] = '';
+      return out;
+    });
+    setTargetModalMonthlyProjectParticipantDrafts((prev) => {
+      const out = prev.map((arr) => (Array.isArray(arr) ? [...arr] : []));
+      out[idx] = [];
+      return out;
+    });
+  }, [targetModalMonthlyProjectTitleDrafts, targetModalMonthlyProjectParticipantDrafts, canSelectTeamProjectParticipants]);
+
   const handleChecklistScoreChange = (itemKey, value) => {
-    setDetailChecklistItems((prev) => prev.map((item) => (
-      item.key === itemKey ? { ...item, score: Math.max(0, Number(value) || 0) } : item
-    )));
+    const v = Math.max(0, Number(value) || 0);
+    setDetailChecklistItems((prev) => prev.map((item) => {
+      if (item.key !== itemKey) return item;
+      if (isProjectKpiRow(item) && (Array.isArray(item.projectParticipants) ? item.projectParticipants.length : 0) >= 1) {
+        return item;
+      }
+      return { ...item, score: v };
+    }));
   };
 
   const handleSaveChecklist = async () => {
@@ -1315,11 +1941,7 @@ export default function Kpi() {
           year: checklistPeriod.year,
           periodType: checklistPeriod.periodType,
           periodValue: checklistPeriod.periodValue,
-          items: detailChecklistItems.map((item) => ({
-            itemKey: item.key,
-            score: Math.max(0, Number(item.score) || 0),
-            checked: Boolean(item.checked)
-          }))
+          items: detailChecklistItems.map((item) => buildChecklistPayloadItem(item))
         })
       });
       const json = await res.json().catch(() => ({}));
@@ -1342,39 +1964,96 @@ export default function Kpi() {
 
   const handleSaveTargetModal = async (e) => {
     e.preventDefault();
-    const scopeId = targetModalScopeType === 'team' ? targetModalDepartmentId : targetModalUserId;
-    if (!scopeId) {
-      setTargetModalMessage(targetModalScopeType === 'team' ? '팀을 선택해 주세요.' : '직원을 선택해 주세요.');
+    if (targetModalScopeType !== 'user') {
+      setTargetModalMessage('팀별은 개인별 월간 목표의 누적값으로 자동 계산됩니다. 개인별 탭에서 저장해 주세요.');
       return;
     }
+    if (!canSubmitTargetModal) {
+      setTargetModalMessage('개인별에서는 본인 목표만 수정할 수 있습니다.');
+      return;
+    }
+    const scopeId = String(targetModalUserId || '').trim();
+    if (!scopeId) {
+      setTargetModalMessage('직원을 선택해 주세요.');
+      return;
+    }
+    const monthlyRevenueNums = KPI_MONTHS.map((month) => Number(String(targetModalMonthlyRevenue[month - 1] || '').replace(/\D/g, '')) || 0);
+    const monthlyProjectNums = KPI_MONTHS.map((month) => {
+      const entries = Array.isArray(targetModalMonthlyProjectEntries[month - 1]) ? targetModalMonthlyProjectEntries[month - 1] : [];
+      const fromEntries = entries.map((item) => String(item?.title || '').trim()).filter(Boolean).length;
+      if (fromEntries > 0) return fromEntries;
+      return Number(String(targetModalMonthlyProjects[month - 1] || '').replace(/\D/g, '')) || 0;
+    });
     setTargetModalSaving(true);
     setTargetModalMessage('');
     try {
-      const res = await fetch(`${API_BASE}/kpi/targets`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        credentials: 'include',
-        body: JSON.stringify({
-          scopeType: targetModalScopeType,
-          scopeId,
-          year: Number(targetModalYear) || new Date().getFullYear(),
-          periodType: targetModalPeriodType,
-          periodValue: Number(targetModalPeriodValue) || 1,
-          targetRevenue: Number(targetModalRevenue) || 0,
-          targetProjects: Number(targetModalProjects) || 0,
-          note: targetModalNote
+      const year = Number(targetModalYear) || new Date().getFullYear();
+      const savePeriod = async (periodType, periodValue, revenue, projects) => {
+        const monthlyNote =
+          periodType === 'monthly'
+            ? buildMonthlyProjectNote(targetModalMonthlyProjectEntries[Number(periodValue) - 1] || [])
+            : '월별 목표 자동 합산';
+        const res = await fetch(`${API_BASE}/kpi/targets`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+          credentials: 'include',
+          body: JSON.stringify({
+            scopeType: 'user',
+            scopeId,
+            year,
+            periodType,
+            periodValue,
+            targetRevenue: Math.max(0, Math.round(Number(revenue) || 0)),
+            targetProjects: Math.max(0, Math.round(Number(projects) || 0)),
+            note: monthlyNote
+          })
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json?.error || '목표 저장에 실패했습니다.');
+        return json;
+      };
+      await Promise.all(
+        KPI_MONTHS.map((month) => savePeriod('monthly', month, monthlyRevenueNums[month - 1], monthlyProjectNums[month - 1]))
+      );
+      await Promise.all(
+        [1, 2, 3, 4].map((q) => {
+          const rev = aggregateTargetByPeriod(monthlyRevenueNums, 'quarterly', q);
+          const prj = aggregateTargetByPeriod(monthlyProjectNums, 'quarterly', q);
+          return savePeriod('quarterly', q, rev, prj);
         })
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error || '목표 저장에 실패했습니다.');
-      setTargetModalMessage(json?.message || '목표가 저장되었습니다.');
-      setSaveMessage(json?.message || '목표가 저장되었습니다.');
+      );
+      await Promise.all(
+        [1, 2].map((h) => {
+          const rev = aggregateTargetByPeriod(monthlyRevenueNums, 'semiannual', h);
+          const prj = aggregateTargetByPeriod(monthlyProjectNums, 'semiannual', h);
+          return savePeriod('semiannual', h, rev, prj);
+        })
+      );
+      await savePeriod(
+        'annual',
+        1,
+        aggregateTargetByPeriod(monthlyRevenueNums, 'annual', 1),
+        aggregateTargetByPeriod(monthlyProjectNums, 'annual', 1)
+      );
+
+      setTargetModalMessage('개인별 월간 목표를 저장했고 분기·반기·연간 목표를 자동 합산했습니다.');
+      setSaveMessage('개인별 월간 목표를 저장했고 분기·반기·연간 목표를 자동 합산했습니다.');
       if (
-        scopeType === targetModalScopeType &&
-        ((scopeType === 'team' && selectedScopeDepartment === targetModalDepartmentId) ||
-          (scopeType === 'user' && selectedScopeUser === targetModalUserId))
+        scopeType === 'user' &&
+        selectedScopeUser === targetModalUserId &&
+        dashboard?.period?.current
       ) {
-        setDashboard((prev) => prev ? { ...prev, target: json.target } : prev);
+        const currentPeriod = dashboard.period.current;
+        const nextRevenue = aggregateTargetByPeriod(monthlyRevenueNums, currentPeriod.periodType, currentPeriod.periodValue);
+        const nextProjects = aggregateTargetByPeriod(monthlyProjectNums, currentPeriod.periodType, currentPeriod.periodValue);
+        setDashboard((prev) => (prev ? {
+          ...prev,
+          target: {
+            ...(prev.target || {}),
+            targetRevenue: nextRevenue,
+            targetProjects: nextProjects
+          }
+        } : prev));
       }
     } catch (err) {
       setTargetModalMessage(err.message || '목표 저장에 실패했습니다.');
@@ -1545,6 +2224,7 @@ export default function Kpi() {
                   </span>
                 </div>
                 <p className="home-kpi-card-value">{card.value}</p>
+                {card.valueMeta ? <p className="home-kpi-card-value-meta">{card.valueMeta}</p> : null}
                 <p className="home-kpi-card-hint">{card.hint}</p>
                 <div className="home-kpi-card-metrics">
                   <div className="home-kpi-metric-line">
@@ -1570,7 +2250,7 @@ export default function Kpi() {
                 {showCl ? (
                   <div className="kpi-summary-footer">
                     <div className="kpi-summary-checklist-total" aria-label={`${card.label} 체크리스트 총점`}>
-                      <span className="kpi-summary-checklist-total-label">총점</span>
+                      <span className="kpi-summary-checklist-total-label">체크리스트 총점</span>
                       <span className="kpi-summary-checklist-total-num">{formatNumber(totalScore)}</span>
                       <span className="kpi-summary-checklist-total-suffix">점</span>
                     </div>
@@ -1786,6 +2466,7 @@ export default function Kpi() {
             saving={detailChecklistSaving}
             message={detailChecklistMessage}
             onScoreChange={handleChecklistScoreChange}
+            onChecklistItemPatch={handleChecklistItemPatch}
             onSave={handleSaveChecklist}
             onClose={closeListModal}
             variant={selectedListMetric === 'otherPerformance' ? 'otherPerformance' : 'default'}
@@ -1795,6 +2476,7 @@ export default function Kpi() {
             onSubmitOtherPerformance={handleSubmitOtherPerformance}
             onDeleteOtherEntry={handleDeleteOtherEntry}
             otherSubmitting={otherPerfSubmitting}
+            staffFilterUserId={checklistStaffFilterUserId}
           />
         ) : null}
         {participantPickerOpen ? (
@@ -1817,22 +2499,27 @@ export default function Kpi() {
             onUserChange={setTargetModalUserId}
             departmentOptions={targetModalDepartmentOptions}
             userOptions={targetModalUserOptions}
-            periodType={targetModalPeriodType}
-            onPeriodTypeChange={setTargetModalPeriodType}
-            periodValue={targetModalPeriodValue}
-            onPeriodValueChange={setTargetModalPeriodValue}
-            periodValueOptions={targetModalPeriodOptions}
+            scopeNotice={targetModalScopeNotice}
             year={targetModalYear}
             onYearChange={setTargetModalYear}
-            targetRevenue={targetModalRevenue}
-            onTargetRevenueChange={setTargetModalRevenue}
-            targetProjects={targetModalProjects}
-            onTargetProjectsChange={setTargetModalProjects}
-            targetNote={targetModalNote}
-            onTargetNoteChange={setTargetModalNote}
+            monthlyRevenue={targetModalMonthlyRevenue}
+            monthlyProjects={targetModalMonthlyProjects}
+            monthlyProjectTitles={targetModalMonthlyProjectTitles}
+            monthlyProjectTitleDrafts={targetModalMonthlyProjectTitleDrafts}
+            monthlyProjectParticipantDrafts={targetModalMonthlyProjectParticipantDrafts}
+            onMonthlyRevenueChange={handleTargetMonthlyRevenueChange}
+            onMonthlyProjectsChange={handleTargetMonthlyProjectsChange}
+            onMonthlyProjectTitleDraftChange={handleTargetProjectTitleDraftChange}
+            onMonthlyProjectParticipantDraftChange={handleTargetProjectParticipantDraftChange}
+            onAddMonthlyProjectTitle={handleAddTargetProjectTitle}
+            canSelectTeamProjectParticipants={canSelectTeamProjectParticipants}
+            teamProjectParticipantOptions={targetModalTeamProjectParticipantOptions}
+            teamMonthlyProjects={targetModalTeamMonthlyProjectsDisplay}
+            teamMonthlyRevenue={targetModalTeamMonthlyRevenueDisplay}
             loading={targetModalLoading}
             saving={targetModalSaving}
             message={targetModalMessage}
+            canSubmit={canSubmitTargetModal}
             onSubmit={handleSaveTargetModal}
             onClose={closeTargetModal}
           />

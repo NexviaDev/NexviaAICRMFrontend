@@ -60,6 +60,41 @@ function getAuthHeader() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+async function appendCommunicationHistoryForContacts({ contacts, channel, subject = '', body = '' }) {
+  const list = Array.isArray(contacts) ? contacts : [];
+  const normalizedBody = String(body || '').trim();
+  if (!list.length || !normalizedBody) return;
+  const normalizedChannel = channel === 'email' ? 'email' : 'sms';
+  const channelLabel = normalizedChannel === 'email' ? '메일' : '문자';
+  const normalizedSubject = String(subject || '').trim();
+  const noteLines = [
+    `[${channelLabel} 발송 기록]`,
+    normalizedSubject ? `제목: ${normalizedSubject}` : null,
+    `본문: ${normalizedBody}`,
+    `코멘트: 위 내용이 ${channelLabel}로 발송되었습니다.`
+  ].filter(Boolean);
+  const content = noteLines.join('\n');
+  const headers = { 'Content-Type': 'application/json', ...getAuthHeader() };
+  const uniqueContacts = list.filter((c, idx, arr) => c?._id && arr.findIndex((x) => String(x?._id) === String(c._id)) === idx);
+  await Promise.all(
+    uniqueContacts.map(async (contact) => {
+      try {
+        await fetch(`${API_BASE}/customer-company-employees/${contact._id}/history`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            content,
+            workCategory: 'sales',
+            contactChannel: normalizedChannel
+          })
+        });
+      } catch (_) {
+        // 커뮤니케이션 기록 실패는 발송 흐름을 막지 않는다.
+      }
+    })
+  );
+}
+
 const statusClass = { Active: 'status-active', Pending: 'status-pending', Lead: 'status-lead', Inactive: 'status-inactive' };
 const statusLabel = { Active: '활성', Pending: '대기', Lead: '리드', Inactive: '비활성' };
 const statusHint = { Lead: '잠재 고객', Active: '거래 진행 중', Pending: '회신 대기', Inactive: '관리 종료' };
@@ -186,16 +221,31 @@ export default function CustomerCompanyEmployees() {
     setLoadingDetailContact(true);
     let cancelled = false;
     fetch(`${API_BASE}/customer-company-employees/${detailId}`, { headers: getAuthHeader() })
-      .then((r) => r.json().catch(() => ({})))
-      .then((data) => {
+      .then(async (r) => ({
+        ok: r.ok,
+        status: r.status,
+        data: await r.json().catch(() => ({}))
+      }))
+      .then(({ ok, status, data }) => {
         if (cancelled) return;
-        if (data._id) setDetailContactById(data);
-        else setDetailContactById(null);
+        if (ok && data._id) {
+          setDetailContactById(data);
+          return;
+        }
+        setDetailContactById(null);
+        if (status === 404) {
+          const next = new URLSearchParams(searchParams);
+          if (next.get(MODAL_PARAM) === MODAL_DETAIL && next.get(DETAIL_ID_PARAM) === String(detailId)) {
+            next.delete(MODAL_PARAM);
+            next.delete(DETAIL_ID_PARAM);
+            setSearchParams(next, { replace: true });
+          }
+        }
       })
       .catch(() => { if (!cancelled) setDetailContactById(null); })
       .finally(() => { if (!cancelled) setLoadingDetailContact(false); });
     return () => { cancelled = true; };
-  }, [isDetailOpen, detailId, selectedContactFromList]);
+  }, [isDetailOpen, detailId, selectedContactFromList, searchParams, setSearchParams]);
 
   const openAddModal = () => setSearchParams({ [MODAL_PARAM]: MODAL_ADD_CONTACT });
   const closeAddModal = () => {
@@ -353,6 +403,12 @@ export default function CustomerCompanyEmployees() {
 
   const handleBulkSmsOpened = useCallback((payload) => {
     saveBulkSmsAfterSend(payload);
+    void appendCommunicationHistoryForContacts({
+      contacts: payload?.contacts || [],
+      channel: 'sms',
+      subject: payload?.title || '',
+      body: payload?.body || ''
+    });
   }, []);
 
   const saveTemplate = useCallback(async (payload) => {
@@ -716,7 +772,7 @@ export default function CustomerCompanyEmployees() {
       window.alert(`이메일이 없는 ${skipped}명은 제외하고 ${withEmail.length}명의 주소로 메일 작성 화면을 엽니다.`);
     }
     const unique = [...new Set(withEmail.map((r) => String(r.email).trim()))];
-    setEmailCompose({ initialTo: unique.join(', ') });
+    setEmailCompose({ initialTo: unique.join(', '), contacts: withEmail });
   }, [selected]);
 
   const renderMobileCard = (row, idxInMobileList) => {
@@ -828,7 +884,7 @@ export default function CustomerCompanyEmployees() {
                   aria-label={`${em}에게 메일 작성`}
                   onClick={(e) => {
                     e.stopPropagation();
-                    setEmailCompose({ initialTo: em });
+                    setEmailCompose({ initialTo: em, contacts: [row] });
                   }}
                 >
                   <span className="material-symbols-outlined" aria-hidden>mail</span>
@@ -866,12 +922,13 @@ export default function CustomerCompanyEmployees() {
           <button type="submit" form="customer-company-employees-search-form" className="header-search-icon-btn" aria-label="검색">
             <span className="material-symbols-outlined">search</span>
           </button>
-          <form id="customer-company-employees-search-form" onSubmit={onSearch}>
+          <form id="customer-company-employees-search-form" onSubmit={onSearch} className="header-search-form">
             <input
               type="text"
               placeholder={searchFieldDraft ? `${SEARCH_FIELD_OPTIONS.find((o) => o.key === searchFieldDraft)?.label || searchFieldDraft} 검색...` : '모든 필드 검색 (이름, 회사, 이메일, 전화, 직책, 유입 경로, 메모, 커스텀 필드 등)...'}
               value={searchDraft}
               onChange={(e) => setSearchDraft(e.target.value)}
+              aria-label="연락처 검색"
             />
           </form>
           <select
@@ -1326,7 +1383,7 @@ export default function CustomerCompanyEmployees() {
                                       aria-label={`${em}에게 메일 작성`}
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        setEmailCompose({ initialTo: em });
+                                        setEmailCompose({ initialTo: em, contacts: [row] });
                                       }}
                                     >
                                       <span className="material-symbols-outlined" aria-hidden>mail</span>
@@ -1398,7 +1455,15 @@ export default function CustomerCompanyEmployees() {
           key={emailCompose.initialTo}
           initialTo={emailCompose.initialTo}
           onClose={() => setEmailCompose(null)}
-          onSent={() => setEmailCompose(null)}
+          onSent={(payload) => {
+            void appendCommunicationHistoryForContacts({
+              contacts: emailCompose.contacts || [],
+              channel: 'email',
+              subject: payload?.subject || '',
+              body: payload?.body || ''
+            });
+            setEmailCompose(null);
+          }}
         />
       ) : null}
       {isExcelImportOpen && (

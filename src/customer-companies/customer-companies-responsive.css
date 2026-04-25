@@ -21,6 +21,13 @@
     gap: 0.5rem;
     background: var(--card, #fff);
     border-bottom: 1px solid var(--card-border, #e2e8f0);
+    overflow: visible;
+  }
+
+  .customer-companies-page .cc-sort-column-select {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: none;
   }
 
   .customer-companies-page .header-search {

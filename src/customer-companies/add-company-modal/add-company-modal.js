@@ -143,6 +143,8 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
   const [customDefinitions, setCustomDefinitions] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  /** POST 전 유사 상호 — 사용자가 `그래도 신규` 선택 시 body.forceCreateDespiteSimilar */
+  const [preSaveCompany, setPreSaveCompany] = useState(null);
   const [showMapPicker, setShowMapPicker] = useState(false);
   const [pickerSearchQuery, setPickerSearchQuery] = useState('');
   const [pickerSearching, setPickerSearching] = useState(false);
@@ -959,16 +961,39 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
   );
 
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const runCompanySave = async (e, { forceCreateDespiteSimilar = false } = {}) => {
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
     if (submittingRef.current) return;
     setError('');
+    setPreSaveCompany(null);
     if (!form.name?.trim()) {
       setError('기업명을 입력해 주세요.');
       return;
     }
     submittingRef.current = true;
     setSaving(true);
+    try {
+      await pingBackendHealth(getAuthHeader);
+      if (!isEdit && !forceCreateDespiteSimilar) {
+        const p = new URLSearchParams({ name: form.name.trim() });
+        const sRes = await fetch(`${API_BASE}/customer-companies/similar-name-candidates?${p.toString()}`, {
+          headers: getAuthHeader()
+        });
+        const sData = await sRes.json().catch(() => ({}));
+        const sim = Array.isArray(sData.similar) ? sData.similar : [];
+        if (sim.length) {
+          setPreSaveCompany({ similar: sim });
+          setSaving(false);
+          submittingRef.current = false;
+          return;
+        }
+      }
+    } catch {
+      setError('유사 상호를 확인하는 중 오류가 났습니다.');
+      setSaving(false);
+      submittingRef.current = false;
+      return;
+    }
     const addressTrimmed = form.address.trim();
     let latitudeNum =
       form.latitude != null && Number.isFinite(Number(form.latitude)) ? Number(form.latitude) : null;
@@ -991,10 +1016,13 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
       latitude: latitudeNum != null ? latitudeNum : undefined,
       longitude: longitudeNum != null ? longitudeNum : undefined,
       memo: form.memo.trim() || undefined,
+      status: (form.status && String(form.status).trim()) || 'active',
       customFields: form.customFields && Object.keys(form.customFields).length ? form.customFields : undefined,
       assigneeUserIds: Array.isArray(form.assigneeUserIds) ? form.assigneeUserIds : []
     };
-    if (isEdit) body.status = form.status;
+    if (!isEdit && forceCreateDespiteSimilar) {
+      body.forceCreateDespiteSimilar = true;
+    }
     try {
       const url = isEdit ? `${API_BASE}/customer-companies/${company._id}` : `${API_BASE}/customer-companies`;
       const res = await fetch(url, {
@@ -1004,7 +1032,12 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.error || '저장에 실패했습니다.');
+        if (res.status === 409 && data.code === 'SIMILAR_CUSTOMER_COMPANY' && Array.isArray(data.similarCustomerCompanies)) {
+          setError(data.error || '비슷한 상호의 고객사가 이미 있습니다.');
+          setPreSaveCompany({ similar: data.similarCustomerCompanies });
+        } else {
+          setError(data.error || '저장에 실패했습니다.');
+        }
         return;
       }
       let finalCompany = data;
@@ -1096,6 +1129,8 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
       submittingRef.current = false;
     }
   };
+
+  const handleSubmit = (e) => runCompanySave(e, {});
 
   const formContent = (
     <form onSubmit={handleSubmit} className="add-company-modal-form">
@@ -1335,7 +1370,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
           </div>
           <div className="add-company-field">
             <label className="add-company-label" htmlFor="add-company-business-number">사업자등록번호</label>
-            <input id="add-company-business-number" name="businessNumber" type="text" inputMode="numeric" autoComplete="off" value={form.businessNumber} onChange={handleChange} className="add-company-input" placeholder="000-00-00000" maxLength={12} disabled={isEdit} title={isEdit ? '수정 모드에서는 사업자등록번호를 바꿀 수 없습니다.' : undefined} />
+            <input id="add-company-business-number" name="businessNumber" type="text" inputMode="numeric" autoComplete="off" value={form.businessNumber} onChange={handleChange} className="add-company-input" placeholder="000-00-00000" maxLength={12} />
           </div>
           <div className="add-company-field" style={{ gridColumn: '1 / -1' }}>
             <label className="add-company-label" htmlFor="add-company-industry">업종</label>
@@ -1370,18 +1405,29 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
               </div>
             </div>
           </div>
-          {isEdit ? (
-            <div className="add-company-field">
-              <label className="add-company-label" htmlFor="add-company-status">상태</label>
-              <select id="add-company-status" name="status" value={form.status} onChange={handleChange} className="add-company-input">
-                {STATUS_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
+          <div className="add-company-field">
+            <label className="add-company-label" htmlFor="add-company-status">상태 키값</label>
+            <div className="add-company-status-row">
+              <input
+                id="add-company-status"
+                name="status"
+                type="text"
+                value={form.status}
+                onChange={handleChange}
+                className="add-company-input"
+                placeholder="예: active, inactive, lead 또는 자유 키값"
+                list="add-company-status-presets"
+              />
+              <span className="add-company-status-hint">예: active=운영, lead=잠재</span>
             </div>
-          ) : (
-            <div className="add-company-field" aria-hidden="true" />
-          )}
+            <datalist id="add-company-status-presets">
+              {STATUS_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </datalist>
+          </div>
         </section>
         {/* 주소 */}
         <section className="add-company-section">
@@ -1550,6 +1596,46 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
             onClose={() => !bulkSaving && setShowImportPreview(false)}
             onConfirm={confirmBulkCompanyImport}
           />
+          {preSaveCompany && (preSaveCompany.similar || []).length > 0 && (
+            <div
+              className="add-company-pregate-overlay"
+              onClick={() => !saving && setPreSaveCompany(null)}
+              role="dialog"
+              aria-modal="true"
+              aria-label="유사 고객사"
+            >
+              <div className="add-company-pregate-panel" onClick={(e) => e.stopPropagation()}>
+                <h3 className="add-company-pregate-title">비슷한 상호의 고객사</h3>
+                <p className="add-company-pregate-hint">아래와 유사한 고객사가 이미 등록되어 있습니다. 그대로 <strong>새로 추가</strong>할지, 취소하고 목록·검색에서 기존 건에 맞출지 정해 주세요.</p>
+                <ul className="add-company-pregate-list">
+                  {(preSaveCompany.similar || []).slice(0, 20).map((c) => (
+                    <li key={String(c._id)}>
+                      <span className="add-company-pregate-name">{c.name || '—'}</span>
+                      {c.businessNumber ? (
+                        <span className="add-company-pregate-bn">사업자 {String(c.businessNumber).replace(/(\d{3})(\d{2})(\d{5})/, '$1-$2-$3')}</span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+                <div className="add-company-pregate-actions">
+                  <button type="button" className="add-company-btn-cancel" onClick={() => setPreSaveCompany(null)} disabled={saving}>
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary add-company-btn-save"
+                    disabled={saving}
+                    onClick={() => {
+                      setPreSaveCompany(null);
+                      void runCompanySave(null, { forceCreateDespiteSimilar: true });
+                    }}
+                  >
+                    그래도 신규로 등록
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </>
     );
@@ -1636,6 +1722,46 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
         onClose={() => !bulkSaving && setShowImportPreview(false)}
         onConfirm={confirmBulkCompanyImport}
       />
+      {preSaveCompany && (preSaveCompany.similar || []).length > 0 && (
+        <div
+          className="add-company-pregate-overlay"
+          onClick={() => !saving && setPreSaveCompany(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="유사 고객사"
+        >
+          <div className="add-company-pregate-panel" onClick={(e) => e.stopPropagation()}>
+            <h3 className="add-company-pregate-title">비슷한 상호의 고객사</h3>
+            <p className="add-company-pregate-hint">아래와 유사한 고객사가 이미 등록되어 있습니다. 그대로 <strong>새로 추가</strong>할지, 취소하고 목록·검색에서 기존 건에 맞출지 정해 주세요.</p>
+            <ul className="add-company-pregate-list">
+              {(preSaveCompany.similar || []).slice(0, 20).map((c) => (
+                <li key={String(c._id)}>
+                  <span className="add-company-pregate-name">{c.name || '—'}</span>
+                  {c.businessNumber ? (
+                    <span className="add-company-pregate-bn">사업자 {String(c.businessNumber).replace(/(\d{3})(\d{2})(\d{5})/, '$1-$2-$3')}</span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+            <div className="add-company-pregate-actions">
+              <button type="button" className="add-company-btn-cancel" onClick={() => setPreSaveCompany(null)} disabled={saving}>
+                취소
+              </button>
+              <button
+                type="button"
+                className="btn-primary add-company-btn-save"
+                disabled={saving}
+                onClick={() => {
+                  setPreSaveCompany(null);
+                  void runCompanySave(null, { forceCreateDespiteSimilar: true });
+                }}
+              >
+                그래도 신규로 등록
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

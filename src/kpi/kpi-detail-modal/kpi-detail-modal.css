@@ -190,7 +190,9 @@
 /* 카드: Sample 좌측 primary 세로 강조 + surface-container-low */
 .kpi-detail-lucid-card {
   position: relative;
-  overflow: hidden;
+  /* 점수·참여자 입력이 가로로 잘리지 않도록(내부 flex·max-width 조합 대응) */
+  overflow-x: visible;
+  overflow-y: visible;
   border-radius: 0.75rem;
   background: #f0f4f7;
   border-left: 4px solid #2c6485;
@@ -203,6 +205,7 @@
 
 .kpi-detail-lucid-card-pad {
   padding: 1.5rem;
+  min-width: 0;
 }
 
 .kpi-detail-lucid-card-top {
@@ -350,14 +353,15 @@
   border-top: 1px solid rgba(172, 179, 183, 0.25);
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
+  min-width: 0;
 }
 
 .kpi-detail-lucid-gap {
-  flex: 1;
-  min-width: 8rem;
+  flex: 1 1 8rem;
+  min-width: 0;
   margin: 0;
   font-size: 0.75rem;
   color: #7c8a96;
@@ -674,6 +678,139 @@
   cursor: not-allowed;
 }
 
+.kpi-detail-lucid-controls--stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.75rem;
+  flex: 1 1 14rem;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+.kpi-detail-lucid-project-roster {
+  margin-top: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 0.5rem;
+  background: #e8eef3;
+}
+
+.kpi-detail-lucid-project-roster-label {
+  margin: 0 0 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #7a8790;
+}
+
+.kpi-detail-lucid-project-roster-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.6rem;
+}
+
+.kpi-detail-lucid-project-roster-list li {
+  margin: 0;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #2c6485;
+  background: #f4f7f9;
+  box-shadow: inset 0 0 0 1px rgba(44, 100, 133, 0.12);
+}
+
+.kpi-detail-lucid-project-score-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.kpi-detail-lucid-project-score-solo-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #596064;
+  line-height: 1.45;
+}
+
+.kpi-detail-lucid-inline-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #3d4f5c;
+  cursor: pointer;
+}
+
+.kpi-detail-lucid-inline-check input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: #2c6485;
+}
+
+.kpi-detail-lucid-project-score-hint {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #7a8790;
+  line-height: 1.45;
+}
+
+.kpi-detail-lucid-participant-scores {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.kpi-detail-lucid-participant-score-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 0.5rem;
+  background: #f4f7f9;
+}
+
+.kpi-detail-lucid-participant-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #2c6485;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kpi-detail-lucid-participant-score-input {
+  width: 5.5rem;
+  border: 1px solid #dce4e8;
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.45rem;
+  font-size: 0.85rem;
+  text-align: right;
+  background: #fff;
+}
+
+.kpi-detail-lucid-project-total-note {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #596064;
+}
+
+.kpi-detail-lucid-project-total-note strong {
+  color: #2c6485;
+  font-weight: 800;
+}
+
 @media (max-width: 768px) {
   .kpi-detail-modal-overlay {
     padding: 0.5rem;
@@ -706,6 +843,10 @@
   .kpi-detail-lucid-controls {
     width: 100%;
     justify-content: space-between;
+  }
+
+  .kpi-detail-lucid-controls--stack {
+    max-width: 100%;
   }
 
   .kpi-detail-modal-footer {
