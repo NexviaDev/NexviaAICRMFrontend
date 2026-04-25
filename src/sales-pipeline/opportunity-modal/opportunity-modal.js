@@ -2226,18 +2226,9 @@ export default function OpportunityModal({
     .at(-1) || '';
   const financeBaseDateLabel = latestFinanceDateRaw ? latestFinanceDateRaw.replace(/-/g, '.') : '-';
   const collectionCompletionDateLabel =
-    collectedTotalAmount > contractTargetAmount && latestCollectionDateRaw
+    collectedTotalAmount >= contractTargetAmount && latestCollectionDateRaw
       ? latestCollectionDateRaw.replace(/-/g, '.')
       : '-';
-
-  useEffect(() => {
-    if (!isWonStage) return;
-    const targetFormatted = contractTargetAmount > 0 ? Number(contractTargetAmount).toLocaleString() : '';
-    setForm((prev) => {
-      if (prev.contractAmount === targetFormatted) return prev;
-      return { ...prev, contractAmount: targetFormatted };
-    });
-  }, [isWonStage, contractTargetAmount]);
 
   return (
     <div className="opp-modal-overlay">
@@ -2761,7 +2752,6 @@ export default function OpportunityModal({
                           className="opp-input"
                           placeholder="숫자만 입력"
                           value={form.contractAmount}
-                          readOnly={isWonStage}
                           onChange={(e) => handleChange('contractAmount', formatNumberInput(e.target.value))}
                         />
                       </label>
