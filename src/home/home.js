@@ -178,6 +178,67 @@ function renderSoftwareLabelCell(value) {
   );
 }
 
+const HOME_FORECAST_MONTH_NONE = '__none__';
+
+function filterHomeForecastRows(rows, filters) {
+  const product = String(filters?.product || '').trim();
+  const probStr = filters?.probability === '' || filters?.probability == null ? '' : String(filters.probability);
+  const month = String(filters?.targetMonth || '').trim();
+  if (!product && !probStr && !month) return rows;
+  return rows.filter((row) => {
+    if (product) {
+      const raw = String(row?.softwareLabel || '').trim();
+      const parts = raw ? raw.split(',').map((s) => s.trim()).filter(Boolean) : [];
+      const tokenMatch = parts.length ? parts.some((p) => p === product) : raw === product;
+      if (!tokenMatch) return false;
+    }
+    if (probStr !== '') {
+      const p = Number(row?.probabilityPct);
+      if (!Number.isFinite(p) || String(p) !== probStr) return false;
+    }
+    if (month) {
+      const m = String(row?.targetMonth || '').trim();
+      if (month === HOME_FORECAST_MONTH_NONE) {
+        if (/^\d{4}-\d{2}$/.test(m)) return false;
+      } else if (m !== month) return false;
+    }
+    return true;
+  });
+}
+
+function buildHomeForecastProductOptions(rows) {
+  const set = new Set();
+  for (const row of rows) {
+    const raw = String(row?.softwareLabel || '').trim();
+    if (!raw || raw === '—') continue;
+    raw.split(',').forEach((chunk) => {
+      const t = String(chunk || '').trim();
+      if (t) set.add(t);
+    });
+  }
+  return [...set].sort((a, b) => a.localeCompare(b, 'ko'));
+}
+
+function buildHomeForecastProbabilityOptions(rows) {
+  const set = new Set();
+  for (const row of rows) {
+    const p = Number(row?.probabilityPct);
+    if (Number.isFinite(p)) set.add(p);
+  }
+  return [...set].sort((a, b) => a - b);
+}
+
+function buildHomeForecastTargetMonthMeta(rows) {
+  const set = new Set();
+  let hasNone = false;
+  for (const row of rows) {
+    const m = String(row?.targetMonth || '').trim();
+    if (/^\d{4}-\d{2}$/.test(m)) set.add(m);
+    else hasNone = true;
+  }
+  return { sortedMonths: [...set].sort(), hasNone };
+}
+
 /** 대시보드 매출 객체 → 표시 문자열 (통화 혼합 시 · 구분) */
 function formatLeadReceivedAt(iso) {
   if (!iso) return '—';
@@ -879,6 +940,16 @@ export default function Home() {
   });
   /** 대시보드 /reports/dashboard 재조회(기회 저장 등) */
   const [dashboardRefreshTick, setDashboardRefreshTick] = useState(0);
+  const [homeForecastActiveFilters, setHomeForecastActiveFilters] = useState({
+    product: '',
+    probability: '',
+    targetMonth: ''
+  });
+  const [homeForecastCompletedFilters, setHomeForecastCompletedFilters] = useState({
+    product: '',
+    probability: '',
+    targetMonth: ''
+  });
   const homeDashboardToolbarPersistTimerRef = useRef(null);
   const consumerChartTitle = useMemo(() => {
     const labelMap = {
@@ -1937,7 +2008,7 @@ export default function Home() {
     () => (Array.isArray(data?.forecastPipelineRows) ? data.forecastPipelineRows : []),
     [data?.forecastPipelineRows]
   );
-  const forecastCompletedRows = useMemo(
+  const forecastCompletedRowsUnfiltered = useMemo(
     () =>
       forecastAllRows.filter((row) => {
         const prob = Number(row?.probabilityPct || 0);
@@ -1946,25 +2017,131 @@ export default function Home() {
       }),
     [forecastAllRows]
   );
+  const forecastActiveRowsUnfiltered = useMemo(
+    () => forecastAllRows.filter((row) => !forecastCompletedRowsUnfiltered.includes(row)),
+    [forecastAllRows, forecastCompletedRowsUnfiltered]
+  );
+  const forecastActiveProductOptions = useMemo(
+    () => buildHomeForecastProductOptions(forecastActiveRowsUnfiltered),
+    [forecastActiveRowsUnfiltered]
+  );
+  const forecastActiveProbabilityOptions = useMemo(
+    () => buildHomeForecastProbabilityOptions(forecastActiveRowsUnfiltered),
+    [forecastActiveRowsUnfiltered]
+  );
+  const forecastActiveTargetMonthMeta = useMemo(
+    () => buildHomeForecastTargetMonthMeta(forecastActiveRowsUnfiltered),
+    [forecastActiveRowsUnfiltered]
+  );
+  const forecastCompletedProductOptions = useMemo(
+    () => buildHomeForecastProductOptions(forecastCompletedRowsUnfiltered),
+    [forecastCompletedRowsUnfiltered]
+  );
+  const forecastCompletedProbabilityOptions = useMemo(
+    () => buildHomeForecastProbabilityOptions(forecastCompletedRowsUnfiltered),
+    [forecastCompletedRowsUnfiltered]
+  );
+  const forecastCompletedTargetMonthMeta = useMemo(
+    () => buildHomeForecastTargetMonthMeta(forecastCompletedRowsUnfiltered),
+    [forecastCompletedRowsUnfiltered]
+  );
+  const forecastActiveRows = useMemo(
+    () => filterHomeForecastRows(forecastActiveRowsUnfiltered, homeForecastActiveFilters),
+    [forecastActiveRowsUnfiltered, homeForecastActiveFilters]
+  );
+  const forecastCompletedRows = useMemo(
+    () => filterHomeForecastRows(forecastCompletedRowsUnfiltered, homeForecastCompletedFilters),
+    [forecastCompletedRowsUnfiltered, homeForecastCompletedFilters]
+  );
   const forecastCompletedPreviewRows = useMemo(
     () => forecastCompletedRows.slice(0, HOME_FORECAST_PREVIEW_MAX),
     [forecastCompletedRows]
   );
-  const forecastActiveRows = useMemo(
-    () => forecastAllRows.filter((row) => !forecastCompletedRows.includes(row)),
-    [forecastAllRows, forecastCompletedRows]
-  );
-  const homeTargetOverallAchievement = useMemo(() => {
-    const segs = Array.isArray(homeTargetContributionBar?.segments) ? homeTargetContributionBar.segments : [];
-    if (segs.length === 0) return null;
-    const totalTarget = segs.reduce((sum, seg) => sum + Math.max(0, Number(seg?.targetRevenue || 0)), 0);
-    const totalAmount = segs.reduce((sum, seg) => sum + Math.max(0, Number(seg?.amount || 0)), 0);
-    if (totalTarget <= 0) return null;
-    return Number(((totalAmount / totalTarget) * 100).toFixed(1));
-  }, [homeTargetContributionBar]);
   const forecastActivePreviewRows = useMemo(
     () => forecastActiveRows.slice(0, HOME_FORECAST_PREVIEW_MAX),
     [forecastActiveRows]
+  );
+
+  useEffect(() => {
+    setHomeForecastActiveFilters({ product: '', probability: '', targetMonth: '' });
+    setHomeForecastCompletedFilters({ product: '', probability: '', targetMonth: '' });
+  }, [data?.forecastPipelineRows]);
+
+  const renderHomeForecastFilterBar = useCallback(
+    (variant) => {
+      const isActive = variant === 'active';
+      const filters = isActive ? homeForecastActiveFilters : homeForecastCompletedFilters;
+      const setFilters = isActive ? setHomeForecastActiveFilters : setHomeForecastCompletedFilters;
+      const productOpts = isActive ? forecastActiveProductOptions : forecastCompletedProductOptions;
+      const probOpts = isActive ? forecastActiveProbabilityOptions : forecastCompletedProbabilityOptions;
+      const monthMeta = isActive ? forecastActiveTargetMonthMeta : forecastCompletedTargetMonthMeta;
+      const aria = isActive ? 'Forecast 진행 중 표 필터' : '완료 기회 표 필터';
+
+      return (
+        <div className="home-forecast-filters" role="toolbar" aria-label={aria}>
+          <div className="home-forecast-filters-row">
+            <label className="home-forecast-filter-pair">
+              <span className="home-forecast-filter-label">제품</span>
+              <select
+                className="home-forecast-filter-select"
+                value={filters.product}
+                onChange={(e) => setFilters((prev) => ({ ...prev, product: e.target.value }))}
+              >
+                <option value="">전체</option>
+                {productOpts.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="home-forecast-filter-pair">
+              <span className="home-forecast-filter-label">확률</span>
+              <select
+                className="home-forecast-filter-select"
+                value={filters.probability}
+                onChange={(e) => setFilters((prev) => ({ ...prev, probability: e.target.value }))}
+              >
+                <option value="">전체</option>
+                {probOpts.map((p) => (
+                  <option key={p} value={String(p)}>
+                    {`${p}%`}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="home-forecast-filter-pair">
+              <span className="home-forecast-filter-label">목표 월</span>
+              <select
+                className="home-forecast-filter-select"
+                value={filters.targetMonth}
+                onChange={(e) => setFilters((prev) => ({ ...prev, targetMonth: e.target.value }))}
+              >
+                <option value="">전체</option>
+                {monthMeta.sortedMonths.map((ym) => (
+                  <option key={ym} value={ym}>
+                    {formatForecastExpectedMonthCell(ym)}
+                  </option>
+                ))}
+                {monthMeta.hasNone ? (
+                  <option value={HOME_FORECAST_MONTH_NONE}>목표 월 없음</option>
+                ) : null}
+              </select>
+            </label>
+          </div>
+        </div>
+      );
+    },
+    [
+      homeForecastActiveFilters,
+      homeForecastCompletedFilters,
+      forecastActiveProductOptions,
+      forecastCompletedProductOptions,
+      forecastActiveProbabilityOptions,
+      forecastCompletedProbabilityOptions,
+      forecastActiveTargetMonthMeta,
+      forecastCompletedTargetMonthMeta
+    ]
   );
 
   const renderChartPanel = (title, subtitle, series, tone, emptyText, chartOptions = {}) => {
@@ -2687,18 +2864,24 @@ export default function Home() {
                       })()}
                       <div className="home-contribution-split-bar" role="list" aria-label="팀별 목표 대비 달성률">
                         {(() => {
-                          const totalDisplayBase = homeTargetContributionBar.segments.reduce(
-                            (sum, seg) =>
-                              sum + Math.max(0, Math.max(Number(seg?.targetRevenue || 0), Number(seg?.amount || 0))),
+                          const totalTargetPool = homeTargetContributionBar.segments.reduce(
+                            (sum, s) => sum + Math.max(0, Number(s?.targetRevenue || 0)),
+                            0
+                          );
+                          const totalAmountForBar = homeTargetContributionBar.segments.reduce(
+                            (sum, s) => sum + Math.max(0, Number(s?.amount || 0)),
                             0
                           );
                           return homeTargetContributionBar.segments.map((seg) => {
-                            const displayBase = Math.max(0, Math.max(Number(seg?.targetRevenue || 0), Number(seg?.amount || 0)));
-                            const widthPct = totalDisplayBase > 0
-                              ? (displayBase / totalDisplayBase) * 100
-                              : Math.max(0, Number(seg?.pct || 0));
+                            const amt = Math.max(0, Number(seg?.amount || 0));
+                            const widthPct =
+                              totalAmountForBar > 0
+                                ? (amt / totalAmountForBar) * 100
+                                : Math.max(0, Number(seg?.pct || 0));
+                            const vsTotalPoolPct =
+                              totalTargetPool > 0 ? Number(((amt / totalTargetPool) * 100).toFixed(1)) : null;
                             const achText = `${seg.label} - 전체 목표액 대비 달성률 ${
-                              homeTargetOverallAchievement == null ? '목표 미설정' : `${homeTargetOverallAchievement}%`
+                              vsTotalPoolPct == null ? '목표 미설정' : `${vsTotalPoolPct}%`
                             } - 개인팀 대비 달성률 ${
                               seg.achievement == null ? '목표 미설정' : `${seg.achievement}%`
                             }`;
@@ -2750,27 +2933,44 @@ export default function Home() {
                         );
                       })()}
                       <div className="home-contribution-split-bar" role="list" aria-label="목표대비 달성률">
-                        {homeTargetContributionBar.segments.map((seg) => {
-                          const achText = `${seg.label} - 팀전체 목표액 대비 달성률 ${
-                            homeTargetOverallAchievement == null ? '목표 미설정' : `${homeTargetOverallAchievement}%`
-                          } - 개인 목표액 대비 달성률 ${
-                            seg.achievement == null ? '목표 미설정' : `${seg.achievement}%`
-                          }`;
-                          return (
-                            <div
-                              key={`ach-split-${seg.id}`}
-                              role="listitem"
-                              className="home-contribution-split-seg"
-                              style={{
-                                flexBasis: `${Math.max(0, Number(seg?.pct || 0))}%`,
-                                backgroundColor: seg.color || '#8fa8d8'
-                              }}
-                              title={achText}
-                            >
-                              <span>{achText}</span>
-                            </div>
+                        {(() => {
+                          const teamTargetPool = homeTargetContributionBar.segments.reduce(
+                            (sum, s) => sum + Math.max(0, Number(s?.targetRevenue || 0)),
+                            0
                           );
-                        })}
+                          const totalAmountForBar = homeTargetContributionBar.segments.reduce(
+                            (sum, s) => sum + Math.max(0, Number(s?.amount || 0)),
+                            0
+                          );
+                          return homeTargetContributionBar.segments.map((seg) => {
+                            const amt = Math.max(0, Number(seg?.amount || 0));
+                            const widthPct =
+                              totalAmountForBar > 0
+                                ? (amt / totalAmountForBar) * 100
+                                : Math.max(0, Number(seg?.pct || 0));
+                            const vsTeamPoolPct =
+                              teamTargetPool > 0 ? Number(((amt / teamTargetPool) * 100).toFixed(1)) : null;
+                            const achText = `${seg.label} - 팀전체 목표액 대비 달성률 ${
+                              vsTeamPoolPct == null ? '목표 미설정' : `${vsTeamPoolPct}%`
+                            } - 개인 목표액 대비 달성률 ${
+                              seg.achievement == null ? '목표 미설정' : `${seg.achievement}%`
+                            }`;
+                            return (
+                              <div
+                                key={`ach-split-${seg.id}`}
+                                role="listitem"
+                                className="home-contribution-split-seg"
+                                style={{
+                                  flexBasis: `${Math.max(0, widthPct)}%`,
+                                  backgroundColor: seg.color || '#8fa8d8'
+                                }}
+                                title={achText}
+                              >
+                                <span>{achText}</span>
+                              </div>
+                            );
+                          });
+                        })()}
                       </div>
                       <div className="home-contribution-split-texts">
                         {homeTargetContributionBar.segments.map((seg) => (
@@ -2899,9 +3099,12 @@ export default function Home() {
                       </Link>
                     </div>
                   </div>
+                  {renderHomeForecastFilterBar('active')}
                   <div className="home-forecast-table-wrap">
-                    {forecastActiveRows.length === 0 ? (
+                    {forecastActiveRowsUnfiltered.length === 0 ? (
                       <p className="home-leader-breakdown-empty">표시할 진행 중 기회가 없습니다.</p>
+                    ) : forecastActiveRows.length === 0 ? (
+                      <p className="home-leader-breakdown-empty">선택한 필터에 맞는 진행 중 기회가 없습니다.</p>
                     ) : (
                       <table className="home-leader-breakdown-table home-forecast-table">
                         <thead>
@@ -2978,7 +3181,6 @@ export default function Home() {
                                   <td>{formatCurrency(totals.unitPrice, sumCurrency)}</td>
                                   <td>{Number(totals.quantity || 0).toLocaleString('ko-KR')}</td>
                                   <td>{formatCurrency(totals.finalPrice, sumCurrency)}</td>
-                                  <td>—</td>
                                   <td>{formatCurrency(totals.forecast, sumCurrency)}</td>
                                   <td>—</td>
                                   <td>{formatCurrency(totals.contract, sumCurrency)}</td>
@@ -3016,9 +3218,12 @@ export default function Home() {
                       </button>
                     </div>
                   </div>
+                  {renderHomeForecastFilterBar('completed')}
                   <div className="home-forecast-table-wrap">
-                    {forecastCompletedRows.length === 0 ? (
+                    {forecastCompletedRowsUnfiltered.length === 0 ? (
                       <p className="home-leader-breakdown-empty">표시할 완료 기회가 없습니다.</p>
+                    ) : forecastCompletedRows.length === 0 ? (
+                      <p className="home-leader-breakdown-empty">선택한 필터에 맞는 완료 기회가 없습니다.</p>
                     ) : (
                       <table className="home-leader-breakdown-table home-forecast-table">
                         <thead>
@@ -3385,8 +3590,11 @@ export default function Home() {
         {activeHomeView === 'calendar' ? <Calendar embedded hideBottomSection={false} /> : null}
         {activeHomeView === 'forecast' ? (
           <div className="home-modal-forecast" aria-label="Forecast 전체">
-            {forecastActiveRows.length === 0 ? (
+            {renderHomeForecastFilterBar('active')}
+            {forecastActiveRowsUnfiltered.length === 0 ? (
               <p className="home-leader-breakdown-empty">표시할 진행 중 기회가 없습니다.</p>
+            ) : forecastActiveRows.length === 0 ? (
+              <p className="home-leader-breakdown-empty">선택한 필터에 맞는 진행 중 기회가 없습니다.</p>
             ) : (
               <div className="home-forecast-table-wrap">
                 <table className="home-leader-breakdown-table home-forecast-table">
@@ -3429,8 +3637,11 @@ export default function Home() {
         ) : null}
         {activeHomeView === 'completed' ? (
           <div className="home-modal-forecast" aria-label="완료 기회 전체">
-            {forecastCompletedRows.length === 0 ? (
+            {renderHomeForecastFilterBar('completed')}
+            {forecastCompletedRowsUnfiltered.length === 0 ? (
               <p className="home-leader-breakdown-empty">표시할 완료 기회가 없습니다.</p>
+            ) : forecastCompletedRows.length === 0 ? (
+              <p className="home-leader-breakdown-empty">선택한 필터에 맞는 완료 기회가 없습니다.</p>
             ) : (
               <div className="home-forecast-table-wrap">
                 <table className="home-leader-breakdown-table home-forecast-table">

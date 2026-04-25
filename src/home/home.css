@@ -1195,6 +1195,64 @@
   max-width: 48rem;
 }
 
+.home-forecast-filters {
+  margin: 0 0 0.55rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.home-forecast-filters-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+
+.home-forecast-filter-pair {
+  display: inline-flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  cursor: pointer;
+}
+
+.home-forecast-filter-label {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted, #64748b);
+  white-space: nowrap;
+}
+
+.home-forecast-filter-select {
+  font-size: 0.78rem;
+  padding: 0.28rem 0.45rem;
+  border-radius: 0.35rem;
+  border: 1px solid var(--card-border, #e2e8f0);
+  background: #fff;
+  color: var(--text-main, #1a2b3c);
+  min-width: 6.5rem;
+  max-width: min(14rem, 42vw);
+}
+
+.home-forecast-filter-select:hover {
+  border-color: rgba(148, 163, 184, 0.65);
+}
+
+.home-forecast-filter-select:focus {
+  outline: none;
+  border-color: rgba(125, 168, 214, 0.95);
+  box-shadow: 0 0 0 2px rgba(184, 212, 240, 0.45);
+}
+
+.home-modal-forecast .home-forecast-filters {
+  margin-top: 0.1rem;
+  margin-bottom: 0.6rem;
+}
+
 .home-forecast-table-wrap {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;

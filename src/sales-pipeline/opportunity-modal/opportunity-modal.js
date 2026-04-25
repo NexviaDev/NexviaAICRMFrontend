@@ -2204,7 +2204,7 @@ export default function OpportunityModal({
     stageSelectOptions.find((s) => s.value === form.stage)?.label || form.stage;
   const isWonStage = form.stage === 'Won';
   const modalTitle = isWonStage
-    ? (isEdit ? '계약 완료 수정' : '새 계약 완료 추가')
+    ? (isEdit ? '계약 완료' : '새 계약 완료 추가')
     : (isEdit ? '기회 수정' : '새 영업 기회 추가');
   const contractTargetAmount = Math.max(0, Number(totalFinalForForecast) || 0);
   const collectedTotalAmount = collectionEntries.reduce(
