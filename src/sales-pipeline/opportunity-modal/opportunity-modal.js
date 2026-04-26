@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import CustomerCompanySearchModal from '../../customer-companies/customer-company-search-modal/customer-company-search-modal';
 import CustomerCompanyEmployeesSearchModal from '../../customer-company-employees/customer-company-employees-search-modal/customer-company-employees-search-modal';
 import ProductSearchModal from '../product-search-modal/product-search-modal';
-import AssigneePickerModal from '../../company-overview/assignee-picker-modal/assignee-picker-modal';
+import ParticipantModal from '@/shared/participant-modal/participant-modal';
 import '../../customer-companies/customer-company-detail-modal/customer-company-detail-modal.css';
 import './opportunity-modal.css';
 import { RegisterSaleDocsCrmTable, formatDriveFileDate } from '@/shared/register-sale-docs-drive';
@@ -30,7 +30,7 @@ function getAuthHeader() {
 const STAGE_OPTIONS = [
   { value: 'NewLead', label: '신규 리드' },
   { value: 'Contacted', label: '연락 완료' },
-  { value: 'ProposalSent', label: '제안서 전달 완료' },
+  { value: 'ProposalSent', label: '제안서 전달' },
   { value: 'TechDemo', label: '기술 시연' },
   { value: 'Quotation', label: '견적' },
   { value: 'Negotiation', label: '최종 협상' },
@@ -354,7 +354,7 @@ export default function OpportunityModal({
     currency: 'KRW',
     stage: defaultStage || 'NewLead',
     description: '',
-    saleDate: todayDateInputValue(),
+    saleDate: '',
     expectedCloseMonth: '',
     startDate: '',
     targetDate: '',
@@ -409,6 +409,47 @@ export default function OpportunityModal({
   const [showInternalAssigneePicker, setShowInternalAssigneePicker] = useState(false);
   /** 사내 담당자 이름 매핑용 (/companies/overview employees) */
   const [companyEmployees, setCompanyEmployees] = useState([]);
+
+  /** ParticipantModal directory용 — overview 직원 id → _id */
+  const teamMembersForParticipantModal = useMemo(
+    () =>
+      (companyEmployees || []).map((e) => ({
+        _id: e.id,
+        name: e.name,
+        email: e.email,
+        phone: e.phone || '',
+        companyDepartment: String(e.companyDepartment || e.department || '').trim(),
+        department: e.department || String(e.companyDepartment || '').trim(),
+        departmentDisplay: e.departmentDisplay
+      })),
+    [companyEmployees]
+  );
+
+  /** 모달 열 때 전달: 이미 담당이 있으면 그대로, 없으면 로그인 사용자 1명 기본 */
+  const internalAssigneeParticipantSelected = useMemo(() => {
+    const uid = (form.assignedToUserId || '').trim();
+    if (uid) {
+      const nm = (form.assignedToName || '').trim();
+      const emp = companyEmployees.find((e) => e?.id != null && String(e.id) === uid);
+      return [{ userId: uid, name: nm || (emp?.name && String(emp.name).trim()) || emp?.email || '—' }];
+    }
+    const me = getStoredCrmUser();
+    const myId = me?._id != null ? String(me._id) : '';
+    if (!myId) return [];
+    const emp = companyEmployees.find((e) => e?.id != null && String(e.id) === myId);
+    const nm =
+      (emp?.name && String(emp.name).trim()) ||
+      (me?.name && String(me.name).trim()) ||
+      (me?.email && String(me.email).trim()) ||
+      '나';
+    return [{ userId: myId, name: nm }];
+  }, [form.assignedToUserId, form.assignedToName, companyEmployees]);
+
+  const currentUserForParticipantModal = useMemo(() => {
+    const me = getStoredCrmUser();
+    return me?._id ? { _id: me._id } : null;
+  }, []);
+
   const [saving, setSaving] = useState(false);
   const [loadingOpp, setLoadingOpp] = useState(false);
   const [error, setError] = useState('');
@@ -491,7 +532,7 @@ export default function OpportunityModal({
         currency: data.currency || 'KRW',
         stage: loadedStage,
         description: data.description || '',
-        saleDate: toDateInputValue(data.saleDate) || todayDateInputValue(),
+        saleDate: toDateInputValue(data.saleDate) || '',
         expectedCloseMonth: /^\d{4}-\d{2}$/.test(ym) ? ym : '',
         startDate: toDateInputValue(data.startDate),
         targetDate: toDateInputValue(data.targetDate),
@@ -2282,36 +2323,8 @@ export default function OpportunityModal({
         ) : (
           <>
             <form className="opp-modal-form" onSubmit={handleSubmit} id="opp-form">
-              <div className="opp-form-dates-top" aria-label="기회 일정">
-                <div className="opp-form-dates-top-field">
-                  <span className="opp-form-dates-top-label">시작일</span>
-                  <input
-                    type="date"
-                    className="opp-input opp-input--date"
-                    value={form.startDate}
-                    onChange={(e) => handleChange('startDate', e.target.value)}
-                  />
-                </div>
-                <div className="opp-form-dates-top-field">
-                  <span className="opp-form-dates-top-label">목표일</span>
-                  <input
-                    type="date"
-                    className="opp-input opp-input--date"
-                    value={form.targetDate}
-                    onChange={(e) => handleChange('targetDate', e.target.value)}
-                  />
-                </div>
-                <div className="opp-form-dates-top-field">
-                  <span className="opp-form-dates-top-label">수주·판매일</span>
-                  <input
-                    type="date"
-                    className="opp-input opp-input--date"
-                    value={form.saleDate}
-                    onChange={(e) => handleChange('saleDate', e.target.value)}
-                    aria-label="수주·판매일"
-                  />
-                </div>
-              </div>
+              <div className="opp-modal-form-layout">
+                <div className="opp-modal-form-main">
               {/* 고객사 / 담당자 2열 — 라벨·줄 높이 동일 */}
               <div className="opp-form-grid-2 opp-form-grid-2--company-contact">
                 <div className="opp-label">
@@ -2333,7 +2346,7 @@ export default function OpportunityModal({
                 </div>
                 <div className="opp-label">
                   <div className="opp-label-top opp-label-top--with-personal-btn">
-                    <span>담당자</span>
+                    <span>구매 담당자</span>
                     <label className="opp-personal-purchase-check">
                       <span className="opp-personal-purchase-check-text">개인구매</span>
                       <input
@@ -2360,18 +2373,41 @@ export default function OpportunityModal({
                 </div>
               </div>
 
-              <div className="opp-label">
-                <span>기회 담당 (사내)</span>
-                <div className="opp-company-wrap">
-                  <span className="opp-company-display">{form.assignedToName || '담당자 선택'}</span>
-                  <button
-                    type="button"
-                    className="opp-company-search-btn"
-                    onClick={() => setShowInternalAssigneePicker(true)}
-                  >
-                    <span className="material-symbols-outlined">search</span>
-                    선택
-                  </button>
+              <div className="opp-form-grid-2 opp-form-grid-2--assignee-currency">
+                <div className="opp-label">
+                  <span>사내 영업 담당</span>
+                  <div className="opp-company-wrap">
+                    <span className="opp-company-display">{form.assignedToName || '담당자 선택'}</span>
+                    {(form.assignedToUserId || '').trim() ? (
+                      <button
+                        type="button"
+                        className="opp-internal-assignee-clear"
+                        onClick={() => setForm((f) => ({ ...f, assignedToUserId: '', assignedToName: '' }))}
+                        aria-label="사내 영업 담당 지우기"
+                        title="담당 해제 후 다시 선택"
+                      >
+                        <span className="material-symbols-outlined" aria-hidden>
+                          close
+                        </span>
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="opp-company-search-btn"
+                      onClick={() => setShowInternalAssigneePicker(true)}
+                    >
+                      <span className="material-symbols-outlined">search</span>
+                      선택
+                    </button>
+                  </div>
+                </div>
+                <div className="opp-label">
+                  <span>통화</span>
+                  <select className="opp-select" value={form.currency} onChange={(e) => handleChange('currency', e.target.value)}>
+                    {CURRENCY_OPTIONS.map((c) => (
+                      <option key={c.value} value={c.value}>{c.label}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -2392,15 +2428,6 @@ export default function OpportunityModal({
                     제품 추가
                   </button>
                 </div>
-              </div>
-
-              <div className="opp-label">
-                <span>통화</span>
-                <select className="opp-select" value={form.currency} onChange={(e) => handleChange('currency', e.target.value)}>
-                  {CURRENCY_OPTIONS.map((c) => (
-                    <option key={c.value} value={c.value}>{c.label}</option>
-                  ))}
-                </select>
               </div>
 
               {lineItems.length > 0 && Object.keys(productById).length > 0 ? (
@@ -2641,212 +2668,89 @@ export default function OpportunityModal({
                 </section>
               ))}
 
-              {/* 계산 요약: 제품별 + 전체(2건 이상) */}
-              <div className="opp-summary-box">
-                {lineItems.map((line) => (
-                  <div key={line.lineId} className="opp-summary-per-line">
-                    <div className="opp-summary-per-line-title">{line.productName || '제품'}</div>
-                    <div className="opp-summary-item">
-                      <span className="opp-summary-label">차감 금액</span>
-                      <span className="opp-summary-value">- {formatCurrencyDisplay(computeLineDeduction(line), form.currency)}</span>
-                    </div>
-                    <div className="opp-summary-item opp-summary-item--end opp-summary-item--final-stack">
-                      <span className="opp-summary-label">최종 금액</span>
-                      <span className="opp-summary-value">{formatCurrencyDisplay(computeLineFinalAmount(line), form.currency)}</span>
-                      {line.productId && productById[line.productId] ? (
-                        <div className="opp-summary-net-margin" aria-label="순마진">
-                          <span className="opp-summary-net-margin-label">순마진</span>
-                          <span className="opp-summary-net-margin-value">
-                            {computeLineNetMargin(line) != null ? formatCurrencyDisplay(computeLineNetMargin(line), form.currency) : '—'}
-                          </span>
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                ))}
-                {lineItems.length > 1 ? (
-                  <>
-                    <div className="opp-summary-divider" aria-hidden />
-                    <div className="opp-summary-total-block">
-                      <div className="opp-summary-item opp-summary-item--row-between opp-summary-total-deduction">
-                        <span className="opp-summary-label">전체 차감 금액</span>
-                        <span className="opp-summary-value">- {formatCurrencyDisplay(computeTotalDeduction(), form.currency)}</span>
+              {/* 계산 요약: 제품별 + 전체(2건 이상) — 제품 행이 있을 때만 표시(빈 테두리 방지) */}
+              {lineItems.length > 0 ? (
+                <div className="opp-summary-box">
+                  {lineItems.map((line) => (
+                    <div key={line.lineId} className="opp-summary-per-line">
+                      <div className="opp-summary-per-line-title">{line.productName || '제품'}</div>
+                      <div className="opp-summary-item">
+                        <span className="opp-summary-label">차감 금액</span>
+                        <span className="opp-summary-value">- {formatCurrencyDisplay(computeLineDeduction(line), form.currency)}</span>
                       </div>
-                      <div className="opp-summary-grand-final" aria-label="전체 최종 금액">
-                        <span className="opp-summary-grand-final-label">전체 최종 금액</span>
-                        <span className="opp-summary-grand-final-value">
-                          {formatCurrencyDisplay(computeTotalFinalAmount(), form.currency)}
-                        </span>
-                      </div>
-                      <div className="opp-summary-total-net" aria-label="마진 합계">
-                        <span className="opp-summary-total-net-label">마진 합계</span>
-                        <span className="opp-summary-total-net-value">
-                          {netMarginAmount != null ? formatCurrencyDisplay(netMarginAmount, form.currency) : '—'}
-                        </span>
-                      </div>
-                      {forecastExpectedRevenue != null ? (
-                        <div
-                          className="opp-summary-forecast-expected"
-                          aria-label="Forecast 예상 매출"
-                          title={`전체 최종 금액 × 단계 Forecast (${forecastPctForStage}%)`}
-                        >
-                          <div className="opp-summary-forecast-expected-text">
-                            <span className="opp-summary-forecast-expected-label">Forecast 예상 매출</span>
-                            <span className="opp-summary-forecast-expected-meta">
-                              {forecastStageLabel} · {forecastPctForStage}%
+                      <div className="opp-summary-item opp-summary-item--end opp-summary-item--final-stack">
+                        <span className="opp-summary-label">최종 금액</span>
+                        <span className="opp-summary-value">{formatCurrencyDisplay(computeLineFinalAmount(line), form.currency)}</span>
+                        {line.productId && productById[line.productId] ? (
+                          <div className="opp-summary-net-margin" aria-label="순마진">
+                            <span className="opp-summary-net-margin-label">순마진</span>
+                            <span className="opp-summary-net-margin-value">
+                              {computeLineNetMargin(line) != null ? formatCurrencyDisplay(computeLineNetMargin(line), form.currency) : '—'}
                             </span>
                           </div>
-                          <span className="opp-summary-forecast-expected-value">
-                            {formatCurrencyDisplay(forecastExpectedRevenue, form.currency)}
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                  {lineItems.length > 1 ? (
+                    <>
+                      <div className="opp-summary-divider" aria-hidden />
+                      <div className="opp-summary-total-block">
+                        <div className="opp-summary-item opp-summary-item--row-between opp-summary-total-deduction">
+                          <span className="opp-summary-label">전체 차감 금액</span>
+                          <span className="opp-summary-value">- {formatCurrencyDisplay(computeTotalDeduction(), form.currency)}</span>
+                        </div>
+                        <div className="opp-summary-grand-final" aria-label="전체 최종 금액">
+                          <span className="opp-summary-grand-final-label">전체 최종 금액</span>
+                          <span className="opp-summary-grand-final-value">
+                            {formatCurrencyDisplay(computeTotalFinalAmount(), form.currency)}
                           </span>
                         </div>
-                      ) : null}
-                    </div>
-                  </>
-                ) : null}
-                {lineItems.length === 1 && forecastExpectedRevenue != null ? (
-                  <div
-                    className="opp-summary-forecast-expected opp-summary-forecast-expected--single"
-                    aria-label="Forecast 예상 매출"
-                    title={`전체 최종 금액 × 단계 Forecast (${forecastPctForStage}%)`}
-                  >
-                    <div className="opp-summary-forecast-expected-text">
-                      <span className="opp-summary-forecast-expected-label">Forecast 예상 매출</span>
-                      <span className="opp-summary-forecast-expected-meta">
-                        {forecastStageLabel} · {forecastPctForStage}%
+                        <div className="opp-summary-total-net" aria-label="마진 합계">
+                          <span className="opp-summary-total-net-label">마진 합계</span>
+                          <span className="opp-summary-total-net-value">
+                            {netMarginAmount != null ? formatCurrencyDisplay(netMarginAmount, form.currency) : '—'}
+                          </span>
+                        </div>
+                        {forecastExpectedRevenue != null ? (
+                          <div
+                            className="opp-summary-forecast-expected"
+                            aria-label="Forecast 예상 매출"
+                            title={`전체 최종 금액 × 단계 Forecast (${forecastPctForStage}%)`}
+                          >
+                            <div className="opp-summary-forecast-expected-text">
+                              <span className="opp-summary-forecast-expected-label">Forecast 예상 매출</span>
+                              <span className="opp-summary-forecast-expected-meta">
+                                {forecastStageLabel} · {forecastPctForStage}%
+                              </span>
+                            </div>
+                            <span className="opp-summary-forecast-expected-value">
+                              {formatCurrencyDisplay(forecastExpectedRevenue, form.currency)}
+                            </span>
+                          </div>
+                        ) : null}
+                      </div>
+                    </>
+                  ) : null}
+                  {lineItems.length === 1 && forecastExpectedRevenue != null ? (
+                    <div
+                      className="opp-summary-forecast-expected opp-summary-forecast-expected--single"
+                      aria-label="Forecast 예상 매출"
+                      title={`전체 최종 금액 × 단계 Forecast (${forecastPctForStage}%)`}
+                    >
+                      <div className="opp-summary-forecast-expected-text">
+                        <span className="opp-summary-forecast-expected-label">Forecast 예상 매출</span>
+                        <span className="opp-summary-forecast-expected-meta">
+                          {forecastStageLabel} · {forecastPctForStage}%
+                        </span>
+                      </div>
+                      <span className="opp-summary-forecast-expected-value">
+                        {formatCurrencyDisplay(forecastExpectedRevenue, form.currency)}
                       </span>
                     </div>
-                    <span className="opp-summary-forecast-expected-value">
-                      {formatCurrencyDisplay(forecastExpectedRevenue, form.currency)}
-                    </span>
-                  </div>
-                ) : null}
-              </div>
-
-              {/* 설명 */}
-              <label className="opp-label">
-                <span>설명</span>
-                <textarea
-                  className="opp-textarea"
-                  value={form.description}
-                  onChange={(e) => handleChange('description', e.target.value)}
-                  placeholder="거래에 대한 추가 상세 내용을 입력하세요."
-                  rows={3}
-                />
-              </label>
-
-              
-
-              <section className="opp-finance-section">
-                <div className="opp-finance-heading">계약·계산서·수금 관리</div>
-                <div className="opp-finance-cards">
-                  <div className="opp-finance-card">
-                    <div className="opp-finance-card-title">계약금액</div>
-                    <div className="opp-finance-grid">
-                      <label className="opp-label">
-                        <span>금액</span>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          pattern="[0-9,]*"
-                          className="opp-input"
-                          placeholder="숫자만 입력"
-                          value={form.contractAmount}
-                          onChange={(e) => handleChange('contractAmount', formatNumberInput(e.target.value))}
-                        />
-                      </label>
-                      <label className="opp-label">
-                        <span>날짜</span>
-                        <input
-                          type="date"
-                          className="opp-input opp-input--date"
-                          value={form.contractAmountDate}
-                          onChange={(e) => handleChange('contractAmountDate', e.target.value)}
-                        />
-                      </label>
-                    </div>
-                  </div>
-
-                  <div className="opp-finance-card">
-                    <div className="opp-finance-card-title">계산서 금액</div>
-                    <div className="opp-finance-grid">
-                      <label className="opp-label">
-                        <span>금액</span>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          pattern="[0-9,]*"
-                          className="opp-input"
-                          placeholder="숫자만 입력"
-                          value={form.invoiceAmount}
-                          onChange={(e) => handleChange('invoiceAmount', formatNumberInput(e.target.value))}
-                        />
-                      </label>
-                      <label className="opp-label">
-                        <span>날짜</span>
-                        <input
-                          type="date"
-                          className="opp-input opp-input--date"
-                          value={form.invoiceAmountDate}
-                          onChange={(e) => handleChange('invoiceAmountDate', e.target.value)}
-                        />
-                      </label>
-                    </div>
-                  </div>
-
-                  <div className="opp-finance-card">
-                    <div className="opp-finance-collection-head">
-                      <span className="opp-finance-subheading">수금 완료금액 (누적)</span>
-                      <button
-                        type="button"
-                        className="opp-btn-light opp-btn-icon"
-                        onClick={addCollectionEntry}
-                        aria-label="수금 항목 추가"
-                        title="수금 항목 추가"
-                      >
-                        <span className="material-symbols-outlined" aria-hidden="true">add</span>
-                      </button>
-                    </div>
-                    <div className="opp-finance-collection-list">
-                      {collectionEntries.map((entry, index) => (
-                        <div key={entry.id} className="opp-finance-collection-row">
-                          <label className="opp-label">
-                            <span>{`수금 ${index + 1} 금액`}</span>
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              pattern="[0-9,]*"
-                              className="opp-input"
-                              placeholder="숫자만 입력"
-                              value={entry.amount}
-                              onChange={(e) => handleCollectionAmountChange(entry.id, e.target.value)}
-                            />
-                          </label>
-                          <label className="opp-label">
-                            <span>{`수금 ${index + 1} 날짜`}</span>
-                            <input
-                              type="date"
-                              className="opp-input opp-input--date"
-                              value={entry.date}
-                              onChange={(e) => handleCollectionDateChange(entry.id, e.target.value)}
-                            />
-                          </label>
-                          <button
-                            type="button"
-                            className="opp-btn-light opp-btn-light--danger opp-btn-icon"
-                            onClick={() => removeCollectionEntry(entry.id)}
-                            disabled={collectionEntries.length <= 1}
-                            aria-label={`수금 ${index + 1} 항목 삭제`}
-                            title="수금 항목 삭제"
-                          >
-                            <span className="material-symbols-outlined" aria-hidden="true">delete</span>
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  ) : null}
                 </div>
-              </section>
+              ) : null}
 
               {/* 증서 · 자료 — 저장된 기회(수정)에서만. Drive 테이블은 shared/register-sale-docs-drive.js */}
               {isEdit ? (
@@ -3079,6 +2983,150 @@ export default function OpportunityModal({
               ) : null}
 
               {error && <p className="opp-error">{error}</p>}
+                </div>
+                <aside className="opp-modal-form-finance" aria-label="기회 일정 및 계약·계산서·수금">
+                  <div className="opp-form-dates-top opp-form-dates-top--sidebar" aria-label="기회 일정">
+                    <div className="opp-form-dates-top-field">
+                      <span className="opp-form-dates-top-label">시작일</span>
+                      <input
+                        type="date"
+                        className="opp-input opp-input--date"
+                        value={form.startDate}
+                        onChange={(e) => handleChange('startDate', e.target.value)}
+                      />
+                    </div>
+                    <div className="opp-form-dates-top-field">
+                      <span className="opp-form-dates-top-label">구매 예정 날짜</span>
+                      <input
+                        type="date"
+                        className="opp-input opp-input--date"
+                        value={form.targetDate}
+                        onChange={(e) => handleChange('targetDate', e.target.value)}
+                      />
+                    </div>
+                    <div className="opp-form-dates-top-field">
+                      <span className="opp-form-dates-top-label">수주·판매일</span>
+                      <input
+                        type="date"
+                        className="opp-input opp-input--date"
+                        value={form.saleDate}
+                        onChange={(e) => handleChange('saleDate', e.target.value)}
+                        aria-label="수주·판매일"
+                      />
+                    </div>
+                  </div>
+                  <section className="opp-finance-section">
+                    <div className="opp-finance-heading">계약·계산서·수금 관리</div>
+                    <div className="opp-finance-cards">
+                      <div className="opp-finance-card">
+                        <div className="opp-finance-card-title">계약금액</div>
+                        <div className="opp-finance-grid">
+                          <label className="opp-label">
+                            <span>금액</span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9,]*"
+                              className="opp-input"
+                              placeholder="숫자만 입력"
+                              value={form.contractAmount}
+                              onChange={(e) => handleChange('contractAmount', formatNumberInput(e.target.value))}
+                            />
+                          </label>
+                          <label className="opp-label">
+                            <span>날짜</span>
+                            <input
+                              type="date"
+                              className="opp-input opp-input--date"
+                              value={form.contractAmountDate}
+                              onChange={(e) => handleChange('contractAmountDate', e.target.value)}
+                            />
+                          </label>
+                        </div>
+                      </div>
+
+                      <div className="opp-finance-card">
+                        <div className="opp-finance-card-title">계산서 금액</div>
+                        <div className="opp-finance-grid">
+                          <label className="opp-label">
+                            <span>금액</span>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9,]*"
+                              className="opp-input"
+                              placeholder="숫자만 입력"
+                              value={form.invoiceAmount}
+                              onChange={(e) => handleChange('invoiceAmount', formatNumberInput(e.target.value))}
+                            />
+                          </label>
+                          <label className="opp-label">
+                            <span>날짜</span>
+                            <input
+                              type="date"
+                              className="opp-input opp-input--date"
+                              value={form.invoiceAmountDate}
+                              onChange={(e) => handleChange('invoiceAmountDate', e.target.value)}
+                            />
+                          </label>
+                        </div>
+                      </div>
+
+                      <div className="opp-finance-card">
+                        <div className="opp-finance-collection-head">
+                          <span className="opp-finance-subheading">수금 완료금액 (누적)</span>
+                          <button
+                            type="button"
+                            className="opp-btn-light opp-btn-icon"
+                            onClick={addCollectionEntry}
+                            aria-label="수금 항목 추가"
+                            title="수금 항목 추가"
+                          >
+                            <span className="material-symbols-outlined" aria-hidden="true">add</span>
+                          </button>
+                        </div>
+                        <div className="opp-finance-collection-list">
+                          {collectionEntries.map((entry, index) => (
+                            <div key={entry.id} className="opp-finance-collection-row">
+                              <label className="opp-label">
+                                <span>{`수금 ${index + 1} 금액`}</span>
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  pattern="[0-9,]*"
+                                  className="opp-input"
+                                  placeholder="숫자만 입력"
+                                  value={entry.amount}
+                                  onChange={(e) => handleCollectionAmountChange(entry.id, e.target.value)}
+                                />
+                              </label>
+                              <label className="opp-label">
+                                <span>{`수금 ${index + 1} 날짜`}</span>
+                                <input
+                                  type="date"
+                                  className="opp-input opp-input--date"
+                                  value={entry.date}
+                                  onChange={(e) => handleCollectionDateChange(entry.id, e.target.value)}
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                className="opp-btn-light opp-btn-light--danger opp-btn-icon"
+                                onClick={() => removeCollectionEntry(entry.id)}
+                                disabled={collectionEntries.length <= 1}
+                                aria-label={`수금 ${index + 1} 항목 삭제`}
+                                title="수금 항목 삭제"
+                              >
+                                <span className="material-symbols-outlined" aria-hidden="true">delete</span>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                </aside>
+              </div>
             </form>
 
             <div className="opp-modal-footer">
@@ -3184,22 +3232,34 @@ export default function OpportunityModal({
             }}
           />
         )}
-        <AssigneePickerModal
-          open={showInternalAssigneePicker}
-          onClose={() => setShowInternalAssigneePicker(false)}
-          selectedIds={(form.assignedToUserId || '').trim() ? [String(form.assignedToUserId).trim()] : []}
-          onConfirm={(ids) => {
-            const raw = Array.isArray(ids) && ids.length ? ids[ids.length - 1] : '';
-            const id = raw != null ? String(raw).trim() : '';
-            const emp = companyEmployees.find((e) => e?.id != null && String(e.id) === id);
-            const nameFromList = emp?.name != null ? String(emp.name).trim() : '';
-            setForm((f) => ({
-              ...f,
-              assignedToUserId: id,
-              assignedToName: nameFromList || (id ? f.assignedToName : '')
-            }));
-          }}
-        />
+        {showInternalAssigneePicker ? (
+          <ParticipantModal
+            title="사내 영업 담당 선택"
+            bulkAddLabel="표시된 인원 모두 선택에 반영"
+            teamMembers={teamMembersForParticipantModal}
+            selected={internalAssigneeParticipantSelected}
+            currentUser={currentUserForParticipantModal}
+            onClose={() => setShowInternalAssigneePicker(false)}
+            onConfirm={(picked) => {
+              setShowInternalAssigneePicker(false);
+              if (!picked || picked.length === 0) {
+                setForm((f) => ({ ...f, assignedToUserId: '', assignedToName: '' }));
+                return;
+              }
+              const last = picked[picked.length - 1];
+              const id = String(last.userId || '').trim();
+              const namePick = String(last.name || '').trim();
+              const emp = companyEmployees.find((e) => e?.id != null && String(e.id) === id);
+              const nameFromList = emp?.name != null ? String(emp.name).trim() : '';
+              const name = namePick || nameFromList;
+              setForm((f) => ({
+                ...f,
+                assignedToUserId: id,
+                assignedToName: name || (id ? f.assignedToName : '')
+              }));
+            }}
+          />
+        ) : null}
       </div>
     </div>
   );

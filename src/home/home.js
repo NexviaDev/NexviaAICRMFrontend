@@ -3629,6 +3629,46 @@ export default function Home() {
                         <td>{formatCurrency(row.marginAmount, row.currency)}</td>
                       </tr>
                     ))}
+                    {(() => {
+                      const totals = forecastActiveRows.reduce(
+                        (acc, row) => {
+                          acc.unitPrice += Number(row?.unitPrice || 0);
+                          acc.quantity += Number(row?.quantity || 0);
+                          acc.finalPrice += Number(row?.finalPrice || 0);
+                          acc.forecast += Number(row?.forecastAmount || 0);
+                          acc.contract += Number(row?.contractAmount || 0);
+                          acc.invoice += Number(row?.invoiceAmount || 0);
+                          acc.collected += Number(row?.collectedAmount || 0);
+                          acc.margin += Number(row?.marginAmount || 0);
+                          return acc;
+                        },
+                        {
+                          unitPrice: 0,
+                          quantity: 0,
+                          finalPrice: 0,
+                          forecast: 0,
+                          contract: 0,
+                          invoice: 0,
+                          collected: 0,
+                          margin: 0
+                        }
+                      );
+                      const sumCurrency = String(forecastActiveRows[0]?.currency || 'KRW').toUpperCase();
+                      return (
+                        <tr className="home-forecast-total-row">
+                          <td colSpan={2}>합계</td>
+                          <td>{formatCurrency(totals.unitPrice, sumCurrency)}</td>
+                          <td>{Number(totals.quantity || 0).toLocaleString('ko-KR')}</td>
+                          <td>{formatCurrency(totals.finalPrice, sumCurrency)}</td>
+                          <td>{formatCurrency(totals.forecast, sumCurrency)}</td>
+                          <td>—</td>
+                          <td>{formatCurrency(totals.contract, sumCurrency)}</td>
+                          <td>{formatCurrency(totals.invoice, sumCurrency)}</td>
+                          <td>{formatCurrency(totals.collected, sumCurrency)}</td>
+                          <td>{formatCurrency(totals.margin, sumCurrency)}</td>
+                        </tr>
+                      );
+                    })()}
                   </tbody>
                 </table>
               </div>
@@ -3678,6 +3718,47 @@ export default function Home() {
                         <td>{formatCurrency(row.marginAmount, row.currency)}</td>
                       </tr>
                     ))}
+                    {(() => {
+                      const totals = forecastCompletedRows.reduce(
+                        (acc, row) => {
+                          acc.unitPrice += Number(row?.unitPrice || 0);
+                          acc.quantity += Number(row?.quantity || 0);
+                          acc.finalPrice += Number(row?.finalPrice || 0);
+                          acc.forecast += Number(row?.forecastAmount || 0);
+                          acc.contract += Number(row?.contractAmount || 0);
+                          acc.invoice += Number(row?.invoiceAmount || 0);
+                          acc.collected += Number(row?.collectedAmount || 0);
+                          acc.margin += Number(row?.marginAmount || 0);
+                          return acc;
+                        },
+                        {
+                          unitPrice: 0,
+                          quantity: 0,
+                          finalPrice: 0,
+                          forecast: 0,
+                          contract: 0,
+                          invoice: 0,
+                          collected: 0,
+                          margin: 0
+                        }
+                      );
+                      const sumCurrency = String(forecastCompletedRows[0]?.currency || 'KRW').toUpperCase();
+                      return (
+                        <tr className="home-forecast-total-row">
+                          <td colSpan={2}>합계</td>
+                          <td>{formatCurrency(totals.unitPrice, sumCurrency)}</td>
+                          <td>{Number(totals.quantity || 0).toLocaleString('ko-KR')}</td>
+                          <td>{formatCurrency(totals.finalPrice, sumCurrency)}</td>
+                          <td>—</td>
+                          <td>{formatCurrency(totals.forecast, sumCurrency)}</td>
+                          <td>—</td>
+                          <td>{formatCurrency(totals.contract, sumCurrency)}</td>
+                          <td>{formatCurrency(totals.invoice, sumCurrency)}</td>
+                          <td>{formatCurrency(totals.collected, sumCurrency)}</td>
+                          <td>{formatCurrency(totals.margin, sumCurrency)}</td>
+                        </tr>
+                      );
+                    })()}
                   </tbody>
                 </table>
               </div>

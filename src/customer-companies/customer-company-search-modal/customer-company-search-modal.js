@@ -3,6 +3,8 @@ import './customer-company-search-modal.css';
 
 import { API_BASE } from '@/config';
 
+const RECENT_LIST_LIMIT = 10;
+
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -23,9 +25,37 @@ function formatBusinessNumber(num) {
 export default function CustomerCompanySearchModal({ onClose, onSelect }) {
   const [search, setSearch] = useState('');
   const [items, setItems] = useState([]);
+  const [recentItems, setRecentItems] = useState([]);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState('');
+
+  const loadRecent = useCallback(async () => {
+    setError('');
+    setInitialLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: String(RECENT_LIST_LIMIT) });
+      const res = await fetch(`${API_BASE}/customer-companies?${params}`, { headers: getAuthHeader() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setRecentItems([]);
+        setError(data.error || '최근 고객사 목록을 불러올 수 없습니다.');
+        return;
+      }
+      const raw = Array.isArray(data.items) ? data.items : [];
+      setRecentItems(raw.slice(0, RECENT_LIST_LIMIT));
+    } catch (_) {
+      setRecentItems([]);
+      setError('서버에 연결할 수 없습니다.');
+    } finally {
+      setInitialLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadRecent();
+  }, [loadRecent]);
 
   const runSearch = useCallback(async () => {
     setError('');
@@ -66,6 +96,33 @@ export default function CustomerCompanySearchModal({ onClose, onSelect }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  const displayItems = searched ? items : recentItems;
+
+  const renderList = () => (
+    <ul className="cc-search-modal-list">
+      {displayItems.map((c) => (
+        <li
+          key={c._id}
+          className="cc-search-modal-item"
+          role="button"
+          tabIndex={0}
+          onClick={() => handleSelect(c)}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelect(c); } }}
+          aria-label={`${c.name || ''} 선택`}
+        >
+          <span className="material-symbols-outlined cc-search-modal-item-icon">business</span>
+          <div className="cc-search-modal-item-content">
+            <span className="cc-search-modal-item-name">{c.name || '—'}</span>
+            <span className="cc-search-modal-item-sub">
+              {[c.representativeName, formatBusinessNumber(c.businessNumber), c.address].filter(Boolean).join(' · ') || '—'}
+            </span>
+          </div>
+          <span className="material-symbols-outlined cc-search-modal-item-arrow">arrow_forward</span>
+        </li>
+      ))}
+    </ul>
+  );
+
   return (
     <div className="cc-search-modal-overlay">
       <div className="cc-search-modal" onClick={(e) => e.stopPropagation()}>
@@ -95,33 +152,21 @@ export default function CustomerCompanySearchModal({ onClose, onSelect }) {
         <div className="cc-search-modal-list-wrap">
           {loading ? (
             <p className="cc-search-modal-empty">검색 중...</p>
-          ) : !searched ? (
-            <p className="cc-search-modal-empty">검색어를 입력한 뒤 검색 버튼을 눌러 주세요.</p>
-          ) : items.length === 0 ? (
+          ) : initialLoading ? (
+            <p className="cc-search-modal-empty">목록 불러오는 중...</p>
+          ) : searched && items.length === 0 ? (
             <p className="cc-search-modal-empty">검색 조건에 맞는 고객사가 없습니다.</p>
+          ) : displayItems.length === 0 ? (
+            <p className="cc-search-modal-empty">등록된 고객사가 없습니다.</p>
           ) : (
-            <ul className="cc-search-modal-list">
-              {items.map((c) => (
-                <li
-                  key={c._id}
-                  className="cc-search-modal-item"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => handleSelect(c)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleSelect(c); } }}
-                  aria-label={`${c.name || ''} 선택`}
-                >
-                  <span className="material-symbols-outlined cc-search-modal-item-icon">business</span>
-                  <div className="cc-search-modal-item-content">
-                    <span className="cc-search-modal-item-name">{c.name || '—'}</span>
-                    <span className="cc-search-modal-item-sub">
-                      {[c.representativeName, formatBusinessNumber(c.businessNumber), c.address].filter(Boolean).join(' · ') || '—'}
-                    </span>
-                  </div>
-                  <span className="material-symbols-outlined cc-search-modal-item-arrow">arrow_forward</span>
-                </li>
-              ))}
-            </ul>
+            <>
+              {!searched ? (
+                <p className="cc-search-modal-recent-hint">
+                  등록일 기준 최근 {Math.min(RECENT_LIST_LIMIT, displayItems.length)}건입니다. 아래에서 선택하거나 검색하세요.
+                </p>
+              ) : null}
+              {renderList()}
+            </>
           )}
         </div>
       </div>

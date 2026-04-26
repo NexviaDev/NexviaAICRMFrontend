@@ -22,8 +22,9 @@
   background: var(--card, #fff);
   border-radius: 8px;
   width: 100%;
-  max-width: 672px;
-  max-height: 90vh;
+  /* 전체 화면 다음으로 큰 작업 영역 (여백만 두고 거의 꽉 참) */
+  max-width: min(1320px, calc(100vw - 40px));
+  max-height: 94vh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -52,7 +53,7 @@
 
 .opp-modal-title {
   margin: 0;
-  font-size: 1.25rem;
+  font-size: 1.5rem;
   font-weight: 700;
   color: var(--text, #1d283a);
 }
@@ -65,16 +66,16 @@
 
 .opp-modal-finance-mini {
   margin: 0;
-  font-size: 0.64rem;
+  font-size: 0.9rem;
   color: var(--text-muted, #64748b);
-  line-height: 1.25;
+  line-height: 1.35;
 }
 
 .opp-modal-finance-mini-note {
   margin: 0;
-  font-size: 0.6rem;
+  font-size: 0.8125rem;
   color: var(--text-muted, #94a3b8);
-  line-height: 1.25;
+  line-height: 1.35;
 }
 
 .opp-modal-sale-date-label {
@@ -140,13 +141,84 @@
 .opp-modal-form {
   flex: 1;
   overflow-y: auto;
-  padding: 24px;
+  padding: 18px 20px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 0;
   font-family: inherit;
   font-size: var(--opp-f-body);
   line-height: 1.45;
+  min-height: 0;
+}
+
+/* 본문 2열: 왼쪽 기회 폼 · 오른쪽 일정 + 계약·계산서·수금 */
+.opp-modal-form-layout {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 14px;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+.opp-modal-form-main {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.opp-modal-form-finance {
+  /* 오른쪽(일정·금융) 열을 넉넉히 — 대략 본문 대비 2:1 전후로 보이도록 */
+  flex: 0 0 clamp(280px, 42%, 520px);
+  max-width: 520px;
+  min-width: 260px;
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: min(92vh, 900px);
+  overflow-y: auto;
+  padding-left: 14px;
+  margin-left: 2px;
+  border-left: 1px solid var(--card-border, #d8e0ea);
+}
+
+.opp-modal-form-finance .opp-finance-section {
+  margin-top: 0;
+  margin-bottom: 0;
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  overflow-y: visible;
+}
+
+/* 오른쪽 열 상단: 기회 일정 — 항목마다 한 행(전체 너비), 테두리 없음 */
+.opp-form-dates-top--sidebar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.42rem;
+  margin: 0;
+  padding: 0.2rem 0 0.35rem;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.opp-form-dates-top--sidebar .opp-form-dates-top-field {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+  gap: 0.12rem;
+}
+
+.opp-form-dates-top--sidebar .opp-form-dates-top-label {
+  font-size: 0.65rem;
 }
 
 .opp-form-grid-2 {
@@ -158,6 +230,17 @@
 
 .opp-form-grid-2--company-contact .opp-label {
   height: 100%;
+}
+
+/* 사내 영업 담당 · 통화 — 동일 행 1:1 */
+.opp-form-grid-2--assignee-currency .opp-label {
+  min-width: 0;
+}
+
+.opp-form-grid-2--assignee-currency .opp-select {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .opp-label-top {
@@ -354,6 +437,31 @@
 
 .opp-company-search-btn .material-symbols-outlined {
   font-size: 1rem;
+}
+
+.opp-internal-assignee-clear {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted, #64748b);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.opp-internal-assignee-clear:hover {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.opp-internal-assignee-clear .material-symbols-outlined {
+  font-size: 1.125rem;
 }
 
 .opp-company-wrap--disabled {
@@ -1324,73 +1432,151 @@
   font-size: var(--opp-f-sm);
 }
 
+/* 계약·계산서·수금 — 구간 테두리 없이 간격만으로 구분 */
 .opp-finance-section {
   margin-top: 0.25rem;
   margin-bottom: 1rem;
-  padding: 0.85rem;
-  border: 1px solid var(--card-border, #e2e8f0);
-  border-radius: 10px;
-  background: var(--bg-light, #f8fafc);
+  padding: 0.25rem 0 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
 }
 
 .opp-finance-heading {
-  font-size: 0.86rem;
+  font-size: 0.72rem;
   font-weight: 700;
-  color: var(--text, #0f172a);
-  margin-bottom: 0.65rem;
+  color: var(--text-muted, #64748b);
+  margin-bottom: 0.38rem;
+  letter-spacing: -0.01em;
 }
 
 .opp-finance-cards {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 0.9rem;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.42rem;
 }
 
 .opp-finance-card {
-  border: 1px solid var(--card-border, #dbe3ef);
-  border-radius: 12px;
-  background: #fff;
-  padding: 0.65rem 0.7rem;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 0.15rem 0;
 }
 
 .opp-finance-card-title {
-  font-size: 0.9rem;
+  font-size: 0.65rem;
   font-weight: 700;
-  color: var(--text-muted, #475569);
-  margin-bottom: 0.45rem;
+  color: var(--text-muted, #64748b);
+  margin-bottom: 0.28rem;
 }
 
+/* 계약·계산서: 금액 | 날짜 한 행 */
 .opp-finance-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.5rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.45rem 0.5rem;
+  align-items: end;
+}
+
+.opp-finance-grid .opp-label {
+  width: 100%;
+  min-width: 0;
+  gap: 0.12rem;
+}
+
+.opp-finance-grid .opp-label > span {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--text-muted, #64748b);
 }
 
 .opp-finance-collection-head {
-  margin-top: 0.2rem;
+  margin-top: 0;
+  margin-bottom: 0.28rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
+  gap: 0.45rem;
 }
 
 .opp-finance-subheading {
-  font-size: 0.9rem;
+  font-size: 0.65rem;
   font-weight: 700;
   color: var(--text-muted, #64748b);
 }
 
 .opp-finance-collection-list {
-  margin-top: 0.35rem;
+  margin-top: 0;
   display: grid;
-  gap: 0.35rem;
+  gap: 0.42rem;
 }
 
+/* 수금 각 행: 금액 | 날짜 | 삭제 한 행 */
 .opp-finance-collection-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
-  gap: 0.5rem;
+  gap: 0.45rem 0.5rem;
+  padding: 0.2rem 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
   align-items: end;
+}
+
+.opp-finance-collection-row .opp-label {
+  width: 100%;
+  min-width: 0;
+  gap: 0.12rem;
+}
+
+.opp-finance-collection-row .opp-label > span {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--text-muted, #64748b);
+}
+
+.opp-finance-collection-row .opp-btn-light.opp-btn-icon {
+  justify-self: end;
+  align-self: end;
+  margin-top: 0;
+}
+
+@media (max-width: 900px) {
+  .opp-modal-form-layout {
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .opp-modal-form-finance {
+    position: static;
+    flex: none;
+    max-width: none;
+    width: 100%;
+    min-width: 0;
+    max-height: none;
+    overflow-y: visible;
+    order: 1;
+    padding-left: 0;
+    margin-left: 0;
+    border-left: none;
+    padding-top: 12px;
+    margin-top: 2px;
+    border-top: 1px solid var(--card-border, #d8e0ea);
+  }
+
+  .opp-modal-form-main {
+    order: 0;
+  }
+
+  .opp-modal-form-finance .opp-finance-section {
+    max-height: none;
+    overflow-y: visible;
+  }
+
+  /* 사이드바 일정은 세로 스택에서도 항목당 한 행 유지 */
+  .opp-form-dates-top--sidebar {
+    padding: 0.2rem 0 0.35rem;
+  }
 }
 
 .opp-btn-light {
