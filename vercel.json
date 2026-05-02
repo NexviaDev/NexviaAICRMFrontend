@@ -1,0 +1,23 @@
+{
+  "redirects": [
+    {
+      "source": "/login",
+      "has": [{ "type": "query", "key": "legal", "value": "privacy" }],
+      "destination": "/legal/privacy",
+      "permanent": true
+    },
+    {
+      "source": "/login",
+      "has": [{ "type": "query", "key": "legal", "value": "terms" }],
+      "destination": "/legal/terms",
+      "permanent": true
+    },
+    {
+      "source": "/login",
+      "has": [{ "type": "query", "key": "legal", "value": "google" }],
+      "destination": "/legal/google",
+      "permanent": true
+    }
+  ],
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}

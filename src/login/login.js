@@ -1,25 +1,17 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { API_BASE } from '@/config';
-import PrivacyPolicyModal from './legal-modals/PrivacyPolicyModal';
-import TermsOfServiceModal from './legal-modals/TermsOfServiceModal';
-import GoogleApiTermsModal from './legal-modals/GoogleApiTermsModal';
 import './login.css';
 
 /** Login.html — minimalist workspace header (same asset as sample design) */
 const LOGIN_HEADER_IMAGE =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCLAPf7mgJCRxfncK1ByeOSnIUgTscHJJ_Z1Y5pAV7m0W4RZPu_ZgMUSDbkm6_DV9ue4bcDlg-8a1qJ47_5rJ5YZY3jZVbV9We-00c_pNrPXrUwXipEXyps8PaKmB5SiY8KdeWaew9bAqtvP1FpRQmHWQXNZ7ILnGBLZMA_kDBVlkponveSuY61imHvxkdTZx9Y18VQhjso5Ehb6TJDCEyofsQyXDDSzbGbO_gAc_v51yiyiMwNGV9B-D89h_cr_wdQx2Gs7aLM_MA';
 
-/** 로그인 화면 법적 문서 모달 — URL: /login?legal=privacy | terms | google */
+/** 구 OAuth 콘솔·북마크용: /login?legal=* → /legal/* (공개 문서 전용 라우트) */
 const LEGAL_QUERY = 'legal';
 const LEGAL_VALUES = /** @type {const} */ (['privacy', 'terms', 'google']);
 
 const getGoogleAuthUrl = () => `${API_BASE}/auth/google`;
-
-function parseLegalModal(searchParams) {
-  const v = searchParams.get(LEGAL_QUERY);
-  return LEGAL_VALUES.includes(v) ? v : null;
-}
 
 const ECOSYSTEM_ICONS = [
   { icon: 'mail', title: 'Gmail Integration' },
@@ -32,33 +24,21 @@ const ECOSYSTEM_ICONS = [
 
 export default function Login() {
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const [error, setError] = useState('');
-
-  const legalModal = parseLegalModal(searchParams);
-
-  const setLegalQuery = useCallback(
-    (value) => {
-      const next = new URLSearchParams(searchParams);
-      if (value && LEGAL_VALUES.includes(value)) next.set(LEGAL_QUERY, value);
-      else next.delete(LEGAL_QUERY);
-      setSearchParams(next, { replace: true });
-    },
-    [searchParams, setSearchParams]
-  );
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [searchParams]);
 
   useEffect(() => {
-    if (!legalModal) return;
-    const onKey = (e) => {
-      if (e.key === 'Escape') setLegalQuery(null);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [legalModal, setLegalQuery]);
+    const token = searchParams.get('token');
+    if (token) return;
+    const v = searchParams.get(LEGAL_QUERY);
+    if (LEGAL_VALUES.includes(v)) {
+      navigate(`/legal/${v}`, { replace: true });
+    }
+  }, [navigate, searchParams]);
 
   useEffect(() => {
     const token = searchParams.get('token');
@@ -69,7 +49,7 @@ export default function Login() {
         navigate('/register?token=' + encodeURIComponent(token) + '&needsRegister=1', { replace: true });
         return;
       }
-      fetch(`${API_BASE}/auth/me`, { headers: { Authorization: 'Bearer ' + token } })
+      fetch(`${API_BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
         .then((res) => res.json())
         .then((data) => {
           if (data.user) {
@@ -153,13 +133,13 @@ export default function Login() {
 
         <footer className="login-footer">
           <div className="login-footer-links">
-            <Link to="/login?legal=privacy" replace className="login-footer-link">
+            <Link to="/legal/privacy" className="login-footer-link">
               Privacy Policy
             </Link>
-            <Link to="/login?legal=terms" replace className="login-footer-link">
+            <Link to="/legal/terms" className="login-footer-link">
               Terms of Service
             </Link>
-            <Link to="/login?legal=google" replace className="login-footer-link">
+            <Link to="/legal/google" className="login-footer-link">
               Security
             </Link>
           </div>
@@ -168,10 +148,6 @@ export default function Login() {
           </p>
         </footer>
       </main>
-
-      <PrivacyPolicyModal open={legalModal === 'privacy'} onClose={() => setLegalQuery(null)} />
-      <TermsOfServiceModal open={legalModal === 'terms'} onClose={() => setLegalQuery(null)} />
-      <GoogleApiTermsModal open={legalModal === 'google'} onClose={() => setLegalQuery(null)} />
     </div>
   );
 }
