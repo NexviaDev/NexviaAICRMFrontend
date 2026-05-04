@@ -1,4 +1,6 @@
 import './kpi-detail-modal.css';
+import { useCallback, useMemo, useState } from 'react';
+import KpiDetailNestedModal from './kpi-detail-nested-modal';
 
 /** 액수 입력: 숫자만 추출 */
 function amountDigitsOnly(raw) {
@@ -158,6 +160,490 @@ function isOtherPerformanceItem(item) {
   return item?.kind === 'otherPerformance' || String(item?.key || '').startsWith('other:');
 }
 
+function isCurrentUserDepartmentLeader(userId, departmentLeaderList) {
+  const uid = String(userId || '').trim();
+  if (!uid) return false;
+  const list = Array.isArray(departmentLeaderList) ? departmentLeaderList : [];
+  return list.some((row) => String(row?.userId || '').trim() === uid);
+}
+
+function kpiDetailLucidListTitle(item) {
+  if (isProjectKey(item)) return String(item.label || '').trim() || '프로젝트';
+  if (isDealLikeItem(item)) {
+    const c = companyHeadline(item.customerCompanyDisplay);
+    if (c && c !== '미연결') return c;
+  }
+  return String(item.label || '').trim() || '항목';
+}
+
+function kpiDetailLucidListMeta(item) {
+  if (isProjectKey(item)) {
+    const bits = [];
+    if (item.progress != null) bits.push(`${Math.max(0, Number(item.progress) || 0)}%`);
+    const n = participantsForProjectScoring(item.projectParticipants).length;
+    if (n) bits.push(`참여 ${n}`);
+    return bits.join(' · ');
+  }
+  return (
+    String(item.completedDateDisplay || '').trim()
+    || String(item.currentDisplay || '').trim()
+    || ''
+  );
+}
+
+function KpiDetailOtherPerfCard({ item, staffFilterUserId, onScoreChange, onDeleteOtherEntry }) {
+  const opFid = String(staffFilterUserId || '').trim();
+  const opAll = Array.isArray(item.otherParticipants) ? item.otherParticipants : [];
+  const opShown = opFid ? opAll.filter((p) => String(p.userId) === opFid) : opAll;
+  const names = opShown.map((p) => p.name).filter(Boolean).join(', ') || (opFid ? '—' : (item.assigneeDisplay || '—'));
+  const periodTxt = item.contactDisplay || item.completedDateDisplay || '—';
+  return (
+    <article className="kpi-detail-other-card">
+      <div className="kpi-detail-other-card-head">
+        <h3 className="kpi-detail-other-title">{item.label}</h3>
+        <button
+          type="button"
+          className="kpi-detail-other-delete"
+          onClick={() => onDeleteOtherEntry?.(item.key)}
+          aria-label="항목 삭제"
+        >
+          <span className="material-symbols-outlined">delete</span>
+        </button>
+      </div>
+      <p className="kpi-detail-other-amount">{item.currentDisplay}</p>
+      <dl className="kpi-detail-other-dl">
+        <div><dt>참여자</dt><dd>{names}</dd></div>
+        <div><dt>기간</dt><dd>{periodTxt}</dd></div>
+      </dl>
+      {item.detailLines?.length ? (
+        <div className="kpi-detail-other-note">
+          {item.detailLines.map((line, idx) => (
+            <p key={`${item.key}-ln-${idx}`}>{line}</p>
+          ))}
+        </div>
+      ) : null}
+      <label className="kpi-detail-lucid-score kpi-detail-other-score">
+        <span>체크리스트 점수</span>
+        <input
+          type="number"
+          min="0"
+          value={item.score}
+          onChange={(e) => onScoreChange?.(item.key, e.target.value)}
+        />
+      </label>
+    </article>
+  );
+}
+
+function rollupPointsForParticipant(item, userId) {
+  const uid = String(userId || '');
+  const row = (Array.isArray(item.participantScoresRollup) ? item.participantScoresRollup : []).find(
+    (x) => String(x.userId) === uid
+  );
+  if (!row) return null;
+  return Math.max(0, Math.floor(Number(row.score) || 0));
+}
+
+function KpiDetailLucidCard({
+  item,
+  staffFilterUserId,
+  canViewSensitiveTotals,
+  onScoreChange,
+  onChecklistItemPatch
+}) {
+  const dealLike = isDealLikeItem(item);
+  const plainLines = filterLegacyDetailLines(item.detailLines || []);
+  const oppOrDeal = isOpportunityOrDeal(item);
+  const showProductGrid = oppOrDeal && (item.productName || item.quantity > 0 || item.unitPriceLabel);
+  const companyName = companyHeadline(item.customerCompanyDisplay);
+  const isProjCard = isProjectKey(item);
+  const staffFid = String(staffFilterUserId || '').trim();
+  const isStaffFilteredProject = Boolean(staffFid) && isProjCard;
+  const allProjParts = isProjCard && Array.isArray(item.projectParticipants) ? item.projectParticipants : [];
+  const allForScore = isProjCard ? participantsForProjectScoring(allProjParts) : [];
+  const projParts = isStaffFilteredProject ? projectParticipantsInStaffScope(item, staffFid) : allForScore;
+  const subLine = isProjCard
+    ? null
+    : (item.businessNumberDisplay
+      ? { icon: 'numbers', text: `사업자등록번호 ${item.businessNumberDisplay}` }
+      : (item.label && companyName !== item.label ? { icon: 'sell', text: item.label } : null));
+
+  const showPeerRollup = isProjCard
+    && Array.isArray(item.participantScoresRollup)
+    && item.participantScoresRollup.length > 0;
+
+  return (
+    <article className="kpi-detail-lucid-card">
+    <div className="kpi-detail-lucid-card-pad">
+      {dealLike ? (
+        <>
+          <div className="kpi-detail-lucid-card-top">
+            <div className="kpi-detail-lucid-card-entity">
+              <h3 className="kpi-detail-lucid-company">{companyName}</h3>
+              {subLine ? (
+                <p className="kpi-detail-lucid-meta-line">
+                  <span className="material-symbols-outlined kpi-detail-lucid-meta-ic" aria-hidden>
+                    {subLine.icon}
+                  </span>
+                  {subLine.text}
+                </p>
+              ) : null}
+            </div>
+            <div className="kpi-detail-lucid-card-date">
+              <p className="kpi-detail-lucid-date-label">{item.dateLabelTitle || '거래 일자'}</p>
+              <p className="kpi-detail-lucid-date-value">{item.completedDateDisplay || '—'}</p>
+            </div>
+          </div>
+
+          {dealLike && !showProductGrid && String(item.key || '').startsWith('work:') ? (
+            <p className="kpi-detail-lucid-work-body">{item.label}</p>
+          ) : null}
+
+          {dealLike && !showProductGrid && isProjectKey(item) ? (
+            <p className="kpi-detail-lucid-work-body">
+              {item.label}
+              {item.progress != null ? ` · 진행률 ${Math.max(0, Number(item.progress) || 0)}%` : ''}
+            </p>
+          ) : null}
+
+          {isProjCard && projParts.length > 0 ? (
+            <div className="kpi-detail-lucid-project-roster" aria-label="프로젝트 참여자">
+              <p className="kpi-detail-lucid-project-roster-label">{isStaffFilteredProject ? '선택 직원' : '참여자'}</p>
+              <ul className="kpi-detail-lucid-project-roster-list">
+                {projParts.map((p) => {
+                  const nm = String(p.name || '').trim() || '사용자';
+                  const ms = String(p.mission || '').trim();
+                  return (
+                    <li key={`${item.key}-rost-${p.userId}`}>
+                      {ms ? `${nm} — ${ms}` : nm}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : null}
+
+          {showProductGrid ? (
+            <div className="kpi-detail-lucid-grid">
+              <div className="kpi-detail-lucid-cell">
+                <span className="kpi-detail-lucid-cell-label">제품명</span>
+                <span className="kpi-detail-lucid-cell-value">{item.productName || '—'}</span>
+              </div>
+              <div className="kpi-detail-lucid-cell">
+                <span className="kpi-detail-lucid-cell-label">수량</span>
+                <span className="kpi-detail-lucid-cell-value">
+                  {item.quantity > 0 ? `${item.quantity}개` : '—'}
+                </span>
+              </div>
+              <div className="kpi-detail-lucid-cell">
+                <span className="kpi-detail-lucid-cell-label">단가</span>
+                <span className="kpi-detail-lucid-cell-value">{item.unitPriceLabel || '—'}</span>
+              </div>
+              <div className="kpi-detail-lucid-cell kpi-detail-lucid-cell--total">
+                <span className="kpi-detail-lucid-cell-label">총 합계</span>
+                <span className="kpi-detail-lucid-cell-total">
+                  {canViewSensitiveTotals ? totalAmountDisplay(item) : '—'}
+                </span>
+              </div>
+            </div>
+          ) : null}
+          {showProductGrid && !canViewSensitiveTotals ? (
+            <p className="kpi-detail-lucid-total-guard" role="note">
+              «사내 현황»에 등록된 부서장만 총 합계 금액을 조회할 수 있습니다.
+            </p>
+          ) : null}
+
+          {!isStaffFilteredProject &&
+          ((item.assigneeDisplay && item.assigneeDisplay !== '-') ||
+          (item.contactDisplay && item.contactDisplay !== '-') ||
+          item.contactPhone ||
+          item.contactEmail) ? (
+            <div className="kpi-detail-lucid-extra">
+              {item.assigneeDisplay && item.assigneeDisplay !== '-' ? (
+                <span>담당 {item.assigneeDisplay}</span>
+              ) : null}
+              {item.contactDisplay && item.contactDisplay !== '-' ? (
+                <span>연락처·대상 {item.contactDisplay}</span>
+              ) : null}
+              {item.contactPhone ? <span>{item.contactPhone}</span> : null}
+              {item.contactEmail ? <span>{item.contactEmail}</span> : null}
+            </div>
+          ) : null}
+
+          <div className="kpi-detail-lucid-card-foot">
+            <div className="kpi-detail-lucid-controls kpi-detail-lucid-controls--stack">
+              {isProjCard &&
+              typeof onChecklistItemPatch === 'function' &&
+              (!isStaffFilteredProject || projParts.length >= 1) ? (
+                <>
+                  <div className="kpi-detail-lucid-project-score-block">
+                    {!isStaffFilteredProject && allForScore.length >= 2 ? (
+                    <label className="kpi-detail-lucid-inline-check">
+                      <input
+                        type="checkbox"
+                        checked={item.projectScoreMode === 'uniform_each'}
+                        onChange={(e) => {
+                          const n = Math.max(1, allForScore.length);
+                          const checked = e.target.checked;
+                          if (checked) {
+                            let rawUnit = Math.floor(Number(item.projectUniformUnit) || 0);
+                            let unit = rawUnit ? clampProjectScore15(rawUnit) : 0;
+                            if (!unit && item.projectScoreMode === 'individual' && Array.isArray(item.participantScores)) {
+                              const arr = item.participantScores
+                                .map((x) => safeLikertFromNumber(x.score))
+                                .filter((v) => v != null);
+                              const sum = arr.reduce((a, b) => a + b, 0);
+                              unit = arr.length ? clampProjectScore15(Math.round(sum / arr.length)) : 0;
+                            }
+                            if (!unit) {
+                              const avg = n > 0 ? Math.round(Math.max(0, Number(item.score) || 0) / n) : 0;
+                              unit = avg ? clampProjectScore15(avg) : 3;
+                            }
+                            onChecklistItemPatch(item.key, {
+                              projectScoreMode: 'uniform_each',
+                              projectUniformUnit: unit,
+                              participantScores: [],
+                              score: unit * n
+                            });
+                          } else {
+                            let rawU = Math.floor(Number(item.projectUniformUnit) || 0);
+                            let unit = rawU ? clampProjectScore15(rawU) : 0;
+                            if (!unit && n > 0) {
+                              const avg = Math.round(Math.max(0, Number(item.score) || 0) / n);
+                              unit = avg ? clampProjectScore15(avg) : 0;
+                            }
+                            if (!unit) unit = 3;
+                            const scores = allForScore.map((p) => {
+                              const hit = (item.participantScores || []).find(
+                                (x) => String(x.userId) === String(p.userId)
+                              );
+                              return {
+                                userId: String(p.userId),
+                                score: hit != null ? clampProjectScore15(hit.score) : unit
+                              };
+                            });
+                            const total = scores.reduce((s, r) => s + r.score, 0);
+                            onChecklistItemPatch(item.key, {
+                              projectScoreMode: 'individual',
+                              projectUniformUnit: 0,
+                              participantScores: scores,
+                              score: total
+                            });
+                          }
+                        }}
+                      />
+                      <span>참여자에게 동일 점수 부여</span>
+                    </label>
+                    ) : !isStaffFilteredProject && allForScore.length < 2 ? (
+                      <p className="kpi-detail-lucid-project-score-solo-hint">
+                        {allForScore.length === 0
+                          ? '등록된 참여자가 없어 프로젝트 단위(1~5)로만 평가합니다.'
+                          : '참여자 1명: 아래에서 1~5점으로 평가합니다.'}
+                      </p>
+                    ) : isStaffFilteredProject ? (
+                      <p className="kpi-detail-lucid-project-score-solo-hint">
+                        선택 직원만 표시합니다. «전체 직원»으로 바꾸면 모든 참여자의 점수를 함께 편집할 수 있습니다.
+                      </p>
+                    ) : null}
+                    <p className="kpi-detail-lucid-project-score-hint">
+                      {isStaffFilteredProject
+                        ? (item.projectScoreMode === 'individual'
+                          ? '이 직원 행만 수정합니다. 다른 참여자 점수는 유지되며, 저장 시 프로젝트 합계에 반영됩니다.'
+                          : '프로젝트 전체에 대한 체크리스트 점수입니다.')
+                        : (item.projectScoreMode === 'uniform_each'
+                          ? '합계 = (1인당 1~5점 × 참여자 수)입니다.'
+                          : item.projectScoreMode === 'individual'
+                            ? (showPeerRollup
+                              ? '개별 평가: 사내 직원이 참여자·임무를 보고 각자 1~5점을 부여합니다. 아래는 내가 입력한 점수이며, «사내 누적»은 동료가 부여한 점수까지 합산한 값입니다.'
+                              : '합계 = 참여자별 1~5점의 합입니다.')
+                            : '프로젝트당 1~5점 한 번만 합산됩니다. 동일 부여 시 인원수만큼 곱합니다.')}
+                    </p>
+                  </div>
+                  {allForScore.length >= 1 && item.projectScoreMode === 'individual' ? (
+                    <ul className="kpi-detail-lucid-participant-scores">
+                      {(isStaffFilteredProject ? projParts : allForScore).map((p) => {
+                        const row = (item.participantScores || []).find(
+                          (x) => String(x.userId) === String(p.userId)
+                        ) || { userId: p.userId, score: 0 };
+                        const picked = displayProjectScore15(row.score);
+                        const peerRoll = rollupPointsForParticipant(item, p.userId);
+                        return (
+                          <li key={`${item.key}-ps-${p.userId}`} className="kpi-detail-lucid-participant-score-row">
+                            <div className="kpi-detail-lucid-participant-score-head">
+                              <span className="kpi-detail-lucid-participant-name">
+                                {p.name || '사용자'}
+                                {String(p.mission || '').trim() ? ` · ${String(p.mission).trim()}` : ''}
+                              </span>
+                              {showPeerRollup && peerRoll != null ? (
+                                <span className="kpi-detail-lucid-participant-rollup">사내 누적 {peerRoll}점</span>
+                              ) : null}
+                            </div>
+                            <div
+                              className="kpi-detail-project-likert"
+                              role="radiogroup"
+                              aria-label={`${p.name || '참여자'} 평가`}
+                            >
+                              {PROJECT_SCORE_LIKERT.map(({ value: lv, label: lb }) => (
+                                <button
+                                  key={lv}
+                                  type="button"
+                                  role="radio"
+                                  aria-checked={picked === lv}
+                                  className={`kpi-detail-project-likert-btn ${picked === lv ? 'is-selected' : ''}`}
+                                  onClick={() => {
+                                    onChecklistItemPatch(
+                                      item.key,
+                                      patchParticipantScoreKeepingOthers(item, p.userId, lv)
+                                    );
+                                  }}
+                                >
+                                  <span className="kpi-detail-project-likert-num">{lv}</span>
+                                  <span className="kpi-detail-project-likert-text">{lb}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : (
+                    <div className="kpi-detail-project-flat-likert-wrap">
+                      <span className="kpi-detail-project-flat-likert-label">
+                        {item.projectScoreMode === 'flat'
+                          ? '프로젝트 통합 평가 (1~5)'
+                          : '참여자 1인당 평가 (1~5)'}
+                      </span>
+                      <div
+                        className="kpi-detail-project-likert kpi-detail-project-likert--compact"
+                        role="radiogroup"
+                        aria-label={item.projectScoreMode === 'flat' ? '프로젝트 통합 평가' : '참여자당 동일 평가'}
+                      >
+                        {(() => {
+                          const pickedFlat = item.projectScoreMode === 'flat'
+                            ? displayProjectScore15(item.score)
+                            : displayProjectScore15(item.projectUniformUnit);
+                          const nUniform = Math.max(1, allForScore.length || 1);
+                          return PROJECT_SCORE_LIKERT.map(({ value: lv, label: lb }) => (
+                            <button
+                              key={lv}
+                              type="button"
+                              role="radio"
+                              aria-checked={pickedFlat === lv}
+                              className={`kpi-detail-project-likert-btn ${pickedFlat === lv ? 'is-selected' : ''}`}
+                              onClick={() => {
+                                if (item.projectScoreMode === 'flat') {
+                                  onChecklistItemPatch(item.key, {
+                                    projectScoreMode: 'flat',
+                                    projectUniformUnit: 0,
+                                    participantScores: [],
+                                    score: lv
+                                  });
+                                } else {
+                                  onChecklistItemPatch(item.key, {
+                                    projectScoreMode: 'uniform_each',
+                                    projectUniformUnit: lv,
+                                    participantScores: [],
+                                    score: lv * nUniform
+                                  });
+                                }
+                              }}
+                            >
+                              <span className="kpi-detail-project-likert-num">{lv}</span>
+                              <span className="kpi-detail-project-likert-text">{lb}</span>
+                            </button>
+                          ));
+                        })()}
+                      </div>
+                    </div>
+                  )}
+                  <p className="kpi-detail-lucid-project-total-note" aria-live="polite">
+                    {isStaffFilteredProject && item.projectScoreMode === 'individual' && projParts.length === 1 ? (
+                      <>
+                        선택 직원 반영:{' '}
+                        <strong>
+                          {clampProjectScore15(
+                            Number(
+                              (item.participantScores || []).find(
+                                (x) => String(x.userId) === String(projParts[0]?.userId)
+                              )?.score
+                            ) || 0
+                          )}
+                        </strong>
+                        점 · 내 합계{' '}
+                        <strong>{Math.max(0, Math.floor(Number(item.score) || 0))}</strong>점
+                        {showPeerRollup && item.projectRollupScore != null ? (
+                          <> · 전 직원 누적 <strong>{Math.max(0, Math.floor(Number(item.projectRollupScore) || 0))}</strong>점</>
+                        ) : null}
+                      </>
+                    ) : (
+                      <>
+                        내가 부여한 합계: <strong>{Math.max(0, Math.floor(Number(item.score) || 0))}</strong>점
+                        {showPeerRollup && item.projectRollupScore != null ? (
+                          <> · 전 직원 누적 <strong>{Math.max(0, Math.floor(Number(item.projectRollupScore) || 0))}</strong>점</>
+                        ) : null}
+                      </>
+                    )}
+                  </p>
+                </>
+              ) : (
+                <label className="kpi-detail-lucid-score">
+                  <span>점수</span>
+                  <input
+                    type="number"
+                    min="0"
+                    value={item.score}
+                    onChange={(e) => onScoreChange?.(item.key, e.target.value)}
+                  />
+                </label>
+              )}
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="kpi-detail-lucid-card-top kpi-detail-lucid-card-top--simple">
+            <div>
+              <h3 className="kpi-detail-lucid-company">{item.label}</h3>
+              <p className="kpi-detail-lucid-meta-line">이전 {item.previousDisplay}</p>
+            </div>
+            <div className="kpi-detail-lucid-card-date">
+              <p className="kpi-detail-lucid-date-label">현재</p>
+              <p className="kpi-detail-lucid-date-value">{item.currentDisplay}</p>
+            </div>
+          </div>
+          {plainLines.length > 0 ? (
+            <div className="kpi-detail-lucid-plain">
+              {plainLines.map((line, idx) => (
+                <p key={`${item.key}-pl-${idx}`}>{line}</p>
+              ))}
+            </div>
+          ) : (
+            <div className="kpi-detail-lucid-plain">
+              <p>고객사 {companyHeadline(item.customerCompanyDisplay)}</p>
+              {item.assigneeDisplay ? <p>담당 {item.assigneeDisplay}</p> : null}
+              {item.contactDisplay ? <p>연락처/대상 {item.contactDisplay}</p> : null}
+            </div>
+          )}
+          <div className="kpi-detail-lucid-card-foot">
+            <div className="kpi-detail-lucid-controls">
+              <label className="kpi-detail-lucid-score">
+                <span>점수</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={item.score}
+                  onChange={(e) => onScoreChange?.(item.key, e.target.value)}
+                />
+              </label>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+    </article>
+  );
+}
+
 export default function KpiDetailModal({
   periodLabel,
   title = 'KPI 상세',
@@ -178,7 +664,9 @@ export default function KpiDetailModal({
   onDeleteOtherEntry,
   otherSubmitting = false,
   /** 개인별 + 특정 직원 선택 시에만 전달. 전체 직원이면 비움 → 참여자·직원별 점수 전체 UI */
-  staffFilterUserId = null
+  staffFilterUserId = null,
+  departmentLeaderList = [],
+  currentUserId = ''
 }) {
   const mgmtRef = String(periodLabel || 'KPI')
     .replace(/\s+/g, '-')
@@ -191,14 +679,61 @@ export default function KpiDetailModal({
     if (typeof onOtherFormChange !== 'function') return;
     onOtherFormChange((prev) => ({ ...(prev || {}), ...patch }));
   };
+  const canViewSensitiveTotals = useMemo(
+    () => isCurrentUserDepartmentLeader(currentUserId, departmentLeaderList),
+    [currentUserId, departmentLeaderList]
+  );
+
+  const { projectChecklistItems, restChecklistItems, otherPerfChecklistItems } = useMemo(() => {
+    const projects = [];
+    const rest = [];
+    const op = [];
+    for (const it of items) {
+      if (isOtherVariant && isOtherPerformanceItem(it)) {
+        op.push(it);
+        continue;
+      }
+      if (isProjectKey(it)) projects.push(it);
+      else rest.push(it);
+    }
+    return {
+      projectChecklistItems: projects,
+      restChecklistItems: rest,
+      otherPerfChecklistItems: op
+    };
+  }, [items, isOtherVariant]);
+
+  const [nestedDetail, setNestedDetail] = useState(null);
+  const nestedSurfaceItem = useMemo(() => {
+    if (!nestedDetail) return null;
+    const k = nestedDetail.item?.key;
+    if (k == null) return nestedDetail.item;
+    return items.find((it) => it.key === k) || nestedDetail.item;
+  }, [items, nestedDetail]);
+
+  const nestedTitle = useMemo(() => {
+    if (!nestedDetail || !nestedSurfaceItem) return '';
+    if (nestedDetail.type === 'other') {
+      return String(nestedSurfaceItem.label || '').trim() || '기타 성과';
+    }
+    return kpiDetailLucidListTitle(nestedSurfaceItem);
+  }, [nestedDetail, nestedSurfaceItem]);
+
+  /** 중첩 «확인»: 점수(체크리스트) 저장 성공 시 항목 상세만 닫고 부모 KPI 상세는 유지 */
+  const handleNestedSaveAndClose = useCallback(async () => {
+    if (typeof onSave !== 'function') return;
+    const ok = await Promise.resolve(onSave());
+    if (ok === true) setNestedDetail(null);
+  }, [onSave]);
 
   return (
-    <div className="kpi-detail-modal-overlay" role="presentation">
+    <div className={`kpi-detail-modal-overlay${saving ? ' is-saving' : ''}`} role="presentation">
       <div
-        className="kpi-detail-modal"
+        className={`kpi-detail-modal${saving ? ' is-saving' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby="kpi-detail-modal-title"
+        aria-busy={saving}
         onClick={(e) => e.stopPropagation()}
       >
         <header className="kpi-detail-modal-header">
@@ -206,7 +741,13 @@ export default function KpiDetailModal({
             <span className="kpi-detail-modal-title-bar" aria-hidden />
             <h1 id="kpi-detail-modal-title" className="kpi-detail-modal-title-text">{title}</h1>
           </div>
-          <button type="button" className="kpi-detail-modal-close" onClick={onClose} aria-label="상세 모달 닫기">
+          <button
+            type="button"
+            className="kpi-detail-modal-close"
+            onClick={onClose}
+            disabled={saving}
+            aria-label="상세 모달 닫기"
+          >
             <span className="material-symbols-outlined">close</span>
           </button>
         </header>
@@ -232,419 +773,101 @@ export default function KpiDetailModal({
           </div>
 
           <div className="kpi-detail-card-list">
-            {items.map((item) => {
-              if (isOtherVariant && isOtherPerformanceItem(item)) {
-                const opFid = String(staffFilterUserId || '').trim();
-                const opAll = Array.isArray(item.otherParticipants) ? item.otherParticipants : [];
-                const opShown = opFid ? opAll.filter((p) => String(p.userId) === opFid) : opAll;
-                const names = opShown.map((p) => p.name).filter(Boolean).join(', ') || (opFid ? '—' : (item.assigneeDisplay || '—'));
-                const periodTxt = item.contactDisplay || item.completedDateDisplay || '—';
-                return (
-                  <article key={item.key} className="kpi-detail-other-card">
-                    <div className="kpi-detail-other-card-head">
-                      <h3 className="kpi-detail-other-title">{item.label}</h3>
+            {otherPerfChecklistItems.length > 0 ? (
+              <section className="kpi-detail-section kpi-detail-section--list" aria-label="기타 성과">
+                <div className="kpi-detail-section-heading">
+                  <span className="material-symbols-outlined kpi-detail-section-heading-ic" aria-hidden>
+                    stars
+                  </span>
+                  <span className="kpi-detail-section-heading-title">기타 성과</span>
+                  <span className="kpi-detail-section-heading-count">{otherPerfChecklistItems.length}</span>
+                </div>
+                <ul className="kpi-detail-item-picker">
+                  {otherPerfChecklistItems.map((item) => (
+                    <li key={item.key}>
                       <button
                         type="button"
-                        className="kpi-detail-other-delete"
-                        onClick={() => onDeleteOtherEntry?.(item.key)}
-                        aria-label="항목 삭제"
+                        className="kpi-detail-item-picker-row"
+                        onClick={() => setNestedDetail({ type: 'other', item })}
                       >
-                        <span className="material-symbols-outlined">delete</span>
+                        <span className="kpi-detail-item-picker-title">
+                          {String(item.label || '').trim() || '기타 성과'}
+                        </span>
+                        <span className="kpi-detail-item-picker-meta">
+                          {String(item.currentDisplay || '').trim() || '—'}
+                        </span>
+                        <span className="material-symbols-outlined kpi-detail-item-picker-go" aria-hidden>
+                          chevron_right
+                        </span>
                       </button>
-                    </div>
-                    <p className="kpi-detail-other-amount">{item.currentDisplay}</p>
-                    <dl className="kpi-detail-other-dl">
-                      <div><dt>참여자</dt><dd>{names}</dd></div>
-                      <div><dt>기간</dt><dd>{periodTxt}</dd></div>
-                    </dl>
-                    {item.detailLines?.length ? (
-                      <div className="kpi-detail-other-note">
-                        {item.detailLines.map((line, idx) => (
-                          <p key={`${item.key}-ln-${idx}`}>{line}</p>
-                        ))}
-                      </div>
-                    ) : null}
-                    <label className="kpi-detail-lucid-score kpi-detail-other-score">
-                      <span>체크리스트 점수</span>
-                      <input
-                        type="number"
-                        min="0"
-                        value={item.score}
-                        onChange={(e) => onScoreChange?.(item.key, e.target.value)}
-                      />
-                    </label>
-                  </article>
-                );
-              }
-              const dealLike = isDealLikeItem(item);
-              const plainLines = filterLegacyDetailLines(item.detailLines || []);
-              const oppOrDeal = isOpportunityOrDeal(item);
-              const showProductGrid = oppOrDeal && (item.productName || item.quantity > 0 || item.unitPriceLabel);
-              const companyName = companyHeadline(item.customerCompanyDisplay);
-              const isProjCard = isProjectKey(item);
-              const staffFid = String(staffFilterUserId || '').trim();
-              const isStaffFilteredProject = Boolean(staffFid) && isProjCard;
-              const allProjParts = isProjCard && Array.isArray(item.projectParticipants) ? item.projectParticipants : [];
-              const allForScore = isProjCard ? participantsForProjectScoring(allProjParts) : [];
-              const projParts = isStaffFilteredProject ? projectParticipantsInStaffScope(item, staffFid) : allForScore;
-              const subLine = isProjCard
-                ? null
-                : (item.businessNumberDisplay
-                  ? { icon: 'numbers', text: `사업자등록번호 ${item.businessNumberDisplay}` }
-                  : (item.label && companyName !== item.label ? { icon: 'sell', text: item.label } : null));
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
 
-              return (
-                <article key={item.key} className="kpi-detail-lucid-card">
-                  <div className="kpi-detail-lucid-card-pad">
-                    {dealLike ? (
-                      <>
-                        <div className="kpi-detail-lucid-card-top">
-                          <div className="kpi-detail-lucid-card-entity">
-                            <h3 className="kpi-detail-lucid-company">{companyName}</h3>
-                            {subLine ? (
-                              <p className="kpi-detail-lucid-meta-line">
-                                <span className="material-symbols-outlined kpi-detail-lucid-meta-ic" aria-hidden>
-                                  {subLine.icon}
-                                </span>
-                                {subLine.text}
-                              </p>
-                            ) : null}
-                          </div>
-                          <div className="kpi-detail-lucid-card-date">
-                            <p className="kpi-detail-lucid-date-label">{item.dateLabelTitle || '거래 일자'}</p>
-                            <p className="kpi-detail-lucid-date-value">{item.completedDateDisplay || '—'}</p>
-                          </div>
-                        </div>
+            {projectChecklistItems.length > 0 ? (
+              <section className="kpi-detail-section kpi-detail-section--list" aria-label="프로젝트 목록">
+                <div className="kpi-detail-section-heading">
+                  <span className="material-symbols-outlined kpi-detail-section-heading-ic" aria-hidden>
+                    folder_special
+                  </span>
+                  <span className="kpi-detail-section-heading-title">프로젝트</span>
+                  <span className="kpi-detail-section-heading-count">{projectChecklistItems.length}</span>
+                </div>
+                <ul className="kpi-detail-item-picker">
+                  {projectChecklistItems.map((item) => (
+                    <li key={item.key}>
+                      <button
+                        type="button"
+                        className="kpi-detail-item-picker-row"
+                        onClick={() => setNestedDetail({ type: 'lucid', item })}
+                      >
+                        <span className="kpi-detail-item-picker-title">{kpiDetailLucidListTitle(item)}</span>
+                        <span className="kpi-detail-item-picker-meta">
+                          {kpiDetailLucidListMeta(item) || '—'}
+                        </span>
+                        <span className="material-symbols-outlined kpi-detail-item-picker-go" aria-hidden>
+                          chevron_right
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
 
-                        {dealLike && !showProductGrid && String(item.key || '').startsWith('work:') ? (
-                          <p className="kpi-detail-lucid-work-body">{item.label}</p>
-                        ) : null}
+            {restChecklistItems.length > 0 ? (
+              <section className="kpi-detail-section kpi-detail-section--list" aria-label="수주 업무 기타">
+                <div className="kpi-detail-section-heading">
+                  <span className="material-symbols-outlined kpi-detail-section-heading-ic" aria-hidden>
+                    contract
+                  </span>
+                  <span className="kpi-detail-section-heading-title">수주 · 업무 · 기타</span>
+                  <span className="kpi-detail-section-heading-count">{restChecklistItems.length}</span>
+                </div>
+                <ul className="kpi-detail-item-picker">
+                  {restChecklistItems.map((item) => (
+                    <li key={item.key}>
+                      <button
+                        type="button"
+                        className="kpi-detail-item-picker-row"
+                        onClick={() => setNestedDetail({ type: 'lucid', item })}
+                      >
+                        <span className="kpi-detail-item-picker-title">{kpiDetailLucidListTitle(item)}</span>
+                        <span className="kpi-detail-item-picker-meta">
+                          {kpiDetailLucidListMeta(item) || '—'}
+                        </span>
+                        <span className="material-symbols-outlined kpi-detail-item-picker-go" aria-hidden>
+                          chevron_right
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
 
-                        {dealLike && !showProductGrid && isProjectKey(item) ? (
-                          <p className="kpi-detail-lucid-work-body">
-                            {item.label}
-                            {item.progress != null ? ` · 진행률 ${Math.max(0, Number(item.progress) || 0)}%` : ''}
-                          </p>
-                        ) : null}
-
-                        {isProjCard && projParts.length > 0 ? (
-                          <div className="kpi-detail-lucid-project-roster" aria-label="프로젝트 참여자">
-                            <p className="kpi-detail-lucid-project-roster-label">{isStaffFilteredProject ? '선택 직원' : '참여자'}</p>
-                            <ul className="kpi-detail-lucid-project-roster-list">
-                              {projParts.map((p) => {
-                                const nm = String(p.name || '').trim() || '사용자';
-                                const ms = String(p.mission || '').trim();
-                                return (
-                                  <li key={`${item.key}-rost-${p.userId}`}>
-                                    {ms ? `${nm} — ${ms}` : nm}
-                                  </li>
-                                );
-                              })}
-                            </ul>
-                          </div>
-                        ) : null}
-
-                        {showProductGrid ? (
-                          <div className="kpi-detail-lucid-grid">
-                            <div className="kpi-detail-lucid-cell">
-                              <span className="kpi-detail-lucid-cell-label">제품명</span>
-                              <span className="kpi-detail-lucid-cell-value">{item.productName || '—'}</span>
-                            </div>
-                            <div className="kpi-detail-lucid-cell">
-                              <span className="kpi-detail-lucid-cell-label">수량</span>
-                              <span className="kpi-detail-lucid-cell-value">
-                                {item.quantity > 0 ? `${item.quantity}개` : '—'}
-                              </span>
-                            </div>
-                            <div className="kpi-detail-lucid-cell">
-                              <span className="kpi-detail-lucid-cell-label">단가</span>
-                              <span className="kpi-detail-lucid-cell-value">{item.unitPriceLabel || '—'}</span>
-                            </div>
-                            <div className="kpi-detail-lucid-cell kpi-detail-lucid-cell--total">
-                              <span className="kpi-detail-lucid-cell-label">총 합계</span>
-                              <span className="kpi-detail-lucid-cell-total">{totalAmountDisplay(item)}</span>
-                            </div>
-                          </div>
-                        ) : null}
-
-                        {!isStaffFilteredProject &&
-                        ((item.assigneeDisplay && item.assigneeDisplay !== '-') ||
-                        (item.contactDisplay && item.contactDisplay !== '-') ||
-                        item.contactPhone ||
-                        item.contactEmail) ? (
-                          <div className="kpi-detail-lucid-extra">
-                            {item.assigneeDisplay && item.assigneeDisplay !== '-' ? (
-                              <span>담당 {item.assigneeDisplay}</span>
-                            ) : null}
-                            {item.contactDisplay && item.contactDisplay !== '-' ? (
-                              <span>연락처·대상 {item.contactDisplay}</span>
-                            ) : null}
-                            {item.contactPhone ? <span>{item.contactPhone}</span> : null}
-                            {item.contactEmail ? <span>{item.contactEmail}</span> : null}
-                          </div>
-                        ) : null}
-
-                        <div className="kpi-detail-lucid-card-foot">
-                          <small className="kpi-detail-lucid-gap">{item.gapDisplay}</small>
-                          <div className="kpi-detail-lucid-controls kpi-detail-lucid-controls--stack">
-                            {isProjCard &&
-                            typeof onChecklistItemPatch === 'function' &&
-                            (!isStaffFilteredProject || projParts.length >= 1) ? (
-                              <>
-                                <div className="kpi-detail-lucid-project-score-block">
-                                  {!isStaffFilteredProject && allForScore.length >= 2 ? (
-                                  <label className="kpi-detail-lucid-inline-check">
-                                    <input
-                                      type="checkbox"
-                                      checked={item.projectScoreMode === 'uniform_each'}
-                                      onChange={(e) => {
-                                        const n = Math.max(1, allForScore.length);
-                                        const checked = e.target.checked;
-                                        if (checked) {
-                                          let rawUnit = Math.floor(Number(item.projectUniformUnit) || 0);
-                                          let unit = rawUnit ? clampProjectScore15(rawUnit) : 0;
-                                          if (!unit && item.projectScoreMode === 'individual' && Array.isArray(item.participantScores)) {
-                                            const arr = item.participantScores
-                                              .map((x) => safeLikertFromNumber(x.score))
-                                              .filter((v) => v != null);
-                                            const sum = arr.reduce((a, b) => a + b, 0);
-                                            unit = arr.length ? clampProjectScore15(Math.round(sum / arr.length)) : 0;
-                                          }
-                                          if (!unit) {
-                                            const avg = n > 0 ? Math.round(Math.max(0, Number(item.score) || 0) / n) : 0;
-                                            unit = avg ? clampProjectScore15(avg) : 3;
-                                          }
-                                          onChecklistItemPatch(item.key, {
-                                            projectScoreMode: 'uniform_each',
-                                            projectUniformUnit: unit,
-                                            participantScores: [],
-                                            score: unit * n
-                                          });
-                                        } else {
-                                          let rawU = Math.floor(Number(item.projectUniformUnit) || 0);
-                                          let unit = rawU ? clampProjectScore15(rawU) : 0;
-                                          if (!unit && n > 0) {
-                                            const avg = Math.round(Math.max(0, Number(item.score) || 0) / n);
-                                            unit = avg ? clampProjectScore15(avg) : 0;
-                                          }
-                                          if (!unit) unit = 3;
-                                          const scores = allForScore.map((p) => {
-                                            const hit = (item.participantScores || []).find(
-                                              (x) => String(x.userId) === String(p.userId)
-                                            );
-                                            return {
-                                              userId: String(p.userId),
-                                              score: hit != null ? clampProjectScore15(hit.score) : unit
-                                            };
-                                          });
-                                          const total = scores.reduce((s, r) => s + r.score, 0);
-                                          onChecklistItemPatch(item.key, {
-                                            projectScoreMode: 'individual',
-                                            projectUniformUnit: 0,
-                                            participantScores: scores,
-                                            score: total
-                                          });
-                                        }
-                                      }}
-                                    />
-                                    <span>참여자에게 동일 점수 부여</span>
-                                  </label>
-                                  ) : !isStaffFilteredProject && allForScore.length < 2 ? (
-                                    <p className="kpi-detail-lucid-project-score-solo-hint">
-                                      {allForScore.length === 0
-                                        ? '등록된 참여자가 없어 프로젝트 단위(1~5)로만 평가합니다.'
-                                        : '참여자 1명: 아래에서 1~5점으로 평가합니다.'}
-                                    </p>
-                                  ) : isStaffFilteredProject ? (
-                                    <p className="kpi-detail-lucid-project-score-solo-hint">
-                                      선택 직원만 표시합니다. «전체 직원»으로 바꾸면 모든 참여자의 점수를 함께 편집할 수 있습니다.
-                                    </p>
-                                  ) : null}
-                                  <p className="kpi-detail-lucid-project-score-hint">
-                                    {isStaffFilteredProject
-                                      ? (item.projectScoreMode === 'individual'
-                                        ? '이 직원 행만 수정합니다. 다른 참여자 점수는 유지되며, 저장 시 프로젝트 합계에 반영됩니다.'
-                                        : '프로젝트 전체에 대한 체크리스트 점수입니다.')
-                                      : (item.projectScoreMode === 'uniform_each'
-                                        ? '합계 = (1인당 1~5점 × 참여자 수)입니다.'
-                                        : item.projectScoreMode === 'individual'
-                                          ? '합계 = 참여자별 1~5점의 합입니다.'
-                                          : '프로젝트당 1~5점 한 번만 합산됩니다. 동일 부여 시 인원수만큼 곱합니다.')}
-                                  </p>
-                                </div>
-                                {allForScore.length >= 1 && item.projectScoreMode === 'individual' ? (
-                                  <ul className="kpi-detail-lucid-participant-scores">
-                                    {(isStaffFilteredProject ? projParts : allForScore).map((p) => {
-                                      const row = (item.participantScores || []).find(
-                                        (x) => String(x.userId) === String(p.userId)
-                                      ) || { userId: p.userId, score: 0 };
-                                      const picked = displayProjectScore15(row.score);
-                                      return (
-                                        <li key={`${item.key}-ps-${p.userId}`} className="kpi-detail-lucid-participant-score-row">
-                                          <span className="kpi-detail-lucid-participant-name">
-                                            {p.name || '사용자'}
-                                            {String(p.mission || '').trim() ? ` · ${String(p.mission).trim()}` : ''}
-                                          </span>
-                                          <div
-                                            className="kpi-detail-project-likert"
-                                            role="radiogroup"
-                                            aria-label={`${p.name || '참여자'} 평가`}
-                                          >
-                                            {PROJECT_SCORE_LIKERT.map(({ value: lv, label: lb }) => (
-                                              <button
-                                                key={lv}
-                                                type="button"
-                                                role="radio"
-                                                aria-checked={picked === lv}
-                                                className={`kpi-detail-project-likert-btn ${picked === lv ? 'is-selected' : ''}`}
-                                                onClick={() => {
-                                                  onChecklistItemPatch(
-                                                    item.key,
-                                                    patchParticipantScoreKeepingOthers(item, p.userId, lv)
-                                                  );
-                                                }}
-                                              >
-                                                <span className="kpi-detail-project-likert-num">{lv}</span>
-                                                <span className="kpi-detail-project-likert-text">{lb}</span>
-                                              </button>
-                                            ))}
-                                          </div>
-                                        </li>
-                                      );
-                                    })}
-                                  </ul>
-                                ) : (
-                                  <div className="kpi-detail-project-flat-likert-wrap">
-                                    <span className="kpi-detail-project-flat-likert-label">
-                                      {item.projectScoreMode === 'flat'
-                                        ? '프로젝트 통합 평가 (1~5)'
-                                        : '참여자 1인당 평가 (1~5)'}
-                                    </span>
-                                    <div
-                                      className="kpi-detail-project-likert kpi-detail-project-likert--compact"
-                                      role="radiogroup"
-                                      aria-label={item.projectScoreMode === 'flat' ? '프로젝트 통합 평가' : '참여자당 동일 평가'}
-                                    >
-                                      {(() => {
-                                        const pickedFlat = item.projectScoreMode === 'flat'
-                                          ? displayProjectScore15(item.score)
-                                          : displayProjectScore15(item.projectUniformUnit);
-                                        const nUniform = Math.max(1, allForScore.length || 1);
-                                        return PROJECT_SCORE_LIKERT.map(({ value: lv, label: lb }) => (
-                                          <button
-                                            key={lv}
-                                            type="button"
-                                            role="radio"
-                                            aria-checked={pickedFlat === lv}
-                                            className={`kpi-detail-project-likert-btn ${pickedFlat === lv ? 'is-selected' : ''}`}
-                                            onClick={() => {
-                                              if (item.projectScoreMode === 'flat') {
-                                                onChecklistItemPatch(item.key, {
-                                                  projectScoreMode: 'flat',
-                                                  projectUniformUnit: 0,
-                                                  participantScores: [],
-                                                  score: lv
-                                                });
-                                              } else {
-                                                onChecklistItemPatch(item.key, {
-                                                  projectScoreMode: 'uniform_each',
-                                                  projectUniformUnit: lv,
-                                                  participantScores: [],
-                                                  score: lv * nUniform
-                                                });
-                                              }
-                                            }}
-                                          >
-                                            <span className="kpi-detail-project-likert-num">{lv}</span>
-                                            <span className="kpi-detail-project-likert-text">{lb}</span>
-                                          </button>
-                                        ));
-                                      })()}
-                                    </div>
-                                  </div>
-                                )}
-                                <p className="kpi-detail-lucid-project-total-note" aria-live="polite">
-                                  {isStaffFilteredProject && item.projectScoreMode === 'individual' && projParts.length === 1 ? (
-                                    <>
-                                      선택 직원 반영:{' '}
-                                      <strong>
-                                        {clampProjectScore15(
-                                          Number(
-                                            (item.participantScores || []).find(
-                                              (x) => String(x.userId) === String(projParts[0]?.userId)
-                                            )?.score
-                                          ) || 0
-                                        )}
-                                      </strong>
-                                      점 · 프로젝트 합계{' '}
-                                      <strong>{Math.max(0, Math.floor(Number(item.score) || 0))}</strong>점
-                                    </>
-                                  ) : (
-                                    <>
-                                      합계 반영 점수: <strong>{Math.max(0, Math.floor(Number(item.score) || 0))}</strong>점
-                                    </>
-                                  )}
-                                </p>
-                              </>
-                            ) : (
-                              <label className="kpi-detail-lucid-score">
-                                <span>점수</span>
-                                <input
-                                  type="number"
-                                  min="0"
-                                  value={item.score}
-                                  onChange={(e) => onScoreChange?.(item.key, e.target.value)}
-                                />
-                              </label>
-                            )}
-                          </div>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="kpi-detail-lucid-card-top kpi-detail-lucid-card-top--simple">
-                          <div>
-                            <h3 className="kpi-detail-lucid-company">{item.label}</h3>
-                            <p className="kpi-detail-lucid-meta-line">이전 {item.previousDisplay}</p>
-                          </div>
-                          <div className="kpi-detail-lucid-card-date">
-                            <p className="kpi-detail-lucid-date-label">현재</p>
-                            <p className="kpi-detail-lucid-date-value">{item.currentDisplay}</p>
-                          </div>
-                        </div>
-                        {plainLines.length > 0 ? (
-                          <div className="kpi-detail-lucid-plain">
-                            {plainLines.map((line, idx) => (
-                              <p key={`${item.key}-pl-${idx}`}>{line}</p>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="kpi-detail-lucid-plain">
-                            <p>고객사 {companyHeadline(item.customerCompanyDisplay)}</p>
-                            {item.assigneeDisplay ? <p>담당 {item.assigneeDisplay}</p> : null}
-                            {item.contactDisplay ? <p>연락처/대상 {item.contactDisplay}</p> : null}
-                          </div>
-                        )}
-                        <div className="kpi-detail-lucid-card-foot">
-                          <small className="kpi-detail-lucid-gap">{item.gapDisplay}</small>
-                          <div className="kpi-detail-lucid-controls">
-                            <label className="kpi-detail-lucid-score">
-                              <span>점수</span>
-                              <input
-                                type="number"
-                                min="0"
-                                value={item.score}
-                                onChange={(e) => onScoreChange?.(item.key, e.target.value)}
-                              />
-                            </label>
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </article>
-              );
-            })}
             {loading ? <p className="kpi-detail-empty-cell">체크리스트를 불러오는 중입니다.</p> : null}
             {!loading && items.length === 0 && !isOtherVariant ? (
               <p className="kpi-detail-empty-cell">표시할 KPI 리스트가 없습니다.</p>
@@ -736,15 +959,45 @@ export default function KpiDetailModal({
             </p>
           </div>
           <div className="kpi-detail-modal-footer-actions">
-            <button type="button" className="kpi-detail-btn-ghost" onClick={onClose}>
+            <button type="button" className="kpi-detail-btn-ghost" onClick={onClose} disabled={saving}>
               닫기
             </button>
             <button type="button" className="kpi-detail-btn-primary" onClick={onSave} disabled={saving || loading}>
-              {saving ? '확인 중...' : '확인'}
+              {saving ? '저장 중…' : '확인'}
             </button>
           </div>
         </footer>
       </div>
+      {nestedDetail && nestedSurfaceItem ? (
+        <KpiDetailNestedModal
+          title={nestedTitle}
+          isOtherType={nestedDetail.type === 'other'}
+          onClose={() => setNestedDetail(null)}
+          onSave={handleNestedSaveAndClose}
+          saving={saving}
+          loading={loading}
+        >
+          {nestedDetail.type === 'other' ? (
+            <KpiDetailOtherPerfCard
+              item={nestedSurfaceItem}
+              staffFilterUserId={staffFilterUserId}
+              onScoreChange={onScoreChange}
+              onDeleteOtherEntry={(key) => {
+                onDeleteOtherEntry?.(key);
+                setNestedDetail(null);
+              }}
+            />
+          ) : (
+            <KpiDetailLucidCard
+              item={nestedSurfaceItem}
+              staffFilterUserId={staffFilterUserId}
+              canViewSensitiveTotals={canViewSensitiveTotals}
+              onScoreChange={onScoreChange}
+              onChecklistItemPatch={onChecklistItemPatch}
+            />
+          )}
+        </KpiDetailNestedModal>
+      ) : null}
     </div>
   );
 }

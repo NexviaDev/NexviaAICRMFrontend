@@ -13,10 +13,17 @@
   backdrop-filter: blur(6px);
 }
 
+/* 저장 중: 화면 전체(뒤 배경 포함) 동일하게 대기 커서 */
+.kpi-detail-modal-overlay.is-saving {
+  cursor: wait;
+}
+
 .kpi-detail-modal {
+  position: relative;
+  z-index: 0;
   width: 100%;
-  max-width: 56rem;
-  max-height: min(92vh, 58rem);
+  max-width: min(72rem, 96vw);
+  max-height: min(94vh, 64rem);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -78,6 +85,19 @@
 
 .kpi-detail-modal-close:hover {
   background: #dce4e8;
+}
+
+.kpi-detail-modal-close:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* 저장 중: 뒤 창(부모 카드) 전체를 앞 중첩과 같은 톤으로 — 푸터·메시지까지 포함 */
+.kpi-detail-modal.is-saving {
+  cursor: wait;
+  pointer-events: none;
+  opacity: 0.87;
 }
 
 .kpi-detail-modal-scroll {
@@ -354,7 +374,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 0.75rem;
   min-width: 0;
 }
@@ -781,6 +801,15 @@
   box-shadow: inset 0 0 0 1px rgba(44, 100, 133, 0.08);
 }
 
+.kpi-detail-lucid-participant-score-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  min-width: 0;
+}
+
 .kpi-detail-lucid-participant-name {
   font-size: 0.82rem;
   font-weight: 600;
@@ -789,6 +818,19 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
+}
+
+.kpi-detail-lucid-participant-rollup {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #5c4d42;
+  background: #fff5e8;
+  border: 1px solid rgba(230, 190, 140, 0.42);
+  padding: 0.2rem 0.45rem;
+  border-radius: 0.35rem;
+  line-height: 1.25;
 }
 
 .kpi-detail-lucid-participant-score-input {
@@ -911,6 +953,238 @@
   font-weight: 800;
 }
 
+/* 목록 구역 + 행 클릭 → 중첩 상세 */
+.kpi-detail-section {
+  border-radius: 0.75rem;
+  border: 1px solid rgba(172, 179, 183, 0.45);
+  background: #fafcfd;
+  overflow: hidden;
+}
+
+.kpi-detail-section--list {
+  margin-bottom: 0.25rem;
+}
+
+.kpi-detail-section-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 1rem;
+  background: #e8f0f5;
+  border-bottom: 1px solid rgba(172, 179, 183, 0.35);
+}
+
+.kpi-detail-section-heading-ic {
+  font-size: 1.25rem;
+  color: #2c6485;
+  flex-shrink: 0;
+}
+
+.kpi-detail-section-heading-title {
+  flex: 1;
+  min-width: 0;
+  font-family: 'Manrope', system-ui, sans-serif;
+  font-weight: 800;
+  font-size: 0.9375rem;
+  color: #2c3437;
+}
+
+.kpi-detail-section-heading-count {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #20567c;
+  background: #cde5ff;
+  border-radius: 999px;
+  padding: 0.12rem 0.5rem;
+  flex-shrink: 0;
+}
+
+.kpi-detail-item-picker {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.kpi-detail-item-picker li {
+  border-top: 1px solid rgba(172, 179, 183, 0.3);
+}
+
+.kpi-detail-item-picker li:first-child {
+  border-top: none;
+}
+
+.kpi-detail-item-picker-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.75rem 1rem;
+  border: none;
+  background: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  color: #2c3437;
+  transition: background 0.15s ease;
+}
+
+.kpi-detail-item-picker-row:hover {
+  background: #f0f6fa;
+}
+
+.kpi-detail-item-picker-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.kpi-detail-item-picker-meta {
+  flex-shrink: 0;
+  max-width: 42%;
+  font-size: 0.8125rem;
+  color: #596064;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kpi-detail-item-picker-go {
+  font-size: 1.25rem;
+  color: #9aa8b0;
+  flex-shrink: 0;
+}
+
+/* 부모 KPI 모달은 유지한 채 위에 항목 상세 */
+.kpi-detail-nested-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(11, 15, 16, 0.22);
+  backdrop-filter: blur(3px);
+}
+
+/* 저장 중: 뒤에 보이는 부모 창과 톤 맞춤(살짝 더 딤) + 동일 대기 커서 */
+.kpi-detail-nested-overlay.kpi-detail-nested-overlay--saving {
+  cursor: wait;
+  background: rgba(11, 15, 16, 0.34);
+  backdrop-filter: blur(4px);
+}
+
+.kpi-detail-nested-dialog {
+  width: 100%;
+  max-width: min(52rem, 94vw);
+  max-height: min(90vh, 56rem);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  background: #ffffff;
+  box-shadow: 0 28px 48px rgba(44, 100, 133, 0.12);
+}
+
+/* 저장 중: 앞 중첩 다이얼로그도 카드 전체 동일 톤(푸터 포함) */
+.kpi-detail-nested-dialog[aria-busy='true'] {
+  cursor: wait;
+  pointer-events: none;
+  opacity: 0.87;
+}
+
+.kpi-detail-nested-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  background: #f0f4f7;
+  flex-shrink: 0;
+}
+
+.kpi-detail-nested-title {
+  margin: 0;
+  font-family: 'Manrope', system-ui, sans-serif;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #2c3437;
+  line-height: 1.3;
+  min-width: 0;
+}
+
+.kpi-detail-nested-close {
+  border: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: #596064;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.kpi-detail-nested-close:hover {
+  background: #dce4e8;
+}
+
+.kpi-detail-nested-close:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.kpi-detail-nested-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem 1.25rem 1rem;
+  min-height: 0;
+}
+
+.kpi-detail-nested-footer {
+  flex-shrink: 0;
+  padding: 0.85rem 1.25rem 1.1rem;
+  border-top: 1px solid rgba(172, 179, 183, 0.35);
+  background: #fafcfd;
+}
+
+.kpi-detail-nested-footer-hint {
+  margin: 0 0 0.65rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: #596064;
+}
+
+.kpi-detail-nested-footer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}
+
+.kpi-detail-nested-scroll .kpi-detail-lucid-card,
+.kpi-detail-nested-scroll .kpi-detail-other-card {
+  box-shadow: none;
+}
+
+.kpi-detail-lucid-total-guard {
+  margin: 0.5rem 0 0;
+  font-size: 0.78rem;
+  color: #7c6a5c;
+  line-height: 1.45;
+  padding: 0.5rem 0.65rem;
+  border-radius: 0.5rem;
+  background: #fff5e8;
+  border: 1px solid rgba(230, 190, 140, 0.45);
+}
+
 @media (max-width: 768px) {
   .kpi-detail-modal-overlay {
     padding: 0.5rem;
@@ -956,5 +1230,20 @@
 
   .kpi-detail-modal-footer-actions {
     justify-content: flex-end;
+  }
+
+  .kpi-detail-item-picker-row {
+    flex-wrap: wrap;
+  }
+
+  .kpi-detail-item-picker-meta {
+    max-width: 100%;
+    width: 100%;
+    text-align: left;
+    padding-left: 0;
+  }
+
+  .kpi-detail-nested-dialog {
+    max-height: 90vh;
   }
 }

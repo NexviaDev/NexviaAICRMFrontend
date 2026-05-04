@@ -586,6 +586,24 @@ function reconcileParticipantScoresForProject(parts, scores) {
     .filter(Boolean);
 }
 
+/** 전 직원 누적 합산(정수 합, 1~5 상한 없음) — 표시 전용 */
+function reconcileParticipantRollupScoresForDisplay(parts, scores) {
+  const list = Array.isArray(parts) ? parts : [];
+  const byUser = new Map();
+  for (const s of Array.isArray(scores) ? scores : []) {
+    const uid = normalizeMongoIdString(s?.userId);
+    if (!uid) continue;
+    byUser.set(uid, Math.max(0, Math.floor(Number(s?.score) || 0)));
+  }
+  return list
+    .map((p) => {
+      const uid = normalizeMongoIdString(p.userId);
+      if (!uid) return null;
+      return { userId: uid, score: byUser.has(uid) ? byUser.get(uid) : 0 };
+    })
+    .filter(Boolean);
+}
+
 function mergeChecklistItems(rows, checklistItems = []) {
   const byKey = new Map(
     (Array.isArray(checklistItems) ? checklistItems : []).map((item) => [String(item?.itemKey || '').trim(), item])
@@ -617,6 +635,29 @@ function mergeChecklistItems(rows, checklistItems = []) {
       })).filter((p) => p.userId)
       : [];
 
+    const rollupPayload =
+      Array.isArray(saved?.participantScoresRollup) && saved.participantScoresRollup.length
+        ? saved.participantScoresRollup
+        : (Array.isArray(row?.participantScoresRollup) && row.participantScoresRollup.length
+          ? row.participantScoresRollup
+          : null);
+    const hasPeerRollup = Array.isArray(rollupPayload) && rollupPayload.length > 0;
+    const rollupScoreTotal = hasPeerRollup
+      ? Math.max(
+        0,
+        Math.floor(
+          Number(
+            Array.isArray(saved?.participantScoresRollup) && saved.participantScoresRollup.length
+              ? saved?.score
+              : row?.projectRollupScore
+          ) || 0
+        )
+      )
+      : null;
+    const participantScoresRollup = hasPeerRollup
+      ? reconcileParticipantRollupScoresForDisplay(parts, rollupPayload)
+      : [];
+
     if (mode === 'uniform_each' && n < 2) {
       mode = 'flat';
       projectUniformUnit = 0;
@@ -632,11 +673,22 @@ function mergeChecklistItems(rows, checklistItems = []) {
     } else if (mode === 'individual') {
       participantScores = reconcileParticipantScoresForProject(parts, participantScores);
       if (participantScores.length === 0 && parts.length > 0) {
-        const per = n > 0 ? clampProjectParticipantScore05(Math.floor(base.score / n)) : 0;
-        participantScores = parts
-          .map((p) => ({ userId: normalizeMongoIdString(p.userId), score: per }))
-          .filter((p) => p.userId);
-      } else if (participantScores.length > 0 && participantScores.every((r) => r.score === 0) && base.score > 0) {
+        if (!hasPeerRollup) {
+          const per = n > 0 ? clampProjectParticipantScore05(Math.floor(base.score / n)) : 0;
+          participantScores = parts
+            .map((p) => ({ userId: normalizeMongoIdString(p.userId), score: per }))
+            .filter((p) => p.userId);
+        } else {
+          participantScores = parts
+            .map((p) => ({ userId: normalizeMongoIdString(p.userId), score: 0 }))
+            .filter((p) => p.userId);
+        }
+      } else if (
+        !hasPeerRollup &&
+        participantScores.length > 0 &&
+        participantScores.every((r) => r.score === 0) &&
+        base.score > 0
+      ) {
         const per = n > 0 ? clampProjectParticipantScore05(Math.floor(base.score / n)) : 0;
         participantScores = participantScores.map((r) => ({ ...r, score: per }));
       }
@@ -656,7 +708,13 @@ function mergeChecklistItems(rows, checklistItems = []) {
       projectScoreMode: mode,
       projectUniformUnit: uniformOut,
       participantScores: scoresOut,
-      projectParticipantCount: n
+      projectParticipantCount: n,
+      ...(hasPeerRollup
+        ? {
+          participantScoresRollup,
+          projectRollupScore: rollupScoreTotal
+        }
+        : {})
     };
   });
 }
@@ -711,7 +769,14 @@ function normalizeDetailItems(items = []) {
         userId: normalizeMongoIdString(p?.userId),
         score: clampProjectParticipantScore05(p?.score)
       })).filter((p) => p.userId)
-      : []
+      : [],
+    participantScoresRollup: Array.isArray(item?.participantScoresRollup)
+      ? item.participantScoresRollup.map((p) => ({
+        userId: normalizeMongoIdString(p?.userId),
+        score: Math.max(0, Math.floor(Number(p?.score) || 0))
+      })).filter((p) => p.userId)
+      : [],
+    projectRollupScore: item?.projectRollupScore != null ? Math.max(0, Math.floor(Number(item.projectRollupScore) || 0)) : null
   })).filter((item) => item.key);
 }
 
@@ -2592,8 +2657,9 @@ export default function Kpi() {
     }));
   };
 
+  /** @returns {Promise<boolean>} 저장 성공 여부(중첩 모달 닫기 등에 사용) */
   const handleSaveChecklist = async () => {
-    if (!checklistPeriod) return;
+    if (!checklistPeriod) return false;
     setDetailChecklistSaving(true);
     setDetailChecklistMessage('');
     try {
@@ -2625,8 +2691,10 @@ export default function Kpi() {
           [selectedListMetric]: json?.checklist?.summary || prev?.[selectedListMetric]
         }));
       }
+      return true;
     } catch (err) {
       setDetailChecklistMessage(err.message || '체크리스트 저장에 실패했습니다.');
+      return false;
     } finally {
       setDetailChecklistSaving(false);
     }
@@ -3295,6 +3363,10 @@ export default function Kpi() {
             onDeleteOtherEntry={handleDeleteOtherEntry}
             otherSubmitting={otherPerfSubmitting}
             staffFilterUserId={checklistStaffFilterUserId}
+            departmentLeaderList={
+              Array.isArray(overview?.departmentLeaderList) ? overview.departmentLeaderList : []
+            }
+            currentUserId={currentUserId}
           />
         ) : null}
         {participantPickerOpen ? (
