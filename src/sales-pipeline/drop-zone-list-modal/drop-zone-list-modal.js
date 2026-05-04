@@ -3,6 +3,24 @@ import ListPaginationButtons from '@/components/list-pagination-buttons/list-pag
 
 const PAGE_SIZE = 15;
 
+const MONTH_SELECT_OPTIONS = Array.from({ length: 12 }, (_, i) => ({
+  value: String(i + 1).padStart(2, '0'),
+  label: `${i + 1}월`
+}));
+
+const YEAR_SPAN_PAST = 12;
+const YEAR_SPAN_FUTURE = 2;
+
+function buildYearSelectValues(anchorYear) {
+  const y0 = Number(anchorYear);
+  if (!Number.isFinite(y0)) return [];
+  const out = [];
+  for (let y = y0 + YEAR_SPAN_FUTURE; y >= y0 - YEAR_SPAN_PAST; y -= 1) {
+    out.push(y);
+  }
+  return out;
+}
+
 function getOppFilterInstant(opp) {
   const raw = opp?.updatedAt || opp?.createdAt;
   if (!raw) return null;
@@ -42,32 +60,52 @@ function matchesDateRange(opp, dateStart, dateEnd) {
   return true;
 }
 
-/** 수정일/생성일이 해당 연-월(로컬 달력) 안에 있는지 */
-function matchesMonth(opp, monthStr) {
-  const s = String(monthStr || '').trim();
-  if (!s) return true;
+/**
+ * 수정일/생성일이 선택 연도·월(로컬 달력)에 포함되는지.
+ * yearStr 빈 문자열 = 연도 필터 없음. monthPart 빈 문자열 = 해당 연도 전체.
+ */
+function matchesYearMonth(opp, yearStr, monthPart) {
+  const rawY = String(yearStr ?? '').trim();
+  if (rawY === '') return true;
+  const y = parseInt(rawY, 10);
+  if (!Number.isFinite(y) || y < 1900 || y > 2100) return true;
   const inst = getOppFilterInstant(opp);
   if (!inst) return false;
-  const m = s.match(/^(\d{4})-(\d{2})$/);
-  if (!m) return true;
-  const y = parseInt(m[1], 10);
-  const mo = parseInt(m[2], 10);
-  if (!y || mo < 1 || mo > 12) return false;
   const ms = inst.getTime();
+  const mp = String(monthPart ?? '').trim();
+  if (!mp) {
+    const startMs = new Date(y, 0, 1, 0, 0, 0, 0).getTime();
+    const endMs = new Date(y, 11, 31, 23, 59, 59, 999).getTime();
+    return ms >= startMs && ms <= endMs;
+  }
+  const mo = parseInt(mp, 10);
+  if (mo < 1 || mo > 12) return false;
   const startMs = new Date(y, mo - 1, 1, 0, 0, 0, 0).getTime();
   const endMs = new Date(y, mo, 0, 23, 59, 59, 999).getTime();
   return ms >= startMs && ms <= endMs;
 }
 
+/** YYYY-MM 한 덩어리로 필터할 때(구버전 호환) */
+function matchesMonth(opp, yyyyMm) {
+  const s = String(yyyyMm || '').trim();
+  if (!s) return true;
+  const m = s.match(/^(\d{4})-(\d{2})$/);
+  if (!m) return true;
+  return matchesYearMonth(opp, m[1], m[2]);
+}
+
 function matchesLocalSearch(opp, q) {
   const t = String(q || '').trim().toLowerCase();
   if (!t) return true;
+  const atObj = opp?.assignedTo && typeof opp.assignedTo === 'object' ? opp.assignedTo : null;
   const hay = [
     opp?.title,
     opp?.contactName,
     opp?.customerCompanyName,
     opp?.productName,
-    opp?.description
+    opp?.description,
+    opp?.assignedToName,
+    atObj?.name
   ]
     .map((x) => String(x || '').toLowerCase())
     .join(' ');
@@ -90,30 +128,46 @@ export default function DropZoneListModal({
   onDragEnd,
   formatOppValue,
   dealTitlePrimaryLabel,
-  renderOppNetMargin
+  renderOppNetMargin,
+  assigneeLabel
 }) {
   const [listSearch, setListSearch] = useState('');
   const [dateStart, setDateStart] = useState('');
   const [dateEnd, setDateEnd] = useState('');
-  const [filterMonth, setFilterMonth] = useState('');
+  /** 로컬 연도 문자열; 기본 올해. '' = 연도 전체(필터 없음) */
+  const [filterYear, setFilterYear] = useState(() => String(new Date().getFullYear()));
+  /** '01'…'12' 또는 '' = 해당 연도 전체 */
+  const [filterMonthPart, setFilterMonthPart] = useState('');
   const [page, setPage] = useState(1);
+
+  const defaultYearStr = String(new Date().getFullYear());
+  const yearSelectValues = buildYearSelectValues(Number(defaultYearStr));
 
   useEffect(() => {
     setListSearch('');
     setDateStart('');
     setDateEnd('');
-    setFilterMonth('');
+    setFilterYear(String(new Date().getFullYear()));
+    setFilterMonthPart('');
     setPage(1);
   }, [stageKey]);
 
-  const filtered = useMemo(() => {
-    return (items || []).filter(
-      (opp) =>
-        matchesLocalSearch(opp, listSearch) &&
-        matchesDateRange(opp, dateStart, dateEnd) &&
-        matchesMonth(opp, filterMonth)
-    );
-  }, [items, listSearch, dateStart, dateEnd, filterMonth]);
+  const filtered = useMemo(
+    () =>
+      (items || []).filter(
+        (opp) =>
+          matchesLocalSearch(opp, listSearch) &&
+          matchesDateRange(opp, dateStart, dateEnd) &&
+          matchesYearMonth(opp, filterYear, filterMonthPart)
+      ),
+    [items, listSearch, dateStart, dateEnd, filterYear, filterMonthPart]
+  );
+
+  const isYmDefault = filterYear === defaultYearStr && filterMonthPart === '';
+
+  /** 특정 연·월을 고른 경우에만 YYYY-MM (스크린 리더·구식 참조용) */
+  const filterMonth =
+    filterYear && filterMonthPart ? `${filterYear}-${filterMonthPart}` : '';
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
 
@@ -152,15 +206,23 @@ export default function DropZoneListModal({
     setPage(1);
   }, []);
 
-  const handleFilterMonthChange = useCallback((e) => {
-    setFilterMonth(e.target.value);
+  const handleFilterYearChange = useCallback((e) => {
+    const v = e.target.value;
+    setFilterYear(v);
+    if (!v) setFilterMonthPart('');
+    setPage(1);
+  }, []);
+
+  const handleFilterMonthPartChange = useCallback((e) => {
+    setFilterMonthPart(e.target.value);
     setPage(1);
   }, []);
 
   const clearDateRange = useCallback(() => {
     setDateStart('');
     setDateEnd('');
-    setFilterMonth('');
+    setFilterYear(String(new Date().getFullYear()));
+    setFilterMonthPart('');
     setPage(1);
   }, []);
 
@@ -232,16 +294,39 @@ export default function DropZoneListModal({
                 />
               </label>
               <label className="sp-dz-list-modal-date-field">
-                <span className="sp-dz-list-modal-date-field-label">월별</span>
-                <input
-                  type="month"
-                  className="sp-dz-list-modal-date-input"
-                  value={filterMonth}
-                  onChange={handleFilterMonthChange}
-                  aria-label="연·월로 필터"
-                />
+                <span className="sp-dz-list-modal-date-field-label">연도</span>
+                <select
+                  className="sp-dz-list-modal-date-input sp-dz-list-modal-date-input--select"
+                  value={filterYear}
+                  onChange={handleFilterYearChange}
+                  aria-label="연도"
+                >
+                  <option value="">연도 전체</option>
+                  {yearSelectValues.map((y) => (
+                    <option key={y} value={String(y)}>
+                      {y}년
+                    </option>
+                  ))}
+                </select>
               </label>
-              {(dateStart || dateEnd || filterMonth) ? (
+              <label className="sp-dz-list-modal-date-field">
+                <span className="sp-dz-list-modal-date-field-label">월</span>
+                <select
+                  className="sp-dz-list-modal-date-input sp-dz-list-modal-date-input--select"
+                  value={filterMonthPart}
+                  onChange={handleFilterMonthPartChange}
+                  aria-label={filterMonth ? `월 (${filterMonth})` : '월'}
+                  disabled={!filterYear}
+                >
+                  <option value="">월 전체</option>
+                  {MONTH_SELECT_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {dateStart || dateEnd || !isYmDefault ? (
                 <button
                   type="button"
                   className="sp-dz-list-modal-date-clear"
@@ -252,7 +337,7 @@ export default function DropZoneListModal({
               ) : null}
             </div>
             <p className="sp-dz-list-modal-date-hint">
-              기준: 마지막 수정일(없으면 등록일)입니다. 시작일·마감일·월별을 함께 쓰면 모두 만족할 때만 표시됩니다.
+              기준: 마지막 수정일(없으면 등록일)입니다. 연도·월은 기본 올해·월 전체이며, 시작일·마감일과 함께 쓰면 모두 만족할 때만 표시됩니다. 연도 전체를 고르면 연·월 조건은 적용되지 않습니다.
             </p>
           </div>
         </div>
@@ -263,7 +348,10 @@ export default function DropZoneListModal({
               {items.length === 0 ? '표시할 기회가 없습니다.' : '조건에 맞는 기회가 없습니다.'}
             </p>
           ) : (
-            pagedItems.map((opp) => (
+            pagedItems.map((opp) => {
+              const assigneeName =
+                typeof assigneeLabel === 'function' ? String(assigneeLabel(opp) || '').trim() : '';
+              return (
               <div
                 key={opp._id}
                 className={`sp-card sp-dz-card ${modalCfg.colorClass}`}
@@ -293,6 +381,12 @@ export default function DropZoneListModal({
                 {dealTitlePrimaryLabel(opp) !== String(opp.contactName || '').trim() ? (
                   <p className="sp-card-contact">{opp.contactName || '\u00A0'}</p>
                 ) : null}
+                {assigneeName ? (
+                  <p className="sp-card-assignee">
+                    <span className="sp-card-assignee-label">판매 담당</span>
+                    {assigneeName}
+                  </p>
+                ) : null}
                 <div className="sp-card-meta">
                   <div className="sp-card-value-col sp-card-value-col--dz">
                     <span className="sp-card-value">{formatOppValue(opp)}</span>
@@ -300,7 +394,8 @@ export default function DropZoneListModal({
                   </div>
                 </div>
               </div>
-            ))
+              );
+            })
           )}
         </div>
 

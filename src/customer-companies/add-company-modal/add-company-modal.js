@@ -5,6 +5,7 @@ import CompanyImportPreviewModal from './company-import-preview-modal';
 import './add-company-modal.css';
 
 import { API_BASE } from '@/config';
+import { getUserVisibleApiError } from '@/lib/api-error';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import {
   buildDriveFileDeleteUrl,
@@ -120,6 +121,7 @@ const INFORMATION_FOLDER_NAME = 'information';
 
 export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }) {
   const isEdit = Boolean(company);
+  /** 수정 모드: 기업명 변경은 서버가 Admin 이상만 허용 — UI에서도 동일하게 막음 */
   const canEditCompanyNameInEdit = useMemo(
     () => !isEdit || isAdminOrAboveRole(getStoredCrmUser()?.role),
     [isEdit]
@@ -286,7 +288,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok || !data.id) {
-      throw new Error(data.error || '폴더를 준비할 수 없습니다.');
+      throw new Error(getUserVisibleApiError(data, '폴더를 준비할 수 없습니다.'));
     }
     if (!isValidDriveNodeId(String(data.id))) {
       throw new Error('Drive 폴더 ID 형식이 올바르지 않습니다. 관리자에게 문의해 주세요.');
@@ -413,7 +415,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
         const res = await fetch(url, { method: 'DELETE', headers: getAuthHeader(), credentials: 'include' });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          setDriveError(data.error || '삭제에 실패했습니다.');
+          setDriveError(getUserVisibleApiError(data, '삭제에 실패했습니다.'));
           return;
         }
         const certUrl = (displayedCompany || company)?.businessRegistrationCertificateDriveUrl;
@@ -661,7 +663,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.error || '증빙에서 정보를 읽지 못했습니다.');
+        setError(getUserVisibleApiError(data, '증빙에서 정보를 읽지 못했습니다.'));
         return;
       }
       setForm((prev) => ({
@@ -718,7 +720,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.error || '텍스트에서 정보를 읽지 못했습니다.');
+        setError(getUserVisibleApiError(data, '텍스트에서 정보를 읽지 못했습니다.'));
         return;
       }
       const items = Array.isArray(data.items) ? data.items : [];
@@ -792,7 +794,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(data.error || '미리보기에 실패했습니다.');
+        setError(getUserVisibleApiError(data, '미리보기에 실패했습니다.'));
         return;
       }
       const items = Array.isArray(data.items) ? data.items : [];
@@ -1033,10 +1035,10 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (res.status === 409 && data.code === 'SIMILAR_CUSTOMER_COMPANY' && Array.isArray(data.similarCustomerCompanies)) {
-          setError(data.error || '비슷한 상호의 고객사가 이미 있습니다.');
+          setError(getUserVisibleApiError(data, '비슷한 상호의 고객사가 이미 있습니다.'));
           setPreSaveCompany({ similar: data.similarCustomerCompanies });
         } else {
-          setError(data.error || '저장에 실패했습니다.');
+          setError(getUserVisibleApiError(data, '저장에 실패했습니다.'));
         }
         return;
       }
@@ -1065,7 +1067,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
         });
         const infoData = await infoRes.json().catch(() => ({}));
         if (!infoRes.ok || !infoData.id) {
-          setError(infoData.error || '고객사는 저장되었으나 information 폴더를 준비할 수 없습니다.');
+          setError(getUserVisibleApiError(infoData, '고객사는 저장되었으나 information 폴더를 준비할 수 없습니다.'));
           return;
         }
         if (isEdit && company?.businessRegistrationCertificateDriveUrl) {
@@ -1103,7 +1105,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
         });
         const uploadData = await uploadRes.json().catch(() => ({}));
         if (!uploadRes.ok || !uploadData.webViewLink) {
-          setError(uploadData.error || '고객사는 저장되었으나 사업자 등록증 Drive 업로드에 실패했습니다.');
+          setError(getUserVisibleApiError(uploadData, '고객사는 저장되었으나 사업자 등록증 Drive 업로드에 실패했습니다.'));
           return;
         }
         const patchRes = await fetch(`${API_BASE}/customer-companies/${companyIdForCert}`, {
@@ -1114,7 +1116,12 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
           })
         });
         const patched = await patchRes.json().catch(() => ({}));
-        if (patchRes.ok && patched._id) finalCompany = { ...data, ...patched };
+        if (patchRes.ok && patched._id) {
+          finalCompany = { ...data, ...patched };
+        } else {
+          setError(getUserVisibleApiError(patched, '고객사는 저장되었으나 등록증 링크를 반영하지 못했습니다.'));
+          return;
+        }
       }
       if (isEdit) {
         onUpdated?.(finalCompany);
@@ -1363,7 +1370,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
               disabled={isEdit && !canEditCompanyNameInEdit}
               title={
                 isEdit && !canEditCompanyNameInEdit
-                  ? '기업명 변경은 Admin 이상(대표·관리자)만 가능합니다.'
+                  ? '기업명(상호) 변경은 관리자(Admin) 이상만 가능합니다. 대표자명·주소 등은 수정할 수 있습니다.'
                   : undefined
               }
             />
@@ -1379,7 +1386,7 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
           <div className="add-company-row-representative-assignee">
             <div className="add-company-field add-company-field-representative">
               <label className="add-company-label" htmlFor="add-company-representative">대표자명</label>
-              <input id="add-company-representative" name="representativeName" type="text" value={form.representativeName} onChange={handleChange} className="add-company-input" placeholder="대표자 성함을 입력하세요" disabled={isEdit} title={isEdit ? '수정 모드에서는 대표자명을 바꿀 수 없습니다.' : undefined} />
+              <input id="add-company-representative" name="representativeName" type="text" value={form.representativeName} onChange={handleChange} className="add-company-input" placeholder="대표자 성함을 입력하세요" />
             </div>
             <div className="add-company-field add-company-field-assignee">
               <label className="add-company-label" htmlFor="add-company-assignee-input">담당자</label>

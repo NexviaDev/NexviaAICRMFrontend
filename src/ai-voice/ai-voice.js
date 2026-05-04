@@ -5,6 +5,7 @@ import CustomerCompanyEmployeesSearchModal from '../customer-company-employees/c
 import './ai-voice.css';
 
 import { API_BASE } from '@/config';
+import { getUserVisibleApiError } from '@/lib/api-error';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import { pingBackendHealth } from '@/lib/backend-wake';
 import { AI_VOICE_LIST_POLL_MS } from '@/lib/polling-intervals';
@@ -472,7 +473,7 @@ export default function AiVoice() {
     try {
       const res = await fetch(`${API_BASE}/customer-companies/${company._id}`, { headers: getAuthHeader() });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || '고객사 조회 실패');
+      if (!res.ok) throw new Error(getUserVisibleApiError(data, '고객사 조회 실패'));
       const existingMemo = data.memo != null ? String(data.memo).trim() : '';
       const newMemo = existingMemo ? `${existingMemo}\n\n${getPayloadForSend()}` : getPayloadForSend();
       const patchRes = await fetch(`${API_BASE}/customer-companies/${company._id}`, {
@@ -481,7 +482,7 @@ export default function AiVoice() {
         body: JSON.stringify({ memo: newMemo })
       });
       const patchData = await patchRes.json().catch(() => ({}));
-      if (!patchRes.ok) throw new Error(patchData.error || '고객사 메모 저장 실패');
+      if (!patchRes.ok) throw new Error(getUserVisibleApiError(patchData, '고객사 메모 저장 실패'));
       setSendToMessage(`"${company.name || '고객사'}" 메모에 추가했습니다.`);
       setShowSendToCompany(false);
     } catch (e) {

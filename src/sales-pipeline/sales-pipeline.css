@@ -182,41 +182,6 @@
   gap: 12px;
 }
 
-/* 고객사 리스트와 동일 패턴: 전체 / 내 기회만 */
-.sp-header-right .sp-assignee-filter-btn {
-  background: #fff;
-  border: 1px solid var(--card-border, #e0e0e0);
-  color: var(--text, #333);
-}
-
-.sp-header-right .sp-assignee-filter-btn:hover {
-  background: #f8f9fa;
-  border-color: var(--card-border, #e0e0e0);
-}
-
-.sp-header-right .sp-assignee-filter-btn.active {
-  background: #fff;
-  border-color: var(--primary, #5c6bc0);
-  color: var(--primary);
-}
-
-.sp-header-right .sp-assignee-filter-label {
-  display: none;
-}
-
-@media (min-width: 640px) {
-  .sp-header-right .sp-assignee-filter-btn {
-    width: auto;
-    padding: 0.5rem 0.75rem;
-    gap: 0.35rem;
-  }
-
-  .sp-header-right .sp-assignee-filter-label {
-    display: inline;
-    font-size: 0.8125rem;
-  }
-}
-
 .sp-header-quick {
   display: flex;
   align-items: center;
@@ -450,22 +415,41 @@
   font-size: 1.125rem;
 }
 
+.sp-kanban-forecast-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 0.5rem;
+  padding: 0 0.35rem;
+  margin: 0;
+  min-width: 0;
+}
+
+.sp-kanban-forecast-spacer {
+  flex: 1;
+  min-width: 0;
+}
+
 .sp-kanban-forecast {
   margin: 0;
-  padding: 0 0.35rem;
+  padding: 0;
   font-size: 0.65rem;
   font-weight: 700;
   color: #596064;
   letter-spacing: -0.02em;
+  flex-shrink: 0;
 }
 
 .sp-kanban-forecast-expected {
-  margin: 0.15rem 0 0;
-  padding: 0 0.35rem;
+  margin: 0;
+  padding: 0;
   font-size: 0.65rem;
   font-weight: 600;
   color: #2c6485;
   letter-spacing: -0.02em;
+  text-align: right;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .sp-kanban-cards {
@@ -897,6 +881,33 @@
   color: #747c80;
 }
 
+.sp-card-lucid-assignee {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.45rem;
+  margin: 0 0 0.45rem;
+  min-width: 0;
+}
+
+.sp-card-lucid-assignee-label {
+  flex-shrink: 0;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #94a3b8;
+}
+
+.sp-card-lucid-assignee-name {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #475569;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
 .sp-card-lucid-footer {
   display: flex;
   align-items: center;
@@ -1282,6 +1293,22 @@
   color: #2c3437;
 }
 
+.sp-dz-list-modal-date-input.sp-dz-list-modal-date-input--select {
+  min-width: 6.75rem;
+  cursor: pointer;
+}
+
+.sp-dz-list-modal-date-input.sp-dz-list-modal-date-input--select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: #f3f6f8;
+}
+
+.sp-dz-list-modal-date-input.sp-dz-list-modal-date-input--select:focus {
+  outline: 2px solid #b8d4e8;
+  outline-offset: 1px;
+}
+
 .sp-dz-list-modal-date-sep {
   padding: 0 0.1rem 0.35rem;
   font-size: 0.98rem;
@@ -1388,6 +1415,20 @@
 
 .sp-dz-list-modal-body .sp-card-contact {
   font-size: 0.73rem;
+}
+
+.sp-dz-list-modal-body .sp-card-assignee {
+  margin: 0.2rem 0 0;
+  font-size: 0.73rem;
+  line-height: 1.35;
+  color: #5f6d74;
+}
+
+.sp-dz-list-modal-body .sp-card-assignee-label {
+  display: inline-block;
+  margin-right: 0.35rem;
+  font-weight: 600;
+  color: #7a8890;
 }
 
 .sp-dz-list-modal-body .sp-card-value {

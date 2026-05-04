@@ -24,6 +24,15 @@ function getAuthHeader() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+function getPipelineViewerUserId() {
+  try {
+    const u = getStoredCrmUser();
+    return u?._id != null ? String(u._id) : '';
+  } catch {
+    return '';
+  }
+}
+
 const DEFAULT_STAGE_LABELS = {
   NewLead: '신규 리드 & 추가 구매건',
   Contacted: '연락 완료',
@@ -152,6 +161,18 @@ function dealTitlePrimaryLabel(opp) {
   return company || '';
 }
 
+/** 카드·목록용 사내 판매 담당 표시명 */
+function salesAssigneeDisplay(opp) {
+  const n = opp?.assignedToName != null ? String(opp.assignedToName).trim() : '';
+  if (n) return n;
+  const at = opp?.assignedTo;
+  if (at && typeof at === 'object' && at.name != null) {
+    const nm = String(at.name).trim();
+    if (nm) return nm;
+  }
+  return '';
+}
+
 export default function SalesPipeline() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [grouped, setGrouped] = useState({});
@@ -168,11 +189,13 @@ export default function SalesPipeline() {
   const [showStagesModal, setShowStagesModal] = useState(false);
   /** 모바일: 칩으로 선택한 파이프라인 단계(해당 단계 카드만 목록 표시) */
   const [mobileListStage, setMobileListStage] = useState(null);
-  /** 고객사/연락처와 동일: listTemplates.salesPipeline.assigneeMeOnly 로 «내 기회만» 필터 저장 */
-  const [mineOnly, setMineOnly] = useState(() => getSavedTemplate(SALES_PIPELINE_LIST_ID)?.assigneeMeOnly === true);
-  /** 목록 API: productId, assignedTo 쿼리 (빈 값 = 필터 없음) */
+  /** 목록 API: productId, assignedTo 쿼리 (빈 값 = 필터 없음). assigneeMeOnly 저장값이면 초기값=본인 id */
   const [filterProductId, setFilterProductId] = useState('');
-  const [filterAssigneeId, setFilterAssigneeId] = useState('');
+  const [filterAssigneeId, setFilterAssigneeId] = useState(() => {
+    const meOnly = getSavedTemplate(SALES_PIPELINE_LIST_ID)?.assigneeMeOnly === true;
+    const myId = getPipelineViewerUserId();
+    return meOnly && myId ? myId : '';
+  });
   const [productFilterOptions, setProductFilterOptions] = useState([]);
   const [assigneeFilterOptions, setAssigneeFilterOptions] = useState([]);
 
@@ -190,7 +213,6 @@ export default function SalesPipeline() {
   };
 
   const openEditModal = (id) => {
-    setDropZoneListStage(null);
     const p = new URLSearchParams(searchParams);
     p.set(MODAL_PARAM, MODAL_EDIT);
     p.set(OPP_ID_PARAM, id);
@@ -210,8 +232,9 @@ export default function SalesPipeline() {
     if (!silent) setLoading(true);
     try {
       const params = new URLSearchParams();
+      /* 파이프라인 칸반: 갱신 후속(NewLead)의 미래 saleDate 숨김을 쓰지 않고 전부 표시 */
+      params.set('pipelineShowAll', '1');
       if (search) params.set('search', search);
-      if (mineOnly) params.set('createdByMe', '1');
       const fp = (filterProductId || '').trim();
       if (fp) params.set('productId', fp);
       const fa = (filterAssigneeId || '').trim();
@@ -229,7 +252,7 @@ export default function SalesPipeline() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [search, mineOnly, filterProductId, filterAssigneeId]);
+  }, [search, filterProductId, filterAssigneeId]);
 
   const fetchStageDefinitions = useCallback(async () => {
     try {
@@ -298,27 +321,41 @@ export default function SalesPipeline() {
     searchTimer.current = setTimeout(() => fetchData(), 350);
   };
 
-  const toggleMineOnly = useCallback(() => {
-    const prev = mineOnly;
-    const next = !mineOnly;
-    setMineOnly(next);
-    patchListTemplate(SALES_PIPELINE_LIST_ID, { assigneeMeOnly: next }).catch((err) => {
+  const persistAssigneeMeTemplate = useCallback((assigneeMeOnly) => {
+    patchListTemplate(SALES_PIPELINE_LIST_ID, { assigneeMeOnly }).catch((err) => {
       window.alert(err?.message || '저장에 실패했습니다.');
-      setMineOnly(prev);
     });
-  }, [mineOnly]);
+  }, []);
 
-  const setMineOnlyFromChip = useCallback(
-    (next) => {
-      if (next === mineOnly) return;
-      const prev = mineOnly;
-      setMineOnly(next);
-      patchListTemplate(SALES_PIPELINE_LIST_ID, { assigneeMeOnly: next }).catch((err) => {
-        window.alert(err?.message || '저장에 실패했습니다.');
-        setMineOnly(prev);
+  const assigneesForSelect = useMemo(() => {
+    const rows = (assigneeFilterOptions || []).filter((emp) => emp?.id != null && String(emp.id).trim() !== '');
+    const myId = getPipelineViewerUserId();
+    if (!myId) {
+      return rows.slice().sort((a, b) => {
+        const an = (a.name && String(a.name).trim()) || a.email || '';
+        const bn = (b.name && String(b.name).trim()) || b.email || '';
+        return String(an).localeCompare(String(bn), 'ko');
       });
+    }
+    const me = rows.find((e) => String(e.id) === myId);
+    const rest = rows
+      .filter((e) => String(e.id) !== myId)
+      .sort((a, b) => {
+        const an = (a.name && String(a.name).trim()) || a.email || '';
+        const bn = (b.name && String(b.name).trim()) || b.email || '';
+        return String(an).localeCompare(String(bn), 'ko');
+      });
+    return me ? [me, ...rest] : rest;
+  }, [assigneeFilterOptions]);
+
+  const onFilterAssigneeChange = useCallback(
+    (value) => {
+      const v = String(value || '').trim();
+      setFilterAssigneeId(v);
+      const myId = getPipelineViewerUserId();
+      persistAssigneeMeTemplate(Boolean(myId && v === myId));
     },
-    [mineOnly]
+    [persistAssigneeMeTemplate]
   );
 
   /* ---- Drag & Drop ---- */
@@ -514,6 +551,9 @@ export default function SalesPipeline() {
   const dropZoneModalCfg = dropZoneListStage ? DROP_ZONE_CONFIG[dropZoneListStage] : null;
   const dropZoneModalItems = dropZoneListStage ? grouped[dropZoneListStage] || [] : [];
 
+  const pipelineViewerId = getPipelineViewerUserId();
+  const mineAssigneeFilterActive = Boolean(pipelineViewerId && filterAssigneeId === pipelineViewerId);
+
   return (
     <div className="sp-container">
       {/* Header */}
@@ -546,32 +586,26 @@ export default function SalesPipeline() {
               <select
                 className="sp-filter-select"
                 value={filterAssigneeId}
-                onChange={(e) => setFilterAssigneeId(e.target.value)}
+                onChange={(e) => onFilterAssigneeChange(e.target.value)}
                 aria-label="사내 담당자별 필터"
               >
                 <option value="">전체</option>
-                {assigneeFilterOptions
-                  .filter((emp) => emp?.id != null && String(emp.id).trim() !== '')
-                  .map((emp) => (
-                    <option key={String(emp.id)} value={String(emp.id)}>
-                      {(emp.name && String(emp.name).trim()) || emp.email || String(emp.id)}
+                {assigneesForSelect.map((emp) => {
+                  const id = String(emp.id);
+                  const base = (emp.name && String(emp.name).trim()) || emp.email || id;
+                  const label =
+                    pipelineViewerId && id === pipelineViewerId ? `${base} (나)` : base;
+                  return (
+                    <option key={id} value={id}>
+                      {label}
                     </option>
-                  ))}
+                  );
+                })}
               </select>
             </label>
           </div>
         </div>
         <div className="sp-header-right">
-          <button
-            type="button"
-            className={`icon-btn sp-assignee-filter-btn ${mineOnly ? 'active' : ''}`}
-            onClick={toggleMineOnly}
-            title={mineOnly ? '전체 기회 보기' : '내 기회만 보기'}
-            aria-label={mineOnly ? '전체 기회 보기' : '내 기회만 보기'}
-          >
-            <span className="material-symbols-outlined">person_pin_circle</span>
-            <span className="sp-assignee-filter-label">내 기회만 보기</span>
-          </button>
           <button type="button" className="sp-add-btn" onClick={() => openAddModal()}>
             <span className="material-symbols-outlined">add</span>
             기회 추가
@@ -632,25 +666,32 @@ export default function SalesPipeline() {
             </div>
           </section>
 
-          <section className="sp-mobile-mine-wrap sp-mobile-only" aria-label="등록자 필터">
+          <section className="sp-mobile-mine-wrap sp-mobile-only" aria-label="내 담당 필터">
             <div className="sp-mobile-mine-chips" role="tablist">
               <button
                 type="button"
                 role="tab"
-                aria-selected={!mineOnly}
-                className={`sp-mobile-mine-chip ${!mineOnly ? 'is-active' : ''}`}
-                onClick={() => setMineOnlyFromChip(false)}
+                aria-selected={!mineAssigneeFilterActive}
+                className={`sp-mobile-mine-chip ${!mineAssigneeFilterActive ? 'is-active' : ''}`}
+                onClick={() => {
+                  setFilterAssigneeId('');
+                  persistAssigneeMeTemplate(false);
+                }}
               >
                 전체
               </button>
               <button
                 type="button"
                 role="tab"
-                aria-selected={mineOnly}
-                className={`sp-mobile-mine-chip ${mineOnly ? 'is-active' : ''}`}
-                onClick={() => setMineOnlyFromChip(true)}
+                aria-selected={mineAssigneeFilterActive}
+                className={`sp-mobile-mine-chip ${mineAssigneeFilterActive ? 'is-active' : ''}`}
+                onClick={() => {
+                  if (!pipelineViewerId) return;
+                  setFilterAssigneeId(pipelineViewerId);
+                  persistAssigneeMeTemplate(true);
+                }}
               >
-                내 기회
+                내 담당
               </button>
             </div>
           </section>
@@ -726,9 +767,14 @@ export default function SalesPipeline() {
                       <div className="sp-mobile-deal-bottom">
                         <div className="sp-mobile-deal-owner">
                           <span className="sp-mobile-deal-avatar" aria-hidden>
-                            {nameInitials(opp.assignedToName)}
+                            {nameInitials(salesAssigneeDisplay(opp))}
                           </span>
-                          <span className="sp-mobile-deal-owner-name">{opp.assignedToName || '담당 미지정'}</span>
+                          <div className="sp-mobile-deal-owner-text">
+                            <span className="sp-mobile-deal-assignee-label">판매 담당</span>
+                            <span className="sp-mobile-deal-owner-name">
+                              {salesAssigneeDisplay(opp) || '미지정'}
+                            </span>
+                          </div>
                         </div>
                         <div className="sp-mobile-deal-value-wrap">
                           <p className="sp-mobile-deal-value">{formatOppValue(opp)}</p>
@@ -788,18 +834,24 @@ export default function SalesPipeline() {
                           <span className="material-symbols-outlined">add</span>
                         </button>
                       </div>
-                      {stageForecastPercent[stage] != null ? (
-                        <p className="sp-kanban-forecast" title="Forecast (expected probability)">
-                          Forecast {stageForecastPercent[stage]}%
-                        </p>
-                      ) : null}
-                      {forecastExpectedSum != null ? (
-                        <p
-                          className="sp-kanban-forecast-expected"
-                          title={`이 단계 카드 금액 합 × Forecast ${fp}%`}
-                        >
-                          예상 매출 {formatCurrency(forecastExpectedSum, colCurrency)}
-                        </p>
+                      {stageForecastPercent[stage] != null || forecastExpectedSum != null ? (
+                        <div className="sp-kanban-forecast-row">
+                          {stageForecastPercent[stage] != null ? (
+                            <p className="sp-kanban-forecast" title="Forecast (expected probability)">
+                              Forecast {stageForecastPercent[stage]}%
+                            </p>
+                          ) : (
+                            <span className="sp-kanban-forecast-spacer" aria-hidden />
+                          )}
+                          {forecastExpectedSum != null ? (
+                            <p
+                              className="sp-kanban-forecast-expected"
+                              title={`이 단계 카드 금액 합 × Forecast ${fp}%`}
+                            >
+                              예상 매출 {formatCurrency(forecastExpectedSum, colCurrency)}
+                            </p>
+                          ) : null}
+                        </div>
                       ) : null}
                       <div className="sp-kanban-cards">
                         {items.length === 0 ? (
@@ -840,13 +892,23 @@ export default function SalesPipeline() {
                                 {opp.contactName && primary !== String(opp.contactName).trim() ? (
                                   <p className="sp-card-lucid-contact">{opp.contactName}</p>
                                 ) : null}
+                                <div className="sp-card-lucid-assignee" title="판매 담당자">
+                                  <span className="sp-card-lucid-assignee-label">판매 담당</span>
+                                  <span className="sp-card-lucid-assignee-name">
+                                    {salesAssigneeDisplay(opp) || '미지정'}
+                                  </span>
+                                </div>
                                 <div className="sp-card-lucid-footer">
                                   <div className="sp-card-lucid-footer-left">
                                     <span className="sp-card-lucid-value">{formatOppValue(opp)}</span>
                                     {canViewAdminContent ? renderOppAdminCardFooter(opp, stageForecastPercent) : null}
                                   </div>
-                                  <span className="sp-card-lucid-avatar" title={opp.assignedToName || ''} aria-hidden>
-                                    {nameInitials(opp.assignedToName)}
+                                  <span
+                                    className="sp-card-lucid-avatar"
+                                    title={salesAssigneeDisplay(opp) || '미지정'}
+                                    aria-hidden
+                                  >
+                                    {nameInitials(salesAssigneeDisplay(opp))}
                                   </span>
                                 </div>
                               </div>
@@ -960,6 +1022,7 @@ export default function SalesPipeline() {
           formatOppValue={formatOppValue}
           dealTitlePrimaryLabel={dealTitlePrimaryLabel}
           renderOppNetMargin={(opp) => renderOppAdminCardFooter(opp, stageForecastPercent)}
+          assigneeLabel={salesAssigneeDisplay}
         />
       ) : null}
     </div>

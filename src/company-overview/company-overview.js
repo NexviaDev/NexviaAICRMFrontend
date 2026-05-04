@@ -69,7 +69,7 @@ function formatSubscriptionDate(iso) {
   }
 }
 
-/** 구독 카드용 — 백엔드 정책(역할 정규화·미들웨어)과 맞춘 안내 문구 */
+/** 구독 카드용 — 백엔드 정책(app.js 전역 PATCH·역할 미들웨어·컨트롤러)과 엄격히 맞춘 안내 문구 */
 const CRM_ROLE_PERMISSION_GUIDE = [
   {
     id: 'owner',
@@ -79,7 +79,8 @@ const CRM_ROLE_PERMISSION_GUIDE = [
       '구독 시트 1명분을 사용합니다.',
       '직원 역할·부서 변경, 조직도 편집, 권한 승인 요청 수신 등 인사·조직을 총괄합니다.',
       '다른 계정을 관리자(Admin)로 올리는 것은 대표만 할 수 있습니다.',
-      '고객사·연락처·제품 삭제, 커스텀 필드 정의, 리드 캡처 채널 관리, 전체 엑셀보내기 등 관리자 전용(Admin 이상) 작업을 포함해 넓은 범위의 CRM 설정이 가능합니다.'
+      '고객사·연락처·제품 삭제, 커스텀 필드 정의, 리드 캡처 채널 관리, 전체 엑셀보내기 등 관리자 전용(Admin 이상) 작업을 포함해 넓은 범위의 CRM 설정이 가능합니다.',
+      '고객사의 기업명(상호) 변경은 관리자(Admin) 이상만 서버에서 허용됩니다. 대표·관리자는 해당 변경을 할 수 있습니다.'
     ]
   },
   {
@@ -90,7 +91,8 @@ const CRM_ROLE_PERMISSION_GUIDE = [
       '구독 시트 1명분을 사용합니다.',
       '대표를 제외한 구성원을 권한 대기·직원·실무자·관리자까지 변경하고, 부서를 배정하며 조직도를 편집할 수 있습니다.',
       '「관리자」로 승격시키는 작업은 대표만 가능합니다.',
-      '삭제·민감 API, 리드 캡처 채널 관리, 알림 관리, 전체 엑셀보내기 등 Admin 이상이 필요한 기능을 사용할 수 있습니다.'
+      '삭제·민감 API, 리드 캡처 채널 관리, 알림 관리, 전체 엑셀보내기 등 Admin 이상이 필요한 기능을 사용할 수 있습니다.',
+      '고객사의 기업명(상호) 변경은 Admin 이상만 가능합니다(실무자는 기업명 변경 PATCH가 거절됩니다).'
     ]
   },
   {
@@ -99,8 +101,9 @@ const CRM_ROLE_PERMISSION_GUIDE = [
     usesSeat: true,
     bullets: [
       '구독 시트 1명분을 사용합니다.',
-      '고객사·연락처·제품·일정 등 데이터를 등록·수정·삭제하는 API 대부분(실무자 이상)에 해당합니다.',
-      '단, 회사·연락처·제품 단건 삭제, 히스토리 삭제, 커스텀 필드 정의 변경 등은 관리자(Admin) 이상만 가능한 항목이 따로 있습니다.'
+      '서버 전역 정책상 수정(PATCH)·삭제(DELETE)는 실무자(Manager) 이상부터 허용됩니다. 고객사·연락처·제품·일정 등 대부분의 데이터 수정·삭제가 여기에 해당합니다.',
+      '고객사의 기업명(상호)을 바꾸는 것만은 예외로, 관리자(Admin) 이상만 허용됩니다. 대표자명·주소·담당·메모 등 다른 필드는 실무자가 수정할 수 있습니다.',
+      '회사·연락처·제품 단건 삭제, 히스토리 삭제, 커스텀 필드 정의 변경 등 그 밖의 Admin 전용 항목도 따로 있습니다.'
     ]
   },
   {
@@ -109,7 +112,8 @@ const CRM_ROLE_PERMISSION_GUIDE = [
     usesSeat: true,
     bullets: [
       '구독 시트 1명분을 사용합니다.',
-      '목록 조회·신규 등록(POST) 등은 가능하지만, 서버에서는 수정(PATCH)·삭제(DELETE)를 실무자(Manager) 이상에만 허용하는 경우가 많습니다.',
+      '서버 전역 정책상 권한 대기(Pending)만 수정(PATCH)·삭제(DELETE)에서 제외됩니다. 직원(Staff)도 대부분의 데이터 수정·삭제 API를 호출할 수 있습니다.',
+      '다만 고객사 기업명(상호) 변경, 일부 삭제·관리자 전용 API 등은 Admin 이상만 허용되는 경우가 따로 있습니다(거절 시 서버 메시지·코드 참고).',
       '본인 리스트 열 설정·사이드바 순서, 할 일 코멘트 등 일부 개인 설정은 직원도 저장할 수 있습니다.'
     ]
   },
@@ -130,7 +134,7 @@ function SubscriptionRolePermissionGuide() {
     <div className="company-subscription-role-guide" role="region" aria-label="역할별 권한 안내">
       <h3 className="company-subscription-role-guide-title">역할별로 할 수 있는 일</h3>
       <p className="company-subscription-role-guide-lead">
-        아래는 이 CRM의 서버 권한 기준 요약입니다. 화면에서 보이는 메뉴는 추가로 숨김 처리될 수 있습니다.
+        아래는 이 CRM의 <strong>서버에서 실제로 거절·허용하는 기준</strong>과 맞춘 요약입니다. UI는 편의상 숨길 수 있으나, 권한이 없으면 저장 시 API가 403 등으로 막습니다.
       </p>
       <div className="company-subscription-role-guide-list">
         {CRM_ROLE_PERMISSION_GUIDE.map((block) => (

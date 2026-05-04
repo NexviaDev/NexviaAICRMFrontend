@@ -221,3 +221,30 @@
 .cc-search-modal-item:hover .cc-search-modal-item-arrow {
   color: var(--primary);
 }
+
+.cc-search-modal-spinner-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  padding: 2rem 1rem;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.cc-search-modal-spinner-icon {
+  font-size: 2rem;
+  color: var(--primary);
+  animation: ccSearchModalSpin 0.85s linear infinite;
+}
+
+.cc-search-modal-spinner-text {
+  font-weight: 600;
+}
+
+@keyframes ccSearchModalSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}

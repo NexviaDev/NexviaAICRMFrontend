@@ -41,6 +41,8 @@
   padding: 16px 24px;
   border-bottom: 1px solid var(--card-border, #e2e8f0);
   flex-shrink: 0;
+  overflow: visible;
+  z-index: 2;
 }
 
 .opp-modal-header-left {
@@ -51,6 +53,27 @@
   min-width: 0;
 }
 
+.opp-modal-header-left--title-row {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 제목과 판매 담당(바로 오른쪽) 한 줄 */
+.opp-modal-title-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  width: 100%;
+  min-width: 0;
+}
+
+.opp-modal-title-row .opp-modal-title {
+  margin: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
 .opp-modal-title {
   margin: 0;
   font-size: 1.5rem;
@@ -58,10 +81,180 @@
   color: var(--text, #1d283a);
 }
 
-.opp-modal-title-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 0.08rem;
+.opp-modal-header-assignee {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(380px, 46vw);
+  padding: 4px 8px 4px 10px;
+  border-radius: 8px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+}
+
+.opp-modal-header-assignee-label {
+  font-weight: 700;
+  font-size: 0.65rem;
+  letter-spacing: 0.02em;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+/* 이름 클릭 → 담당 선택 모달 */
+.opp-modal-header-assignee-name {
+  margin: 0;
+  padding: 2px 4px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  color: #334155;
+  word-break: break-word;
+  min-width: 0;
+  flex: 1 1 auto;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: #cbd5e1;
+  text-underline-offset: 2px;
+}
+
+.opp-modal-header-assignee-name:hover {
+  color: #1e293b;
+  background: rgba(148, 163, 184, 0.15);
+  text-decoration-color: #94a3b8;
+}
+
+.opp-modal-header-assignee-name:focus-visible {
+  outline: 2px solid #94a3b8;
+  outline-offset: 2px;
+}
+
+.opp-modal-header-assignee-name.is-empty {
+  color: #64748b;
+  font-weight: 500;
+}
+
+/* 이름 호버 시 말주머니(아래로 펼침 — 모달 overflow로 위쪽은 잘림 방지) */
+.opp-modal-header-assignee-hit {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.opp-modal-header-assignee-hit:hover {
+  z-index: 30;
+}
+
+/* 버튼 아래~말주머니 위 사이: 마우스가 비는 구간에서도 호버 유지 */
+.opp-modal-header-assignee-bubble-bridge {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max(100%, min(300px, 92vw));
+  height: 14px;
+  z-index: 38;
+  pointer-events: none;
+}
+
+.opp-modal-header-assignee-hit:hover .opp-modal-header-assignee-bubble-bridge,
+.opp-modal-header-assignee-hit:focus-within .opp-modal-header-assignee-bubble-bridge {
+  pointer-events: auto;
+}
+
+.opp-modal-header-assignee-bubble {
+  position: absolute;
+  top: calc(100% + 12px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  min-width: 220px;
+  max-width: min(300px, 85vw);
+  padding: 10px 12px 11px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: #334155;
+  text-align: left;
+  cursor: default;
+  user-select: text;
+  -webkit-user-select: text;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.14s ease, visibility 0.14s ease;
+}
+
+/* 말주머니 꼬리(위를 향함) */
+.opp-modal-header-assignee-bubble::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  margin-left: -7px;
+  border: 7px solid transparent;
+  border-bottom-color: #e2e8f0;
+}
+
+.opp-modal-header-assignee-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  margin-left: -6px;
+  margin-bottom: -1px;
+  border: 6px solid transparent;
+  border-bottom-color: #fff;
+}
+
+.opp-modal-header-assignee-hit:hover .opp-modal-header-assignee-bubble,
+.opp-modal-header-assignee-hit:focus-within .opp-modal-header-assignee-bubble {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.opp-modal-header-assignee-bubble-dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 10px;
+  margin: 0;
+  align-items: baseline;
+}
+
+.opp-modal-header-assignee-bubble-dl dt {
+  margin: 0;
+  font-weight: 700;
+  color: #64748b;
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.opp-modal-header-assignee-bubble-dl dd {
+  margin: 0;
+  font-weight: 500;
+  color: #1e293b;
+  word-break: break-word;
+}
+
+.opp-modal-header-assignee-bubble-note {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: #475569;
+  font-weight: 500;
 }
 
 .opp-modal-finance-mini {
@@ -230,17 +423,6 @@
 
 .opp-form-grid-2--company-contact .opp-label {
   height: 100%;
-}
-
-/* 사내 영업 담당 · 통화 — 동일 행 1:1 */
-.opp-form-grid-2--assignee-currency .opp-label {
-  min-width: 0;
-}
-
-.opp-form-grid-2--assignee-currency .opp-select {
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
 }
 
 .opp-label-top {
@@ -753,43 +935,6 @@
   border-color: rgba(29, 41, 58, 0.2);
 }
 
-.opp-renewal-cal-row {
-  margin-top: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.opp-renewal-cal-btn {
-  align-self: flex-start;
-  padding: 8px 14px;
-  font-size: var(--opp-f-cap);
-  font-weight: 600;
-  border-radius: 8px;
-  border: 1px solid rgba(125, 211, 192, 0.55);
-  background: rgba(204, 251, 241, 0.65);
-  color: #0f766e;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-}
-
-.opp-renewal-cal-btn:hover:not(:disabled) {
-  background: rgba(167, 243, 228, 0.85);
-  border-color: rgba(45, 212, 191, 0.7);
-}
-
-.opp-renewal-cal-btn:disabled {
-  opacity: 0.65;
-  cursor: not-allowed;
-}
-
-.opp-renewal-cal-hint {
-  margin: 0;
-  font-size: var(--opp-f-cap);
-  line-height: 1.45;
-  color: #64748b;
-}
-
 /* ========== Financial grid (sample: 2x2 / 4 cols) ========== */
 .opp-financial-grid {
   display: grid;
@@ -805,17 +950,18 @@
   grid-column: span 2;
 }
 
-/* ========== Calculation summary (sample: 차감 금액 / 최종 금액) ========== */
+/* ========== Calculation summary (제품별 + 전체 — 컴팩트 그리드) ========== */
 .opp-summary-box {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  padding: 16px;
-  border-radius: 12px;
-  background: var(--bg-light, #f8fafc);
-  border: 1px solid var(--card-border, #e2e8f0);
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 10px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
 }
 
+/* 레거시 클래스 — 다른 화면에서 재사용 시 대비 */
 .opp-summary-item {
   display: flex;
   flex-direction: column;
@@ -838,52 +984,17 @@
   gap: 0.35rem;
 }
 
-.opp-summary-net-margin {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.1rem;
-  margin-top: 0.35rem;
-  padding-top: 0.4rem;
-  border-top: 1px solid rgba(148, 163, 184, 0.35);
-}
-
-.opp-summary-net-margin-label {
-  font-size: var(--opp-f-cap);
-  font-weight: 700;
-  color: #7f1d1d;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.opp-summary-net-margin-value {
-  font-size: var(--opp-f-sm);
-  font-weight: 700;
-  color: #991b1b;
-}
-
 .opp-summary-label {
   font-size: var(--opp-f-cap);
   color: var(--text-muted, #64748b);
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.02em;
 }
 
 .opp-summary-value {
   font-size: var(--opp-f-lg);
   font-weight: 500;
   color: var(--text, #334155);
-}
-
-.opp-summary-item--end .opp-summary-label {
-  color: var(--primary, #1d283a);
-}
-
-.opp-summary-item--end .opp-summary-value {
-  font-size: var(--opp-f-2xl);
-  font-weight: 700;
-  color: var(--primary, #1d283a);
 }
 
 /* ========== Modal footer (sample: border-t, bg-slate-50, 취소 + 추가) ========== */
@@ -1006,149 +1117,168 @@
   color: var(--text, #334155);
 }
 
-/* 요약: 제품별 + 전체 */
+/* 요약: 제품별 행 */
 .opp-summary-per-line {
-  grid-column: 1 / -1;
-  margin-bottom: 16px;
+  padding: 0.45rem 0.55rem;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid #e8edf4;
 }
 
-.opp-summary-per-line:last-of-type {
-  margin-bottom: 0;
+.opp-summary-per-line + .opp-summary-per-line {
+  margin-top: 0.35rem;
 }
 
 .opp-summary-per-line-title {
-  font-size: var(--opp-f-body);
+  font-size: 0.72rem;
   font-weight: 700;
-  color: var(--text-muted, #64748b);
-  margin-bottom: 8px;
+  color: #64748b;
+  margin: 0 0 0.35rem;
+  letter-spacing: 0.02em;
+}
+
+.opp-summary-line-metrics {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 0.35rem 0.5rem;
+  align-items: end;
+}
+
+.opp-summary-line-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.opp-summary-line-metric--main {
+  padding: 0.25rem 0.35rem;
+  border-radius: 6px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+}
+
+.opp-summary-line-label {
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.02em;
+}
+
+.opp-summary-line-val {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #334155;
+  line-height: 1.2;
+  word-break: break-all;
+}
+
+.opp-summary-line-val--main {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #1d4ed8;
+}
+
+.opp-summary-line-val--margin {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #9f1239;
 }
 
 .opp-summary-divider {
   height: 1px;
-  background: var(--card-border, #e2e8f0);
-  margin: 12px 0 16px;
-  grid-column: 1 / -1;
+  background: #e2e8f0;
+  margin: 0.35rem 0 0.4rem;
 }
 
-/* 전체 합계: 그리드 전체 폭, 전체 최종 금액은 단독 한 행으로 강조 */
+/* 전체 합계: 왼쪽 스택 + 오른쪽 최종 금액 */
 .opp-summary-total-block {
-  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.opp-summary-total-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(132px, 38%);
+  gap: 0.45rem 0.65rem;
+  align-items: stretch;
+}
+
+.opp-summary-total-stack {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  width: 100%;
-}
-
-.opp-summary-total-deduction {
-  width: 100%;
-}
-
-.opp-summary-grand-final {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  width: 100%;
-  padding: 14px 16px;
-  border-radius: 10px;
-  background: rgba(224, 242, 254, 0.55);
-  border: 1px solid rgba(125, 211, 252, 0.65);
-  box-sizing: border-box;
-}
-
-.opp-summary-grand-final-label {
-  font-size: var(--opp-f-body);
-  font-weight: 700;
-  color: var(--primary, #1d283a);
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-}
-
-.opp-summary-grand-final-value {
-  font-size: var(--opp-f-2xl);
-  font-weight: 700;
-  color: var(--primary, #1d283a);
-  line-height: 1.2;
-  text-align: right;
-  flex: 1;
+  gap: 0.35rem;
   min-width: 0;
+}
+
+.opp-summary-total-pill {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.08rem;
+  padding: 0.32rem 0.45rem;
+  border-radius: 6px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  min-width: 0;
+}
+
+.opp-summary-total-pill-label {
+  font-size: 0.58rem;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.opp-summary-total-pill-val {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: #334155;
+  line-height: 1.2;
   word-break: break-all;
 }
 
-.opp-summary-total-net {
-  display: flex;
-  flex-direction: row;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-  padding-top: 4px;
+.opp-summary-total-pill-val--margin {
+  color: #9f1239;
 }
 
-.opp-summary-total-net-label {
-  font-size: var(--opp-f-cap);
-  font-weight: 700;
-  color: #7f1d1d;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.opp-summary-total-net-value {
-  font-size: var(--opp-f-body);
-  font-weight: 700;
-  color: #991b1b;
-}
-
-.opp-summary-forecast-expected {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-  margin-top: 10px;
-  padding: 12px 14px;
-  border-radius: 10px;
-  background: rgba(241, 245, 249, 0.95);
-  border: 1px solid rgba(148, 163, 184, 0.45);
-  box-sizing: border-box;
-}
-
-.opp-summary-forecast-expected--single {
-  margin-top: 12px;
-}
-
-.opp-summary-forecast-expected-text {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  min-width: 0;
-}
-
-.opp-summary-forecast-expected-label {
-  font-size: var(--opp-f-cap);
-  font-weight: 700;
-  color: #334155;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-}
-
-.opp-summary-forecast-expected-meta {
-  font-size: var(--opp-f-cap);
+.opp-summary-total-pill--forecast .opp-summary-total-pill-meta {
+  font-size: 0.55rem;
   font-weight: 600;
-  color: #64748b;
-  line-height: 1.3;
+  color: #94a3b8;
+  line-height: 1.25;
   word-break: break-word;
 }
 
-.opp-summary-forecast-expected-value {
-  font-size: var(--opp-f-lg);
+.opp-summary-total-pill-val--forecast {
+  color: #1e40af;
+  font-size: 0.78rem;
+}
+
+.opp-summary-total-hero {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: stretch;
+  gap: 0.2rem;
+  padding: 0.45rem 0.5rem;
+  border-radius: 8px;
+  background: #e0f2fe;
+  border: 1px solid #7dd3fc;
+  text-align: center;
+  min-width: 0;
+}
+
+.opp-summary-total-hero-label {
+  font-size: 0.6rem;
   font-weight: 700;
-  color: #1e3a5f;
-  text-align: right;
-  flex-shrink: 0;
+  color: #0369a1;
+  letter-spacing: 0.03em;
+}
+
+.opp-summary-total-hero-val {
+  font-size: clamp(0.85rem, 2.8vw, 1.05rem);
+  font-weight: 800;
+  color: #0c4a6e;
+  line-height: 1.15;
+  word-break: break-all;
 }
 
 /* ========== Comments (기회 코멘트) ========== */
@@ -1541,6 +1671,150 @@
   margin-top: 0;
 }
 
+.opp-finance-collection-head .opp-btn-light.opp-btn-icon {
+  border: none;
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.opp-finance-collection-head .opp-btn-light.opp-btn-icon:hover:not(:disabled) {
+  background: #e2e8f0;
+}
+
+.opp-finance-grid--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.opp-finance-card-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.6rem;
+  color: var(--text-muted, #94a3b8);
+  line-height: 1.35;
+}
+
+.opp-form-dates-top-hint {
+  margin: 0;
+  font-size: 0.58rem;
+  color: var(--text-muted, #94a3b8);
+  line-height: 1.35;
+}
+
+.opp-form-dates-top-field--block {
+  margin-top: 0.15rem;
+}
+
+.opp-commission-section {
+  margin-top: 0.5rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid #e8edf4;
+}
+
+.opp-line-block .opp-commission-section {
+  margin-top: 0.65rem;
+}
+
+.opp-commission-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.2rem;
+}
+
+.opp-commission-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #475569;
+}
+
+.opp-commission-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: #e8f4fc;
+  color: #0369a1;
+  cursor: pointer;
+}
+
+.opp-commission-add:hover {
+  background: #d9eef9;
+}
+
+.opp-commission-add .material-symbols-outlined {
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.opp-commission-hint {
+  margin: 0 0 0.5rem;
+  font-size: 0.62rem;
+  color: #64748b;
+  line-height: 1.35;
+}
+
+.opp-commission-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 6.75rem) auto;
+  gap: 0.4rem;
+  align-items: end;
+  margin-bottom: 0.45rem;
+}
+
+.opp-commission-field--remarks .opp-commission-remarks {
+  min-height: 2.6rem;
+  resize: vertical;
+  max-height: 8rem;
+}
+
+.opp-commission-row:last-of-type {
+  margin-bottom: 0;
+}
+
+.opp-commission-field.opp-label > span {
+  font-size: 0.65rem;
+}
+
+.opp-commission-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+}
+
+.opp-commission-remove:hover:not(:disabled) {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.opp-commission-remove:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+  .opp-commission-row {
+    grid-template-columns: 1fr;
+  }
+
+  .opp-commission-remove {
+    justify-self: end;
+  }
+}
+
 @media (max-width: 900px) {
   .opp-modal-form-layout {
     flex-direction: column;
@@ -1709,17 +1983,20 @@
     flex: none;
   }
 
-  .opp-summary-box {
+  .opp-summary-line-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .opp-summary-line-metric--margin {
+    grid-column: 1 / -1;
+  }
+
+  .opp-summary-total-grid {
     grid-template-columns: 1fr;
   }
 
-  .opp-summary-item--end {
-    align-items: flex-start;
-    text-align: left;
-  }
-
-  .opp-summary-net-margin {
-    align-items: flex-start;
+  .opp-summary-total-hero {
+    order: -1;
   }
 
   .opp-discount-purchase-split-inner {
@@ -1729,62 +2006,6 @@
   .opp-finance-cards {
     grid-template-columns: 1fr;
   }
-}
-
-/* 수주 성공 시 수주·판매일 안내 */
-.opp-won-sale-date-banner {
-  margin: 0 1.25rem 0.75rem;
-  padding: 0.75rem 1rem;
-  border-radius: 0.5rem;
-  border: 1px solid #bae6fd;
-  background: #f0f9ff;
-  color: #0c4a6e;
-}
-
-.opp-won-sale-date-banner-text {
-  margin: 0 0 0.5rem;
-  font-size: 0.8125rem;
-  line-height: 1.45;
-}
-
-.opp-won-sale-date-banner-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem 0.75rem;
-}
-
-.opp-won-sale-date-banner-hint-inline {
-  font-size: 0.75rem;
-  color: #0c4a6e;
-  opacity: 0.9;
-}
-
-.opp-won-sale-date-btn {
-  padding: 0.35rem 0.75rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  border-radius: 0.4rem;
-  border: 1px solid #bae6fd;
-  background: #fff;
-  color: #0369a1;
-  cursor: pointer;
-}
-
-.opp-won-sale-date-btn--primary {
-  background: #e0f2fe;
-  border-color: #7dd3fc;
-}
-
-.opp-won-sale-date-btn:hover {
-  border-color: #38bdf8;
-}
-
-.opp-won-sale-date-banner-warn {
-  margin: 0.5rem 0 0;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #b45309;
 }
 
 /* body 최상단: 시작·목표·완료일 */

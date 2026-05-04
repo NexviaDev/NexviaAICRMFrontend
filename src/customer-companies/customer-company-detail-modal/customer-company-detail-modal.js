@@ -10,6 +10,7 @@ import CustomFieldsDisplay from '../../shared/custom-fields-display';
 import './customer-company-detail-modal.css';
 
 import { API_BASE } from '@/config';
+import { getUserVisibleApiError, alertApiError } from '@/lib/api-error';
 import { getStoredCrmUser, isManagerOrAboveRole, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { pingBackendHealth, BACKEND_KEEPALIVE_INTERVAL_MS, BACKEND_KEEPALIVE_INTERVAL_ENABLED } from '@/lib/backend-wake';
 import { pollJournalFromAudioJob } from '@/lib/journal-from-audio-poll';
@@ -366,7 +367,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok || !data.id) {
-      throw new Error(data.error || '폴더를 준비할 수 없습니다.');
+      throw new Error(getUserVisibleApiError(data, '폴더를 준비할 수 없습니다.'));
     }
     if (!isValidDriveNodeId(String(data.id))) {
       throw new Error('Drive 폴더 ID 형식이 올바르지 않습니다. 관리자에게 문의해 주세요.');
@@ -535,7 +536,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
         const res = await fetch(url, { method: 'DELETE', headers: getAuthHeader(), credentials: 'include' });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          setDriveError(data.error || '삭제에 실패했습니다.');
+          setDriveError(getUserVisibleApiError(data, '삭제에 실패했습니다.'));
           return;
         }
         const certUrl = (displayedCompany || company)?.businessRegistrationCertificateDriveUrl;
@@ -550,6 +551,8 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
           const patched = await patchRes.json().catch(() => ({}));
           if (patchRes.ok && patched?._id) {
             setDisplayedCompany((prev) => ({ ...(prev || {}), ...patched }));
+          } else {
+            setDriveError(getUserVisibleApiError(patched, '고객사 등록증 URL을 갱신하지 못했습니다.'));
           }
         }
         const r2 = await fetch(`${API_BASE}/customer-companies/${companyId}`, { headers: getAuthHeader() });
@@ -744,7 +747,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
         fetchHistory();
         fetchCompanyDetail();
       } else {
-        setJournalError(data.error || '저장에 실패했습니다.');
+        setJournalError(getUserVisibleApiError(data, '저장에 실패했습니다.'));
       }
     } catch (_) {
       setJournalError('서버에 연결할 수 없습니다.');
@@ -797,7 +800,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
           text: '요약이 입력창에 채워졌습니다. 내용 확인 후 "메모 저장"을 눌러 등록해 주세요. 개인정보 보호를 위해 AssemblyAI 전사 데이터는 삭제 요청되었습니다.'
         });
       } else {
-        throw new Error(data.error || '서버 응답 형식을 알 수 없습니다.');
+        throw new Error(getUserVisibleApiError(data, '서버 응답 형식을 알 수 없습니다.'));
       }
     } catch (e) {
       setJournalError(e.message || '음성 업로드 처리에 실패했습니다.');
@@ -831,7 +834,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setSummaryNotice({ type: 'muted', text: data.error || '요약 요청에 실패했습니다.' });
+        setSummaryNotice({ type: 'muted', text: getUserVisibleApiError(data, '요약 요청에 실패했습니다.') });
         return;
       }
       if (data.alreadyPending) {
@@ -878,7 +881,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
       } else {
         const data = await res.json().catch(() => ({}));
         setShowDeleteConfirm(false);
-        window.alert(data.error || '삭제에 실패했습니다.');
+        alertApiError(data, '삭제에 실패했습니다.');
       }
     } catch (_) {
       setShowDeleteConfirm(false);

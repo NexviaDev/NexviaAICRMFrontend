@@ -378,6 +378,22 @@
     min-width: 0;
   }
 
+  .sp-mobile-deal-owner-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .sp-mobile-deal-assignee-label {
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: #94a3b8;
+    letter-spacing: 0.02em;
+    line-height: 1.15;
+  }
+
   .sp-mobile-deal-avatar {
     width: 2rem;
     height: 2rem;

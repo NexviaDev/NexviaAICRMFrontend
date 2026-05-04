@@ -340,16 +340,44 @@ function loadGoogleMaps(onLoad) {
  *
  * 백엔드 프록시로 호출하면 Google이 보는 IP가 서버라 사용자 위치가 아니게 되므로, 브라우저에서 직접 호출(키는 지도와 동일하게 이미 클라이언트에 있음).
  *
- * 403: Cloud Console에서「Geolocation API」사용 설정·결제·키 제한 확인. 반복 호출은 세션에서 건너뜀(콘솔 스팸 완화).
+ * 403: 동일 키에「Geolocation API」를 API 제한에 추가하고, Maps와 같이 결제·HTTP 리퍼러 제한을 맞춤.
+ * 한 번 403이면 sessionStorage + localStorage 에 건너뛰기 저장 → 이후에는 요청을 보내지 않아 네트워크 콘솔 403 반복이 사라짐.
  * 완전히 끄려면 .env 에 VITE_SKIP_GOOGLE_CONSIDER_IP=true
  */
 const GEOLOCATE_CONSIDER_IP_SKIP_KEY = 'nexvia_geolocate_consider_ip_skip';
+
+function shouldSkipGoogleConsiderIpGeolocate() {
+  try {
+    if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(GEOLOCATE_CONSIDER_IP_SKIP_KEY) === '1') {
+      return true;
+    }
+    if (typeof localStorage !== 'undefined' && localStorage.getItem(GEOLOCATE_CONSIDER_IP_SKIP_KEY) === '1') {
+      return true;
+    }
+  } catch {
+    /* 사생활 모드 등 */
+  }
+  return false;
+}
+
+function rememberSkipGoogleConsiderIpGeolocate() {
+  try {
+    sessionStorage.setItem(GEOLOCATE_CONSIDER_IP_SKIP_KEY, '1');
+  } catch {
+    /* ignore */
+  }
+  try {
+    localStorage.setItem(GEOLOCATE_CONSIDER_IP_SKIP_KEY, '1');
+  } catch {
+    /* ignore */
+  }
+}
 
 async function fetchGoogleConsiderIpApproximate(apiKey) {
   if (!apiKey || typeof fetch === 'undefined') return null;
   if (import.meta.env.VITE_SKIP_GOOGLE_CONSIDER_IP === 'true') return null;
   try {
-    if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem(GEOLOCATE_CONSIDER_IP_SKIP_KEY) === '1') {
+    if (shouldSkipGoogleConsiderIpGeolocate()) {
       return null;
     }
     const res = await fetch(
@@ -361,11 +389,7 @@ async function fetchGoogleConsiderIpApproximate(apiKey) {
       }
     );
     if (res.status === 403 || res.status === 401) {
-      try {
-        sessionStorage.setItem(GEOLOCATE_CONSIDER_IP_SKIP_KEY, '1');
-      } catch {
-        /* 사생활 모드 등 */
-      }
+      rememberSkipGoogleConsiderIpGeolocate();
       return null;
     }
     const data = await res.json().catch(() => ({}));

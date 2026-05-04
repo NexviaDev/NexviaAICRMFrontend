@@ -145,10 +145,15 @@ export default function CustomerCompanyEmployeesSearchModal({ onClose, onSelect,
           {error && <p className="customer-company-employees-search-modal-error">{error}</p>}
         </form>
         <div className="customer-company-employees-search-modal-list-wrap">
-          {loading ? (
-            <p className="customer-company-employees-search-modal-empty">검색 중...</p>
-          ) : initialLoading ? (
-            <p className="customer-company-employees-search-modal-empty">목록 불러오는 중...</p>
+          {loading || initialLoading ? (
+            <div className="customer-company-employees-search-modal-spinner-wrap" role="status" aria-live="polite">
+              <span className="material-symbols-outlined customer-company-employees-search-modal-spinner-icon" aria-hidden>
+                progress_activity
+              </span>
+              <span className="customer-company-employees-search-modal-spinner-text">
+                {initialLoading ? '목록을 불러오는 중…' : '검색 중…'}
+              </span>
+            </div>
           ) : searched && items.length === 0 ? (
             <p className="customer-company-employees-search-modal-empty">
               {customerCompanyId ? '해당 고객사에 등록된 직원이 없거나 검색 조건에 맞는 직원이 없습니다.' : '검색 조건에 맞는 연락처가 없습니다.'}

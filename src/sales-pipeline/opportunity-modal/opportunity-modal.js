@@ -19,8 +19,10 @@ import { pingBackendHealth } from '@/lib/backend-wake';
 import { pruneDriveUploadedFilesIndex, syncDriveUploadedFilesIndex } from '@/lib/drive-uploaded-files-prune';
 import { pollJournalFromAudioJob } from '@/lib/journal-from-audio-poll';
 import { suggestedPriceFromProduct, OPPORTUNITY_PRICE_BASIS_OPTIONS } from '@/lib/product-price-utils';
+import { getUserVisibleApiError } from '@/lib/api-error';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { buildStageForecastPercentMap } from '../pipeline-forecast-utils';
+import { resolveDepartmentDisplayFromChart } from '@/lib/org-chart-tree-utils';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -37,12 +39,6 @@ const STAGE_OPTIONS = [
   { value: 'Won', label: '수주 성공' },
   { value: 'Lost', label: '기회 상실' },
   { value: 'Abandoned', label: '보류' }
-];
-
-const CURRENCY_OPTIONS = [
-  { value: 'KRW', label: '원' },
-  { value: 'USD', label: '달러' },
-  { value: 'JPY', label: '엔' }
 ];
 
 const PRODUCT_BILLING_LABELS = { Monthly: '월간', Annual: '연간', Perpetual: '영구' };
@@ -69,12 +65,75 @@ function parseNumber(val) {
   return Number(String(val).replace(/[^0-9]/g, '')) || 0;
 }
 
+/**
+ * 수금 행을 날짜 오름차순으로 누적했을 때, 누적액이 계약금 이상이 되는 **그날**(그 행의 날짜).
+ * 같은 날짜에 여러 행이 있으면 그날 누적이 넘는 첫 행 기준(날짜 문자열은 동일).
+ */
+function fullCollectionDateFromCumulativeEntries(collectionEntries, contractTarget) {
+  const target = Math.max(0, contractTarget);
+  if (target <= 0) return '';
+
+  const rows = (collectionEntries || [])
+    .map((e) => ({
+      amt: Math.max(0, parseNumber(e?.amount)),
+      d: String(e?.date || '').trim()
+    }))
+    .filter((r) => r.amt > 0 && /^\d{4}-\d{2}-\d{2}$/.test(r.d))
+    .sort((a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0));
+
+  let cum = 0;
+  for (const r of rows) {
+    cum += r.amt;
+    if (cum >= target) return r.d;
+  }
+  return '';
+}
+
 function newOppLineId() {
   return `line-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
 function newCollectionEntryId() {
   return `collection-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
+function newCommissionRecipientId() {
+  return `commission-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
+function createEmptyCommissionRow() {
+  return { id: newCommissionRecipientId(), remarks: '', commissionAmount: '' };
+}
+
+/** 행에 commissionRecipients가 아직 없을 때(레거시·예외) 안정적인 단일 빈 행 id */
+function emptyCommissionRowForLine(lineId) {
+  return { id: `comm-blank-${lineId}`, remarks: '', commissionAmount: '' };
+}
+
+function legacyCommissionRemarksFromServerRow(r) {
+  const rem = String(r?.remarks || '').trim();
+  if (rem) return rem;
+  const name = String(r?.recipientName || '').trim();
+  const phone = String(r?.recipientPhone || '').trim();
+  if (!name && !phone) return '';
+  return [name, phone].filter(Boolean).join(' · ');
+}
+
+function mapServerCommissionRowsToClient(raw) {
+  const arr = Array.isArray(raw) ? raw : [];
+  if (arr.length === 0) return [createEmptyCommissionRow()];
+  return arr.map((r) => ({
+    id: newCommissionRecipientId(),
+    remarks: legacyCommissionRemarksFromServerRow(r).slice(0, 2000),
+    commissionAmount: Number(r?.commissionAmount) > 0 ? Number(r.commissionAmount).toLocaleString() : ''
+  }));
+}
+
+function clientLineCommissionHasData(rows) {
+  if (!Array.isArray(rows)) return false;
+  return rows.some(
+    (r) => String(r?.remarks || '').trim() || parseNumber(r?.commissionAmount) > 0
+  );
 }
 
 function computeLineFinalAmount(line) {
@@ -112,7 +171,8 @@ function buildLineFromProduct(product, priceBasisPref = 'consumer') {
     quantity: '1',
     discountRate: '',
     discountAmount: '',
-    purchaseCostTotal: pc
+    purchaseCostTotal: pc,
+    commissionRecipients: [createEmptyCommissionRow()]
   };
 }
 
@@ -162,6 +222,28 @@ function toDateInputValue(date) {
 /** 날짜 입력 기본값: 오늘(로컬) */
 function todayDateInputValue() {
   return toDateInputValue(new Date());
+}
+
+/** `YYYY-MM-DD` 문자열을 로컬 자정으로 파싱. 형식 불일치 시 null */
+function localMidnightFromYyyyMmDd(s) {
+  const m = String(s || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const dt = new Date(y, mo - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
+  dt.setHours(0, 0, 0, 0);
+  return dt;
+}
+
+/** 수주일이 «오늘»보다 미래인지(갱신 사전 알림일 등). 비교는 로컬 달력 기준 */
+function isYyyyMmDdStrictlyAfterToday(dateStr) {
+  const d = localMidnightFromYyyyMmDd(dateStr);
+  if (!d) return false;
+  const t = new Date();
+  t.setHours(0, 0, 0, 0);
+  return d > t;
 }
 
 function isCommentAuthor(comment, userId) {
@@ -359,7 +441,7 @@ export default function OpportunityModal({
     startDate: '',
     targetDate: '',
     contractAmount: '',
-    contractAmountDate: '',
+    fullCollectionCompleteDate: '',
     invoiceAmount: '',
     invoiceAmountDate: '',
     ...getInitialInternalAssignee()
@@ -367,8 +449,10 @@ export default function OpportunityModal({
   const [collectionEntries, setCollectionEntries] = useState(() => ([
     { id: newCollectionEntryId(), amount: '', date: '' }
   ]));
-  /** 제품별 행: 가격 기준·단가·수량·할인·매입원가(표시용) */
+  /** 제품별 행: 가격 기준·단가·수량·할인·매입원가·기타 금액(표시용) */
   const [lineItems, setLineItems] = useState([]);
+  /** 편집 시 GET value — effect 의존용(opportunityValueRef만으로는 리렌더 없음) */
+  const [fetchedOppValue, setFetchedOppValue] = useState(0);
   /** productId → 제품 문서(필드 표시·순마진) */
   const [productById, setProductById] = useState({});
   const [businessNumber, setBusinessNumber] = useState(
@@ -409,20 +493,29 @@ export default function OpportunityModal({
   const [showInternalAssigneePicker, setShowInternalAssigneePicker] = useState(false);
   /** 사내 담당자 이름 매핑용 (/companies/overview employees) */
   const [companyEmployees, setCompanyEmployees] = useState([]);
+  /** overview 응답 company.organizationChart — companyDepartment(노드 id) → 표시명 */
+  const [overviewOrgChart, setOverviewOrgChart] = useState(null);
 
   /** ParticipantModal directory용 — overview 직원 id → _id */
   const teamMembersForParticipantModal = useMemo(
     () =>
-      (companyEmployees || []).map((e) => ({
-        _id: e.id,
-        name: e.name,
-        email: e.email,
-        phone: e.phone || '',
-        companyDepartment: String(e.companyDepartment || e.department || '').trim(),
-        department: e.department || String(e.companyDepartment || '').trim(),
-        departmentDisplay: e.departmentDisplay
-      })),
-    [companyEmployees]
+      (companyEmployees || []).map((e) => {
+        const deptId = String(e.companyDepartment || e.department || '').trim();
+        const departmentDisplay =
+          String(e.departmentDisplay || '').trim() ||
+          resolveDepartmentDisplayFromChart(overviewOrgChart, deptId) ||
+          undefined;
+        return {
+          _id: e.id,
+          name: e.name,
+          email: e.email,
+          phone: e.phone || '',
+          companyDepartment: deptId,
+          department: e.department || deptId,
+          departmentDisplay
+        };
+      }),
+    [companyEmployees, overviewOrgChart]
   );
 
   /** 모달 열 때 전달: 이미 담당이 있으면 그대로, 없으면 로그인 사용자 1명 기본 */
@@ -469,9 +562,11 @@ export default function OpportunityModal({
   const [editDraft, setEditDraft] = useState('');
   const [replyingToId, setReplyingToId] = useState(null);
   const [replyText, setReplyText] = useState('');
-  const [renewalCalBusy, setRenewalCalBusy] = useState(false);
   /** 서버에서 불러온 직후 단계 — 저장 시 Won→다른 단계면 갱신 캘린더 삭제 반영용 */
   const stageAtLoadRef = useRef(null);
+  const fullCollectionDateTouchedRef = useRef(false);
+  /** 편집 시 GET 기회의 value(제품 행 없을 때 수주 시 계약금 자동 기입용) */
+  const opportunityValueRef = useRef(0);
 
   const currentUserId = useMemo(() => getCurrentUserId(), []);
   const canDeleteOpportunity = useMemo(() => isAdminOrAboveRole(getStoredCrmUser()?.role), []);
@@ -502,11 +597,15 @@ export default function OpportunityModal({
 
   const fetchOpp = useCallback(async () => {
     if (!isEdit || !oppId) return;
+    setFetchedOppValue(0);
     setLoadingOpp(true);
     try {
       const res = await fetch(`${API_BASE}/sales-opportunities/${oppId}`, { headers: getAuthHeader() });
       if (!res.ok) throw new Error();
       const data = await res.json();
+      const valueNum = Math.max(0, Number(data.value)) || 0;
+      opportunityValueRef.current = valueNum;
+      setFetchedOppValue(valueNum);
       const cc = data.customerCompanyId;
       const emp = data.customerCompanyEmployeeId;
       const ccIdHas = !!(cc?._id || cc);
@@ -537,7 +636,7 @@ export default function OpportunityModal({
         startDate: toDateInputValue(data.startDate),
         targetDate: toDateInputValue(data.targetDate),
         contractAmount: contractAmountValue,
-        contractAmountDate: toDateInputValue(data.contractAmountDate),
+        fullCollectionCompleteDate: toDateInputValue(data.fullCollectionCompleteDate),
         invoiceAmount: invoiceAmountValue,
         invoiceAmountDate: toDateInputValue(data.invoiceAmountDate),
         assignedToUserId: atId,
@@ -553,6 +652,8 @@ export default function OpportunityModal({
           }))
           : [{ id: newCollectionEntryId(), amount: '', date: '' }]
       );
+      const loadedComm = Array.isArray(data.commissionRecipients) ? data.commissionRecipients : [];
+      fullCollectionDateTouchedRef.current = Boolean(data.fullCollectionCompleteDate);
       purchaseCostEditedLineIdsRef.current = new Set();
 
       const mapServerLineToClient = (li, idx) => {
@@ -573,12 +674,22 @@ export default function OpportunityModal({
           quantity: String(qty),
           discountRate: rate > 0 ? String(rate) : '',
           discountAmount: amt > 0 ? amt.toLocaleString() : '',
-          purchaseCostTotal: pc
+          purchaseCostTotal: pc,
+          commissionRecipients: mapServerCommissionRowsToClient(li.commissionRecipients)
         };
       };
 
       if (Array.isArray(data.lineItems) && data.lineItems.length > 0) {
-        setLineItems(data.lineItems.map(mapServerLineToClient));
+        let clientLines = data.lineItems.map(mapServerLineToClient);
+        if (
+          loadedComm.length > 0 &&
+          !clientLines.some((l) => clientLineCommissionHasData(l.commissionRecipients))
+        ) {
+          clientLines = clientLines.map((l, i) =>
+            i === 0 ? { ...l, commissionRecipients: mapServerCommissionRowsToClient(loadedComm) } : l
+          );
+        }
+        setLineItems(clientLines);
         const nextDocs = {};
         for (let i = 0; i < data.lineItems.length; i++) {
           const li = data.lineItems[i];
@@ -616,7 +727,8 @@ export default function OpportunityModal({
               quantity: String(qty),
               discountRate: rate > 0 ? String(rate) : '',
               discountAmount: amt > 0 ? amt.toLocaleString() : '',
-              purchaseCostTotal: pc
+              purchaseCostTotal: pc,
+              commissionRecipients: mapServerCommissionRowsToClient(loadedComm)
             }
           ]);
           try {
@@ -689,11 +801,17 @@ export default function OpportunityModal({
   }, [fetchOpp]);
 
   useEffect(() => {
+    if (!isEdit) setFetchedOppValue(0);
+  }, [isEdit]);
+
+  useEffect(() => {
     let cancelled = false;
     fetch(`${API_BASE}/companies/overview`, { headers: getAuthHeader() })
       .then((r) => r.json().catch(() => ({})))
       .then((data) => {
-        if (!cancelled && Array.isArray(data?.employees)) setCompanyEmployees(data.employees);
+        if (cancelled) return;
+        if (Array.isArray(data?.employees)) setCompanyEmployees(data.employees);
+        setOverviewOrgChart(data?.company?.organizationChart ?? null);
       })
       .catch(() => {});
     return () => {
@@ -781,6 +899,31 @@ export default function OpportunityModal({
     setError('');
   };
 
+  const handleStageButtonClick = (nextStage) => {
+    setError('');
+    if (nextStage === 'Won' && form.stage !== 'Won') {
+      const saleTrim = String(form.saleDate || '').trim();
+      const today = todayDateInputValue();
+      /* 수주·판매일(계약일 기준): 미래 사전알림일 등은 실제 수주 전환 시 오늘로 맞춤. 시작일·구매 예정일은 수동 유지 */
+      const saleDateNext =
+        saleTrim && !isYyyyMmDdStrictlyAfterToday(saleTrim) ? saleTrim : today;
+      const lineSum = lineItems.reduce((s, l) => s + computeLineFinalAmount(l), 0);
+      const fromValue = opportunityValueRef.current || 0;
+      const contractNum = Math.round(lineSum > 0 ? lineSum : fromValue);
+      let contractAmountStr = '';
+      if (contractNum > 0) contractAmountStr = contractNum.toLocaleString();
+      else if (parseNumber(form.contractAmount) > 0) contractAmountStr = form.contractAmount;
+      setForm((f) => ({
+        ...f,
+        stage: 'Won',
+        saleDate: saleDateNext,
+        ...(contractAmountStr ? { contractAmount: contractAmountStr } : {})
+      }));
+      return;
+    }
+    setForm((f) => ({ ...f, stage: nextStage }));
+  };
+
   const handleCollectionAmountChange = (entryId, value) => {
     const nextValue = formatNumberInput(value);
     setCollectionEntries((prev) => prev.map((entry) => (
@@ -803,6 +946,45 @@ export default function OpportunityModal({
       if (prev.length <= 1) return [{ id: newCollectionEntryId(), amount: '', date: '' }];
       return prev.filter((entry) => entry.id !== entryId);
     });
+  };
+
+  const addCommissionRecipientToLine = (lineId) => {
+    setLineItems((prev) =>
+      prev.map((l) => {
+        if (l.lineId !== lineId) return l;
+        const cr =
+          Array.isArray(l.commissionRecipients) && l.commissionRecipients.length > 0
+            ? l.commissionRecipients
+            : [emptyCommissionRowForLine(l.lineId)];
+        return { ...l, commissionRecipients: [...cr, createEmptyCommissionRow()] };
+      })
+    );
+  };
+
+  const removeCommissionRecipientFromLine = (lineId, recipientId) => {
+    setLineItems((prev) =>
+      prev.map((l) => {
+        if (l.lineId !== lineId) return l;
+        const cr = Array.isArray(l.commissionRecipients) ? l.commissionRecipients.filter((r) => r.id !== recipientId) : [];
+        return { ...l, commissionRecipients: cr.length > 0 ? cr : [emptyCommissionRowForLine(l.lineId)] };
+      })
+    );
+  };
+
+  const updateCommissionRecipientOnLine = (lineId, recipientId, patch) => {
+    setLineItems((prev) =>
+      prev.map((l) => {
+        if (l.lineId !== lineId) return l;
+        const base =
+          Array.isArray(l.commissionRecipients) && l.commissionRecipients.length > 0
+            ? l.commissionRecipients
+            : [emptyCommissionRowForLine(l.lineId)];
+        return {
+          ...l,
+          commissionRecipients: base.map((r) => (r.id === recipientId ? { ...r, ...patch } : r))
+        };
+      })
+    );
   };
 
   const driveFolderName = useMemo(() => {
@@ -882,6 +1064,43 @@ export default function OpportunityModal({
       return changed ? next : lines;
     });
   }, [productById, lineItemsAutoCostKey]);
+
+  /*
+   * 계약금 ↔ 전체 최종(제품 행 합)
+   * - 행 합 > 0: 항상 계약금을 행 합과 동일하게 맞춤.
+   * - 행 합 === 0: 계약금이 비어 있을 때만 서버 value로 채움(합이 0인데 매번 덮어써서 기존 계약금·value가 사라지는 것 방지).
+   */
+  useEffect(() => {
+    const lineSum = lineItems.reduce((sum, line) => sum + computeLineFinalAmount(line), 0);
+    const fromLines = Math.round(lineSum);
+    const fromValue = Math.round(Math.max(0, Number(fetchedOppValue) || 0));
+    const base = fromLines > 0 ? fromLines : fromValue;
+    if (base <= 0) return;
+    const formatted = base.toLocaleString();
+    setForm((f) => {
+      if ((f.contractAmount || '') === formatted) return f;
+      if (fromLines > 0) return { ...f, contractAmount: formatted };
+      if (parseNumber(f.contractAmount) === 0) return { ...f, contractAmount: formatted };
+      return f;
+    });
+  }, [lineItems, fetchedOppValue]);
+
+  useEffect(() => {
+    if (fullCollectionDateTouchedRef.current) return;
+    const target = Math.max(0, parseNumber(form.contractAmount));
+    const collected = collectionEntries.reduce((sum, e) => sum + Math.max(0, parseNumber(e?.amount)), 0);
+    const completionDate =
+      target > 0 && collected >= target
+        ? fullCollectionDateFromCumulativeEntries(collectionEntries, target)
+        : '';
+    if (completionDate) {
+      setForm((f) =>
+        f.fullCollectionCompleteDate === completionDate ? f : { ...f, fullCollectionCompleteDate: completionDate }
+      );
+    } else {
+      setForm((f) => (f.fullCollectionCompleteDate === '' ? f : { ...f, fullCollectionCompleteDate: '' }));
+    }
+  }, [collectionEntries, form.contractAmount]);
 
   const driveMongoRegisteredUrl = useMemo(() => {
     const id = driveFolderId;
@@ -1098,7 +1317,7 @@ export default function OpportunityModal({
         })
       });
       const d = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(d.error || '고객사 Drive 저장 정보를 초기화할 수 없습니다.');
+      if (!res.ok) throw new Error(getUserVisibleApiError(d, '고객사 Drive 저장 정보를 초기화할 수 없습니다.'));
       return;
     }
     if (isContactOnlyDrive && (form.customerCompanyEmployeeId || '').trim()) {
@@ -1112,7 +1331,7 @@ export default function OpportunityModal({
         })
       });
       const d = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(d.error || '연락처 Drive 저장 정보를 초기화할 수 없습니다.');
+      if (!res.ok) throw new Error(getUserVisibleApiError(d, '연락처 Drive 저장 정보를 초기화할 수 없습니다.'));
     }
   }, [hasConfirmedCompanyDrive, isContactOnlyDrive, form.customerCompanyId, form.customerCompanyEmployeeId]);
 
@@ -1666,7 +1885,13 @@ export default function OpportunityModal({
         channelDistributor: li.priceBasis === 'channel' ? String(li.channelDistributor || '').trim() : '',
         quantity: Math.max(0, Number(li.quantity) || 1),
         discountRate: Math.max(0, Math.min(100, Number(li.discountRate) || 0)),
-        discountAmount: parseNumber(li.discountAmount) || 0
+        discountAmount: parseNumber(li.discountAmount) || 0,
+        commissionRecipients: (Array.isArray(li.commissionRecipients) ? li.commissionRecipients : [])
+          .map((r) => ({
+            remarks: String(r.remarks || '').trim().slice(0, 2000),
+            commissionAmount: parseNumber(r.commissionAmount) || 0
+          }))
+          .filter((r) => r.remarks || r.commissionAmount > 0)
       }));
       const collectionEntriesPayload = collectionEntries
         .map((entry) => {
@@ -1694,7 +1919,8 @@ export default function OpportunityModal({
         startDate: toIsoDate(form.startDate),
         targetDate: toIsoDate(form.targetDate),
         contractAmount: parseNumber(form.contractAmount) || 0,
-        contractAmountDate: toIsoDate(form.contractAmountDate),
+        contractAmountDate: toIsoDate(form.saleDate),
+        fullCollectionCompleteDate: toIsoDate(form.fullCollectionCompleteDate),
         invoiceAmount: parseNumber(form.invoiceAmount) || 0,
         invoiceAmountDate: toIsoDate(form.invoiceAmountDate),
         collectionEntries: collectionEntriesPayload
@@ -1765,53 +1991,6 @@ export default function OpportunityModal({
       /* ignore */
     }
   };
-
-  const handleEnsureRenewalCalendar = useCallback(async () => {
-    if (!isEdit || !oppId || form.stage !== 'Won' || !lineItems[0]?.productId) return;
-    setRenewalCalBusy(true);
-    setError('');
-    try {
-      const res = await fetch(`${API_BASE}/sales-opportunities/${oppId}/renewal-calendar`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() }
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || '갱신 일정을 처리할 수 없습니다.');
-      const rc = data.renewalCalendar;
-      if (rc?.scheduled && (rc.eventStart || rc.noticeEventStart || rc.preReminderEventStart)) {
-        try {
-          window.dispatchEvent(new CustomEvent('nexvia-crm-calendar-refresh'));
-        } catch {
-          /* ignore */
-        }
-        const fmt = (iso) =>
-          new Date(iso).toLocaleString('ko-KR', { dateStyle: 'long', timeStyle: 'short' });
-        let msg = (rc.alreadyHad ? '이미 등록된 일정이 있습니다.\n\n' : '') +
-          '회사 캘린더에 일정이 등록되었습니다.\n\n';
-        if (rc.noticeEventStart) msg += `· 수주 당일 안내: ${fmt(rc.noticeEventStart)}\n`;
-        if (rc.preReminderEventStart) {
-          msg += `· 사전 알림(월간=갱신 3주 전 / 연간=갱신 1개월 전): ${fmt(rc.preReminderEventStart)}\n`;
-        }
-        if (rc.eventStart) msg += `· 실제 갱신(1개월/1년 후): ${fmt(rc.eventStart)}\n`;
-        msg += '\n«회사 일정» 탭에서 확인하세요.';
-        window.alert(msg);
-      } else if (rc?.skipReason === 'not_subscription') {
-        window.alert(
-          '제품 결제 주기가 월간/연간이 아니면 갱신 일정이 만들어지지 않습니다. 제품 목록에서 해당 제품의 결제 주기를 확인하세요.'
-        );
-      } else if (rc?.skipReason === 'no_product_id') {
-        window.alert('제품이 연결되어 있지 않습니다.');
-      } else if (rc?.skipReason === 'product_not_found') {
-        window.alert('제품 정보를 찾을 수 없습니다.');
-      } else {
-        window.alert(rc?.skipReason ? `일정을 만들 수 없습니다: ${rc.skipReason}` : '일정을 만들 수 없습니다.');
-      }
-    } catch (e) {
-      setError(e.message || '갱신 일정 처리에 실패했습니다.');
-    } finally {
-      setRenewalCalBusy(false);
-    }
-  }, [isEdit, oppId, form.stage, lineItems]);
 
   /**
    * 고객사·연락처 지원/업무 기록 API — 메모 저장·코멘트 답글 등에서 동일 규칙으로 사용.
@@ -2247,45 +2426,105 @@ export default function OpportunityModal({
   const modalTitle = isWonStage
     ? (isEdit ? '계약 완료' : '새 계약 완료 추가')
     : (isEdit ? '기회 수정' : '새 영업 기회 추가');
-  const contractTargetAmount = Math.max(0, Number(totalFinalForForecast) || 0);
-  const collectedTotalAmount = collectionEntries.reduce(
-    (sum, entry) => sum + Math.max(0, parseNumber(entry?.amount)),
+  const totalCommissionAmount = lineItems.reduce(
+    (sum, line) =>
+      sum +
+      (Array.isArray(line.commissionRecipients) ? line.commissionRecipients : []).reduce(
+        (s, r) => s + parseNumber(r.commissionAmount),
+        0
+      ),
     0
   );
-  const latestFinanceDateRaw = [
-    String(form.contractAmountDate || '').trim(),
-    String(form.invoiceAmountDate || '').trim(),
-    ...collectionEntries.map((entry) => String(entry?.date || '').trim())
-  ]
-    .filter((v) => /^\d{4}-\d{2}-\d{2}$/.test(v))
-    .sort()
-    .at(-1) || '';
-  const latestCollectionDateRaw = collectionEntries
-    .map((entry) => String(entry?.date || '').trim())
-    .filter((v) => /^\d{4}-\d{2}-\d{2}$/.test(v))
-    .sort()
-    .at(-1) || '';
-  const financeBaseDateLabel = latestFinanceDateRaw ? latestFinanceDateRaw.replace(/-/g, '.') : '-';
-  const collectionCompletionDateLabel =
-    collectedTotalAmount >= contractTargetAmount && latestCollectionDateRaw
-      ? latestCollectionDateRaw.replace(/-/g, '.')
-      : '-';
+  const netMarginAfterCommission =
+    netMarginAmount != null ? netMarginAmount - totalCommissionAmount : null;
+
+  const headerSalesAssigneeName =
+    (form.assignedToName || '').trim() ||
+    (() => {
+      const uid = (form.assignedToUserId || '').trim();
+      if (!uid) return '';
+      const emp = companyEmployees.find((e) => e?.id != null && String(e.id) === uid);
+      if (!emp) return '';
+      return (
+        (emp.name && String(emp.name).trim()) ||
+        (emp.email && String(emp.email).trim()) ||
+        ''
+      );
+    })();
+
+  const headerSalesAssigneeEmployee = useMemo(() => {
+    const uid = (form.assignedToUserId || '').trim();
+    if (!uid) return null;
+    return companyEmployees.find((e) => e?.id != null && String(e.id) === uid) || null;
+  }, [form.assignedToUserId, companyEmployees]);
+
+  const headerSalesAssigneeDepartmentLabel = useMemo(() => {
+    const emp = headerSalesAssigneeEmployee;
+    if (!emp) return '—';
+    const raw = String(emp.department || emp.companyDepartment || '').trim();
+    if (!raw) return '—';
+    const fromApi = String(emp.departmentDisplay || '').trim();
+    if (fromApi) return fromApi;
+    const resolved = String(resolveDepartmentDisplayFromChart(overviewOrgChart, raw) || '').trim();
+    return resolved || raw || '—';
+  }, [headerSalesAssigneeEmployee, overviewOrgChart]);
 
   return (
     <div className="opp-modal-overlay">
       <div className="opp-modal" onClick={(e) => e.stopPropagation()}>
         <div className="opp-modal-header">
-          <div className="opp-modal-header-left">
-            <div className="opp-modal-title-wrap">
+          <div className="opp-modal-header-left opp-modal-header-left--title-row">
+            <div className="opp-modal-title-row">
               <h3 className="opp-modal-title">{modalTitle}</h3>
-              <p className="opp-modal-finance-mini">
-                계산서 {formatCurrencyDisplay(parseNumber(form.invoiceAmount), form.currency)} · 수금 {formatCurrencyDisplay(collectedTotalAmount, form.currency)}
-                {' · 기준일 '}
-                {financeBaseDateLabel}
-                {' · 수금 완료일 '}
-                {collectionCompletionDateLabel}
-              </p>
-              <p className="opp-modal-finance-mini-note">계약·계산서·수금 관리의 최종 날짜 기준으로 표기됩니다.</p>
+              <div className="opp-modal-header-assignee" role="group" aria-label="판매 담당">
+                <span className="opp-modal-header-assignee-label">판매 담당</span>
+                <span className="opp-modal-header-assignee-hit">
+                  <button
+                    type="button"
+                    className={`opp-modal-header-assignee-name${headerSalesAssigneeName ? '' : ' is-empty'}`}
+                    onClick={() => setShowInternalAssigneePicker(true)}
+                    aria-label={`판매 담당 변경. 현재 ${headerSalesAssigneeName || '미지정'}`}
+                  >
+                    {headerSalesAssigneeName || '미지정'}
+                  </button>
+                  {/* 이름↔말주머니 사이 호버 끊김 방지(드래그 복사 시 유지) */}
+                  <span className="opp-modal-header-assignee-bubble-bridge" aria-hidden="true" />
+                  <div
+                    className="opp-modal-header-assignee-bubble"
+                    role="tooltip"
+                    aria-hidden="true"
+                  >
+                    {headerSalesAssigneeEmployee ? (
+                      <dl className="opp-modal-header-assignee-bubble-dl">
+                        <dt>부서</dt>
+                        <dd>{headerSalesAssigneeDepartmentLabel}</dd>
+                        <dt>이름</dt>
+                        <dd>
+                          {String(headerSalesAssigneeEmployee.name || headerSalesAssigneeName || '').trim() || '—'}
+                        </dd>
+                        <dt>연락처</dt>
+                        <dd>{String(headerSalesAssigneeEmployee.phone || '').trim() || '—'}</dd>
+                        <dt>이메일</dt>
+                        <dd>{String(headerSalesAssigneeEmployee.email || '').trim() || '—'}</dd>
+                        {String(headerSalesAssigneeEmployee.roleLabel || '').trim() ? (
+                          <>
+                            <dt>구분</dt>
+                            <dd>{String(headerSalesAssigneeEmployee.roleLabel).trim()}</dd>
+                          </>
+                        ) : null}
+                      </dl>
+                    ) : (form.assignedToUserId || '').trim() ? (
+                      <p className="opp-modal-header-assignee-bubble-note">
+                        사내 직원 목록에서 이 담당의 상세를 찾지 못했습니다. 이름을 눌러 다시 선택할 수 있습니다.
+                      </p>
+                    ) : (
+                      <p className="opp-modal-header-assignee-bubble-note">
+                        이름을 눌러 사내 영업 담당을 지정할 수 있습니다. 저장 시 인계·인수 안내 메일이 발송될 수 있습니다.
+                      </p>
+                    )}
+                  </div>
+                </span>
+              </div>
             </div>
           </div>
           <button type="button" className="opp-modal-close" onClick={onClose}>
@@ -2293,38 +2532,24 @@ export default function OpportunityModal({
           </button>
         </div>
 
-        {form.stage === 'Won' ? (
-          <div className="opp-won-sale-date-banner" role="region" aria-label="수주 일자 안내">
-            <p className="opp-won-sale-date-banner-text">
-              수주 성공으로 저장할 때 반영되는 <strong>수주·판매일</strong>입니다. 오늘 날짜로 할지, 본문 상단의 수주·판매일 입력란에 적어 둔 날짜를 그대로 쓸지 선택하세요. 비어 있으면 저장할 수 없습니다.
-            </p>
-            <div className="opp-won-sale-date-banner-actions">
-              <button
-                type="button"
-                className="opp-won-sale-date-btn opp-won-sale-date-btn--primary"
-                onClick={() => handleChange('saleDate', todayDateInputValue())}
-              >
-                오늘 날짜로 적용
-              </button>
-              <span className="opp-won-sale-date-banner-hint-inline">
-                그대로 두려면 본문 상단의 수주·판매일만 맞춰 두면 됩니다.
-              </span>
-            </div>
-            {!String(form.saleDate || '').trim() ? (
-              <p className="opp-won-sale-date-banner-warn" role="alert">
-                수주·판매일이 비어 있습니다. 위에서 오늘로 채우거나 본문 상단의 수주·판매일을 입력해 주세요.
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-
         {loadingOpp ? (
           <div className="opp-modal-loading">로딩 중...</div>
         ) : (
           <>
-            <form className="opp-modal-form" onSubmit={handleSubmit} id="opp-form">
+            <div className="opp-modal-form">
               <div className="opp-modal-form-layout">
-                <div className="opp-modal-form-main">
+                <form
+                  className="opp-modal-form-main"
+                  id="opp-form"
+                  onSubmit={(e) => {
+                    const sub = e.nativeEvent?.submitter;
+                    if (!sub || !sub.classList.contains('opp-save-btn')) {
+                      e.preventDefault();
+                      return;
+                    }
+                    void handleSubmit(e);
+                  }}
+                >
               {/* 고객사 / 담당자 2열 — 라벨·줄 높이 동일 */}
               <div className="opp-form-grid-2 opp-form-grid-2--company-contact">
                 <div className="opp-label">
@@ -2370,44 +2595,6 @@ export default function OpportunityModal({
                       검색
                     </button>
                   </div>
-                </div>
-              </div>
-
-              <div className="opp-form-grid-2 opp-form-grid-2--assignee-currency">
-                <div className="opp-label">
-                  <span>사내 영업 담당</span>
-                  <div className="opp-company-wrap">
-                    <span className="opp-company-display">{form.assignedToName || '담당자 선택'}</span>
-                    {(form.assignedToUserId || '').trim() ? (
-                      <button
-                        type="button"
-                        className="opp-internal-assignee-clear"
-                        onClick={() => setForm((f) => ({ ...f, assignedToUserId: '', assignedToName: '' }))}
-                        aria-label="사내 영업 담당 지우기"
-                        title="담당 해제 후 다시 선택"
-                      >
-                        <span className="material-symbols-outlined" aria-hidden>
-                          close
-                        </span>
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      className="opp-company-search-btn"
-                      onClick={() => setShowInternalAssigneePicker(true)}
-                    >
-                      <span className="material-symbols-outlined">search</span>
-                      선택
-                    </button>
-                  </div>
-                </div>
-                <div className="opp-label">
-                  <span>통화</span>
-                  <select className="opp-select" value={form.currency} onChange={(e) => handleChange('currency', e.target.value)}>
-                    {CURRENCY_OPTIONS.map((c) => (
-                      <option key={c.value} value={c.value}>{c.label}</option>
-                    ))}
-                  </select>
                 </div>
               </div>
 
@@ -2471,28 +2658,13 @@ export default function OpportunityModal({
                       key={s.value}
                       type="button"
                       className={'opp-stage-btn' + (form.stage === s.value ? ' opp-stage-btn--selected' : '')}
-                      onClick={() => handleChange('stage', s.value)}
+                      onClick={() => handleStageButtonClick(s.value)}
                     >
                       {s.label}
                     </button>
                   ))}
                 </div>
               </div>
-              {isEdit && form.stage === 'Won' && lineItems[0]?.productId ? (
-                <div className="opp-renewal-cal-row">
-                  <button
-                    type="button"
-                    className="opp-renewal-cal-btn"
-                    disabled={renewalCalBusy}
-                    onClick={handleEnsureRenewalCalendar}
-                  >
-                    {renewalCalBusy ? '처리 중…' : '갱신 캘린더 일정 등록·확인'}
-                  </button>
-                  <p className="opp-renewal-cal-hint">
-                    월간·연간 제품만 해당합니다. 수주 당일 안내·실제 갱신일(1개월 또는 1년 뒤)·사전 알림(월간은 갱신 3주 전, 연간은 갱신 1개월 전)이 «회사 일정»에 등록됩니다. «개인 일정» 탭에는 표시되지 않습니다.
-                  </p>
-                </div>
-              ) : null}
 
               {/* 제품별 가격 기준 · 유통 · 단가 */}
               {lineItems.map((line) => (
@@ -2665,90 +2837,150 @@ export default function OpportunityModal({
                       />
                     </label>
                   </div>
+
+                  <section
+                    className="opp-commission-section"
+                    aria-label={`${line.productName || '제품'} 기타 금액`}
+                  >
+                    <div className="opp-commission-head">
+                      <span className="opp-commission-title">기타 금액</span>
+                      <button
+                        type="button"
+                        className="opp-commission-add"
+                        onClick={() => addCommissionRecipientToLine(line.lineId)}
+                        aria-label={`${line.productName || '제품'} 기타 금액 행 추가`}
+                        title="행 추가"
+                      >
+                        <span className="material-symbols-outlined" aria-hidden>add</span>
+                      </button>
+                    </div>
+                    <p className="opp-commission-hint">
+                      이 제품 행에 반영할 기타 금액입니다. 비고는 선택이며, 순마진 계산에서 기타 금액 합만큼 차감됩니다.
+                    </p>
+                    {(() => {
+                      const commRows =
+                        Array.isArray(line.commissionRecipients) && line.commissionRecipients.length > 0
+                          ? line.commissionRecipients
+                          : [emptyCommissionRowForLine(line.lineId)];
+                      return commRows.map((row, idx) => (
+                      <div key={row.id} className="opp-commission-row">
+                        <label className="opp-label opp-commission-field opp-commission-field--remarks">
+                          <span>비고</span>
+                          <textarea
+                            className="opp-input opp-textarea opp-commission-remarks"
+                            value={row.remarks}
+                            onChange={(e) =>
+                              updateCommissionRecipientOnLine(line.lineId, row.id, { remarks: e.target.value })
+                            }
+                            placeholder="필요 시만 입력"
+                            maxLength={2000}
+                            rows={2}
+                            spellCheck={false}
+                          />
+                        </label>
+                        <label className="opp-label opp-commission-field opp-commission-field--amount">
+                          <span>금액</span>
+                          <input
+                            type="text"
+                            className="opp-input"
+                            inputMode="numeric"
+                            value={row.commissionAmount}
+                            onChange={(e) =>
+                              updateCommissionRecipientOnLine(line.lineId, row.id, {
+                                commissionAmount: formatNumberInput(e.target.value)
+                              })
+                            }
+                            placeholder="0"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          className="opp-commission-remove"
+                          onClick={() => removeCommissionRecipientFromLine(line.lineId, row.id)}
+                          disabled={commRows.length <= 1}
+                          aria-label={`${line.productName || '제품'} 기타 금액 행 ${idx + 1} 제거`}
+                          title="행 제거"
+                        >
+                          <span className="material-symbols-outlined" aria-hidden>delete</span>
+                        </button>
+                      </div>
+                      ));
+                    })()}
+                  </section>
                 </section>
               ))}
 
-              {/* 계산 요약: 제품별 + 전체(2건 이상) — 제품 행이 있을 때만 표시(빈 테두리 방지) */}
+              {/* 계산 요약: 제품별 + 전체 합계 — 제품 행이 있을 때만 표시 */}
               {lineItems.length > 0 ? (
                 <div className="opp-summary-box">
-                  {lineItems.map((line) => (
+                  {lineItems.map((line) => {
+                    const lineFinal = computeLineFinalAmount(line);
+                    const lineComm = (Array.isArray(line.commissionRecipients) ? line.commissionRecipients : []).reduce(
+                      (s, r) => s + parseNumber(r.commissionAmount),
+                      0
+                    );
+                    const lineNet = computeLineNetMargin(line);
+                    const lineNetShown = lineNet != null ? lineNet - lineComm : null;
+                    return (
                     <div key={line.lineId} className="opp-summary-per-line">
                       <div className="opp-summary-per-line-title">{line.productName || '제품'}</div>
-                      <div className="opp-summary-item">
-                        <span className="opp-summary-label">차감 금액</span>
-                        <span className="opp-summary-value">- {formatCurrencyDisplay(computeLineDeduction(line), form.currency)}</span>
-                      </div>
-                      <div className="opp-summary-item opp-summary-item--end opp-summary-item--final-stack">
-                        <span className="opp-summary-label">최종 금액</span>
-                        <span className="opp-summary-value">{formatCurrencyDisplay(computeLineFinalAmount(line), form.currency)}</span>
-                        {line.productId && productById[line.productId] ? (
-                          <div className="opp-summary-net-margin" aria-label="순마진">
-                            <span className="opp-summary-net-margin-label">순마진</span>
-                            <span className="opp-summary-net-margin-value">
-                              {computeLineNetMargin(line) != null ? formatCurrencyDisplay(computeLineNetMargin(line), form.currency) : '—'}
-                            </span>
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))}
-                  {lineItems.length > 1 ? (
-                    <>
-                      <div className="opp-summary-divider" aria-hidden />
-                      <div className="opp-summary-total-block">
-                        <div className="opp-summary-item opp-summary-item--row-between opp-summary-total-deduction">
-                          <span className="opp-summary-label">전체 차감 금액</span>
-                          <span className="opp-summary-value">- {formatCurrencyDisplay(computeTotalDeduction(), form.currency)}</span>
+                      <div className="opp-summary-line-metrics" role="group" aria-label={`${line.productName || '제품'} 요약`}>
+                        <div className="opp-summary-line-metric">
+                          <span className="opp-summary-line-label">차감</span>
+                          <span className="opp-summary-line-val">- {formatCurrencyDisplay(computeLineDeduction(line), form.currency)}</span>
                         </div>
-                        <div className="opp-summary-grand-final" aria-label="전체 최종 금액">
-                          <span className="opp-summary-grand-final-label">전체 최종 금액</span>
-                          <span className="opp-summary-grand-final-value">
-                            {formatCurrencyDisplay(computeTotalFinalAmount(), form.currency)}
+                        <div className="opp-summary-line-metric opp-summary-line-metric--main">
+                          <span className="opp-summary-line-label">최종</span>
+                          <span className="opp-summary-line-val opp-summary-line-val--main">{formatCurrencyDisplay(lineFinal, form.currency)}</span>
+                        </div>
+                        <div className="opp-summary-line-metric opp-summary-line-metric--margin">
+                          <span className="opp-summary-line-label">순마진</span>
+                          <span className="opp-summary-line-val opp-summary-line-val--margin">
+                            {line.productId && productById[line.productId] && lineNetShown != null
+                              ? formatCurrencyDisplay(lineNetShown, form.currency)
+                              : '—'}
                           </span>
                         </div>
-                        <div className="opp-summary-total-net" aria-label="마진 합계">
-                          <span className="opp-summary-total-net-label">마진 합계</span>
-                          <span className="opp-summary-total-net-value">
-                            {netMarginAmount != null ? formatCurrencyDisplay(netMarginAmount, form.currency) : '—'}
+                      </div>
+                    </div>
+                    );
+                  })}
+                  <div className="opp-summary-divider" aria-hidden />
+                  <div className="opp-summary-total-block">
+                    <div className="opp-summary-total-grid">
+                      <div className="opp-summary-total-stack">
+                        <div className="opp-summary-total-pill opp-summary-total-pill--deduct">
+                          <span className="opp-summary-total-pill-label">전체 차감</span>
+                          <span className="opp-summary-total-pill-val">- {formatCurrencyDisplay(computeTotalDeduction(), form.currency)}</span>
+                        </div>
+                        <div className="opp-summary-total-pill opp-summary-total-pill--margin" aria-label="마진 합계">
+                          <span className="opp-summary-total-pill-label">마진 합계</span>
+                          <span className="opp-summary-total-pill-val opp-summary-total-pill-val--margin">
+                            {netMarginAfterCommission != null ? formatCurrencyDisplay(netMarginAfterCommission, form.currency) : '—'}
                           </span>
                         </div>
                         {forecastExpectedRevenue != null ? (
                           <div
-                            className="opp-summary-forecast-expected"
+                            className="opp-summary-total-pill opp-summary-total-pill--forecast"
                             aria-label="Forecast 예상 매출"
                             title={`전체 최종 금액 × 단계 Forecast (${forecastPctForStage}%)`}
                           >
-                            <div className="opp-summary-forecast-expected-text">
-                              <span className="opp-summary-forecast-expected-label">Forecast 예상 매출</span>
-                              <span className="opp-summary-forecast-expected-meta">
-                                {forecastStageLabel} · {forecastPctForStage}%
-                              </span>
-                            </div>
-                            <span className="opp-summary-forecast-expected-value">
+                            <span className="opp-summary-total-pill-label">Forecast</span>
+                            <span className="opp-summary-total-pill-meta">{forecastStageLabel} · {forecastPctForStage}%</span>
+                            <span className="opp-summary-total-pill-val opp-summary-total-pill-val--forecast">
                               {formatCurrencyDisplay(forecastExpectedRevenue, form.currency)}
                             </span>
                           </div>
                         ) : null}
                       </div>
-                    </>
-                  ) : null}
-                  {lineItems.length === 1 && forecastExpectedRevenue != null ? (
-                    <div
-                      className="opp-summary-forecast-expected opp-summary-forecast-expected--single"
-                      aria-label="Forecast 예상 매출"
-                      title={`전체 최종 금액 × 단계 Forecast (${forecastPctForStage}%)`}
-                    >
-                      <div className="opp-summary-forecast-expected-text">
-                        <span className="opp-summary-forecast-expected-label">Forecast 예상 매출</span>
-                        <span className="opp-summary-forecast-expected-meta">
-                          {forecastStageLabel} · {forecastPctForStage}%
+                      <div className="opp-summary-total-hero" aria-label="전체 최종 금액">
+                        <span className="opp-summary-total-hero-label">전체 최종</span>
+                        <span className="opp-summary-total-hero-val">
+                          {formatCurrencyDisplay(computeTotalFinalAmount(), form.currency)}
                         </span>
                       </div>
-                      <span className="opp-summary-forecast-expected-value">
-                        {formatCurrencyDisplay(forecastExpectedRevenue, form.currency)}
-                      </span>
                     </div>
-                  ) : null}
+                  </div>
                 </div>
               ) : null}
 
@@ -2983,7 +3215,7 @@ export default function OpportunityModal({
               ) : null}
 
               {error && <p className="opp-error">{error}</p>}
-                </div>
+                </form>
                 <aside className="opp-modal-form-finance" aria-label="기회 일정 및 계약·계산서·수금">
                   <div className="opp-form-dates-top opp-form-dates-top--sidebar" aria-label="기회 일정">
                     <div className="opp-form-dates-top-field">
@@ -3005,14 +3237,30 @@ export default function OpportunityModal({
                       />
                     </div>
                     <div className="opp-form-dates-top-field">
-                      <span className="opp-form-dates-top-label">수주·판매일</span>
+                      <span className="opp-form-dates-top-label">계약일</span>
                       <input
                         type="date"
                         className="opp-input opp-input--date"
                         value={form.saleDate}
                         onChange={(e) => handleChange('saleDate', e.target.value)}
-                        aria-label="수주·판매일"
+                        aria-label="계약일"
                       />
+                    </div>
+                    <div className="opp-form-dates-top-field opp-form-dates-top-field--block">
+                      <span className="opp-form-dates-top-label">전체 완료 날짜</span>
+                      <input
+                        type="date"
+                        className="opp-input opp-input--date"
+                        value={form.fullCollectionCompleteDate}
+                        onChange={(e) => {
+                          fullCollectionDateTouchedRef.current = true;
+                          handleChange('fullCollectionCompleteDate', e.target.value);
+                        }}
+                        aria-label="전체 완료 날짜"
+                      />
+                      <p className="opp-form-dates-top-hint">
+                        수금 누적이 계약 금액 이상이 되면, 수금일 중 가장 늦은 날짜로 자동 채워집니다. 필요 시 수정할 수 있습니다.
+                      </p>
                     </div>
                   </div>
                   <section className="opp-finance-section">
@@ -3020,7 +3268,7 @@ export default function OpportunityModal({
                     <div className="opp-finance-cards">
                       <div className="opp-finance-card">
                         <div className="opp-finance-card-title">계약금액</div>
-                        <div className="opp-finance-grid">
+                        <div className="opp-finance-grid opp-finance-grid--single">
                           <label className="opp-label">
                             <span>금액</span>
                             <input
@@ -3033,16 +3281,8 @@ export default function OpportunityModal({
                               onChange={(e) => handleChange('contractAmount', formatNumberInput(e.target.value))}
                             />
                           </label>
-                          <label className="opp-label">
-                            <span>날짜</span>
-                            <input
-                              type="date"
-                              className="opp-input opp-input--date"
-                              value={form.contractAmountDate}
-                              onChange={(e) => handleChange('contractAmountDate', e.target.value)}
-                            />
-                          </label>
                         </div>
+                        <p className="opp-finance-card-hint">계약일은 위쪽 「계약일」과 동일합니다.</p>
                       </div>
 
                       <div className="opp-finance-card">
@@ -3127,7 +3367,7 @@ export default function OpportunityModal({
                   </section>
                 </aside>
               </div>
-            </form>
+            </div>
 
             <div className="opp-modal-footer">
               {isEdit && canDeleteOpportunity ? (

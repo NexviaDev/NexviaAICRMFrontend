@@ -1,10 +1,30 @@
-import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { API_BASE } from '@/config';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import ParticipantModal from '@/shared/participant-modal/participant-modal';
 import KpiDetailModal from './kpi-detail-modal/kpi-detail-modal';
 import KpiTargetModal from './kpi-target-modal/kpi-target-modal';
+import {
+  emptyCascadeBlock,
+  topDownFromAnnual,
+  applyAnnualTopDownMetric,
+  applyMonthChange,
+  applySemiChange,
+  applyQuarterChange,
+  rollupFromMonths,
+  distributeEvenInt,
+  splitCompanyMetricMonthsToEditableRoots,
+  splitCompanyAnnualEvenAcrossEditableDepartmentRows,
+  compareCompanyToRootDeptSums,
+  syncCompanyRevenueFromRootDepts,
+  distributeCompanySemiToEditableRoots,
+  distributeCompanyQuarterToEditableRoots,
+  normCascadeBlock,
+  resyncStaffCascadeFromDeptMap,
+  pushStaffSumIntoDeptCascadeAndUp,
+  rollupDeptCascadeFromStaffAndChildren
+} from './kpi-target-cascade-utils';
 import '../home/home.css';
 import './kpi.css';
 
@@ -136,6 +156,33 @@ function collectOrgChartDeptIds(node, acc = []) {
   return acc;
 }
 
+/** 조직도 DFS 순서 + depth(0=최상위) + parentId(직속 상위 부서 id, 루트는 ''). 목표 모달 형제 보정용 */
+function orderDepartmentRowsByOrgTree(orgRoot, flatRows) {
+  const base = Array.isArray(flatRows) ? flatRows : [];
+  const rowMap = new Map(base.map((r) => [String(r.id), { ...r }]));
+  if (!orgRoot || base.length === 0) {
+    return base.map((r) => ({ ...r, depth: 0, parentId: '' }));
+  }
+  const ordered = [];
+  const seen = new Set();
+  const walk = (node, depth, parentId) => {
+    if (!node || typeof node !== 'object') return;
+    const id = String(node.id || '').trim();
+    if (id && rowMap.has(id)) {
+      ordered.push({ ...rowMap.get(id), depth, parentId: String(parentId || '').trim() });
+      seen.add(id);
+    }
+    const pid = id && rowMap.has(id) ? id : String(parentId || '').trim();
+    for (const c of node.children || []) walk(c, depth + 1, pid);
+  };
+  walk(orgRoot, 0, '');
+  const rest = base
+    .filter((r) => !seen.has(String(r.id)))
+    .sort((a, b) => String(a.label).localeCompare(String(b.label), 'ko'));
+  rest.forEach((r) => ordered.push({ ...r, depth: 0, parentId: '' }));
+  return ordered;
+}
+
 function resolveDeptDisplay(orgChartRoot, stored) {
   const s = String(stored || '').trim();
   if (!s) return '';
@@ -231,6 +278,37 @@ function buildPeriodValueOptions(periodType) {
 
 const KPI_MONTHS = Array.from({ length: 12 }, (_, idx) => idx + 1);
 
+/** GET /kpi/targets/year-matrix → UI 캐스케이드 블록 */
+function yearMatrixJsonToCascadeBlock(json) {
+  if (!json || typeof json !== 'object') return emptyCascadeBlock();
+  const monthR = Array.from({ length: 12 }, (_, i) => {
+    const hit = (json.monthly || []).find((x) => Number(x.periodValue) === i + 1);
+    return Math.max(0, Math.round(Number(hit?.targetRevenue) || 0));
+  });
+  const annualR = Math.max(0, Math.round(Number(json.annual?.targetRevenue) || 0));
+  let revenue;
+  if (monthR.reduce((a, b) => a + b, 0) > 0) {
+    revenue = rollupFromMonths(monthR);
+  } else if (annualR > 0) {
+    revenue = topDownFromAnnual(annualR);
+  } else {
+    revenue = { annual: 0, semi: [0, 0], quarter: [0, 0, 0, 0], month: monthR };
+  }
+  return { revenue };
+}
+
+async function fetchKpiYearMatrix(year, scopeType, scopeId) {
+  const params = new URLSearchParams({ year: String(year), scopeType });
+  if (scopeType !== 'company' && scopeId) params.set('scopeId', String(scopeId));
+  const res = await fetch(`${API_BASE}/kpi/targets/year-matrix?${params.toString()}`, {
+    headers: getAuthHeader(),
+    credentials: 'include'
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json?.error || '목표 매트릭스를 불러오지 못했습니다.');
+  return json;
+}
+
 function sumByMonthRange(values, startMonth, endMonth) {
   let sum = 0;
   for (let month = startMonth; month <= endMonth; month += 1) {
@@ -253,55 +331,6 @@ function aggregateTargetByPeriod(values, periodType, periodValue) {
   return Number(values?.[month - 1] || 0);
 }
 
-function parseMonthlyProjectEntriesFromNote(note) {
-  if (note == null) return [];
-  const raw = String(note || '').trim();
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed?.projectEntries)) {
-      return parsed.projectEntries
-        .map((item) => {
-          const title = String(item?.title || '').trim();
-          const participantIds = Array.isArray(item?.participantIds)
-            ? item.participantIds.map((v) => String(v || '').trim()).filter(Boolean)
-            : [];
-          return title ? { title, participantIds } : null;
-        })
-        .filter(Boolean)
-        .slice(0, 50);
-    }
-    if (Array.isArray(parsed?.projectTitles)) {
-      return parsed.projectTitles
-        .map((v) => String(v || '').trim())
-        .filter(Boolean)
-        .slice(0, 50)
-        .map((title) => ({ title, participantIds: [] }));
-    }
-    return [];
-  } catch {
-    return [];
-  }
-}
-
-function buildMonthlyProjectNote(projectEntries = []) {
-  const entries = (Array.isArray(projectEntries) ? projectEntries : [])
-    .map((item) => {
-      const title = String(item?.title || '').trim();
-      if (!title) return null;
-      const participantIds = Array.isArray(item?.participantIds)
-        ? item.participantIds.map((v) => String(v || '').trim()).filter(Boolean)
-        : [];
-      return { title, participantIds };
-    })
-    .filter(Boolean)
-    .slice(0, 50);
-  return JSON.stringify({
-    projectEntries: entries,
-    projectTitles: entries.map((item) => item.title)
-  });
-}
-
 function buildDetailRows(dashboard, metricKey = 'all') {
   const metrics = dashboard?.metrics || {};
   const target = dashboard?.target || {};
@@ -312,7 +341,7 @@ function buildDetailRows(dashboard, metricKey = 'all') {
   const dealsPrevious = Number(metrics?.wonDeals?.previous) || 0;
   const projectsCurrent = Number(metrics?.completedProjects?.current) || 0;
   const projectsPrevious = Number(metrics?.completedProjects?.previous) || 0;
-  const projectsTarget = Number(metrics?.completedProjects?.target) || Number(target?.targetProjects) || 0;
+  const projectsTarget = Number(metrics?.completedProjects?.target) || 0;
   const activeProjectsCurrent = Number(metrics?.activeProjects?.current) || 0;
   const activeProjectsPrevious = Number(metrics?.activeProjects?.previous) || 0;
   const workCurrent = Number(metrics?.workLogs?.current) || 0;
@@ -363,7 +392,10 @@ function buildDetailRows(dashboard, metricKey = 'all') {
       previousDisplay: `${formatNumber(projectsPrevious)}개`,
       currentDisplay: `${formatNumber(projectsCurrent)}개`,
       targetDisplay: projectsTarget > 0 ? `${formatNumber(projectsTarget)}개` : '미설정',
-      summaryText: projectsTarget > 0 ? `목표 ${formatNumber(projectsTarget)}개` : '목표 미설정'
+      summaryText:
+        projectsTarget > 0
+          ? `목표 ${formatNumber(projectsTarget)}개 · 프로젝트 참여·임무는 상세 체크리스트와 동기화`
+          : '목표 미설정 · 프로젝트 참여·임무는 상세 체크리스트와 동기화'
     },
     {
       key: 'activeProjects',
@@ -508,9 +540,30 @@ function isProjectKpiRow(row) {
   return String(row?.key || '').startsWith('project:');
 }
 
-function projectParticipantCountFromRow(row) {
+const KPI_PROJECT_CREATOR_LABEL = '프로젝트 생성자';
+
+function scoringProjectParticipantsFromRow(row) {
   const parts = Array.isArray(row?.projectParticipants) ? row.projectParticipants : [];
-  const nList = parts.length;
+  return parts.filter((p) => String(p?.name || '').trim() !== KPI_PROJECT_CREATOR_LABEL);
+}
+
+/** 프로젝트 체크리스트: 참여자별 0(미입력)~5 */
+function clampProjectParticipantScore05(v) {
+  const x = Math.round(Number(v));
+  if (!Number.isFinite(x) || x < 0) return 0;
+  return Math.min(5, x);
+}
+
+/** 균등·통합 단일 평가 1~5 */
+function clampProjectLikertUnit15(v) {
+  const x = Math.round(Number(v));
+  if (!Number.isFinite(x) || x < 1) return 1;
+  return Math.min(5, x);
+}
+
+function projectParticipantCountFromRow(row) {
+  const list = scoringProjectParticipantsFromRow(row);
+  const nList = list.length;
   const nField = Math.max(0, Math.floor(Number(row?.projectParticipantCount) || 0));
   return Math.max(1, nList || nField || 1);
 }
@@ -522,7 +575,7 @@ function reconcileParticipantScoresForProject(parts, scores) {
   for (const s of Array.isArray(scores) ? scores : []) {
     const uid = normalizeMongoIdString(s?.userId);
     if (!uid) continue;
-    byUser.set(uid, Math.max(0, Number(s?.score) || 0));
+    byUser.set(uid, clampProjectParticipantScore05(s?.score));
   }
   return list
     .map((p) => {
@@ -546,7 +599,7 @@ function mergeChecklistItems(rows, checklistItems = []) {
     };
     if (!isProjectKpiRow(row)) return base;
 
-    const parts = Array.isArray(row.projectParticipants) ? row.projectParticipants : [];
+    const parts = scoringProjectParticipantsFromRow(row);
     const nFromRow = projectParticipantCountFromRow(row);
     const nSaved = Math.max(0, Math.floor(Number(saved?.projectParticipantCount) || 0));
     const n = Math.max(1, nFromRow, nSaved || 0);
@@ -560,7 +613,7 @@ function mergeChecklistItems(rows, checklistItems = []) {
     let participantScores = Array.isArray(saved?.participantScores)
       ? saved.participantScores.map((p) => ({
         userId: normalizeMongoIdString(p?.userId),
-        score: Math.max(0, Number(p.score) || 0)
+        score: clampProjectParticipantScore05(p.score)
       })).filter((p) => p.userId)
       : [];
 
@@ -575,24 +628,27 @@ function mergeChecklistItems(rows, checklistItems = []) {
       if (!projectUniformUnit && denom > 0) {
         projectUniformUnit = Math.max(0, Math.floor(base.score / denom));
       }
+      projectUniformUnit = clampProjectLikertUnit15(projectUniformUnit || 1);
     } else if (mode === 'individual') {
       participantScores = reconcileParticipantScoresForProject(parts, participantScores);
       if (participantScores.length === 0 && parts.length > 0) {
-        const per = n > 0 ? Math.max(0, Math.floor(base.score / n)) : 0;
+        const per = n > 0 ? clampProjectParticipantScore05(Math.floor(base.score / n)) : 0;
         participantScores = parts
           .map((p) => ({ userId: normalizeMongoIdString(p.userId), score: per }))
           .filter((p) => p.userId);
       } else if (participantScores.length > 0 && participantScores.every((r) => r.score === 0) && base.score > 0) {
-        const per = n > 0 ? Math.max(0, Math.floor(base.score / n)) : 0;
+        const per = n > 0 ? clampProjectParticipantScore05(Math.floor(base.score / n)) : 0;
         participantScores = participantScores.map((r) => ({ ...r, score: per }));
       }
     }
 
-    const uniformOut = mode === 'uniform_each' ? projectUniformUnit : 0;
+    const uniformOut = mode === 'uniform_each' ? clampProjectLikertUnit15(projectUniformUnit || 1) : 0;
     const scoresOut = mode === 'individual' ? participantScores : [];
     const scoreOut = mode === 'individual'
       ? scoresOut.reduce((s, r) => s + Math.max(0, Number(r.score) || 0), 0)
-      : base.score;
+      : mode === 'uniform_each'
+        ? uniformOut * n
+        : clampProjectParticipantScore05(base.score);
 
     return {
       ...base,
@@ -634,22 +690,26 @@ function normalizeDetailItems(items = []) {
     otherParticipants: Array.isArray(item?.otherParticipants) ? item.otherParticipants : [],
     projectParticipants: Array.isArray(item?.projectParticipants)
       ? item.projectParticipants
+        .filter((p) => String(p?.name || '').trim() !== KPI_PROJECT_CREATOR_LABEL)
         .map((p) => ({
           userId: normalizeMongoIdString(p?.userId),
-          name: String(p?.name || '').trim()
+          name: String(p?.name || '').trim(),
+          mission: String(p?.mission || '').trim()
         }))
         .filter((p) => p.userId)
       : [],
     projectParticipantCount: Math.max(
       1,
-      Number(item?.projectParticipantCount) || (Array.isArray(item?.projectParticipants) ? item.projectParticipants.length : 0) || 1
+      Number(item?.projectParticipantCount)
+        || scoringProjectParticipantsFromRow(item).length
+        || 1
     ),
     projectScoreMode: String(item?.projectScoreMode || 'flat').trim(),
     projectUniformUnit: Math.max(0, Math.floor(Number(item?.projectUniformUnit) || 0)),
     participantScores: Array.isArray(item?.participantScores)
       ? item.participantScores.map((p) => ({
         userId: normalizeMongoIdString(p?.userId),
-        score: Math.max(0, Number(p?.score) || 0)
+        score: clampProjectParticipantScore05(p?.score)
       })).filter((p) => p.userId)
       : []
   })).filter((item) => item.key);
@@ -665,7 +725,7 @@ function buildChecklistPayloadItem(item) {
   const n = projectParticipantCountFromRow(item);
   const mode = item.projectScoreMode === 'individual' ? 'individual' : (item.projectScoreMode === 'uniform_each' ? 'uniform_each' : 'flat');
   if (mode === 'uniform_each') {
-    const unit = Math.max(0, Math.floor(Number(item.projectUniformUnit) || 0));
+    const unit = clampProjectLikertUnit15(item.projectUniformUnit);
     return {
       ...base,
       score: unit * n,
@@ -678,7 +738,7 @@ function buildChecklistPayloadItem(item) {
   if (mode === 'individual') {
     const scores = (Array.isArray(item.participantScores) ? item.participantScores : []).map((p) => ({
       userId: normalizeMongoIdString(p.userId),
-      score: Math.max(0, Number(p.score) || 0)
+      score: clampProjectParticipantScore05(p.score)
     })).filter((p) => p.userId);
     const total = scores.reduce((sum, row) => sum + row.score, 0);
     return {
@@ -692,7 +752,7 @@ function buildChecklistPayloadItem(item) {
   }
   return {
     ...base,
-    score: Math.max(0, Number(item.score) || 0),
+    score: clampProjectParticipantScore05(item.score),
     projectScoreMode: 'flat',
     projectUniformUnit: 0,
     projectParticipantCount: n,
@@ -745,13 +805,13 @@ export default function Kpi() {
   const [viewBy, setViewBy] = useState(initialFilters.viewBy);
   const [selectedDepartment, setSelectedDepartment] = useState(initialFilters.selectedDepartment);
   const [selectedRank, setSelectedRank] = useState(initialFilters.selectedRank);
+  const [showInsightCards, setShowInsightCards] = useState(true);
   const skipFirstUrlHydrateRef = useRef(true);
   const [dashboard, setDashboard] = useState(null);
   const [overview, setOverview] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [targetRevenueInput, setTargetRevenueInput] = useState('');
-  const [targetProjectsInput, setTargetProjectsInput] = useState('');
   const [targetNote, setTargetNote] = useState('');
   const [savingTarget, setSavingTarget] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
@@ -761,26 +821,23 @@ export default function Kpi() {
   const [targetModalUserId, setTargetModalUserId] = useState('');
   const [targetModalYear, setTargetModalYear] = useState(new Date().getFullYear());
   const [targetModalMonthlyRevenue, setTargetModalMonthlyRevenue] = useState(() => Array(12).fill(''));
-  const [targetModalMonthlyProjects, setTargetModalMonthlyProjects] = useState(() => Array(12).fill(''));
-  const [targetModalMonthlyProjectTitles, setTargetModalMonthlyProjectTitles] = useState(
-    () => Array.from({ length: 12 }, () => [])
-  );
-  const [targetModalMonthlyProjectEntries, setTargetModalMonthlyProjectEntries] = useState(
-    () => Array.from({ length: 12 }, () => [])
-  );
-  const [targetModalMonthlyProjectTitleDrafts, setTargetModalMonthlyProjectTitleDrafts] = useState(
-    () => Array(12).fill('')
-  );
-  const [targetModalMonthlyProjectParticipantDrafts, setTargetModalMonthlyProjectParticipantDrafts] = useState(
-    () => Array.from({ length: 12 }, () => [])
-  );
   const [targetModalLoadedUserMonthlyRevenue, setTargetModalLoadedUserMonthlyRevenue] = useState(() => Array(12).fill(0));
-  const [targetModalLoadedUserMonthlyProjects, setTargetModalLoadedUserMonthlyProjects] = useState(() => Array(12).fill(0));
   const [targetModalTeamMonthlyRevenue, setTargetModalTeamMonthlyRevenue] = useState(() => Array(12).fill(0));
-  const [targetModalTeamMonthlyProjects, setTargetModalTeamMonthlyProjects] = useState(() => Array(12).fill(0));
   const [targetModalLoading, setTargetModalLoading] = useState(false);
   const [targetModalSaving, setTargetModalSaving] = useState(false);
   const [targetModalMessage, setTargetModalMessage] = useState('');
+  /** 전체 탭: 회사·부서별 연→반기→분기→월 목표 */
+  const [targetModalCompanyCascade, setTargetModalCompanyCascade] = useState(() => emptyCascadeBlock());
+  const [targetModalDeptCascade, setTargetModalDeptCascade] = useState({});
+  const [targetModalAllStaffRows, setTargetModalAllStaffRows] = useState([]);
+  /** 전체 탭 ③: 직원별 userId → 연·반기·분기·월 캐스케이드(②와 동일 apply* 규칙) */
+  const [targetModalStaffCascade, setTargetModalStaffCascade] = useState({});
+  /** ①②③ 동시 갱신 시 이전 커밋 스냅샷(중첩 setState 없이 연쇄 계산) */
+  const targetModalCompanyCascadeRef = useRef(emptyCascadeBlock());
+  const targetModalDeptCascadeRef = useRef({});
+  const targetModalStaffCascadeRef = useRef({});
+  const targetModalAllStaffRowsRef = useRef([]);
+  const targetModalAllDepartmentRowsTreeRef = useRef([]);
   const [checklistSummaryByMetric, setChecklistSummaryByMetric] = useState({});
   const [detailChecklistItems, setDetailChecklistItems] = useState([]);
   const [detailChecklistLoading, setDetailChecklistLoading] = useState(false);
@@ -802,7 +859,10 @@ export default function Kpi() {
   const currentUserId = String(storedUser?._id || storedUser?.id || overview?.me?.id || '').trim();
   const availableDepartments = dashboard?.filters?.availableDepartments || [];
   const availableRanks = dashboard?.filters?.availableRanks || [];
-  const overviewEmployees = overview?.employees || [];
+  const overviewEmployees = useMemo(
+    () => (Array.isArray(overview?.employees) ? overview.employees : []),
+    [overview?.employees]
+  );
   const overviewOrgChart = overview?.company?.organizationChart || null;
   const currentEmployee = useMemo(
     () => overviewEmployees.find((employee) => String(employee.id) === currentUserId) || null,
@@ -830,10 +890,8 @@ export default function Kpi() {
     if (kpiAccess?.mode !== 'leader' || !Array.isArray(kpiAccess.allowedDepartmentIds)) return null;
     return new Set(kpiAccess.allowedDepartmentIds);
   }, [kpiAccess]);
-  const filteredScopeDepartmentOptions = useMemo(() => {
-    if (!allowedDeptIdSet) return scopeDepartmentOptions;
-    return scopeDepartmentOptions.filter((o) => allowedDeptIdSet.has(o.id));
-  }, [scopeDepartmentOptions, allowedDeptIdSet]);
+  /** KPI 페이지 부서 필터: 전 부서 노출(타 팀 조회). 집계·저장 권한은 백엔드·모달에서 제한 */
+  const filteredScopeDepartmentOptions = useMemo(() => scopeDepartmentOptions, [scopeDepartmentOptions]);
   const scopeUserOptions = useMemo(() => (
     [...overviewEmployees]
       .map((employee) => ({
@@ -844,24 +902,11 @@ export default function Kpi() {
       }))
       .sort((a, b) => a.name.localeCompare(b.name, 'ko'))
   ), [overviewEmployees, overviewOrgChart]);
-  const filteredScopeUserOptions = useMemo(() => {
-    if (kpiAccess?.mode === 'self' && currentUserId) {
-      return scopeUserOptions.filter((o) => o.id === currentUserId);
-    }
-    if (kpiAccess?.mode === 'leader' && Array.isArray(kpiAccess.allowedUserIds)) {
-      const allow = new Set(kpiAccess.allowedUserIds);
-      return scopeUserOptions.filter((o) => allow.has(o.id));
-    }
-    return scopeUserOptions;
-  }, [scopeUserOptions, kpiAccess, currentUserId]);
+  /** 목록·필터: 직원은 전원 표시(개인별 저장은 본인·권한 범위만). 대시보드 집계는 백엔드 스코프 따름 */
+  const filteredScopeUserOptions = useMemo(() => scopeUserOptions, [scopeUserOptions]);
   const selectedScopeUserOption = useMemo(
-    () => {
-      const hit = filteredScopeUserOptions.find((item) => item.id === selectedScopeUser);
-      if (hit) return hit;
-      if (kpiAccess?.mode === 'self' || kpiAccess?.mode === 'leader') return null;
-      return scopeUserOptions.find((item) => item.id === selectedScopeUser) || null;
-    },
-    [filteredScopeUserOptions, scopeUserOptions, selectedScopeUser, kpiAccess?.mode]
+    () => scopeUserOptions.find((item) => item.id === selectedScopeUser) || null,
+    [scopeUserOptions, selectedScopeUser]
   );
   const participantTeamMembers = useMemo(
     () => overviewEmployees.map((e) => ({
@@ -876,39 +921,19 @@ export default function Kpi() {
     [overviewEmployees, overviewOrgChart]
   );
   const targetModalDepartmentOptions = useMemo(
-    () => {
-      const myDept = String(currentDepartmentId || '').trim();
-      if (!myDept) return [];
-
-      const baseById = new Map(filteredScopeDepartmentOptions.map((item) => [item.id, item]));
-      const isDeptLeader = kpiAccess?.mode === 'leader';
-
-      if (!isDeptLeader) {
-        const own = baseById.get(myDept);
-        return own ? [{ ...own, readOnly: false }] : [{ id: myDept, label: resolveDeptDisplay(overviewOrgChart, myDept) || myDept, readOnly: false }];
-      }
-
-      const root = findOrgChartNodeById(overviewOrgChart, myDept);
-      const descendants = root ? collectOrgChartDeptIds(root, []) : [myDept];
-      const allowedIds = new Set(descendants);
-      const out = descendants.map((id) => {
-        const hit = baseById.get(id);
-        return hit
-          ? { ...hit, readOnly: id !== myDept }
-          : { id, label: resolveDeptDisplay(overviewOrgChart, id) || id, readOnly: id !== myDept };
-      });
-      return out.filter((item) => allowedIds.has(item.id));
-    },
-    [filteredScopeDepartmentOptions, currentDepartmentId, kpiAccess?.mode, overviewOrgChart]
+    () => scopeDepartmentOptions.map((item) => ({
+      id: item.id,
+      label: item.label,
+      readOnly:
+        kpiAccess?.mode === 'full'
+          ? false
+          : kpiAccess?.mode === 'leader'
+            ? !(allowedDeptIdSet && allowedDeptIdSet.has(item.id))
+            : true
+    })),
+    [scopeDepartmentOptions, kpiAccess?.mode, allowedDeptIdSet]
   );
-  const targetModalUserOptions = useMemo(
-    () => {
-      const uid = String(currentUserId || '').trim();
-      if (!uid) return [];
-      return filteredScopeUserOptions.filter((item) => item.id === uid);
-    },
-    [filteredScopeUserOptions, currentUserId]
-  );
+  const targetModalUserOptions = useMemo(() => scopeUserOptions, [scopeUserOptions]);
   const targetModalSelectedUserDeptId = useMemo(() => {
     const uid = String(targetModalUserId || '').trim();
     if (!uid) return '';
@@ -928,44 +953,36 @@ export default function Kpi() {
       .map((item) => String(item.id || '').trim())
       .filter(Boolean);
   }, [overviewEmployees, effectiveTeamDeptIdForTargetModal]);
-  const teamDeptAndDescendantIdsForTargetModal = useMemo(() => {
-    const dept = String(effectiveTeamDeptIdForTargetModal || '').trim();
-    if (!dept) return [];
-    const startNode = findOrgChartNodeById(overviewOrgChart, dept);
-    if (!startNode) return [dept];
-    return collectOrgChartDeptIds(startNode, []);
-  }, [effectiveTeamDeptIdForTargetModal, overviewOrgChart]);
-  const canSelectTeamProjectParticipants = useMemo(() => {
-    if (targetModalScopeType !== 'team') return false;
-    if (kpiAccess?.mode !== 'leader') return false;
-    if (!allowedDeptIdSet) return false;
-    return teamDeptAndDescendantIdsForTargetModal.some((id) => allowedDeptIdSet.has(id));
-  }, [targetModalScopeType, kpiAccess?.mode, allowedDeptIdSet, teamDeptAndDescendantIdsForTargetModal]);
-  const targetModalTeamProjectParticipantOptions = useMemo(() => {
-    if (targetModalScopeType !== 'team') return [];
-    const allowedDepts = new Set(teamDeptAndDescendantIdsForTargetModal);
-    return overviewEmployees
-      .filter((emp) => {
-        const dept = String(emp?.department || emp?.companyDepartment || '').trim();
-        return dept && allowedDepts.has(dept);
-      })
-      .map((emp) => ({
-        id: String(emp.id || '').trim(),
-        label: `${emp.name || emp.email || '사용자'} · ${resolveDeptDisplay(overviewOrgChart, emp?.department || emp?.companyDepartment) || '부서 미배정'}`
-      }))
-      .filter((item) => item.id)
-      .sort((a, b) => a.label.localeCompare(b.label, 'ko'));
-  }, [targetModalScopeType, teamDeptAndDescendantIdsForTargetModal, overviewEmployees, overviewOrgChart]);
+  const targetModalAllDepartmentRows = useMemo(() => {
+    if (kpiAccess?.mode === 'self') return [];
+    if (kpiAccess?.mode === 'full') {
+      return scopeDepartmentOptions.map((o) => ({ id: o.id, label: o.label, readOnly: false }));
+    }
+    if (kpiAccess?.mode === 'leader') {
+      const managed = allowedDeptIdSet && allowedDeptIdSet.size > 0 ? allowedDeptIdSet : new Set();
+      return scopeDepartmentOptions
+        .map((o) => ({
+          id: o.id,
+          label: o.label,
+          readOnly: !managed.has(o.id)
+        }))
+        .sort((a, b) => String(a.label).localeCompare(String(b.label), 'ko'));
+    }
+    return [];
+  }, [kpiAccess?.mode, allowedDeptIdSet, scopeDepartmentOptions]);
+
+  const targetModalAllDepartmentRowsTree = useMemo(
+    () => orderDepartmentRowsByOrgTree(overviewOrgChart, targetModalAllDepartmentRows),
+    [overviewOrgChart, targetModalAllDepartmentRows]
+  );
+
   const targetModalCurrentUserMonthlyRevenueNums = useMemo(
     () => KPI_MONTHS.map((month) => Number(String(targetModalMonthlyRevenue[month - 1] || '').replace(/\D/g, '')) || 0),
     [targetModalMonthlyRevenue]
   );
-  const targetModalCurrentUserMonthlyProjectNums = useMemo(
-    () => KPI_MONTHS.map((month) => Number(String(targetModalMonthlyProjects[month - 1] || '').replace(/\D/g, '')) || 0),
-    [targetModalMonthlyProjects]
-  );
   const targetModalTeamMonthlyRevenueDisplay = useMemo(() => {
     const base = Array.isArray(targetModalTeamMonthlyRevenue) ? targetModalTeamMonthlyRevenue : Array(12).fill(0);
+    if (targetModalScopeType === 'team' || targetModalScopeType === 'all') return base;
     if (!teamUserIdsForTargetModal.includes(String(targetModalUserId || '').trim())) return base;
     return base.map((v, idx) =>
       Math.max(
@@ -974,46 +991,527 @@ export default function Kpi() {
       )
     );
   }, [
+    targetModalScopeType,
     targetModalTeamMonthlyRevenue,
     teamUserIdsForTargetModal,
     targetModalUserId,
     targetModalLoadedUserMonthlyRevenue,
     targetModalCurrentUserMonthlyRevenueNums
   ]);
-  const targetModalTeamMonthlyProjectsDisplay = useMemo(() => {
-    const base = Array.isArray(targetModalTeamMonthlyProjects) ? targetModalTeamMonthlyProjects : Array(12).fill(0);
-    if (!teamUserIdsForTargetModal.includes(String(targetModalUserId || '').trim())) return base;
-    return base.map((v, idx) =>
-      Math.max(
-        0,
-        Number(v || 0) - Number(targetModalLoadedUserMonthlyProjects[idx] || 0) + Number(targetModalCurrentUserMonthlyProjectNums[idx] || 0)
-      )
-    );
-  }, [
-    targetModalTeamMonthlyProjects,
-    teamUserIdsForTargetModal,
-    targetModalUserId,
-    targetModalLoadedUserMonthlyProjects,
-    targetModalCurrentUserMonthlyProjectNums
-  ]);
-  const canSubmitTargetModal = useMemo(
-    () => targetModalScopeType === 'user' && String(targetModalUserId || '').trim() === String(currentUserId || '').trim() && !!currentUserId,
-    [targetModalScopeType, targetModalUserId, currentUserId]
-  );
-  const targetModalScopeNotice = useMemo(() => {
+  const canSubmitTargetModal = useMemo(() => {
+    const role = String(storedUser?.role || '').trim().toLowerCase();
+    if (!currentUserId || role === 'pending') return false;
+    const uid = String(targetModalUserId || '').trim();
+    const dept = String(targetModalDepartmentId || '').trim();
+    const selfUser = uid && uid === String(currentUserId);
+    const allowUserSet = new Set((Array.isArray(kpiAccess?.allowedUserIds) ? kpiAccess.allowedUserIds : []).map((x) => String(x)));
+
     if (targetModalScopeType === 'user') {
-      return '개인별은 본인 목표만 조회·수정할 수 있습니다.';
+      if (!uid) return false;
+      if (kpiAccess?.mode === 'full') return true;
+      if (selfUser) return true;
+      if (kpiAccess?.mode === 'leader' && allowUserSet.has(uid)) return true;
+      return false;
     }
-    const selectedDept = String(targetModalDepartmentId || '').trim();
-    const myDept = String(currentDepartmentId || '').trim();
-    if (kpiAccess?.mode === 'leader') {
-      if (selectedDept && myDept && selectedDept !== myDept) {
-        return '하위 부서는 조회만 가능합니다. 수정은 본인 부서에서만 가능합니다.';
+    if (targetModalScopeType === 'team') {
+      if (!dept) return false;
+      if (kpiAccess?.mode === 'full') return true;
+      if (kpiAccess?.mode === 'leader' && allowedDeptIdSet?.has(dept)) return true;
+      return false;
+    }
+    if (targetModalScopeType === 'all') {
+      if (kpiAccess?.mode === 'self') return false;
+      if (targetModalAllDepartmentRows.length === 0) return false;
+      if (kpiAccess?.mode === 'full') return true;
+      if (kpiAccess?.mode === 'leader') {
+        return targetModalAllDepartmentRows.some((r) => !r.readOnly);
       }
-      return '팀별은 본인 팀과 하위 부서를 조회할 수 있습니다.';
+      return false;
     }
-    return '팀별은 본인 팀 데이터만 조회할 수 있습니다.';
-  }, [targetModalScopeType, targetModalDepartmentId, currentDepartmentId, kpiAccess?.mode]);
+    return false;
+  }, [
+    currentUserId,
+    storedUser?.role,
+    targetModalScopeType,
+    targetModalUserId,
+    targetModalDepartmentId,
+    kpiAccess?.mode,
+    kpiAccess?.allowedUserIds,
+    allowedDeptIdSet,
+    targetModalAllDepartmentRows
+  ]);
+  const targetModalScopeNotice = useMemo(() => {
+    if (targetModalScopeType === 'all') {
+      return '전체: ① 회사 목표와 ② 팀별 할당(기본은 연간→반기→분기→월 세로 섹션 표, 버튼으로 가로 한 줄 표 전환)에서 조정합니다. KPI 목표는 하위 부서를 부모 부서에 더하지 않고, 각 부서의 직접 소속 직원 합만 ② 부서 행에 반영합니다. 매니저 이상만 전사 저장이 가능하며, 부서장은 담당 부서만 저장합니다.';
+    }
+    if (targetModalScopeType === 'user') {
+      if (kpiAccess?.mode === 'full') {
+        return '개인별: 매니저 이상은 전 직원의 할당·목표를 저장할 수 있습니다. 직원은 본인만 수정합니다.';
+    }
+    if (kpiAccess?.mode === 'leader') {
+        return '개인별: 부서장으로 지정된 하위 조직 소속 직원에게 할당량(월간 기준)을 저장할 수 있고, 직원 본인은 자신의 월간 목표를 나눠 저장합니다.';
+      }
+      return '개인별: 본인 월간 목표만 수정할 수 있습니다. 분기·반기·연간은 월간 합산으로 자동 반영됩니다.';
+    }
+    if (kpiAccess?.mode === 'full') {
+      return '팀별: 부서 단위 할당 목표를 저장합니다(Top-Down). 하위 부서장은 자기 구역만 수정할 수 있습니다.';
+    }
+    if (kpiAccess?.mode === 'leader') {
+      return '팀별: «사내 현황» 부서장으로 지정된 부서만 할당 목표를 저장할 수 있습니다. 다른 부서는 조회만 가능합니다.';
+    }
+    return '팀별: 조회만 가능합니다. 할당 저장은 부서장 이상 권한이 필요합니다.';
+  }, [targetModalScopeType, kpiAccess?.mode]);
+
+  const targetModalAllDeptIdsKey = useMemo(
+    () => targetModalAllDepartmentRowsTree.map((r) => r.id).join('|'),
+    [targetModalAllDepartmentRowsTree]
+  );
+  const targetModalAllStaffIdsKey = useMemo(
+    () => scopeUserOptions.map((o) => o.id).join('|'),
+    [scopeUserOptions]
+  );
+  const targetModalCompanyAnnual = useMemo(
+    () => ({
+      revenue: Math.max(0, Math.round(Number(targetModalCompanyCascade?.revenue?.annual) || 0))
+    }),
+    [targetModalCompanyCascade]
+  );
+  const targetModalCanEditCompany = kpiAccess?.mode === 'full';
+  const targetModalCompanyAchievement = useMemo(() => {
+    const revAct = Math.max(0, Math.round(Number(dashboard?.metrics?.revenue?.current) || 0));
+    const tgtR = Math.max(0, Math.round(Number(targetModalCompanyCascade?.revenue?.annual) || 0));
+    return {
+      revAct,
+      revPct: calcAchievement(revAct, tgtR)
+    };
+  }, [dashboard?.metrics?.revenue?.current, targetModalCompanyCascade]);
+  const targetModalAllDeptSum = useMemo(() => {
+    let rev = 0;
+    for (const row of targetModalAllDepartmentRowsTree) {
+      if (Number(row.depth) !== 0) continue;
+      const c = targetModalDeptCascade[row.id] || emptyCascadeBlock();
+      rev += Math.max(0, Math.round(Number(c.revenue?.annual) || 0));
+    }
+    return { revenue: rev };
+  }, [targetModalAllDepartmentRowsTree, targetModalDeptCascade]);
+  const targetModalMonthlyTableEditable = useMemo(() => {
+    if (targetModalScopeType === 'all') {
+      return canSubmitTargetModal && targetModalAllDepartmentRowsTree.some((r) => !r.readOnly);
+    }
+    return canSubmitTargetModal;
+  }, [targetModalScopeType, canSubmitTargetModal, targetModalAllDepartmentRowsTree]);
+
+  useEffect(() => {
+    targetModalCompanyCascadeRef.current = targetModalCompanyCascade;
+  }, [targetModalCompanyCascade]);
+  useEffect(() => {
+    targetModalDeptCascadeRef.current = targetModalDeptCascade;
+  }, [targetModalDeptCascade]);
+  useEffect(() => {
+    targetModalStaffCascadeRef.current = targetModalStaffCascade;
+  }, [targetModalStaffCascade]);
+  useEffect(() => {
+    targetModalAllStaffRowsRef.current = targetModalAllStaffRows;
+  }, [targetModalAllStaffRows]);
+  useEffect(() => {
+    targetModalAllDepartmentRowsTreeRef.current = targetModalAllDepartmentRowsTree;
+  }, [targetModalAllDepartmentRowsTree]);
+
+  const handleTargetModalCompanyAnnualRevenue = useCallback((raw) => {
+    if (!targetModalCanEditCompany) return;
+    const tree = targetModalAllDepartmentRowsTreeRef.current;
+    const staffRows = targetModalAllStaffRowsRef.current;
+    const prevCo = targetModalCompanyCascadeRef.current;
+    const prevDept = targetModalDeptCascadeRef.current;
+    const prevStaff = targetModalStaffCascadeRef.current;
+    const nextCompany = applyAnnualTopDownMetric(prevCo, 'revenue', raw);
+    const draftDept = splitCompanyAnnualEvenAcrossEditableDepartmentRows(nextCompany, tree, prevDept, 'revenue');
+    const nextStaff = resyncStaffCascadeFromDeptMap(prevStaff, staffRows, draftDept, tree);
+    const nextDept = draftDept;
+    const syncedCompany = syncCompanyRevenueFromRootDepts(nextCompany, nextDept, tree);
+    targetModalCompanyCascadeRef.current = syncedCompany;
+    targetModalDeptCascadeRef.current = nextDept;
+    targetModalStaffCascadeRef.current = nextStaff;
+    setTargetModalCompanyCascade(syncedCompany);
+    setTargetModalDeptCascade(nextDept);
+    setTargetModalStaffCascade(nextStaff);
+    setTargetModalMessage('');
+  }, [targetModalCanEditCompany]);
+
+  const handleTargetModalCompanyMetricMonth = useCallback((metric, monthIdx, raw) => {
+    if (!targetModalCanEditCompany) return;
+    const tree = targetModalAllDepartmentRowsTreeRef.current;
+    const staffRows = targetModalAllStaffRowsRef.current;
+    const prevCo = targetModalCompanyCascadeRef.current;
+    const prevDept = targetModalDeptCascadeRef.current;
+    const prevStaff = targetModalStaffCascadeRef.current;
+    const nextCompany = applyMonthChange(prevCo, metric, monthIdx, raw);
+    const draftDept = splitCompanyMetricMonthsToEditableRoots(nextCompany, tree, prevDept, metric);
+    const nextStaff = resyncStaffCascadeFromDeptMap(prevStaff, staffRows, draftDept, tree);
+    const nextDept = rollupDeptCascadeFromStaffAndChildren(draftDept, tree, staffRows, nextStaff);
+    const syncedCompany = syncCompanyRevenueFromRootDepts(nextCompany, nextDept, tree);
+    targetModalCompanyCascadeRef.current = syncedCompany;
+    targetModalDeptCascadeRef.current = nextDept;
+    targetModalStaffCascadeRef.current = nextStaff;
+    setTargetModalCompanyCascade(syncedCompany);
+    setTargetModalDeptCascade(nextDept);
+    setTargetModalStaffCascade(nextStaff);
+    setTargetModalMessage('');
+  }, [targetModalCanEditCompany]);
+
+  const handleTargetModalCompanyMetricSemi = useCallback((metric, semiIdx, raw) => {
+    if (!targetModalCanEditCompany) return;
+    const tree = targetModalAllDepartmentRowsTreeRef.current;
+    const staffRows = targetModalAllStaffRowsRef.current;
+    const prevCo = targetModalCompanyCascadeRef.current;
+    const prevDept = targetModalDeptCascadeRef.current;
+    const prevStaff = targetModalStaffCascadeRef.current;
+    const nextCompany = applySemiChange(prevCo, metric, semiIdx, raw);
+    const semiVal = Math.max(0, Math.round(Number(nextCompany[metric]?.semi?.[semiIdx]) || 0));
+    const draftDept = distributeCompanySemiToEditableRoots(prevDept, tree, metric, semiIdx, semiVal);
+    const nextStaff = resyncStaffCascadeFromDeptMap(prevStaff, staffRows, draftDept, tree);
+    const nextDept = rollupDeptCascadeFromStaffAndChildren(draftDept, tree, staffRows, nextStaff);
+    const syncedCompany = syncCompanyRevenueFromRootDepts(nextCompany, nextDept, tree);
+    targetModalCompanyCascadeRef.current = syncedCompany;
+    targetModalDeptCascadeRef.current = nextDept;
+    targetModalStaffCascadeRef.current = nextStaff;
+    setTargetModalCompanyCascade(syncedCompany);
+    setTargetModalDeptCascade(nextDept);
+    setTargetModalStaffCascade(nextStaff);
+    setTargetModalMessage('');
+  }, [targetModalCanEditCompany]);
+
+  const handleTargetModalCompanyMetricQuarter = useCallback((metric, qIdx, raw) => {
+    if (!targetModalCanEditCompany) return;
+    const tree = targetModalAllDepartmentRowsTreeRef.current;
+    const staffRows = targetModalAllStaffRowsRef.current;
+    const prevCo = targetModalCompanyCascadeRef.current;
+    const prevDept = targetModalDeptCascadeRef.current;
+    const prevStaff = targetModalStaffCascadeRef.current;
+    const nextCompany = applyQuarterChange(prevCo, metric, qIdx, raw);
+    const qVal = Math.max(0, Math.round(Number(nextCompany[metric]?.quarter?.[qIdx]) || 0));
+    const draftDept = distributeCompanyQuarterToEditableRoots(prevDept, tree, metric, qIdx, qVal);
+    const nextStaff = resyncStaffCascadeFromDeptMap(prevStaff, staffRows, draftDept, tree);
+    const nextDept = rollupDeptCascadeFromStaffAndChildren(draftDept, tree, staffRows, nextStaff);
+    const syncedCompany = syncCompanyRevenueFromRootDepts(nextCompany, nextDept, tree);
+    targetModalCompanyCascadeRef.current = syncedCompany;
+    targetModalDeptCascadeRef.current = nextDept;
+    targetModalStaffCascadeRef.current = nextStaff;
+    setTargetModalCompanyCascade(syncedCompany);
+    setTargetModalDeptCascade(nextDept);
+    setTargetModalStaffCascade(nextStaff);
+    setTargetModalMessage('');
+  }, [targetModalCanEditCompany]);
+
+  const rebalanceDeptSiblingAnnual = useCallback(
+    (treeRows, prevCascade, editedId, metric, newAnnualInt) => {
+      const editedRow = treeRows.find((r) => String(r.id) === String(editedId));
+      if (!editedRow) return { next: prevCascade, warn: '' };
+      const parentId = String(editedRow.parentId || '').trim();
+      const next = { ...prevCascade };
+      const applyTop = (id, ann) => {
+        const base = next[id] || emptyCascadeBlock();
+        next[id] = { ...base, [metric]: topDownFromAnnual(Math.max(0, Math.round(ann))) };
+      };
+      if (!parentId) {
+        applyTop(editedId, newAnnualInt);
+        return { next, warn: '' };
+      }
+      const parentBlock = next[parentId] || emptyCascadeBlock();
+      const parentTarget = Math.max(0, Math.round(Number(parentBlock[metric]?.annual) || 0));
+      const siblings = treeRows.filter((r) => String(r.parentId || '') === parentId);
+      const readOnlySum = siblings
+        .filter((s) => s.readOnly)
+        .reduce((acc, s) => acc + Math.max(0, Math.round(Number(next[s.id]?.[metric]?.annual) || 0)), 0);
+      const editableOthers = siblings.filter((s) => !s.readOnly && String(s.id) !== String(editedId));
+      const maxEdited = Math.max(0, parentTarget - readOnlySum);
+      const clamped = Math.min(Math.max(0, newAnnualInt), maxEdited);
+      applyTop(editedId, clamped);
+      const remaining = Math.max(0, parentTarget - readOnlySum - clamped);
+      if (editableOthers.length === 0) {
+        return {
+          next,
+          warn:
+            remaining > 0
+              ? '형제 부서가 조회 전용이라 부모 목표 합계를 맞출 수 없습니다. 상위 부서 목표를 조정해 주세요.'
+              : ''
+        };
+      }
+      const parts = distributeEvenInt(remaining, editableOthers.length);
+      editableOthers.forEach((s, i) => {
+        applyTop(s.id, parts[i] || 0);
+      });
+      return { next, warn: '' };
+    },
+    []
+  );
+
+  const handleTargetModalDeptAnnualRevenue = useCallback((deptId, raw) => {
+    const tree = targetModalAllDepartmentRowsTreeRef.current;
+    const row = tree.find((r) => String(r.id) === String(deptId));
+    if (row?.readOnly) return;
+    const id = String(deptId || '').trim();
+    if (!id) return;
+    const newAnnual = Math.max(0, Math.round(Number(String(raw ?? '').replace(/\D/g, '')) || 0));
+    const staffRows = targetModalAllStaffRowsRef.current;
+    let next = { ...targetModalDeptCascadeRef.current };
+    const base = next[id] || emptyCascadeBlock();
+    next[id] = { ...base, revenue: topDownFromAnnual(newAnnual) };
+    const nextStaff = resyncStaffCascadeFromDeptMap(targetModalStaffCascadeRef.current, staffRows, next, tree);
+    next = rollupDeptCascadeFromStaffAndChildren(next, tree, staffRows, nextStaff);
+    let nextCo = syncCompanyRevenueFromRootDepts(
+      targetModalCompanyCascadeRef.current,
+      next,
+      tree
+    );
+    targetModalDeptCascadeRef.current = next;
+    targetModalCompanyCascadeRef.current = nextCo;
+    targetModalStaffCascadeRef.current = nextStaff;
+    setTargetModalDeptCascade(next);
+    setTargetModalCompanyCascade(nextCo);
+    setTargetModalStaffCascade(nextStaff);
+    if (targetModalScopeType === 'team' && String(id) === String(effectiveTeamDeptIdForTargetModal || '').trim()) {
+      setTargetModalMonthlyRevenue((next[id]?.revenue?.month || Array(12).fill(0)).map((v) => (Number(v) > 0 ? String(v) : '')));
+    }
+    setTargetModalMessage('');
+  }, [effectiveTeamDeptIdForTargetModal, targetModalScopeType]);
+
+  const handleTargetModalDeptMetricMonth = useCallback((deptId, metric, monthIdx, raw) => {
+    const tree = targetModalAllDepartmentRowsTreeRef.current;
+    const row = tree.find((r) => String(r.id) === String(deptId));
+    if (row?.readOnly) return;
+    const id = String(deptId || '').trim();
+    if (!id) return;
+    const staffRows = targetModalAllStaffRowsRef.current;
+    const prevDept = targetModalDeptCascadeRef.current;
+    const base = prevDept[id] || emptyCascadeBlock();
+    let next = { ...prevDept, [id]: applyMonthChange(base, metric, monthIdx, raw) };
+    const nextStaff = resyncStaffCascadeFromDeptMap(targetModalStaffCascadeRef.current, staffRows, next, tree);
+    let nextCo = targetModalCompanyCascadeRef.current;
+    if (metric === 'revenue') {
+      next = rollupDeptCascadeFromStaffAndChildren(next, tree, staffRows, nextStaff);
+      nextCo = syncCompanyRevenueFromRootDepts(nextCo, next, tree);
+    }
+    targetModalDeptCascadeRef.current = next;
+    targetModalCompanyCascadeRef.current = nextCo;
+    targetModalStaffCascadeRef.current = nextStaff;
+    setTargetModalDeptCascade(next);
+    setTargetModalCompanyCascade(nextCo);
+    setTargetModalStaffCascade(nextStaff);
+    if (targetModalScopeType === 'team' && String(id) === String(effectiveTeamDeptIdForTargetModal || '').trim()) {
+      setTargetModalMonthlyRevenue((next[id]?.revenue?.month || Array(12).fill(0)).map((v) => (Number(v) > 0 ? String(v) : '')));
+    }
+    setTargetModalMessage('');
+  }, [effectiveTeamDeptIdForTargetModal, targetModalScopeType]);
+
+  const handleTargetModalDeptMetricSemi = useCallback((deptId, metric, semiIdx, raw) => {
+    const tree = targetModalAllDepartmentRowsTreeRef.current;
+    const row = tree.find((r) => String(r.id) === String(deptId));
+    if (row?.readOnly) return;
+    const id = String(deptId || '').trim();
+    if (!id) return;
+    const staffRows = targetModalAllStaffRowsRef.current;
+    const prevDept = targetModalDeptCascadeRef.current;
+    const base = prevDept[id] || emptyCascadeBlock();
+    let next = { ...prevDept, [id]: applySemiChange(base, metric, semiIdx, raw) };
+    const nextStaff = resyncStaffCascadeFromDeptMap(targetModalStaffCascadeRef.current, staffRows, next, tree);
+    let nextCo = targetModalCompanyCascadeRef.current;
+    if (metric === 'revenue') {
+      next = rollupDeptCascadeFromStaffAndChildren(next, tree, staffRows, nextStaff);
+      nextCo = syncCompanyRevenueFromRootDepts(nextCo, next, tree);
+    }
+    targetModalDeptCascadeRef.current = next;
+    targetModalCompanyCascadeRef.current = nextCo;
+    targetModalStaffCascadeRef.current = nextStaff;
+    setTargetModalDeptCascade(next);
+    setTargetModalCompanyCascade(nextCo);
+    setTargetModalStaffCascade(nextStaff);
+    if (targetModalScopeType === 'team' && String(id) === String(effectiveTeamDeptIdForTargetModal || '').trim()) {
+      setTargetModalMonthlyRevenue((next[id]?.revenue?.month || Array(12).fill(0)).map((v) => (Number(v) > 0 ? String(v) : '')));
+    }
+    setTargetModalMessage('');
+  }, [effectiveTeamDeptIdForTargetModal, targetModalScopeType]);
+
+  const handleTargetModalDeptMetricQuarter = useCallback((deptId, metric, qIdx, raw) => {
+    const tree = targetModalAllDepartmentRowsTreeRef.current;
+    const row = tree.find((r) => String(r.id) === String(deptId));
+    if (row?.readOnly) return;
+    const id = String(deptId || '').trim();
+    if (!id) return;
+    const staffRows = targetModalAllStaffRowsRef.current;
+    const prevDept = targetModalDeptCascadeRef.current;
+    const base = prevDept[id] || emptyCascadeBlock();
+    let next = { ...prevDept, [id]: applyQuarterChange(base, metric, qIdx, raw) };
+    const nextStaff = resyncStaffCascadeFromDeptMap(targetModalStaffCascadeRef.current, staffRows, next, tree);
+    let nextCo = targetModalCompanyCascadeRef.current;
+    if (metric === 'revenue') {
+      next = rollupDeptCascadeFromStaffAndChildren(next, tree, staffRows, nextStaff);
+      nextCo = syncCompanyRevenueFromRootDepts(nextCo, next, tree);
+    }
+    targetModalDeptCascadeRef.current = next;
+    targetModalCompanyCascadeRef.current = nextCo;
+    targetModalStaffCascadeRef.current = nextStaff;
+    setTargetModalDeptCascade(next);
+    setTargetModalCompanyCascade(nextCo);
+    setTargetModalStaffCascade(nextStaff);
+    if (targetModalScopeType === 'team' && String(id) === String(effectiveTeamDeptIdForTargetModal || '').trim()) {
+      setTargetModalMonthlyRevenue((next[id]?.revenue?.month || Array(12).fill(0)).map((v) => (Number(v) > 0 ? String(v) : '')));
+    }
+    setTargetModalMessage('');
+  }, [effectiveTeamDeptIdForTargetModal, targetModalScopeType]);
+
+  const handleTargetModalStaffAnnualRevenue = useCallback((userId, raw) => {
+    const id = String(userId || '').trim();
+    if (!id) return;
+    const tree = targetModalAllDepartmentRowsTreeRef.current;
+    const staffRows = targetModalAllStaffRowsRef.current;
+    const newAnnual = Math.max(0, Math.round(Number(String(raw ?? '').replace(/\D/g, '')) || 0));
+    const prevStaff = targetModalStaffCascadeRef.current;
+    const base = prevStaff[id] || emptyCascadeBlock();
+    const nextStaff = { ...prevStaff, [id]: { ...base, revenue: topDownFromAnnual(newAnnual) } };
+    targetModalStaffCascadeRef.current = nextStaff;
+
+    const meta = staffRows.find((r) => String(r.userId) === id);
+    const deptId = String(meta?.teamKey || '').trim();
+    const deptRow = deptId && deptId !== '_' ? tree.find((r) => String(r.id) === deptId) : null;
+    if (deptRow && !deptRow.readOnly) {
+      const { deptMap: nextDept, companyBlock: nextCo } = pushStaffSumIntoDeptCascadeAndUp(
+        staffRows,
+        nextStaff,
+        targetModalDeptCascadeRef.current,
+        tree,
+        targetModalCompanyCascadeRef.current,
+        deptId
+      );
+      targetModalDeptCascadeRef.current = nextDept;
+      targetModalCompanyCascadeRef.current = nextCo;
+      setTargetModalDeptCascade(nextDept);
+      setTargetModalCompanyCascade(nextCo);
+      if (targetModalScopeType === 'team' && String(deptId) === String(effectiveTeamDeptIdForTargetModal || '').trim()) {
+        setTargetModalMonthlyRevenue((nextDept[deptId]?.revenue?.month || Array(12).fill(0)).map((v) => (Number(v) > 0 ? String(v) : '')));
+      }
+    }
+
+    setTargetModalStaffCascade(nextStaff);
+    if (targetModalScopeType === 'user' && id === String(targetModalUserId || '').trim()) {
+      setTargetModalMonthlyRevenue((nextStaff[id]?.revenue?.month || Array(12).fill(0)).map((v) => (Number(v) > 0 ? String(v) : '')));
+    }
+    setTargetModalMessage('');
+  }, [effectiveTeamDeptIdForTargetModal, targetModalScopeType, targetModalUserId]);
+
+  const handleTargetModalStaffMetricMonth = useCallback((userId, metric, monthIdx, raw) => {
+    const id = String(userId || '').trim();
+    if (!id) return;
+    const tree = targetModalAllDepartmentRowsTreeRef.current;
+    const staffRows = targetModalAllStaffRowsRef.current;
+    const prevStaff = targetModalStaffCascadeRef.current;
+    const base = prevStaff[id] || emptyCascadeBlock();
+    const nextStaff = { ...prevStaff, [id]: applyMonthChange(base, metric, monthIdx, raw) };
+    targetModalStaffCascadeRef.current = nextStaff;
+
+    const meta = staffRows.find((r) => String(r.userId) === id);
+    const deptId = String(meta?.teamKey || '').trim();
+    const deptRow = deptId && deptId !== '_' ? tree.find((r) => String(r.id) === deptId) : null;
+    if (deptRow && !deptRow.readOnly) {
+      const { deptMap: nextDept, companyBlock: nextCo } = pushStaffSumIntoDeptCascadeAndUp(
+        staffRows,
+        nextStaff,
+        targetModalDeptCascadeRef.current,
+        tree,
+        targetModalCompanyCascadeRef.current,
+        deptId
+      );
+      targetModalDeptCascadeRef.current = nextDept;
+      targetModalCompanyCascadeRef.current = nextCo;
+      setTargetModalDeptCascade(nextDept);
+      setTargetModalCompanyCascade(nextCo);
+      if (targetModalScopeType === 'team' && String(deptId) === String(effectiveTeamDeptIdForTargetModal || '').trim()) {
+        setTargetModalMonthlyRevenue((nextDept[deptId]?.revenue?.month || Array(12).fill(0)).map((v) => (Number(v) > 0 ? String(v) : '')));
+      }
+    }
+
+    setTargetModalStaffCascade(nextStaff);
+    if (targetModalScopeType === 'user' && id === String(targetModalUserId || '').trim()) {
+      setTargetModalMonthlyRevenue((nextStaff[id]?.revenue?.month || Array(12).fill(0)).map((v) => (Number(v) > 0 ? String(v) : '')));
+    }
+    setTargetModalMessage('');
+  }, [effectiveTeamDeptIdForTargetModal, targetModalScopeType, targetModalUserId]);
+
+  const handleTargetModalStaffMetricSemi = useCallback((userId, metric, semiIdx, raw) => {
+    const id = String(userId || '').trim();
+    if (!id) return;
+    const tree = targetModalAllDepartmentRowsTreeRef.current;
+    const staffRows = targetModalAllStaffRowsRef.current;
+    const prevStaff = targetModalStaffCascadeRef.current;
+    const base = prevStaff[id] || emptyCascadeBlock();
+    const nextStaff = { ...prevStaff, [id]: applySemiChange(base, metric, semiIdx, raw) };
+    targetModalStaffCascadeRef.current = nextStaff;
+
+    const meta = staffRows.find((r) => String(r.userId) === id);
+    const deptId = String(meta?.teamKey || '').trim();
+    const deptRow = deptId && deptId !== '_' ? tree.find((r) => String(r.id) === deptId) : null;
+    if (deptRow && !deptRow.readOnly) {
+      const { deptMap: nextDept, companyBlock: nextCo } = pushStaffSumIntoDeptCascadeAndUp(
+        staffRows,
+        nextStaff,
+        targetModalDeptCascadeRef.current,
+        tree,
+        targetModalCompanyCascadeRef.current,
+        deptId
+      );
+      targetModalDeptCascadeRef.current = nextDept;
+      targetModalCompanyCascadeRef.current = nextCo;
+      setTargetModalDeptCascade(nextDept);
+      setTargetModalCompanyCascade(nextCo);
+      if (targetModalScopeType === 'team' && String(deptId) === String(effectiveTeamDeptIdForTargetModal || '').trim()) {
+        setTargetModalMonthlyRevenue((nextDept[deptId]?.revenue?.month || Array(12).fill(0)).map((v) => (Number(v) > 0 ? String(v) : '')));
+      }
+    }
+
+    setTargetModalStaffCascade(nextStaff);
+    if (targetModalScopeType === 'user' && id === String(targetModalUserId || '').trim()) {
+      setTargetModalMonthlyRevenue((nextStaff[id]?.revenue?.month || Array(12).fill(0)).map((v) => (Number(v) > 0 ? String(v) : '')));
+    }
+    setTargetModalMessage('');
+  }, [effectiveTeamDeptIdForTargetModal, targetModalScopeType, targetModalUserId]);
+
+  const handleTargetModalStaffMetricQuarter = useCallback((userId, metric, qIdx, raw) => {
+    const id = String(userId || '').trim();
+    if (!id) return;
+    const tree = targetModalAllDepartmentRowsTreeRef.current;
+    const staffRows = targetModalAllStaffRowsRef.current;
+    const prevStaff = targetModalStaffCascadeRef.current;
+    const base = prevStaff[id] || emptyCascadeBlock();
+    const nextStaff = { ...prevStaff, [id]: applyQuarterChange(base, metric, qIdx, raw) };
+    targetModalStaffCascadeRef.current = nextStaff;
+
+    const meta = staffRows.find((r) => String(r.userId) === id);
+    const deptId = String(meta?.teamKey || '').trim();
+    const deptRow = deptId && deptId !== '_' ? tree.find((r) => String(r.id) === deptId) : null;
+    if (deptRow && !deptRow.readOnly) {
+      const { deptMap: nextDept, companyBlock: nextCo } = pushStaffSumIntoDeptCascadeAndUp(
+        staffRows,
+        nextStaff,
+        targetModalDeptCascadeRef.current,
+        tree,
+        targetModalCompanyCascadeRef.current,
+        deptId
+      );
+      targetModalDeptCascadeRef.current = nextDept;
+      targetModalCompanyCascadeRef.current = nextCo;
+      setTargetModalDeptCascade(nextDept);
+      setTargetModalCompanyCascade(nextCo);
+      if (targetModalScopeType === 'team' && String(deptId) === String(effectiveTeamDeptIdForTargetModal || '').trim()) {
+        setTargetModalMonthlyRevenue((nextDept[deptId]?.revenue?.month || Array(12).fill(0)).map((v) => (Number(v) > 0 ? String(v) : '')));
+      }
+    }
+
+    setTargetModalStaffCascade(nextStaff);
+    if (targetModalScopeType === 'user' && id === String(targetModalUserId || '').trim()) {
+      setTargetModalMonthlyRevenue((nextStaff[id]?.revenue?.month || Array(12).fill(0)).map((v) => (Number(v) > 0 ? String(v) : '')));
+    }
+    setTargetModalMessage('');
+  }, [effectiveTeamDeptIdForTargetModal, targetModalScopeType, targetModalUserId]);
 
   const handleScopeTypeChange = useCallback((key) => {
     setScopeType(key);
@@ -1108,7 +1606,6 @@ export default function Kpi() {
         if (cancelled) return;
         setDashboard(json);
         setTargetRevenueInput(String(Number(json?.target?.targetRevenue) || 0));
-        setTargetProjectsInput(String(Number(json?.target?.targetProjects) || 0));
         setTargetNote(String(json?.target?.note || ''));
       } catch (err) {
         if (!cancelled) {
@@ -1154,14 +1651,21 @@ export default function Kpi() {
     if (scopeType !== 'user') return;
     const selected = String(selectedScopeUser || '').trim();
     if (!selected || selected === KPI_ALL_STAFF_VALUE) return;
-    const allowed = new Set(filteredScopeUserOptions.map((item) => item.id));
+    const allowed = new Set(scopeUserOptions.map((item) => item.id));
     if (allowed.has(selected)) return;
     if (kpiAccess?.mode === 'self' && currentUserId) {
       setSelectedScopeUser(currentUserId);
       return;
     }
     setSelectedScopeUser(KPI_ALL_STAFF_VALUE);
-  }, [scopeType, selectedScopeUser, filteredScopeUserOptions, kpiAccess?.mode, currentUserId]);
+  }, [scopeType, selectedScopeUser, scopeUserOptions, kpiAccess?.mode, currentUserId]);
+
+  useEffect(() => {
+    if (scopeType !== 'team' || !selectedScopeDepartment) return;
+    const ids = new Set(scopeDepartmentOptions.map((o) => o.id));
+    if (ids.has(selectedScopeDepartment)) return;
+    setSelectedScopeDepartment('');
+  }, [scopeType, selectedScopeDepartment, scopeDepartmentOptions]);
 
   useEffect(() => {
     if (!kpiAccess || kpiAccess.mode !== 'self' || !currentUserId) return;
@@ -1175,6 +1679,18 @@ export default function Kpi() {
   const isListModalOpen = searchParams.get(KPI_LIST_MODAL_PARAM) === '1';
   const selectedListMetric = String(searchParams.get(KPI_LIST_METRIC_PARAM) || 'all').trim() || 'all';
   const isTargetModalOpen = searchParams.get(KPI_TARGET_MODAL_PARAM) === '1';
+  /** 전체 탭: 첫 페인트 전에 로딩으로 두어 이전 cascade로 compare가 돌아가며 배너가 깜빡이는 것을 막음 */
+  useLayoutEffect(() => {
+    if (!isTargetModalOpen || targetModalScopeType !== 'all') return;
+    if (targetModalAllDepartmentRowsTree.length === 0) return;
+    setTargetModalLoading(true);
+  }, [
+    isTargetModalOpen,
+    targetModalScopeType,
+    targetModalAllDepartmentRowsTree.length,
+    targetModalYear,
+    targetModalAllDeptIdsKey
+  ]);
   const detailModalRows = useMemo(() => buildDetailRows(dashboard, selectedListMetric), [dashboard, selectedListMetric]);
   const detailModalMeta = useMemo(() => getDetailModalMeta(selectedListMetric), [selectedListMetric]);
   const checklistScope = useMemo(
@@ -1218,9 +1734,12 @@ export default function Kpi() {
       `수주 성공 ${formatNumber(metrics?.wonDeals?.current)}건`,
       target?.targetRevenue > 0 ? `목표 ${formatRevenue(target?.targetRevenue)}` : '목표 미설정'
     ].join(' · ');
-    const projHint = target?.targetProjects > 0
-      ? `목표 ${formatNumber(target?.targetProjects)}개 · 큰 숫자는 완료 개수`
-      : '목표 미설정 · 큰 숫자는 완료 개수';
+    const projHint = '완료 건수 기준(별도 목표 숫자 없음)';
+    const ppCur = metrics?.projectPipeline?.current || {};
+    const doneCur = Number(metrics?.completedProjects?.current) || 0;
+    const inProgressCur = Math.max(0, Number(ppCur.inProgress) || 0);
+    const scheduledCur = Math.max(0, Number(ppCur.scheduled) || 0);
+    const projectTotalCur = doneCur + inProgressCur + scheduledCur;
     const workHint = `이전 ${formatNumber(metrics?.workLogs?.previous)}건`;
     const otherHint = `${formatNumber(opCnt)}건 등록 · 직접 등록`;
 
@@ -1243,6 +1762,11 @@ export default function Kpi() {
         hint: projHint,
         value: `${formatNumber(metrics?.completedProjects?.current)}개`,
         valueMeta: '완료 개수',
+        projectBreakdown: {
+          inProgress: inProgressCur,
+          scheduled: scheduledCur,
+          total: projectTotalCur
+        },
         delta: projectDelta.text,
         deltaNeutral: projectDelta.text.includes('변동 없음'),
         positive: projectDelta.positive,
@@ -1274,7 +1798,6 @@ export default function Kpi() {
   }, [metrics, target]);
 
   const goalRate = calcAchievement(metrics?.revenue?.current, target?.targetRevenue);
-  const projectGoalRate = calcAchievement(metrics?.completedProjects?.current, target?.targetProjects);
   const strongestLeaderboard = leaderboardRows[0];
   const hideKpiScoreMethod = Boolean(kpiAccess?.hideScoreMethodology);
   const workInsightDelta = formatDelta(metrics?.workLogs?.current, metrics?.workLogs?.previous, '건');
@@ -1293,13 +1816,10 @@ export default function Kpi() {
     {
       key: 'project-goal',
       tone: 'project',
-      title: '완료 프로젝트 달성률',
+      title: '완료 프로젝트',
       kind: 'ring',
-      value: `${projectGoalRate}%`,
-      description:
-        target?.targetProjects > 0
-          ? `완료 프로젝트 ${formatNumber(metrics?.completedProjects?.current)}개로 목표 ${formatNumber(target?.targetProjects)}개 대비 ${projectGoalRate}% 달성했습니다.`
-          : `현재 완료 프로젝트는 ${formatNumber(metrics?.completedProjects?.current)}개이며 아직 목표가 설정되지 않았습니다.`
+      value: `${formatNumber(metrics?.completedProjects?.current)}개`,
+      description: `현재 기간 완료 프로젝트는 ${formatNumber(metrics?.completedProjects?.current)}개입니다. KPI 목표 숫자의 «프로젝트» 항목은 사용하지 않습니다.`
     },
     {
       key: 'leader',
@@ -1321,7 +1841,19 @@ export default function Kpi() {
       icon: 'edit_note',
       description: `현재 업무 기록은 ${formatNumber(metrics?.workLogs?.current)}건이며 이전 기간 ${formatNumber(metrics?.workLogs?.previous)}건 대비 ${workInsightDelta.text} 변화했습니다.`
     }
-  ]), [goalRate, projectGoalRate, strongestLeaderboard, metrics, target, workInsightDelta, hideKpiScoreMethod]);
+  ]), [goalRate, strongestLeaderboard, metrics, target, workInsightDelta, hideKpiScoreMethod]);
+
+  useEffect(() => {
+    if (!showInsightCards) return undefined;
+    const handleEscHideInsights = (event) => {
+      if (event.key !== 'Escape') return;
+      if (isListModalOpen || participantPickerOpen || isTargetModalOpen) return;
+      setShowInsightCards(false);
+    };
+    window.addEventListener('keydown', handleEscHideInsights);
+    return () => window.removeEventListener('keydown', handleEscHideInsights);
+  }, [isListModalOpen, isTargetModalOpen, participantPickerOpen, showInsightCards]);
+
   const scopeTitle = kpiAccess?.mode === 'self'
     ? '개인 KPI 대시보드'
     : scopeType === 'team'
@@ -1351,7 +1883,6 @@ export default function Kpi() {
           periodType: dashboard.period.current.periodType,
           periodValue: dashboard.period.current.periodValue,
           targetRevenue: Number(targetRevenueInput) || 0,
-          targetProjects: Number(targetProjectsInput) || 0,
           note: targetNote
         })
       });
@@ -1369,16 +1900,19 @@ export default function Kpi() {
   useEffect(() => {
     if (!dashboard?.period?.current) return;
     setTargetModalYear(dashboard.period.current.year);
-    setTargetModalScopeType('user');
+    setTargetModalScopeType(dashboard?.kpiAccess?.mode === 'self' ? 'user' : 'all');
     setTargetModalDepartmentId(currentDepartmentId);
     setTargetModalUserId(currentUserId);
-  }, [dashboard?.period?.current, period, scopeType, currentDepartmentId, currentUserId]);
+  }, [dashboard?.period?.current, dashboard?.kpiAccess?.mode, period, scopeType, currentDepartmentId, currentUserId]);
 
   useEffect(() => {
     if (!isTargetModalOpen) return;
+    if (targetModalScopeType === 'all') return;
     if (targetModalScopeType === 'user') {
-      const uid = String(currentUserId || '').trim();
-      if (uid && String(targetModalUserId || '').trim() !== uid) setTargetModalUserId(uid);
+      if (kpiAccess?.mode === 'self') {
+        if (!String(targetModalUserId || '').trim() && currentUserId) setTargetModalUserId(currentUserId);
+        return;
+      }
       return;
     }
     const deptIds = targetModalDepartmentOptions.map((item) => String(item.id || '').trim()).filter(Boolean);
@@ -1396,20 +1930,15 @@ export default function Kpi() {
     currentUserId,
     targetModalUserId,
     targetModalDepartmentId,
-    targetModalDepartmentOptions
+    targetModalDepartmentOptions,
+    kpiAccess?.mode
   ]);
 
   useEffect(() => {
-    if (!isTargetModalOpen) return;
+    if (!isTargetModalOpen || targetModalScopeType !== 'user') return;
     if (!targetModalUserId) {
       setTargetModalMonthlyRevenue(Array(12).fill(''));
-      setTargetModalMonthlyProjects(Array(12).fill(''));
-      setTargetModalMonthlyProjectTitles(Array.from({ length: 12 }, () => []));
-      setTargetModalMonthlyProjectEntries(Array.from({ length: 12 }, () => []));
-      setTargetModalMonthlyProjectTitleDrafts(Array(12).fill(''));
-      setTargetModalMonthlyProjectParticipantDrafts(Array.from({ length: 12 }, () => []));
       setTargetModalLoadedUserMonthlyRevenue(Array(12).fill(0));
-      setTargetModalLoadedUserMonthlyProjects(Array(12).fill(0));
       setTargetModalMessage('직원을 먼저 선택해 주세요.');
       return;
     }
@@ -1437,24 +1966,9 @@ export default function Kpi() {
         );
         if (cancelled) return;
         const loadedRevenueNums = rows.map((row) => Number(row?.targetRevenue) || 0);
-        const loadedProjectNums = rows.map((row) => Number(row?.targetProjects) || 0);
-        const loadedProjectEntries = rows.map((row) => parseMonthlyProjectEntriesFromNote(row?.note));
-        const loadedProjectTitles = loadedProjectEntries.map((entries) => entries.map((item) => item.title));
         setTargetModalLoadedUserMonthlyRevenue(loadedRevenueNums);
-        setTargetModalLoadedUserMonthlyProjects(loadedProjectNums);
-        setTargetModalMonthlyProjectEntries(loadedProjectEntries);
-        setTargetModalMonthlyProjectTitles(loadedProjectTitles);
-        setTargetModalMonthlyProjectTitleDrafts(Array(12).fill(''));
-        setTargetModalMonthlyProjectParticipantDrafts(Array.from({ length: 12 }, () => []));
         setTargetModalMonthlyRevenue(
           loadedRevenueNums.map((n) => {
-            return n > 0 ? String(n) : '';
-          })
-        );
-        setTargetModalMonthlyProjects(
-          loadedProjectTitles.map((titles, idx) => {
-            const fromTitles = Array.isArray(titles) ? titles.length : 0;
-            const n = fromTitles > 0 ? fromTitles : loadedProjectNums[idx] || 0;
             return n > 0 ? String(n) : '';
           })
         );
@@ -1462,13 +1976,7 @@ export default function Kpi() {
       } catch (err) {
         if (!cancelled) {
           setTargetModalMonthlyRevenue(Array(12).fill(''));
-          setTargetModalMonthlyProjects(Array(12).fill(''));
-          setTargetModalMonthlyProjectEntries(Array.from({ length: 12 }, () => []));
-          setTargetModalMonthlyProjectTitles(Array.from({ length: 12 }, () => []));
-          setTargetModalMonthlyProjectTitleDrafts(Array(12).fill(''));
-          setTargetModalMonthlyProjectParticipantDrafts(Array.from({ length: 12 }, () => []));
           setTargetModalLoadedUserMonthlyRevenue(Array(12).fill(0));
-          setTargetModalLoadedUserMonthlyProjects(Array(12).fill(0));
           setTargetModalMessage(err.message || '목표 정보를 불러오지 못했습니다.');
         }
       } finally {
@@ -1477,20 +1985,73 @@ export default function Kpi() {
     };
     fetchTargetMonthly();
     return () => { cancelled = true; };
-  }, [isTargetModalOpen, targetModalUserId, targetModalYear, saveMessage]);
+  }, [isTargetModalOpen, targetModalScopeType, targetModalUserId, targetModalYear, saveMessage]);
+
+  useEffect(() => {
+    if (!isTargetModalOpen || targetModalScopeType !== 'team') return;
+    const dept = String(effectiveTeamDeptIdForTargetModal || '').trim();
+    if (!dept) {
+      setTargetModalMonthlyRevenue(Array(12).fill(''));
+      setTargetModalLoadedUserMonthlyRevenue(Array(12).fill(0));
+      setTargetModalMessage('부서를 먼저 선택해 주세요.');
+      return;
+    }
+    let cancelled = false;
+    const fetchTeamTargets = async () => {
+      setTargetModalLoading(true);
+      try {
+        const rows = await Promise.all(
+          KPI_MONTHS.map(async (month) => {
+            const params = new URLSearchParams({
+              year: String(targetModalYear),
+              periodType: 'monthly',
+              periodValue: String(month),
+              scopeType: 'team',
+              scopeId: dept
+            });
+            const res = await fetch(`${API_BASE}/kpi/targets?${params.toString()}`, {
+              headers: getAuthHeader(),
+              credentials: 'include'
+            });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(json?.error || '팀 월별 목표를 불러오지 못했습니다.');
+            return json?.target || null;
+          })
+        );
+        if (cancelled) return;
+        const loadedRevenueNums = rows.map((row) => Number(row?.targetRevenue) || 0);
+        setTargetModalLoadedUserMonthlyRevenue(loadedRevenueNums);
+        setTargetModalMonthlyRevenue(
+          loadedRevenueNums.map((n) => (n > 0 ? String(n) : ''))
+        );
+        setTargetModalMessage('');
+      } catch (err) {
+        if (!cancelled) {
+          setTargetModalMonthlyRevenue(Array(12).fill(''));
+          setTargetModalMessage(err.message || '팀 목표를 불러오지 못했습니다.');
+        }
+      } finally {
+        if (!cancelled) setTargetModalLoading(false);
+      }
+    };
+    fetchTeamTargets();
+    return () => { cancelled = true; };
+  }, [isTargetModalOpen, targetModalScopeType, effectiveTeamDeptIdForTargetModal, targetModalYear, saveMessage]);
 
   useEffect(() => {
     if (!isTargetModalOpen) return;
+    if (targetModalScopeType === 'all') {
+      setTargetModalTeamMonthlyRevenue(Array(12).fill(0));
+      return;
+    }
     if (!effectiveTeamDeptIdForTargetModal || teamUserIdsForTargetModal.length === 0) {
       setTargetModalTeamMonthlyRevenue(Array(12).fill(0));
-      setTargetModalTeamMonthlyProjects(Array(12).fill(0));
       return;
     }
     let cancelled = false;
     const fetchTeamTotals = async () => {
       try {
         const baseRevenue = Array(12).fill(0);
-        const baseProjects = Array(12).fill(0);
         await Promise.all(
           teamUserIdsForTargetModal.map(async (uid) => {
             const monthlyRows = await Promise.all(
@@ -1513,24 +2074,200 @@ export default function Kpi() {
             );
             for (let i = 0; i < 12; i += 1) {
               baseRevenue[i] += Number(monthlyRows[i]?.targetRevenue || 0);
-              baseProjects[i] += Number(monthlyRows[i]?.targetProjects || 0);
             }
           })
         );
         if (cancelled) return;
         setTargetModalTeamMonthlyRevenue(baseRevenue);
-        setTargetModalTeamMonthlyProjects(baseProjects);
       } catch (err) {
         if (!cancelled) {
           setTargetModalTeamMonthlyRevenue(Array(12).fill(0));
-          setTargetModalTeamMonthlyProjects(Array(12).fill(0));
           setTargetModalMessage(err.message || '팀 누적 목표를 불러오지 못했습니다.');
         }
       }
     };
     fetchTeamTotals();
     return () => { cancelled = true; };
-  }, [isTargetModalOpen, effectiveTeamDeptIdForTargetModal, teamUserIdsForTargetModal, targetModalYear, saveMessage]);
+  }, [isTargetModalOpen, targetModalScopeType, effectiveTeamDeptIdForTargetModal, teamUserIdsForTargetModal, targetModalYear, saveMessage]);
+
+  useEffect(() => {
+    if (!isTargetModalOpen || targetModalScopeType !== 'all') return;
+    const rows = targetModalAllDepartmentRowsTree;
+    const emps = overviewEmployees || [];
+    if (!rows.length) {
+      setTargetModalDeptCascade({});
+      setTargetModalCompanyCascade(emptyCascadeBlock());
+      setTargetModalAllStaffRows([]);
+      setTargetModalStaffCascade({});
+      setTargetModalMessage('표시할 부서가 없습니다. 조직도·권한을 확인해 주세요.');
+      setTargetModalLoading(false);
+      return;
+    }
+    let cancelled = false;
+    const loadAnnual = async () => {
+      setTargetModalLoading(true);
+      try {
+        const compJson = await fetchKpiYearMatrix(targetModalYear, 'company', '');
+        const loadedCompanyBlock = yearMatrixJsonToCascadeBlock(compJson);
+        if (!cancelled) {
+          setTargetModalCompanyCascade(loadedCompanyBlock);
+        }
+
+        const deptMap = {};
+        const DEPT_BATCH = 5;
+        for (let i = 0; i < rows.length; i += DEPT_BATCH) {
+          if (cancelled) break;
+          const slice = rows.slice(i, i + DEPT_BATCH);
+          await Promise.all(
+            slice.map(async ({ id }) => {
+              const sid = String(id || '').trim();
+              if (!sid) return;
+              try {
+                const json = await fetchKpiYearMatrix(targetModalYear, 'team', sid);
+                if (!cancelled) deptMap[sid] = yearMatrixJsonToCascadeBlock(json);
+              } catch {
+                if (!cancelled) deptMap[sid] = emptyCascadeBlock();
+              }
+            })
+          );
+        }
+        if (!cancelled) {
+          setTargetModalDeptCascade(deptMap);
+          setTargetModalMessage('');
+        }
+
+        const memberCountByDept = {};
+        for (const o of scopeUserOptions) {
+          const uid = String(o.id || '').trim();
+          if (!uid) continue;
+          const eu = emps.find((e) => String(e?.id || '').trim() === uid);
+          const d = String(eu?.companyDepartment || eu?.department || '').trim();
+          if (d) memberCountByDept[d] = (memberCountByDept[d] || 0) + 1;
+        }
+
+        const deptLabelById = new Map(
+          rows.map((r) => [String(r.id || '').trim(), String(r.label || '').trim()])
+        );
+        const staffPick = scopeUserOptions.filter((o) => String(o.id || '').trim());
+        const staffMetaList = [];
+        const nextStaffCascade = {};
+        const USER_BATCH = 5;
+        for (let i = 0; i < staffPick.length; i += USER_BATCH) {
+          if (cancelled) break;
+          const slice = staffPick.slice(i, i + USER_BATCH);
+          const part = await Promise.all(
+            slice.map(async (emp) => {
+              const empId = String(emp.id || '').trim();
+              if (!empId) return null;
+              try {
+                const eu = emps.find((e) => String(e?.id || '').trim() === empId);
+                const deptId = String(eu?.companyDepartment || eu?.department || '').trim();
+                const dc = deptId ? deptMap[deptId] : null;
+                const denom = Math.max(1, memberCountByDept[deptId] || 1);
+                const deptAnnual = Math.max(0, Math.round(Number(dc?.revenue?.annual) || 0));
+                const derivedRev = dc ? Math.floor(deptAnnual / denom) : 0;
+                let userBlock = emptyCascadeBlock();
+                try {
+                  const uj = await fetchKpiYearMatrix(targetModalYear, 'user', empId);
+                  if (!cancelled) userBlock = yearMatrixJsonToCascadeBlock(uj);
+                } catch {
+                  /* 개인 매트릭스 없음 → 팀 균등 기본값 */
+                }
+                const rev = userBlock.revenue;
+                const hasStored =
+                  Math.max(0, Math.round(Number(rev?.annual) || 0)) > 0 ||
+                  (Array.isArray(rev?.month) && rev.month.some((m) => Math.max(0, Math.round(Number(m) || 0)) > 0));
+                const revenueObj = hasStored
+                  ? {
+                      annual: Math.max(0, Math.round(Number(rev.annual) || 0)),
+                      semi: [
+                        Math.max(0, Math.round(Number(rev.semi?.[0]) || 0)),
+                        Math.max(0, Math.round(Number(rev.semi?.[1]) || 0))
+                      ],
+                      quarter: [0, 1, 2, 3].map((qi) => Math.max(0, Math.round(Number(rev.quarter?.[qi]) || 0))),
+                      month: Array.from({ length: 12 }, (_, j) =>
+                        Math.max(0, Math.round(Number(rev?.month?.[j]) || 0))
+                      )
+                    }
+                  : topDownFromAnnual(derivedRev);
+                const teamLabel =
+                  (deptId && deptLabelById.get(deptId)) ||
+                  String(eu?.department || '').trim() ||
+                  String(emp.label || '').trim() ||
+                  '미지정';
+                return {
+                  meta: {
+                    userId: empId,
+                    name: emp.name || empId,
+                    department: teamLabel,
+                    teamKey: deptId || '_',
+                    teamLabel
+                  },
+                  cascade: normCascadeBlock({ revenue: revenueObj })
+                };
+              } catch {
+                return null;
+              }
+            })
+          );
+          for (const row of part) {
+            if (!row) continue;
+            staffMetaList.push(row.meta);
+            nextStaffCascade[row.meta.userId] = row.cascade;
+          }
+          if (!cancelled) {
+            setTargetModalAllStaffRows([...staffMetaList]);
+            setTargetModalStaffCascade({ ...nextStaffCascade });
+          }
+        }
+        if (!cancelled) {
+          const rolledDeptMap = rollupDeptCascadeFromStaffAndChildren(
+            deptMap,
+            rows,
+            staffMetaList,
+            nextStaffCascade
+          );
+          const rolledCompany = syncCompanyRevenueFromRootDepts(loadedCompanyBlock, rolledDeptMap, rows);
+          targetModalDeptCascadeRef.current = rolledDeptMap;
+          targetModalCompanyCascadeRef.current = rolledCompany;
+          targetModalStaffCascadeRef.current = nextStaffCascade;
+          targetModalAllStaffRowsRef.current = staffMetaList;
+          setTargetModalDeptCascade(rolledDeptMap);
+          setTargetModalCompanyCascade(rolledCompany);
+          setTargetModalAllStaffRows([...staffMetaList]);
+          setTargetModalStaffCascade({ ...nextStaffCascade });
+        }
+        if (!cancelled && staffPick.length === 0) {
+          setTargetModalAllStaffRows([]);
+          setTargetModalStaffCascade({});
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setTargetModalDeptCascade({});
+          setTargetModalCompanyCascade(emptyCascadeBlock());
+          setTargetModalAllStaffRows([]);
+          setTargetModalStaffCascade({});
+          setTargetModalMessage(err.message || '부서별 목표를 불러오지 못했습니다.');
+        }
+      } finally {
+        if (!cancelled) setTargetModalLoading(false);
+      }
+    };
+    loadAnnual();
+    return () => {
+      cancelled = true;
+      setTargetModalLoading(false);
+    };
+  }, [
+    isTargetModalOpen,
+    targetModalScopeType,
+    targetModalYear,
+    targetModalAllDeptIdsKey,
+    targetModalAllStaffIdsKey,
+    overviewEmployees,
+    scopeUserOptions,
+    saveMessage
+  ]);
 
   useEffect(() => {
     const overviewParams = (() => {
@@ -1844,78 +2581,11 @@ export default function Kpi() {
     });
   }, []);
 
-  const handleTargetMonthlyProjectsChange = useCallback((month, next) => {
-    const idx = Number(month) - 1;
-    if (idx < 0 || idx > 11) return;
-    setTargetModalMonthlyProjects((prev) => {
-      const out = [...prev];
-      out[idx] = String(next ?? '');
-      return out;
-    });
-  }, []);
-
-  const handleTargetProjectTitleDraftChange = useCallback((month, next) => {
-    const idx = Number(month) - 1;
-    if (idx < 0 || idx > 11) return;
-    setTargetModalMonthlyProjectTitleDrafts((prev) => {
-      const out = [...prev];
-      out[idx] = String(next || '');
-      return out;
-    });
-  }, []);
-
-  const handleTargetProjectParticipantDraftChange = useCallback((month, nextIds) => {
-    const idx = Number(month) - 1;
-    if (idx < 0 || idx > 11) return;
-    setTargetModalMonthlyProjectParticipantDrafts((prev) => {
-      const out = prev.map((arr) => (Array.isArray(arr) ? [...arr] : []));
-      out[idx] = Array.isArray(nextIds)
-        ? nextIds.map((v) => String(v || '').trim()).filter(Boolean)
-        : [];
-      return out;
-    });
-  }, []);
-
-  const handleAddTargetProjectTitle = useCallback((month) => {
-    const idx = Number(month) - 1;
-    if (idx < 0 || idx > 11) return;
-    const raw = String(targetModalMonthlyProjectTitleDrafts[idx] || '').trim();
-    if (!raw) return;
-    const participantIds = canSelectTeamProjectParticipants
-      ? (Array.isArray(targetModalMonthlyProjectParticipantDrafts[idx]) ? targetModalMonthlyProjectParticipantDrafts[idx] : [])
-      : [];
-    setTargetModalMonthlyProjectEntries((prev) => {
-      const out = prev.map((arr) => (Array.isArray(arr) ? [...arr] : []));
-      out[idx] = [...out[idx], { title: raw, participantIds }].slice(0, 50);
-      setTargetModalMonthlyProjectTitles((prevTitles) => {
-        const nextTitles = prevTitles.map((arr) => (Array.isArray(arr) ? [...arr] : []));
-        nextTitles[idx] = out[idx].map((item) => String(item?.title || '').trim()).filter(Boolean);
-        return nextTitles;
-      });
-      setTargetModalMonthlyProjects((prevCounts) => {
-        const nextCounts = [...prevCounts];
-        nextCounts[idx] = String(out[idx].length || 0);
-        return nextCounts;
-      });
-      return out;
-    });
-    setTargetModalMonthlyProjectTitleDrafts((prev) => {
-      const out = [...prev];
-      out[idx] = '';
-      return out;
-    });
-    setTargetModalMonthlyProjectParticipantDrafts((prev) => {
-      const out = prev.map((arr) => (Array.isArray(arr) ? [...arr] : []));
-      out[idx] = [];
-      return out;
-    });
-  }, [targetModalMonthlyProjectTitleDrafts, targetModalMonthlyProjectParticipantDrafts, canSelectTeamProjectParticipants]);
-
   const handleChecklistScoreChange = (itemKey, value) => {
     const v = Math.max(0, Number(value) || 0);
     setDetailChecklistItems((prev) => prev.map((item) => {
       if (item.key !== itemKey) return item;
-      if (isProjectKpiRow(item) && (Array.isArray(item.projectParticipants) ? item.projectParticipants.length : 0) >= 1) {
+      if (isProjectKpiRow(item) && scoringProjectParticipantsFromRow(item).length >= 1) {
         return item;
       }
       return { ...item, score: v };
@@ -1964,47 +2634,160 @@ export default function Kpi() {
 
   const handleSaveTargetModal = async (e) => {
     e.preventDefault();
-    if (targetModalScopeType !== 'user') {
-      setTargetModalMessage('팀별은 개인별 월간 목표의 누적값으로 자동 계산됩니다. 개인별 탭에서 저장해 주세요.');
-      return;
-    }
     if (!canSubmitTargetModal) {
-      setTargetModalMessage('개인별에서는 본인 목표만 수정할 수 있습니다.');
+      setTargetModalMessage('저장 권한이 없거나 부서·직원 선택이 필요합니다.');
       return;
     }
-    const scopeId = String(targetModalUserId || '').trim();
+
+    if (targetModalScopeType === 'all') {
+      const year = Number(targetModalYear) || new Date().getFullYear();
+      if (targetModalAllDepartmentRowsTree.some((r) => Number(r.depth) === 0)) {
+        const { hasMismatch, detailLines } = compareCompanyToRootDeptSums(
+          targetModalCompanyCascade,
+          targetModalDeptCascade,
+          targetModalAllDepartmentRowsTree
+        );
+        if (hasMismatch) {
+          setTargetModalMessage(
+            `회사 목표와 부서 전체 합계가 일치해야 저장할 수 있습니다. ${detailLines.join(' ')}`
+          );
+      return;
+    }
+      }
+      setTargetModalSaving(true);
+      setTargetModalMessage('');
+      const upsertOne = async (payload) => {
+        const res = await fetch(`${API_BASE}/kpi/targets`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+          credentials: 'include',
+          body: JSON.stringify(payload)
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json?.error || '목표 저장에 실패했습니다.');
+        return json;
+      };
+      const saveBlock = async (scopeType, scopeId, block, notePrefix) => {
+        const rev = block?.revenue || { annual: 0, semi: [0, 0], quarter: [0, 0, 0, 0], month: Array(12).fill(0) };
+        const sid = scopeType === 'company' ? '' : String(scopeId || '').trim();
+        const specs = [
+          ['annual', 1, rev.annual],
+          ['semiannual', 1, rev.semi[0]],
+          ['semiannual', 2, rev.semi[1]],
+          ['quarterly', 1, rev.quarter[0]],
+          ['quarterly', 2, rev.quarter[1]],
+          ['quarterly', 3, rev.quarter[2]],
+          ['quarterly', 4, rev.quarter[3]],
+          ...KPI_MONTHS.map((m) => ['monthly', m, rev.month[m - 1]])
+        ];
+        const CHUNK = 6;
+        for (let i = 0; i < specs.length; i += CHUNK) {
+          const slice = specs.slice(i, i + CHUNK);
+          await Promise.all(
+            slice.map(([periodType, periodValue, tr]) =>
+              upsertOne({
+                scopeType,
+                scopeId: sid,
+                year,
+                periodType,
+                periodValue,
+                targetRevenue: Math.max(0, Math.round(Number(tr) || 0)),
+                note: `${notePrefix} ${periodType} ${periodValue}`
+              })
+            )
+          );
+        }
+      };
+      try {
+        const saveRows = targetModalAllDepartmentRowsTree.filter((row) => !row.readOnly);
+        if (targetModalCanEditCompany) {
+          await saveBlock('company', '', targetModalCompanyCascade, '전사 KPI');
+        }
+        const TEAM_BATCH = 3;
+        for (let i = 0; i < saveRows.length; i += TEAM_BATCH) {
+          const slice = saveRows.slice(i, i + TEAM_BATCH);
+          await Promise.all(
+            slice.map(({ id, label }) =>
+              saveBlock('team', id, targetModalDeptCascade[id] || emptyCascadeBlock(), `부서 ${label || id}`)
+            )
+          );
+        }
+        const staffRowsSave = targetModalAllStaffRows;
+        if (targetModalMonthlyTableEditable && staffRowsSave.length > 0) {
+          const USER_SAVE_BATCH = 3;
+          for (let i = 0; i < staffRowsSave.length; i += USER_SAVE_BATCH) {
+            const slice = staffRowsSave.slice(i, i + USER_SAVE_BATCH);
+            await Promise.all(
+              slice.map((row) => {
+                const uid = String(row.userId || '').trim();
+                const block = normCascadeBlock(targetModalStaffCascade[uid] || emptyCascadeBlock());
+                return saveBlock('user', uid, block, `직원 ${row.name || uid}`);
+              })
+            );
+          }
+        }
+        const doneMsg = '회사·부서·직원 목표(연·반기·분기·월)를 저장했습니다.';
+        setTargetModalMessage(doneMsg);
+        setSaveMessage(doneMsg);
+        if (dashboard?.period?.current && scopeType === 'team') {
+          const curDept = String(selectedScopeDepartment || '').trim();
+          if (curDept && targetModalAllDepartmentRows.some((r) => String(r.id) === curDept)) {
+            const c = targetModalDeptCascade[curDept] || emptyCascadeBlock();
+            const nextRevenue = Math.max(0, Math.round(Number(c.revenue?.annual) || 0));
+            const { periodType, periodValue } = dashboard.period.current;
+            if (periodType === 'annual' && Number(periodValue) === 1) {
+              setDashboard((prev) => (prev ? {
+                ...prev,
+                target: {
+                  ...(prev.target || {}),
+                  targetRevenue: nextRevenue
+                }
+              } : prev));
+            }
+          }
+        }
+      } catch (err) {
+        setTargetModalMessage(err.message || '전체 탭 목표 저장에 실패했습니다.');
+      } finally {
+        setTargetModalSaving(false);
+      }
+      return;
+    }
+
+    const scopeSaveType = targetModalScopeType === 'team' ? 'team' : 'user';
+    let scopeId = '';
+    if (scopeSaveType === 'team') {
+      scopeId = String(effectiveTeamDeptIdForTargetModal || '').trim();
+      if (!scopeId) {
+        setTargetModalMessage('부서를 선택해 주세요.');
+        return;
+      }
+    } else {
+      scopeId = String(targetModalUserId || '').trim();
     if (!scopeId) {
       setTargetModalMessage('직원을 선택해 주세요.');
       return;
     }
+    }
+
     const monthlyRevenueNums = KPI_MONTHS.map((month) => Number(String(targetModalMonthlyRevenue[month - 1] || '').replace(/\D/g, '')) || 0);
-    const monthlyProjectNums = KPI_MONTHS.map((month) => {
-      const entries = Array.isArray(targetModalMonthlyProjectEntries[month - 1]) ? targetModalMonthlyProjectEntries[month - 1] : [];
-      const fromEntries = entries.map((item) => String(item?.title || '').trim()).filter(Boolean).length;
-      if (fromEntries > 0) return fromEntries;
-      return Number(String(targetModalMonthlyProjects[month - 1] || '').replace(/\D/g, '')) || 0;
-    });
     setTargetModalSaving(true);
     setTargetModalMessage('');
     try {
       const year = Number(targetModalYear) || new Date().getFullYear();
-      const savePeriod = async (periodType, periodValue, revenue, projects) => {
-        const monthlyNote =
-          periodType === 'monthly'
-            ? buildMonthlyProjectNote(targetModalMonthlyProjectEntries[Number(periodValue) - 1] || [])
-            : '월별 목표 자동 합산';
+      const savePeriod = async (periodType, periodValue, revenue) => {
+        const monthlyNote = periodType === 'monthly' ? '월별 매출 목표' : '월별 목표 자동 합산';
         const res = await fetch(`${API_BASE}/kpi/targets`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
           credentials: 'include',
           body: JSON.stringify({
-            scopeType: 'user',
+            scopeType: scopeSaveType,
             scopeId,
             year,
             periodType,
             periodValue,
             targetRevenue: Math.max(0, Math.round(Number(revenue) || 0)),
-            targetProjects: Math.max(0, Math.round(Number(projects) || 0)),
             note: monthlyNote
           })
         });
@@ -2013,47 +2796,48 @@ export default function Kpi() {
         return json;
       };
       await Promise.all(
-        KPI_MONTHS.map((month) => savePeriod('monthly', month, monthlyRevenueNums[month - 1], monthlyProjectNums[month - 1]))
+        KPI_MONTHS.map((month) => savePeriod('monthly', month, monthlyRevenueNums[month - 1]))
       );
       await Promise.all(
         [1, 2, 3, 4].map((q) => {
           const rev = aggregateTargetByPeriod(monthlyRevenueNums, 'quarterly', q);
-          const prj = aggregateTargetByPeriod(monthlyProjectNums, 'quarterly', q);
-          return savePeriod('quarterly', q, rev, prj);
+          return savePeriod('quarterly', q, rev);
         })
       );
       await Promise.all(
         [1, 2].map((h) => {
           const rev = aggregateTargetByPeriod(monthlyRevenueNums, 'semiannual', h);
-          const prj = aggregateTargetByPeriod(monthlyProjectNums, 'semiannual', h);
-          return savePeriod('semiannual', h, rev, prj);
+          return savePeriod('semiannual', h, rev);
         })
       );
       await savePeriod(
         'annual',
         1,
-        aggregateTargetByPeriod(monthlyRevenueNums, 'annual', 1),
-        aggregateTargetByPeriod(monthlyProjectNums, 'annual', 1)
+        aggregateTargetByPeriod(monthlyRevenueNums, 'annual', 1)
       );
 
-      setTargetModalMessage('개인별 월간 목표를 저장했고 분기·반기·연간 목표를 자동 합산했습니다.');
-      setSaveMessage('개인별 월간 목표를 저장했고 분기·반기·연간 목표를 자동 합산했습니다.');
-      if (
-        scopeType === 'user' &&
-        selectedScopeUser === targetModalUserId &&
-        dashboard?.period?.current
-      ) {
+      const doneMsg =
+        scopeSaveType === 'team'
+          ? '팀 할당 목표를 저장했고 분기·반기·연간이 자동 합산되었습니다.'
+          : '개인별 월간 목표를 저장했고 분기·반기·연간 목표를 자동 합산했습니다.';
+      setTargetModalMessage(doneMsg);
+      setSaveMessage(doneMsg);
+      if (dashboard?.period?.current) {
         const currentPeriod = dashboard.period.current;
         const nextRevenue = aggregateTargetByPeriod(monthlyRevenueNums, currentPeriod.periodType, currentPeriod.periodValue);
-        const nextProjects = aggregateTargetByPeriod(monthlyProjectNums, currentPeriod.periodType, currentPeriod.periodValue);
+        const userMatch =
+          scopeSaveType === 'user' && scopeType === 'user' && String(selectedScopeUser) === String(targetModalUserId);
+        const teamMatch =
+          scopeSaveType === 'team' && scopeType === 'team' && String(selectedScopeDepartment || '') === String(scopeId);
+        if (userMatch || teamMatch) {
         setDashboard((prev) => (prev ? {
           ...prev,
           target: {
             ...(prev.target || {}),
-            targetRevenue: nextRevenue,
-            targetProjects: nextProjects
+              targetRevenue: nextRevenue
           }
         } : prev));
+        }
       }
     } catch (err) {
       setTargetModalMessage(err.message || '목표 저장에 실패했습니다.');
@@ -2246,6 +3030,25 @@ export default function Kpi() {
                       {card.delta}
                     </span>
                   </div>
+                  {card.key === 'projects' && card.projectBreakdown ? (
+                    <>
+                      <div className="home-kpi-metric-line">
+                        <span className="home-kpi-dot home-kpi-dot--pipeline-active" aria-hidden />
+                        <span className="home-kpi-metric-label">진행중</span>
+                        <span className="home-kpi-metric-val">{formatNumber(card.projectBreakdown.inProgress)}개</span>
+                      </div>
+                      <div className="home-kpi-metric-line">
+                        <span className="home-kpi-dot home-kpi-dot--pipeline-scheduled" aria-hidden />
+                        <span className="home-kpi-metric-label">예정</span>
+                        <span className="home-kpi-metric-val">{formatNumber(card.projectBreakdown.scheduled)}개</span>
+                      </div>
+                      <div className="home-kpi-metric-line">
+                        <span className="home-kpi-dot home-kpi-dot--pipeline-total" aria-hidden />
+                        <span className="home-kpi-metric-label">전체</span>
+                        <span className="home-kpi-metric-val">{formatNumber(card.projectBreakdown.total)}개</span>
+                      </div>
+                    </>
+                  ) : null}
                 </div>
                 {showCl ? (
                   <div className="kpi-summary-footer">
@@ -2335,7 +3138,6 @@ export default function Kpi() {
                         <span>{item.label}</span>
                       </div>
                       <p className="kpi-target-overview-metric">목표액 {formatRevenue(item.targetRevenue)}</p>
-                      <p className="kpi-target-overview-metric">목표 프로젝트 {formatNumber(item.targetProjects)}개</p>
                       <small className="kpi-target-overview-note">{item.note || '메모 없음'}</small>
                     </article>
                   ))}
@@ -2436,7 +3238,21 @@ export default function Kpi() {
           </div>
         </section>
 
-        <section className="kpi-insight-grid">
+        {showInsightCards ? (
+          <section className="kpi-insight-panel" aria-label="KPI 인사이트">
+            <div className="kpi-insight-panel-head">
+              <span>인사이트</span>
+              <button
+                type="button"
+                className="kpi-insight-dismiss"
+                onClick={() => setShowInsightCards(false)}
+                aria-label="KPI 인사이트 닫기"
+                title="Esc로도 닫을 수 있습니다"
+              >
+                취소
+              </button>
+            </div>
+            <div className="kpi-insight-grid">
           {insightCards.map((item) => (
             <article key={item.key} className={`kpi-insight-card tone-${item.tone}`}>
               {item.kind === 'ring' ? (
@@ -2454,7 +3270,9 @@ export default function Kpi() {
               </div>
             </article>
           ))}
+            </div>
         </section>
+        ) : null}
 
         {isListModalOpen ? (
           <KpiDetailModal
@@ -2503,23 +3321,42 @@ export default function Kpi() {
             year={targetModalYear}
             onYearChange={setTargetModalYear}
             monthlyRevenue={targetModalMonthlyRevenue}
-            monthlyProjects={targetModalMonthlyProjects}
-            monthlyProjectTitles={targetModalMonthlyProjectTitles}
-            monthlyProjectTitleDrafts={targetModalMonthlyProjectTitleDrafts}
-            monthlyProjectParticipantDrafts={targetModalMonthlyProjectParticipantDrafts}
             onMonthlyRevenueChange={handleTargetMonthlyRevenueChange}
-            onMonthlyProjectsChange={handleTargetMonthlyProjectsChange}
-            onMonthlyProjectTitleDraftChange={handleTargetProjectTitleDraftChange}
-            onMonthlyProjectParticipantDraftChange={handleTargetProjectParticipantDraftChange}
-            onAddMonthlyProjectTitle={handleAddTargetProjectTitle}
-            canSelectTeamProjectParticipants={canSelectTeamProjectParticipants}
-            teamProjectParticipantOptions={targetModalTeamProjectParticipantOptions}
-            teamMonthlyProjects={targetModalTeamMonthlyProjectsDisplay}
             teamMonthlyRevenue={targetModalTeamMonthlyRevenueDisplay}
             loading={targetModalLoading}
             saving={targetModalSaving}
             message={targetModalMessage}
             canSubmit={canSubmitTargetModal}
+            monthlyTableEditable={targetModalMonthlyTableEditable}
+            showAllScopeTab={kpiAccess?.mode !== 'self'}
+            companyAnnual={targetModalCompanyAnnual}
+            companyCascade={targetModalCompanyCascade}
+            canEditCompany={targetModalCanEditCompany}
+            companyAchievement={targetModalCompanyAchievement}
+            onCompanyAnnualRevenue={handleTargetModalCompanyAnnualRevenue}
+            onCompanyMetricMonth={handleTargetModalCompanyMetricMonth}
+            onCompanyMetricSemi={handleTargetModalCompanyMetricSemi}
+            onCompanyMetricQuarter={handleTargetModalCompanyMetricQuarter}
+            allDepartmentTotals={targetModalAllDeptSum}
+            allStaffRows={targetModalAllStaffRows}
+            staffCascadeByUserId={targetModalStaffCascade}
+            allDepartmentRows={targetModalAllDepartmentRowsTree}
+            deptCascade={targetModalDeptCascade}
+            onDeptAnnualRevenue={handleTargetModalDeptAnnualRevenue}
+            onDeptMetricMonth={handleTargetModalDeptMetricMonth}
+            onDeptMetricSemi={handleTargetModalDeptMetricSemi}
+            onDeptMetricQuarter={handleTargetModalDeptMetricQuarter}
+            onStaffAnnualRevenue={handleTargetModalStaffAnnualRevenue}
+            onStaffMetricMonth={handleTargetModalStaffMetricMonth}
+            onStaffMetricSemi={handleTargetModalStaffMetricSemi}
+            onStaffMetricQuarter={handleTargetModalStaffMetricQuarter}
+            submitLabel={
+              targetModalScopeType === 'all'
+                ? '회사·부서·직원 목표 저장'
+                : targetModalScopeType === 'team'
+                  ? '팀 할당 목표 저장'
+                  : '개인 월간 목표 저장'
+            }
             onSubmit={handleSaveTargetModal}
             onClose={closeTargetModal}
           />

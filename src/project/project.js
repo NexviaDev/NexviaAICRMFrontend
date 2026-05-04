@@ -104,8 +104,7 @@ function normalizeProjectCalendarItem(task) {
     start,
     end,
     allDay: true,
-    stage: String(task.stage || 'todo'),
-    group: String(task.group || '프로젝트')
+    stage: String(task.stage || 'todo')
   };
 }
 
@@ -240,7 +239,8 @@ function DashboardCalendar({
   current,
   events,
   onPrevMonth,
-  onNextMonth
+  onNextMonth,
+  onEventClick
 }) {
   const today = new Date();
   const isCurrentMonth = today.getFullYear() === current.year && today.getMonth() === current.month;
@@ -370,8 +370,9 @@ function DashboardCalendar({
                 {segments.length ? (
                   <div className="project-dashboard-calendar-segments-overlay" style={{ height: `${segmentBandHeight}px` }}>
                     {segments.map((segment, segmentIndex) => (
-                      <div
+                      <button
                         key={`${segment.event._id}-${segment.firstDay}-${segmentIndex}`}
+                        type="button"
                         className={`project-dashboard-calendar-segment tone-${getDashboardCalendarEventTone(segment.event, segmentIndex)}`}
                         style={{
                           left: `${((segment.firstDay + startPad - 1) % 7) * (100 / 7)}%`,
@@ -379,9 +380,10 @@ function DashboardCalendar({
                           top: `${(segment.rowIndex || 0) * 24 + 4}px`
                         }}
                         title={segment.event.title}
+                        onClick={() => onEventClick?.(segment.event)}
                       >
                         {segment.event.title}
-                      </div>
+                      </button>
                     ))}
                   </div>
                 ) : null}
@@ -402,13 +404,15 @@ function DashboardCalendar({
                             {isToday ? <span className="project-dashboard-calendar-today-dot" /> : null}
                             <div className={`project-dashboard-calendar-events ${segments.length ? 'has-segments' : ''}`}>
                               {dayEvents.slice(0, 3).map((event, eventIndex) => (
-                                <div
+                                <button
                                   key={`${event._id}-${day}-${eventIndex}`}
+                                  type="button"
                                   className={`project-dashboard-calendar-pill tone-${getDashboardCalendarEventTone(event, eventIndex)}`}
                                   title={event.title}
+                                  onClick={() => onEventClick?.(event)}
                                 >
                                   {event.title}
-                                </div>
+                                </button>
                               ))}
                               {dayEvents.length > 3 ? (
                                 <div className="project-dashboard-calendar-more">+{dayEvents.length - 3} more</div>
@@ -429,7 +433,13 @@ function DashboardCalendar({
   );
 }
 
-function DashboardView({ dashboard, calendar, onCalendarPrevMonth, onCalendarNextMonth }) {
+function DashboardView({
+  dashboard,
+  calendar,
+  onCalendarPrevMonth,
+  onCalendarNextMonth,
+  onOpenProject
+}) {
   const byStage = dashboard?.distribution?.byStage || {};
   const totalProjects = Number(dashboard?.distribution?.totalTasks) || 0;
   const milestones = Array.isArray(dashboard?.milestones) ? dashboard.milestones : [];
@@ -475,9 +485,15 @@ function DashboardView({ dashboard, calendar, onCalendarPrevMonth, onCalendarNex
             {milestones.length === 0 ? (
               <li><strong>표시할 주요 일정이 없습니다.</strong><span>프로젝트 만료일을 설정하면 자동 표시됩니다.</span></li>
             ) : milestones.map((m) => (
-              <li key={`${m.title}-${m.date}`}>
-                <strong>{m.title}</strong>
-                <span>{new Date(m.date).toLocaleDateString('ko-KR')} · {m.group || '일반'}</span>
+              <li key={`${m._id || m.title}-${m.date}`}>
+                <button
+                  type="button"
+                  className="project-milestone-open"
+                  onClick={() => onOpenProject?.(m)}
+                >
+                  <strong>{m.title}</strong>
+                  <span>{new Date(m.date).toLocaleDateString('ko-KR')}</span>
+                </button>
               </li>
             ))}
           </ul>
@@ -489,6 +505,7 @@ function DashboardView({ dashboard, calendar, onCalendarPrevMonth, onCalendarNex
         events={calendar.events}
         onPrevMonth={onCalendarPrevMonth}
         onNextMonth={onCalendarNextMonth}
+        onEventClick={onOpenProject}
       />
     </section>
   );
@@ -572,7 +589,7 @@ function KanbanView({
   );
 }
 
-function GanttView({ tasks }) {
+function GanttView({ tasks, onTaskClick }) {
   const scrollRef = useRef(null);
   const initialScrollDoneRef = useRef(false);
   const pendingLeftShiftPxRef = useRef(0);
@@ -716,10 +733,14 @@ function GanttView({ tasks }) {
         <h3>프로젝트 목록</h3>
         {tasks.length === 0 ? <div className="project-gantt-task-group"><span>표시할 프로젝트가 없습니다.</span></div> : null}
         {tasks.map((task) => (
-          <div key={task._id} className="project-gantt-task-group">
-            <p>{task.group || '일반'}</p>
-            <span>{task.title}</span>
-          </div>
+          <button
+            key={task._id}
+            type="button"
+            className="project-gantt-task-group project-gantt-task-group--open"
+            onClick={() => onTaskClick?.(task)}
+          >
+            <span className="project-gantt-task-title">{task.title}</span>
+          </button>
         ))}
       </aside>
       <section className="project-gantt-grid">
@@ -747,10 +768,13 @@ function GanttView({ tasks }) {
               <span className="project-gantt-today-badge">Today</span>
             </div>
             {bars.map((bar) => (
-              <div
+              <button
                 key={bar._id}
-                className={`bar bar-${bar.stage || 'todo'}`}
+                type="button"
+                className={`bar bar-${bar.stage || 'todo'} bar--interactive`}
                 style={{ top: `${bar.top}px`, left: `${bar.leftPx}px`, width: `${bar.widthPx}px` }}
+                onClick={() => onTaskClick?.(bar)}
+                aria-label={`${bar.title || '프로젝트'} 일정 열기`}
               />
             ))}
           </div>
@@ -881,12 +905,39 @@ export default function Project() {
     [board?.gantt?.tasks]
   );
 
-  const handleOpenEditProject = (projectItem) => {
-    if (dragClickSuppressRef.current) return;
-    setProjectFormMode('edit');
-    setEditingProject(projectItem);
-    setShowProjectFormModal(true);
-  };
+  const resolveBoardItemById = useCallback(
+    (rawId) => {
+      const sid = String(rawId || '').trim();
+      if (!sid) return null;
+      for (const col of board.kanban?.columns || []) {
+        const hit = (col.items || []).find((item) => String(item._id) === sid);
+        if (hit) return hit;
+      }
+      return null;
+    },
+    [board.kanban?.columns]
+  );
+
+  const handleOpenEditProject = useCallback(
+    (projectItem) => {
+      if (dragClickSuppressRef.current) return;
+      const id = String(projectItem?._id || '').trim();
+      const resolved = id ? resolveBoardItemById(id) : null;
+      const item = resolved || projectItem;
+      if (!item?._id) return;
+      setProjectFormMode('edit');
+      setEditingProject(item);
+      setShowProjectFormModal(true);
+    },
+    [resolveBoardItemById]
+  );
+
+  const handleDashboardOpenProjectRef = useCallback(
+    (ref) => {
+      handleOpenEditProject(ref || {});
+    },
+    [handleOpenEditProject]
+  );
 
   const handleSaveProject = async (payload) => {
     setSavingProject(true);
@@ -1091,6 +1142,7 @@ export default function Project() {
             }}
             onCalendarPrevMonth={handleDashboardCalendarPrevMonth}
             onCalendarNextMonth={handleDashboardCalendarNextMonth}
+            onOpenProject={handleDashboardOpenProjectRef}
           />
         ) : null}
         {!loading && !error && view === 'kanban' ? (
@@ -1106,7 +1158,7 @@ export default function Project() {
         ) : null}
         {!loading && !error && view === 'gantt' ? (
           <div className="project-gantt-viewport">
-            <GanttView tasks={board.gantt?.tasks || []} />
+            <GanttView tasks={board.gantt?.tasks || []} onTaskClick={handleDashboardOpenProjectRef} />
           </div>
         ) : null}
       </div>
@@ -1114,7 +1166,6 @@ export default function Project() {
       {showProjectFormModal ? (
         <ProjectFormModal
           mode={projectFormMode}
-          projectName={board?.project?.name || ''}
           companyContext={companyContext}
           teamMembers={teamMembers}
           currentUser={currentUser}

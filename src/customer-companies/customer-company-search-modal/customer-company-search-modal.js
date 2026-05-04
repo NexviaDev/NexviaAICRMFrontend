@@ -150,10 +150,15 @@ export default function CustomerCompanySearchModal({ onClose, onSelect }) {
           {error && <p className="cc-search-modal-error">{error}</p>}
         </form>
         <div className="cc-search-modal-list-wrap">
-          {loading ? (
-            <p className="cc-search-modal-empty">검색 중...</p>
-          ) : initialLoading ? (
-            <p className="cc-search-modal-empty">목록 불러오는 중...</p>
+          {loading || initialLoading ? (
+            <div className="cc-search-modal-spinner-wrap" role="status" aria-live="polite">
+              <span className="material-symbols-outlined cc-search-modal-spinner-icon" aria-hidden>
+                progress_activity
+              </span>
+              <span className="cc-search-modal-spinner-text">
+                {initialLoading ? '목록을 불러오는 중…' : '검색 중…'}
+              </span>
+            </div>
           ) : searched && items.length === 0 ? (
             <p className="cc-search-modal-empty">검색 조건에 맞는 고객사가 없습니다.</p>
           ) : displayItems.length === 0 ? (

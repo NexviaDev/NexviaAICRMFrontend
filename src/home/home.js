@@ -277,15 +277,24 @@ function formatWonRevenue(w) {
   return parts.join(' · ');
 }
 
+/** 서버가 비교 기준이 없을 때 null/생략을 주는지 — 0을 임의로 넣어 비교한 값은 표시하지 않음 */
+function homeKpiComparisonRawIsPresent(raw) {
+  if (raw === undefined || raw === null) return false;
+  if (typeof raw === 'string' && String(raw).trim() === '') return false;
+  const n = Number(raw);
+  return Number.isFinite(n);
+}
+
 /** 홈 상단 KPI — Forecast 비율(달성도) */
 function formatHomeKpiForecastPct(pct) {
-  if (pct == null || Number.isNaN(Number(pct))) return '—';
-  return `${Math.round(Number(pct))}%`;
+  if (!homeKpiComparisonRawIsPresent(pct)) return '—';
+  const n = Number(pct);
+  return `${Math.round(n)}%`;
 }
 
 /** 매출총이익률 등 — Forecast 대비(퍼센트포인트) */
 function formatHomeKpiForecastPP(pp) {
-  if (pp == null || Number.isNaN(Number(pp))) return '—';
+  if (!homeKpiComparisonRawIsPresent(pp)) return '—';
   const n = Number(pp);
   const sign = n >= 0 ? '+' : '';
   return `${sign}${n.toFixed(1)}%p`;
@@ -293,7 +302,7 @@ function formatHomeKpiForecastPP(pp) {
 
 /** 전년·전월 등 증감률 + 방향(화살표용) */
 function formatHomeKpiDeltaPct(pct, isPP) {
-  if (pct == null || Number.isNaN(Number(pct))) return { text: '—', dir: null };
+  if (!homeKpiComparisonRawIsPresent(pct)) return { text: '—', dir: null };
   const n = Number(pct);
   const dir = n > 0 ? 'up' : n < 0 ? 'down' : 'flat';
   const body = (n > 0 ? '+' : '') + n.toFixed(1);
@@ -950,6 +959,11 @@ export default function Home() {
     probability: '',
     targetMonth: ''
   });
+  /** 홈 KPI — 프로젝트 카드 (/api/projects, 완료 후 진행 순) */
+  const [homeProjectPreview, setHomeProjectPreview] = useState([]);
+  const [homeProjectPreviewLoading, setHomeProjectPreviewLoading] = useState(false);
+  /** 프로젝트 달성률 막대 보간 — 목록 fetch 시에도 반영 */
+  const [projectBarAnimEpoch, setProjectBarAnimEpoch] = useState(0);
   const homeDashboardToolbarPersistTimerRef = useRef(null);
   const consumerChartTitle = useMemo(() => {
     const labelMap = {
@@ -1007,6 +1021,45 @@ export default function Home() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const token = localStorage.getItem('crm_token');
+    if (!token) {
+      setHomeProjectPreview([]);
+      setHomeProjectPreviewLoading(false);
+      return undefined;
+    }
+    setHomeProjectPreviewLoading(true);
+    pingBackendHealth(getAuthHeader).catch(() => {});
+    fetch(`${API_BASE}/projects`, { headers: getAuthHeader() })
+      .then((r) => r.json().catch(() => ({})))
+      .then((payload) => {
+        if (cancelled) return;
+        const rows = Array.isArray(payload?.projects) ? payload.projects : [];
+        const byUpdated = (a, b) => {
+          const ta = new Date(a?.updatedAt || a?.createdAt || 0).getTime();
+          const tb = new Date(b?.updatedAt || b?.createdAt || 0).getTime();
+          return tb - ta;
+        };
+        const done = rows.filter((p) => String(p?.stage || '') === 'done').sort(byUpdated);
+        const active = rows.filter((p) => String(p?.stage || '') !== 'done').sort(byUpdated);
+        setHomeProjectPreview([...done, ...active]);
+      })
+      .catch(() => {
+        if (!cancelled) setHomeProjectPreview([]);
+      })
+      .finally(() => {
+        if (!cancelled) setHomeProjectPreviewLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [dashboardRefreshTick]);
+
+  useEffect(() => {
+    setProjectBarAnimEpoch((e) => e + 1);
+  }, [homeProjectPreview]);
 
   const closeHomeOppModal = useCallback(() => {
     setSearchParams(
@@ -1199,6 +1252,7 @@ export default function Home() {
   useEffect(() => {
     let cancelled = false;
     const fetchData = async () => {
+      if (!cancelled) setLoading(true);
       try {
         const q = new URLSearchParams();
         if (isCompanyWideInsight) {
@@ -1242,7 +1296,7 @@ export default function Home() {
           activeDeals: 128,
           newLeads: 45,
           taskCompletion: 0,
-          taskCompletionMeta: { totalOpportunities: 0, wonCount: 0 },
+          taskCompletionMeta: { totalOpportunities: 0, wonCount: 0, inProgressDealCount: 0 },
           kpiSummary: null,
           pipelineKpi: null,
           forecastPipelineRows: [],
@@ -1308,10 +1362,9 @@ export default function Home() {
           (acc, row) => {
             if (row.status !== 'fulfilled' || !row.value) return acc;
             acc.targetRevenue += Number(row.value?.targetRevenue || 0);
-            acc.targetProjects += Number(row.value?.targetProjects || 0);
             return acc;
           },
-          { targetRevenue: 0, targetProjects: 0 }
+          { targetRevenue: 0 }
         );
         return {
           loading: false,
@@ -1371,7 +1424,7 @@ export default function Home() {
       if (!cancelled) setHomeKpiTargetSnapshot((prev) => ({ ...prev, loading: true, periodLabel: period.periodLabel, reason: '' }));
       try {
         const target = await fetchTargetByScope(scopeType, scopeId);
-        if (scopeType === 'company' && (!target || (!Number(target?.targetRevenue) && !Number(target?.targetProjects)))) {
+        if (scopeType === 'company' && (!target || !Number(target?.targetRevenue))) {
           const allUserIds = await fetchCompanyUserIds();
           const snapshot = await aggregateUserTargets(allUserIds, ' (회사 누적)');
           if (!cancelled && snapshot) {
@@ -1641,6 +1694,24 @@ export default function Home() {
     );
   }, [setSearchParams, defaultHomeOppStage]);
 
+  const openHomeEditOpportunity = useCallback(
+    (oppId) => {
+      const id = String(oppId || '').trim();
+      if (!id) return;
+      setSearchParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          p.set(HOME_OPP_MODAL_PARAM, 'edit');
+          p.set(HOME_OPP_ID_PARAM, id);
+          p.delete(HOME_OPP_STAGE_PARAM);
+          return p;
+        },
+        { replace: false }
+      );
+    },
+    [setSearchParams]
+  );
+
   const handleHomeOppSaved = useCallback(() => {
     closeHomeOppModal();
     setDashboardRefreshTick((t) => t + 1);
@@ -1812,32 +1883,54 @@ export default function Home() {
   /** 통화 선택 UI 제거 — API 통화 목록의 첫 통화로 그래프 표시 */
   const selectedGraphCurrency = graphCurrencies[0] || 'KRW';
 
+  const homeProjectCounts = useMemo(() => {
+    let done = 0;
+    let active = 0;
+    for (const p of homeProjectPreview) {
+      if (String(p?.stage || '') === 'done') done += 1;
+      else active += 1;
+    }
+    return { done, active, total: done + active };
+  }, [homeProjectPreview]);
+
   const kpiAnimSrc = stats.kpiSummary;
-  const revNum = kpiAnimSrc?.revenue?.primaryTotal ?? kpiAnimSrc?.revenue?.last6Total ?? 0;
+  const revNum =
+    Number(
+      kpiAnimSrc?.revenue?.orderValueTotal ??
+        kpiAnimSrc?.revenue?.primaryTotal ??
+        kpiAnimSrc?.revenue?.last6Total ??
+        0
+    ) || 0;
   const gmRateNum = kpiAnimSrc?.grossMargin?.ratePct ?? 0;
   const goalNum = kpiAnimSrc?.goal?.taskCompletion ?? 0;
   const leadNum = kpiAnimSrc?.newLeads?.count ?? kpiAnimSrc?.newLeads?.count30d ?? 0;
-  const dealNum = kpiAnimSrc?.inProgress?.count ?? 0;
   const revFcRaw = kpiAnimSrc?.revenue?.forecastVsPct;
   const gmFcRaw = kpiAnimSrc?.grossMargin?.forecastVsPP;
   const leadFcRaw = kpiAnimSrc?.newLeads?.forecastVsPct;
   const revYoyRaw = kpiAnimSrc?.revenue?.yoyPct;
   const gmYoyRaw = kpiAnimSrc?.grossMargin?.yoyPP;
   const leadYoyRaw = kpiAnimSrc?.newLeads?.yoyPct;
-  const dealYoyRaw = kpiAnimSrc?.inProgress?.yoyPct;
 
   const revAnim = useAnimatedScalar(revNum, insightAnimEpoch, insightAnimMs);
   const gmRateAnim = useAnimatedScalar(gmRateNum, insightAnimEpoch, insightAnimMs);
   const goalAnim = useAnimatedScalar(goalNum, insightAnimEpoch, insightAnimMs);
   const leadAnim = useAnimatedScalar(leadNum, insightAnimEpoch, insightAnimMs);
-  const dealAnim = useAnimatedScalar(dealNum, insightAnimEpoch, insightAnimMs);
   const revFcAnim = useAnimatedScalar(revFcRaw != null ? Number(revFcRaw) : 0, insightAnimEpoch, insightAnimMs);
   const gmFcAnim = useAnimatedScalar(gmFcRaw != null ? Number(gmFcRaw) : 0, insightAnimEpoch, insightAnimMs);
   const leadFcAnim = useAnimatedScalar(leadFcRaw != null ? Number(leadFcRaw) : 0, insightAnimEpoch, insightAnimMs);
   const revYoyAnim = useAnimatedScalar(revYoyRaw != null ? Number(revYoyRaw) : 0, insightAnimEpoch, insightAnimMs);
   const gmYoyAnim = useAnimatedScalar(gmYoyRaw != null ? Number(gmYoyRaw) : 0, insightAnimEpoch, insightAnimMs);
   const leadYoyAnim = useAnimatedScalar(leadYoyRaw != null ? Number(leadYoyRaw) : 0, insightAnimEpoch, insightAnimMs);
-  const dealYoyAnim = useAnimatedScalar(dealYoyRaw != null ? Number(dealYoyRaw) : 0, insightAnimEpoch, insightAnimMs);
+
+  const projectAchievePctNum =
+    homeProjectCounts.total > 0
+      ? Math.round((100 * homeProjectCounts.done) / homeProjectCounts.total)
+      : 0;
+  const projectAchieveAnim = useAnimatedScalar(
+    projectAchievePctNum,
+    projectBarAnimEpoch,
+    insightAnimMs
+  );
 
   const homeKpiCards = useMemo(() => {
     const kpi = stats.kpiSummary;
@@ -1848,26 +1941,28 @@ export default function Home() {
         { key: 'gm', skeleton: true },
         { key: 'goal', skeleton: true },
         { key: 'lead', skeleton: true },
-        { key: 'deal', skeleton: true }
+        { key: 'project', skeleton: true }
       ];
     }
     const rev = kpi.revenue;
     const gm = kpi.grossMargin;
     const goal = kpi.goal;
     const nl = kpi.newLeads;
-    const ip = kpi.inProgress;
     const meta = kpi.kpiMeta || {};
-    const revTotal = rev?.primaryTotal ?? rev?.last6Total ?? 0;
+    const revTotal =
+      Number(rev?.orderValueTotal ?? rev?.primaryTotal ?? rev?.last6Total ?? 0) || 0;
     const revenueYoyLabel = meta.revenueYoyLabel || '전년 동기 대비';
     const leadHint = meta.leadHint || '해당 기간 신규 기회(생성일 기준)';
     const leadSeqLabel = meta.leadSeqLabel || '직전 구간 대비';
-    const gmNonMarginAmount = Number(gm?.nonMarginAmount || 0);
+    const revHint =
+      (meta.revenueHint && String(meta.revenueHint).trim()) ||
+      '해당 기간 수주 금액 합계(원가금액 차감 전)';
 
     return [
       {
         key: 'rev',
         title: '매출액',
-        hint: meta.revenueHint || '순마진 합계',
+        hint: revHint,
         value: formatCurrency(revTotal, cur),
         icon: 'payments',
         showForecast: true,
@@ -1896,13 +1991,17 @@ export default function Home() {
       },
       {
         key: 'goal',
-        title: '목표 달성률',
+        title: '세일즈 현황 완료율',
         hint: (() => {
           const m = stats.taskCompletionMeta;
-          if (m && typeof m.totalOpportunities === 'number') {
-            return `전체 기회 ${m.totalOpportunities}건 중 수주 ${Number(m.wonCount) || 0}건`;
+          const won = Number(m?.wonCount) || 0;
+          const inProg = Number(m?.inProgressDealCount);
+          const prog = Number.isFinite(inProg) ? inProg : 0;
+          const tot = Number(m?.totalOpportunities);
+          if (Number.isFinite(tot) && tot > 0) {
+            return `수주 성공 ${won}건 + 진행 중 ${prog}건 · 전체 기회 ${tot}건 대비`;
           }
-          return '기회 대비 수주 성공 비율';
+          return '수주 성공·진행 중 기회 합계를 전체 기회 대비로 표시합니다.';
         })(),
         value: `${goal?.taskCompletion ?? 0}%`,
         icon: 'flag',
@@ -1925,21 +2024,19 @@ export default function Home() {
         periodMode: 'deltaPct'
       },
       {
-        key: 'deal',
-        title: '진행 중인 딜',
-        hint: '파이프라인 · 수주·종료·유기 제외 (현재 시점 스냅샷)',
-        value: `${ip?.count ?? 0}건`,
-        icon: 'handshake',
+        key: 'project',
+        title: '프로젝트',
+        hint: '전체 프로젝트 대비 완료 비율입니다. 막대는 완료(왼쪽)·진행(오른쪽) 비중입니다.',
+        value:
+          homeProjectCounts.total > 0
+            ? `${Math.round((100 * homeProjectCounts.done) / homeProjectCounts.total)}%`
+            : '—',
+        icon: 'folder_special',
         showForecast: false,
-        showPeriod: false,
-        forecast: ip?.forecastVsPct,
-        forecastMode: 'pct',
-        period: ip?.yoyPct,
-        periodLabel: '전년대비',
-        periodMode: 'deltaPct'
+        showPeriod: false
       }
     ];
-  }, [stats.kpiSummary, stats.taskCompletionMeta, selectedGraphCurrency]);
+  }, [stats.kpiSummary, stats.taskCompletionMeta, selectedGraphCurrency, homeProjectCounts]);
 
   const pipelineColumns = useMemo(() => {
     const cols = pipelineMainStages.map((stage) => {
@@ -2062,10 +2159,18 @@ export default function Home() {
     [forecastActiveRows]
   );
 
+  /** 인사이트 툴바(회사·팀·개인·부서·직원·KPI 기간) 변경 시에만 초기화 — `forecastPipelineRows` 참조만 바뀌는 갱신에 필터가 풀리지 않게 함 */
   useEffect(() => {
     setHomeForecastActiveFilters({ product: '', probability: '', targetMonth: '' });
     setHomeForecastCompletedFilters({ product: '', probability: '', targetMonth: '' });
-  }, [data?.forecastPipelineRows]);
+  }, [
+    isCompanyWideInsight,
+    leaderInsightViewKind,
+    insightDeptQ,
+    insightUserQ,
+    kpiPeriod,
+    dashboardRefreshTick
+  ]);
 
   const renderHomeForecastFilterBar = useCallback(
     (variant) => {
@@ -2187,6 +2292,7 @@ export default function Home() {
             {barSeries.map((item, idx) => {
               const v = Number(item.value) || 0;
               if (!barHasNegative) {
+                const isZero = v === 0;
                 return (
                   <div key={`${title}-${item.label}-${idx}`} className="home-mini-chart-col home-mini-chart-col--tip">
                     <div className="home-mini-chart-track">
@@ -2194,11 +2300,15 @@ export default function Home() {
                         <div
                           className={`home-mini-chart-bar home-mini-chart-bar--insight-anim ${
                             item.value < 0 ? 'negative' : ''
-                          }`}
-                          style={{
-                            height: `${Math.max(12, item.height * 2)}%`,
-                            backgroundColor: item.value < 0 ? CHART_PASTEL_NEGATIVE : chartPastelAt(idx)
-                          }}
+                          }${isZero ? ' home-mini-chart-bar--zero-line' : ''}`}
+                          style={
+                            isZero
+                              ? undefined
+                              : {
+                                  height: `${Math.max(12, item.height * 2)}%`,
+                                  backgroundColor: item.value < 0 ? CHART_PASTEL_NEGATIVE : chartPastelAt(idx)
+                                }
+                          }
                         />
                         <div className="home-chart-tooltip-fly home-chart-tooltip-fly--bar" role="tooltip">
                           <strong>{item.label}</strong>
@@ -2481,7 +2591,7 @@ export default function Home() {
                 className={`home-kpi-strip${prefersReducedMotion ? ' home-kpi-strip--motion-reduced' : ''}`}
                 aria-label="핵심 실적 요약"
               >
-                {['rev', 'gm', 'goal', 'lead', 'deal'].map((key) => (
+                {['rev', 'gm', 'goal', 'lead', 'project'].map((key) => (
                   <div
                     key={key}
                     className="home-kpi-card home-kpi-card--access-loading"
@@ -2601,13 +2711,17 @@ export default function Home() {
                                     const deptOptions = Array.isArray(data.insightLeaderFilters.departments)
                                       ? data.insightLeaderFilters.departments
                                       : [];
-                                    const selectedDept = insightDeptQ || deptOptions[0]?.id || '';
+                                    const deptIdSet = new Set(deptOptions.map((d) => String(d?.id || '').trim()).filter(Boolean));
+                                    const deptSelectValue =
+                                      insightDeptQ && deptIdSet.has(insightDeptQ) ? insightDeptQ : '';
                                     return (
                                   <select
                                     className="home-insight-filter-select home-insight-filter-select--inline"
-                                    value={selectedDept}
+                                    value={deptSelectValue}
                                     onChange={(e) => setHomeInsightDeptFilter(e.target.value)}
+                                    aria-label="팀 부서 범위"
                                   >
+                                    <option value="">팀 전체</option>
                                     {deptOptions.map((d) => (
                                       <option key={d.id} value={d.id}>
                                         {d.label}
@@ -2679,6 +2793,7 @@ export default function Home() {
               >
                 {homeKpiCards.map((card) => {
                   const gmNonMarginAmount = Number(stats.kpiSummary?.grossMargin?.nonMarginAmount || 0);
+                  const gmNetMarginTotal = Number(stats.kpiSummary?.grossMargin?.netMarginTotal || 0);
                   if (card.skeleton) {
                     return (
                       <div key={card.key} className="home-kpi-card home-kpi-card--skeleton" aria-busy="true">
@@ -2692,25 +2807,41 @@ export default function Home() {
                   const showForecast = card.showForecast === true;
                   const showPeriod = card.showPeriod === true;
                   const curD = stats.kpiSummary?.primaryCurrency || selectedGraphCurrency || 'KRW';
+                  const projectDoneCount = homeProjectCounts.done;
+                  const projectActiveCount = homeProjectCounts.active;
+                  const projectTotalCount = homeProjectCounts.total;
                   let displayMain = card.value;
                   if (!loading) {
                     if (card.key === 'rev') displayMain = formatCurrency(Math.round(revAnim), curD);
                     else if (card.key === 'gm') displayMain = `${gmRateAnim.toFixed(1)}%`;
                     else if (card.key === 'goal') displayMain = `${Math.round(goalAnim)}%`;
                     else if (card.key === 'lead') displayMain = `${Math.round(leadAnim)}건`;
-                    else if (card.key === 'deal') displayMain = `${Math.round(dealAnim)}건`;
+                    else if (card.key === 'project') {
+                      displayMain = homeProjectPreviewLoading
+                        ? '…'
+                        : projectTotalCount <= 0
+                          ? '—'
+                          : `${Math.round(projectAchieveAnim)}%`;
+                    }
                   }
                   let forecastText = '—';
                   if (!loading && showForecast) {
                     if (card.forecastMode === 'pp' && card.key === 'gm') {
-                      forecastText = gmFcRaw == null ? '—' : formatHomeKpiForecastPP(gmFcAnim);
+                      forecastText = !homeKpiComparisonRawIsPresent(gmFcRaw)
+                        ? '—'
+                        : formatHomeKpiForecastPP(gmFcAnim);
                     } else if (card.key === 'rev') {
-                      forecastText = revFcRaw == null ? '—' : formatHomeKpiForecastPct(revFcAnim);
+                      forecastText = !homeKpiComparisonRawIsPresent(revFcRaw)
+                        ? '—'
+                        : formatHomeKpiForecastPct(revFcAnim);
                     } else if (card.key === 'lead') {
-                      forecastText = leadFcRaw == null ? '—' : formatHomeKpiForecastPct(leadFcAnim);
+                      forecastText = !homeKpiComparisonRawIsPresent(leadFcRaw)
+                        ? '—'
+                        : formatHomeKpiForecastPct(leadFcAnim);
                     } else {
-                      forecastText =
-                        card.forecastMode === 'pp'
+                      forecastText = !homeKpiComparisonRawIsPresent(card.forecast)
+                        ? '—'
+                        : card.forecastMode === 'pp'
                           ? formatHomeKpiForecastPP(card.forecast)
                           : formatHomeKpiForecastPct(card.forecast);
                     }
@@ -2718,15 +2849,26 @@ export default function Home() {
                   const periodIsPP = card.periodMode === 'deltaPP';
                   let delta = formatHomeKpiDeltaPct(null, periodIsPP);
                   if (!loading && showPeriod) {
-                    if (card.key === 'rev') delta = formatHomeKpiDeltaPct(revYoyRaw == null ? null : revYoyAnim, periodIsPP);
-                    else if (card.key === 'gm') delta = formatHomeKpiDeltaPct(gmYoyRaw == null ? null : gmYoyAnim, periodIsPP);
-                    else if (card.key === 'lead') {
-                      delta = formatHomeKpiDeltaPct(leadYoyRaw == null ? null : leadYoyAnim, periodIsPP);
-                    } else delta = formatHomeKpiDeltaPct(card.period, periodIsPP);
+                    if (card.key === 'rev') {
+                      delta = !homeKpiComparisonRawIsPresent(revYoyRaw)
+                        ? formatHomeKpiDeltaPct(null, periodIsPP)
+                        : formatHomeKpiDeltaPct(revYoyAnim, periodIsPP);
+                    } else if (card.key === 'gm') {
+                      delta = !homeKpiComparisonRawIsPresent(gmYoyRaw)
+                        ? formatHomeKpiDeltaPct(null, periodIsPP)
+                        : formatHomeKpiDeltaPct(gmYoyAnim, periodIsPP);
+                    } else if (card.key === 'lead') {
+                      delta = !homeKpiComparisonRawIsPresent(leadYoyRaw)
+                        ? formatHomeKpiDeltaPct(null, periodIsPP)
+                        : formatHomeKpiDeltaPct(leadYoyAnim, periodIsPP);
+                    } else {
+                      delta = !homeKpiComparisonRawIsPresent(card.period)
+                        ? formatHomeKpiDeltaPct(null, periodIsPP)
+                        : formatHomeKpiDeltaPct(card.period, periodIsPP);
+                    }
                   }
-                  const showTargetLine = card.key === 'rev' || card.key === 'deal';
+                  const showTargetLine = card.key === 'rev';
                   const targetRevenue = Number(homeKpiTargetSnapshot?.target?.targetRevenue || 0);
-                  const targetProjects = Number(homeKpiTargetSnapshot?.target?.targetProjects || 0);
                   let targetMetricText = '—';
                   let targetMetricPercent = '—';
                   let targetAmountUnderValue = '';
@@ -2749,17 +2891,68 @@ export default function Home() {
                         targetMetricPercent = `${Number.isFinite(pct) ? pct.toFixed(1) : '0.0'}%`;
                         targetTrendClass = pct >= 100 ? 'is-up' : pct > 0 ? 'is-down' : '';
                       }
-                    } else if (card.key === 'deal') {
-                      if (targetProjects <= 0) {
-                        targetMetricText = '프로젝트 목표 미설정';
-                        targetMetricPercent = '—';
-                      } else {
-                        const pct = (Number(dealNum || 0) / targetProjects) * 100;
-                        targetMetricText = `목표 ${Math.round(targetProjects)}건`;
-                        targetMetricPercent = `${Number.isFinite(pct) ? pct.toFixed(1) : '0.0'}%`;
-                        targetTrendClass = pct >= 100 ? 'is-up' : pct > 0 ? 'is-down' : '';
-                      }
                     }
+                  }
+                  if (card.key === 'project') {
+                    const doneW =
+                      projectTotalCount > 0 ? Math.round((100 * projectDoneCount) / projectTotalCount) : 0;
+                    const activeW =
+                      projectTotalCount > 0 ? Math.max(0, Math.min(100, 100 - doneW)) : 0;
+                    return (
+                      <article key={card.key} className="home-kpi-card home-kpi-card--project-preview">
+                        <div className="home-kpi-card-head">
+                          <span className="home-kpi-card-title">{card.title}</span>
+                          <span className="material-symbols-outlined home-kpi-card-icon" aria-hidden>
+                            {card.icon}
+                          </span>
+                        </div>
+                        <p className="home-kpi-card-value home-kpi-card-value--insight-anim">
+                          {loading || homeProjectPreviewLoading ? '—' : displayMain}
+                        </p>
+                        {!loading && !homeProjectPreviewLoading && projectTotalCount > 0 ? (
+                          <p className="home-kpi-card-target-amount home-kpi-card-target-amount--project-caption">
+                            완료 {projectDoneCount}건 · 진행 {projectActiveCount}건 · 전체 {projectTotalCount}건
+                          </p>
+                        ) : !loading && !homeProjectPreviewLoading && projectTotalCount === 0 ? (
+                          <p className="home-kpi-card-target-amount home-kpi-card-target-amount--project-caption home-kpi-card-target-amount--muted">
+                            등록된 프로젝트가 없습니다
+                          </p>
+                        ) : null}
+                        <p className="home-kpi-card-hint">{card.hint}</p>
+                        {!loading && !homeProjectPreviewLoading && projectTotalCount > 0 ? (
+                          <div
+                            className={`home-kpi-project-bar-stack${prefersReducedMotion ? ' home-kpi-project-bar-stack--motion-reduced' : ''}`}
+                            role="img"
+                            aria-label={`프로젝트 비중 완료 ${doneW}%, 진행 ${activeW}%. 전체 ${projectTotalCount}건`}
+                          >
+                            <div className="home-kpi-project-bar-stack-track">
+                              {doneW > 0 ? (
+                                <div
+                                  className="home-kpi-project-bar-stack-seg home-kpi-project-bar-stack-seg--done home-kpi-project-bar-stack-seg--anim"
+                                  style={{ width: `${doneW}%` }}
+                                  title={`완료 ${projectDoneCount}건 (${doneW}%)`}
+                                />
+                              ) : null}
+                              {activeW > 0 ? (
+                                <div
+                                  className="home-kpi-project-bar-stack-seg home-kpi-project-bar-stack-seg--active home-kpi-project-bar-stack-seg--anim"
+                                  style={{ width: `${activeW}%` }}
+                                  title={`진행 ${projectActiveCount}건 (${activeW}%)`}
+                                />
+                              ) : null}
+                            </div>
+                            <div className="home-kpi-project-bar-stack-legend" aria-hidden>
+                              <span className="home-kpi-project-bar-stack-legend-item home-kpi-project-bar-stack-legend-item--done">
+                                완료 {doneW}%
+                              </span>
+                              <span className="home-kpi-project-bar-stack-legend-item home-kpi-project-bar-stack-legend-item--active">
+                                진행 {activeW}%
+                              </span>
+                            </div>
+                          </div>
+                        ) : null}
+                      </article>
+                    );
                   }
                   return (
                     <article key={card.key} className="home-kpi-card">
@@ -2775,7 +2968,16 @@ export default function Home() {
                       ) : null}
                       {card.key === 'gm' ? (
                         <p className="home-kpi-card-target-amount">
-                          {loading ? '—' : `원가 금액 ${formatCurrency(Math.round(gmNonMarginAmount), curD)}`}
+                          {loading
+                            ? '—'
+                            : `순마진 ${formatCurrency(
+                                Math.round(
+                                  gmNetMarginTotal > 0 || stats.kpiSummary?.grossMargin?.netMarginTotal != null
+                                    ? gmNetMarginTotal
+                                    : Math.max(0, Math.round(revNum) - gmNonMarginAmount)
+                                ),
+                                curD
+                              )}`}
                         </p>
                       ) : null}
                       <p className="home-kpi-card-hint">{card.hint}</p>
@@ -2838,70 +3040,102 @@ export default function Home() {
                 })}
               </div>
               {!loading && homeTargetContributionBar?.segments?.length ? (
-                <section className="home-contribution-panel home-contribution-panel--achievement" aria-labelledby="home-achievement-title">
+                <section className="home-contribution-panel" aria-labelledby="home-achievement-title">
                   <div className="home-contribution-head">
                     <h3 id="home-achievement-title">{homeTargetContributionBar.title}</h3>
                   </div>
                   {homeTargetContributionBar.mode === 'team' ? (
                     <div className="home-contribution-split-wrap">
                       {(() => {
-                        const totalTarget = homeTargetContributionBar.segments.reduce(
+                        const segments = homeTargetContributionBar.segments;
+                        const totalTarget = segments.reduce(
                           (sum, seg) => sum + Math.max(0, Number(seg?.targetRevenue || 0)),
                           0
                         );
-                        const totalAmount = homeTargetContributionBar.segments.reduce(
+                        const totalAmount = segments.reduce(
                           (sum, seg) => sum + Math.max(0, Number(seg?.amount || 0)),
                           0
                         );
                         const totalAchievement = totalTarget > 0 ? Number(((totalAmount / totalTarget) * 100).toFixed(1)) : null;
+                        const r = totalTarget > 0 ? totalAmount / totalTarget : null;
+                        const met = r == null ? 1 : Math.min(r, 1);
+                        const over = r == null ? 0 : Math.max(0, r - 1);
+                        const gap = r == null ? 0 : Math.max(0, 1 - met);
+                        const vsTargetBar = totalTarget > 0;
+                        const barAria = !vsTargetBar
+                          ? '합산 목표가 없어 순마진 비중만 표시합니다.'
+                          : over > 0
+                            ? `막대 전체를 합산 목표 100%로 두었습니다. 순마진은 목표를 넘었고, 달성률은 약 ${totalAchievement}퍼센트입니다.`
+                            : gap > 0
+                              ? `막대 전체를 합산 목표 100%로 두었습니다. 왼쪽 색은 실적, 오른쪽 빈칸은 목표 대비 미달 구간입니다. 달성률 약 ${totalAchievement}퍼센트.`
+                              : `막대 전체를 합산 목표 100%로 두었고, 목표를 채웠습니다. 달성률 약 ${totalAchievement}퍼센트.`;
+                        const totalTargetPool = segments.reduce((sum, s) => sum + Math.max(0, Number(s?.targetRevenue || 0)), 0);
+                        const totalAmountForBar = segments.reduce((sum, s) => sum + Math.max(0, Number(s?.amount || 0)), 0);
                         return (
-                          <div className="home-contribution-single-caption">
-                            {`전체 목표액 ${formatRevenueCompact(totalTarget)} · 전체 순마진 ${formatRevenueCompact(totalAmount)} · 전체 달성률 ${
-                              totalAchievement == null ? '목표 미설정' : `${totalAchievement}%`
-                            }`}
-                          </div>
+                          <>
+                            <div className="home-contribution-single-caption">
+                              {`전체 목표액 ${formatRevenueCompact(totalTarget)} · 전체 순마진 ${formatRevenueCompact(totalAmount)} · 전체 달성률 ${
+                                totalAchievement == null ? '목표 미설정' : `${totalAchievement}%`
+                              }`}
+                            </div>
+                            <div className="home-contribution-ach-frame" role="img" aria-label={barAria}>
+                              <div
+                                className="home-contribution-ach-live"
+                                style={{
+                                  flexGrow: vsTargetBar ? met : 1,
+                                  flexShrink: 1,
+                                  flexBasis: 0
+                                }}
+                              >
+                                <div className="home-contribution-split-bar home-contribution-split-bar--ach-inner" role="list" aria-label="팀별 목표 대비 달성률">
+                                  {segments.map((seg) => {
+                                    const amt = Math.max(0, Number(seg?.amount || 0));
+                                    const widthPct =
+                                      totalAmountForBar > 0
+                                        ? (amt / totalAmountForBar) * 100
+                                        : Math.max(0, Number(seg?.pct || 0));
+                                    const vsTotalPoolPct =
+                                      totalTargetPool > 0 ? Number(((amt / totalTargetPool) * 100).toFixed(1)) : null;
+                                    const achText = `${seg.label} - 전체 목표액 대비 달성률 ${
+                                      vsTotalPoolPct == null ? '목표 미설정' : `${vsTotalPoolPct}%`
+                                    } - 팀 목표 대비 달성률 ${
+                                      seg.achievement == null ? '목표 미설정' : `${seg.achievement}%`
+                                    }`;
+                                    return (
+                                      <div
+                                        key={`ach-split-${seg.id}`}
+                                        role="listitem"
+                                        className="home-contribution-split-seg"
+                                        style={{
+                                          flexBasis: `${Math.max(0, widthPct)}%`,
+                                          backgroundColor: seg.color || '#8fa8d8'
+                                        }}
+                                        title={achText}
+                                      >
+                                        <span>{`${seg.label} ${seg.pct}%`}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                              {vsTargetBar && over > 0 ? (
+                                <div
+                                  className="home-contribution-ach-over"
+                                  style={{ flexGrow: over, flexShrink: 1, flexBasis: 0 }}
+                                  aria-hidden
+                                />
+                              ) : null}
+                              {vsTargetBar && gap > 0 ? (
+                                <div
+                                  className="home-contribution-ach-gap"
+                                  style={{ flexGrow: gap, flexShrink: 1, flexBasis: 0 }}
+                                  aria-hidden
+                                />
+                              ) : null}
+                            </div>
+                          </>
                         );
                       })()}
-                      <div className="home-contribution-split-bar" role="list" aria-label="팀별 목표 대비 달성률">
-                        {(() => {
-                          const totalTargetPool = homeTargetContributionBar.segments.reduce(
-                            (sum, s) => sum + Math.max(0, Number(s?.targetRevenue || 0)),
-                            0
-                          );
-                          const totalAmountForBar = homeTargetContributionBar.segments.reduce(
-                            (sum, s) => sum + Math.max(0, Number(s?.amount || 0)),
-                            0
-                          );
-                          return homeTargetContributionBar.segments.map((seg) => {
-                            const amt = Math.max(0, Number(seg?.amount || 0));
-                            const widthPct =
-                              totalAmountForBar > 0
-                                ? (amt / totalAmountForBar) * 100
-                                : Math.max(0, Number(seg?.pct || 0));
-                            const vsTotalPoolPct =
-                              totalTargetPool > 0 ? Number(((amt / totalTargetPool) * 100).toFixed(1)) : null;
-                            const achText = `${seg.label} - 전체 목표액 대비 달성률 ${
-                              vsTotalPoolPct == null ? '목표 미설정' : `${vsTotalPoolPct}%`
-                            } - 개인팀 대비 달성률 ${
-                              seg.achievement == null ? '목표 미설정' : `${seg.achievement}%`
-                            }`;
-                            return (
-                              <div
-                                key={`ach-split-${seg.id}`}
-                                role="listitem"
-                                className="home-contribution-split-seg"
-                                style={{
-                                  flexBasis: `${Math.max(0, widthPct)}%`,
-                                  backgroundColor: seg.color || '#8fa8d8'
-                                }}
-                                title={achText}
-                              >
-                                <span>{achText}</span>
-                              </div>
-                            );
-                          });
-                        })()}
-                      </div>
                       <div className="home-contribution-split-texts">
                         {homeTargetContributionBar.segments.map((seg) => (
                           <span key={`ach-note-${seg.id}`}>
@@ -2915,63 +3149,95 @@ export default function Home() {
                   ) : (
                     <div className="home-contribution-split-wrap">
                       {(() => {
-                        const totalTarget = homeTargetContributionBar.segments.reduce(
+                        const segments = homeTargetContributionBar.segments;
+                        const totalTarget = segments.reduce(
                           (sum, seg) => sum + Math.max(0, Number(seg?.targetRevenue || 0)),
                           0
                         );
-                        const totalAmount = homeTargetContributionBar.segments.reduce(
+                        const totalAmount = segments.reduce(
                           (sum, seg) => sum + Math.max(0, Number(seg?.amount || 0)),
                           0
                         );
                         const totalAchievement = totalTarget > 0 ? Number(((totalAmount / totalTarget) * 100).toFixed(1)) : null;
+                        const r = totalTarget > 0 ? totalAmount / totalTarget : null;
+                        const met = r == null ? 1 : Math.min(r, 1);
+                        const over = r == null ? 0 : Math.max(0, r - 1);
+                        const gap = r == null ? 0 : Math.max(0, 1 - met);
+                        const vsTargetBar = totalTarget > 0;
+                        const barAria = !vsTargetBar
+                          ? '팀 합산 목표가 없어 순마진 비중만 표시합니다.'
+                          : over > 0
+                            ? `막대 전체를 팀 합산 목표 100%로 두었습니다. 순마진은 목표를 넘었고, 달성률은 약 ${totalAchievement}퍼센트입니다.`
+                            : gap > 0
+                              ? `막대 전체를 팀 합산 목표 100%로 두었습니다. 왼쪽 색은 실적, 오른쪽 빈칸은 목표 대비 미달입니다. 달성률 약 ${totalAchievement}퍼센트.`
+                              : `막대 전체를 팀 합산 목표 100%로 두었고, 목표를 채웠습니다. 달성률 약 ${totalAchievement}퍼센트.`;
+                        const teamTargetPool = segments.reduce((sum, s) => sum + Math.max(0, Number(s?.targetRevenue || 0)), 0);
+                        const totalAmountForBar = segments.reduce((sum, s) => sum + Math.max(0, Number(s?.amount || 0)), 0);
                         return (
-                          <div className="home-contribution-single-caption">
-                            {`팀 전체 목표액 ${formatRevenueCompact(totalTarget)} · 팀 전체 순마진 ${formatRevenueCompact(totalAmount)} · 팀 전체 달성률 ${
-                              totalAchievement == null ? '목표 미설정' : `${totalAchievement}%`
-                            }`}
-                          </div>
+                          <>
+                            <div className="home-contribution-single-caption">
+                              {`팀 전체 목표액 ${formatRevenueCompact(totalTarget)} · 팀 전체 순마진 ${formatRevenueCompact(totalAmount)} · 팀 전체 달성률 ${
+                                totalAchievement == null ? '목표 미설정' : `${totalAchievement}%`
+                              }`}
+                            </div>
+                            <div className="home-contribution-ach-frame" role="img" aria-label={barAria}>
+                              <div
+                                className="home-contribution-ach-live"
+                                style={{
+                                  flexGrow: vsTargetBar ? met : 1,
+                                  flexShrink: 1,
+                                  flexBasis: 0
+                                }}
+                              >
+                                <div className="home-contribution-split-bar home-contribution-split-bar--ach-inner" role="list" aria-label="목표대비 달성률">
+                                  {segments.map((seg) => {
+                                    const amt = Math.max(0, Number(seg?.amount || 0));
+                                    const widthPct =
+                                      totalAmountForBar > 0
+                                        ? (amt / totalAmountForBar) * 100
+                                        : Math.max(0, Number(seg?.pct || 0));
+                                    const vsTeamPoolPct =
+                                      teamTargetPool > 0 ? Number(((amt / teamTargetPool) * 100).toFixed(1)) : null;
+                                    const achText = `${seg.label} - 팀전체 목표액 대비 달성률 ${
+                                      vsTeamPoolPct == null ? '목표 미설정' : `${vsTeamPoolPct}%`
+                                    } - 개인 목표액 대비 달성률 ${
+                                      seg.achievement == null ? '목표 미설정' : `${seg.achievement}%`
+                                    }`;
+                                    return (
+                                      <div
+                                        key={`ach-split-${seg.id}`}
+                                        role="listitem"
+                                        className="home-contribution-split-seg"
+                                        style={{
+                                          flexBasis: `${Math.max(0, widthPct)}%`,
+                                          backgroundColor: seg.color || '#8fa8d8'
+                                        }}
+                                        title={achText}
+                                      >
+                                        <span>{`${seg.label} ${seg.pct}%`}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                              {vsTargetBar && over > 0 ? (
+                                <div
+                                  className="home-contribution-ach-over"
+                                  style={{ flexGrow: over, flexShrink: 1, flexBasis: 0 }}
+                                  aria-hidden
+                                />
+                              ) : null}
+                              {vsTargetBar && gap > 0 ? (
+                                <div
+                                  className="home-contribution-ach-gap"
+                                  style={{ flexGrow: gap, flexShrink: 1, flexBasis: 0 }}
+                                  aria-hidden
+                                />
+                              ) : null}
+                            </div>
+                          </>
                         );
                       })()}
-                      <div className="home-contribution-split-bar" role="list" aria-label="목표대비 달성률">
-                        {(() => {
-                          const teamTargetPool = homeTargetContributionBar.segments.reduce(
-                            (sum, s) => sum + Math.max(0, Number(s?.targetRevenue || 0)),
-                            0
-                          );
-                          const totalAmountForBar = homeTargetContributionBar.segments.reduce(
-                            (sum, s) => sum + Math.max(0, Number(s?.amount || 0)),
-                            0
-                          );
-                          return homeTargetContributionBar.segments.map((seg) => {
-                            const amt = Math.max(0, Number(seg?.amount || 0));
-                            const widthPct =
-                              totalAmountForBar > 0
-                                ? (amt / totalAmountForBar) * 100
-                                : Math.max(0, Number(seg?.pct || 0));
-                            const vsTeamPoolPct =
-                              teamTargetPool > 0 ? Number(((amt / teamTargetPool) * 100).toFixed(1)) : null;
-                            const achText = `${seg.label} - 팀전체 목표액 대비 달성률 ${
-                              vsTeamPoolPct == null ? '목표 미설정' : `${vsTeamPoolPct}%`
-                            } - 개인 목표액 대비 달성률 ${
-                              seg.achievement == null ? '목표 미설정' : `${seg.achievement}%`
-                            }`;
-                            return (
-                              <div
-                                key={`ach-split-${seg.id}`}
-                                role="listitem"
-                                className="home-contribution-split-seg"
-                                style={{
-                                  flexBasis: `${Math.max(0, widthPct)}%`,
-                                  backgroundColor: seg.color || '#8fa8d8'
-                                }}
-                                title={achText}
-                              >
-                                <span>{achText}</span>
-                              </div>
-                            );
-                          });
-                        })()}
-                      </div>
                       <div className="home-contribution-split-texts">
                         {homeTargetContributionBar.segments.map((seg) => (
                           <span key={`ach-user-note-${seg.id}`}>
@@ -3057,7 +3323,7 @@ export default function Home() {
                   marginLinePrev: netPrevTween
                 }
               )}
-              {!loading && Array.isArray(data?.forecastPipelineRows) ? (
+              {Array.isArray(data?.forecastPipelineRows) ? (
                 <div className="panel home-forecast-panel" aria-label="Forecast 파이프라인">
                   <div className="home-forecast-head">
                     <div className="home-forecast-head-text">
@@ -3151,7 +3417,20 @@ export default function Home() {
                             return (
                               <>
                           {forecastActivePreviewRows.map((row) => (
-                            <tr key={row.id}>
+                            <tr
+                              key={row.id}
+                              className="home-forecast-data-row"
+                              tabIndex={0}
+                              role="button"
+                              aria-label={`기회 ${row.companyLabel} 상세`}
+                              onClick={() => openHomeEditOpportunity(row.id)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  openHomeEditOpportunity(row.id);
+                                }
+                              }}
+                            >
                               <td>{row.companyLabel}</td>
                               <td>{renderSoftwareLabelCell(row.softwareLabel)}</td>
                               <td>{formatCurrency(row.unitPrice, row.currency)}</td>
@@ -3197,7 +3476,7 @@ export default function Home() {
                   </div>
                 </div>
               ) : null}
-              {!loading ? (
+              {Array.isArray(data?.forecastPipelineRows) ? (
                 <div className="panel home-forecast-panel" aria-label="완료 기회 목록">
                   <div className="home-forecast-head">
                     <div className="home-forecast-head-text">
@@ -3270,7 +3549,20 @@ export default function Home() {
                             return (
                               <>
                                 {forecastCompletedPreviewRows.map((row) => (
-                                  <tr key={`done-${row.id}`}>
+                                  <tr
+                                    key={`done-${row.id}`}
+                                    className="home-forecast-data-row"
+                                    tabIndex={0}
+                                    role="button"
+                                    aria-label={`기회 ${row.companyLabel} 상세`}
+                                    onClick={() => openHomeEditOpportunity(row.id)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault();
+                                        openHomeEditOpportunity(row.id);
+                                      }
+                                    }}
+                                  >
                                     <td>{row.companyLabel}</td>
                                     <td>{renderSoftwareLabelCell(row.softwareLabel)}</td>
                                     <td>{formatCurrency(row.unitPrice, row.currency)}</td>
@@ -3322,39 +3614,48 @@ export default function Home() {
                     <div>
                       <h3 className="home-leader-breakdown-title">팀 실적 요약</h3>
                       <p className="home-leader-breakdown-sub">
-                        위 그래프와 동일한 기간·필터(수주 성공·담당 기준)입니다. 범위는 상단 조회 설정을 따르며, 표는 직원별로 집계합니다. 부서는 회사 조직도에 등록된 노드만 반영됩니다.
+                        상단과 동일한 대시보드 요청(insightScope·부서/직원·KPI 기간)으로 받은 수주(Won) 목록을 씁니다. 위 그래프·카드와 같은 담당 범위이며, 표는 직원별로 집계합니다. 부서는 회사 조직도 노드 id만 반영됩니다.
                       </p>
                     </div>
                   </div>
                   <div className="home-leader-breakdown-table-wrap">
-                    {(data.leaderScopeBreakdown.rows || []).length === 0 ? (
-                      <p className="home-leader-breakdown-empty">
-                        표시할 행이 없습니다. 팀원 부서(조직도 노드 id) 배정을 확인해 주세요.
-                      </p>
-                    ) : (
-                      <table className="home-leader-breakdown-table">
-                        <thead>
-                          <tr>
-                            <th scope="col">
-                              {data.leaderScopeBreakdown.mode === 'department' ? '부서' : '직원'}
-                            </th>
-                            <th scope="col">건수</th>
-                            <th scope="col">수주액</th>
-                            <th scope="col">순마진</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(data.leaderScopeBreakdown.rows || []).map((row) => (
-                            <tr key={row.key}>
-                              <td>{row.label}</td>
-                              <td>{row.orderCount}</td>
-                              <td>{formatWonRevenue(row.revenueByCurrency)}</td>
-                              <td>{formatDashboardCurrencyTotals(row.netMarginByCurrency)}</td>
+                    {(() => {
+                      const rawRows = data.leaderScopeBreakdown.rows || [];
+                      const leaderRows = rawRows.filter((row) => Number(row?.orderCount) > 0);
+                      if (leaderRows.length === 0) {
+                        return (
+                          <p className="home-leader-breakdown-empty">
+                            {rawRows.length === 0
+                              ? '표시할 행이 없습니다. 팀원 부서(조직도 노드 id) 배정을 확인해 주세요.'
+                              : '건수가 0인 항목은 표시하지 않습니다. 현재 조건에서는 표시할 행이 없습니다.'}
+                          </p>
+                        );
+                      }
+                      return (
+                        <table className="home-leader-breakdown-table">
+                          <thead>
+                            <tr>
+                              <th scope="col">
+                                {data.leaderScopeBreakdown.mode === 'department' ? '부서' : '직원'}
+                              </th>
+                              <th scope="col">건수</th>
+                              <th scope="col">수주액</th>
+                              <th scope="col">순마진</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
+                          </thead>
+                          <tbody>
+                            {leaderRows.map((row) => (
+                              <tr key={row.key}>
+                                <td>{row.label}</td>
+                                <td>{row.orderCount}</td>
+                                <td>{formatWonRevenue(row.revenueByCurrency)}</td>
+                                <td>{formatDashboardCurrencyTotals(row.netMarginByCurrency)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      );
+                    })()}
                   </div>
                 </div>
               ) : null}
@@ -3615,7 +3916,20 @@ export default function Home() {
                   </thead>
                   <tbody>
                     {forecastActiveRows.map((row) => (
-                      <tr key={`modal-forecast-${row.id}`}>
+                      <tr
+                        key={`modal-forecast-${row.id}`}
+                        className="home-forecast-table-row-click"
+                        tabIndex={0}
+                        role="button"
+                        aria-label={`기회 ${row.companyLabel} 상세`}
+                        onClick={() => openHomeEditOpportunity(row.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            openHomeEditOpportunity(row.id);
+                          }
+                        }}
+                      >
                         <td>{row.companyLabel}</td>
                         <td>{renderSoftwareLabelCell(row.softwareLabel)}</td>
                         <td>{formatCurrency(row.unitPrice, row.currency)}</td>
@@ -3703,7 +4017,20 @@ export default function Home() {
                   </thead>
                   <tbody>
                     {forecastCompletedRows.map((row) => (
-                      <tr key={`modal-completed-${row.id}`}>
+                      <tr
+                        key={`modal-completed-${row.id}`}
+                        className="home-forecast-data-row"
+                        tabIndex={0}
+                        role="button"
+                        aria-label={`기회 ${row.companyLabel} 상세`}
+                        onClick={() => openHomeEditOpportunity(row.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            openHomeEditOpportunity(row.id);
+                          }
+                        }}
+                      >
                         <td>{row.companyLabel}</td>
                         <td>{renderSoftwareLabelCell(row.softwareLabel)}</td>
                         <td>{formatCurrency(row.unitPrice, row.currency)}</td>

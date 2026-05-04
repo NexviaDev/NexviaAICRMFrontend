@@ -772,12 +772,13 @@
 
 .kpi-detail-lucid-participant-score-row {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.4rem 0.55rem;
-  border-radius: 0.5rem;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.55rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.55rem;
   background: #f4f7f9;
+  box-shadow: inset 0 0 0 1px rgba(44, 100, 133, 0.08);
 }
 
 .kpi-detail-lucid-participant-name {
@@ -798,6 +799,105 @@
   font-size: 0.85rem;
   text-align: right;
   background: #fff;
+}
+
+/* 프로젝트 1~5 리커트 (파스텔, 그라데이션 없음) */
+.kpi-detail-project-likert {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  justify-content: flex-end;
+}
+
+.kpi-detail-project-likert--compact {
+  justify-content: flex-start;
+}
+
+.kpi-detail-project-flat-likert-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.kpi-detail-project-flat-likert-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #5a6b78;
+}
+
+.kpi-detail-project-likert-btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.12rem;
+  min-width: 3.35rem;
+  padding: 0.38rem 0.42rem 0.32rem;
+  border-radius: 0.55rem;
+  border: 1px solid rgba(44, 100, 133, 0.18);
+  background: #ffffff;
+  color: #4a6678;
+  font: inherit;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.9) inset;
+}
+
+.kpi-detail-project-likert-btn:hover {
+  background: #f2f7fb;
+  border-color: rgba(44, 100, 133, 0.35);
+}
+
+.kpi-detail-project-likert-btn:focus-visible {
+  outline: 2px solid rgba(44, 100, 133, 0.45);
+  outline-offset: 2px;
+}
+
+.kpi-detail-project-likert-btn.is-selected {
+  background: rgba(160, 213, 251, 0.42);
+  border-color: rgba(44, 100, 133, 0.45);
+  color: #1a4a66;
+  box-shadow: 0 0 0 1px rgba(44, 100, 133, 0.12);
+}
+
+.kpi-detail-project-likert-num {
+  font-size: 0.95rem;
+  font-weight: 800;
+  line-height: 1;
+  color: #2c6485;
+}
+
+.kpi-detail-project-likert-btn.is-selected .kpi-detail-project-likert-num {
+  color: #143d52;
+}
+
+.kpi-detail-project-likert-text {
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+  max-width: 4.2rem;
+  color: #596064;
+}
+
+.kpi-detail-project-likert-btn.is-selected .kpi-detail-project-likert-text {
+  color: #2c4a5c;
+}
+
+@media (max-width: 640px) {
+  .kpi-detail-project-likert {
+    justify-content: flex-start;
+  }
+
+  .kpi-detail-project-likert-btn {
+    min-width: 2.85rem;
+    padding: 0.32rem 0.28rem;
+  }
+
+  .kpi-detail-project-likert-text {
+    font-size: 0.58rem;
+    max-width: 3.6rem;
+  }
 }
 
 .kpi-detail-lucid-project-total-note {

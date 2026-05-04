@@ -445,6 +445,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
   box-sizing: border-box;
+  border: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  pointer-events: auto;
 }
 
 .project-dashboard-calendar-week-cells {
@@ -515,6 +520,11 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  border: none;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
 }
 
 .project-dashboard-calendar-pill.tone-primary {
@@ -668,6 +678,25 @@
 .project-milestones span {
   color: #596064;
   font-size: 0.75rem;
+}
+
+.project-milestone-open {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.project-milestone-open:focus-visible {
+  outline: 2px solid rgba(44, 100, 133, 0.45);
+  outline-offset: 2px;
 }
 
 .project-kanban-wrap {
@@ -1045,6 +1074,31 @@
   gap: 0.35rem;
 }
 
+.project-gantt-task-group--open {
+  margin-bottom: 1rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(172, 179, 183, 0.35);
+  background: #ffffff;
+  align-items: flex-start;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.project-gantt-task-group--open:focus-visible {
+  outline: 2px solid rgba(44, 100, 133, 0.45);
+  outline-offset: 2px;
+}
+
+.project-gantt-task-title {
+  font-size: 0.86rem;
+  color: #2c3e50;
+  font-weight: 600;
+}
+
 .project-gantt-task-group p {
   margin: 0;
   color: #2c6485;
@@ -1120,6 +1174,20 @@
   border-radius: 999px;
   box-shadow: 0 4px 10px rgba(89, 96, 100, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.65);
+}
+
+.project-gantt-bars button.bar {
+  appearance: none;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  font-size: 0;
+  color: transparent;
+}
+
+.project-gantt-bars button.bar:focus-visible {
+  outline: 2px solid rgba(44, 100, 133, 0.55);
+  outline-offset: 2px;
 }
 
 .project-gantt-bars .bar-todo {

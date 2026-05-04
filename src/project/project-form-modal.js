@@ -90,7 +90,6 @@ function fileToBase64(file) {
 
 export default function ProjectFormModal({
   mode = 'create',
-  projectName = '',
   companyContext = null,
   teamMembers = [],
   currentUser = null,
@@ -556,7 +555,9 @@ export default function ProjectFormModal({
               {mode === 'edit' ? '프로젝트 수정' : '새 프로젝트 등록'}
             </h2>
             <p className="pfm-lead">
-              {mode === 'edit' ? '선택한 프로젝트 정보를 수정합니다.' : `${projectName || '프로젝트 보드'}에 새 프로젝트를 등록합니다.`}
+              {mode === 'edit'
+                ? '선택한 프로젝트 정보를 수정합니다.'
+                : '제목·일정·참여자와 임무를 입력해 새 프로젝트를 등록합니다.'}
             </p>
           </div>
           <button type="button" className="pfm-close" onClick={onClose} disabled={saving || driveBusy} aria-label="닫기">
