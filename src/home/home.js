@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import './home.css';
+import { HomeContributionCalcModal } from './home-contribution-calc-modal';
 
 import { API_BASE } from '@/config';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
@@ -151,6 +152,55 @@ function formatRevenueCompact(value) {
   if (v >= 100000000) return `₩${(v / 100000000).toFixed(1)}억`;
   if (v >= 10000) return `₩${Math.round(v / 10000)}만`;
   return `₩${v.toLocaleString('ko-KR')}`;
+}
+
+/** 홈 목표 기여 막대 — 세그먼트 호버 시 상세(순마진·비중·목표·달성률) */
+function HomeTargetAchievementSegHoverCard({
+  label,
+  amount,
+  targetRevenue,
+  displayPct,
+  liveBarSharePct,
+  vsPoolPct,
+  vsPoolLabel,
+  achievementPct
+}) {
+  const share = Number(liveBarSharePct);
+  const shareText = Number.isFinite(share) ? `${share.toFixed(1)}%` : '—';
+  const disp = displayPct == null || displayPct === '' ? '—' : `${displayPct}%`;
+  const poolText = vsPoolPct == null ? '목표 미설정 또는 산출 불가' : `${vsPoolPct}%`;
+  const achText = achievementPct == null ? '목표 미설정' : `${achievementPct}%`;
+  return (
+    <div className="home-contribution-seg-hover-card" role="tooltip">
+      <div className="home-contribution-seg-hover-title">{label}</div>
+      <dl className="home-contribution-seg-hover-dl">
+        <div className="home-contribution-seg-hover-row">
+          <dt>순마진</dt>
+          <dd>{formatRevenueCompact(amount)}</dd>
+        </div>
+        <div className="home-contribution-seg-hover-row">
+          <dt>막대 내 실적 비중</dt>
+          <dd>{shareText}</dd>
+        </div>
+        <div className="home-contribution-seg-hover-row">
+          <dt>순마진 비중(표시)</dt>
+          <dd>{disp}</dd>
+        </div>
+        <div className="home-contribution-seg-hover-row">
+          <dt>목표액</dt>
+          <dd>{formatRevenueCompact(targetRevenue)}</dd>
+        </div>
+        <div className="home-contribution-seg-hover-row">
+          <dt>{vsPoolLabel}</dt>
+          <dd>{poolText}</dd>
+        </div>
+        <div className="home-contribution-seg-hover-row">
+          <dt>목표 대비 달성률</dt>
+          <dd>{achText}</dd>
+        </div>
+      </dl>
+    </div>
+  );
 }
 
 /** Forecast 표 — 예상 월(YYYY-MM) 표기 */
@@ -865,6 +915,48 @@ function normalizeHomeKpiPeriod(raw) {
   return 'month';
 }
 
+/** 홈 인사이트·KPI 기간 쿼리가 없을 때만 DB 템플릿으로 URL 복원(북마크·공유 URL은 유지) */
+function isHomeInsightToolbarUrlEmpty(p) {
+  return (
+    !p.has(HOME_INSIGHT_PARAM) &&
+    !p.has(HOME_INSIGHT_VIEW_PARAM) &&
+    !p.has(HOME_INSIGHT_DEPT_PARAM) &&
+    !p.has(HOME_INSIGHT_USER_PARAM) &&
+    !p.has(HOME_KPI_PERIOD_PARAM)
+  );
+}
+
+/** listTemplates.homeDashboard → URLSearchParams (뮤테이트) */
+function applySavedHomeDashboardToSearchParams(p, hd, myCrmUserId) {
+  if (!hd || typeof hd !== 'object') return;
+  const kpi = normalizeHomeKpiPeriod(hd.kpiPeriod);
+  if (kpi !== 'month') p.set(HOME_KPI_PERIOD_PARAM, kpi);
+  else p.delete(HOME_KPI_PERIOD_PARAM);
+
+  if (hd.companyWideInsight === true) {
+    p.set(HOME_INSIGHT_PARAM, 'full');
+    p.delete(HOME_INSIGHT_VIEW_PARAM);
+    p.delete(HOME_INSIGHT_DEPT_PARAM);
+    p.delete(HOME_INSIGHT_USER_PARAM);
+    return;
+  }
+  p.delete(HOME_INSIGHT_PARAM);
+  const kind = hd.leaderInsightViewKind === 'personal' ? 'personal' : 'team';
+  if (kind === 'personal') {
+    p.set(HOME_INSIGHT_VIEW_PARAM, 'personal');
+    p.delete(HOME_INSIGHT_DEPT_PARAM);
+    const uid = String(hd.insightUserId || '').trim() || String(myCrmUserId || '').trim();
+    if (uid) p.set(HOME_INSIGHT_USER_PARAM, uid);
+    else p.delete(HOME_INSIGHT_USER_PARAM);
+  } else {
+    p.set(HOME_INSIGHT_VIEW_PARAM, 'team');
+    p.delete(HOME_INSIGHT_USER_PARAM);
+    const did = String(hd.insightDeptId || '').trim();
+    if (did) p.set(HOME_INSIGHT_DEPT_PARAM, did);
+    else p.delete(HOME_INSIGHT_DEPT_PARAM);
+  }
+}
+
 function resolveHomeKpiTargetPeriod(kpiPeriod, now = new Date()) {
   const year = Number(now.getFullYear()) || new Date().getFullYear();
   const month = (Number(now.getMonth()) || 0) + 1;
@@ -941,6 +1033,8 @@ export default function Home() {
   const [wonLeaderboardLoading, setWonLeaderboardLoading] = useState(false);
   const [wonLeaderboardRefreshTick, setWonLeaderboardRefreshTick] = useState(0);
   const [homeTargetContributionBar, setHomeTargetContributionBar] = useState(null);
+  /** 기여 막대 계산 방식 모달 — { kind: 'target'|'share', mode: 'team'|'user' } */
+  const [homeContributionCalcModal, setHomeContributionCalcModal] = useState(null);
   const [homeKpiTargetSnapshot, setHomeKpiTargetSnapshot] = useState({
     loading: false,
     periodLabel: '',
@@ -965,6 +1059,8 @@ export default function Home() {
   /** 프로젝트 달성률 막대 보간 — 목록 fetch 시에도 반영 */
   const [projectBarAnimEpoch, setProjectBarAnimEpoch] = useState(0);
   const homeDashboardToolbarPersistTimerRef = useRef(null);
+  /** /auth/me 반영 후 listTemplates→URL 1회 적용 완료 전에는 persist 금지(기본 URL로 DB 덮어쓰기 방지) */
+  const [homeInsightToolbarTemplateReady, setHomeInsightToolbarTemplateReady] = useState(false);
   const consumerChartTitle = useMemo(() => {
     const labelMap = {
       month: '월간',
@@ -1184,9 +1280,39 @@ export default function Home() {
     patchHomeDashboardTemplate({ marginChartMode: next }).catch(() => {});
   }, []);
 
-  /** 조회 범위·KPI 기간 변경 시 User.listTemplates.homeDashboard 에 디바운스 저장 */
+  /**
+   * 홈 재진입 시 URL에 인사이트·기간 쿼리가 없으면 listTemplates.homeDashboard 로 URL 복원.
+   * 그 다음에만 persist effect가 동작해 저장값이 기본 URL로 덮어쓰이지 않습니다.
+   */
   useEffect(() => {
     if (!insightAccess.checked) return undefined;
+    if (homeInsightToolbarTemplateReady) return undefined;
+    const hd = getSavedHomeDashboardTemplate();
+    const p = new URLSearchParams(searchParams);
+    if (isHomeInsightToolbarUrlEmpty(p) && hd && typeof hd === 'object') {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          applySavedHomeDashboardToSearchParams(next, hd, myCrmUserId);
+          return next;
+        },
+        { replace: true }
+      );
+      return undefined;
+    }
+    setHomeInsightToolbarTemplateReady(true);
+    return undefined;
+  }, [
+    insightAccess.checked,
+    homeInsightToolbarTemplateReady,
+    searchParams,
+    setSearchParams,
+    myCrmUserId
+  ]);
+
+  /** 조회 범위·KPI 기간 변경 시 User.listTemplates.homeDashboard 에 디바운스 저장 */
+  useEffect(() => {
+    if (!insightAccess.checked || !homeInsightToolbarTemplateReady) return undefined;
     if (homeDashboardToolbarPersistTimerRef.current) {
       clearTimeout(homeDashboardToolbarPersistTimerRef.current);
     }
@@ -1195,10 +1321,16 @@ export default function Home() {
       const payload = {
         companyWideInsight: isCompanyWideInsight,
         kpiPeriod,
-        leaderInsightViewKind
+        leaderInsightViewKind,
+        insightDeptId: '',
+        insightUserId: ''
       };
-      if (insightDeptQ) payload.insightDeptId = insightDeptQ;
-      if (insightUserQ) payload.insightUserId = insightUserQ;
+      if (!isCompanyWideInsight && leaderInsightViewKind === 'team') {
+        payload.insightDeptId = insightDeptQ;
+      }
+      if (!isCompanyWideInsight && leaderInsightViewKind === 'personal') {
+        payload.insightUserId = insightUserQ || myCrmUserId;
+      }
       patchHomeDashboardTemplate(payload).catch(() => {});
     }, 450);
     return () => {
@@ -1209,10 +1341,12 @@ export default function Home() {
     };
   }, [
     insightAccess.checked,
+    homeInsightToolbarTemplateReady,
     isCompanyWideInsight,
     leaderInsightViewKind,
     insightDeptQ,
     insightUserQ,
+    myCrmUserId,
     kpiPeriod
   ]);
 
@@ -1250,6 +1384,7 @@ export default function Home() {
   }, [insightAccess.checked, insightAccess.seniorPlus]);
 
   useEffect(() => {
+    if (!insightAccess.checked || !homeInsightToolbarTemplateReady) return undefined;
     let cancelled = false;
     const fetchData = async () => {
       if (!cancelled) setLoading(true);
@@ -1315,7 +1450,9 @@ export default function Home() {
     insightUserQ,
     myCrmUserId,
     kpiPeriod,
-    dashboardRefreshTick
+    dashboardRefreshTick,
+    insightAccess.checked,
+    homeInsightToolbarTemplateReady
   ]);
 
   useEffect(() => {
@@ -2576,7 +2713,7 @@ export default function Home() {
         </section>
 
         <section className="home-insights-top" aria-label="소비자가·순마진 인사이트">
-          {!insightAccess.checked ? (
+          {!insightAccess.checked || !homeInsightToolbarTemplateReady ? (
             <>
               <div className="home-insight-toolbar home-insight-toolbar--access-loading" aria-busy="true">
                 <div className="home-insight-toolbar-access-placeholder">
@@ -3041,8 +3178,20 @@ export default function Home() {
               </div>
               {!loading && homeTargetContributionBar?.segments?.length ? (
                 <section className="home-contribution-panel" aria-labelledby="home-achievement-title">
-                  <div className="home-contribution-head">
+                  <div className="home-contribution-head home-contribution-head--row">
                     <h3 id="home-achievement-title">{homeTargetContributionBar.title}</h3>
+                    <button
+                      type="button"
+                      className="home-contribution-calc-detail-btn"
+                      onClick={() =>
+                        setHomeContributionCalcModal({
+                          kind: 'target',
+                          mode: homeTargetContributionBar.mode === 'user' ? 'user' : 'team'
+                        })
+                      }
+                    >
+                      자세히 보기
+                    </button>
                   </div>
                   {homeTargetContributionBar.mode === 'team' ? (
                     <div className="home-contribution-split-wrap">
@@ -3105,7 +3254,7 @@ export default function Home() {
                                       <div
                                         key={`ach-split-${seg.id}`}
                                         role="listitem"
-                                        className="home-contribution-split-seg"
+                                        className="home-contribution-split-seg home-contribution-split-seg--tooltip-host"
                                         style={{
                                           flexBasis: `${Math.max(0, widthPct)}%`,
                                           backgroundColor: seg.color || '#8fa8d8'
@@ -3113,6 +3262,16 @@ export default function Home() {
                                         title={achText}
                                       >
                                         <span>{`${seg.label} ${seg.pct}%`}</span>
+                                        <HomeTargetAchievementSegHoverCard
+                                          label={seg.label}
+                                          amount={amt}
+                                          targetRevenue={seg.targetRevenue}
+                                          displayPct={seg.pct}
+                                          liveBarSharePct={widthPct}
+                                          vsPoolPct={vsTotalPoolPct}
+                                          vsPoolLabel="전체 목표액 대비 순마진 비중"
+                                          achievementPct={seg.achievement}
+                                        />
                                       </div>
                                     );
                                   })}
@@ -3136,15 +3295,6 @@ export default function Home() {
                           </>
                         );
                       })()}
-                      <div className="home-contribution-split-texts">
-                        {homeTargetContributionBar.segments.map((seg) => (
-                          <span key={`ach-note-${seg.id}`}>
-                            {`${seg.label} 달성률: ${
-                              seg.achievement == null ? '목표 미설정' : `${seg.achievement}%`
-                            } (목표 ${formatRevenueCompact(seg.targetRevenue || 0)})`}
-                          </span>
-                        ))}
-                      </div>
                     </div>
                   ) : (
                     <div className="home-contribution-split-wrap">
@@ -3207,7 +3357,7 @@ export default function Home() {
                                       <div
                                         key={`ach-split-${seg.id}`}
                                         role="listitem"
-                                        className="home-contribution-split-seg"
+                                        className="home-contribution-split-seg home-contribution-split-seg--tooltip-host"
                                         style={{
                                           flexBasis: `${Math.max(0, widthPct)}%`,
                                           backgroundColor: seg.color || '#8fa8d8'
@@ -3215,6 +3365,16 @@ export default function Home() {
                                         title={achText}
                                       >
                                         <span>{`${seg.label} ${seg.pct}%`}</span>
+                                        <HomeTargetAchievementSegHoverCard
+                                          label={seg.label}
+                                          amount={amt}
+                                          targetRevenue={seg.targetRevenue}
+                                          displayPct={seg.pct}
+                                          liveBarSharePct={widthPct}
+                                          vsPoolPct={vsTeamPoolPct}
+                                          vsPoolLabel="팀 목표액 대비 순마진 비중"
+                                          achievementPct={seg.achievement}
+                                        />
                                       </div>
                                     );
                                   })}
@@ -3238,23 +3398,27 @@ export default function Home() {
                           </>
                         );
                       })()}
-                      <div className="home-contribution-split-texts">
-                        {homeTargetContributionBar.segments.map((seg) => (
-                          <span key={`ach-user-note-${seg.id}`}>
-                            {`${seg.label} 달성률: ${
-                              seg.achievement == null ? '목표 미설정' : `${seg.achievement}%`
-                            } (목표 ${formatRevenueCompact(seg.targetRevenue || 0)})`}
-                          </span>
-                        ))}
-                      </div>
+              
                     </div>
                   )}
                 </section>
               ) : null}
               {!loading && data?.homeContributionBar?.segments?.length ? (
                 <section className="home-contribution-panel" aria-labelledby="home-contribution-title">
-                  <div className="home-contribution-head">
+                  <div className="home-contribution-head home-contribution-head--row">
                     <h3 id="home-contribution-title">{data.homeContributionBar.title}</h3>
+                    <button
+                      type="button"
+                      className="home-contribution-calc-detail-btn"
+                      onClick={() =>
+                        setHomeContributionCalcModal({
+                          kind: 'share',
+                          mode: data.homeContributionBar.mode === 'user' ? 'user' : 'team'
+                        })
+                      }
+                    >
+                      자세히 보기
+                    </button>
                   </div>
                   {data.homeContributionBar.mode === 'team' ? (
                     <div className="home-contribution-split-wrap">
@@ -3843,6 +4007,16 @@ export default function Home() {
           )
         )}
       </div>
+
+      {homeContributionCalcModal ? (
+        <HomeContributionCalcModal
+          spec={homeContributionCalcModal}
+          targetBar={homeTargetContributionBar}
+          shareBar={data?.homeContributionBar}
+          periodLabel={resolveHomeKpiTargetPeriod(kpiPeriod).periodLabel}
+          onClose={() => setHomeContributionCalcModal(null)}
+        />
+      ) : null}
 
       <HomeFullViewModal
         open={Boolean(activeHomeView)}

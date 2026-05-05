@@ -469,6 +469,18 @@ export function editableDepartmentIds(treeRows) {
   return (treeRows || []).filter((r) => !r.readOnly).map((r) => String(r.id)).filter(Boolean);
 }
 
+/** 자동 분배에서 제외할 부서 id (문자열 Set) */
+export function normalizeExcludeDepartmentIds(excludeDepartmentIds) {
+  if (!excludeDepartmentIds) return new Set();
+  if (excludeDepartmentIds instanceof Set) {
+    return new Set([...excludeDepartmentIds].map((x) => String(x || '').trim()).filter(Boolean));
+  }
+  if (Array.isArray(excludeDepartmentIds)) {
+    return new Set(excludeDepartmentIds.map((x) => String(x || '').trim()).filter(Boolean));
+  }
+  return new Set();
+}
+
 function readOnlyBranchRootIds(treeRows) {
   const rows = treeRows || [];
   const byId = new Map(rows.map((r) => [String(r.id || '').trim(), r]));
@@ -482,9 +494,18 @@ function readOnlyBranchRootIds(treeRows) {
     .filter(Boolean);
 }
 
-function splitCompanyMetricMonthsToEditableDepartments(companyBlock, treeRows, prevDeptMap, metric, targetMonthIndexes = null) {
-  const editIds = editableDepartmentIds(treeRows);
-  if (!editIds.length) return { ...prevDeptMap };
+function splitCompanyMetricMonthsToEditableDepartments(
+  companyBlock,
+  treeRows,
+  prevDeptMap,
+  metric,
+  targetMonthIndexes = null,
+  excludeDepartmentIds
+) {
+  const exclude = normalizeExcludeDepartmentIds(excludeDepartmentIds);
+  const allEdit = editableDepartmentIds(treeRows);
+  const editIds = allEdit.filter((id) => !exclude.has(id));
+  if (!allEdit.length) return { ...prevDeptMap };
   const readOnlyFixedIds = readOnlyBranchRootIds(treeRows);
   const co = normCascadeBlock(companyBlock);
   const cm = co[metric]?.month || Array(12).fill(0);
@@ -493,7 +514,7 @@ function splitCompanyMetricMonthsToEditableDepartments(companyBlock, treeRows, p
     : new Set(Array.from({ length: 12 }, (_, i) => i));
   const out = { ...prevDeptMap };
   const ownMonthsById = {};
-  for (const id of editIds) {
+  for (const id of allEdit) {
     const b = normCascadeBlock(out[id] || emptyCascadeBlock());
     ownMonthsById[id] = [...(b[metric]?.month || Array(12).fill(0))];
   }
@@ -505,15 +526,20 @@ function splitCompanyMetricMonthsToEditableDepartments(companyBlock, treeRows, p
       fixedSum += Math.max(0, Math.round(Number(b[metric]?.month?.[mi]) || 0));
     }
     const toAssign = Math.max(0, monthTotal - fixedSum);
-    const parts = distributeEvenInt(toAssign, editIds.length);
-    const rotation = editIds.length ? mi % editIds.length : 0;
-    editIds.forEach((id, idx) => {
-      const partIdx = (idx - rotation + editIds.length) % editIds.length;
-      ownMonthsById[id][mi] = parts[partIdx] || 0;
-    });
+    for (const id of allEdit) {
+      if (exclude.has(id)) ownMonthsById[id][mi] = 0;
+    }
+    if (editIds.length > 0) {
+      const parts = distributeEvenInt(toAssign, editIds.length);
+      const rotation = editIds.length ? mi % editIds.length : 0;
+      editIds.forEach((id, idx) => {
+        const partIdx = (idx - rotation + editIds.length) % editIds.length;
+        ownMonthsById[id][mi] = parts[partIdx] || 0;
+      });
+    }
   }
 
-  for (const id of editIds) {
+  for (const id of allEdit) {
     if (!id || !ownMonthsById[id]) continue;
     const month = ownMonthsById[id];
     out[id] = mergeRolledMetricFromMonths(out[id] || emptyCascadeBlock(), metric, month);
@@ -527,22 +553,30 @@ function splitCompanyMetricMonthsToEditableDepartments(companyBlock, treeRows, p
  * 상·하위 합산이 아니라 «표에 보이는 각 행이 동일 연간»이 되도록 쓰는 경로입니다(회사 연간 입력 핸들러에서 롤업 생략과 함께 사용).
  * @param {'revenue'} metric
  */
-export function splitCompanyAnnualEvenAcrossEditableDepartmentRows(companyBlock, treeRows, prevDeptMap, metric) {
+export function splitCompanyAnnualEvenAcrossEditableDepartmentRows(
+  companyBlock,
+  treeRows,
+  prevDeptMap,
+  metric,
+  excludeDepartmentIds
+) {
   if (metric !== 'revenue') return { ...prevDeptMap };
-  const editIds = editableDepartmentIds(treeRows);
-  if (!editIds.length) return { ...prevDeptMap };
+  const exclude = normalizeExcludeDepartmentIds(excludeDepartmentIds);
+  const allEdit = editableDepartmentIds(treeRows);
+  const editIds = allEdit.filter((id) => !exclude.has(id));
+  if (!allEdit.length) return { ...prevDeptMap };
   const annualTotal = Math.max(
     0,
     Math.round(Number(normCascadeBlock(companyBlock)[metric]?.annual) || 0)
   );
-  const parts = distributeEvenInt(annualTotal, editIds.length);
+  const parts = editIds.length > 0 ? distributeEvenInt(annualTotal, editIds.length) : [];
   const out = { ...prevDeptMap };
   const rows = treeRows || [];
   const z = topDownFromAnnual(0);
   for (const row of rows) {
     const id = String(row.id || '').trim();
     if (!id || row.readOnly) continue;
-    if (!editIds.includes(id)) continue;
+    if (!allEdit.includes(id)) continue;
     const base = out[id] || emptyCascadeBlock();
     out[id] = { ...base, [metric]: z };
   }
@@ -559,8 +593,15 @@ export function splitCompanyAnnualEvenAcrossEditableDepartmentRows(companyBlock,
  * KPI 목표에서는 하위 부서를 부모 부서에 더하지 않습니다.
  * @param {'revenue'} metric
  */
-export function splitCompanyMetricMonthsToEditableRoots(companyBlock, treeRows, prevDeptMap, metric) {
-  return splitCompanyMetricMonthsToEditableDepartments(companyBlock, treeRows, prevDeptMap, metric);
+export function splitCompanyMetricMonthsToEditableRoots(companyBlock, treeRows, prevDeptMap, metric, excludeDepartmentIds) {
+  return splitCompanyMetricMonthsToEditableDepartments(
+    companyBlock,
+    treeRows,
+    prevDeptMap,
+    metric,
+    null,
+    excludeDepartmentIds
+  );
 }
 
 /**
@@ -572,7 +613,14 @@ export function cascadeParentAnnualDownTree(treeRows, prevDeptMap) {
 }
 
 /** 회사 반기 값을 상·하위 구분 없이 편집 가능한 전체 부서의 직속 직원 몫에 균등 분배 */
-export function distributeCompanySemiToEditableRoots(prevDeptMap, treeRows, metric, semiIdx, semiTotal) {
+export function distributeCompanySemiToEditableRoots(
+  prevDeptMap,
+  treeRows,
+  metric,
+  semiIdx,
+  semiTotal,
+  excludeDepartmentIds
+) {
   const si = Math.max(0, Math.min(1, Math.floor(Number(semiIdx) || 0)));
   const month = Array(12).fill(0);
   const parts = distributeEvenInt(Math.max(0, Math.round(Number(semiTotal) || 0)), 6);
@@ -583,12 +631,20 @@ export function distributeCompanySemiToEditableRoots(prevDeptMap, treeRows, metr
     treeRows,
     prevDeptMap,
     metric,
-    Array.from({ length: 6 }, (_, i) => start + i)
+    Array.from({ length: 6 }, (_, i) => start + i),
+    excludeDepartmentIds
   );
 }
 
 /** 회사 분기 값을 상·하위 구분 없이 편집 가능한 전체 부서의 직속 직원 몫에 균등 분배 */
-export function distributeCompanyQuarterToEditableRoots(prevDeptMap, treeRows, metric, quarterIdx, quarterTotal) {
+export function distributeCompanyQuarterToEditableRoots(
+  prevDeptMap,
+  treeRows,
+  metric,
+  quarterIdx,
+  quarterTotal,
+  excludeDepartmentIds
+) {
   const qi = Math.max(0, Math.min(3, Math.floor(Number(quarterIdx) || 0)));
   const month = Array(12).fill(0);
   const parts = distributeEvenInt(Math.max(0, Math.round(Number(quarterTotal) || 0)), 3);
@@ -599,7 +655,8 @@ export function distributeCompanyQuarterToEditableRoots(prevDeptMap, treeRows, m
     treeRows,
     prevDeptMap,
     metric,
-    Array.from({ length: 3 }, (_, i) => start + i)
+    Array.from({ length: 3 }, (_, i) => start + i),
+    excludeDepartmentIds
   );
 }
 

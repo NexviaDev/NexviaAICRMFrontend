@@ -1031,28 +1031,22 @@ export default function Project() {
       const itemId = String(droppedTaskId || kanbanDragIdRef.current || '').trim();
       if (!itemId) return;
 
-      let snapshot = null;
+      const cols = board.kanban?.columns || [];
+      let fromStage = null;
       let draggedItem = kanbanDraggedItemRef.current;
-      let shouldPatch = false;
-      setBoard((prev) => {
-        const cols = prev.kanban?.columns || [];
-        let fromStage = null;
-        for (const c of cols) {
-          const matched = (c.items || []).find((item) => String(item._id) === itemId);
-          if (matched) {
-            fromStage = c.key;
-            draggedItem = matched;
-            break;
-          }
+      for (const c of cols) {
+        const matched = (c.items || []).find((item) => String(item._id) === itemId);
+        if (matched) {
+          fromStage = c.key;
+          draggedItem = matched;
+          break;
         }
-        if (!fromStage || fromStage === targetStage) return prev;
-        shouldPatch = true;
-        snapshot = prev;
-        const nextCols = moveItemBetweenColumns(cols, itemId, targetStage);
-        return { ...prev, kanban: { ...prev.kanban, columns: nextCols } };
-      });
+      }
+      if (!fromStage || fromStage === targetStage) return;
 
-      if (!shouldPatch) return;
+      const snapshot = board;
+      const nextCols = moveItemBetweenColumns(cols, itemId, targetStage);
+      setBoard((prev) => ({ ...prev, kanban: { ...prev.kanban, columns: nextCols } }));
 
       try {
         const isLegacyTask = draggedItem?.entityType === 'legacyTask' && draggedItem?.sourceProjectId;
@@ -1075,7 +1069,7 @@ export default function Project() {
         kanbanDraggedItemRef.current = null;
       }
     },
-    [fetchBoard]
+    [board, fetchBoard]
   );
 
   const projectStageOptions = useMemo(

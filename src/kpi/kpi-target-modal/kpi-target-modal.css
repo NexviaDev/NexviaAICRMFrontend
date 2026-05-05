@@ -61,6 +61,15 @@
   background: #ffffff;
   border: none;
   box-shadow: none;
+  font-family: 'Pretendard', 'Inter', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #2c3437;
+}
+
+.kpi-target-modal button,
+.kpi-target-modal input,
+.kpi-target-modal select,
+.kpi-target-modal textarea {
+  font-family: inherit;
 }
 
 .kpi-target-modal-header {
@@ -128,6 +137,32 @@
 
 .kpi-target-modal-help-button .material-symbols-outlined {
   font-size: 1.05rem;
+}
+
+.kpi-target-modal-prior-yoy-peek {
+  height: 2.5rem;
+  border: 1px solid #d4e5dc;
+  border-radius: 999px;
+  padding: 0 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #f4fbf6;
+  color: #2d6a47;
+  font-size: 0.72rem;
+  font-weight: 800;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  box-shadow: 0 6px 14px rgba(45, 106, 71, 0.07);
+}
+
+.kpi-target-modal-prior-yoy-peek:hover {
+  background: #eaf6ee;
+}
+
+.kpi-target-modal-prior-yoy-peek:active {
+  background: #dff0e5;
 }
 
 .kpi-target-modal-year-select {
@@ -3491,8 +3526,9 @@
 
 .kpi-target-staff-tier-table tbody tr.kpi-target-staff-data-tr td,
 .kpi-target-staff-tier-table tbody tr.kpi-target-staff-data-tr th[scope='row'] {
-  height: var(--kpi-target-staff-row-height, 2.05rem);
-  min-height: var(--kpi-target-staff-row-height, 2.05rem);
+  /* 입력 + 전년% 스택: JS로 scrollHeight 동기화하면 YoY 때문에 높이가 계속 커지는 피드백 루프가 남 */
+  min-height: 2.55rem;
+  height: auto;
   line-height: 1.2;
 }
 
@@ -3544,8 +3580,9 @@
   width: 100%;
   min-width: 0;
   max-width: 100%;
-  height: var(--kpi-target-staff-row-height, 2.05rem);
-  min-height: var(--kpi-target-staff-row-height, 2.05rem);
+  height: auto;
+  min-height: 1.1rem;
+  max-height: none;
   border: none;
   background: transparent;
   text-align: center;
@@ -3555,6 +3592,22 @@
   padding: 0 0.12rem;
   box-sizing: border-box;
   color: inherit;
+}
+
+.kpi-target-staff-tier-table .kpi-target-staff-td-val .kpi-target-matrix-cell-stack--peek-yoy > .kpi-matrix-num,
+.kpi-target-staff-tier-table .kpi-target-staff-td-val .kpi-target-matrix-cell-stack--peek-yoy > .kpi-target-dept-unified-num {
+  flex: 1 1 auto;
+  width: auto;
+  max-width: 100%;
+}
+
+.kpi-target-staff-tier-table .kpi-target-staff-td-val .kpi-target-matrix-cell-stack {
+  min-height: 0;
+  width: 100%;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 0.12rem;
 }
 
 .kpi-target-staff-td-val--month {
@@ -3596,4 +3649,218 @@
   min-width: 58rem;
   width: max-content;
   table-layout: auto;
+}
+
+/* ① 자동 분배 적용 부서 */
+.kpi-target-auto-exclude-panel {
+  margin: 0.5rem 0 0.85rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.45rem;
+  border: 1px solid #c5d4e8;
+  background: #f4f7fb;
+}
+
+.kpi-target-auto-exclude-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.45rem;
+}
+
+.kpi-target-auto-exclude-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #3d4f63;
+}
+
+.kpi-target-auto-exclude-note {
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: #5a6672;
+}
+
+.kpi-target-auto-exclude-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+}
+
+.kpi-target-auto-exclude-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  padding: 0.22rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid #c9d6e8;
+  background: #fff;
+  font-size: 0.72rem;
+  color: #4a5560;
+  cursor: pointer;
+  user-select: none;
+}
+
+.kpi-target-auto-exclude-chip.is-on {
+  border-color: #8fc9a9;
+  background: #e9f7ef;
+  color: #245f40;
+}
+
+.kpi-target-auto-exclude-chip.is-off {
+  border-color: #d6dee8;
+  background: #f8fafc;
+  color: #7a8490;
+  text-decoration: line-through;
+  opacity: 0.82;
+}
+
+.kpi-target-auto-exclude-chip input {
+  margin: 0;
+  accent-color: #73b68f;
+}
+
+/* 셀: 기본은 입력만; «전년도 비교하기» 누르는 동안만 전년%를 아래 줄에 표시 */
+.kpi-target-matrix-cell-stack {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.18rem;
+  min-width: 0;
+  width: 100%;
+  min-height: 1.2rem;
+}
+
+.kpi-target-matrix-cell-stack--peek-yoy {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 0.12rem;
+  min-height: 0;
+}
+
+.kpi-target-matrix-cell-stack--peek-yoy.kpi-target-matrix-cell-stack--dash {
+  align-items: center;
+}
+
+.kpi-target-matrix-cell-stack--peek-yoy > .kpi-matrix-num,
+.kpi-target-matrix-cell-stack--peek-yoy > .kpi-target-dept-unified-num {
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.kpi-target-yoy-wrap {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  line-height: 1.05;
+}
+
+.kpi-target-matrix-dash {
+  display: inline-block;
+  flex-shrink: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #7a8490;
+  line-height: 1.1;
+}
+
+.kpi-target-yoy {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  font-size: 0.58rem;
+  line-height: 1.1;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.kpi-target-yoy--up {
+  color: #2f7a52;
+}
+
+.kpi-target-yoy--down {
+  color: #b44a4a;
+}
+
+.kpi-target-yoy--flat {
+  color: #6b7280;
+}
+
+.kpi-target-yoy--neutral {
+  color: #7a8490;
+  font-weight: 500;
+  font-size: 0.58rem;
+}
+
+/* KPI 목표 모달 전체 폰트 통일 + 표 가독성 확대(표 구조는 유지) */
+.kpi-target-modal :where(table, th, td, input, button, select, textarea, label, p, small, strong) {
+  font-family: inherit;
+}
+
+.kpi-target-modal :where(
+  .kpi-target-xls-table,
+  .kpi-target-monthly-table,
+  .kpi-target-all-dept-matrix,
+  .kpi-target-dept-unified-matrix,
+  .kpi-target-staff-tier-table
+) {
+  font-family: inherit;
+  font-size: 0.84rem;
+}
+
+.kpi-target-modal :where(
+  .kpi-target-xls-table th,
+  .kpi-target-xls-table td,
+  .kpi-target-monthly-table th,
+  .kpi-target-monthly-table td,
+  .kpi-target-all-dept-matrix thead th,
+  .kpi-target-all-dept-matrix tbody th,
+  .kpi-target-all-dept-matrix tbody td,
+  .kpi-target-dept-unified-matrix th,
+  .kpi-target-dept-unified-matrix td,
+  .kpi-target-staff-tier-table th,
+  .kpi-target-staff-tier-table td
+) {
+  font-size: 0.84rem;
+}
+
+.kpi-target-modal :where(
+  .kpi-target-xls-table input,
+  .kpi-target-monthly-table input,
+  .kpi-target-all-dept-matrix .kpi-matrix-num,
+  .kpi-target-dept-unified-matrix .kpi-target-dept-unified-num,
+  .kpi-target-dept-sectioned-matrix .kpi-target-dept-section-num,
+  .kpi-target-staff-tier-table .kpi-target-staff-td-val input
+) {
+  font-family: inherit;
+  font-size: 0.86rem;
+}
+
+.kpi-target-modal :where(
+  .kpi-target-dept-sectioned-matrix .kpi-target-dept-section-num--annual,
+  .kpi-company-revenue-sectioned .kpi-target-dept-section-num--annual
+) {
+  font-size: 1rem;
+}
+
+.kpi-target-modal :where(
+  .kpi-target-dept-unified-matrix .kpi-unified-band,
+  .kpi-target-staff-th-band,
+  .kpi-target-staff-th-corner
+) {
+  font-size: 0.86rem;
+}
+
+.kpi-target-modal :where(
+  .kpi-target-dept-unified-matrix .kpi-target-dept-unified-sub,
+  .kpi-target-all-dept-matrix .kpi-matrix-th-sub,
+  .kpi-target-yoy,
+  .kpi-target-yoy--neutral
+) {
+  font-size: 0.68rem;
 }

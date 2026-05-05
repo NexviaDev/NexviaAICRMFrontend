@@ -123,13 +123,22 @@
 
 .kpi-hero {
   display: flex;
-  align-items: flex-end;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 1.5rem;
   margin-bottom: 1.75rem;
 }
 
+.kpi-hero-copy-row {
+  display: flex;
+  align-items: stretch;
+  gap: 1rem 1.25rem;
+  flex: 1;
+  min-width: 0;
+}
+
 .kpi-hero-copy {
+  flex: 1;
   min-width: 0;
 }
 
@@ -157,14 +166,155 @@
   width: 100%;
 }
 
-.kpi-scope-select-row .kpi-scope-select,
-.kpi-scope-select-row .kpi-scope-select-wrap {
-  flex: 1 1 auto;
+/** 팀/개인 범위: 검색 + 선택을 한 카드(kpi-scope-select-row 직계) */
+.kpi-scope-field {
+  flex: 1 1 17rem;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 1rem;
+  background: #ffffff;
+  box-shadow: 0 12px 28px rgba(44, 100, 133, 0.08);
+}
+
+.kpi-scope-field:focus-within {
+  outline: 2px solid rgba(44, 100, 133, 0.18);
+}
+
+.kpi-scope-field .kpi-scope-search-input {
+  flex: 1 1 8rem;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  padding: 0.55rem 0;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #2c3437;
+}
+
+.kpi-scope-search-input::placeholder {
+  color: #9aa8b0;
+  font-weight: 600;
+}
+
+.kpi-scope-search-input:focus {
+  outline: none;
+}
+
+/** 통합 검색·선택 콤보박스(별도 select 없음) */
+.kpi-scope-field.kpi-scope-combobox {
+  flex-wrap: nowrap;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+
+.kpi-scope-combobox-line {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
   min-width: 0;
 }
 
-.kpi-scope-select-row .kpi-scope-select-wrap {
-  width: auto;
+.kpi-scope-combobox-search-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.35rem;
+  height: 2.35rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0.75rem;
+  background: #eef3f7;
+  color: #5a6b78;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.kpi-scope-combobox-search-btn:hover {
+  background: #e2eaf0;
+  color: #2c6485;
+}
+
+.kpi-scope-combobox-search-btn .material-symbols-outlined {
+  font-size: 1.15rem;
+}
+
+.kpi-scope-combobox-list {
+  list-style: none;
+  margin: 0.55rem 0 0;
+  padding: 0.35rem 0;
+  max-height: 15rem;
+  overflow-y: auto;
+  border-radius: 0.85rem;
+  background: #f4f7fa;
+  border: 1px solid rgba(172, 179, 183, 0.35);
+}
+
+.kpi-scope-combobox-option {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  border: none;
+  border-radius: 0.65rem;
+  background: transparent;
+  text-align: left;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: #2c3437;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.kpi-scope-combobox-option:hover {
+  background: #e8eef4;
+}
+
+.kpi-scope-combobox-option.is-selected {
+  background: #dce8f0;
+  color: #1f4d66;
+}
+
+.kpi-scope-combobox-option-visual {
+  flex-shrink: 0;
+  display: inline-flex;
+}
+
+.kpi-scope-combobox-avatar {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+}
+
+.kpi-scope-combobox-avatar-img {
+  display: block;
+  object-fit: cover;
+}
+
+.kpi-scope-combobox-avatar-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #e2e8ee;
+  color: #66737d;
+}
+
+.kpi-scope-combobox-avatar-fallback .material-symbols-outlined {
+  font-size: 1rem;
+}
+
+.kpi-scope-combobox-option-label {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.35;
 }
 
 .kpi-breadcrumb {
@@ -255,6 +405,22 @@
   font-weight: 800;
   white-space: nowrap;
   box-shadow: 0 12px 28px rgba(44, 100, 133, 0.14);
+}
+
+/** 히어로: 카피 블록과 같은 행·높이(컨테이너 쿼리 대신 vmin/vw) */
+.kpi-hero-copy-row .kpi-target-open-button--hero {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 clamp(5.35rem, 14vmin, 7.85rem);
+  width: clamp(5.35rem, 14vmin, 7.85rem);
+  box-sizing: border-box;
+  align-self: stretch;
+  padding: 0.45rem 0.55rem;
+  font-size: clamp(0.72rem, 0.52rem + 0.45vmin, 0.88rem);
+  line-height: 1.2;
+  text-align: center;
+  word-break: keep-all;
 }
 
 .kpi-scope-select {
@@ -585,6 +751,20 @@
   max-width: 3.5rem;
   min-height: 1.4rem;
   border-radius: 0.85rem 0.85rem 0 0;
+}
+
+/** 값 0: 막대 높이·폭 없음 — 목표 점선만 보이도록 */
+.kpi-bar.kpi-bar--zero {
+  min-height: 0;
+  height: 0 !important;
+  width: 0;
+  max-width: 0;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: 0;
 }
 
 .kpi-bar-current {
@@ -921,6 +1101,21 @@
   background: rgba(240, 244, 247, 0.56);
 }
 
+.kpi-lb-score-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+}
+
+.kpi-lb-score-avg {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #7c8a96;
+  line-height: 1.35;
+}
+
 .kpi-rank-badge {
   width: 2rem;
   height: 2rem;
@@ -1174,6 +1369,19 @@
     margin-bottom: 1.2rem;
   }
 
+  .kpi-hero-copy-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.85rem;
+  }
+
+  .kpi-hero-copy-row .kpi-target-open-button--hero {
+    width: 100%;
+    flex: 0 0 auto;
+    min-height: 2.85rem;
+    font-size: clamp(0.78rem, 2.6vw + 0.35rem, 0.9rem);
+  }
+
   .kpi-hero-actions {
     align-items: stretch;
   }
@@ -1197,7 +1405,8 @@
     justify-content: space-between;
   }
 
-  .kpi-scope-select-row .kpi-target-open-button {
+  .kpi-scope-field {
+    flex: 1 1 100%;
     width: 100%;
   }
 
@@ -1300,6 +1509,13 @@
   .kpi-bar {
     width: calc(50% - 0.18rem);
     border-radius: 0.6rem 0.6rem 0 0;
+  }
+
+  .kpi-bar.kpi-bar--zero {
+    width: 0;
+    max-width: 0;
+    min-height: 0;
+    height: 0 !important;
   }
 
   .kpi-insight-card {

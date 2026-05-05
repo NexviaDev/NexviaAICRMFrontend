@@ -27,6 +27,9 @@ const MONTH_COLUMNS = Array.from({ length: 12 }, (_, idx) => ({ month: idx + 1, 
 
 const KpiTargetBulkContext = createContext(null);
 
+/** 헤더 «전년도 비교하기» 누르고 있는 동안만 매트릭스 셀에 전년 대비(%) 표시 */
+const KpiPriorYoyPeekContext = createContext(false);
+
 function parseMoney(value) {
   const n = Number(revenueDigitsOnly(value));
   return Number.isFinite(n) ? n : 0;
@@ -124,6 +127,32 @@ function formatKpiDraftWhileTyping(value, metric) {
   const digits = raw.replace(/\D/g, '');
   if (!digits) return '';
   return metric === 'revenue' ? formatRevenueDisplay(digits) : Number(digits).toLocaleString('ko-KR');
+}
+
+/** 전년 동일 셀 목표 대비 증감률(작은 보조 표시) */
+function KpiTargetYoyHint({ current, prior }) {
+  const c = Math.max(0, Math.round(Number(current) || 0));
+  const p = Math.max(0, Math.round(Number(prior) || 0));
+  if (p === 0 && c === 0) return null;
+  if (p === 0) {
+    return (
+      <span className="kpi-target-yoy kpi-target-yoy--neutral" title="전년 동기간 목표가 없거나 0원입니다.">
+        —
+      </span>
+    );
+  }
+  const pct = ((c - p) / p) * 100;
+  const absPct = Math.abs(pct);
+  const fmt =
+    absPct >= 10 || absPct === 0 ? `${Math.round(pct)}` : String(Math.round(pct * 10) / 10);
+  const sign = pct > 0 ? '+' : '';
+  const tone = pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat';
+  return (
+    <span className={`kpi-target-yoy kpi-target-yoy--${tone}`} title={`전년 대비 ${sign}${fmt}%`}>
+      {sign}
+      {fmt}%
+    </span>
+  );
 }
 
 /** 엑셀식: =10+20*2, *1.2, +1000, ( ) 사칙연산·콤마·Enter 확정 */
@@ -701,6 +730,7 @@ function RevenueCascadeLayout({
 function CompanyRevenueGridTable({
   yearLabel,
   rev,
+  priorRev = null,
   disabled,
   flags,
   rm,
@@ -714,6 +744,7 @@ function CompanyRevenueGridTable({
   const semiWarn = (si) => Boolean(flags.semi[si] || rm?.semi?.[si]);
   const qWarn = (qi) => Boolean(flags.quarter[qi] || rm?.quarter?.[qi]);
   const mWarn = (mi) => Boolean(flags.month[mi] || rm?.month?.[mi]);
+  const pr = priorRev && typeof priorRev === 'object' ? priorRev : null;
 
   const sectionHeader = (key, labels) => (
     <tr key={`${key}-header`} className="kpi-target-dept-section-header-row">
@@ -725,7 +756,7 @@ function CompanyRevenueGridTable({
     </tr>
   );
 
-  const periodCell = ({ key, value, warn, label, span, size, onChange }) => (
+  const periodCell = ({ key, value, warn, label, span, size, onChange, priorValue }) => (
     <td
       key={key}
       colSpan={span}
@@ -738,7 +769,8 @@ function CompanyRevenueGridTable({
         warn,
         ariaLabel: label,
         onChange,
-        classExtra: `kpi-target-dept-section-num kpi-target-dept-section-num--${size}`
+        classExtra: `kpi-target-dept-section-num kpi-target-dept-section-num--${size}`,
+        priorValue: pr ? priorValue : undefined
       })}
     </td>
   );
@@ -762,7 +794,8 @@ function CompanyRevenueGridTable({
                 label: `${yearLabel} 회사 연간 매출 목표`,
                 disabled,
                 onChange: onAnnualRevenue,
-                size: 'annual'
+                size: 'annual',
+                priorValue: pr?.annual
               })}
             </tr>
             {sectionHeader('semi', [
@@ -779,7 +812,8 @@ function CompanyRevenueGridTable({
                   label: si === 0 ? '회사 상반기 매출' : '회사 하반기 매출',
                   disabled,
                   onChange: (v) => onMetricSemi('revenue', si, v),
-                  size: 'semi'
+                  size: 'semi',
+                  priorValue: pr?.semi?.[si]
                 })
               )}
             </tr>
@@ -799,7 +833,8 @@ function CompanyRevenueGridTable({
                   label: `회사 ${qi + 1}분기 매출`,
                   disabled,
                   onChange: (v) => onMetricQuarter('revenue', qi, v),
-                  size: 'quarter'
+                  size: 'quarter',
+                  priorValue: pr?.quarter?.[qi]
                 })
               )}
             </tr>
@@ -818,7 +853,8 @@ function CompanyRevenueGridTable({
                   label: `회사 ${item.label} 매출`,
                   disabled,
                   onChange: (v) => onMetricMonth('revenue', mi, v),
-                  size: 'month'
+                  size: 'month',
+                  priorValue: pr?.month?.[mi]
                 });
               })}
             </tr>
@@ -833,6 +869,7 @@ function CompanyRevenueGridTable({
 function CompanyRevenueWideTable({
   yearLabel,
   rev,
+  priorRev = null,
   disabled,
   flags,
   rm,
@@ -841,6 +878,7 @@ function CompanyRevenueWideTable({
   onMetricQuarter,
   onMetricMonth
 }) {
+  const pr = priorRev && typeof priorRev === 'object' ? priorRev : null;
   return (
     <div className="kpi-target-dept-unified-wrap">
       <div className="kpi-target-all-dept-matrix-wrap kpi-target-dept-unified-scroll">
@@ -881,7 +919,8 @@ function CompanyRevenueWideTable({
                   warn: Boolean(flags.annual || rm?.annual),
                   ariaLabel: `${yearLabel} 연간 매출`,
                   onChange: onAnnualRevenue,
-                  narrow: false
+                  narrow: false,
+                  priorValue: pr?.annual
                 })}
               </td>
               {[0, 1].map((si) => (
@@ -892,7 +931,8 @@ function CompanyRevenueWideTable({
                     disabled,
                     warn: Boolean(flags.semi[si] || rm?.semi?.[si]),
                     ariaLabel: si === 0 ? '상반기' : '하반기',
-                    onChange: (v) => onMetricSemi('revenue', si, v)
+                    onChange: (v) => onMetricSemi('revenue', si, v),
+                    priorValue: pr?.semi?.[si]
                   })}
                 </td>
               ))}
@@ -904,7 +944,8 @@ function CompanyRevenueWideTable({
                     disabled,
                     warn: Boolean(flags.quarter[qi] || rm?.quarter?.[qi]),
                     ariaLabel: `${qi + 1}분기`,
-                    onChange: (v) => onMetricQuarter('revenue', qi, v)
+                    onChange: (v) => onMetricQuarter('revenue', qi, v),
+                    priorValue: pr?.quarter?.[qi]
                   })}
                 </td>
               ))}
@@ -918,7 +959,8 @@ function CompanyRevenueWideTable({
                       disabled,
                       warn: Boolean(flags.month[mi] || rm?.month?.[mi]),
                       ariaLabel: item.label,
-                      onChange: (v) => onMetricMonth('revenue', mi, v)
+                      onChange: (v) => onMetricMonth('revenue', mi, v),
+                      priorValue: pr?.month?.[mi]
                     })}
                   </td>
                 );
@@ -934,6 +976,7 @@ function CompanyRevenueWideTable({
 function CompanyRevenueTableBlock({
   yearLabel,
   block,
+  priorBlock = null,
   disabled,
   revenueAchSubline,
   onAnnualRevenue,
@@ -945,6 +988,7 @@ function CompanyRevenueTableBlock({
   const [wideLayout, setWideLayout] = useState(false);
   const safeBlock = normCascade(block);
   const rev = safeBlock.revenue;
+  const priorRev = priorBlock ? normCascade(priorBlock).revenue : null;
   const rm = rootSumMismatch?.revenue || null;
   const flags = computeNeedSyncFlags({
     month: rev.month,
@@ -956,6 +1000,7 @@ function CompanyRevenueTableBlock({
   const common = {
     yearLabel,
     rev,
+    priorRev,
     disabled,
     flags,
     rm,
@@ -987,18 +1032,73 @@ function CompanyRevenueTableBlock({
 
 /** ② 표 공통: 입력·부서명·행 컨텍스트(엑셀식 연산) */
 function deptMatrixCellInput(opts) {
-  const { value, metric, onChange, disabled, warn, ariaLabel, narrow = true, classExtra = '' } = opts;
+  return <KpiTargetMatrixCellInput {...opts} />;
+}
+
+function KpiTargetMatrixCellInput({
+  value,
+  metric,
+  onChange,
+  disabled,
+  warn,
+  ariaLabel,
+  narrow = true,
+  classExtra = '',
+  dashMode = false,
+  priorValue
+}) {
+  const peekActive = useContext(KpiPriorYoyPeekContext);
+  const hasPrior = priorValue !== undefined && priorValue !== null;
+  const showYoy = peekActive && hasPrior;
+  const yoyEl = showYoy ? (
+    <span className="kpi-target-yoy-wrap">
+      <KpiTargetYoyHint current={value} prior={priorValue} />
+    </span>
+  ) : null;
+  if (dashMode) {
+    if (!peekActive || !hasPrior) {
+      return (
+        <span className="kpi-target-matrix-dash" aria-hidden="true">
+          -
+        </span>
+      );
+    }
+    return (
+      <div className="kpi-target-matrix-cell-stack kpi-target-matrix-cell-stack--peek-yoy kpi-target-matrix-cell-stack--dash">
+        <span className="kpi-target-matrix-dash" aria-hidden="true">
+          -
+        </span>
+        {yoyEl}
+      </div>
+    );
+  }
   const cls = `kpi-matrix-num${narrow ? ' kpi-matrix-num--narrow' : ''} kpi-target-dept-unified-num${classExtra ? ` ${classExtra}` : ''}`;
+  if (!peekActive || !hasPrior) {
+    return (
+      <KpiTargetExprInput
+        numericValue={value}
+        metric={metric}
+        onCommitDigits={onChange}
+        disabled={disabled}
+        warn={warn}
+        ariaLabel={ariaLabel}
+        className={cls}
+      />
+    );
+  }
   return (
-    <KpiTargetExprInput
-      numericValue={value}
-      metric={metric}
-      onCommitDigits={onChange}
-      disabled={disabled}
-      warn={warn}
-      ariaLabel={ariaLabel}
-      className={cls}
-    />
+    <div className="kpi-target-matrix-cell-stack kpi-target-matrix-cell-stack--peek-yoy">
+      <KpiTargetExprInput
+        numericValue={value}
+        metric={metric}
+        onCommitDigits={onChange}
+        disabled={disabled}
+        warn={warn}
+        ariaLabel={ariaLabel}
+        className={cls}
+      />
+      {yoyEl}
+    </div>
   );
 }
 
@@ -1019,10 +1119,12 @@ function deptMatrixRenderNameCell(row, depth, ro, outlineById) {
   );
 }
 
-function deptMatrixRowCtx(row, deptMap, loading, editable, rootSumMismatch) {
+function deptMatrixRowCtx(row, deptMap, loading, editable, rootSumMismatch, excludeDeptIdSet) {
   const ro = Boolean(row.readOnly);
   const depth = Math.max(0, Number(row.depth) || 0);
-  const dis = !editable || loading || ro;
+  const id = String(row.id || '').trim();
+  const excluded = Boolean(excludeDeptIdSet?.has(id));
+  const dis = !editable || loading || ro || excluded;
   const blk = normCascade(deptMap[row.id]);
   const rev = blk.revenue;
   const revFlags = computeNeedSyncFlags({
@@ -1032,7 +1134,7 @@ function deptMatrixRowCtx(row, deptMap, loading, editable, rootSumMismatch) {
     annual: rev.annual
   });
   const rm = rootSumMismatch && depth === 0 ? rootSumMismatch : null;
-  return { row, depth, ro, dis, rev, revFlags, rm };
+  return { row, depth, ro, dis, rev, revFlags, rm, excluded };
 }
 
 function deptMatrixSubRev(key, subClass) {
@@ -1049,6 +1151,7 @@ function AllScopeDeptWideUnifiedTable({
   year,
   allDepartmentRows,
   deptMap,
+  priorDeptMap = null,
   outlineById,
   loading,
   editable,
@@ -1056,8 +1159,11 @@ function AllScopeDeptWideUnifiedTable({
   onDeptMetricSemi,
   onDeptMetricQuarter,
   onDeptMetricMonth,
-  rootSumMismatch
+  rootSumMismatch,
+  excludeDeptIdSet = null
 }) {
+  const priorMap = priorDeptMap && typeof priorDeptMap === 'object' ? priorDeptMap : null;
+  const priorRevFor = (deptId) => (priorMap ? normCascade(priorMap[deptId]).revenue : null);
   const thead = (
     <>
       <tr>
@@ -1105,8 +1211,9 @@ function AllScopeDeptWideUnifiedTable({
       </tr>
     ) : (
       allDepartmentRows.map((row) => {
-        const ctx = deptMatrixRowCtx(row, deptMap, loading, editable, rootSumMismatch);
-        const { depth, ro, dis, rev, revFlags, rm } = ctx;
+        const ctx = deptMatrixRowCtx(row, deptMap, loading, editable, rootSumMismatch, excludeDeptIdSet);
+        const { depth, ro, dis, rev, revFlags, rm, excluded } = ctx;
+        const pr = priorRevFor(row.id);
         return (
           <tr key={`${row.id}-unified`} className={ro ? 'is-readonly' : ''}>
             {deptMatrixRenderNameCell(row, depth, ro, outlineById)}
@@ -1118,7 +1225,9 @@ function AllScopeDeptWideUnifiedTable({
                 warn: revFlags.annual || Boolean(rm?.revenue?.annual),
                 ariaLabel: `${row.label} 연 매출`,
                 onChange: (v) => onDeptAnnualRevenue(row.id, v),
-                narrow: true
+                narrow: true,
+                dashMode: excluded,
+                priorValue: pr?.annual
               })}
             </td>
             <td className="kpi-matrix-td kpi-target-dept-unified-td">
@@ -1128,7 +1237,9 @@ function AllScopeDeptWideUnifiedTable({
                 disabled: dis,
                 warn: revFlags.semi[0] || Boolean(rm?.revenue?.semi?.[0]),
                 ariaLabel: `${row.label} 상반기 매출`,
-                onChange: (v) => onDeptMetricSemi(row.id, 'revenue', 0, v)
+                onChange: (v) => onDeptMetricSemi(row.id, 'revenue', 0, v),
+                dashMode: excluded,
+                priorValue: pr?.semi?.[0]
               })}
             </td>
             <td className="kpi-matrix-td kpi-target-dept-unified-td">
@@ -1138,7 +1249,9 @@ function AllScopeDeptWideUnifiedTable({
                 disabled: dis,
                 warn: revFlags.semi[1] || Boolean(rm?.revenue?.semi?.[1]),
                 ariaLabel: `${row.label} 하반기 매출`,
-                onChange: (v) => onDeptMetricSemi(row.id, 'revenue', 1, v)
+                onChange: (v) => onDeptMetricSemi(row.id, 'revenue', 1, v),
+                dashMode: excluded,
+                priorValue: pr?.semi?.[1]
               })}
             </td>
             {[0, 1, 2, 3].map((qi) => (
@@ -1149,7 +1262,9 @@ function AllScopeDeptWideUnifiedTable({
                   disabled: dis,
                   warn: revFlags.quarter[qi] || Boolean(rm?.revenue?.quarter?.[qi]),
                   ariaLabel: `${row.label} Q${qi + 1} 매출`,
-                  onChange: (v) => onDeptMetricQuarter(row.id, 'revenue', qi, v)
+                  onChange: (v) => onDeptMetricQuarter(row.id, 'revenue', qi, v),
+                  dashMode: excluded,
+                  priorValue: pr?.quarter?.[qi]
                 })}
               </td>
             ))}
@@ -1161,7 +1276,9 @@ function AllScopeDeptWideUnifiedTable({
                   disabled: dis,
                   warn: revFlags.month[mi] || Boolean(rm?.revenue?.month?.[mi]),
                   ariaLabel: `${row.label} ${mi + 1}월 매출`,
-                  onChange: (v) => onDeptMetricMonth(row.id, 'revenue', mi, v)
+                  onChange: (v) => onDeptMetricMonth(row.id, 'revenue', mi, v),
+                  dashMode: excluded,
+                  priorValue: pr?.month?.[mi]
                 })}
               </td>
             ))}
@@ -1190,6 +1307,7 @@ function AllScopeDeptCompactHalfSplit({
   year,
   allDepartmentRows,
   deptMap,
+  priorDeptMap = null,
   outlineById,
   loading,
   editable,
@@ -1197,11 +1315,14 @@ function AllScopeDeptCompactHalfSplit({
   onDeptMetricSemi,
   onDeptMetricQuarter,
   onDeptMetricMonth,
-  rootSumMismatch
+  rootSumMismatch,
+  excludeDeptIdSet = null
 }) {
   const dataColSpan = 24;
   const totalColSpan = dataColSpan + 1;
   const [hoveredDeptSectionKey, setHoveredDeptSectionKey] = useState('');
+  const priorMap = priorDeptMap && typeof priorDeptMap === 'object' ? priorDeptMap : null;
+  const priorRevFor = (deptId) => (priorMap ? normCascade(priorMap[deptId]).revenue : null);
 
   const sectionHeader = (key, labels) => (
     <tr key={`${key}-header`} className="kpi-target-dept-section-header-row">
@@ -1233,7 +1354,7 @@ function AllScopeDeptCompactHalfSplit({
     );
   };
 
-  const periodCell = ({ key, metric, value, warn, label, disabled, onChange, span, size }) => (
+  const periodCell = ({ key, metric, value, warn, label, disabled, onChange, span, size, dashMode, priorValue }) => (
     <td
       key={key}
       colSpan={span}
@@ -1246,7 +1367,9 @@ function AllScopeDeptCompactHalfSplit({
         warn,
         ariaLabel: `${label} 매출`,
         onChange,
-        classExtra: `kpi-target-dept-section-num kpi-target-dept-section-num--${size}`
+        classExtra: `kpi-target-dept-section-num kpi-target-dept-section-num--${size}`,
+        dashMode,
+        priorValue
       })}
     </td>
   );
@@ -1260,7 +1383,7 @@ function AllScopeDeptCompactHalfSplit({
       </tr>
     ) : (
       allDepartmentRows.map((row, rowIdx) => {
-        const ctx = deptMatrixRowCtx(row, deptMap, loading, editable, rootSumMismatch);
+        const ctx = deptMatrixRowCtx(row, deptMap, loading, editable, rootSumMismatch, excludeDeptIdSet);
         const { depth, ro } = ctx;
         const cells = renderCells(row, ctx);
         const sid = String(row.id);
@@ -1281,67 +1404,87 @@ function AllScopeDeptCompactHalfSplit({
       })
     );
 
-  const rowsAnnual = deptRows('annual', (row, { dis, rev, revFlags, rm }) => ({
-    revenue: periodCell({
-      key: `${row.id}-annual-revenue`,
-      span: dataColSpan,
-      metric: 'revenue',
-      value: rev.annual,
-      warn: revFlags.annual || Boolean(rm?.revenue?.annual),
-      label: `${row.label} 연간`,
-      disabled: dis,
-      onChange: (v) => onDeptAnnualRevenue(row.id, v),
-      size: 'annual'
-    })
-  }));
-
-  const rowsSemi = deptRows('semi', (row, { dis, rev, revFlags, rm }) => ({
-    revenue: [0, 1].map((si) =>
-      periodCell({
-        key: `${row.id}-semi-${si}-revenue`,
-        span: 12,
+  const rowsAnnual = deptRows('annual', (row, { dis, rev, revFlags, rm, excluded }) => {
+    const pr = priorRevFor(row.id);
+    return {
+      revenue: periodCell({
+        key: `${row.id}-annual-revenue`,
+        span: dataColSpan,
         metric: 'revenue',
-        value: rev.semi?.[si],
-        warn: revFlags.semi[si] || Boolean(rm?.revenue?.semi?.[si]),
-        label: `${row.label} ${si === 0 ? '상반기' : '하반기'}`,
+        value: rev.annual,
+        warn: revFlags.annual || Boolean(rm?.revenue?.annual),
+        label: `${row.label} 연간`,
         disabled: dis,
-        onChange: (v) => onDeptMetricSemi(row.id, 'revenue', si, v),
-        size: 'semi'
+        onChange: (v) => onDeptAnnualRevenue(row.id, v),
+        size: 'annual',
+        dashMode: excluded,
+        priorValue: pr?.annual
       })
-    )
-  }));
+    };
+  });
 
-  const rowsQuarter = deptRows('quarter', (row, { dis, rev, revFlags, rm }) => ({
-    revenue: [0, 1, 2, 3].map((qi) =>
-      periodCell({
-        key: `${row.id}-quarter-${qi}-revenue`,
-        span: 6,
-        metric: 'revenue',
-        value: rev.quarter?.[qi],
-        warn: revFlags.quarter[qi] || Boolean(rm?.revenue?.quarter?.[qi]),
-        label: `${row.label} ${qi + 1}분기`,
-        disabled: dis,
-        onChange: (v) => onDeptMetricQuarter(row.id, 'revenue', qi, v),
-        size: 'quarter'
-      })
-    )
-  }));
+  const rowsSemi = deptRows('semi', (row, { dis, rev, revFlags, rm, excluded }) => {
+    const pr = priorRevFor(row.id);
+    return {
+      revenue: [0, 1].map((si) =>
+        periodCell({
+          key: `${row.id}-semi-${si}-revenue`,
+          span: 12,
+          metric: 'revenue',
+          value: rev.semi?.[si],
+          warn: revFlags.semi[si] || Boolean(rm?.revenue?.semi?.[si]),
+          label: `${row.label} ${si === 0 ? '상반기' : '하반기'}`,
+          disabled: dis,
+          onChange: (v) => onDeptMetricSemi(row.id, 'revenue', si, v),
+          size: 'semi',
+          dashMode: excluded,
+          priorValue: pr?.semi?.[si]
+        })
+      )
+    };
+  });
 
-  const rowsMonth = deptRows('month', (row, { dis, rev, revFlags, rm }) => ({
-    revenue: Array.from({ length: 12 }, (_, mi) =>
-      periodCell({
-        key: `${row.id}-month-${mi}-revenue`,
-        span: 2,
-        metric: 'revenue',
-        value: rev.month?.[mi],
-        warn: revFlags.month[mi] || Boolean(rm?.revenue?.month?.[mi]),
-        label: `${row.label} ${mi + 1}월`,
-        disabled: dis,
-        onChange: (v) => onDeptMetricMonth(row.id, 'revenue', mi, v),
-        size: 'month'
-      })
-    )
-  }));
+  const rowsQuarter = deptRows('quarter', (row, { dis, rev, revFlags, rm, excluded }) => {
+    const pr = priorRevFor(row.id);
+    return {
+      revenue: [0, 1, 2, 3].map((qi) =>
+        periodCell({
+          key: `${row.id}-quarter-${qi}-revenue`,
+          span: 6,
+          metric: 'revenue',
+          value: rev.quarter?.[qi],
+          warn: revFlags.quarter[qi] || Boolean(rm?.revenue?.quarter?.[qi]),
+          label: `${row.label} ${qi + 1}분기`,
+          disabled: dis,
+          onChange: (v) => onDeptMetricQuarter(row.id, 'revenue', qi, v),
+          size: 'quarter',
+          dashMode: excluded,
+          priorValue: pr?.quarter?.[qi]
+        })
+      )
+    };
+  });
+
+  const rowsMonth = deptRows('month', (row, { dis, rev, revFlags, rm, excluded }) => {
+    const pr = priorRevFor(row.id);
+    return {
+      revenue: Array.from({ length: 12 }, (_, mi) =>
+        periodCell({
+          key: `${row.id}-month-${mi}-revenue`,
+          span: 2,
+          metric: 'revenue',
+          value: rev.month?.[mi],
+          warn: revFlags.month[mi] || Boolean(rm?.revenue?.month?.[mi]),
+          label: `${row.label} ${mi + 1}월`,
+          disabled: dis,
+          onChange: (v) => onDeptMetricMonth(row.id, 'revenue', mi, v),
+          size: 'month',
+          dashMode: excluded,
+          priorValue: pr?.month?.[mi]
+        })
+      )
+    };
+  });
 
   return (
     <div className="kpi-target-dept-unified-wrap">
@@ -1433,6 +1576,8 @@ function AllScopeStaffTargetMatrixTables({
   departmentRows = [],
   loading,
   staffCascadeByUserId = {},
+  priorStaffCascadeByUserId = null,
+  excludeDeptIdSet = null,
   editable = false,
   onStaffAnnualRevenue = () => {},
   onStaffMetricMonth = () => {},
@@ -1445,51 +1590,14 @@ function AllScopeStaffTargetMatrixTables({
   );
   const [wideLayout, setWideLayout] = useState(false);
   const [hoveredStaffKey, setHoveredStaffKey] = useState('');
-  const rootRef = useRef(null);
-  const [staffRowHeight, setStaffRowHeight] = useState(0);
 
-  const measureStaffRows = useCallback(() => {
-    const root = rootRef.current;
-    if (!root) return;
-    const rows = Array.from(root.querySelectorAll('.kpi-target-staff-tier-table tbody tr.kpi-target-staff-data-tr'));
-    let maxHeight = 0;
-    rows.forEach((row) => {
-      const rect = row.getBoundingClientRect();
-      if (rect.height > maxHeight) maxHeight = rect.height;
-      row.querySelectorAll('td, th[scope="row"]').forEach((cell) => {
-        const cellHeight = Number(cell.scrollHeight || 0);
-        if (cellHeight > maxHeight) maxHeight = cellHeight;
-      });
-    });
-    const next = Math.max(33, Math.ceil(maxHeight));
-    setStaffRowHeight((prev) => (Math.abs(prev - next) > 1 ? next : prev));
-  }, []);
+  const priorStaffMap =
+    priorStaffCascadeByUserId && typeof priorStaffCascadeByUserId === 'object' ? priorStaffCascadeByUserId : null;
+  const priorRevForUser = (uid) => (priorStaffMap ? normCascade(priorStaffMap[uid]).revenue : null);
 
-  useLayoutEffect(() => {
-    const frame = window.requestAnimationFrame(measureStaffRows);
-    return () => window.cancelAnimationFrame(frame);
-  }, [measureStaffRows, groups, wideLayout, staffCascadeByUserId, editable, loading]);
-
-  useEffect(() => {
-    const root = rootRef.current;
-    if (!root || typeof ResizeObserver === 'undefined') return undefined;
-    let frame = 0;
-    const schedule = () => {
-      window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(measureStaffRows);
-    };
-    const observer = new ResizeObserver(schedule);
-    root.querySelectorAll('.kpi-target-staff-tier-table').forEach((table) => observer.observe(table));
-    window.addEventListener('resize', schedule);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.removeEventListener('resize', schedule);
-      observer.disconnect();
-    };
-  }, [measureStaffRows, groups, wideLayout]);
-
-  const staffCtx = (userId) => {
+  const staffCtx = (userId, teamKeyForExclude) => {
     const id = String(userId || '').trim();
+    const tk = String(teamKeyForExclude || '').trim();
     const blk = normCascade(staffCascadeByUserId[id]);
     const rev = blk.revenue;
     const revFlags = computeNeedSyncFlags({
@@ -1498,8 +1606,9 @@ function AllScopeStaffTargetMatrixTables({
       semi: rev.semi,
       annual: rev.annual
     });
-    const dis = !editable || loading;
-    return { id, rev, revFlags, dis };
+    const deptExcluded = Boolean(excludeDeptIdSet?.has(tk));
+    const dis = !editable || loading || deptExcluded;
+    return { id, rev, revFlags, dis, deptExcluded };
   };
 
   if (!staffRows || staffRows.length === 0) {
@@ -1525,7 +1634,7 @@ function AllScopeStaffTargetMatrixTables({
   const bodyRows = (tierKey, renderCells) =>
     groups.flatMap((g) =>
       g.members.map((s, idx) => {
-        const ctx = staffCtx(s.userId);
+        const ctx = staffCtx(s.userId, g.teamKey);
         const hoverKey = `${tierKey}:${s.userId}`;
         const rowClass = `kpi-target-staff-data-tr is-metric-revenue${
           hoveredStaffKey === hoverKey ? ' is-staff-hovered' : ''
@@ -1583,8 +1692,9 @@ function AllScopeStaffTargetMatrixTables({
 
   const wideBodyRows = groups.flatMap((g) =>
     g.members.map((s, idx) => {
-      const ctx = staffCtx(s.userId);
-      const { rev, revFlags, dis } = ctx;
+      const ctx = staffCtx(s.userId, g.teamKey);
+      const { rev, revFlags, dis, deptExcluded } = ctx;
+      const pr = priorRevForUser(s.userId);
       const hoverKey = `wide:${s.userId}`;
       const rowClass = `kpi-target-staff-data-tr is-metric-revenue${
         hoveredStaffKey === hoverKey ? ' is-staff-hovered' : ''
@@ -1613,7 +1723,9 @@ function AllScopeStaffTargetMatrixTables({
               ariaLabel: `${s.name} 연 매출`,
               onChange: (v) => onStaffAnnualRevenue(s.userId, v),
               narrow: true,
-              classExtra: 'kpi-target-staff-matrix-num'
+              classExtra: 'kpi-target-staff-matrix-num',
+              dashMode: deptExcluded,
+              priorValue: pr?.annual
             })}
           </td>
           <td className="kpi-target-staff-td-val">
@@ -1624,7 +1736,9 @@ function AllScopeStaffTargetMatrixTables({
               warn: revFlags.semi[0],
               ariaLabel: `${s.name} 상반기 매출`,
               onChange: (v) => onStaffMetricSemi(s.userId, 'revenue', 0, v),
-              classExtra: 'kpi-target-staff-matrix-num'
+              classExtra: 'kpi-target-staff-matrix-num',
+              dashMode: deptExcluded,
+              priorValue: pr?.semi?.[0]
             })}
           </td>
           <td className="kpi-target-staff-td-val">
@@ -1635,7 +1749,9 @@ function AllScopeStaffTargetMatrixTables({
               warn: revFlags.semi[1],
               ariaLabel: `${s.name} 하반기 매출`,
               onChange: (v) => onStaffMetricSemi(s.userId, 'revenue', 1, v),
-              classExtra: 'kpi-target-staff-matrix-num'
+              classExtra: 'kpi-target-staff-matrix-num',
+              dashMode: deptExcluded,
+              priorValue: pr?.semi?.[1]
             })}
           </td>
           {[0, 1, 2, 3].map((qi) => (
@@ -1647,7 +1763,9 @@ function AllScopeStaffTargetMatrixTables({
                 warn: revFlags.quarter[qi],
                 ariaLabel: `${s.name} ${qi + 1}분기 매출`,
                 onChange: (v) => onStaffMetricQuarter(s.userId, 'revenue', qi, v),
-                classExtra: 'kpi-target-staff-matrix-num'
+                classExtra: 'kpi-target-staff-matrix-num',
+                dashMode: deptExcluded,
+                priorValue: pr?.quarter?.[qi]
               })}
             </td>
           ))}
@@ -1660,7 +1778,9 @@ function AllScopeStaffTargetMatrixTables({
                 warn: revFlags.month[item.month - 1],
                 ariaLabel: `${s.name} ${item.month}월 매출`,
                 onChange: (v) => onStaffMetricMonth(s.userId, 'revenue', item.month - 1, v),
-                classExtra: 'kpi-target-staff-matrix-num'
+                classExtra: 'kpi-target-staff-matrix-num',
+                dashMode: deptExcluded,
+                priorValue: pr?.month?.[item.month - 1]
               })}
             </td>
           ))}
@@ -1670,11 +1790,7 @@ function AllScopeStaffTargetMatrixTables({
   );
 
   return (
-    <div
-      ref={rootRef}
-      className="kpi-target-dept-team-matrix-root"
-      style={staffRowHeight ? { '--kpi-target-staff-row-height': `${staffRowHeight}px` } : undefined}
-    >
+    <div className="kpi-target-dept-team-matrix-root">
       <AllScopeDeptTeamMatrixToolbar
         wideLayout={wideLayout}
         onToggle={() => setWideLayout((w) => !w)}
@@ -1704,20 +1820,25 @@ function AllScopeStaffTargetMatrixTables({
                 )}
               </thead>
               <tbody>
-                {bodyRows('annual', (s, ctx) => [
-                  <td key="a" className="kpi-target-staff-td-val">
-                    {deptMatrixCellInput({
-                      value: ctx.rev.annual,
-                      metric: 'revenue',
-                      disabled: ctx.dis,
-                      warn: ctx.revFlags.annual,
-                      ariaLabel: `${s.name} 연 매출`,
-                      onChange: (v) => onStaffAnnualRevenue(s.userId, v),
-                      narrow: true,
-                      classExtra: 'kpi-target-staff-matrix-num'
-                    })}
-                  </td>
-                ])}
+                {bodyRows('annual', (s, ctx) => {
+                  const pr = priorRevForUser(s.userId);
+                  return [
+                    <td key="a" className="kpi-target-staff-td-val">
+                      {deptMatrixCellInput({
+                        value: ctx.rev.annual,
+                        metric: 'revenue',
+                        disabled: ctx.dis,
+                        warn: ctx.revFlags.annual,
+                        ariaLabel: `${s.name} 연 매출`,
+                        onChange: (v) => onStaffAnnualRevenue(s.userId, v),
+                        narrow: true,
+                        classExtra: 'kpi-target-staff-matrix-num',
+                        dashMode: ctx.deptExcluded,
+                        priorValue: pr?.annual
+                      })}
+                    </td>
+                  ];
+                })}
               </tbody>
             </table>
           </div>
@@ -1734,30 +1855,37 @@ function AllScopeStaffTargetMatrixTables({
                 ])}
               </thead>
               <tbody>
-                {bodyRows('semi', (s, ctx) => [
-                  <td key="h1" className="kpi-target-staff-td-val">
-                    {deptMatrixCellInput({
-                      value: ctx.rev.semi?.[0],
-                      metric: 'revenue',
-                      disabled: ctx.dis,
-                      warn: ctx.revFlags.semi[0],
-                      ariaLabel: `${s.name} 상반기 매출`,
-                      onChange: (v) => onStaffMetricSemi(s.userId, 'revenue', 0, v),
-                      classExtra: 'kpi-target-staff-matrix-num'
-                    })}
-                  </td>,
-                  <td key="h2" className="kpi-target-staff-td-val">
-                    {deptMatrixCellInput({
-                      value: ctx.rev.semi?.[1],
-                      metric: 'revenue',
-                      disabled: ctx.dis,
-                      warn: ctx.revFlags.semi[1],
-                      ariaLabel: `${s.name} 하반기 매출`,
-                      onChange: (v) => onStaffMetricSemi(s.userId, 'revenue', 1, v),
-                      classExtra: 'kpi-target-staff-matrix-num'
-                    })}
-                  </td>
-                ])}
+                {bodyRows('semi', (s, ctx) => {
+                  const pr = priorRevForUser(s.userId);
+                  return [
+                    <td key="h1" className="kpi-target-staff-td-val">
+                      {deptMatrixCellInput({
+                        value: ctx.rev.semi?.[0],
+                        metric: 'revenue',
+                        disabled: ctx.dis,
+                        warn: ctx.revFlags.semi[0],
+                        ariaLabel: `${s.name} 상반기 매출`,
+                        onChange: (v) => onStaffMetricSemi(s.userId, 'revenue', 0, v),
+                        classExtra: 'kpi-target-staff-matrix-num',
+                        dashMode: ctx.deptExcluded,
+                        priorValue: pr?.semi?.[0]
+                      })}
+                    </td>,
+                    <td key="h2" className="kpi-target-staff-td-val">
+                      {deptMatrixCellInput({
+                        value: ctx.rev.semi?.[1],
+                        metric: 'revenue',
+                        disabled: ctx.dis,
+                        warn: ctx.revFlags.semi[1],
+                        ariaLabel: `${s.name} 하반기 매출`,
+                        onChange: (v) => onStaffMetricSemi(s.userId, 'revenue', 1, v),
+                        classExtra: 'kpi-target-staff-matrix-num',
+                        dashMode: ctx.deptExcluded,
+                        priorValue: pr?.semi?.[1]
+                      })}
+                    </td>
+                  ];
+                })}
               </tbody>
             </table>
           </div>
@@ -1773,8 +1901,9 @@ function AllScopeStaffTargetMatrixTables({
                 )}
               </thead>
               <tbody>
-                {bodyRows('quarter', (s, ctx) =>
-                  [0, 1, 2, 3].map((qi) => (
+                {bodyRows('quarter', (s, ctx) => {
+                  const pr = priorRevForUser(s.userId);
+                  return [0, 1, 2, 3].map((qi) => (
                     <td key={`q${qi}`} className="kpi-target-staff-td-val">
                       {deptMatrixCellInput({
                         value: ctx.rev.quarter?.[qi],
@@ -1783,11 +1912,13 @@ function AllScopeStaffTargetMatrixTables({
                         warn: ctx.revFlags.quarter[qi],
                         ariaLabel: `${s.name} ${qi + 1}분기 매출`,
                         onChange: (v) => onStaffMetricQuarter(s.userId, 'revenue', qi, v),
-                        classExtra: 'kpi-target-staff-matrix-num'
+                        classExtra: 'kpi-target-staff-matrix-num',
+                        dashMode: ctx.deptExcluded,
+                        priorValue: pr?.quarter?.[qi]
                       })}
                     </td>
-                  ))
-                )}
+                  ));
+                })}
               </tbody>
             </table>
           </div>
@@ -1803,8 +1934,9 @@ function AllScopeStaffTargetMatrixTables({
                 )}
               </thead>
               <tbody>
-                {bodyRows('month', (s, ctx) =>
-                  MONTH_COLUMNS.map((item) => (
+                {bodyRows('month', (s, ctx) => {
+                  const pr = priorRevForUser(s.userId);
+                  return MONTH_COLUMNS.map((item) => (
                     <td key={`m${item.month}`} className="kpi-target-staff-td-val kpi-target-staff-td-val--month">
                       {deptMatrixCellInput({
                         value: ctx.rev.month?.[item.month - 1],
@@ -1813,11 +1945,13 @@ function AllScopeStaffTargetMatrixTables({
                         warn: ctx.revFlags.month[item.month - 1],
                         ariaLabel: `${s.name} ${item.month}월 매출`,
                         onChange: (v) => onStaffMetricMonth(s.userId, 'revenue', item.month - 1, v),
-                        classExtra: 'kpi-target-staff-matrix-num'
+                        classExtra: 'kpi-target-staff-matrix-num',
+                        dashMode: ctx.deptExcluded,
+                        priorValue: pr?.month?.[item.month - 1]
                       })}
                     </td>
-                  ))
-                )}
+                  ));
+                })}
               </tbody>
             </table>
           </div>
@@ -1834,6 +1968,11 @@ export default function KpiTargetModal({
   companyAnnual = { revenue: 0 },
   companyCascade = null,
   canEditCompany = false,
+  autoDistributeExcludeDepartmentIds = [],
+  onAutoDistributeExcludeDepartmentIdsChange = () => {},
+  priorYearCompanyCascade = null,
+  priorYearDeptCascade = null,
+  priorYearStaffCascade = null,
   companyAchievement = null,
   onCompanyAnnualRevenue = () => {},
   onCompanyMetricMonth = () => {},
@@ -1878,7 +2017,25 @@ export default function KpiTargetModal({
   const [yearDraft, setYearDraft] = useState(String(year || ''));
   const [yearDropdownOpen, setYearDropdownOpen] = useState(false);
   const [calcHelpOpen, setCalcHelpOpen] = useState(false);
+  const [priorYoyPeekActive, setPriorYoyPeekActive] = useState(false);
+  const handlePriorYoyPeekDown = useCallback(() => {
+    setPriorYoyPeekActive(true);
+    const end = () => {
+      setPriorYoyPeekActive(false);
+      window.removeEventListener('pointerup', end, true);
+      window.removeEventListener('pointercancel', end, true);
+    };
+    window.addEventListener('pointerup', end, true);
+    window.addEventListener('pointercancel', end, true);
+  }, []);
   const coBlock = useMemo(() => normCascade(companyCascade), [companyCascade]);
+  const excludeDeptIdSet = useMemo(
+    () =>
+      new Set(
+        (autoDistributeExcludeDepartmentIds || []).map((x) => String(x || '').trim()).filter(Boolean)
+      ),
+    [autoDistributeExcludeDepartmentIds]
+  );
   const companyRootMismatch = useMemo(() => {
     if (scopeType !== 'all') {
       return { mismatch: emptyRootSumMismatch(), detailLines: [], hasMismatch: false };
@@ -2001,6 +2158,7 @@ export default function KpiTargetModal({
         aria-labelledby="kpi-target-modal-title"
         onClick={(e) => e.stopPropagation()}
       >
+        <KpiPriorYoyPeekContext.Provider value={priorYoyPeekActive}>
         <div className="kpi-target-modal-header">
           <div className="kpi-target-modal-header-copy">
             <div className="kpi-target-modal-header-title-row">
@@ -2043,6 +2201,15 @@ export default function KpiTargetModal({
             >
               <span className="material-symbols-outlined" aria-hidden>help</span>
               <span>계산 도움말</span>
+            </button>
+            <button
+              type="button"
+              className="kpi-target-modal-prior-yoy-peek"
+              onPointerDown={handlePriorYoyPeekDown}
+              aria-pressed={priorYoyPeekActive}
+              title="누르고 있는 동안 표에 전년 동기 대비(%)가 표시됩니다"
+            >
+              전년도 비교하기
             </button>
             <div className="kpi-target-modal-year-select">
               <input
@@ -2224,6 +2391,43 @@ export default function KpiTargetModal({
                     <p className="kpi-target-sample-lead">
                       성과 지표에 대한 연간 및 분기별 목표를 수립합니다. ①·②·③ 매출 셀은 엑셀처럼 «*1.2» «+1000» «=10+20*2» 등을 입력한 뒤 Enter 또는 포커스를 옮기면 계산되어 반영됩니다.
                     </p>
+                    {canEditCompany && !loading && allDepartmentRows.some((r) => !r.readOnly) ? (
+                      <div className="kpi-target-auto-exclude-panel" role="group" aria-label="회사 연간 자동 분배 적용 부서">
+                        <div className="kpi-target-auto-exclude-head">
+                          <span className="kpi-target-auto-exclude-title">① 연간 자동 분배 적용 부서</span>
+                          <span className="kpi-target-auto-exclude-note">
+                            체크한 부서에만 회사 연간·반기·분기·월 목표가 자동 균등 분배됩니다. 체크 해제한 부서는 목표 0원·표시는 하이픈(-)입니다.
+                          </span>
+                        </div>
+                        <div className="kpi-target-auto-exclude-chips">
+                          {allDepartmentRows
+                            .filter((r) => !r.readOnly)
+                            .map((r) => {
+                              const id = String(r.id || '').trim();
+                              if (!id) return null;
+                              const applied = !excludeDeptIdSet.has(id);
+                              return (
+                                <label key={id} className={`kpi-target-auto-exclude-chip${applied ? ' is-on' : ' is-off'}`}>
+                                  <input
+                                    type="checkbox"
+                                    checked={applied}
+                                    aria-label={`${r.label} 자동 분배 적용`}
+                                    onChange={(e) => {
+                                      const next = new Set(
+                                        (autoDistributeExcludeDepartmentIds || []).map((x) => String(x || '').trim())
+                                      );
+                                      if (e.target.checked) next.delete(id);
+                                      else next.add(id);
+                                      onAutoDistributeExcludeDepartmentIdsChange([...next]);
+                                    }}
+                                  />
+                                  <span>{r.label}</span>
+                                </label>
+                              );
+                            })}
+                        </div>
+                      </div>
+                    ) : null}
                     {companyRootMismatch.hasMismatch ? (
                       <div className="kpi-target-root-sum-mismatch-banner" role="status">
                         <strong>회사 목표와 부서 전체 합계가 다릅니다.</strong>
@@ -2238,6 +2442,7 @@ export default function KpiTargetModal({
                       <CompanyRevenueTableBlock
                         yearLabel={`${year}년`}
                         block={coBlock}
+                        priorBlock={priorYearCompanyCascade}
                         disabled={!editable || loading || !canEditCompany}
                         revenueAchSubline={`매출 실적 ${Number(achCo.revAct || 0).toLocaleString('ko-KR')}원 · 달성 ${Number(achCo.revPct || 0)}%`}
                         onAnnualRevenue={onCompanyAnnualRevenue}
@@ -2262,6 +2467,7 @@ export default function KpiTargetModal({
                       year={year}
                       allDepartmentRows={allDepartmentRows}
                       deptMap={deptMap}
+                      priorDeptMap={priorYearDeptCascade}
                       outlineById={deptOutlineById}
                       loading={loading}
                       editable={editable}
@@ -2270,6 +2476,7 @@ export default function KpiTargetModal({
                       onDeptMetricQuarter={onDeptMetricQuarter}
                       onDeptMetricMonth={onDeptMetricMonth}
                       rootSumMismatch={companyRootMismatch.mismatch}
+                      excludeDeptIdSet={excludeDeptIdSet}
                     />
                   </div>
 
@@ -2284,6 +2491,8 @@ export default function KpiTargetModal({
                         departmentRows={allDepartmentRows}
                         loading={loading}
                         staffCascadeByUserId={staffCascadeByUserId}
+                        priorStaffCascadeByUserId={priorYearStaffCascade}
+                        excludeDeptIdSet={excludeDeptIdSet}
                         editable={editable}
                         onStaffAnnualRevenue={onStaffAnnualRevenue}
                         onStaffMetricMonth={onStaffMetricMonth}
@@ -2357,6 +2566,7 @@ export default function KpiTargetModal({
             </button>
           </div>
         </form>
+        </KpiPriorYoyPeekContext.Provider>
       </div>
     </div>
     </KpiTargetBulkProvider>
