@@ -44,6 +44,9 @@ export default function Layout() {
 
   const isSalesPipeline = location.pathname === '/sales-pipeline';
   const isMessenger = location.pathname === '/messenger';
+  const isProductList = location.pathname === '/product-list';
+  const isCustomerCompanies = location.pathname === '/customer-companies';
+  const isCustomerCompanyEmployees = location.pathname === '/customer-company-employees';
   const isProjectGantt = location.pathname === '/project' && searchParams.get('view') === 'gantt';
 
   useEffect(() => {
@@ -120,7 +123,13 @@ export default function Layout() {
     };
   }, []);
 
-  const needsFullHeightMain = isSalesPipeline || isMessenger || isProjectGantt;
+  const needsFullHeightMain =
+    isSalesPipeline ||
+    isMessenger ||
+    isProductList ||
+    isCustomerCompanies ||
+    isCustomerCompanyEmployees ||
+    isProjectGantt;
   const mainContentClassName = ['app-main-content', needsFullHeightMain ? 'app-main-content--fullheight' : '']
     .filter(Boolean)
     .join(' ');

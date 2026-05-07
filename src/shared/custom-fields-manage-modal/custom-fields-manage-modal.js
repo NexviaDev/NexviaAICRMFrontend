@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { API_BASE } from '@/config';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
+import { dispatchSalesOpportunityScheduleDefsChanged } from '@/lib/sales-opportunity-schedule-labels';
 import './custom-fields-manage-modal.css';
 
 const FIELD_TYPES = [
@@ -19,19 +20,26 @@ export default function CustomFieldsManageModal({
   leadCaptureFormId = null,
   onClose,
   onFieldAdded,
+  onDefinitionsUpdated,
   apiBase = API_BASE,
-  getAuthHeader = () => ({})
+  getAuthHeader = () => ({}),
+  fixedType = null,
+  title = '추가 필드 관리',
+  description = null,
+  deleteConfirmMessage = null
 }) {
   const allowed = isAdminOrAboveRole(getStoredCrmUser()?.role);
   const [definitions, setDefinitions] = useState([]);
   const [newLabel, setNewLabel] = useState('');
-  const [newType, setNewType] = useState('text');
+  const [newType, setNewType] = useState(() => (fixedType || 'text'));
   const [newRequired, setNewRequired] = useState(false);
   const [useSelectList, setUseSelectList] = useState(false);
   const [useMultiSelect, setUseMultiSelect] = useState(false);
   const [selectListInput, setSelectListInput] = useState('');
   const [adding, setAdding] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
+  /** 기회 일정(salesOpportunitySchedule) — 수주 전 입력 허용 여부 */
+  const [scheduleEditableBeforeWon, setScheduleEditableBeforeWon] = useState(false);
 
   const listUrl = entityType === 'leadCapture' && leadCaptureFormId
     ? `${apiBase}/custom-field-definitions?entityType=leadCapture&leadCaptureFormId=${encodeURIComponent(leadCaptureFormId)}`
@@ -50,6 +58,10 @@ export default function CustomFieldsManageModal({
   }, [entityType, leadCaptureFormId]);
 
   useEffect(() => {
+    if (fixedType) setNewType(fixedType);
+  }, [fixedType]);
+
+  useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -62,10 +74,17 @@ export default function CustomFieldsManageModal({
     setAdding(true);
     try {
       const key = 'field_' + Date.now();
-      const type = useSelectList ? (useMultiSelect ? 'multiselect' : 'select') : newType;
-      const options = useSelectList && selectListInput.trim()
-        ? { choices: selectListInput.split(',').map((s) => s.trim()).filter(Boolean) }
-        : null;
+      const type = fixedType
+        ? fixedType
+        : useSelectList
+          ? (useMultiSelect ? 'multiselect' : 'select')
+          : newType;
+      let optionsPayload = null;
+      if (entityType === 'salesOpportunitySchedule') {
+        optionsPayload = scheduleEditableBeforeWon ? { editableBeforeWon: true } : null;
+      } else if (useSelectList && selectListInput.trim()) {
+        optionsPayload = { choices: selectListInput.split(',').map((s) => s.trim()).filter(Boolean) };
+      }
       const body = {
         entityType,
         key,
@@ -73,7 +92,7 @@ export default function CustomFieldsManageModal({
         type,
         required: newRequired,
         order: definitions.length,
-        ...(options ? { options } : {})
+        ...(optionsPayload ? { options: optionsPayload } : {})
       };
       if (entityType === 'leadCapture' && leadCaptureFormId) body.leadCaptureFormId = leadCaptureFormId;
       const res = await fetch(`${apiBase}/custom-field-definitions`, {
@@ -87,12 +106,14 @@ export default function CustomFieldsManageModal({
         return;
       }
       setNewLabel('');
-      setNewType('text');
+      setNewType(fixedType || 'text');
       setNewRequired(false);
       setUseSelectList(false);
       setUseMultiSelect(false);
       setSelectListInput('');
+      setScheduleEditableBeforeWon(false);
       onFieldAdded?.();
+      if (entityType === 'salesOpportunitySchedule') dispatchSalesOpportunityScheduleDefsChanged();
       onClose();
     } catch (_) {
       alert('서버에 연결할 수 없습니다.');
@@ -103,13 +124,18 @@ export default function CustomFieldsManageModal({
 
   const handleDelete = async (id) => {
     if (!id) return;
+    if (deleteConfirmMessage && !window.confirm(deleteConfirmMessage)) return;
     setDeletingId(id);
     try {
       const res = await fetch(`${apiBase}/custom-field-definitions/${id}`, {
         method: 'DELETE',
         headers: getAuthHeader()
       });
-      if (res.ok) fetchDefinitions();
+      if (res.ok) {
+        fetchDefinitions();
+        onDefinitionsUpdated?.();
+        if (entityType === 'salesOpportunitySchedule') dispatchSalesOpportunityScheduleDefsChanged();
+      }
       else {
         const data = await res.json().catch(() => ({}));
         alert(data.error || '삭제에 실패했습니다.');
@@ -151,12 +177,15 @@ export default function CustomFieldsManageModal({
       <div className="custom-fields-manage-modal">
         <div className="custom-fields-manage-inner">
           <header className="custom-fields-manage-header">
-            <h3>추가 필드 관리</h3>
+            <h3>{title}</h3>
             <button type="button" className="custom-fields-manage-close" onClick={onClose} aria-label="닫기">
               <span className="material-symbols-outlined">close</span>
             </button>
           </header>
           <div className="custom-fields-manage-body">
+            {description ? (
+              <p className="custom-fields-manage-modal-desc">{description}</p>
+            ) : null}
             <form onSubmit={handleAddField} className="custom-fields-manage-form">
               <div className="custom-fields-manage-field">
                 <label>표시 이름</label>
@@ -168,6 +197,38 @@ export default function CustomFieldsManageModal({
                   required
                 />
               </div>
+              {entityType === 'salesOpportunitySchedule' ? (
+                <div className="custom-fields-manage-field custom-fields-manage-field--schedule-timing">
+                  <span className="custom-fields-manage-subfield-label" id="schedule-timing-label">
+                    입력 가능 시점
+                  </span>
+                  <div
+                    className="custom-fields-manage-radio-group"
+                    role="radiogroup"
+                    aria-labelledby="schedule-timing-label"
+                  >
+                    <label className="custom-fields-manage-radio-label">
+                      <input
+                        type="radio"
+                        name="scheduleTiming"
+                        checked={!scheduleEditableBeforeWon}
+                        onChange={() => setScheduleEditableBeforeWon(false)}
+                      />
+                      <span>수주 성공(Won) 이후에만</span>
+                    </label>
+                    <label className="custom-fields-manage-radio-label">
+                      <input
+                        type="radio"
+                        name="scheduleTiming"
+                        checked={scheduleEditableBeforeWon}
+                        onChange={() => setScheduleEditableBeforeWon(true)}
+                      />
+                      <span>수주 전 단계에서도 입력 가능</span>
+                    </label>
+                  </div>
+                </div>
+              ) : null}
+              {!fixedType ? (
               <div className="custom-fields-manage-field">
                 <label>타입</label>
                 <select value={newType} onChange={(e) => setNewType(e.target.value)} disabled={useSelectList}>
@@ -176,6 +237,8 @@ export default function CustomFieldsManageModal({
                   ))}
                 </select>
               </div>
+              ) : null}
+              {!fixedType ? (
               <div className="custom-fields-manage-field">
                 <label className="custom-fields-manage-checkbox-label">
                   <input
@@ -206,6 +269,7 @@ export default function CustomFieldsManageModal({
                   </>
                 )}
               </div>
+              ) : null}
               <div className="custom-fields-manage-field">
                 <label className="custom-fields-manage-checkbox-label">
                   <input type="checkbox" checked={newRequired} onChange={(e) => setNewRequired(e.target.checked)} />
@@ -223,7 +287,14 @@ export default function CustomFieldsManageModal({
                   {definitions.map((def) => (
                     <li key={def._id} className="custom-fields-manage-list-item">
                       <span className="custom-fields-manage-list-label">{def.label}</span>
-                      <span className="custom-fields-manage-list-type">{def.type}</span>
+                      <span className="custom-fields-manage-list-meta">
+                        <span className="custom-fields-manage-list-type">{def.type}</span>
+                        {entityType === 'salesOpportunitySchedule' ? (
+                          <span className="custom-fields-manage-list-timing">
+                            {def.options?.editableBeforeWon ? '수주 전' : 'Won 후'}
+                          </span>
+                        ) : null}
+                      </span>
                       <button
                         type="button"
                         className="custom-fields-manage-list-delete"

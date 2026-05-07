@@ -323,12 +323,122 @@
   margin-bottom: 2rem;
 }
 
+/* 열이 많을 때 셀을 압축하지 않고 가로 스크롤로 보도록 (global .data-table width:100% 무효) */
+.product-list-page .page-content {
+  min-width: 0;
+}
+
+.product-list-page .panel.table-panel {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.product-list-page .table-wrap {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+/*
+ * 데스크톱 메인 제품 목록(layout fullheight):
+ * - 상단 page-header(검색·설정)·상단 툴바·페이지네이션은 고정
+ * - 세로·가로 스크롤은 .table-wrap 한 곳만 → 셀 색/반투명 열이 스크롤 경계에서 어긋나지 않도록 isolation + 배경
+ */
+@media (min-width: 769px) {
+  .product-list-page:not(.product-list-page--search-modal) {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .product-list-page:not(.product-list-page--search-modal) .page-header {
+    flex-shrink: 0;
+    position: relative;
+    z-index: 6;
+    background: var(--card);
+    border-bottom: 1px solid var(--card-border);
+    box-shadow: 0 1px 0 rgba(15, 23, 42, 0.06);
+  }
+
+  .product-list-page:not(.product-list-page--search-modal) .page-content {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    /* global .page-content padding(2rem) 제거: 표 패널을 좌·하단 메인 끝까지 맞춤 */
+    padding: 2rem 0 0;
+  }
+
+  .product-list-page:not(.product-list-page--search-modal) .cce-action-bar,
+  .product-list-page:not(.product-list-page--search-modal) .product-list-top {
+    flex-shrink: 0;
+  }
+
+  .product-list-page:not(.product-list-page--search-modal) .product-list-top {
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+
+  .product-list-page:not(.product-list-page--search-modal) .cce-action-bar {
+    margin-left: 2rem;
+    margin-right: 2rem;
+  }
+
+  .product-list-page:not(.product-list-page--search-modal) .panel.table-panel {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    margin-bottom: 0;
+    background: var(--card);
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .product-list-page:not(.product-list-page--search-modal) .table-wrap {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    background: var(--card);
+    isolation: isolate;
+  }
+
+  .product-list-page:not(.product-list-page--search-modal) .pagination-bar {
+    flex-shrink: 0;
+    background: var(--card);
+  }
+}
+
+.product-list-page .product-list-table {
+  width: max-content;
+  min-width: 100%;
+  table-layout: auto;
+  /* collapse + sticky th 조합에서 본문이 헤더 위로 겹쳐 보이는 브라우저 이슈 완화 */
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.product-list-page .product-list-table th:not(.pl-th-checkbox),
+.product-list-page .product-list-table td:not(.pl-td-checkbox) {
+  min-width: 6rem;
+}
+
+.product-list-page .product-list-table .product-list-cell-name {
+  min-width: 11rem;
+}
+
 .product-list-page .data-table {
   font-size: 0.8125rem;
 }
 
 .product-list-page .data-table th {
-  padding: 0.65rem 1.25rem;
+  padding: 0.45rem 0.85rem;
   text-align: left;
   font-size: 0.65rem;
   font-weight: 700;
@@ -339,8 +449,14 @@
 }
 
 .product-list-page .data-table td {
-  padding: 0.75rem 1.25rem;
+  padding: 0.4rem 0.85rem;
   border-top: 1px solid var(--card-border);
+}
+
+/* sticky 헤더(z-index 높음) 아래로 본문 셀이 그려지도록 쌓임 순서 고정 */
+.product-list-page .product-list-table tbody td {
+  position: relative;
+  z-index: 0;
 }
 
 .product-list-page .data-table tbody tr:hover {
@@ -424,6 +540,61 @@
 .product-list-page .data-table th.pl-col--direct,
 .product-list-page .data-table th.pl-col--channel {
   color: var(--text-muted);
+}
+
+/* 세로 스크롤 시 열 이름(첫 행) 고정 — 스크롤 상위는 .table-wrap(메인·모달 공통) */
+@media (min-width: 769px) {
+  .product-list-page .product-list-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    box-shadow: 0 1px 0 0 var(--card-border);
+    /* 반투명 열과 무관하게 본문이 비치지 않도록 */
+    background-clip: padding-box;
+  }
+
+  .product-list-page .product-list-table thead th.pl-th-checkbox {
+    z-index: 21;
+    background: var(--bg-light);
+  }
+
+  .product-list-page .product-list-table thead th.pl-col--direct {
+    z-index: 21;
+    background: linear-gradient(to bottom, rgba(167, 212, 181, 0.45), rgba(167, 212, 181, 0.45)), var(--bg-light);
+  }
+
+  .product-list-page .product-list-table thead th.pl-col--channel {
+    z-index: 21;
+    background: linear-gradient(to bottom, rgba(244, 196, 160, 0.5), rgba(244, 196, 160, 0.5)), var(--bg-light);
+  }
+
+  .product-list-page .product-list-table thead th.list-template-drag-over {
+    background: var(--primary-pastel, #e8eaf6);
+    z-index: 22;
+  }
+}
+
+.product-list-page--search-modal .product-list-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  box-shadow: 0 1px 0 0 var(--card-border);
+  background-clip: padding-box;
+}
+
+.product-list-page--search-modal .product-list-table thead th.pl-th-checkbox {
+  z-index: 21;
+  background: var(--bg-light);
+}
+
+.product-list-page--search-modal .product-list-table thead th.pl-col--direct {
+  z-index: 21;
+  background: linear-gradient(to bottom, rgba(167, 212, 181, 0.45), rgba(167, 212, 181, 0.45)), var(--bg-light);
+}
+
+.product-list-page--search-modal .product-list-table thead th.pl-col--channel {
+  z-index: 21;
+  background: linear-gradient(to bottom, rgba(244, 196, 160, 0.5), rgba(244, 196, 160, 0.5)), var(--bg-light);
 }
 
 /* 행 선택 · 일괄 삭제 모달 */
@@ -608,5 +779,91 @@
 .product-bulk-delete-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+/* 제품 검색 모달에 임베드될 때 */
+.product-list-page--search-modal {
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+}
+
+.product-list-page--search-modal .page-header {
+  padding: 0.5rem 0.75rem;
+}
+
+.product-list-page--search-modal .page-content {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0.35rem 0.5rem 0.25rem;
+}
+
+.product-list-page--search-modal .panel.table-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  margin-bottom: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.product-list-page--search-modal .table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--card);
+  isolation: isolate;
+  -webkit-overflow-scrolling: touch;
+}
+
+.product-list-page--search-modal .product-list-search-modal-footer {
+  flex-shrink: 0;
+}
+
+.product-list-row--search-modal-pick {
+  cursor: pointer;
+}
+
+.product-list-search-modal-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.65rem;
+  margin-top: 0;
+  margin-bottom: 0;
+  border: 1px solid var(--card-border);
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  background: #f4f7f9;
+  flex-shrink: 0;
+}
+
+.product-list-search-modal-footer-count {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.product-list-search-modal-footer-count strong {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.product-list-search-modal-footer-btns {
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
 }

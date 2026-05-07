@@ -1,0 +1,304 @@
+.home-kpi-explain-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1290;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: rgba(30, 41, 59, 0.45);
+  box-sizing: border-box;
+}
+
+.home-kpi-explain-dialog {
+  width: 100%;
+  max-width: 42rem;
+  max-height: min(92vh, 48rem);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-radius: 1rem;
+  background: #ffffff;
+  border: 1px solid #e2e8ef;
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.14);
+}
+
+.home-kpi-explain-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1.15rem 0.65rem;
+  border-bottom: 1px solid #edf1f6;
+  flex-shrink: 0;
+}
+
+.home-kpi-explain-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #1e293b;
+  letter-spacing: -0.02em;
+  line-height: 1.35;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.home-kpi-explain-title-icon {
+  font-size: 1.35rem;
+  color: #6b8aa8;
+  flex-shrink: 0;
+}
+
+.home-kpi-explain-close {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0.45rem 0.9rem;
+  border: none;
+  border-radius: 0.65rem;
+  background: #e8eef4;
+  color: #334155;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.home-kpi-explain-close:hover {
+  background: #dce5ee;
+}
+
+.home-kpi-explain-body {
+  padding: 0.85rem 1.15rem 1.1rem;
+  overflow-y: auto;
+  font-size: 0.88rem;
+  line-height: 1.65;
+  color: #475569;
+}
+
+.home-kpi-explain-intro {
+  margin: 0 0 1rem;
+  padding-left: 1.15rem;
+  list-style: disc;
+}
+
+.home-kpi-explain-intro-item {
+  margin-bottom: 0.4rem;
+}
+
+.home-kpi-explain-intro-item strong {
+  color: #334155;
+  font-weight: 800;
+}
+
+.home-kpi-explain-section {
+  margin-bottom: 1rem;
+}
+
+.home-kpi-explain-section-title {
+  margin: 0 0 0.45rem;
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: #1e4a63;
+}
+
+.home-kpi-explain-dl {
+  margin: 0 0 0.55rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.65rem;
+  background: #f6f8fb;
+  border: 1px solid #e8eef4;
+}
+
+.home-kpi-explain-dl-row {
+  display: grid;
+  grid-template-columns: minmax(6rem, 38%) 1fr;
+  gap: 0.35rem 0.65rem;
+  padding: 0.25rem 0;
+  font-size: 0.84rem;
+}
+
+.home-kpi-explain-dl-row:not(:last-child) {
+  border-bottom: 1px solid #e8eef4;
+}
+
+.home-kpi-explain-dl-row dt {
+  margin: 0;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.home-kpi-explain-dl-row dd {
+  margin: 0;
+  font-weight: 700;
+  color: #1e293b;
+  font-variant-numeric: tabular-nums;
+}
+
+.home-kpi-explain-p {
+  margin: 0 0 0.45rem;
+}
+
+.home-kpi-explain-p strong {
+  color: #334155;
+  font-weight: 800;
+}
+
+.home-kpi-explain-p code {
+  font-size: 0.8em;
+  padding: 0.08rem 0.28rem;
+  border-radius: 0.35rem;
+  background: #eef2f7;
+  color: #475569;
+}
+
+.home-kpi-explain-bullets {
+  margin: 0 0 0.55rem;
+  padding-left: 1.15rem;
+  list-style: disc;
+  color: #475569;
+  font-size: 0.86rem;
+}
+
+.home-kpi-explain-bullets li {
+  margin-bottom: 0.4rem;
+}
+
+.home-kpi-explain-bullets li strong {
+  color: #334155;
+  font-weight: 800;
+}
+
+.home-kpi-explain-bullets code {
+  font-size: 0.82em;
+  padding: 0.06rem 0.26rem;
+  border-radius: 0.35rem;
+  background: #eef2f7;
+  color: #475569;
+}
+
+.home-kpi-explain-foot {
+  margin: 0.5rem 0 0;
+  font-size: 0.78rem;
+  color: #94a3b8;
+  line-height: 1.5;
+}
+
+.home-kpi-explain-foot code {
+  font-size: 0.95em;
+  padding: 0.06rem 0.22rem;
+  border-radius: 0.3rem;
+  background: #f1f5f9;
+}
+
+/* Won 건 목록 표 (KPI 설명) */
+.home-kpi-explain-won-wrap {
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid #e8eef4;
+}
+
+.home-kpi-explain-won-main-title {
+  margin-bottom: 0.35rem;
+}
+
+.home-kpi-explain-won-lead {
+  margin: 0 0 0.65rem;
+  font-size: 0.82rem;
+  color: #64748b;
+  line-height: 1.55;
+}
+
+.home-kpi-explain-won-lead strong {
+  color: #334155;
+  font-weight: 800;
+}
+
+.home-kpi-explain-won-halfnote {
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 0.55rem;
+  background: #f0f7fa;
+  border: 1px solid #dcecf2;
+  font-size: 0.8rem;
+  color: #475569;
+  line-height: 1.5;
+}
+
+.home-kpi-explain-won-sub {
+  margin-bottom: 1rem;
+}
+
+.home-kpi-explain-won-subtitle {
+  margin: 0 0 0.25rem;
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: #1e4a63;
+}
+
+.home-kpi-explain-won-range {
+  font-weight: 600;
+  color: #64748b;
+}
+
+.home-kpi-explain-won-cap {
+  margin: 0 0 0.4rem;
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.home-kpi-explain-won-empty {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #94a3b8;
+}
+
+.home-kpi-explain-won-scroll {
+  overflow-x: auto;
+  border-radius: 0.55rem;
+  border: 1px solid #e8eef4;
+  background: #fafbfd;
+}
+
+.home-kpi-explain-won-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  min-width: 28rem;
+}
+
+.home-kpi-explain-won-table th,
+.home-kpi-explain-won-table td {
+  padding: 0.35rem 0.45rem;
+  text-align: left;
+  border-bottom: 1px solid #e8eef4;
+  vertical-align: top;
+}
+
+.home-kpi-explain-won-table th {
+  background: #eef2f7;
+  color: #475569;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.home-kpi-explain-won-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.home-kpi-explain-won-num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.home-kpi-explain-won-date {
+  white-space: nowrap;
+  color: #64748b;
+  font-size: 0.76rem;
+}
+
+.home-kpi-explain-won-basis {
+  font-weight: 500;
+  color: #94a3b8;
+}

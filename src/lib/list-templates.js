@@ -1,7 +1,8 @@
 /**
  * 리스트 컬럼 템플릿: User listTemplates와 기본 컬럼 정의.
  * customerCompanies, customerCompanyEmployees, productList 열 순서·표시 여부,
- * calendar 보기(월/주/일), salesPipeline 필터 저장/복원, 홈 대시보드 인사이트(homeDashboard).
+ * calendar 보기(월/주/일), salesPipeline 필터 저장/복원, 홈 대시보드 인사이트(homeDashboard),
+ * 드롭존 목록(dropZoneListModal): columnOrder, showScheduleCustomDateColumns, scheduleCustomDateColumnVisibility(키별 숨김=false만 저장).
  */
 
 import { API_BASE } from '@/config';
@@ -12,7 +13,7 @@ export const LIST_IDS = {
   PRODUCT_LIST: 'productList',
   /** 캘린더 월/주/일 보기 — user.listTemplates.calendar */
   CALENDAR: 'calendar',
-  /** 세일즈 파이프라인 «내 기회만» 필터 — listTemplates.salesPipeline.assigneeMeOnly */
+  /** 세일즈 파이프라인 — listTemplates.salesPipeline { assigneeMeOnly, viewMode, columnOrder, visible } */
   SALES_PIPELINE: 'salesPipeline',
   /** 제품 검색 모달 선택 빈도 — listTemplates.productSearchModal { usage, order } */
   PRODUCT_SEARCH_MODAL: 'productSearchModal',
@@ -23,7 +24,9 @@ export const LIST_IDS = {
   /** 연락처 상세 모달 표시 — listTemplates.customerCompanyEmployeesDetailModal { presentation: 'side' | 'center' } */
   CUSTOMER_COMPANY_EMPLOYEES_DETAIL_MODAL: 'customerCompanyEmployeesDetailModal',
   /** 홈 일일 대시보드 — listTemplates.homeDashboard { companyWideInsight, kpiPeriod, consumerChartMode, marginChartMode, … } */
-  HOME_DASHBOARD: 'homeDashboard'
+  HOME_DASHBOARD: 'homeDashboard',
+  /** 결과 드롭존 목록 표 열 순서 — listTemplates.dropZoneListModal { columnOrder } */
+  DROP_ZONE_LIST_MODAL: 'dropZoneListModal'
 };
 
 /** 로컬 crm_user — 홈 인사이트·차트 표현 저장값 */
@@ -234,6 +237,7 @@ export const DEFAULT_COLUMNS = {
   [LIST_IDS.CUSTOMER_COMPANIES]: [
     { key: '_favorite', label: '즐겨찾기' },
     { key: 'name', label: '기업명' },
+    { key: 'businessNumber', label: '사업자번호', defaultVisible: false },
     { key: 'representativeName', label: '대표자' },
     { key: 'industry', label: '업종' },
     { key: 'address', label: '주소' },
@@ -298,14 +302,14 @@ export async function patchAddProductModalDefaults({ categoryKey, categoryOther,
 }
 
 /**
- * 저장된 템플릿과 기본값을 합쳐 실제 사용할 columnOrder, visible, columns 반환.
+ * 저장된 템플릿과 기본값을 합쳐 실제 사용할 columnOrder, visible, columns, columnCellStyles 반환.
  * @param {string} listId
- * @param {object} saved - 저장된 템플릿 (columnOrder, visible)
+ * @param {object} saved - 저장된 템플릿 (columnOrder, visible, columnCellStyles)
  * @param {{ key: string, label: string }[]} [extraColumns] - 새 고객사/연락처 추가로 정의된 커스텀 필드 컬럼 (key: customFields.xxx, label)
  */
 export function getEffectiveTemplate(listId, saved, extraColumns = []) {
   const defaults = DEFAULT_COLUMNS[listId];
-  if (!defaults) return { columnOrder: [], visible: {}, columns: [] };
+  if (!defaults) return { columnOrder: [], visible: {}, columns: [], columnCellStyles: {} };
   const defaultOrder = defaults.map((c) => c.key);
   const extraOrder = (Array.isArray(extraColumns) ? extraColumns : []).map((c) => c.key);
   const allOrder = [...defaultOrder];
@@ -331,13 +335,13 @@ export function getEffectiveTemplate(listId, saved, extraColumns = []) {
     order = order.filter((key) => key !== '_favorite');
     order.unshift('_favorite');
   }
-  /** 사업자 번호는 기업명 셀 아래에 표시하므로 열에서 제외 (저장된 템플릿 호환) */
-  if (listId === LIST_IDS.CUSTOMER_COMPANIES) {
-    order = order.filter((key) => key !== 'businessNumber');
-  }
   const visible = { ...defaultVisible, ...extraVisible, ...(saved?.visible && typeof saved.visible === 'object' ? saved.visible : {}) };
   const columns = order.map((key) => defaults.find((c) => c.key === key) || (extraColumns || []).find((c) => c.key === key)).filter(Boolean);
-  return { columnOrder: order, visible, columns };
+  const columnCellStyles =
+    saved?.columnCellStyles && typeof saved.columnCellStyles === 'object' && !Array.isArray(saved.columnCellStyles)
+      ? { ...saved.columnCellStyles }
+      : {};
+  return { columnOrder: order, visible, columns, columnCellStyles };
 }
 
 /**
@@ -368,6 +372,124 @@ export function getSavedTemplate(listId) {
     if (templates && typeof templates === 'object' && templates[listId]) return templates[listId];
   } catch (_) {}
   return null;
+}
+
+/**
+ * 세일즈 파이프라인 — `listTemplates.salesPipeline` 미저장·부분 저장 시 병합 기준.
+ * 저장값이 있으면 그 위에 덮어씀; `columnOrder`가 비어 있으면 아래 순서를 사용.
+ */
+export const DEFAULT_SALES_PIPELINE_LIST_TEMPLATE = {
+  columnOrder: [
+    'stage',
+    'customerCompanyName',
+    'contactName',
+    'productName',
+    'value',
+    '__dz_net_margin',
+    'productChannelPriceSnapshot',
+    'productCostPriceSnapshot',
+    'productListPriceSnapshot',
+    'quantity',
+    'assignedToName',
+    'startDate',
+    'contractAmountDate',
+    'invoiceAmountDate',
+    'fullCollectionCompleteDate',
+    'channelDistributor',
+    'discountAmount',
+    'collectionEntries',
+    'commissionRecipients',
+    'completionDate',
+    'contractAmount',
+    'createdAt',
+    'discountRate',
+    'expectedCloseMonth',
+    'invoiceAmount',
+    'scheduleCustomDates.field_1778161937716',
+    'targetDate',
+    'unitPrice'
+  ],
+  visible: {
+    stage: false,
+    customerCompanyName: true,
+    contactName: true,
+    productName: true,
+    value: true,
+    __dz_net_margin: false,
+    productChannelPriceSnapshot: false,
+    productCostPriceSnapshot: false,
+    productListPriceSnapshot: false,
+    quantity: true,
+    assignedToName: true,
+    startDate: true,
+    contractAmountDate: true,
+    invoiceAmountDate: false,
+    fullCollectionCompleteDate: false,
+    channelDistributor: false,
+    discountAmount: false,
+    collectionEntries: false,
+    commissionRecipients: false,
+    completionDate: false,
+    contractAmount: false,
+    createdAt: false,
+    discountRate: false,
+    expectedCloseMonth: false,
+    invoiceAmount: false,
+    'scheduleCustomDates.field_1778161937716': false,
+    targetDate: false,
+    unitPrice: false
+  },
+  assigneeMeOnly: false,
+  viewMode: 'kanban',
+  columnCellStyles: {
+    customerCompanyName: {
+      fontSize: '0.875rem',
+      fontWeight: '700'
+    },
+    assignedToName: {
+      fontWeight: '700',
+      color: '#474c52'
+    },
+    startDate: {
+      color: '#c66a53',
+      fontStyle: 'italic'
+    },
+    contractAmountDate: {
+      color: '#b04f4f',
+      fontStyle: 'italic'
+    }
+  }
+};
+
+export function getMergedSalesPipelineTemplate() {
+  const d = DEFAULT_SALES_PIPELINE_LIST_TEMPLATE;
+  const saved = getSavedTemplate(LIST_IDS.SALES_PIPELINE);
+  if (!saved || typeof saved !== 'object') {
+    return {
+      columnOrder: [...d.columnOrder],
+      visible: { ...d.visible },
+      assigneeMeOnly: d.assigneeMeOnly,
+      viewMode: d.viewMode,
+      columnCellStyles: { ...d.columnCellStyles }
+    };
+  }
+  const columnOrder =
+    Array.isArray(saved.columnOrder) && saved.columnOrder.length > 0 ? [...saved.columnOrder] : [...d.columnOrder];
+  const visible = {
+    ...d.visible,
+    ...(saved.visible && typeof saved.visible === 'object' && !Array.isArray(saved.visible) ? saved.visible : {})
+  };
+  const assigneeMeOnly = typeof saved.assigneeMeOnly === 'boolean' ? saved.assigneeMeOnly : d.assigneeMeOnly;
+  const viewMode = saved.viewMode === 'table' || saved.viewMode === 'kanban' ? saved.viewMode : d.viewMode;
+  const columnCellStyles = {
+    ...d.columnCellStyles,
+    ...(saved.columnCellStyles &&
+    typeof saved.columnCellStyles === 'object' &&
+    !Array.isArray(saved.columnCellStyles)
+      ? saved.columnCellStyles
+      : {})
+  };
+  return { columnOrder, visible, assigneeMeOnly, viewMode, columnCellStyles };
 }
 
 /**
@@ -431,12 +553,9 @@ export async function patchProductSearchModalUsage(selectedProductIds) {
   return data;
 }
 
-/** PATCH /api/auth/list-templates 호출 후 응답의 listTemplates로 crm_user 갱신 (columnOrder, visible, assigneeMeOnly) */
-export async function patchListTemplate(listId, { columnOrder, visible, assigneeMeOnly }) {
-  const payload = { listId };
-  if (columnOrder !== undefined) payload.columnOrder = columnOrder;
-  if (visible !== undefined) payload.visible = visible;
-  if (assigneeMeOnly !== undefined) payload.assigneeMeOnly = assigneeMeOnly;
+/** PATCH /api/auth/list-templates 호출 후 응답의 listTemplates로 crm_user 갱신 */
+export async function patchListTemplate(listId, fields = {}) {
+  const payload = { listId, ...fields };
   const res = await fetch(`${API_BASE}/auth/list-templates`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...getAuthHeader() },

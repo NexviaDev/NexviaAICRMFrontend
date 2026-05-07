@@ -1,8 +1,9 @@
 /* ========== Overlay (sample: backdrop-blur) ========== */
+/* 드롭존 목록 모달(.sp-dz-list-modal-overlay 1300) 위에 열리도록 */
 .opp-modal-overlay {
   position: fixed;
   inset: 0;
-  z-index: 1200;
+  z-index: 1400;
   background: rgba(15, 23, 42, 0.5);
   backdrop-filter: blur(4px);
   display: flex;
@@ -29,7 +30,7 @@
   display: flex;
   flex-direction: column;
   position: relative;
-  z-index: 1201;
+  z-index: 1401;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
 }
 
@@ -414,6 +415,66 @@
   font-size: 0.65rem;
 }
 
+.opp-form-dates-sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  grid-column: 1 / -1;
+  margin-bottom: 0.1rem;
+}
+
+.opp-form-dates-sidebar-head-title {
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: #475569;
+  letter-spacing: 0.02em;
+}
+
+.opp-form-dates-sidebar-add-def {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  padding: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.4rem;
+  background: #f8fafc;
+  color: #64748b;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.opp-form-dates-sidebar-add-def:hover {
+  background: #e0f2fe;
+  border-color: #93c5d8;
+  color: #0c4a6e;
+}
+
+.opp-form-dates-sidebar-add-def .material-symbols-outlined {
+  font-size: 1.1rem;
+}
+
+.opp-form-dates-won-banner {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 0.35rem 0.45rem;
+  font-size: 0.62rem;
+  line-height: 1.35;
+  color: #64748b;
+  background: #f8fafc;
+  border: 1px solid #e8eef3;
+  border-radius: 0.4rem;
+}
+
+.opp-input--date:disabled {
+  opacity: 0.72;
+  cursor: not-allowed;
+  background: #f4f6f8;
+}
+
 .opp-form-grid-2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -423,6 +484,72 @@
 
 .opp-form-grid-2--company-contact .opp-label {
   height: 100%;
+}
+
+.opp-label--company-contact-col {
+  min-width: 0;
+}
+
+.opp-company-subrow,
+.opp-buyer-subrow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
+  margin-top: 10px;
+}
+
+.opp-inline-snap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.opp-inline-snap > span {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.opp-input--snap-readonly,
+.opp-input--snap-readonly:disabled {
+  opacity: 1;
+  cursor: default;
+  background: #f1f5f9;
+  color: #334155;
+  border-color: #e2e8f0;
+}
+
+.opp-snap-fallback--readonly {
+  min-height: 42px;
+  border-style: solid;
+  border-color: #e2e8f0;
+  background: #f1f5f9;
+  color: #94a3b8;
+}
+
+.opp-snap-fallback {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #eef2f7;
+  color: #64748b;
+  font-size: var(--opp-f-body);
+  border: 1px dashed #cbd5e1;
+}
+
+.opp-object-id-row {
+  margin: 8px 0 0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: #94a3b8;
+  word-break: break-all;
+}
+
+.opp-object-id-row--muted {
+  color: #b8c4d0;
 }
 
 .opp-label-top {
@@ -1971,6 +2098,11 @@
     grid-template-columns: 1fr;
   }
 
+  .opp-company-subrow,
+  .opp-buyer-subrow {
+    grid-template-columns: 1fr;
+  }
+
   .opp-financial-grid .opp-unit-currency-wrap {
     grid-column: span 1;
   }
@@ -2042,4 +2174,148 @@
   .opp-form-dates-top {
     grid-template-columns: 1fr;
   }
+}
+
+/* 수주(Won) 전 갱신 후속 세일즈 선택 */
+.opp-renewal-won-dialog {
+  position: absolute;
+  inset: 0;
+  z-index: 1250;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.opp-renewal-won-dialog-panel {
+  width: 100%;
+  max-width: 28rem;
+  max-height: min(90vh, 32rem);
+  overflow: auto;
+  padding: 1.15rem 1.25rem;
+  border-radius: 0.65rem;
+  background: #fdfefe;
+  border: 1px solid rgba(172, 179, 183, 0.45);
+  box-shadow: 0 12px 32px rgba(44, 60, 72, 0.18);
+}
+
+.opp-renewal-won-dialog-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #2c6485;
+}
+
+.opp-renewal-won-dialog-lead {
+  margin: 0 0 0.85rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: #4a5c64;
+}
+
+.opp-renewal-won-preview-list {
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+  border: 1px solid rgba(184, 212, 240, 0.55);
+  border-radius: 0.5rem;
+  background: rgba(238, 243, 246, 0.65);
+}
+
+.opp-renewal-won-preview-item {
+  padding: 0.5rem 0.65rem;
+  border-bottom: 1px solid rgba(172, 179, 183, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.opp-renewal-won-preview-item:last-child {
+  border-bottom: none;
+}
+
+.opp-renewal-won-preview-name {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: #2c3437;
+}
+
+.opp-renewal-won-preview-meta {
+  font-size: 0.75rem;
+  color: #5a6b72;
+}
+
+.opp-renewal-won-fieldset {
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(172, 179, 183, 0.35);
+  border-radius: 0.5rem;
+  background: #fff;
+}
+
+.opp-renewal-won-legend {
+  padding: 0 0.25rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #3d5a73;
+}
+
+.opp-renewal-won-radio-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  margin: 0.4rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: #2c3437;
+  cursor: pointer;
+}
+
+.opp-renewal-won-radio-row input {
+  margin-top: 0.15rem;
+  flex-shrink: 0;
+  accent-color: #4a7a9a;
+}
+
+.opp-renewal-won-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.opp-renewal-won-btn {
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  padding: 0.45rem 0.85rem;
+  border-radius: 0.45rem;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.opp-renewal-won-btn--ghost {
+  background: #eef3f6;
+  border-color: rgba(172, 179, 183, 0.4);
+  color: #3d5a73;
+}
+
+.opp-renewal-won-btn--ghost:hover {
+  background: #e4ecf1;
+}
+
+.opp-renewal-won-btn--primary {
+  background: rgba(184, 212, 240, 0.55);
+  border-color: rgba(74, 122, 154, 0.35);
+  color: #1e4d66;
+}
+
+.opp-renewal-won-btn--primary:hover:not(:disabled) {
+  background: rgba(184, 212, 240, 0.8);
+}
+
+.opp-renewal-won-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }

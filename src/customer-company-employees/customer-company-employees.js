@@ -12,6 +12,7 @@ import {
   getEffectiveTemplate,
   patchListTemplate
 } from '../lib/list-templates';
+import { listColumnValueInlineStyle } from '@/lib/list-column-cell-styles';
 import './customer-company-employees.css';
 import './customer-company-employees-responsive.css';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
@@ -123,6 +124,8 @@ export default function CustomerCompanyEmployees() {
   const selectedRowsRef = useRef(new Map());
   const lastClickedIdx = useRef(null);
   const headerSelectAllRef = useRef(null);
+  /** 상세 삭제 등으로 페이지가 바뀔 때 다음 목록 요청만 로딩 표시 없이 */
+  const listFetchSilentOnceRef = useRef(false);
 
   const clearSelection = useCallback(() => {
     setSelected(new Set());
@@ -273,8 +276,12 @@ export default function CustomerCompanyEmployees() {
     setSearchParams(next, { replace: true });
   };
 
-  const fetchContacts = useCallback(async (page = 1, overrideStatus) => {
-    setLoading(true);
+  const fetchContacts = useCallback(async (page = 1, opts = {}) => {
+    const silentFromOpt = opts.silent === true;
+    const silent = silentFromOpt || listFetchSilentOnceRef.current;
+    listFetchSilentOnceRef.current = false;
+    const overrideStatus = opts.overrideStatus !== undefined ? opts.overrideStatus : '';
+    if (!silent) setLoading(true);
     try {
       const params = new URLSearchParams({ page, limit: LIMIT });
       if (appliedSearch.trim()) {
@@ -297,9 +304,46 @@ export default function CustomerCompanyEmployees() {
       setItems([]);
       setPagination((p) => ({ ...p, total: 0, totalPages: 0 }));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [appliedSearch, appliedSearchField, assigneeMeOnly]);
+
+  const handleAddContactSaved = useCallback(
+    (contact) => {
+      if (!contact || !contact._id) {
+        fetchContacts(pagination.page, { silent: true });
+        return;
+      }
+      const meId = String(me?._id || me?.id || '');
+      if (assigneeMeOnly && meId) {
+        const ids = Array.isArray(contact.assigneeUserIds) ? contact.assigneeUserIds.map(String) : [];
+        if (!ids.includes(meId)) {
+          fetchContacts(pagination.page, { silent: true });
+          return;
+        }
+      }
+      if (String(appliedSearch || '').trim()) {
+        fetchContacts(pagination.page, { silent: true });
+        return;
+      }
+      if (pagination.page !== 1) {
+        setPagination((p) => {
+          const total = (p.total || 0) + 1;
+          return { ...p, total, totalPages: Math.max(1, Math.ceil(total / (p.limit || LIMIT))) };
+        });
+        return;
+      }
+      setItems((prev) => {
+        const next = [contact, ...prev];
+        return next.length > LIMIT ? next.slice(0, LIMIT) : next;
+      });
+      setPagination((p) => {
+        const total = (p.total || 0) + 1;
+        return { ...p, total, totalPages: Math.max(1, Math.ceil(total / (p.limit || LIMIT))) };
+      });
+    },
+    [fetchContacts, pagination.page, appliedSearch, assigneeMeOnly, me, LIMIT]
+  );
 
   useEffect(() => { fetchContacts(pagination.page); }, [pagination.page, fetchContacts]);
 
@@ -345,7 +389,6 @@ export default function CustomerCompanyEmployees() {
       setDetailContactById((prev) => (
         prev?._id === rowId ? { ...prev, isFavorite: !!data.isFavorite } : prev
       ));
-      fetchContacts(pagination.page);
     } catch (_) {}
   };
 
@@ -440,7 +483,7 @@ export default function CustomerCompanyEmployees() {
     if (fromIdx === -1 || toIdx === -1) return;
     order.splice(fromIdx, 1);
     order.splice(toIdx, 0, fromKey);
-    saveTemplate({ columnOrder: order, visible: template.visible });
+    saveTemplate({ columnOrder: order, visible: template.visible, columnCellStyles: template.columnCellStyles });
   };
 
   const displayColumns = template.columns.filter((c) => template.visible[c.key]);
@@ -602,7 +645,7 @@ export default function CustomerCompanyEmployees() {
       closeDetailModal();
     }
     clearSelection();
-    await fetchContacts(pagination.page);
+    await fetchContacts(pagination.page, { silent: true });
     if (errors.length === 0) {
       window.alert(`삭제했습니다. (${ok}명)`);
     } else {
@@ -1255,7 +1298,12 @@ export default function CustomerCompanyEmployees() {
                         className={`customer-company-employees-row-clickable ${isChecked ? 'cce-row-selected' : ''}`}
                         onClick={() => openDetailModal(row)}
                       >
-                        {displayColumns.map((col) => (
+                        {displayColumns.map((col) => {
+                          const valStyle =
+                            col.key === '_check' || col.key === '_favorite'
+                              ? null
+                              : listColumnValueInlineStyle(template.columnCellStyles, col.key);
+                          return (
                           <td
                             key={col.key}
                             data-label={col.key === '_check' || col.key === '_favorite' ? '' : col.label}
@@ -1297,6 +1345,8 @@ export default function CustomerCompanyEmployees() {
                                 </span>
                               </button>
                             )}
+                            {col.key !== '_check' && col.key !== '_favorite' ? (
+                              <span className="list-col-value-style" style={valStyle || undefined}>
                             {col.key === 'company' && (() => {
                               const hasConfirmedCompany = row.customerCompanyId && String(row.customerCompanyId.businessNumber || '').trim();
                               const unconfirmed = row.company && !hasConfirmedCompany;
@@ -1409,8 +1459,11 @@ export default function CustomerCompanyEmployees() {
                               const v = row.customFields?.[fieldKey];
                               return v !== undefined && v !== null && v !== '' ? String(v) : '—';
                             })()}
+                              </span>
+                            ) : null}
                           </td>
-                        ))}
+                          );
+                        })}
                       </tr>
                     );
                   })
@@ -1485,7 +1538,9 @@ export default function CustomerCompanyEmployees() {
       {isAddModalOpen && (
         <AddContactModal
           onClose={closeAddModal}
-          onSaved={() => { fetchContacts(pagination.page); closeAddModal(); }}
+          onSaved={(payload) => {
+            handleAddContactSaved(payload);
+          }}
         />
       )}
       {settingsOpen && (
@@ -1494,6 +1549,7 @@ export default function CustomerCompanyEmployees() {
           columns={template.columns}
           visible={template.visible}
           columnOrder={template.columnOrder}
+          columnCellStyles={template.columnCellStyles}
           onSave={saveTemplate}
           onClose={() => setSettingsOpen(false)}
         />
@@ -1515,6 +1571,19 @@ export default function CustomerCompanyEmployees() {
           contact={selectedContact}
           onClose={closeDetailModal}
           onUpdated={(updatedContact) => {
+            if (updatedContact?.deletedId != null) {
+              const delId = String(updatedContact.deletedId);
+              listFetchSilentOnceRef.current = true;
+              setItems((prev) => prev.filter((c) => String(c._id) !== delId));
+              setPagination((p) => {
+                const newTotal = Math.max(0, (p.total || 0) - 1);
+                const totalPages = Math.max(1, Math.ceil(newTotal / (p.limit || LIMIT)));
+                const nextPage = Math.min(p.page, totalPages);
+                return { ...p, total: newTotal, totalPages, page: nextPage };
+              });
+              setDetailContactById(null);
+              return;
+            }
             const id = updatedContact?._id != null ? String(updatedContact._id) : null;
             if (id) {
               setItems((prev) => prev.map((c) =>
@@ -1522,7 +1591,6 @@ export default function CustomerCompanyEmployees() {
               ));
               setDetailContactById((prev) => (prev && String(prev._id) === id ? { ...prev, ...updatedContact } : prev));
             }
-            fetchContacts(pagination.page);
           }}
         />
       )}
@@ -1531,7 +1599,7 @@ export default function CustomerCompanyEmployees() {
           open
           onClose={() => setHandoverCtx(null)}
           onSubmitted={() => {
-            fetchContacts(pagination.page);
+            fetchContacts(pagination.page, { silent: true });
             clearSelection();
           }}
           targetType={handoverCtx.targetType}

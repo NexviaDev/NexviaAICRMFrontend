@@ -966,13 +966,14 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
         headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         body: JSON.stringify(payload)
       });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
         setEditError(data.error || '수정에 실패했습니다.');
         return;
       }
       setEditing(false);
-      onUpdated?.();
+      if (data && data._id) onUpdated?.(data);
+      else onUpdated?.();
     } catch (_) {
       setEditError('서버에 연결할 수 없습니다.');
     } finally {
@@ -992,7 +993,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
         headers: getAuthHeader()
       });
       if (res.ok) {
-        onUpdated?.();
+        onUpdated?.({ deletedId: String(contactId) });
         onClose?.();
       } else {
         const data = await res.json().catch(() => ({}));

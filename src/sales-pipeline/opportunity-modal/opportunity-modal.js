@@ -3,6 +3,7 @@ import CustomerCompanySearchModal from '../../customer-companies/customer-compan
 import CustomerCompanyEmployeesSearchModal from '../../customer-company-employees/customer-company-employees-search-modal/customer-company-employees-search-modal';
 import ProductSearchModal from '../product-search-modal/product-search-modal';
 import ParticipantModal from '@/shared/participant-modal/participant-modal';
+import CustomFieldsManageModal from '@/shared/custom-fields-manage-modal/custom-fields-manage-modal';
 import '../../customer-companies/customer-company-detail-modal/customer-company-detail-modal.css';
 import './opportunity-modal.css';
 import { RegisterSaleDocsCrmTable, formatDriveFileDate } from '@/shared/register-sale-docs-drive';
@@ -154,8 +155,17 @@ function computeLineDeduction(line) {
   return Math.max(0, subtotal - computeLineFinalAmount(line));
 }
 
+function priceBasisLabelsForValue(value) {
+  const opt = OPPORTUNITY_PRICE_BASIS_OPTIONS.find((o) => o.value === value);
+  return {
+    priceBasisLabel: opt?.label ?? (value === 'channel' ? '유통' : '다이렉트'),
+    priceBasisShortLabel: opt?.shortLabel != null ? String(opt.shortLabel) : ''
+  };
+}
+
 function buildLineFromProduct(product, priceBasisPref = 'consumer') {
   const basis = priceBasisPref === 'channel' ? 'channel' : 'consumer';
+  const { priceBasisLabel, priceBasisShortLabel } = priceBasisLabelsForValue(basis);
   const price = suggestedPriceFromProduct(product, basis);
   const cost = Number(product.costPrice);
   const qty = 1;
@@ -167,6 +177,8 @@ function buildLineFromProduct(product, priceBasisPref = 'consumer') {
     productName: product.name || '',
     unitPrice: price > 0 ? price.toLocaleString() : '',
     priceBasis: basis,
+    priceBasisLabel,
+    priceBasisShortLabel,
     channelDistributor: '',
     quantity: '1',
     discountRate: '',
@@ -422,8 +434,16 @@ function organizeComments(comments) {
 }
 
 export default function OpportunityModal({
-  mode, oppId, defaultStage, stageOptions, onClose, onSaved,
-  initialCustomerCompany = null, initialContact = null, initialPersonalPurchase = false
+  mode,
+  oppId,
+  defaultStage,
+  stageOptions,
+  onClose,
+  /** 저장·삭제 성공 시 API 응답 본문 또는 `{ deletedId }` — 상위에서 부분 갱신에 사용 */
+  onSaved,
+  initialCustomerCompany = null,
+  initialContact = null,
+  initialPersonalPurchase = false
 }) {
   const isEdit = mode === 'edit';
   const stageSelectOptions = Array.isArray(stageOptions) && stageOptions.length > 0 ? stageOptions : STAGE_OPTIONS;
@@ -431,17 +451,21 @@ export default function OpportunityModal({
   const [form, setForm] = useState(() => ({
     customerCompanyId: '',
     customerCompanyName: '',
+    customerCompanyAddress: '',
     customerCompanyEmployeeId: '',
     contactName: '',
+    contactPhone: '',
+    contactEmail: '',
     currency: 'KRW',
     stage: defaultStage || 'NewLead',
     description: '',
     saleDate: '',
     expectedCloseMonth: '',
-    startDate: '',
+    startDate: todayDateInputValue(),
     targetDate: '',
     contractAmount: '',
     fullCollectionCompleteDate: '',
+    licenseCertificateDeliveredDate: '',
     invoiceAmount: '',
     invoiceAmountDate: '',
     ...getInitialInternalAssignee()
@@ -487,14 +511,33 @@ export default function OpportunityModal({
   const fileInputRef = useRef(null);
   const driveRootEnsureInFlightRef = useRef(false);
   const purchaseCostEditedLineIdsRef = useRef(new Set());
+  /** 편집 로드 시 서버 스냅샷 — 참조 문서 삭제(refMissing) 상태에서 저장 시 빈 값으로 덮어쓰지 않기 위함 */
+  const snapshotsFromServerRef = useRef({
+    snapshotCompanyName: '',
+    snapshotCompanyBusinessNumber: '',
+    snapshotCompanyAddress: '',
+    snapshotContactName: '',
+    snapshotContactPhone: '',
+    snapshotContactEmail: '',
+    snapshotUnitPriceBasisLabel: '',
+    snapshotUnitPriceBasisShortLabel: ''
+  });
   const [showCompanySearchModal, setShowCompanySearchModal] = useState(false);
   const [showContactSearchModal, setShowContactSearchModal] = useState(false);
   const [showProductSearchModal, setShowProductSearchModal] = useState(false);
   const [showInternalAssigneePicker, setShowInternalAssigneePicker] = useState(false);
+  /** DB에 ObjectId는 남았으나 문서가 삭제된 경우 상세는 — 표시 */
+  const [companyRefMissing, setCompanyRefMissing] = useState(false);
+  const [contactRefMissing, setContactRefMissing] = useState(false);
   /** 사내 담당자 이름 매핑용 (/companies/overview employees) */
   const [companyEmployees, setCompanyEmployees] = useState([]);
   /** overview 응답 company.organizationChart — companyDepartment(노드 id) → 표시명 */
   const [overviewOrgChart, setOverviewOrgChart] = useState(null);
+
+  /** 회사별 추가 일정(날짜) 정의 — GET custom-field-definitions entityType salesOpportunitySchedule */
+  const [scheduleFieldDefs, setScheduleFieldDefs] = useState([]);
+  const [scheduleCustomDates, setScheduleCustomDates] = useState({});
+  const [showScheduleFieldsManageModal, setShowScheduleFieldsManageModal] = useState(false);
 
   /** ParticipantModal directory용 — overview 직원 id → _id */
   const teamMembersForParticipantModal = useMemo(
@@ -543,6 +586,9 @@ export default function OpportunityModal({
     return me?._id ? { _id: me._id } : null;
   }, []);
 
+  const canManageScheduleFieldDefs = useMemo(() => isAdminOrAboveRole(getStoredCrmUser()?.role), []);
+  const wonOnlyScheduleEditable = form.stage === 'Won';
+
   const [saving, setSaving] = useState(false);
   const [loadingOpp, setLoadingOpp] = useState(false);
   const [error, setError] = useState('');
@@ -557,6 +603,9 @@ export default function OpportunityModal({
   const [journalSummaryNotice, setJournalSummaryNotice] = useState(null);
   const oppJournalAudioInputRef = useRef(null);
   const [commentBusy, setCommentBusy] = useState(false);
+  /** 수주(Won) 직전: 갱신 후속 세일즈 생성 방식(통합/분리·단일 제품 시 생성 여부) */
+  const [renewalWonDialog, setRenewalWonDialog] = useState(null);
+
   const [commentError, setCommentError] = useState('');
   const [editingCommentId, setEditingCommentId] = useState(null);
   const [editDraft, setEditDraft] = useState('');
@@ -567,6 +616,28 @@ export default function OpportunityModal({
   const fullCollectionDateTouchedRef = useRef(false);
   /** 편집 시 GET 기회의 value(제품 행 없을 때 수주 시 계약금 자동 기입용) */
   const opportunityValueRef = useRef(0);
+
+  const fetchScheduleFieldDefs = useCallback(async () => {
+    try {
+      const res = await fetch(
+        `${API_BASE}/custom-field-definitions?entityType=salesOpportunitySchedule`,
+        { headers: getAuthHeader() }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(data.items)) setScheduleFieldDefs(data.items);
+      else setScheduleFieldDefs([]);
+    } catch {
+      setScheduleFieldDefs([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchScheduleFieldDefs();
+  }, [fetchScheduleFieldDefs]);
+
+  useEffect(() => {
+    if (!isEdit || !oppId) setScheduleCustomDates({});
+  }, [isEdit, oppId]);
 
   const currentUserId = useMemo(() => getCurrentUserId(), []);
   const canDeleteOpportunity = useMemo(() => isAdminOrAboveRole(getStoredCrmUser()?.role), []);
@@ -606,8 +677,24 @@ export default function OpportunityModal({
       const valueNum = Math.max(0, Number(data.value)) || 0;
       opportunityValueRef.current = valueNum;
       setFetchedOppValue(valueNum);
+      snapshotsFromServerRef.current = {
+        snapshotCompanyName: data.snapshotCompanyName || '',
+        snapshotCompanyBusinessNumber: data.snapshotCompanyBusinessNumber || '',
+        snapshotCompanyAddress: data.snapshotCompanyAddress || '',
+        snapshotContactName: data.snapshotContactName || '',
+        snapshotContactPhone: data.snapshotContactPhone || '',
+        snapshotContactEmail: data.snapshotContactEmail || '',
+        snapshotUnitPriceBasisLabel: data.snapshotUnitPriceBasisLabel || '',
+        snapshotUnitPriceBasisShortLabel: data.snapshotUnitPriceBasisShortLabel || ''
+      };
       const cc = data.customerCompanyId;
       const emp = data.customerCompanyEmployeeId;
+      const ccRefMissing = Boolean(cc && cc.refMissing === true);
+      const ccOk = Boolean(cc && !ccRefMissing);
+      const empRefMissing = Boolean(emp && emp.refMissing === true);
+      const empOk = Boolean(emp && !empRefMissing);
+      setCompanyRefMissing(ccRefMissing);
+      setContactRefMissing(empRefMissing);
       const ccIdHas = !!(cc?._id || cc);
       setPersonalPurchase(!ccIdHas);
       const product = data.productId;
@@ -623,25 +710,37 @@ export default function OpportunityModal({
       const ym = data.expectedCloseMonth != null ? String(data.expectedCloseMonth).trim() : '';
       const contractAmountValue = Number(data.contractAmount) > 0 ? Number(data.contractAmount).toLocaleString() : '';
       const invoiceAmountValue = Number(data.invoiceAmount) > 0 ? Number(data.invoiceAmount).toLocaleString() : '';
+      const ccIdResolved = cc == null ? '' : cc._id != null ? String(cc._id) : String(cc);
+      const empIdResolved = emp == null ? '' : emp._id != null ? String(emp._id) : String(emp);
       setForm({
-        customerCompanyId: cc?._id || cc || '',
-        customerCompanyName: cc?.name || '',
-        customerCompanyEmployeeId: emp?._id || emp || '',
-        contactName: data.contactName || '',
+        customerCompanyId: ccIdResolved,
+        customerCompanyName: ccOk ? String(cc.name || '') : '',
+        customerCompanyAddress: ccOk ? String(cc.address ?? '') : '',
+        customerCompanyEmployeeId: empIdResolved,
+        contactName: empOk ? String(emp.name || data.contactName || '') : data.contactName || '',
+        contactPhone: empOk ? String(emp.phone ?? '') : '',
+        contactEmail: empOk ? String(emp.email ?? '') : '',
         currency: data.currency || 'KRW',
         stage: loadedStage,
         description: data.description || '',
         saleDate: toDateInputValue(data.saleDate) || '',
         expectedCloseMonth: /^\d{4}-\d{2}$/.test(ym) ? ym : '',
-        startDate: toDateInputValue(data.startDate),
+        startDate: toDateInputValue(data.startDate) || todayDateInputValue(),
         targetDate: toDateInputValue(data.targetDate),
         contractAmount: contractAmountValue,
         fullCollectionCompleteDate: toDateInputValue(data.fullCollectionCompleteDate),
+        licenseCertificateDeliveredDate: toDateInputValue(data.licenseCertificateDeliveredDate),
         invoiceAmount: invoiceAmountValue,
         invoiceAmountDate: toDateInputValue(data.invoiceAmountDate),
         assignedToUserId: atId,
         assignedToName: (data.assignedToName && String(data.assignedToName).trim()) || ''
       });
+      const scRaw = data.scheduleCustomDates && typeof data.scheduleCustomDates === 'object' ? data.scheduleCustomDates : {};
+      const nextScheduleCustom = {};
+      for (const k of Object.keys(scRaw)) {
+        nextScheduleCustom[k] = toDateInputValue(scRaw[k]);
+      }
+      setScheduleCustomDates(nextScheduleCustom);
       const loadedCollections = Array.isArray(data.collectionEntries) ? data.collectionEntries : [];
       setCollectionEntries(
         loadedCollections.length > 0
@@ -664,12 +763,19 @@ export default function OpportunityModal({
         const amt = li.discountAmount ?? 0;
         const snapCost = Number(li.productCostPriceSnapshot) || 0;
         const pc = snapCost > 0 && qty > 0 ? Math.round(snapCost * qty).toLocaleString() : '';
+        const priceBasis = li.unitPriceBasis === 'channel' ? 'channel' : 'consumer';
+        const fb = priceBasisLabelsForValue(priceBasis);
         return {
           lineId: `loaded-${idx}-${pid || idx}`,
           productId: pid ? String(pid) : '',
           productName: li.productName || li.productId?.name || '',
           unitPrice: unit > 0 ? unit.toLocaleString() : '',
-          priceBasis: li.unitPriceBasis === 'channel' ? 'channel' : 'consumer',
+          priceBasis,
+          priceBasisLabel: String(li.unitPriceBasisLabel || '').trim() || fb.priceBasisLabel,
+          priceBasisShortLabel:
+            li.unitPriceBasisShortLabel != null && String(li.unitPriceBasisShortLabel).trim()
+              ? String(li.unitPriceBasisShortLabel).trim()
+              : fb.priceBasisShortLabel,
           channelDistributor: String(li.channelDistributor || '').trim(),
           quantity: String(qty),
           discountRate: rate > 0 ? String(rate) : '',
@@ -716,13 +822,17 @@ export default function OpportunityModal({
         const snapCost = Number(data.productCostPriceSnapshot) || 0;
         const pc = snapCost > 0 && qty > 0 ? Math.round(snapCost * qty).toLocaleString() : '';
         if (loadedProductId) {
+          const legBasis = data.unitPriceBasis === 'channel' ? 'channel' : 'consumer';
+          const legLabs = priceBasisLabelsForValue(legBasis);
           setLineItems([
             {
               lineId: `legacy-${loadedProductId}`,
               productId: String(loadedProductId),
               productName: product?.name || '',
               unitPrice: unitForDisplay > 0 ? unitForDisplay.toLocaleString() : '',
-              priceBasis: data.unitPriceBasis === 'channel' ? 'channel' : 'consumer',
+              priceBasis: legBasis,
+              priceBasisLabel: legLabs.priceBasisLabel,
+              priceBasisShortLabel: legLabs.priceBasisShortLabel,
               channelDistributor: String(data.channelDistributor || '').trim(),
               quantity: String(qty),
               discountRate: rate > 0 ? String(rate) : '',
@@ -746,12 +856,12 @@ export default function OpportunityModal({
           setProductById({});
         }
       }
-      setBusinessNumber(String(cc?.businessNumber ?? ''));
+      setBusinessNumber(ccOk ? String(cc.businessNumber ?? '') : '');
       setDriveFolderLink(String(data.driveFolderLink || ''));
       setDriveFolderId(getDriveFolderIdFromLink(String(data.driveFolderLink || '')));
-      const ccIdLoad = cc?._id || cc || '';
-      const empIdLoad = emp?._id || emp || '';
-      const bnLoad = String(cc?.businessNumber ?? '').trim();
+      const ccIdLoad = ccIdResolved || '';
+      const empIdLoad = empIdResolved || '';
+      const bnLoad = ccOk ? String(cc.businessNumber ?? '').trim() : '';
       if (ccIdLoad && bnLoad) {
         try {
           const cres = await fetch(`${API_BASE}/customer-companies/${ccIdLoad}`, { headers: getAuthHeader() });
@@ -834,9 +944,11 @@ export default function OpportunityModal({
       setForm((f) => ({
         ...f,
         customerCompanyId: initialCustomerCompany?._id || f.customerCompanyId,
-        customerCompanyName: initialCustomerCompany?.name || f.customerCompanyName
+        customerCompanyName: initialCustomerCompany?.name || f.customerCompanyName,
+        customerCompanyAddress: String(initialCustomerCompany?.address ?? f.customerCompanyAddress ?? '')
       }));
       setBusinessNumber(String(initialCustomerCompany?.businessNumber ?? ''));
+      setCompanyRefMissing(false);
     } else if (initialContact?._id || initialContact?.name) {
       const icc = initialContact?.customerCompanyId;
       const hasIc = !!(icc && (typeof icc === 'object' ? icc._id : icc));
@@ -846,14 +958,20 @@ export default function OpportunityModal({
       setForm((f) => ({
         ...f,
         contactName: initialContact?.name || f.contactName,
+        contactPhone: String(initialContact?.phone ?? f.contactPhone ?? ''),
+        contactEmail: String(initialContact?.email ?? f.contactEmail ?? ''),
         customerCompanyEmployeeId: initialContact?._id || f.customerCompanyEmployeeId,
         ...(attachCompany
           ? {
               customerCompanyId: typeof icc === 'object' ? icc._id : icc,
-              customerCompanyName: (typeof icc === 'object' ? icc.name : '') || initialContact?.customerCompanyName || ''
+              customerCompanyName: (typeof icc === 'object' ? icc.name : '') || initialContact?.customerCompanyName || '',
+              customerCompanyAddress: String(
+                (typeof icc === 'object' ? icc.address : '') || f.customerCompanyAddress || ''
+              )
             }
-          : { customerCompanyId: '', customerCompanyName: '' })
+          : { customerCompanyId: '', customerCompanyName: '', customerCompanyAddress: '' })
       }));
+      setContactRefMissing(false);
       setBusinessNumber(
         attachCompany
           ? String(
@@ -898,6 +1016,10 @@ export default function OpportunityModal({
     setForm((f) => ({ ...f, [key]: val }));
     setError('');
   };
+
+  const handleScheduleCustomDateChange = useCallback((key, val) => {
+    setScheduleCustomDates((prev) => ({ ...prev, [key]: val }));
+  }, []);
 
   const handleStageButtonClick = (nextStage) => {
     setError('');
@@ -1581,6 +1703,15 @@ export default function OpportunityModal({
         setDriveUploadNotice(`${uploadedOkCount}개 파일을 업로드했습니다. CRM 기록 목록에도 저장되었습니다.`);
         window.setTimeout(() => setDriveUploadNotice(''), 8000);
         await refreshCrmDriveUploads();
+        if (form.stage === 'Won') {
+          const recordToday = window.confirm(
+            '파일 업로드가 완료되었습니다.\n\n라이선스 증서를 전달한 것으로 보고, 오늘 날짜를 「라이선스 증서 전달 날짜」에 넣을까요?\n\n(위쪽 일정란에서 언제든 수정·비울 수 있으며, 저장 버튼을 눌러야 서버에 반영됩니다.)'
+          );
+          if (recordToday) {
+            const today = todayDateInputValue();
+            setForm((f) => ({ ...f, licenseCertificateDeliveredDate: today }));
+          }
+        }
       }
     } catch (err) {
       setDriveError(err?.message || 'Drive에 연결할 수 없습니다.');
@@ -1600,7 +1731,9 @@ export default function OpportunityModal({
     ensureOppDriveRoot,
     addDocumentRef,
     refreshCrmDriveUploads,
-    refreshDriveFolderList
+    refreshDriveFolderList,
+    setForm,
+    form.stage
   ]);
 
   const handleRefreshDriveDocList = useCallback(async () => {
@@ -1857,9 +1990,13 @@ export default function OpportunityModal({
 
       const sd = String(form.saleDate || '').trim();
       let saleDatePayload = null;
-      if (sd) {
-        const parsed = new Date(`${sd}T12:00:00`);
-        saleDatePayload = !Number.isNaN(parsed.getTime()) ? parsed.toISOString() : null;
+      if (selectedStage === 'Won') {
+        if (sd) {
+          const parsed = new Date(`${sd}T12:00:00`);
+          saleDatePayload = !Number.isNaN(parsed.getTime()) ? parsed.toISOString() : null;
+        }
+      } else {
+        saleDatePayload = null;
       }
 
       const toIsoDate = (v) => {
@@ -1877,22 +2014,30 @@ export default function OpportunityModal({
           ? ymFallback
           : '';
 
-      const lineItemsPayload = lineItems.map((li) => ({
-        productId: li.productId || null,
-        productName: li.productName?.trim() || '',
-        unitPrice: parseNumber(li.unitPrice),
-        unitPriceBasis: li.priceBasis === 'channel' ? 'channel' : 'consumer',
-        channelDistributor: li.priceBasis === 'channel' ? String(li.channelDistributor || '').trim() : '',
-        quantity: Math.max(0, Number(li.quantity) || 1),
-        discountRate: Math.max(0, Math.min(100, Number(li.discountRate) || 0)),
-        discountAmount: parseNumber(li.discountAmount) || 0,
-        commissionRecipients: (Array.isArray(li.commissionRecipients) ? li.commissionRecipients : [])
-          .map((r) => ({
-            remarks: String(r.remarks || '').trim().slice(0, 2000),
-            commissionAmount: parseNumber(r.commissionAmount) || 0
-          }))
-          .filter((r) => r.remarks || r.commissionAmount > 0)
-      }));
+      const lineItemsPayload = lineItems.map((li) => {
+        const basis = li.priceBasis === 'channel' ? 'channel' : 'consumer';
+        const fb = priceBasisLabelsForValue(basis);
+        return {
+          productId: li.productId || null,
+          productName: li.productName?.trim() || '',
+          unitPrice: parseNumber(li.unitPrice),
+          unitPriceBasis: basis,
+          unitPriceBasisLabel: String(li.priceBasisLabel || '').trim().slice(0, 80) || fb.priceBasisLabel,
+          unitPriceBasisShortLabel:
+            String(li.priceBasisShortLabel != null ? li.priceBasisShortLabel : '').trim().slice(0, 80) ||
+            fb.priceBasisShortLabel,
+          channelDistributor: li.priceBasis === 'channel' ? String(li.channelDistributor || '').trim() : '',
+          quantity: Math.max(0, Number(li.quantity) || 1),
+          discountRate: Math.max(0, Math.min(100, Number(li.discountRate) || 0)),
+          discountAmount: parseNumber(li.discountAmount) || 0,
+          commissionRecipients: (Array.isArray(li.commissionRecipients) ? li.commissionRecipients : [])
+            .map((r) => ({
+              remarks: String(r.remarks || '').trim().slice(0, 2000),
+              commissionAmount: parseNumber(r.commissionAmount) || 0
+            }))
+            .filter((r) => r.remarks || r.commissionAmount > 0)
+        };
+      });
       const collectionEntriesPayload = collectionEntries
         .map((entry) => {
           const amount = parseNumber(entry.amount);
@@ -1902,11 +2047,53 @@ export default function OpportunityModal({
         })
         .filter(Boolean);
 
+      const ccIdPayload = personalPurchase ? null : form.customerCompanyId || null;
+      const empIdPayload = form.customerCompanyEmployeeId || null;
+      const snap = snapshotsFromServerRef.current || {};
       const body = {
         title: titleToUse,
-        customerCompanyId: form.customerCompanyId || null,
-        customerCompanyEmployeeId: form.customerCompanyEmployeeId || null,
+        customerCompanyId: ccIdPayload,
+        customerCompanyEmployeeId: empIdPayload,
         contactName: form.contactName.trim(),
+        snapshotCompanyName: ccIdPayload
+          ? String(form.customerCompanyName || '').trim() ||
+            (companyRefMissing ? String(snap.snapshotCompanyName || '').trim() : '')
+          : '',
+        snapshotCompanyBusinessNumber: ccIdPayload
+          ? String(businessNumber || '').trim() ||
+            (companyRefMissing ? String(snap.snapshotCompanyBusinessNumber || '').trim() : '')
+          : '',
+        snapshotCompanyAddress: ccIdPayload
+          ? String(form.customerCompanyAddress || '').trim() ||
+            (companyRefMissing ? String(snap.snapshotCompanyAddress || '').trim() : '')
+          : '',
+        snapshotContactPhone: empIdPayload
+          ? String(form.contactPhone || '').trim() ||
+            (contactRefMissing ? String(snap.snapshotContactPhone || '').trim() : '')
+          : '',
+        snapshotContactEmail: empIdPayload
+          ? String(form.contactEmail || '').trim() ||
+            (contactRefMissing ? String(snap.snapshotContactEmail || '').trim() : '')
+          : '',
+        snapshotContactName: empIdPayload
+          ? String(form.contactName || '').trim() ||
+            (contactRefMissing ? String(snap.snapshotContactName || '').trim() : '')
+          : '',
+        snapshotUnitPriceBasisLabel: (() => {
+          const li0 = lineItems[0];
+          if (!li0) return String(snap.snapshotUnitPriceBasisLabel || '').trim();
+          const fb = priceBasisLabelsForValue(li0.priceBasis === 'channel' ? 'channel' : 'consumer');
+          return String(li0.priceBasisLabel || '').trim().slice(0, 80) || fb.priceBasisLabel;
+        })(),
+        snapshotUnitPriceBasisShortLabel: (() => {
+          const li0 = lineItems[0];
+          if (!li0) return String(snap.snapshotUnitPriceBasisShortLabel || '').trim();
+          const fb = priceBasisLabelsForValue(li0.priceBasis === 'channel' ? 'channel' : 'consumer');
+          return (
+            String(li0.priceBasisShortLabel != null ? li0.priceBasisShortLabel : '').trim().slice(0, 80) ||
+            fb.priceBasisShortLabel
+          );
+        })(),
         lineItems: lineItemsPayload,
         currency: form.currency,
         stage: selectedStage,
@@ -1919,16 +2106,64 @@ export default function OpportunityModal({
         startDate: toIsoDate(form.startDate),
         targetDate: toIsoDate(form.targetDate),
         contractAmount: parseNumber(form.contractAmount) || 0,
-        contractAmountDate: toIsoDate(form.saleDate),
+        contractAmountDate: selectedStage === 'Won' ? toIsoDate(form.saleDate) : null,
         fullCollectionCompleteDate: toIsoDate(form.fullCollectionCompleteDate),
+        licenseCertificateDeliveredDate: toIsoDate(form.licenseCertificateDeliveredDate),
         invoiceAmount: parseNumber(form.invoiceAmount) || 0,
         invoiceAmountDate: toIsoDate(form.invoiceAmountDate),
         collectionEntries: collectionEntriesPayload
       };
+      const scheduleDateDefs = scheduleFieldDefs.filter((d) => d.type === 'date');
+      if (scheduleDateDefs.length > 0) {
+        if (selectedStage === 'Won') {
+          body.scheduleCustomDates = Object.fromEntries(
+            scheduleDateDefs.map((d) => [d.key, toIsoDate(scheduleCustomDates[d.key]) || null])
+          );
+        } else {
+          const scPayload = {};
+          for (const d of scheduleDateDefs) {
+            if (!d.options?.editableBeforeWon) continue;
+            scPayload[d.key] = toIsoDate(scheduleCustomDates[d.key]) || null;
+          }
+          if (Object.keys(scPayload).length > 0) {
+            body.scheduleCustomDates = scPayload;
+          }
+        }
+      }
       const url = isEdit
         ? `${API_BASE}/sales-opportunities/${oppId}`
         : `${API_BASE}/sales-opportunities`;
       const method = isEdit ? 'PATCH' : 'POST';
+
+      const transitioningToWon = selectedStage === 'Won' && !(isEdit && stageAtLoadRef.current === 'Won');
+      if (transitioningToWon) {
+        const previewRes = await fetch(`${API_BASE}/sales-opportunities/renewal-won-preview`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+          body: JSON.stringify({
+            saleDate: body.saleDate,
+            lineItems: body.lineItems
+          })
+        });
+        const preview = await previewRes.json().catch(() => ({}));
+        if (
+          previewRes.ok &&
+          preview.eligible &&
+          Array.isArray(preview.products) &&
+          preview.products.length > 0
+        ) {
+          setRenewalWonDialog({
+            preview,
+            payload: body,
+            url,
+            method,
+            layoutChoice: 'split',
+            createFollowUps: true
+          });
+          return;
+        }
+      }
+
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
@@ -1938,7 +2173,11 @@ export default function OpportunityModal({
       if (!res.ok) {
         throw new Error(savedPayload.error || '저장 실패');
       }
-      if (savedPayload.renewalCalendar?.followUpOpportunityId) {
+      const renewalFollowIds = savedPayload.renewalCalendar?.followUpOpportunityIds;
+      const hasRenewalFollowUps =
+        Boolean(savedPayload.renewalCalendar?.followUpOpportunityId) ||
+        (Array.isArray(renewalFollowIds) && renewalFollowIds.length > 0);
+      if (hasRenewalFollowUps) {
         try {
           window.dispatchEvent(new CustomEvent('nexvia-crm-pipeline-refresh'));
         } catch {
@@ -1952,7 +2191,58 @@ export default function OpportunityModal({
           /* ignore */
         }
       }
-      onSaved();
+      onSaved?.(savedPayload);
+      onClose();
+    } catch (err) {
+      setError(err.message || '저장에 실패했습니다.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const cancelRenewalWonDialog = () => setRenewalWonDialog(null);
+
+  const confirmRenewalWonDialog = async () => {
+    if (!renewalWonDialog) return;
+    const { payload, url, method, layoutChoice, createFollowUps } = renewalWonDialog;
+    setRenewalWonDialog(null);
+    setSaving(true);
+    setError('');
+    try {
+      const requestBody = {
+        ...payload,
+        renewalFollowUpLayout: layoutChoice,
+        renewalFollowUpCreateOpportunities: createFollowUps
+      };
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+        body: JSON.stringify(requestBody)
+      });
+      const savedPayload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(savedPayload.error || '저장 실패');
+      }
+      const renewalFollowIds = savedPayload.renewalCalendar?.followUpOpportunityIds;
+      const hasRenewalFollowUps =
+        Boolean(savedPayload.renewalCalendar?.followUpOpportunityId) ||
+        (Array.isArray(renewalFollowIds) && renewalFollowIds.length > 0);
+      if (hasRenewalFollowUps) {
+        try {
+          window.dispatchEvent(new CustomEvent('nexvia-crm-pipeline-refresh'));
+        } catch {
+          /* ignore */
+        }
+      }
+      const savedStage = String(requestBody.stage || '');
+      if (isEdit && stageAtLoadRef.current === 'Won' && savedStage !== 'Won') {
+        try {
+          window.dispatchEvent(new CustomEvent('nexvia-crm-calendar-refresh'));
+        } catch {
+          /* ignore */
+        }
+      }
+      onSaved?.(savedPayload);
       onClose();
     } catch (err) {
       setError(err.message || '저장에 실패했습니다.');
@@ -1985,7 +2275,7 @@ export default function OpportunityModal({
       } catch {
         /* ignore */
       }
-      onSaved();
+      onSaved?.({ deletedId: String(oppId) });
       onClose();
     } catch {
       /* ignore */
@@ -2550,14 +2840,16 @@ export default function OpportunityModal({
                     void handleSubmit(e);
                   }}
                 >
-              {/* 고객사 / 담당자 2열 — 라벨·줄 높이 동일 */}
+              {/* 고객사 / 구매 담당자 2열 — 하단에 사업자번호·주소 / 연락처·이메일(읽기 전용) */}
               <div className="opp-form-grid-2 opp-form-grid-2--company-contact">
-                <div className="opp-label">
+                <div className="opp-label opp-label--company-contact-col">
                   <div className="opp-label-top">
                     <span>고객사</span>
                   </div>
                   <div className={'opp-company-wrap' + (personalPurchase ? ' opp-company-wrap--disabled' : '')}>
-                    <span className="opp-company-display">{form.customerCompanyName || '고객사 선택'}</span>
+                    <span className="opp-company-display">
+                      {companyRefMissing ? '—' : form.customerCompanyName || '고객사 선택'}
+                    </span>
                     <button
                       type="button"
                       className="opp-company-search-btn"
@@ -2568,8 +2860,48 @@ export default function OpportunityModal({
                       검색
                     </button>
                   </div>
+                  <div className="opp-company-subrow" aria-label="고객사 사업자번호 및 주소(검색으로만 갱신)">
+                    <label className="opp-inline-snap">
+                      <span>사업자번호</span>
+                      {personalPurchase ? (
+                        <div className="opp-snap-fallback opp-snap-fallback--readonly" title="개인 구매 시 고객사 없음">—</div>
+                      ) : companyRefMissing ? (
+                        <div className="opp-snap-fallback opp-snap-fallback--readonly" title="연결된 고객사 문서를 찾을 수 없습니다">—</div>
+                      ) : (
+                        <input
+                          type="text"
+                          className="opp-input opp-input--snap-readonly"
+                          value={businessNumber}
+                          readOnly
+                          disabled
+                          tabIndex={-1}
+                          autoComplete="off"
+                          aria-readonly="true"
+                        />
+                      )}
+                    </label>
+                    <label className="opp-inline-snap">
+                      <span>주소</span>
+                      {personalPurchase ? (
+                        <div className="opp-snap-fallback opp-snap-fallback--readonly" title="개인 구매 시 고객사 없음">—</div>
+                      ) : companyRefMissing ? (
+                        <div className="opp-snap-fallback opp-snap-fallback--readonly" title="연결된 고객사 문서를 찾을 수 없습니다">—</div>
+                      ) : (
+                        <input
+                          type="text"
+                          className="opp-input opp-input--snap-readonly"
+                          value={form.customerCompanyAddress}
+                          readOnly
+                          disabled
+                          tabIndex={-1}
+                          autoComplete="street-address"
+                          aria-readonly="true"
+                        />
+                      )}
+                    </label>
+                  </div>
                 </div>
-                <div className="opp-label">
+                <div className="opp-label opp-label--company-contact-col">
                   <div className="opp-label-top opp-label-top--with-personal-btn">
                     <span>구매 담당자</span>
                     <label className="opp-personal-purchase-check">
@@ -2581,19 +2913,63 @@ export default function OpportunityModal({
                           const next = e.target.checked;
                           setPersonalPurchase(next);
                           if (next) {
-                            setForm((f) => ({ ...f, customerCompanyId: '', customerCompanyName: '' }));
+                            setForm((f) => ({
+                              ...f,
+                              customerCompanyId: '',
+                              customerCompanyName: '',
+                              customerCompanyAddress: ''
+                            }));
                             setBusinessNumber('');
+                            setCompanyRefMissing(false);
                           }
                         }}
                       />
                     </label>
                   </div>
                   <div className="opp-company-wrap">
-                    <span className="opp-company-display">{form.contactName || '담당자 선택'}</span>
+                    <span className="opp-company-display">
+                      {contactRefMissing ? '—' : form.contactName || '담당자 선택'}
+                    </span>
                     <button type="button" className="opp-company-search-btn" onClick={() => setShowContactSearchModal(true)}>
                       <span className="material-symbols-outlined">search</span>
                       검색
                     </button>
+                  </div>
+                  <div className="opp-buyer-subrow" aria-label="구매 담당자 연락처 및 이메일(검색으로만 갱신)">
+                    <label className="opp-inline-snap">
+                      <span>연락처</span>
+                      {contactRefMissing ? (
+                        <div className="opp-snap-fallback opp-snap-fallback--readonly" title="연결된 연락처 문서를 찾을 수 없습니다">—</div>
+                      ) : (
+                        <input
+                          type="text"
+                          className="opp-input opp-input--snap-readonly"
+                          value={form.contactPhone}
+                          readOnly
+                          disabled
+                          tabIndex={-1}
+                          autoComplete="tel"
+                          aria-readonly="true"
+                        />
+                      )}
+                    </label>
+                    <label className="opp-inline-snap">
+                      <span>이메일</span>
+                      {contactRefMissing ? (
+                        <div className="opp-snap-fallback opp-snap-fallback--readonly" title="연결된 연락처 문서를 찾을 수 없습니다">—</div>
+                      ) : (
+                        <input
+                          type="email"
+                          className="opp-input opp-input--snap-readonly"
+                          value={form.contactEmail}
+                          readOnly
+                          disabled
+                          tabIndex={-1}
+                          autoComplete="email"
+                          aria-readonly="true"
+                        />
+                      )}
+                    </label>
                   </div>
                 </div>
               </div>
@@ -2702,6 +3078,8 @@ export default function OpportunityModal({
                             const sug = product ? suggestedPriceFromProduct(product, basis) : 0;
                             updateLine(line.lineId, {
                               priceBasis: basis,
+                              priceBasisLabel: opt.label,
+                              priceBasisShortLabel: opt.shortLabel != null ? String(opt.shortLabel) : '',
                               channelDistributor: basis !== 'channel' ? '' : line.channelDistributor,
                               unitPrice: product && sug > 0 ? sug.toLocaleString() : line.unitPrice
                             });
@@ -3024,8 +3402,7 @@ export default function OpportunityModal({
                     onDragEnter={handleDocsDragEnter}
                     onDragOver={handleDocsDragOver}
                     onDragLeave={handleDocsDragLeave}
-                    onDrop={handleDocsDrop}
-                  >
+                    onDrop={handleDocsDrop}>
                     <div className="opp-register-sale-docs-crm-title-row">
                       <h4 className="register-sale-docs-crm-uploads-title">
                         <span className="material-symbols-outlined">history_edu</span>
@@ -3047,7 +3424,7 @@ export default function OpportunityModal({
                       ) : null}
                     </div>
                     <p className="register-sale-docs-crm-uploads-hint">
-                      CRM에 기록된 파일과, 같은 폴더를 Drive API로 조회한 항목을 합쳐 표시합니다. Drive 웹에서만 올린 파일을 CRM 저장 목록(MongoDB)에도 넣으려면 「목록 새로고침」으로 동기화하세요. 제품별 하위 폴더는 만들지 않습니다.
+                      CRM에 기록된 파일과, 같은 폴더를 Drive API로 조회한 항목을 합쳐 표시합니다. Drive 웹에서만 올린 파일을 CRM 저장 목록(MongoDB)에도 넣으려면 「목록 새로고침」으로 동기화하세요. 제품별 하위 폴더는 만들지 않습니다. 이 창에서 파일을 올리면 완료 후 「라이선스 증서 전달 날짜」를 오늘로 기록할지 묻습니다.
                     </p>
                     {driveListError ? (
                       <p className="register-sale-docs-error" role="alert">
@@ -3218,6 +3595,22 @@ export default function OpportunityModal({
                 </form>
                 <aside className="opp-modal-form-finance" aria-label="기회 일정 및 계약·계산서·수금">
                   <div className="opp-form-dates-top opp-form-dates-top--sidebar" aria-label="기회 일정">
+                    <div className="opp-form-dates-sidebar-head">
+                      <span className="opp-form-dates-sidebar-head-title">기회 일정</span>
+                      {canManageScheduleFieldDefs ? (
+                        <button
+                          type="button"
+                          className="opp-form-dates-sidebar-add-def"
+                          title="회사별 추가 일정 항목 정의"
+                          aria-label="회사별 추가 일정 항목 정의"
+                          onClick={() => setShowScheduleFieldsManageModal(true)}
+                        >
+                          <span className="material-symbols-outlined" aria-hidden>
+                            add
+                          </span>
+                        </button>
+                      ) : null}
+                    </div>
                     <div className="opp-form-dates-top-field">
                       <span className="opp-form-dates-top-label">시작일</span>
                       <input
@@ -3236,6 +3629,11 @@ export default function OpportunityModal({
                         onChange={(e) => handleChange('targetDate', e.target.value)}
                       />
                     </div>
+                    {!wonOnlyScheduleEditable ? (
+                      <p className="opp-form-dates-won-banner">
+                        계약일·전체 완료·증서 전달은 <strong>수주 성공(Won)</strong> 단계에서만 편집할 수 있습니다. 회사 맞춤 일정은 정의에서 &quot;수주 전&quot;으로 설정한 항목만 지금 단계에서 편집할 수 있습니다.
+                      </p>
+                    ) : null}
                     <div className="opp-form-dates-top-field">
                       <span className="opp-form-dates-top-label">계약일</span>
                       <input
@@ -3244,6 +3642,7 @@ export default function OpportunityModal({
                         value={form.saleDate}
                         onChange={(e) => handleChange('saleDate', e.target.value)}
                         aria-label="계약일"
+                        disabled={!wonOnlyScheduleEditable}
                       />
                     </div>
                     <div className="opp-form-dates-top-field opp-form-dates-top-field--block">
@@ -3257,11 +3656,47 @@ export default function OpportunityModal({
                           handleChange('fullCollectionCompleteDate', e.target.value);
                         }}
                         aria-label="전체 완료 날짜"
+                        disabled={!wonOnlyScheduleEditable}
                       />
                       <p className="opp-form-dates-top-hint">
-                        수금 누적이 계약 금액 이상이 되면, 수금일 중 가장 늦은 날짜로 자동 채워집니다. 필요 시 수정할 수 있습니다.
+                        수금 누적이 계약 금액 이상이 되면, 수금일 중 가장 늦은 날짜로 자동 채워집니다.
+                        {wonOnlyScheduleEditable ? ' 필요 시 수정할 수 있습니다.' : ''}
                       </p>
                     </div>
+                    <div className="opp-form-dates-top-field opp-form-dates-top-field--block">
+                      <span className="opp-form-dates-top-label">라이선스 증서 전달 날짜</span>
+                      <input
+                        type="date"
+                        className="opp-input opp-input--date"
+                        value={form.licenseCertificateDeliveredDate}
+                        onChange={(e) => handleChange('licenseCertificateDeliveredDate', e.target.value)}
+                        aria-label="라이선스 증서 전달 날짜"
+                        disabled={!wonOnlyScheduleEditable}
+                      />
+                      <p className="opp-form-dates-top-hint">
+                        증서를 고객에게 넘긴 날을 기록합니다.
+                        {wonOnlyScheduleEditable
+                          ? ' 문서 영역에서 파일을 올리면 오늘 날짜로 채울지 확인 창이 뜹니다.'
+                          : ' 수주 성공 후에는 문서 업로드 시 오늘 날짜 반영 여부를 묻습니다.'}
+                      </p>
+                    </div>
+                    {scheduleFieldDefs.filter((d) => d.type === 'date').map((def) => {
+                      const scheduleFieldEditable =
+                        wonOnlyScheduleEditable || Boolean(def.options?.editableBeforeWon);
+                      return (
+                      <div key={def._id || def.key} className="opp-form-dates-top-field opp-form-dates-top-field--block">
+                        <span className="opp-form-dates-top-label">{def.label || def.key}</span>
+                        <input
+                          type="date"
+                          className="opp-input opp-input--date"
+                          value={scheduleCustomDates[def.key] || ''}
+                          onChange={(e) => handleScheduleCustomDateChange(def.key, e.target.value)}
+                          aria-label={def.label || def.key}
+                          disabled={!scheduleFieldEditable}
+                        />
+                      </div>
+                      );
+                    })}
                   </div>
                   <section className="opp-finance-section">
                     <div className="opp-finance-heading">계약·계산서·수금 관리</div>
@@ -3383,16 +3818,35 @@ export default function OpportunityModal({
             </div>
           </>
         )}
+        {showScheduleFieldsManageModal ? (
+          <CustomFieldsManageModal
+            entityType="salesOpportunitySchedule"
+            fixedType="date"
+            title="기회 일정 — 회사 맞춤 항목"
+            description="추가 날짜 항목의 표시 이름만 입력합니다. 아래에서 수주 전 입력 가능 여부를 선택할 수 있으며, 필드 키는 자동으로 부여됩니다."
+            getAuthHeader={getAuthHeader}
+            onClose={() => setShowScheduleFieldsManageModal(false)}
+            onFieldAdded={() => void fetchScheduleFieldDefs()}
+            onDefinitionsUpdated={() => void fetchScheduleFieldDefs()}
+            deleteConfirmMessage="이 일정 항목 정의를 삭제할까요? 이미 기회에 저장된 값은 DB에 남을 수 있습니다."
+          />
+        ) : null}
         {showCompanySearchModal && (
           <CustomerCompanySearchModal
             onClose={() => setShowCompanySearchModal(false)}
             onSelect={(company) => {
               setPersonalPurchase(false);
+              setCompanyRefMissing(false);
+              setContactRefMissing(false);
               setForm((f) => ({
                 ...f,
                 customerCompanyId: company._id,
                 customerCompanyName: company.name || '',
-                customerCompanyEmployeeId: ''
+                customerCompanyAddress: String(company?.address ?? '').trim(),
+                customerCompanyEmployeeId: '',
+                contactName: '',
+                contactPhone: '',
+                contactEmail: ''
               }));
               setBusinessNumber(String(company?.businessNumber ?? ''));
               setShowCompanySearchModal(false);
@@ -3408,12 +3862,14 @@ export default function OpportunityModal({
               let nextCcId = '';
               let nextCcName = '';
               let nextBn = '';
+              let nextAddr = '';
               if (contact.customerCompanyId) {
                 const cc = contact.customerCompanyId;
                 if (typeof cc === 'object' && cc !== null && cc._id) {
                   nextCcId = cc._id;
                   nextCcName = cc.name || contact.company || '';
                   nextBn = String(cc.businessNumber ?? '');
+                  nextAddr = String(cc.address ?? '');
                 } else {
                   const cid = cc;
                   try {
@@ -3423,6 +3879,7 @@ export default function OpportunityModal({
                       nextCcId = ccData._id;
                       nextCcName = ccData.name || contact.company || '';
                       nextBn = String(ccData.businessNumber ?? '');
+                      nextAddr = String(ccData.address ?? '');
                     }
                   } catch (_) { /* ignore */ }
                 }
@@ -3432,19 +3889,30 @@ export default function OpportunityModal({
                   nextCcId = resolved._id;
                   nextCcName = resolved.name || '';
                   nextBn = String(resolved.businessNumber ?? '');
+                  nextAddr = String(resolved.address ?? '');
                 }
               }
+              setContactRefMissing(false);
               setForm((f) => ({
                 ...f,
                 contactName: contact.name || '',
+                contactPhone: String(contact.phone ?? '').trim(),
+                contactEmail: String(contact.email ?? '').trim(),
                 customerCompanyEmployeeId: empId,
                 ...(personalPurchase
                   ? {}
                   : nextCcId
-                    ? { customerCompanyId: nextCcId, customerCompanyName: nextCcName }
-                    : { customerCompanyId: '', customerCompanyName: '' })
+                    ? {
+                        customerCompanyId: nextCcId,
+                        customerCompanyName: nextCcName,
+                        customerCompanyAddress: nextAddr
+                      }
+                    : { customerCompanyId: '', customerCompanyName: '', customerCompanyAddress: '' })
               }));
-              if (!personalPurchase) setBusinessNumber(nextBn);
+              if (!personalPurchase) {
+                setBusinessNumber(nextBn);
+                setCompanyRefMissing(false);
+              }
               setShowContactSearchModal(false);
             }}
           />
@@ -3499,6 +3967,99 @@ export default function OpportunityModal({
               }));
             }}
           />
+        ) : null}
+        {renewalWonDialog ? (
+          <div className="opp-renewal-won-dialog" role="dialog" aria-modal="true" aria-labelledby="opp-renewal-won-title">
+            <div className="opp-renewal-won-dialog-panel" onClick={(e) => e.stopPropagation()}>
+              <h4 id="opp-renewal-won-title" className="opp-renewal-won-dialog-title">
+                갱신 후속 세일즈 만들기
+              </h4>
+              <p className="opp-renewal-won-dialog-lead">
+                수주 성공 후 등록될 <strong>구독 갱신용 신규 리드</strong>입니다. 제목·일정은 아래와 같이 자동 채워집니다. 시작일은{' '}
+                <strong>실제 갱신 예정일 1개월 전</strong>입니다.
+              </p>
+              <ul className="opp-renewal-won-preview-list">
+                {renewalWonDialog.preview.products.map((p) => (
+                  <li key={p.productId} className="opp-renewal-won-preview-item">
+                    <span className="opp-renewal-won-preview-name">{p.displayName}</span>
+                    <span className="opp-renewal-won-preview-meta">
+                      {p.billingLabel} · 갱신 {p.renewalDateLabel} · 시작일 {p.startDateLabel}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {renewalWonDialog.preview.productCount > 1 ? (
+                <fieldset className="opp-renewal-won-fieldset">
+                  <legend className="opp-renewal-won-legend">생성 방식</legend>
+                  <label className="opp-renewal-won-radio-row">
+                    <input
+                      type="radio"
+                      name="opp-renewal-layout"
+                      checked={renewalWonDialog.layoutChoice === 'combined'}
+                      onChange={() =>
+                        setRenewalWonDialog((d) => (d ? { ...d, layoutChoice: 'combined' } : d))
+                      }
+                    />
+                    <span>
+                      <strong>하나의 세일즈</strong>로 묶기 (제품 행 여러 개·같은 신규 리드 1건)
+                    </span>
+                  </label>
+                  <label className="opp-renewal-won-radio-row">
+                    <input
+                      type="radio"
+                      name="opp-renewal-layout"
+                      checked={renewalWonDialog.layoutChoice === 'split'}
+                      onChange={() =>
+                        setRenewalWonDialog((d) => (d ? { ...d, layoutChoice: 'split' } : d))
+                      }
+                    />
+                    <span>
+                      <strong>제품별로 분리</strong>하여 세일즈 여러 건 만들기 (기존과 동일)
+                    </span>
+                  </label>
+                </fieldset>
+              ) : (
+                <fieldset className="opp-renewal-won-fieldset">
+                  <legend className="opp-renewal-won-legend">갱신용 신규 세일즈</legend>
+                  <label className="opp-renewal-won-radio-row">
+                    <input
+                      type="radio"
+                      name="opp-renewal-single"
+                      checked={renewalWonDialog.createFollowUps === true}
+                      onChange={() =>
+                        setRenewalWonDialog((d) => (d ? { ...d, createFollowUps: true } : d))
+                      }
+                    />
+                    <span>다음 갱신 주기용 신규 세일즈를 <strong>만든다</strong></span>
+                  </label>
+                  <label className="opp-renewal-won-radio-row">
+                    <input
+                      type="radio"
+                      name="opp-renewal-single"
+                      checked={renewalWonDialog.createFollowUps === false}
+                      onChange={() =>
+                        setRenewalWonDialog((d) => (d ? { ...d, createFollowUps: false } : d))
+                      }
+                    />
+                    <span>만들지 않는다 (캘린더 갱신 일정만 유지)</span>
+                  </label>
+                </fieldset>
+              )}
+              <div className="opp-renewal-won-dialog-actions">
+                <button type="button" className="opp-renewal-won-btn opp-renewal-won-btn--ghost" onClick={cancelRenewalWonDialog}>
+                  취소
+                </button>
+                <button
+                  type="button"
+                  className="opp-renewal-won-btn opp-renewal-won-btn--primary"
+                  onClick={() => void confirmRenewalWonDialog()}
+                  disabled={saving}
+                >
+                  {saving ? '저장 중…' : '확인 후 저장'}
+                </button>
+              </div>
+            </div>
+          </div>
         ) : null}
       </div>
     </div>

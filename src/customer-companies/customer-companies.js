@@ -10,6 +10,7 @@ import {
   getEffectiveTemplate,
   patchListTemplate
 } from '../lib/list-templates';
+import { listColumnValueInlineStyle } from '@/lib/list-column-cell-styles';
 import './customer-companies.css';
 import './customer-companies-responsive.css';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
@@ -43,6 +44,15 @@ function formatBusinessNumber(num) {
   return `${s.slice(0, 3)}-${s.slice(3, 5)}-${s.slice(5, 10)}`;
 }
 
+const ADDRESS_LIST_DISPLAY_MAX = 15;
+
+/** 목록·카드 등 화면 표시용: 주소가 길면 앞 15자 + ... */
+function formatAddressForList(address) {
+  if (address === undefined || address === null || address === '') return '—';
+  const s = String(address);
+  return s.length > ADDRESS_LIST_DISPLAY_MAX ? `${s.slice(0, ADDRESS_LIST_DISPLAY_MAX)}...` : s;
+}
+
 /** 기업명 아바타 이니셜 (연락처 리스트 getNameInitials 와 동일 규칙) */
 function getNameInitials(name) {
   const s = (name || '?').trim();
@@ -64,7 +74,7 @@ function cellValue(row, key, assigneeIdToName = {}, assigneeNamesReady = false) 
   if (key === 'representativeName') return row.representativeName || '—';
   if (key === 'industry') return row.industry || '—';
   if (key === 'businessNumber') return formatBusinessNumber(row.businessNumber);
-  if (key === 'address') return row.address || '—';
+  if (key === 'address') return formatAddressForList(row.address);
   if (key === 'status') {
     const st = (row.status || 'active').toLowerCase();
     return COMPANY_STATUS_LABEL[st] || row.status || '—';
@@ -107,6 +117,8 @@ export default function CustomerCompanies() {
   const [selectAllLoading, setSelectAllLoading] = useState(false);
   const [lastCheckedIndex, setLastCheckedIndex] = useState(null);
   const headerSelectAllRef = useRef(null);
+  /** 상세 삭제 등으로 페이지가 바뀔 때 다음 목록 요청만 로딩 표시 없이 */
+  const listFetchSilentOnceRef = useRef(false);
   const me = useMemo(() => getStoredCrmUser(), []);
   const canExportExcel = isAdminOrAboveRole(me?.role);
   const canManageCustomFieldDefinitions = isAdminOrAboveRole(me?.role);
@@ -195,8 +207,11 @@ export default function CustomerCompanies() {
     return () => { cancelled = true; };
   }, [isDetailOpen, detailId, selectedCompanyFromList]);
 
-  const fetchList = useCallback(async (page = 1) => {
-    setLoading(true);
+  const fetchList = useCallback(async (page = 1, opts) => {
+    const silentFromOpt = opts && opts.silent === true;
+    const silent = silentFromOpt || listFetchSilentOnceRef.current;
+    listFetchSilentOnceRef.current = false;
+    if (!silent) setLoading(true);
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(LIMIT) });
       if (searchApplied) {
@@ -218,9 +233,43 @@ export default function CustomerCompanies() {
       setItems([]);
       setPagination((p) => ({ ...p, total: 0, totalPages: 0 }));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [searchApplied, searchField, assigneeMeOnly]);
+
+  const handleAddCompanySaved = useCallback(
+    (company) => {
+      if (!company || !company._id) {
+        fetchList(pagination.page, { silent: true });
+        return;
+      }
+      const meId = String(me?._id || me?.id || '');
+      if (assigneeMeOnly && meId) {
+        const ids = Array.isArray(company.assigneeUserIds) ? company.assigneeUserIds.map(String) : [];
+        if (!ids.includes(meId)) {
+          fetchList(pagination.page, { silent: true });
+          return;
+        }
+      }
+      if (String(searchApplied || '').trim()) {
+        fetchList(pagination.page, { silent: true });
+        return;
+      }
+      if (pagination.page !== 1) {
+        setPagination((p) => ({ ...p, total: (p.total || 0) + 1, totalPages: Math.max(1, Math.ceil(((p.total || 0) + 1) / (p.limit || LIMIT))) }));
+        return;
+      }
+      setItems((prev) => {
+        const next = [company, ...prev];
+        return next.length > LIMIT ? next.slice(0, LIMIT) : next;
+      });
+      setPagination((p) => {
+        const total = (p.total || 0) + 1;
+        return { ...p, total, totalPages: Math.max(1, Math.ceil(total / (p.limit || LIMIT))) };
+      });
+    },
+    [fetchList, pagination.page, searchApplied, assigneeMeOnly, me, LIMIT]
+  );
 
   /** 검색·필터와 동일 조건으로 전체 고객사 목록 (전체 선택용) */
   const fetchAllCustomerCompaniesForSelection = useCallback(async () => {
@@ -361,7 +410,7 @@ export default function CustomerCompanies() {
     if (fromIdx === -1 || toIdx === -1) return;
     order.splice(fromIdx, 1);
     order.splice(toIdx, 0, fromKey);
-    saveTemplate({ columnOrder: order, visible: template.visible });
+    saveTemplate({ columnOrder: order, visible: template.visible, columnCellStyles: template.columnCellStyles });
   };
 
   const displayColumns = template.columns.filter((c) => template.visible[c.key]);
@@ -548,7 +597,7 @@ export default function CustomerCompanies() {
       closeDetailModal();
     }
     clearCompanySelection();
-    await fetchList(pagination.page);
+    await fetchList(pagination.page, { silent: true });
     if (errors.length === 0) {
       window.alert(`삭제했습니다. (${ok}곳)`);
     } else {
@@ -952,7 +1001,7 @@ export default function CustomerCompanies() {
                         {row.industry ? (
                           <p className="customer-companies-mobile-card-meta">업종 {row.industry}</p>
                         ) : null}
-                        <p className="customer-companies-mobile-card-address">{row.address || '—'}</p>
+                        <p className="customer-companies-mobile-card-address">{formatAddressForList(row.address)}</p>
                       </div>
                     </div>
                   </div>
@@ -1040,14 +1089,12 @@ export default function CustomerCompanies() {
                           aria-label={`${row.name || '고객사'} 선택`}
                         />
                       </td>
-                      {displayColumns.map((col) => (
-                        <td
-                          key={col.key}
-                          data-label={col.key === '_favorite' ? '' : col.label}
-                          className={col.key === '_favorite' ? 'cc-td-favorite' : col.key === 'name' ? '' : 'text-muted'}
-                          onClick={col.key === '_favorite' ? (e) => e.stopPropagation() : undefined}
-                        >
-                          {col.key === '_favorite' ? (
+                      {displayColumns.map((col) => {
+                        const valStyle =
+                          col.key === '_favorite' ? null : listColumnValueInlineStyle(template.columnCellStyles, col.key);
+                        let content;
+                        if (col.key === '_favorite') {
+                          content = (
                             <button
                               type="button"
                               className={`cc-favorite-btn ${row.isFavorite ? 'is-active' : ''}`}
@@ -1060,7 +1107,9 @@ export default function CustomerCompanies() {
                             >
                               <span className="material-symbols-outlined" aria-hidden>star</span>
                             </button>
-                          ) : col.key === 'name' ? (
+                          );
+                        } else if (col.key === 'name') {
+                          content = (
                             <div className="cell-user cc-name-cell">
                               <div
                                 className={`cc-name-cell-avatar cc-name-cell-avatar--${idx % 3}`}
@@ -1070,18 +1119,41 @@ export default function CustomerCompanies() {
                               </div>
                               <div className="cc-name-cell-text">
                                 <span className="font-semibold">{row.name || '—'}</span>
-                                <span className="cc-name-cell-bn">{formatBusinessNumber(row.businessNumber)}</span>
                               </div>
                             </div>
-                          ) : col.key === 'status' ? (
+                          );
+                        } else if (col.key === 'status') {
+                          content = (
                             <span className={`status-badge status-${(row.status || 'active').toLowerCase()}`}>
                               {COMPANY_STATUS_LABEL[(row.status || 'active').toLowerCase()] || row.status || '—'}
                             </span>
-                          ) : (
-                            cellValue(row, col.key, assigneeIdToName, companyEmployeesLoaded)
-                          )}
-                        </td>
-                      ))}
+                          );
+                        } else {
+                          content = cellValue(row, col.key, assigneeIdToName, companyEmployeesLoaded);
+                        }
+                        return (
+                          <td
+                            key={col.key}
+                            data-label={col.key === '_favorite' ? '' : col.label}
+                            className={
+                              col.key === '_favorite'
+                                ? 'cc-td-favorite'
+                                : col.key === 'name'
+                                  ? ''
+                                  : 'text-muted'
+                            }
+                            onClick={col.key === '_favorite' ? (e) => e.stopPropagation() : undefined}
+                          >
+                            {valStyle ? (
+                              <span className="list-col-value-style" style={valStyle}>
+                                {content}
+                              </span>
+                            ) : (
+                              content
+                            )}
+                          </td>
+                        );
+                      })}
                     </tr>
                   ))
                 )}
@@ -1106,6 +1178,7 @@ export default function CustomerCompanies() {
           columns={template.columns}
           visible={template.visible}
           columnOrder={template.columnOrder}
+          columnCellStyles={template.columnCellStyles}
           onSave={saveTemplate}
           onClose={() => setSettingsOpen(false)}
         />
@@ -1122,7 +1195,9 @@ export default function CustomerCompanies() {
       {isAddModalOpen && (
         <AddCompanyModal
           onClose={closeAddModal}
-          onSaved={() => { fetchList(pagination.page); closeAddModal(); }}
+          onSaved={(payload) => {
+            handleAddCompanySaved(payload);
+          }}
         />
       )}
       <CustomerCompaniesExcelImportModal
@@ -1154,10 +1229,17 @@ export default function CustomerCompanies() {
               ));
               setDetailCompanyById((prev) => (prev && String(prev._id) === id ? { ...prev, ...updatedCompany } : prev));
             }
-            fetchList(pagination.page);
           }}
           onDeleted={() => {
-            fetchList(pagination.page);
+            const id = detailId != null ? String(detailId) : '';
+            listFetchSilentOnceRef.current = true;
+            setItems((prev) => prev.filter((c) => String(c._id) !== id));
+            setPagination((p) => {
+              const newTotal = Math.max(0, (p.total || 0) - 1);
+              const totalPages = Math.max(1, Math.ceil(newTotal / (p.limit || LIMIT)));
+              const nextPage = Math.min(p.page, totalPages);
+              return { ...p, total: newTotal, totalPages, page: nextPage };
+            });
             closeDetailModal();
           }}
         />
@@ -1168,7 +1250,7 @@ export default function CustomerCompanies() {
           onClose={() => setMergeModalOpen(false)}
           companies={companiesForMergeModal}
           onMerged={() => {
-            fetchList(pagination.page);
+            fetchList(pagination.page, { silent: true });
             clearCompanySelection();
           }}
         />
@@ -1178,7 +1260,7 @@ export default function CustomerCompanies() {
           open
           onClose={() => setHandoverCtx(null)}
           onSubmitted={() => {
-            fetchList(pagination.page);
+            fetchList(pagination.page, { silent: true });
             clearCompanySelection();
           }}
           targetType={handoverCtx.targetType}

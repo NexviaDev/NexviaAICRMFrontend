@@ -1598,7 +1598,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
             `${isEditMode ? '연락처는 저장되었으나' : '연락처는 등록되었으나'} 명함 저장에 실패했습니다. ${up.error || ''}`.trim()
           );
           if (isEditMode) onUpdated?.(data);
-          else onSaved?.();
+          else onSaved?.(merged);
           onClose?.();
           return;
         }
@@ -1634,7 +1634,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
         onUpdated?.(payloadOut);
         onClose?.();
       } else {
-        onSaved?.();
+        onSaved?.(payloadOut);
         onClose?.();
       }
     } catch (_) {

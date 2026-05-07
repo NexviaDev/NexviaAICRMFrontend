@@ -8,7 +8,8 @@ import {
   LIST_IDS,
   getSavedTemplate,
   getEffectiveTemplate,
-  patchListTemplate
+  patchListTemplate,
+  patchProductSearchModalUsage
 } from '../lib/list-templates';
 import './product-list.css';
 import './product-list-responsive.css';
@@ -24,6 +25,8 @@ import { listPriceFromProduct } from '@/lib/product-price-utils';
 import { CATEGORY_AVATAR_RULES } from './product-category-avatar-config';
 const LIST_ID = LIST_IDS.PRODUCT_LIST;
 const LIMIT = 10;
+/** 검색 모달: 페이지네이션 UI 숨김 — 한 번에 더 많이 불러옴 */
+const LIMIT_SEARCH_MODAL = 500;
 const EXPORT_PAGE_LIMIT = 100;
 
 const MODAL_PARAM = 'modal';
@@ -155,10 +158,27 @@ function ProductListAvatar({ row, idx }) {
   );
 }
 
-export default function ProductList() {
+/**
+ * @param {{ listVariant?: 'page' | 'searchModal', onSearchModalClose?: () => void, onSearchModalConfirm?: (products: object[]) => void }} props
+ */
+export default function ProductList({
+  listVariant = 'page',
+  onSearchModalClose,
+  onSearchModalConfirm
+}) {
+  const isSearchModal = listVariant === 'searchModal';
+  const listPageLimit = isSearchModal ? LIMIT_SEARCH_MODAL : LIMIT;
   const [searchParams, setSearchParams] = useSearchParams();
+  /** 검색 모달: URL 대신 로컬로 상세 열어 라우트 오염 방지 */
+  const [pickerDetailProduct, setPickerDetailProduct] = useState(null);
+  const pickedProductByIdRef = useRef(new Map());
   const [items, setItems] = useState([]);
-  const [pagination, setPagination] = useState({ page: 1, limit: LIMIT, total: 0, totalPages: 0 });
+  const [pagination, setPagination] = useState(() => ({
+    page: 1,
+    limit: listVariant === 'searchModal' ? LIMIT_SEARCH_MODAL : LIMIT,
+    total: 0,
+    totalPages: 0
+  }));
   const [searchInput, setSearchInput] = useState('');
   const [searchApplied, setSearchApplied] = useState('');
   /** 연락처 목록과 동일: 제출 시점의 검색 필드 (빈 값 = 전체 필드) */
@@ -225,14 +245,16 @@ export default function ProductList() {
 
   const detailId = searchParams.get(DETAIL_ID_PARAM);
   const modalParam = searchParams.get(MODAL_PARAM);
-  const isDetailOpen = modalParam === MODAL_DETAIL && detailId;
-  const isExcelImportOpen = modalParam === MODAL_EXCEL_IMPORT;
-  const detailProduct = isDetailOpen ? items.find((p) => p._id === detailId) || null : null;
+  const isDetailOpenPage = modalParam === MODAL_DETAIL && detailId;
+  const isExcelImportOpen = !isSearchModal && modalParam === MODAL_EXCEL_IMPORT;
+  const detailProductPage = isDetailOpenPage ? items.find((p) => p._id === detailId) || null : null;
+  const isDetailOpen = isSearchModal ? Boolean(pickerDetailProduct) : isDetailOpenPage;
+  const detailProduct = isSearchModal ? pickerDetailProduct : detailProductPage;
 
   const fetchList = useCallback(async (page = 1) => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page: String(page), limit: String(LIMIT) });
+      const params = new URLSearchParams({ page: String(page), limit: String(listPageLimit) });
       if (searchApplied) {
         params.set('search', searchApplied);
         if (appliedSearchField) params.set('searchField', appliedSearchField);
@@ -241,7 +263,10 @@ export default function ProductList() {
       if (res.ok) {
         const data = await res.json();
         setItems(data.items || []);
-        setPagination(data.pagination || { page: 1, limit: LIMIT, total: 0, totalPages: 0 });
+        setPagination((prev) => {
+          const pg = data.pagination || { page: 1, limit: listPageLimit, total: 0, totalPages: 0 };
+          return { ...pg, limit: prev.limit };
+        });
       } else {
         setItems([]);
         setPagination((p) => ({ ...p, total: 0, totalPages: 0 }));
@@ -252,7 +277,7 @@ export default function ProductList() {
     } finally {
       setLoading(false);
     }
-  }, [searchApplied, appliedSearchField]);
+  }, [searchApplied, appliedSearchField, listPageLimit]);
 
   useEffect(() => { fetchList(pagination.page); }, [pagination.page, fetchList]);
 
@@ -268,21 +293,48 @@ export default function ProductList() {
     selectionAnchorIdxRef.current = null;
   }, [searchApplied, appliedSearchField]);
 
+  useEffect(() => {
+    for (const row of items) {
+      const id = productIdKey(row._id);
+      if (id) pickedProductByIdRef.current.set(id, row);
+    }
+  }, [items]);
+
+  /** 제품 커스텀 필드 정의 API → 열 설정·표시에 사용 (재사용: 마운트 시 + 설정 버튼 클릭 시 최신 반영) */
+  const fetchProductCustomFieldColumnDefs = useCallback(async () => {
+    await pingBackendHealth(getAuthHeader);
+    const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=product`, { headers: getAuthHeader() });
+    const data = await res.json().catch(() => ({}));
+    const defs = Array.isArray(data?.items) ? data.items : [];
+    return defs.map((d) => ({ key: `${CUSTOM_FIELDS_PREFIX}${d.key}`, label: d.label || d.key || '' }));
+  }, []);
+
   /** 제품 커스텀 필드 정의 → 리스트 템플릿 열에 반영 (열 설정 모달·표시 순서) */
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/custom-field-definitions?entityType=product`, { headers: getAuthHeader() })
-      .then((r) => r.json().catch(() => ({})))
-      .then((data) => {
+    fetchProductCustomFieldColumnDefs()
+      .then((extra) => {
         if (cancelled) return;
-        const defs = Array.isArray(data?.items) ? data.items : [];
-        const extra = defs.map((d) => ({ key: `${CUSTOM_FIELDS_PREFIX}${d.key}`, label: d.label || d.key || '' }));
         setCustomFieldColumns(extra);
-        setTemplate((prev) => getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), extra));
+        setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), extra));
       })
-      .catch(() => { if (!cancelled) setCustomFieldColumns([]); });
+      .catch(() => {
+        if (!cancelled) setCustomFieldColumns([]);
+      });
     return () => { cancelled = true; };
-  }, []);
+  }, [fetchProductCustomFieldColumnDefs]);
+
+  const openListColumnSettings = useCallback(async () => {
+    try {
+      const extra = await fetchProductCustomFieldColumnDefs();
+      setCustomFieldColumns(extra);
+      setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), extra));
+      setSettingsOpen(true);
+    } catch (_) {
+      setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), customFieldColumns));
+      setSettingsOpen(true);
+    }
+  }, [fetchProductCustomFieldColumnDefs, customFieldColumns]);
 
   const runSearch = (e) => {
     e?.preventDefault();
@@ -313,9 +365,17 @@ export default function ProductList() {
   }, [setSearchParams]);
   const openDetail = (row) => {
     if (!row?._id) return;
+    if (isSearchModal) {
+      setPickerDetailProduct(row);
+      return;
+    }
     setSearchParams({ [MODAL_PARAM]: MODAL_DETAIL, [DETAIL_ID_PARAM]: row._id });
   };
   const closeDetail = () => {
+    if (isSearchModal) {
+      setPickerDetailProduct(null);
+      return;
+    }
     const next = new URLSearchParams(searchParams);
     next.delete(MODAL_PARAM);
     next.delete(DETAIL_ID_PARAM);
@@ -371,7 +431,7 @@ export default function ProductList() {
     if (fromIdx === -1 || toIdx === -1) return;
     order.splice(fromIdx, 1);
     order.splice(toIdx, 0, fromKey);
-    saveTemplate({ columnOrder: order, visible: template.visible });
+    saveTemplate({ columnOrder: order, visible: template.visible, columnCellStyles: template.columnCellStyles });
   };
 
   const displayColumns = template.columns.filter((c) => template.visible[c.key]);
@@ -486,6 +546,19 @@ export default function ProductList() {
     selectionAnchorIdxRef.current = null;
   }, []);
 
+  const handleSearchModalConfirm = useCallback(async () => {
+    if (!isSearchModal) return;
+    const ids = [...selectedIds];
+    const products = ids.map((id) => pickedProductByIdRef.current.get(String(id))).filter(Boolean);
+    if (products.length === 0) return;
+    try {
+      await patchProductSearchModalUsage(products.map((p) => String(p._id)));
+    } catch (_) {
+      /* 저장 실패해도 선택은 진행 */
+    }
+    onSearchModalConfirm?.(products);
+  }, [isSearchModal, selectedIds, onSearchModalConfirm]);
+
   const confirmBulkDelete = useCallback(async () => {
     if (!canDeleteProduct || selectedIds.size === 0) return;
     setBulkDeleteLoading(true);
@@ -501,7 +574,8 @@ export default function ProductList() {
         alert(data.error || '삭제에 실패했습니다.');
         return;
       }
-      if (detailId && ids.includes(String(detailId))) closeDetail();
+      const openDetailId = isSearchModal ? pickerDetailProduct?._id : detailId;
+      if (openDetailId && ids.includes(String(openDetailId))) closeDetail();
       setSelectedIds(new Set());
       selectionAnchorIdxRef.current = null;
       setBulkDeleteOpen(false);
@@ -511,7 +585,7 @@ export default function ProductList() {
     } finally {
       setBulkDeleteLoading(false);
     }
-  }, [canDeleteProduct, selectedIds, detailId, fetchList, pagination.page, closeDetail]);
+  }, [canDeleteProduct, selectedIds, detailId, fetchList, pagination.page, closeDetail, isSearchModal, pickerDetailProduct?._id]);
 
   /** 일괄 복사: 원본 GET 후 신규 POST — 제품명 끝에 ` (복사본)` 추가, 코드는 비움(충돌 방지) */
   const runBulkCopy = useCallback(async () => {
@@ -672,12 +746,16 @@ export default function ProductList() {
         key={row._id}
         role="button"
         tabIndex={0}
-        className={`pl-mcard ${isEol ? 'pl-mcard--eol' : ''}`}
-        onClick={() => openDetail(row)}
+        className={`pl-mcard ${isEol ? 'pl-mcard--eol' : ''}${isSearchModal ? ' pl-mcard--search-modal-pick' : ''}`}
+        onClick={(e) => {
+          if (isSearchModal) handleRowCheckboxClick(e, idx, row._id);
+          else openDetail(row);
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
-            openDetail(row);
+            if (isSearchModal) handleRowCheckboxClick(e, idx, row._id);
+            else openDetail(row);
           }
         }}
       >
@@ -727,7 +805,7 @@ export default function ProductList() {
   };
 
   return (
-    <div className="page product-list-page">
+    <div className={`page product-list-page${isSearchModal ? ' product-list-page--search-modal' : ''}`}>
       <header className="page-header">
         <div className="header-search">
           <button type="submit" form="product-list-search-form" className="header-search-icon-btn" aria-label="검색">
@@ -759,19 +837,16 @@ export default function ProductList() {
             type="button"
             className="icon-btn"
             aria-label="리스트 열 설정"
-            onClick={() => {
-              setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), customFieldColumns));
-              setSettingsOpen(true);
-            }}
+            onClick={() => void openListColumnSettings()}
             title="리스트 열 설정"
           >
             <span className="material-symbols-outlined">settings</span>
           </button>
-          <PageHeaderNotifyChat noWrapper buttonClassName="icon-btn" />
+          {!isSearchModal ? <PageHeaderNotifyChat noWrapper buttonClassName="icon-btn" /> : null}
         </div>
       </header>
       <div className="page-content">
-        {selectedIds.size > 0 ? (
+        {!isSearchModal && selectedIds.size > 0 ? (
           <div className="cce-action-bar">
             <span className="cce-action-bar-count">
               <strong>{selectedIds.size}</strong>개 선택됨
@@ -811,6 +886,7 @@ export default function ProductList() {
             </div>
           </div>
         ) : null}
+        {!isSearchModal ? (
         <section className="pl-mobile-hero pl-mobile-only" aria-label="포트폴리오 요약">
           <p className="pl-mobile-kicker">제품 개요</p>
           <h2 className="pl-mobile-title">현재 포트폴리오</h2>
@@ -827,6 +903,8 @@ export default function ProductList() {
             </div>
           </div>
         </section>
+        ) : null}
+        {!isSearchModal ? (
         <div className="product-list-top pl-desktop-only">
           <div>
             <h2>제품 리스트</h2>
@@ -861,6 +939,7 @@ export default function ProductList() {
             </button>
           </div>
         </div>
+        ) : null}
         <div className="panel table-panel">
           <div className="pl-mobile-cards-wrap">
             {loading ? (
@@ -925,8 +1004,11 @@ export default function ProductList() {
                   sortedItems.map((row, rowIdx) => (
                     <tr
                       key={row._id}
-                      className={`product-list-row-clickable ${row.status === 'EndOfLife' ? 'product-list-row-eol' : ''}`}
-                      onClick={() => openDetail(row)}
+                      className={`${isSearchModal ? 'product-list-row--search-modal-pick' : 'product-list-row-clickable'} ${row.status === 'EndOfLife' ? 'product-list-row-eol' : ''}`}
+                      onClick={(e) => {
+                        if (isSearchModal) handleRowCheckboxClick(e, rowIdx, row._id);
+                        else openDetail(row);
+                      }}
                     >
                       <td className="pl-td-checkbox" onClick={(e) => e.stopPropagation()}>
                         <input
@@ -1002,21 +1084,45 @@ export default function ProductList() {
               </tbody>
             </table>
           </div>
-          <div className="pagination-bar">
-            <p className="pagination-info">
-              <strong>{pagination.total}</strong>개 중 <strong>{items.length ? (pagination.page - 1) * pagination.limit + 1 : 0}</strong>–<strong>{(pagination.page - 1) * pagination.limit + items.length}</strong>건 표시
-            </p>
-            <ListPaginationButtons
-              page={pagination.page}
-              totalPages={pagination.totalPages || 1}
-              onPageChange={(nextPage) => setPagination((p) => ({ ...p, page: nextPage }))}
-            />
-          </div>
+          {!isSearchModal ? (
+            <div className="pagination-bar">
+              <p className="pagination-info">
+                <strong>{pagination.total}</strong>개 중 <strong>{items.length ? (pagination.page - 1) * pagination.limit + 1 : 0}</strong>–<strong>{(pagination.page - 1) * pagination.limit + items.length}</strong>건 표시
+              </p>
+              <ListPaginationButtons
+                page={pagination.page}
+                totalPages={pagination.totalPages || 1}
+                onPageChange={(nextPage) => setPagination((p) => ({ ...p, page: nextPage }))}
+              />
+            </div>
+          ) : null}
         </div>
+        {isSearchModal ? (
+          <div className="product-list-search-modal-footer" role="group" aria-label="제품 선택">
+            <p className="product-list-search-modal-footer-count">
+              <strong>{selectedIds.size}</strong>개 선택 · Shift+클릭으로 범위 선택
+            </p>
+            <div className="product-list-search-modal-footer-btns">
+              <button type="button" className="btn-outline" onClick={() => onSearchModalClose?.()}>
+                취소
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={selectedIds.size === 0}
+                onClick={() => void handleSearchModalConfirm()}
+              >
+                선택 완료
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
+      {!isSearchModal ? (
       <button type="button" className="pl-mobile-fab" aria-label="제품 추가" onClick={openAdd}>
         <span className="material-symbols-outlined">add</span>
       </button>
+      ) : null}
       {addModalOpen && (
         <AddProductModal
           product={null}
@@ -1048,6 +1154,7 @@ export default function ProductList() {
           columns={template.columns}
           visible={template.visible}
           columnOrder={template.columnOrder}
+          columnCellStyles={template.columnCellStyles}
           onSave={saveTemplate}
           onClose={() => setSettingsOpen(false)}
         />
