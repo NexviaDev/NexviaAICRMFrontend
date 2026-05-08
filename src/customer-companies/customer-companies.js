@@ -20,6 +20,7 @@ import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import AssigneeHandoverModal from '@/company-overview/assignee-handover-modal/assignee-handover-modal';
 import MergeCustomerCompaniesModal from './merge-customer-companies-modal/merge-customer-companies-modal';
 import CustomFieldsManageModal from '@/shared/custom-fields-manage-modal/custom-fields-manage-modal';
+import BulkSalesOpportunityDirectoryModal from '@/shared/bulk-sales-opportunity-directory-modal/bulk-sales-opportunity-directory-modal';
 
 import { API_BASE } from '@/config';
 import { CUSTOM_FIELDS_PREFIX, BASE_SEARCH_FIELD_OPTIONS } from '@/lib/customer-company-search-fields';
@@ -128,6 +129,7 @@ export default function CustomerCompanies() {
   const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
   const [handoverCtx, setHandoverCtx] = useState(null);
   const [mergeModalOpen, setMergeModalOpen] = useState(false);
+  const [bulkSalesPipelineOpen, setBulkSalesPipelineOpen] = useState(false);
   const [showCustomFieldsManageModal, setShowCustomFieldsManageModal] = useState(false);
 
   const searchFieldLabelByKey = useMemo(() => {
@@ -449,6 +451,14 @@ export default function CustomerCompanies() {
       return 0;
     });
   }, [items, sortKey, sortDir, getSortValue]);
+
+  const companiesForBulkSalesModal = useMemo(
+    () =>
+      [...selectedCompanyIds]
+        .map((id) => selectedCompanyMap[id] || sortedItems.find((r) => String(r._id) === String(id)))
+        .filter(Boolean),
+    [selectedCompanyIds, selectedCompanyMap, sortedItems]
+  );
 
   useEffect(() => {
     if (!sortedItems.length) return;
@@ -896,6 +906,15 @@ export default function CustomerCompanies() {
               ) : null}
               <button
                 type="button"
+                className="cc-selection-action-bar-sales"
+                onClick={() => setBulkSalesPipelineOpen(true)}
+                title="선택한 고객사마다 동일 제품·단계로 영업 기회를 등록합니다. 고객사별 구매 담당자(소속 직원)를 지정해야 합니다."
+              >
+                <span className="material-symbols-outlined" aria-hidden>trending_up</span>
+                세일즈 현황에 추가
+              </button>
+              <button
+                type="button"
                 className="cc-selection-action-bar-map"
                 onClick={() => {
                   const ids = [...selectedCompanyIds].filter(Boolean);
@@ -1271,6 +1290,19 @@ export default function CustomerCompanies() {
           companyEmployeesLoaded={companyEmployeesLoaded}
         />
       )}
+      {bulkSalesPipelineOpen ? (
+        <BulkSalesOpportunityDirectoryModal
+          open
+          mode="companies"
+          entities={companiesForBulkSalesModal}
+          onClose={() => setBulkSalesPipelineOpen(false)}
+          onCompleted={() => {
+            setBulkSalesPipelineOpen(false);
+            setSelectedCompanyIds(new Set());
+            setSelectedCompanyMap({});
+          }}
+        />
+      ) : null}
     </div>
   );
 }

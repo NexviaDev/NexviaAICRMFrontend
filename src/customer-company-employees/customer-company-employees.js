@@ -21,6 +21,7 @@ import CustomerCompanyEmployeesExcelImportModal from './customer-company-employe
 import AssigneeHandoverModal from '@/company-overview/assignee-handover-modal/assignee-handover-modal';
 import GoogleContactsSaveResultModal from './google-contacts-save-result-modal/google-contacts-save-result-modal';
 import CustomFieldsManageModal from '@/shared/custom-fields-manage-modal/custom-fields-manage-modal';
+import BulkSalesOpportunityDirectoryModal from '@/shared/bulk-sales-opportunity-directory-modal/bulk-sales-opportunity-directory-modal';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 
 import * as XLSX from 'xlsx';
@@ -148,6 +149,7 @@ export default function CustomerCompanyEmployees() {
   const [bulkSmsPrefill, setBulkSmsPrefill] = useState(null);
   /** 기록에서 연 경우 문자 앱 열 때 같은 기록만 갱신 */
   const [bulkSmsHistoryEntryId, setBulkSmsHistoryEntryId] = useState(null);
+  const [bulkSalesPipelineOpen, setBulkSalesPipelineOpen] = useState(false);
   /** `{ initialTo }` — 단체 시 쉼표로 구분된 수신자 */
   const [emailCompose, setEmailCompose] = useState(null);
   const sortKey = sort.key;
@@ -524,6 +526,11 @@ export default function CustomerCompanyEmployees() {
     });
     return base;
   }, [items, sortKey, sortDir, getSortValue]);
+
+  const contactsForBulkSalesModal = useMemo(
+    () => [...selected].map((id) => selectedRowsRef.current.get(id) || sortedItems.find((r) => String(r._id) === String(id))).filter(Boolean),
+    [selected, sortedItems]
+  );
 
   const mobileListItems = useMemo(() => {
     if (mobileChipFilter === 'favorite') return sortedItems.filter((r) => r.isFavorite);
@@ -1089,6 +1096,15 @@ export default function CustomerCompanyEmployees() {
                 <img src="https://www.gstatic.com/images/branding/product/1x/contacts_2022_48dp.png" alt="" className="cce-action-google-icon" />
                 {googleSaving ? '저장 중...' : `구글 주소록에 저장 (${selected.size}명)`}
               </button>
+              <button
+                type="button"
+                className="cce-action-bar-sales"
+                onClick={() => setBulkSalesPipelineOpen(true)}
+                title="선택한 연락처마다 동일 제품·단계로 영업 기회를 등록합니다. 기본은 개인 구매이며, 해제 시 소속 고객사가 함께 연결됩니다."
+              >
+                <span className="material-symbols-outlined" aria-hidden>trending_up</span>
+                세일즈 현황에 추가
+              </button>
               {canRequestAssigneeHandover ? (
                 <button
                   type="button"
@@ -1610,6 +1626,18 @@ export default function CustomerCompanyEmployees() {
           companyEmployeesLoaded={companyEmployeesLoaded}
         />
       )}
+      {bulkSalesPipelineOpen ? (
+        <BulkSalesOpportunityDirectoryModal
+          open
+          mode="employees"
+          entities={contactsForBulkSalesModal}
+          onClose={() => setBulkSalesPipelineOpen(false)}
+          onCompleted={() => {
+            setBulkSalesPipelineOpen(false);
+            clearSelection();
+          }}
+        />
+      ) : null}
       {googleResult ? (
         <GoogleContactsSaveResultModal result={googleResult} onClose={() => setGoogleResult(null)} />
       ) : null}

@@ -20,6 +20,16 @@ import { pingBackendHealth } from '@/lib/backend-wake';
 import { pruneDriveUploadedFilesIndex, syncDriveUploadedFilesIndex } from '@/lib/drive-uploaded-files-prune';
 import { pollJournalFromAudioJob } from '@/lib/journal-from-audio-poll';
 import { suggestedPriceFromProduct, OPPORTUNITY_PRICE_BASIS_OPTIONS } from '@/lib/product-price-utils';
+import {
+  buildPipelineStageSelectOptionsFromDefinitions,
+  parseNumber,
+  formatNumberInput,
+  priceBasisLabelsForValue,
+  newCommissionRecipientId,
+  createEmptyCommissionRow,
+  buildLineFromProduct,
+  buildLineItemsPayloadFromClientLines
+} from '@/lib/sales-opportunity-form-shared';
 import { getUserVisibleApiError } from '@/lib/api-error';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { buildStageForecastPercentMap } from '../pipeline-forecast-utils';
@@ -29,18 +39,6 @@ function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
-
-const STAGE_OPTIONS = [
-  { value: 'NewLead', label: '신규 리드' },
-  { value: 'Contacted', label: '연락 완료' },
-  { value: 'ProposalSent', label: '제안서 전달' },
-  { value: 'TechDemo', label: '기술 시연' },
-  { value: 'Quotation', label: '견적' },
-  { value: 'Negotiation', label: '최종 협상' },
-  { value: 'Won', label: '수주 성공' },
-  { value: 'Lost', label: '기회 상실' },
-  { value: 'Abandoned', label: '보류' }
-];
 
 const PRODUCT_BILLING_LABELS = { Monthly: '월간', Annual: '연간', Perpetual: '영구' };
 
@@ -54,16 +52,6 @@ function getInitialInternalAssignee() {
   } catch (_) {
     return { assignedToUserId: '', assignedToName: '' };
   }
-}
-
-function formatNumberInput(val) {
-  const num = String(val).replace(/[^0-9]/g, '');
-  if (!num) return '';
-  return Number(num).toLocaleString();
-}
-
-function parseNumber(val) {
-  return Number(String(val).replace(/[^0-9]/g, '')) || 0;
 }
 
 /**
@@ -90,20 +78,8 @@ function fullCollectionDateFromCumulativeEntries(collectionEntries, contractTarg
   return '';
 }
 
-function newOppLineId() {
-  return `line-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-}
-
 function newCollectionEntryId() {
   return `collection-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-}
-
-function newCommissionRecipientId() {
-  return `commission-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-}
-
-function createEmptyCommissionRow() {
-  return { id: newCommissionRecipientId(), remarks: '', commissionAmount: '' };
 }
 
 /** 행에 commissionRecipients가 아직 없을 때(레거시·예외) 안정적인 단일 빈 행 id */
@@ -153,39 +129,6 @@ function computeLineDeduction(line) {
   const unit = parseNumber(line.unitPrice) || 0;
   const subtotal = qty * unit;
   return Math.max(0, subtotal - computeLineFinalAmount(line));
-}
-
-function priceBasisLabelsForValue(value) {
-  const opt = OPPORTUNITY_PRICE_BASIS_OPTIONS.find((o) => o.value === value);
-  return {
-    priceBasisLabel: opt?.label ?? (value === 'channel' ? '유통' : '다이렉트'),
-    priceBasisShortLabel: opt?.shortLabel != null ? String(opt.shortLabel) : ''
-  };
-}
-
-function buildLineFromProduct(product, priceBasisPref = 'consumer') {
-  const basis = priceBasisPref === 'channel' ? 'channel' : 'consumer';
-  const { priceBasisLabel, priceBasisShortLabel } = priceBasisLabelsForValue(basis);
-  const price = suggestedPriceFromProduct(product, basis);
-  const cost = Number(product.costPrice);
-  const qty = 1;
-  const pc =
-    Number.isFinite(cost) && cost >= 0 && qty > 0 ? Math.round(cost * qty).toLocaleString() : '';
-  return {
-    lineId: newOppLineId(),
-    productId: String(product._id),
-    productName: product.name || '',
-    unitPrice: price > 0 ? price.toLocaleString() : '',
-    priceBasis: basis,
-    priceBasisLabel,
-    priceBasisShortLabel,
-    channelDistributor: '',
-    quantity: '1',
-    discountRate: '',
-    discountAmount: '',
-    purchaseCostTotal: pc,
-    commissionRecipients: [createEmptyCommissionRow()]
-  };
 }
 
 function getCurrentUserId() {
@@ -446,7 +389,26 @@ export default function OpportunityModal({
   initialPersonalPurchase = false
 }) {
   const isEdit = mode === 'edit';
-  const stageSelectOptions = Array.isArray(stageOptions) && stageOptions.length > 0 ? stageOptions : STAGE_OPTIONS;
+  const [pipelineStageDefinitions, setPipelineStageDefinitions] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE}/custom-field-definitions?entityType=salesPipelineStage`, { headers: getAuthHeader() })
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        setPipelineStageDefinitions(Array.isArray(data?.items) ? data.items : []);
+      })
+      .catch(() => {
+        if (!cancelled) setPipelineStageDefinitions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const stageSelectOptions = useMemo(() => {
+    if (Array.isArray(stageOptions) && stageOptions.length > 0) return stageOptions;
+    return buildPipelineStageSelectOptionsFromDefinitions(pipelineStageDefinitions);
+  }, [stageOptions, pipelineStageDefinitions]);
   const firstStageValue = stageSelectOptions[0]?.value || 'NewLead';
   const [form, setForm] = useState(() => ({
     customerCompanyId: '',
@@ -2014,30 +1976,7 @@ export default function OpportunityModal({
           ? ymFallback
           : '';
 
-      const lineItemsPayload = lineItems.map((li) => {
-        const basis = li.priceBasis === 'channel' ? 'channel' : 'consumer';
-        const fb = priceBasisLabelsForValue(basis);
-        return {
-          productId: li.productId || null,
-          productName: li.productName?.trim() || '',
-          unitPrice: parseNumber(li.unitPrice),
-          unitPriceBasis: basis,
-          unitPriceBasisLabel: String(li.priceBasisLabel || '').trim().slice(0, 80) || fb.priceBasisLabel,
-          unitPriceBasisShortLabel:
-            String(li.priceBasisShortLabel != null ? li.priceBasisShortLabel : '').trim().slice(0, 80) ||
-            fb.priceBasisShortLabel,
-          channelDistributor: li.priceBasis === 'channel' ? String(li.channelDistributor || '').trim() : '',
-          quantity: Math.max(0, Number(li.quantity) || 1),
-          discountRate: Math.max(0, Math.min(100, Number(li.discountRate) || 0)),
-          discountAmount: parseNumber(li.discountAmount) || 0,
-          commissionRecipients: (Array.isArray(li.commissionRecipients) ? li.commissionRecipients : [])
-            .map((r) => ({
-              remarks: String(r.remarks || '').trim().slice(0, 2000),
-              commissionAmount: parseNumber(r.commissionAmount) || 0
-            }))
-            .filter((r) => r.remarks || r.commissionAmount > 0)
-        };
-      });
+      const lineItemsPayload = buildLineItemsPayloadFromClientLines(lineItems);
       const collectionEntriesPayload = collectionEntries
         .map((entry) => {
           const amount = parseNumber(entry.amount);
@@ -2682,23 +2621,6 @@ export default function OpportunityModal({
 
   const netMarginAmount = computeTotalNetMargin();
 
-  const [pipelineStageDefinitions, setPipelineStageDefinitions] = useState([]);
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`${API_BASE}/custom-field-definitions?entityType=salesPipelineStage`, { headers: getAuthHeader() })
-      .then((r) => r.json())
-      .then((data) => {
-        if (cancelled) return;
-        setPipelineStageDefinitions(Array.isArray(data?.items) ? data.items : []);
-      })
-      .catch(() => {
-        if (!cancelled) setPipelineStageDefinitions([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   const stageForecastMap = useMemo(
     () => buildStageForecastPercentMap(pipelineStageDefinitions),
     [pipelineStageDefinitions]
@@ -2973,6 +2895,22 @@ export default function OpportunityModal({
                   </div>
                 </div>
               </div>
+
+              <label className="opp-label">
+                <span>추가 설명</span>
+                <p className="opp-price-basis-hint">
+                  프로모션·특가·거래 조건 등 참고용 메모를 적을 수 있습니다. 저장 시 기회와 연동된 수주 이력에도 반영됩니다.
+                </p>
+                <textarea
+                  className="opp-textarea"
+                  rows={4}
+                  maxLength={8000}
+                  value={form.description}
+                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                  placeholder="예: 연말 프로모션 10% 추가 할인, 계약 기간·옵션 조건"
+                  aria-label="추가 설명"
+                />
+              </label>
 
               {/* 제품 - 다중 선택 + 제품 추가 */}
               <div className="opp-label">

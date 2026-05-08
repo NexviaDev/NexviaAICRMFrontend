@@ -104,7 +104,7 @@ function saveSharedCompletedLeadMap(mapObj) {
   try {
     const next = mapObj && typeof mapObj === 'object' ? mapObj : {};
     localStorage.setItem(`${HOME_LEAD_COMPLETED_SHARED_PREFIX}${getLeadCompletedCompanyKey()}`, JSON.stringify(next));
-  } catch (_) {}
+  } catch (_) { }
 }
 
 const DEFAULT_STAGE_LABELS = {
@@ -238,10 +238,15 @@ function filterHomeForecastRows(rows, filters) {
   if (!product && !probStr && !month) return rows;
   return rows.filter((row) => {
     if (product) {
-      const raw = String(row?.softwareLabel || '').trim();
-      const parts = raw ? raw.split(',').map((s) => s.trim()).filter(Boolean) : [];
-      const tokenMatch = parts.length ? parts.some((p) => p === product) : raw === product;
-      if (!tokenMatch) return false;
+      const tags = Array.isArray(row?.forecastProductNames) ? row.forecastProductNames : [];
+      if (tags.length > 0) {
+        if (!tags.includes(product)) return false;
+      } else {
+        const raw = String(row?.softwareLabel || '').trim();
+        const parts = raw ? raw.split(',').map((s) => s.trim()).filter(Boolean) : [];
+        const tokenMatch = parts.length ? parts.some((p) => p === product) : raw === product;
+        if (!tokenMatch) return false;
+      }
     }
     if (probStr !== '') {
       const p = Number(row?.probabilityPct);
@@ -260,14 +265,88 @@ function filterHomeForecastRows(rows, filters) {
 function buildHomeForecastProductOptions(rows) {
   const set = new Set();
   for (const row of rows) {
+    const tags = Array.isArray(row?.forecastProductNames) ? row.forecastProductNames : [];
+    if (tags.length > 0) {
+      tags.forEach((t) => {
+        if (t && t !== '—') set.add(t);
+      });
+      continue;
+    }
     const raw = String(row?.softwareLabel || '').trim();
     if (!raw || raw === '—') continue;
     raw.split(',').forEach((chunk) => {
-      const t = String(chunk || '').trim();
-      if (t) set.add(t);
+      const tt = String(chunk || '').trim();
+      if (tt) set.add(tt);
     });
   }
   return [...set].sort((a, b) => a.localeCompare(b, 'ko'));
+}
+
+/** 제품 필터 선택 시 행·합계에 표시할 금액(복수 lineItems 분배 — 서버 forecast* 필드) */
+function getForecastRowDisplayForProductFilter(row, productFilter) {
+  const pf = String(productFilter || '').trim();
+  const vm = row?.forecastValueByProduct && typeof row.forecastValueByProduct === 'object' ? row.forecastValueByProduct : null;
+  if (!pf || !vm || vm[pf] == null) {
+    return {
+      softwareLabel: row.softwareLabel,
+      unitPrice: Number(row?.unitPrice) || 0,
+      quantity: Number(row?.quantity) || 0,
+      finalPrice: Number(row?.finalPrice) || 0,
+      forecastAmount: Number(row?.forecastAmount) || 0,
+      contractAmount: Number(row?.contractAmount) || 0,
+      invoiceAmount: Number(row?.invoiceAmount) || 0,
+      collectedAmount: Number(row?.collectedAmount) || 0,
+      marginAmount: Number(row?.marginAmount) || 0
+    };
+  }
+  const full = Number(row?.finalPrice) || 0;
+  const part = Number(vm[pf]) || 0;
+  const ratio = full > 0 ? part / full : 0;
+  const qm = row?.forecastQtyByProduct && typeof row.forecastQtyByProduct === 'object' ? row.forecastQtyByProduct : {};
+  const um = row?.forecastUnitPriceByProduct && typeof row.forecastUnitPriceByProduct === 'object' ? row.forecastUnitPriceByProduct : {};
+  let qty = qm[pf] != null ? Number(qm[pf]) : Math.round((Number(row?.quantity) || 0) * ratio);
+  if (!Number.isFinite(qty)) qty = 0;
+  let unitPrice = um[pf] != null ? Number(um[pf]) : 0;
+  if (!unitPrice && qty > 0 && part > 0) unitPrice = Math.round(part / qty);
+  return {
+    softwareLabel: pf,
+    unitPrice,
+    quantity: qty,
+    finalPrice: part,
+    forecastAmount: Math.round((Number(row?.forecastAmount) || 0) * ratio),
+    contractAmount: Math.round((Number(row?.contractAmount) || 0) * ratio),
+    invoiceAmount: Math.round((Number(row?.invoiceAmount) || 0) * ratio),
+    collectedAmount: Math.round((Number(row?.collectedAmount) || 0) * ratio),
+    marginAmount: Math.round((Number(row?.marginAmount) || 0) * ratio)
+  };
+}
+
+function sumForecastTotalsForRows(rows, productFilter) {
+  const pf = String(productFilter || '').trim();
+  return rows.reduce(
+    (acc, row) => {
+      const d = getForecastRowDisplayForProductFilter(row, pf);
+      acc.unitPrice += d.unitPrice;
+      acc.quantity += d.quantity;
+      acc.finalPrice += d.finalPrice;
+      acc.forecast += d.forecastAmount;
+      acc.contract += d.contractAmount;
+      acc.invoice += d.invoiceAmount;
+      acc.collected += d.collectedAmount;
+      acc.margin += d.marginAmount;
+      return acc;
+    },
+    {
+      unitPrice: 0,
+      quantity: 0,
+      finalPrice: 0,
+      forecast: 0,
+      contract: 0,
+      invoice: 0,
+      collected: 0,
+      margin: 0
+    }
+  );
 }
 
 function buildHomeForecastProbabilityOptions(rows) {
@@ -889,6 +968,116 @@ function MarginLineChartWithTooltips({
   );
 }
 
+/** 제품별 다중 꺾은선 — Y축 공통(순마진 차트와 동일 보간 규칙) */
+function lineChartExtentsFromManySeries(seriesList) {
+  const vals = [];
+  for (const s of Array.isArray(seriesList) ? seriesList : []) {
+    for (const x of Array.isArray(s) ? s : []) {
+      vals.push(Number(x?.value) || 0);
+    }
+  }
+  if (vals.length === 0) return { hasNegative: false, vMin: 0, vMax: 1 };
+  const rawMin = Math.min(...vals);
+  const rawMax = Math.max(...vals);
+  if (rawMin >= 0) {
+    return { hasNegative: false, vMin: 0, vMax: Math.max(1, rawMax) };
+  }
+  const range = rawMax - rawMin;
+  const pad = range > 1e-9 ? range * 0.06 : Math.max(Math.abs(rawMin), Math.abs(rawMax), 1) * 0.08;
+  return { hasNegative: true, vMin: rawMin - pad, vMax: rawMax + pad };
+}
+
+function ProductSalesLinesChartWithTooltips({ products, currency, title, formatValue }) {
+  const [hoverIdx, setHoverIdx] = useState(null);
+  const list = Array.isArray(products) ? products : [];
+  const fmt =
+    typeof formatValue === 'function'
+      ? formatValue
+      : (v) => formatCurrency(Number(v) || 0, currency);
+  const seriesList = list.map((p) => (Array.isArray(p.series) ? p.series : []));
+  const extents = lineChartExtentsFromManySeries(seriesList);
+  const getY = (v) => lineChartYMargin(v, extents);
+  const refSeries = list[0]?.series || [];
+  const nPts = refSeries.length;
+  const zeroY = lineChartYMargin(0, extents);
+  const showZeroLine = extents.hasNegative && extents.vMin <= 0 && extents.vMax >= 0;
+  const axisX1 = LINE_CHART_VB.padX;
+  const axisX2 = LINE_CHART_VB.w - LINE_CHART_VB.padX;
+
+  return (
+    <div className="home-line-chart-chart-block">
+      <svg
+        className="home-line-chart"
+        viewBox={`0 0 ${LINE_CHART_VB.w} ${LINE_CHART_VB.h}`}
+        preserveAspectRatio="none"
+        aria-hidden
+      >
+        {showZeroLine ? (
+          <line
+            x1={axisX1}
+            x2={axisX2}
+            y1={zeroY}
+            y2={zeroY}
+            stroke="rgba(91, 124, 153, 0.2)"
+            strokeWidth="1"
+            vectorEffect="non-scaling-stroke"
+          />
+        ) : null}
+        {list.map((p, pi) => {
+          const d = buildLinePathD(p.series, getY);
+          if (!d) return null;
+          const stroke = chartPastelAt(pi);
+          return (
+            <path
+              key={`${title}-prod-line-${p.key || pi}`}
+              d={d}
+              fill="none"
+              stroke={stroke}
+              strokeWidth={nPts <= 3 ? 3 : 2.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          );
+        })}
+      </svg>
+      <div className="home-line-chart-hover-zones" role="presentation">
+        {refSeries.map((item, idx) => (
+          <div
+            key={`${title}-prod-hz-${item.label}-${idx}`}
+            className="home-line-chart-hover-zone"
+            onMouseEnter={() => setHoverIdx(idx)}
+            onMouseLeave={() => setHoverIdx(null)}
+          >
+            {hoverIdx === idx ? (
+              <div className="home-chart-tooltip-fly home-chart-tooltip-fly--line" role="tooltip">
+                <strong>{item.label}</strong>
+                {list.map((p, pi) => (
+                  <div key={`${String(p.key)}-${pi}-tip`}>
+                    {p.label}: {fmt(Number(p.series[idx]?.value) || 0)}
+                  </div>
+                ))}
+                <div className="home-product-sales-tooltip-sum">
+                  합계: {fmt(list.reduce((s, p) => s + (Number(p.series[idx]?.value) || 0), 0))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function productSalesInsightAllEmpty(products) {
+  if (!Array.isArray(products) || products.length === 0) return true;
+  return products.every((p) => chartSeriesAllZero(p.series));
+}
+
+function formatHomeProductQty(n) {
+  const v = Math.round(Number(n) || 0);
+  return `${v.toLocaleString('ko-KR')}개`;
+}
+
 /** 소비자가 전년 점선 — 순마진 전년과 동일 톤 */
 const CONSUMER_LINE_PREV = MARGIN_LINE_PREV;
 
@@ -1038,6 +1227,21 @@ export default function Home() {
       ? savedHomeDashInit.marginChartMode
       : 'line'
   );
+  /** 제품군 판매 — 월간 KPI에서는 제품별 추세를 보기 쉬워 꺾은선 기본(저장값 우선) */
+  const [productChartMode, setProductChartMode] = useState(() => {
+    if (savedHomeDashInit?.productChartMode === 'line' || savedHomeDashInit?.productChartMode === 'bar') {
+      return savedHomeDashInit.productChartMode;
+    }
+    const kp = String(savedHomeDashInit?.kpiPeriod || '').trim().toLowerCase();
+    return kp === 'month' ? 'line' : 'bar';
+  });
+  const [quantityChartMode, setQuantityChartMode] = useState(() => {
+    if (savedHomeDashInit?.quantityChartMode === 'line' || savedHomeDashInit?.quantityChartMode === 'bar') {
+      return savedHomeDashInit.quantityChartMode;
+    }
+    const kp = String(savedHomeDashInit?.kpiPeriod || '').trim().toLowerCase();
+    return kp === 'month' ? 'line' : 'bar';
+  });
   /** 홈 캡처 채널 주간 리드: 꺾은선 기본, 막대 옵션 (순마진 그래프와 동일 토글 UX) */
   const [leadChannelChartMode, setLeadChannelChartMode] = useState('line');
   /** 홈 수신 리드: 완료 숨김(permanent) · 1주 스누즈(snoozed ISO) */
@@ -1121,7 +1325,7 @@ export default function Home() {
         if (data?.user) {
           try {
             localStorage.setItem('crm_user', JSON.stringify(data.user));
-          } catch (_) {}
+          } catch (_) { }
           const hd = data.user.listTemplates?.homeDashboard;
           if (hd && typeof hd === 'object') {
             if (hd.consumerChartMode === 'bar' || hd.consumerChartMode === 'line') {
@@ -1129,6 +1333,12 @@ export default function Home() {
             }
             if (hd.marginChartMode === 'bar' || hd.marginChartMode === 'line') {
               setMarginChartMode(hd.marginChartMode);
+            }
+            if (hd.productChartMode === 'bar' || hd.productChartMode === 'line') {
+              setProductChartMode(hd.productChartMode);
+            }
+            if (hd.quantityChartMode === 'bar' || hd.quantityChartMode === 'line') {
+              setQuantityChartMode(hd.quantityChartMode);
             }
           }
           setInsightAccess({
@@ -1163,7 +1373,7 @@ export default function Home() {
       return undefined;
     }
     setHomeProjectPreviewLoading(true);
-    pingBackendHealth(getAuthHeader).catch(() => {});
+    pingBackendHealth(getAuthHeader).catch(() => { });
     fetch(`${API_BASE}/projects`, { headers: getAuthHeader() })
       .then((r) => r.json().catch(() => ({})))
       .then((payload) => {
@@ -1308,12 +1518,22 @@ export default function Home() {
 
   const handleConsumerChartModeChange = useCallback((next) => {
     setConsumerChartMode(next);
-    patchHomeDashboardTemplate({ consumerChartMode: next }).catch(() => {});
+    patchHomeDashboardTemplate({ consumerChartMode: next }).catch(() => { });
   }, []);
 
   const handleMarginChartModeChange = useCallback((next) => {
     setMarginChartMode(next);
-    patchHomeDashboardTemplate({ marginChartMode: next }).catch(() => {});
+    patchHomeDashboardTemplate({ marginChartMode: next }).catch(() => { });
+  }, []);
+
+  const handleProductChartModeChange = useCallback((next) => {
+    setProductChartMode(next);
+    patchHomeDashboardTemplate({ productChartMode: next }).catch(() => { });
+  }, []);
+
+  const handleQuantityChartModeChange = useCallback((next) => {
+    setQuantityChartMode(next);
+    patchHomeDashboardTemplate({ quantityChartMode: next }).catch(() => { });
   }, []);
 
   /**
@@ -1363,7 +1583,7 @@ export default function Home() {
       if (!isCompanyWideInsight && leaderInsightViewKind === 'personal') {
         payload.insightUserId = insightUserQ || myCrmUserId;
       }
-      patchHomeDashboardTemplate(payload).catch(() => {});
+      patchHomeDashboardTemplate(payload).catch(() => { });
     }, 450);
     return () => {
       if (homeDashboardToolbarPersistTimerRef.current) {
@@ -1426,7 +1646,25 @@ export default function Home() {
               setData(j1);
               appliedStale = true;
               if (!isRefetch) setLoading(false);
-              if (j1.dashboardCacheHit && !j1.dashboardStale) {
+              /** 구형 회사 캐시: productSalesGraphs·Forecast 제품 분배 필드 누락 시 정밀 조회 필요 */
+              const fr = j1.forecastPipelineRows;
+              const forecastMetaOk =
+                !Array.isArray(fr) ||
+                fr.length === 0 ||
+                (fr[0] && Object.prototype.hasOwnProperty.call(fr[0], 'forecastProductNames'));
+              const ps = j1.productSalesGraphs;
+              const productSalesQtyOk =
+                ps != null &&
+                typeof ps === 'object' &&
+                Array.isArray(ps.quantityByProduct);
+              const stalePayloadComplete =
+                j1.dashboardCacheHit &&
+                !j1.dashboardStale &&
+                j1.productSalesGraphs != null &&
+                typeof j1.productSalesGraphs === 'object' &&
+                productSalesQtyOk &&
+                forecastMetaOk;
+              if (stalePayloadComplete) {
                 if (!cancelled) setDashboardDataBusy(false);
                 return;
               }
@@ -1440,7 +1678,7 @@ export default function Home() {
         });
         if (!cancelled && r2.ok) {
           const j2 = await r2.json().catch(() => null);
-            if (j2 && typeof j2 === 'object') {
+          if (j2 && typeof j2 === 'object') {
             setData((prev) => {
               if (skipStaleFirst || !appliedStale) return j2;
               const prevKey = prev && typeof prev === 'object' ? String(prev.dashboardCacheKey || '') : '';
@@ -2097,9 +2335,9 @@ export default function Home() {
   const revNum =
     Number(
       kpiAnimSrc?.revenue?.orderValueTotal ??
-        kpiAnimSrc?.revenue?.primaryTotal ??
-        kpiAnimSrc?.revenue?.last6Total ??
-        0
+      kpiAnimSrc?.revenue?.primaryTotal ??
+      kpiAnimSrc?.revenue?.last6Total ??
+      0
     ) || 0;
   const gmRateNum = kpiAnimSrc?.grossMargin?.ratePct ?? 0;
   const goalNum = kpiAnimSrc?.goal?.taskCompletion ?? 0;
@@ -2337,6 +2575,27 @@ export default function Home() {
   const marginInsightEmpty = salesChartMeta?.legendCurrent
     ? `${insightChartLegendCurrent}·${insightChartLegendPrev} 순마진 데이터가 없습니다.`
     : '집계 구간·전년 동일 구간 순마진 데이터가 없습니다.';
+  const productSalesTopN = Number(stats.productSalesGraphs?.topN) || 8;
+  const productSalesRows = useMemo(
+    () =>
+      Array.isArray(stats.productSalesGraphs?.wonValueByProductByCurrency?.[selectedGraphCurrency])
+        ? stats.productSalesGraphs.wonValueByProductByCurrency[selectedGraphCurrency]
+        : [],
+    [stats.productSalesGraphs, selectedGraphCurrency]
+  );
+  const productQtyRows = useMemo(
+    () =>
+      Array.isArray(stats.productSalesGraphs?.quantityByProduct)
+        ? stats.productSalesGraphs.quantityByProduct
+        : [],
+    [stats.productSalesGraphs]
+  );
+  const productSalesSubtitle = salesChartMeta?.title
+    ? `수주 성공(Won) 금액을 제품(행)별로 나눈 합계입니다. 복수 제품 기회는 행별 최종 금액(할인율·차감 반영) 비중으로 수주액을 배분합니다. 통화별 상위 ${productSalesTopN}개 제품. ${salesChartMeta.title}.`
+    : `수주 성공(Won) 금액을 제품별로 나눈 합계입니다. 복수 제품 기회는 행별 최종 금액(할인 반영) 비중으로 배분하며, 통화별 상위 ${productSalesTopN}개 제품만 표시합니다.`;
+  const productQtySubtitle = salesChartMeta?.title
+    ? `수주 성공(Won) 건의 제품(행)별 판매 수량입니다. 복수 제품이면 각 행 수량을 합산합니다. 전체 기준 상위 ${productSalesTopN}개 제품. ${salesChartMeta.title}.`
+    : `수주 성공(Won) 건의 제품별 판매 수량입니다. lineItems 가 있으면 행 수량을 합산하고, 상위 ${productSalesTopN}개 제품만 표시합니다.`;
   const forecastAllRows = useMemo(
     () => (Array.isArray(data?.forecastPipelineRows) ? data.forecastPipelineRows : []),
     [data?.forecastPipelineRows]
@@ -2534,16 +2793,15 @@ export default function Home() {
                     <div className="home-mini-chart-track">
                       <div className="home-mini-chart-bar-hit">
                         <div
-                          className={`home-mini-chart-bar home-mini-chart-bar--insight-anim ${
-                            item.value < 0 ? 'negative' : ''
-                          }${isZero ? ' home-mini-chart-bar--zero-line' : ''}`}
+                          className={`home-mini-chart-bar home-mini-chart-bar--insight-anim ${item.value < 0 ? 'negative' : ''
+                            }${isZero ? ' home-mini-chart-bar--zero-line' : ''}`}
                           style={
                             isZero
                               ? undefined
                               : {
-                                  height: `${Math.max(12, item.height * 2)}%`,
-                                  backgroundColor: item.value < 0 ? CHART_PASTEL_NEGATIVE : chartPastelAt(idx)
-                                }
+                                height: `${Math.max(12, item.height * 2)}%`,
+                                backgroundColor: item.value < 0 ? CHART_PASTEL_NEGATIVE : chartPastelAt(idx)
+                              }
                           }
                         />
                         <div className="home-chart-tooltip-fly home-chart-tooltip-fly--bar" role="tooltip">
@@ -2616,10 +2874,8 @@ export default function Home() {
 
     return (
       <div
-        className={`panel home-chart-panel${
-          prefersReducedMotion ? ' home-chart-panel--motion-reduced' : ''
-        }`}
-      >
+        className={`panel home-chart-panel${prefersReducedMotion ? ' home-chart-panel--motion-reduced' : ''
+          }`}>
         <div className="panel-head home-chart-head">
           <div>
             <h2>{title}</h2>
@@ -2712,78 +2968,370 @@ export default function Home() {
     );
   };
 
+  const renderProductSalesInsightPanel = () => {
+    const prows = productSalesRows;
+    const nCols = prows[0]?.series?.length || 0;
+    const dense = nCols >= 8;
+    const denseStyle = dense ? { gridTemplateColumns: `repeat(${nCols}, minmax(0, 1fr))` } : undefined;
+    const empty = productSalesInsightAllEmpty(prows);
+    const emptyMsg =
+      forecastCompletedRowsUnfiltered.length > 0
+        ? '제품별 수주 그래프는 단계가 수주 성공(Won)이고 계약일(saleDate)이 있는 건만 집계합니다. Forecast 「완료」에는 확률 100% 등으로 표시되는 기회가 있어, 아래 목록이 보여도 이 그래프는 비어 있을 수 있습니다.'
+        : '이 조회 범위·기간·통화에 표시할 제품별 수주(Won) 데이터가 없습니다. 수주 건에 계약일(saleDate)이 없으면 기간 집계에서 제외됩니다.';
+
+    return (
+      <div
+        className={`panel home-chart-panel home-chart-panel--product-sales${prefersReducedMotion ? ' home-chart-panel--motion-reduced' : ''
+          }`}>
+        <div className="panel-head home-chart-head">
+          <div>
+            <h2>제품군 판매</h2>
+            <p className="home-chart-subtitle">{productSalesSubtitle}</p>
+          </div>
+          <div className="home-chart-actions">
+            <div className="home-chart-view-toggle">
+              <button
+                type="button"
+                className="home-chart-type-icon active"
+                onClick={() => handleProductChartModeChange(productChartMode === 'bar' ? 'line' : 'bar')}
+                aria-label={
+                  productChartMode === 'bar'
+                    ? '막대 그래프로 보는 중입니다. 제품별 꺾은선으로 전환합니다.'
+                    : '제품별 꺾은선으로 보는 중입니다. 막대로 전환합니다.'
+                }
+                title={productChartMode === 'bar' ? '제품별 꺾은선으로 전환' : '막대(누적)로 전환'}
+              >
+                <span className="material-symbols-outlined" aria-hidden>
+                  {productChartMode === 'bar' ? 'bar_chart' : 'show_chart'}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div className="home-chart-body">
+          {dashboardShellBlocking ? (
+            <p className="home-chart-empty">그래프 불러오는 중…</p>
+          ) : empty ? (
+            <p className="home-chart-empty">{emptyMsg}</p>
+          ) : productChartMode === 'line' ? (
+            <div className="home-line-chart-wrap">
+              <ProductSalesLinesChartWithTooltips
+                products={prows}
+                currency={selectedGraphCurrency}
+                title="제품군 판매"
+              />
+              <div className="home-product-sales-line-legend" aria-hidden>
+                {prows.map((p, pi) => (
+                  <span key={String(p.key)}>
+                    <span
+                      className="home-line-legend-swatch home-product-sales-swatch"
+                      style={{ backgroundColor: chartPastelAt(pi) }}
+                    />{' '}
+                    {p.label}
+                  </span>
+                ))}
+              </div>
+              <div className="home-line-chart-labels">
+                {(prows[0]?.series || []).map((item) => (
+                  <span key={`제품군-x-${item.label}`}>{item.label}</span>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="home-bar-chart-wrap">
+              <div
+                className={`home-mini-chart${dense ? ' home-mini-chart--dense-cols' : ''}`}
+                style={denseStyle}
+              >
+                {Array.from({ length: nCols }, (_, j) => {
+                  const lab = prows[0]?.series?.[j]?.label || `${j}`;
+                  const total = prows.reduce((s, p) => s + (Number(p.series[j]?.value) || 0), 0);
+                  return (
+                    <div key={`prod-col-${lab}-${j}`} className="home-mini-chart-col home-mini-chart-col--tip">
+                      <div className="home-mini-chart-track">
+                        <div className="home-mini-chart-bar-hit">
+                          {total <= 0 ? (
+                            <div className="home-product-sales-stack home-product-sales-stack--zero" aria-hidden />
+                          ) : (
+                            <div className="home-product-sales-stack">
+                              {prows.map((p, pi) => {
+                                const v = Math.max(0, Number(p.series[j]?.value) || 0);
+                                return (
+                                  <div
+                                    key={`${String(p.key)}-seg-${j}`}
+                                    className="home-product-sales-stack-seg"
+                                    style={{
+                                      flex: v > 0 ? `${v} 1 0` : '0 1 0',
+                                      minHeight: v > 0 ? 3 : 0,
+                                      backgroundColor: chartPastelAt(pi)
+                                    }}
+                                  />
+                                );
+                              })}
+                            </div>
+                          )}
+                          <div className="home-chart-tooltip-fly home-chart-tooltip-fly--bar" role="tooltip">
+                            <strong>{lab}</strong>
+                            {prows.map((p) => (
+                              <div key={`tt-${String(p.key)}-${j}`}>
+                                {p.label}: {formatCurrency(Number(p.series[j]?.value) || 0, selectedGraphCurrency)}
+                              </div>
+                            ))}
+                            <div className="home-product-sales-tooltip-sum">
+                              합계: {formatCurrency(total, selectedGraphCurrency)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div
+                className={`home-bar-chart-labels${dense ? ' home-bar-chart-labels--dense-cols' : ''}`}
+                style={denseStyle}
+              >
+                {(prows[0]?.series || []).map((item) => (
+                  <span key={`prod-bar-x-${item.label}`}>{item.label}</span>
+                ))}
+              </div>
+              <div className="home-product-sales-bar-legend" aria-hidden>
+                {prows.map((p, pi) => (
+                  <span key={`${String(p.key)}-bar-leg`}>
+                    <span
+                      className="home-line-legend-swatch home-product-sales-swatch"
+                      style={{ backgroundColor: chartPastelAt(pi) }}
+                    />{' '}
+                    {p.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderProductQtyInsightPanel = () => {
+    const qrows = productQtyRows;
+    const nCols = qrows[0]?.series?.length || 0;
+    const dense = nCols >= 8;
+    const denseStyle = dense ? { gridTemplateColumns: `repeat(${nCols}, minmax(0, 1fr))` } : undefined;
+    const empty = productSalesInsightAllEmpty(qrows);
+    const emptyMsgQty =
+      forecastCompletedRowsUnfiltered.length > 0
+        ? '제품별 수량 그래프는 수주 성공(Won)이고 계약일(saleDate)이 있는 건만 집계합니다. Forecast 목록과 다를 수 있습니다.'
+        : '이 조회 범위·기간에 표시할 제품별 수량 데이터가 없습니다.';
+
+    return (
+      <div
+        className={`panel home-chart-panel home-chart-panel--product-qty${prefersReducedMotion ? ' home-chart-panel--motion-reduced' : ''
+          }`}
+      >
+        <div className="panel-head home-chart-head">
+          <div>
+            <h2>제품별 판매 수량</h2>
+            <p className="home-chart-subtitle">{productQtySubtitle}</p>
+          </div>
+          <div className="home-chart-actions">
+            <div className="home-chart-view-toggle">
+              <button
+                type="button"
+                className="home-chart-type-icon active"
+                onClick={() => handleQuantityChartModeChange(quantityChartMode === 'bar' ? 'line' : 'bar')}
+                aria-label={
+                  quantityChartMode === 'bar'
+                    ? '막대 그래프로 보는 중입니다. 제품별 꺾은선으로 전환합니다.'
+                    : '제품별 꺾은선으로 보는 중입니다. 막대로 전환합니다.'
+                }
+                title={quantityChartMode === 'bar' ? '제품별 꺾은선으로 전환' : '막대(누적)로 전환'}
+              >
+                <span className="material-symbols-outlined" aria-hidden>
+                  {quantityChartMode === 'bar' ? 'bar_chart' : 'show_chart'}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div className="home-chart-body">
+          {dashboardShellBlocking ? (
+            <p className="home-chart-empty">그래프 불러오는 중…</p>
+          ) : empty ? (
+            <p className="home-chart-empty">{emptyMsgQty}</p>
+          ) : quantityChartMode === 'line' ? (
+            <div className="home-line-chart-wrap">
+              <ProductSalesLinesChartWithTooltips
+                products={qrows}
+                currency={selectedGraphCurrency}
+                title="제품별 판매 수량"
+                formatValue={formatHomeProductQty}
+              />
+              <div className="home-product-sales-line-legend" aria-hidden>
+                {qrows.map((p, pi) => (
+                  <span key={`qty-leg-${String(p.key)}`}>
+                    <span
+                      className="home-line-legend-swatch home-product-sales-swatch"
+                      style={{ backgroundColor: chartPastelAt(pi) }}
+                    />{' '}
+                    {p.label}
+                  </span>
+                ))}
+              </div>
+              <div className="home-line-chart-labels">
+                {(qrows[0]?.series || []).map((item) => (
+                  <span key={`제품수량-x-${item.label}`}>{item.label}</span>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="home-bar-chart-wrap">
+              <div
+                className={`home-mini-chart${dense ? ' home-mini-chart--dense-cols' : ''}`}
+                style={denseStyle}
+              >
+                {Array.from({ length: nCols }, (_, j) => {
+                  const lab = qrows[0]?.series?.[j]?.label || `${j}`;
+                  const total = qrows.reduce((s, p) => s + (Number(p.series[j]?.value) || 0), 0);
+                  return (
+                    <div key={`qty-col-${lab}-${j}`} className="home-mini-chart-col home-mini-chart-col--tip">
+                      <div className="home-mini-chart-track">
+                        <div className="home-mini-chart-bar-hit">
+                          {total <= 0 ? (
+                            <div className="home-product-sales-stack home-product-sales-stack--zero" aria-hidden />
+                          ) : (
+                            <div className="home-product-sales-stack">
+                              {qrows.map((p, pi) => {
+                                const v = Math.max(0, Number(p.series[j]?.value) || 0);
+                                return (
+                                  <div
+                                    key={`${String(p.key)}-qty-seg-${j}`}
+                                    className="home-product-sales-stack-seg"
+                                    style={{
+                                      flex: v > 0 ? `${v} 1 0` : '0 1 0',
+                                      minHeight: v > 0 ? 3 : 0,
+                                      backgroundColor: chartPastelAt(pi)
+                                    }}
+                                  />
+                                );
+                              })}
+                            </div>
+                          )}
+                          <div className="home-chart-tooltip-fly home-chart-tooltip-fly--bar" role="tooltip">
+                            <strong>{lab}</strong>
+                            {qrows.map((p) => (
+                              <div key={`qty-tt-${String(p.key)}-${j}`}>
+                                {p.label}: {formatHomeProductQty(Number(p.series[j]?.value) || 0)}
+                              </div>
+                            ))}
+                            <div className="home-product-sales-tooltip-sum">
+                              합계: {formatHomeProductQty(total)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div
+                className={`home-bar-chart-labels${dense ? ' home-bar-chart-labels--dense-cols' : ''}`}
+                style={denseStyle}
+              >
+                {(qrows[0]?.series || []).map((item) => (
+                  <span key={`qty-bar-x-${item.label}`}>{item.label}</span>
+                ))}
+              </div>
+              <div className="home-product-sales-bar-legend" aria-hidden>
+                {qrows.map((p, pi) => (
+                  <span key={`${String(p.key)}-qty-bar-leg`}>
+                    <span
+                      className="home-line-legend-swatch home-product-sales-swatch"
+                      style={{ backgroundColor: chartPastelAt(pi) }}
+                    />{' '}
+                    {p.label}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const renderCaptureLeadRow = (lead, options = {}) => {
     const isCompletedRow = options.completed === true;
     const completedMeta = isCompletedRow ? sharedCompletedLeadMap[String(lead?._id || '')] : null;
     return (
-    <li
-      key={String(lead._id)}
-      className="home-todo-leads-item home-todo-leads-item--clickable"
-      onClick={() => openLeadDetail(lead)}
-    >
-      {isCompletedRow ? (
-        <span className="home-lead-check home-lead-check--done" aria-hidden>
-          <span className="material-symbols-outlined">check_circle</span>
-        </span>
-      ) : (
-        <button
-          type="button"
-          className="home-lead-check"
-          onClick={(e) => {
-            e.stopPropagation();
-            dismissLeadFromHome(lead._id);
-          }}
-          aria-label="처리 완료"
-          title="처리 완료"
-        >
-          <span className="material-symbols-outlined" aria-hidden>radio_button_unchecked</span>
-        </button>
-      )}
-      <div className="home-todo-leads-item-stack">
-        <div className="home-todo-leads-item-main">
-          <span className="home-todo-leads-channel" title={lead._channelLabel}>
-            {lead._channelLabel}
+      <li
+        key={String(lead._id)}
+        className="home-todo-leads-item home-todo-leads-item--clickable"
+        onClick={() => openLeadDetail(lead)}
+      >
+        {isCompletedRow ? (
+          <span className="home-lead-check home-lead-check--done" aria-hidden>
+            <span className="material-symbols-outlined">check_circle</span>
           </span>
-          <span className="home-todo-leads-meta">{lead._channelSource}</span>
-        </div>
-        <div className="home-todo-leads-item-body">
-          <strong className="home-todo-leads-name">{lead.name || '(이름 없음)'}</strong>
-          <span className="home-todo-leads-email">{lead.email || '—'}</span>
-          <span className="home-todo-leads-phone">{formatLeadContact(lead)}</span>
-          {isCompletedRow ? (
-            <span className="home-todo-leads-processed-by">
-              처리: {String(completedMeta?.byName || '사용자')} · {formatLeadReceivedAt(completedMeta?.doneAt)}
-            </span>
-          ) : null}
-        </div>
-      </div>
-      <span className="home-todo-leads-chevron" aria-hidden>
-        <span className="material-symbols-outlined">chevron_right</span>
-      </span>
-      <div className="home-todo-leads-item-trailing">
-        {!isCompletedRow ? (
+        ) : (
           <button
             type="button"
-            className="home-lead-snooze-btn"
+            className="home-lead-check"
             onClick={(e) => {
               e.stopPropagation();
-              snoozeLeadHomeOneWeek(lead._id);
+              dismissLeadFromHome(lead._id);
             }}
-            aria-label="일주일 뒤에 다시 표시"
-            title="일주일 뒤에 다시 표시"
+            aria-label="처리 완료"
+            title="처리 완료"
           >
-            1주 보류
+            <span className="material-symbols-outlined" aria-hidden>radio_button_unchecked</span>
           </button>
-        ) : null}
-        <time
-          className="home-todo-leads-time"
-          dateTime={lead.receivedAt ? new Date(lead.receivedAt).toISOString() : undefined}
-        >
-          {formatLeadReceivedAt(lead.receivedAt)}
-        </time>
-      </div>
-    </li>
-  );
+        )}
+        <div className="home-todo-leads-item-stack">
+          <div className="home-todo-leads-item-main">
+            <span className="home-todo-leads-channel" title={lead._channelLabel}>
+              {lead._channelLabel}
+            </span>
+            <span className="home-todo-leads-meta">{lead._channelSource}</span>
+          </div>
+          <div className="home-todo-leads-item-body">
+            <strong className="home-todo-leads-name">{lead.name || '(이름 없음)'}</strong>
+            <span className="home-todo-leads-email">{lead.email || '—'}</span>
+            <span className="home-todo-leads-phone">{formatLeadContact(lead)}</span>
+            {isCompletedRow ? (
+              <span className="home-todo-leads-processed-by">
+                처리: {String(completedMeta?.byName || '사용자')} · {formatLeadReceivedAt(completedMeta?.doneAt)}
+              </span>
+            ) : null}
+          </div>
+        </div>
+        <span className="home-todo-leads-chevron" aria-hidden>
+          <span className="material-symbols-outlined">chevron_right</span>
+        </span>
+        <div className="home-todo-leads-item-trailing">
+          {!isCompletedRow ? (
+            <button
+              type="button"
+              className="home-lead-snooze-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                snoozeLeadHomeOneWeek(lead._id);
+              }}
+              aria-label="일주일 뒤에 다시 표시"
+              title="일주일 뒤에 다시 표시"
+            >
+              1주 보류
+            </button>
+          ) : null}
+          <time
+            className="home-todo-leads-time"
+            dateTime={lead.receivedAt ? new Date(lead.receivedAt).toISOString() : undefined}
+          >
+            {formatLeadReceivedAt(lead.receivedAt)}
+          </time>
+        </div>
+      </li>
+    );
   };
 
   return (
@@ -2795,7 +3343,7 @@ export default function Home() {
         channelLabel={leadDetailContext?.channelLabel}
         channelSource={leadDetailContext?.channelSource}
         onClose={closeLeadDetail}
-        onUpdated={() => {}}
+        onUpdated={() => { }}
       />
       <header className="page-header home-page-header">
         <div className="home-page-header-actions">
@@ -2856,6 +3404,28 @@ export default function Home() {
                   <div>
                     <h2>순마진 그래프</h2>
                     <p className="home-chart-subtitle">동일 기간·범위 (확인 후 표시)</p>
+                  </div>
+                </div>
+                <div className="home-chart-body home-chart-body--access-loading">
+                  <HomePastelSpinner label="권한 확인 중" reducedMotion={prefersReducedMotion} />
+                </div>
+              </div>
+              <div className="panel home-chart-panel home-chart-panel--access-loading" aria-busy="true">
+                <div className="panel-head home-chart-head">
+                  <div>
+                    <h2>제품군 판매</h2>
+                    <p className="home-chart-subtitle">동일 필터·기간 (확인 후 표시)</p>
+                  </div>
+                </div>
+                <div className="home-chart-body home-chart-body--access-loading">
+                  <HomePastelSpinner label="권한 확인 중" reducedMotion={prefersReducedMotion} />
+                </div>
+              </div>
+              <div className="panel home-chart-panel home-chart-panel--access-loading" aria-busy="true">
+                <div className="panel-head home-chart-head">
+                  <div>
+                    <h2>제품별 판매 수량</h2>
+                    <p className="home-chart-subtitle">동일 필터·기간 (확인 후 표시)</p>
                   </div>
                 </div>
                 <div className="home-chart-body home-chart-body--access-loading">
@@ -2958,19 +3528,19 @@ export default function Home() {
                                     const deptSelectValue =
                                       insightDeptQ && deptIdSet.has(insightDeptQ) ? insightDeptQ : '';
                                     return (
-                                  <select
-                                    className="home-insight-filter-select home-insight-filter-select--inline"
-                                    value={deptSelectValue}
-                                    onChange={(e) => setHomeInsightDeptFilter(e.target.value)}
-                                    aria-label="팀 부서 범위"
-                                  >
-                                    <option value="">팀 전체</option>
-                                    {deptOptions.map((d) => (
-                                      <option key={d.id} value={d.id}>
-                                        {d.label}
-                                      </option>
-                                    ))}
-                                  </select>
+                                      <select
+                                        className="home-insight-filter-select home-insight-filter-select--inline"
+                                        value={deptSelectValue}
+                                        onChange={(e) => setHomeInsightDeptFilter(e.target.value)}
+                                        aria-label="팀 부서 범위"
+                                      >
+                                        <option value="">팀 전체</option>
+                                        {deptOptions.map((d) => (
+                                          <option key={d.id} value={d.id}>
+                                            {d.label}
+                                          </option>
+                                        ))}
+                                      </select>
                                     );
                                   })()}
                                 </label>
@@ -2994,7 +3564,13 @@ export default function Home() {
                         ) : null}
                       </div>
                     </div>
+
                     <div className="home-kpi-period-toolbar">
+                      {dashboardDataBusy ? (
+                        <div className="home-insight-dashboard-refresh" aria-live="polite" aria-busy="true">
+                          <HomePastelSpinner size="sm" label="집계 반영 중" reducedMotion={prefersReducedMotion} />
+                        </div>
+                      ) : null}
                       <div
                         className="home-insight-mode-switch home-kpi-period-switch"
                         role="tablist"
@@ -3022,11 +3598,6 @@ export default function Home() {
                         ))}
                       </div>
                     </div>
-                    {dashboardDataBusy ? (
-                      <div className="home-insight-dashboard-refresh" aria-live="polite" aria-busy="true">
-                        <HomePastelSpinner size="sm" label="집계 반영 중" reducedMotion={prefersReducedMotion} />
-                      </div>
-                    ) : null}
                   </div>
                 </div>
               </div>
@@ -3277,13 +3848,13 @@ export default function Home() {
                           {dashboardShellBlocking
                             ? '—'
                             : `순마진 ${formatCurrency(
-                                Math.round(
-                                  gmNetMarginTotal > 0 || stats.kpiSummary?.grossMargin?.netMarginTotal != null
-                                    ? gmNetMarginTotal
-                                    : Math.max(0, Math.round(revNum) - gmNonMarginAmount)
-                                ),
-                                curD
-                              )}`}
+                              Math.round(
+                                gmNetMarginTotal > 0 || stats.kpiSummary?.grossMargin?.netMarginTotal != null
+                                  ? gmNetMarginTotal
+                                  : Math.max(0, Math.round(revNum) - gmNonMarginAmount)
+                              ),
+                              curD
+                            )}`}
                         </p>
                       ) : null}
                       <p className="home-kpi-card-hint">{card.hint}</p>
@@ -3313,9 +3884,8 @@ export default function Home() {
                               <span className="home-kpi-dot home-kpi-dot--period" aria-hidden />
                               <span className="home-kpi-metric-label">{card.periodLabel}</span>
                               <span
-                                className={`home-kpi-metric-trend home-kpi-metric-trend--insight-anim ${
-                                  delta.dir === 'up' ? 'is-up' : delta.dir === 'down' ? 'is-down' : ''
-                                }`}
+                                className={`home-kpi-metric-trend home-kpi-metric-trend--insight-anim ${delta.dir === 'up' ? 'is-up' : delta.dir === 'down' ? 'is-down' : ''
+                                  }`}
                               >
                                 {delta.dir === 'up' ? (
                                   <span className="material-symbols-outlined" aria-hidden>
@@ -3392,9 +3962,8 @@ export default function Home() {
                         return (
                           <>
                             <div className="home-contribution-single-caption">
-                              {`전체 목표액 ${formatRevenueCompact(totalTarget)} · 전체 순마진 ${formatRevenueCompact(totalAmount)} · 전체 달성률 ${
-                                totalAchievement == null ? '목표 미설정' : `${totalAchievement}%`
-                              }`}
+                              {`전체 목표액 ${formatRevenueCompact(totalTarget)} · 전체 순마진 ${formatRevenueCompact(totalAmount)} · 전체 달성률 ${totalAchievement == null ? '목표 미설정' : `${totalAchievement}%`
+                                }`}
                             </div>
                             <div className="home-contribution-ach-frame" role="img" aria-label={barAria}>
                               <div
@@ -3414,11 +3983,9 @@ export default function Home() {
                                         : Math.max(0, Number(seg?.pct || 0));
                                     const vsTotalPoolPct =
                                       totalTargetPool > 0 ? Number(((amt / totalTargetPool) * 100).toFixed(1)) : null;
-                                    const achText = `${seg.label} - 전체 목표액 대비 달성률 ${
-                                      vsTotalPoolPct == null ? '목표 미설정' : `${vsTotalPoolPct}%`
-                                    } - 팀 목표 대비 달성률 ${
-                                      seg.achievement == null ? '목표 미설정' : `${seg.achievement}%`
-                                    }`;
+                                    const achText = `${seg.label} - 전체 목표액 대비 달성률 ${vsTotalPoolPct == null ? '목표 미설정' : `${vsTotalPoolPct}%`
+                                      } - 팀 목표 대비 달성률 ${seg.achievement == null ? '목표 미설정' : `${seg.achievement}%`
+                                      }`;
                                     return (
                                       <div
                                         key={`ach-split-${seg.id}`}
@@ -3495,9 +4062,8 @@ export default function Home() {
                         return (
                           <>
                             <div className="home-contribution-single-caption">
-                              {`팀 전체 목표액 ${formatRevenueCompact(totalTarget)} · 팀 전체 순마진 ${formatRevenueCompact(totalAmount)} · 팀 전체 달성률 ${
-                                totalAchievement == null ? '목표 미설정' : `${totalAchievement}%`
-                              }`}
+                              {`팀 전체 목표액 ${formatRevenueCompact(totalTarget)} · 팀 전체 순마진 ${formatRevenueCompact(totalAmount)} · 팀 전체 달성률 ${totalAchievement == null ? '목표 미설정' : `${totalAchievement}%`
+                                }`}
                             </div>
                             <div className="home-contribution-ach-frame" role="img" aria-label={barAria}>
                               <div
@@ -3517,11 +4083,9 @@ export default function Home() {
                                         : Math.max(0, Number(seg?.pct || 0));
                                     const vsTeamPoolPct =
                                       teamTargetPool > 0 ? Number(((amt / teamTargetPool) * 100).toFixed(1)) : null;
-                                    const achText = `${seg.label} - 팀전체 목표액 대비 달성률 ${
-                                      vsTeamPoolPct == null ? '목표 미설정' : `${vsTeamPoolPct}%`
-                                    } - 개인 목표액 대비 달성률 ${
-                                      seg.achievement == null ? '목표 미설정' : `${seg.achievement}%`
-                                    }`;
+                                    const achText = `${seg.label} - 팀전체 목표액 대비 달성률 ${vsTeamPoolPct == null ? '목표 미설정' : `${vsTeamPoolPct}%`
+                                      } - 개인 목표액 대비 달성률 ${seg.achievement == null ? '목표 미설정' : `${seg.achievement}%`
+                                      }`;
                                     return (
                                       <div
                                         key={`ach-split-${seg.id}`}
@@ -3567,7 +4131,7 @@ export default function Home() {
                           </>
                         );
                       })()}
-              
+
                     </div>
                   )}
                 </section>
@@ -3656,6 +4220,8 @@ export default function Home() {
                   marginLinePrev: netPrevTween
                 }
               )}
+              {renderProductSalesInsightPanel()}
+              {renderProductQtyInsightPanel()}
               {Array.isArray(data?.forecastPipelineRows) ? (
                 <div className="panel home-forecast-panel" aria-label="Forecast 파이프라인">
                   <div className="home-forecast-head">
@@ -3723,60 +4289,47 @@ export default function Home() {
                         </thead>
                         <tbody>
                           {(() => {
-                            const totals = forecastActiveRows.reduce(
-                              (acc, row) => {
-                                acc.unitPrice += Number(row?.unitPrice || 0);
-                                acc.quantity += Number(row?.quantity || 0);
-                                acc.finalPrice += Number(row?.finalPrice || 0);
-                                acc.forecast += Number(row?.forecastAmount || 0);
-                                acc.contract += Number(row?.contractAmount || 0);
-                                acc.invoice += Number(row?.invoiceAmount || 0);
-                                acc.collected += Number(row?.collectedAmount || 0);
-                                acc.margin += Number(row?.marginAmount || 0);
-                                return acc;
-                              },
-                              {
-                                unitPrice: 0,
-                                quantity: 0,
-                                finalPrice: 0,
-                                forecast: 0,
-                                contract: 0,
-                                invoice: 0,
-                                collected: 0,
-                                margin: 0
-                              }
+                            const totals = sumForecastTotalsForRows(
+                              forecastActiveRows,
+                              homeForecastActiveFilters.product
                             );
                             const sumCurrency = String(forecastActiveRows[0]?.currency || 'KRW').toUpperCase();
                             return (
                               <>
-                          {forecastActivePreviewRows.map((row) => (
-                            <tr
-                              key={row.id}
-                              className="home-forecast-data-row"
-                              tabIndex={0}
-                              role="button"
-                              aria-label={`기회 ${row.companyLabel} 상세`}
-                              onClick={() => openHomeEditOpportunity(row.id)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' || e.key === ' ') {
-                                  e.preventDefault();
-                                  openHomeEditOpportunity(row.id);
-                                }
-                              }}
-                            >
-                              <td>{row.companyLabel}</td>
-                              <td>{renderSoftwareLabelCell(row.softwareLabel)}</td>
-                              <td>{formatCurrency(row.unitPrice, row.currency)}</td>
-                              <td>{row.quantity}</td>
-                              <td>{formatCurrency(row.finalPrice, row.currency)}</td>
-                              <td>{formatCurrency(row.forecastAmount, row.currency)}</td>
-                              <td>{formatForecastExpectedMonthCell(row.targetMonth)}</td>
-                              <td>{formatCurrency(row.contractAmount, row.currency)}</td>
-                              <td>{formatCurrency(row.invoiceAmount, row.currency)}</td>
-                              <td>{formatCurrency(row.collectedAmount, row.currency)}</td>
-                              <td>{formatCurrency(row.marginAmount, row.currency)}</td>
-                            </tr>
-                          ))}
+                                {forecastActivePreviewRows.map((row) => {
+                                  const d = getForecastRowDisplayForProductFilter(
+                                    row,
+                                    homeForecastActiveFilters.product
+                                  );
+                                  return (
+                                  <tr
+                                    key={row.id}
+                                    className="home-forecast-data-row"
+                                    tabIndex={0}
+                                    role="button"
+                                    aria-label={`기회 ${row.companyLabel} 상세`}
+                                    onClick={() => openHomeEditOpportunity(row.id)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault();
+                                        openHomeEditOpportunity(row.id);
+                                      }
+                                    }}
+                                  >
+                                    <td>{row.companyLabel}</td>
+                                    <td>{renderSoftwareLabelCell(d.softwareLabel)}</td>
+                                    <td>{formatCurrency(d.unitPrice, row.currency)}</td>
+                                    <td>{d.quantity}</td>
+                                    <td>{formatCurrency(d.finalPrice, row.currency)}</td>
+                                    <td>{formatCurrency(d.forecastAmount, row.currency)}</td>
+                                    <td>{formatForecastExpectedMonthCell(row.targetMonth)}</td>
+                                    <td>{formatCurrency(d.contractAmount, row.currency)}</td>
+                                    <td>{formatCurrency(d.invoiceAmount, row.currency)}</td>
+                                    <td>{formatCurrency(d.collectedAmount, row.currency)}</td>
+                                    <td>{formatCurrency(d.marginAmount, row.currency)}</td>
+                                  </tr>
+                                  );
+                                })}
                                 {forecastActiveRows.length > forecastActivePreviewRows.length ? (
                                   <tr className="home-forecast-more-row">
                                     <td colSpan={11}>
@@ -3855,33 +4408,19 @@ export default function Home() {
                         </thead>
                         <tbody>
                           {(() => {
-                            const totals = forecastCompletedRows.reduce(
-                              (acc, row) => {
-                                acc.unitPrice += Number(row?.unitPrice || 0);
-                                acc.quantity += Number(row?.quantity || 0);
-                                acc.finalPrice += Number(row?.finalPrice || 0);
-                                acc.forecast += Number(row?.forecastAmount || 0);
-                                acc.contract += Number(row?.contractAmount || 0);
-                                acc.invoice += Number(row?.invoiceAmount || 0);
-                                acc.collected += Number(row?.collectedAmount || 0);
-                                acc.margin += Number(row?.marginAmount || 0);
-                                return acc;
-                              },
-                              {
-                                unitPrice: 0,
-                                quantity: 0,
-                                finalPrice: 0,
-                                forecast: 0,
-                                contract: 0,
-                                invoice: 0,
-                                collected: 0,
-                                margin: 0
-                              }
+                            const totals = sumForecastTotalsForRows(
+                              forecastCompletedRows,
+                              homeForecastCompletedFilters.product
                             );
                             const sumCurrency = String(forecastCompletedRows[0]?.currency || 'KRW').toUpperCase();
                             return (
                               <>
-                                {forecastCompletedPreviewRows.map((row) => (
+                                {forecastCompletedPreviewRows.map((row) => {
+                                  const d = getForecastRowDisplayForProductFilter(
+                                    row,
+                                    homeForecastCompletedFilters.product
+                                  );
+                                  return (
                                   <tr
                                     key={`done-${row.id}`}
                                     className="home-forecast-data-row"
@@ -3897,18 +4436,19 @@ export default function Home() {
                                     }}
                                   >
                                     <td>{row.companyLabel}</td>
-                                    <td>{renderSoftwareLabelCell(row.softwareLabel)}</td>
-                                    <td>{formatCurrency(row.unitPrice, row.currency)}</td>
-                                    <td>{row.quantity}</td>
-                                    <td>{formatCurrency(row.finalPrice, row.currency)}</td>
-                                    <td>{formatCurrency(row.forecastAmount, row.currency)}</td>
+                                    <td>{renderSoftwareLabelCell(d.softwareLabel)}</td>
+                                    <td>{formatCurrency(d.unitPrice, row.currency)}</td>
+                                    <td>{d.quantity}</td>
+                                    <td>{formatCurrency(d.finalPrice, row.currency)}</td>
+                                    <td>{formatCurrency(d.forecastAmount, row.currency)}</td>
                                     <td>{formatForecastExpectedMonthCell(row.targetMonth)}</td>
-                                    <td>{formatCurrency(row.contractAmount, row.currency)}</td>
-                                    <td>{formatCurrency(row.invoiceAmount, row.currency)}</td>
-                                    <td>{formatCurrency(row.collectedAmount, row.currency)}</td>
-                                    <td>{formatCurrency(row.marginAmount, row.currency)}</td>
+                                    <td>{formatCurrency(d.contractAmount, row.currency)}</td>
+                                    <td>{formatCurrency(d.invoiceAmount, row.currency)}</td>
+                                    <td>{formatCurrency(d.collectedAmount, row.currency)}</td>
+                                    <td>{formatCurrency(d.marginAmount, row.currency)}</td>
                                   </tr>
-                                ))}
+                                  );
+                                })}
                                 {forecastCompletedRows.length > forecastCompletedPreviewRows.length ? (
                                   <tr className="home-forecast-more-row">
                                     <td colSpan={11}>
@@ -4261,7 +4801,9 @@ export default function Home() {
                     </tr>
                   </thead>
                   <tbody>
-                    {forecastActiveRows.map((row) => (
+                    {forecastActiveRows.map((row) => {
+                      const d = getForecastRowDisplayForProductFilter(row, homeForecastActiveFilters.product);
+                      return (
                       <tr
                         key={`modal-forecast-${row.id}`}
                         className="home-forecast-table-row-click"
@@ -4277,41 +4819,23 @@ export default function Home() {
                         }}
                       >
                         <td>{row.companyLabel}</td>
-                        <td>{renderSoftwareLabelCell(row.softwareLabel)}</td>
-                        <td>{formatCurrency(row.unitPrice, row.currency)}</td>
-                        <td>{row.quantity}</td>
-                        <td>{formatCurrency(row.finalPrice, row.currency)}</td>
-                        <td>{formatCurrency(row.forecastAmount, row.currency)}</td>
+                        <td>{renderSoftwareLabelCell(d.softwareLabel)}</td>
+                        <td>{formatCurrency(d.unitPrice, row.currency)}</td>
+                        <td>{d.quantity}</td>
+                        <td>{formatCurrency(d.finalPrice, row.currency)}</td>
+                        <td>{formatCurrency(d.forecastAmount, row.currency)}</td>
                         <td>{formatForecastExpectedMonthCell(row.targetMonth)}</td>
-                        <td>{formatCurrency(row.contractAmount, row.currency)}</td>
-                        <td>{formatCurrency(row.invoiceAmount, row.currency)}</td>
-                        <td>{formatCurrency(row.collectedAmount, row.currency)}</td>
-                        <td>{formatCurrency(row.marginAmount, row.currency)}</td>
+                        <td>{formatCurrency(d.contractAmount, row.currency)}</td>
+                        <td>{formatCurrency(d.invoiceAmount, row.currency)}</td>
+                        <td>{formatCurrency(d.collectedAmount, row.currency)}</td>
+                        <td>{formatCurrency(d.marginAmount, row.currency)}</td>
                       </tr>
-                    ))}
+                      );
+                    })}
                     {(() => {
-                      const totals = forecastActiveRows.reduce(
-                        (acc, row) => {
-                          acc.unitPrice += Number(row?.unitPrice || 0);
-                          acc.quantity += Number(row?.quantity || 0);
-                          acc.finalPrice += Number(row?.finalPrice || 0);
-                          acc.forecast += Number(row?.forecastAmount || 0);
-                          acc.contract += Number(row?.contractAmount || 0);
-                          acc.invoice += Number(row?.invoiceAmount || 0);
-                          acc.collected += Number(row?.collectedAmount || 0);
-                          acc.margin += Number(row?.marginAmount || 0);
-                          return acc;
-                        },
-                        {
-                          unitPrice: 0,
-                          quantity: 0,
-                          finalPrice: 0,
-                          forecast: 0,
-                          contract: 0,
-                          invoice: 0,
-                          collected: 0,
-                          margin: 0
-                        }
+                      const totals = sumForecastTotalsForRows(
+                        forecastActiveRows,
+                        homeForecastActiveFilters.product
                       );
                       const sumCurrency = String(forecastActiveRows[0]?.currency || 'KRW').toUpperCase();
                       return (
@@ -4362,7 +4886,9 @@ export default function Home() {
                     </tr>
                   </thead>
                   <tbody>
-                    {forecastCompletedRows.map((row) => (
+                    {forecastCompletedRows.map((row) => {
+                      const d = getForecastRowDisplayForProductFilter(row, homeForecastCompletedFilters.product);
+                      return (
                       <tr
                         key={`modal-completed-${row.id}`}
                         className="home-forecast-data-row"
@@ -4378,42 +4904,24 @@ export default function Home() {
                         }}
                       >
                         <td>{row.companyLabel}</td>
-                        <td>{renderSoftwareLabelCell(row.softwareLabel)}</td>
-                        <td>{formatCurrency(row.unitPrice, row.currency)}</td>
-                        <td>{row.quantity}</td>
-                        <td>{formatCurrency(row.finalPrice, row.currency)}</td>
+                        <td>{renderSoftwareLabelCell(d.softwareLabel)}</td>
+                        <td>{formatCurrency(d.unitPrice, row.currency)}</td>
+                        <td>{d.quantity}</td>
+                        <td>{formatCurrency(d.finalPrice, row.currency)}</td>
                         <td>{Number.isFinite(row.probabilityPct) ? `${row.probabilityPct}%` : '—'}</td>
-                        <td>{formatCurrency(row.forecastAmount, row.currency)}</td>
+                        <td>{formatCurrency(d.forecastAmount, row.currency)}</td>
                         <td>{formatForecastExpectedMonthCell(row.targetMonth)}</td>
-                        <td>{formatCurrency(row.contractAmount, row.currency)}</td>
-                        <td>{formatCurrency(row.invoiceAmount, row.currency)}</td>
-                        <td>{formatCurrency(row.collectedAmount, row.currency)}</td>
-                        <td>{formatCurrency(row.marginAmount, row.currency)}</td>
+                        <td>{formatCurrency(d.contractAmount, row.currency)}</td>
+                        <td>{formatCurrency(d.invoiceAmount, row.currency)}</td>
+                        <td>{formatCurrency(d.collectedAmount, row.currency)}</td>
+                        <td>{formatCurrency(d.marginAmount, row.currency)}</td>
                       </tr>
-                    ))}
+                      );
+                    })}
                     {(() => {
-                      const totals = forecastCompletedRows.reduce(
-                        (acc, row) => {
-                          acc.unitPrice += Number(row?.unitPrice || 0);
-                          acc.quantity += Number(row?.quantity || 0);
-                          acc.finalPrice += Number(row?.finalPrice || 0);
-                          acc.forecast += Number(row?.forecastAmount || 0);
-                          acc.contract += Number(row?.contractAmount || 0);
-                          acc.invoice += Number(row?.invoiceAmount || 0);
-                          acc.collected += Number(row?.collectedAmount || 0);
-                          acc.margin += Number(row?.marginAmount || 0);
-                          return acc;
-                        },
-                        {
-                          unitPrice: 0,
-                          quantity: 0,
-                          finalPrice: 0,
-                          forecast: 0,
-                          contract: 0,
-                          invoice: 0,
-                          collected: 0,
-                          margin: 0
-                        }
+                      const totals = sumForecastTotalsForRows(
+                        forecastCompletedRows,
+                        homeForecastCompletedFilters.product
                       );
                       const sumCurrency = String(forecastCompletedRows[0]?.currency || 'KRW').toUpperCase();
                       return (

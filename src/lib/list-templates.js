@@ -23,7 +23,7 @@ export const LIST_IDS = {
   CUSTOMER_COMPANY_DETAIL_MODAL: 'customerCompanyDetailModal',
   /** 연락처 상세 모달 표시 — listTemplates.customerCompanyEmployeesDetailModal { presentation: 'side' | 'center' } */
   CUSTOMER_COMPANY_EMPLOYEES_DETAIL_MODAL: 'customerCompanyEmployeesDetailModal',
-  /** 홈 일일 대시보드 — listTemplates.homeDashboard { companyWideInsight, kpiPeriod, consumerChartMode, marginChartMode, … } */
+  /** 홈 일일 대시보드 — listTemplates.homeDashboard { companyWideInsight, kpiPeriod, consumerChartMode, marginChartMode, productChartMode, quantityChartMode, … } */
   HOME_DASHBOARD: 'homeDashboard',
   /** 결과 드롭존 목록 표 열 순서 — listTemplates.dropZoneListModal { columnOrder } */
   DROP_ZONE_LIST_MODAL: 'dropZoneListModal'
@@ -42,7 +42,7 @@ export function getSavedHomeDashboardTemplate() {
 
 /**
  * PATCH /api/auth/list-templates — listId: homeDashboard (부분 갱신, 서버에서 기존 값과 병합)
- * @param {object} patch — kpiPeriod, companyWideInsight, leaderInsightViewKind, insightDeptId, insightUserId, consumerChartMode, marginChartMode
+ * @param {object} patch — kpiPeriod, companyWideInsight, leaderInsightViewKind, insightDeptId, insightUserId, consumerChartMode, marginChartMode, productChartMode, quantityChartMode
  */
 export async function patchHomeDashboardTemplate(patch) {
   if (!patch || typeof patch !== 'object') {

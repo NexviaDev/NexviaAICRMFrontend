@@ -224,6 +224,30 @@
   font-size: 1.05rem;
 }
 
+.cc-selection-action-bar-sales {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.95rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #2e6b5a;
+  background: #e6f5f0;
+  border: 1px solid #a8d5cb;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.cc-selection-action-bar-sales:hover {
+  background: #d4ede6;
+  border-color: #7fb8aa;
+}
+
+.cc-selection-action-bar-sales .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
 .cc-selection-action-bar-map {
   display: inline-flex;
   align-items: center;

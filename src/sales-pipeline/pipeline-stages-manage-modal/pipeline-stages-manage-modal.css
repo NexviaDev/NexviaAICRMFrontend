@@ -170,38 +170,44 @@
   cursor: not-allowed;
 }
 
-.psm-list-order-btns {
+/* sidebar.js `.sidebar-drag-handle` / 행 하이라이트와 동일 패턴 (라이트 카드 테마) */
+.psm-drag-handle {
   display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-  flex-shrink: 0;
-}
-
-.psm-order-btn {
-  display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.15rem;
-  border: 1px solid var(--card-border);
-  border-radius: 0.35rem;
-  background: var(--bg-light);
+  padding: 0 0.2rem;
+  cursor: grab;
   color: var(--text-muted);
-  cursor: pointer;
-  line-height: 1;
+  flex-shrink: 0;
+  user-select: none;
+  touch-action: none;
 }
 
-.psm-order-btn .material-symbols-outlined {
-  font-size: 1rem;
+.psm-drag-handle:active {
+  cursor: grabbing;
 }
 
-.psm-order-btn:hover:not(:disabled) {
+.psm-drag-handle:hover {
   color: var(--primary, #5c6bc0);
-  border-color: rgba(92, 107, 192, 0.45);
 }
 
-.psm-order-btn:disabled {
+.psm-drag-handle[draggable='false'] {
   opacity: 0.35;
   cursor: not-allowed;
+}
+
+.psm-drag-handle .material-symbols-outlined {
+  font-size: 1.15rem;
+}
+
+.psm-list-item--drag-over {
+  background: rgba(92, 107, 192, 0.08);
+  outline: 1px dashed rgba(92, 107, 192, 0.45);
+  outline-offset: -1px;
+}
+
+.psm-list-item--dragging {
+  opacity: 0.72;
 }
 
 .psm-won-note {
@@ -242,7 +248,7 @@
 
 .psm-list-item {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.5rem;
   padding: 0.6rem 0.75rem;
   border-bottom: 1px solid var(--card-border);

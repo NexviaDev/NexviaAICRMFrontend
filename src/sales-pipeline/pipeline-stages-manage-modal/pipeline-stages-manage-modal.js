@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { API_BASE } from '@/config';
 import { pingBackendHealth } from '@/lib/backend-wake';
 import './pipeline-stages-manage-modal.css';
@@ -10,6 +10,35 @@ function getAuthHeader() {
 
 const ENTITY_TYPE = 'salesPipelineStage';
 const SYSTEM_FIXED_STAGE_KEY = 'Won';
+
+/** sidebar.js `application/x-sidebar-to` 와 동일한 역할 — 브라우저 기본 드래그와 구분 */
+const MIME_PIPELINE_STAGE_ID = 'application/x-pipeline-stage-id';
+const PSM_DROP_ZONE = 'psm-stage';
+
+/**
+ * 같은 id 리스트 안에서 순서만 변경 — sidebar.js `reorderWithin` 과 동일 알고리즘
+ */
+function reorderWithinIds(list, draggedId, dropTargetId) {
+  const next = [...list];
+  const dragged = String(draggedId);
+  const dropT = String(dropTargetId);
+  const fromIdx = next.indexOf(dragged);
+  if (fromIdx === -1) return list;
+  const dropIdx = next.indexOf(dropT);
+  if (dropIdx === -1) return list;
+  if (fromIdx === dropIdx) return list;
+  next.splice(fromIdx, 1);
+  next.splice(dropIdx, 0, dragged);
+  return next;
+}
+
+function isPipelineStageReorderDrag(dataTransfer) {
+  try {
+    return Boolean(dataTransfer?.types && Array.from(dataTransfer.types).includes(MIME_PIPELINE_STAGE_ID));
+  } catch {
+    return false;
+  }
+}
 
 /** DB에 단계가 없을 때 한 번에 올릴 기본 진행 단계 + Won (Forecast %) */
 const DEFAULT_STAGE_SEED = [
@@ -64,6 +93,9 @@ export default function PipelineStagesManageModal({ onClose, onSaved }) {
   const [forecastDraftById, setForecastDraftById] = useState({});
   const [forecastSavingId, setForecastSavingId] = useState(null);
   const [seeding, setSeeding] = useState(false);
+  const [draggingId, setDraggingId] = useState(null);
+  const [dragOverId, setDragOverId] = useState(null);
+  const draggedIdRef = useRef(null);
 
   const wonDefinition = useMemo(
     () => definitions.find((def) => String(def?.key || '').trim() === SYSTEM_FIXED_STAGE_KEY),
@@ -94,27 +126,58 @@ export default function PipelineStagesManageModal({ onClose, onSaved }) {
     return out;
   }, [orderedIds, visibleDefinitions]);
 
-  const moveUp = useCallback((id) => {
-    const sid = String(id);
-    setOrderedIds((prev) => {
-      const i = prev.indexOf(sid);
-      if (i <= 0) return prev;
-      const next = [...prev];
-      [next[i - 1], next[i]] = [next[i], next[i - 1]];
-      return next;
-    });
+  const handleDragEnd = useCallback(() => {
+    draggedIdRef.current = null;
+    setDraggingId(null);
+    setDragOverId(null);
   }, []);
 
-  const moveDown = useCallback((id) => {
+  const handleDragStart = useCallback((e, id) => {
+    e.stopPropagation();
     const sid = String(id);
-    setOrderedIds((prev) => {
-      const i = prev.indexOf(sid);
-      if (i < 0 || i >= prev.length - 1) return prev;
-      const next = [...prev];
-      [next[i], next[i + 1]] = [next[i + 1], next[i]];
-      return next;
-    });
+    draggedIdRef.current = sid;
+    setDraggingId(sid);
+    e.dataTransfer.setData('text/plain', sid);
+    e.dataTransfer.setData(MIME_PIPELINE_STAGE_ID, sid);
+    e.dataTransfer.effectAllowed = 'move';
   }, []);
+
+  const handleRowDragOver = useCallback(
+    (e, id) => {
+      const sid = String(id);
+      const reorderDrag =
+        isPipelineStageReorderDrag(e.dataTransfer) || Boolean(draggedIdRef.current);
+      if (!reorderDrag) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = 'move';
+      if (sid !== draggingId) setDragOverId(sid);
+    },
+    [draggingId]
+  );
+
+  const handleRowDrop = useCallback(
+    (e, dropTargetId) => {
+      if (!draggedIdRef.current) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const dropT = String(dropTargetId);
+      const dragged = draggedIdRef.current;
+      if (!dragged || !dropT) {
+        handleDragEnd();
+        return;
+      }
+      setOrderedIds((prev) => reorderWithinIds(prev, dragged, dropT));
+      handleDragEnd();
+    },
+    [handleDragEnd]
+  );
+
+  const listDragLeave = useCallback((ev) => {
+    if (!ev.currentTarget.contains(ev.relatedTarget)) setDragOverId(null);
+  }, []);
+
+  const reorderLocked = savingOrder || seeding;
 
   const handleSaveOrder = async () => {
     if (orderedIds.length === 0) return;
@@ -371,7 +434,7 @@ export default function PipelineStagesManageModal({ onClose, onSaved }) {
         <div className="psm-body">
           <p className="psm-hint">
             단계를 추가·삭제할 수 있고, 각 단계마다 <strong>Forecast (%)</strong>를 입력할 수 있습니다(입력 후 칸 밖을 누르면 저장).
-            <strong>↑ ↓</strong>으로 순서를 바꾼 뒤 <strong>순서 저장</strong>을 누르면 세일즈 현황 칸반에 반영됩니다. DB에 단계가 없으면 화면{' '}
+            왼쪽 <strong>드래그 핸들</strong>(≡ 아이콘)을 끌어 순서를 바꾼 뒤 <strong>순서 저장</strong>을 누르면 세일즈 현황 칸반에 반영됩니다. DB에 단계가 없으면 화면{' '}
             <strong>하단</strong>의 「기본 6단계 + Forecast 불러오기」로 기본 6단계(진행) + 수주 열을 한 번에 올릴 수 있습니다.
           </p>
           <form onSubmit={handleAdd} className="psm-form">
@@ -408,34 +471,35 @@ export default function PipelineStagesManageModal({ onClose, onSaved }) {
                   </button>
                 ) : null}
               </div>
-              <ul className="psm-list">
+              <ul className="psm-list" onDragLeave={listDragLeave}>
                 {orderedVisible.length === 0 ? (
                   <li className="psm-list-empty">등록된 단계가 없습니다. 위에서 추가하면 기본 5단계 대신 사용됩니다.</li>
                 ) : (
-                  orderedVisible.map((def, idx) => (
-                    <li key={def._id} className="psm-list-item">
-                      <div className="psm-list-order-btns">
-                        <button
-                          type="button"
-                          className="psm-order-btn"
-                          onClick={() => moveUp(def._id)}
-                          disabled={savingOrder || seeding || idx === 0}
-                          title="위로"
-                          aria-label="위로"
-                        >
-                          <span className="material-symbols-outlined">arrow_upward</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="psm-order-btn"
-                          onClick={() => moveDown(def._id)}
-                          disabled={savingOrder || seeding || idx === orderedVisible.length - 1}
-                          title="아래로"
-                          aria-label="아래로"
-                        >
-                          <span className="material-symbols-outlined">arrow_downward</span>
-                        </button>
-                      </div>
+                  orderedVisible.map((def) => {
+                    const sid = String(def._id);
+                    const isDragging = draggingId === sid;
+                    const isOver = dragOverId === sid;
+                    return (
+                    <li
+                      key={def._id}
+                      className={`psm-list-item ${isDragging ? 'psm-list-item--dragging' : ''} ${isOver ? 'psm-list-item--drag-over' : ''}`}
+                      data-psm-drop-zone={PSM_DROP_ZONE}
+                      data-psm-drop-id={sid}
+                      onDragOver={(e) => handleRowDragOver(e, def._id)}
+                      onDrop={(e) => handleRowDrop(e, def._id)}
+                    >
+                      <span
+                        className="psm-drag-handle"
+                        draggable={!reorderLocked}
+                        onDragStart={reorderLocked ? undefined : (e) => handleDragStart(e, def._id)}
+                        onDragEnd={handleDragEnd}
+                        title={reorderLocked ? '저장 중에는 순서를 바꿀 수 없습니다' : '드래그하여 순서 변경'}
+                        aria-label={`${def.label} 순서 변경`}
+                      >
+                        <span className="material-symbols-outlined" aria-hidden>
+                          drag_indicator
+                        </span>
+                      </span>
                       <span className="psm-list-key">{def.key}</span>
                       <span className="psm-list-label">{def.label}</span>
                       <div className="psm-forecast-field">
@@ -468,7 +532,8 @@ export default function PipelineStagesManageModal({ onClose, onSaved }) {
                         <span className="material-symbols-outlined">delete</span>
                       </button>
                     </li>
-                  ))
+                    );
+                  })
                 )}
               </ul>
               {wonDefinition ? (
