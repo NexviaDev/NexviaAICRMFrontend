@@ -8,6 +8,11 @@ import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-head
 import { API_BASE } from '@/config';
 import { getSavedCalendarViewMode, patchCalendarViewTemplate } from '@/lib/list-templates';
 import {
+  bindCalendarForegroundNotifications,
+  enableCalendarPushNotifications,
+  getCalendarPushStatus
+} from '@/lib/push-notifications';
+import {
   formatDateInSeoulYmd,
   ymdAddOneDay,
   crmAllDayInclusiveEndYmd
@@ -362,12 +367,13 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
   const [weekDragRange, setWeekDragRange] = useState(null);
   const weekDragActiveRef = useRef(false);
   const [currentUser, setCurrentUser] = useState(null);
+  const [pushStatus, setPushStatus] = useState({ supported: false, permission: 'default', registered: false });
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushMessage, setPushMessage] = useState('');
   const [googleCalendarList, setGoogleCalendarList] = useState([]);
   const [googleCalDropdownOpen, setGoogleCalDropdownOpen] = useState(false);
   const googleCalDropdownRef = useRef(null);
   const [headerSearch, setHeaderSearch] = useState('');
-  const [syncLoading, setSyncLoading] = useState(false);
-  const [syncHint, setSyncHint] = useState(null);
   const [selectedGoogleCalendarIds, setSelectedGoogleCalendarIds] = useState(() => {
     try {
       const raw = localStorage.getItem(GOOGLE_CALENDAR_IDS_STORAGE_KEY);
@@ -522,45 +528,6 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
     return getMonthRange(current.year, current.month);
   }, [viewMode, weekViewStart, current.year, current.month]);
 
-  const runCalendarMongoSync = useCallback(async () => {
-    if (syncLoading) return;
-    setSyncHint(null);
-    setSyncLoading(true);
-    try {
-      const body = { start: timeMin, end: timeMax };
-      // eslint-disable-next-line no-console
-      console.info('[Nexvia CRM] CRM → Google push 요청', body);
-      const res = await fetch(`${API_BASE}/calendar-events/push-to-google`, {
-        method: 'POST',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-      const data = await res.json().catch(() => ({}));
-      // eslint-disable-next-line no-console
-      console.info('[Nexvia CRM] CRM → Google push 응답', JSON.stringify(data, null, 2));
-      if (!res.ok) {
-        setSyncHint(data.error || `Google 반영에 실패했습니다. (${res.status})`);
-        return;
-      }
-      const total = Number(data.total) || 0;
-      const created = Number(data.created) || 0;
-      const updated = Number(data.updated) || 0;
-      const failed = Number(data.failed) || 0;
-      let hint = `이 기간 CRM 일정 ${total}건을 처리했습니다. Google에 신규 등록 ${created}건 · 갱신 ${updated}건`;
-      if (failed > 0) {
-        hint += ` · 실패 ${failed}건(콘솔 errors 참고)`;
-      }
-      hint +=
-        '\n\n※ 내 Google의 회사명 캘린더(없으면 생성)에 반영됩니다. 이미 연결된 일정은 내용만 갱신합니다.';
-      setSyncHint(hint);
-      setRefreshKey((k) => k + 1);
-    } catch {
-      setSyncHint('동기화 요청에 실패했습니다.');
-    } finally {
-      setSyncLoading(false);
-    }
-  }, [syncLoading, timeMin, timeMax]);
-
   useEffect(() => {
     let cancelled = false;
     fetch(`${API_BASE}/auth/me`, { headers: getAuthHeader() })
@@ -572,6 +539,63 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    getCalendarPushStatus()
+      .then((status) => {
+        if (!cancelled) setPushStatus(status);
+      })
+      .catch(() => {
+        if (!cancelled) setPushStatus({ supported: false, permission: 'unsupported', registered: false });
+      });
+    return () => { cancelled = true; };
+  }, [currentUser?._id]);
+
+  useEffect(() => {
+    let cleanup = null;
+    bindCalendarForegroundNotifications((payload) => {
+      const data = payload?.data || {};
+      const notification = payload?.notification || {};
+      if (Notification.permission === 'granted') {
+        const title = notification.title || '일정 알림';
+        const body = notification.body || data.title || '';
+        const n = new Notification(title, {
+          body,
+          icon: '/nexvia-app-icon.png',
+          tag: data.eventId ? `calendar-reminder-${data.eventId}` : undefined,
+          data
+        });
+        n.onclick = () => {
+          window.focus();
+          if (data.url) window.location.assign(data.url);
+        };
+      }
+    }).then((unsub) => { cleanup = unsub; });
+    return () => {
+      if (typeof cleanup === 'function') cleanup();
+    };
+  }, [currentUser?._id]);
+
+  const handleEnablePush = async () => {
+    setPushBusy(true);
+    setPushMessage('');
+    try {
+      const result = await enableCalendarPushNotifications();
+      const permission = result.permission || (typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
+      setPushStatus((prev) => ({
+        ...prev,
+        supported: true,
+        permission,
+        registered: !!result.ok
+      }));
+      setPushMessage(result.ok ? '캘린더 알림이 켜졌습니다.' : (result.error || '알림 설정을 완료하지 못했습니다.'));
+    } catch (err) {
+      setPushMessage(err?.message || '알림 설정 중 오류가 발생했습니다.');
+    } finally {
+      setPushBusy(false);
+    }
+  };
 
   const applyCalendarViewMode = useCallback(
     (mode) => {
@@ -1048,6 +1072,11 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
   const monthTitle = `${current.year}년 ${current.month + 1}월`;
   const dayTitle = formatDayViewTitle(current.year, current.month, selectedDay);
   const weekTitle = formatWeekRangeTitle(weekViewStart);
+  const pushButtonLabel = !pushStatus.supported
+    ? '알림 미지원'
+    : pushStatus.registered || pushStatus.permission === 'granted'
+      ? '알림 켜짐'
+      : '알림 켜기';
 
   return (
     <div className={`page calendar-page${embedded ? ' calendar-page--embedded' : ''}`}>
@@ -1120,6 +1149,21 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
               </div>
             </div>
             <div className="calendar-hero-aside">
+              <div className="calendar-push-control">
+                <button
+                  type="button"
+                  className={`calendar-push-btn ${pushStatus.permission === 'granted' ? 'active' : ''}`}
+                  onClick={handleEnablePush}
+                  disabled={pushBusy || !pushStatus.supported}
+                  title="캘린더 CRM 일정 푸시 알림을 휴대폰/PWA에 등록합니다."
+                >
+                  <span className="material-symbols-outlined" aria-hidden>
+                    {pushStatus.permission === 'granted' ? 'notifications_active' : 'notifications'}
+                  </span>
+                  {pushBusy ? '알림 설정 중…' : pushButtonLabel}
+                </button>
+                {pushMessage && <span className="calendar-push-message" role="status">{pushMessage}</span>}
+              </div>
               <div className="calendar-view-tabs" role="tablist" aria-label="보기 방식">
                 {VIEW_OPTIONS.map((opt) => (
                   <button
@@ -1134,37 +1178,19 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
                   </button>
                 ))}
               </div>
-              <div className="calendar-filter-sync-row">
-                <div className="calendar-filter-tabs" role="tablist" aria-label="일정 범위">
-                  {FILTER_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.key}
-                      type="button"
-                      role="tab"
-                      aria-selected={activeFilter === opt.key}
-                      className={`calendar-filter-tab ${activeFilter === opt.key ? 'active' : ''}`}
-                      onClick={() => setActiveFilter(opt.key)}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  className="calendar-sync-btn"
-                  onClick={runCalendarMongoSync}
-                  disabled={syncLoading || loading}
-                  title="현재 달력에 보이는 기간의 CRM 일정(calendarevents)을 Google 회사 캘린더에 반영합니다. 이미 연결된 일정은 갱신하고, 없으면 새로 만듭니다."
-                >
-                  {syncLoading ? (
-                    <span className="calendar-sync-btn-spinner" aria-hidden />
-                  ) : (
-                    <span className="material-symbols-outlined" aria-hidden>
-                      sync
-                    </span>
-                  )}
-                  동기화
-                </button>
+              <div className="calendar-filter-tabs" role="tablist" aria-label="일정 범위">
+                {FILTER_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeFilter === opt.key}
+                    className={`calendar-filter-tab ${activeFilter === opt.key ? 'active' : ''}`}
+                    onClick={() => setActiveFilter(opt.key)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
               </div>
               {activeFilter === 'mine' && googleCalendarList.length > 0 && (
                 <div
@@ -1226,24 +1252,6 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
           </div>
 
           {error && <p className="calendar-google-hint" role="status">{error}</p>}
-          {syncHint && (
-            <div
-              className={`calendar-sync-hint${syncHint.includes('실패') ? ' calendar-sync-hint--warn' : ''}`}
-              role="status"
-            >
-              <button
-                type="button"
-                className="calendar-sync-hint-close"
-                onClick={() => setSyncHint(null)}
-                aria-label="알림 닫기"
-              >
-                <span className="material-symbols-outlined" aria-hidden>
-                  close
-                </span>
-              </button>
-              <p className="calendar-sync-hint-text">{syncHint}</p>
-            </div>
-          )}
 
           <div className={`calendar-panel-card${embedded ? ' calendar-panel-card--embedded' : ''}`}>
             {viewMode === 'month' ? (

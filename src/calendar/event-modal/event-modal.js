@@ -35,6 +35,15 @@ const VISIBILITY_OPTIONS = [
   { value: 'private', label: '나만 보기', icon: 'lock', desc: '본인만 볼 수 있습니다' }
 ];
 
+const REMINDER_OPTIONS = [
+  { value: 0, label: '정시' },
+  { value: 5, label: '5분 전' },
+  { value: 10, label: '10분 전' },
+  { value: 30, label: '30분 전' },
+  { value: 60, label: '1시간 전' },
+  { value: 1440, label: '1일 전' }
+];
+
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -104,12 +113,12 @@ function googleEventToForm(ev, titleMeta = {}) {
     } else {
       endDate = startDate;
     }
-    return { title: displayTitle, description: ev.description || '', color: '', allDay: true, startDate, startTime: defaultTime(), endDate, endTime: '10:00', visibility: 'private', participants: [], relatedCustomerCompany: null, relatedContactPerson: null };
+    return { title: displayTitle, description: ev.description || '', color: '', allDay: true, startDate, startTime: defaultTime(), endDate, endTime: '10:00', visibility: 'private', participants: [], relatedCustomerCompany: null, relatedContactPerson: null, reminderEnabled: false, reminderMinutesBefore: 10 };
   }
 
   const startDt = start.dateTime ? new Date(start.dateTime) : new Date();
   const endDt = end.dateTime ? new Date(end.dateTime) : new Date(startDt.getTime() + 3600000);
-  return { title: displayTitle, description: ev.description || '', color: '', allDay: false, startDate: startDt.toISOString().slice(0, 10), startTime: startDt.toTimeString().slice(0, 5), endDate: endDt.toISOString().slice(0, 10), endTime: endDt.toTimeString().slice(0, 5), visibility: 'private', participants: [], relatedCustomerCompany: null, relatedContactPerson: null };
+  return { title: displayTitle, description: ev.description || '', color: '', allDay: false, startDate: startDt.toISOString().slice(0, 10), startTime: startDt.toTimeString().slice(0, 5), endDate: endDt.toISOString().slice(0, 10), endTime: endDt.toTimeString().slice(0, 5), visibility: 'private', participants: [], relatedCustomerCompany: null, relatedContactPerson: null, reminderEnabled: false, reminderMinutesBefore: 10 };
 }
 
 /** CRM 이벤트 → 폼 값 */
@@ -152,7 +161,9 @@ function crmEventToForm(ev) {
       visibility: ev.visibility || 'company',
       participants: ev.participants || [],
       relatedCustomerCompany,
-      relatedContactPerson
+      relatedContactPerson,
+      reminderEnabled: !!ev.reminderEnabled,
+      reminderMinutesBefore: Number.isFinite(Number(ev.reminderMinutesBefore)) ? Number(ev.reminderMinutesBefore) : 10
     };
   }
 
@@ -168,7 +179,9 @@ function crmEventToForm(ev) {
     visibility: ev.visibility || 'company',
     participants: ev.participants || [],
     relatedCustomerCompany,
-    relatedContactPerson
+    relatedContactPerson,
+    reminderEnabled: !!ev.reminderEnabled,
+    reminderMinutesBefore: Number.isFinite(Number(ev.reminderMinutesBefore)) ? Number(ev.reminderMinutesBefore) : 10
   };
 }
 
@@ -207,7 +220,9 @@ function formToCrmBody(form) {
     visibility: form.visibility || 'company',
     participants: form.participants || [],
     relatedCustomerCompanyId: form.relatedCustomerCompany?._id || null,
-    relatedCustomerCompanyEmployeeId: form.relatedContactPerson?._id || null
+    relatedCustomerCompanyEmployeeId: form.relatedContactPerson?._id || null,
+    reminderEnabled: !!form.reminderEnabled,
+    reminderMinutesBefore: Number.isFinite(Number(form.reminderMinutesBefore)) ? Number(form.reminderMinutesBefore) : 10
   };
 }
 
@@ -261,6 +276,13 @@ function formatEventWhen(ev, source) {
   return s.toLocaleString('ko-KR', opts) + (e ? ' ~ ' + e.toLocaleString('ko-KR', opts) : '');
 }
 
+function formatReminderSummary(ev) {
+  if (!ev?.reminderEnabled) return '사용 안 함';
+  const minutes = Number(ev.reminderMinutesBefore);
+  const opt = REMINDER_OPTIONS.find((item) => item.value === minutes);
+  return opt?.label || `${minutes}분 전`;
+}
+
 function googleCalendarQuery(calendarId) {
   if (!calendarId) return '';
   return `?calendarId=${encodeURIComponent(calendarId)}`;
@@ -298,7 +320,9 @@ export default function EventModal({
     endDate: todayStr(), endTime: '10:00',
     visibility: 'company', participants: [],
     relatedCustomerCompany: null,
-    relatedContactPerson: null
+    relatedContactPerson: null,
+    reminderEnabled: false,
+    reminderMinutesBefore: 10
   }));
   const [loading, setLoading] = useState(!isAdd);
   const [saving, setSaving] = useState(false);
@@ -704,6 +728,8 @@ export default function EventModal({
                       {visLabel?.label || '회사 전체'}
                     </span>
                   </dd>
+                  <dt>알림</dt>
+                  <dd>{formatReminderSummary(event)}</dd>
                 </>
               )}
               {!isGoogle && event.participants?.length > 0 && (
@@ -830,6 +856,44 @@ export default function EventModal({
                     </>
                   )}
                 </section>
+
+                {!isGoogle && !isPersonal && (
+                  <section className="event-modal-modern-card">
+                    <h3 className="event-modal-modern-side-title">
+                      <span className="material-symbols-outlined">notifications_active</span>
+                      알림 설정
+                    </h3>
+                    <label className="event-modal-reminder-toggle">
+                      <span>
+                        <strong>휴대폰 푸시 알림</strong>
+                        <small>PWA/TWA에서 알림 권한을 허용한 사용자에게 전송됩니다.</small>
+                      </span>
+                      <input
+                        type="checkbox"
+                        name="reminderEnabled"
+                        checked={!!form.reminderEnabled}
+                        onChange={handleChange}
+                      />
+                    </label>
+                    <div className="event-modal-field">
+                      <label htmlFor="event-reminder-before">알림 시간</label>
+                      <select
+                        id="event-reminder-before"
+                        name="reminderMinutesBefore"
+                        value={form.reminderMinutesBefore}
+                        onChange={handleChange}
+                        disabled={!form.reminderEnabled}
+                      >
+                        {REMINDER_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                      <p className="event-modal-related-company-hint">
+                        종일 일정은 시작일 오전 9시 기준으로 계산합니다.
+                      </p>
+                    </div>
+                  </section>
+                )}
 
                 <section className="event-modal-modern-card">
                   <div className="event-modal-field">

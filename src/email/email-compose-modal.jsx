@@ -1,10 +1,16 @@
 import { useRef, useEffect, useState, useMemo } from 'react';
 import { API_BASE, MAX_DRIVE_JSON_UPLOAD_BYTES } from '@/config';
-import { getEmailSignatureHtmlFromUser, patchEmailSignatureHtml } from '@/lib/list-templates';
+import { buildMailtoWithFields, triggerMailtoHref } from '@/lib/email-client-links';
+import {
+  getEmailComposeModalGuidedFromUser,
+  getEmailSignatureHtmlFromUser,
+  getSavedEmailComposeModalGuidedSync,
+  patchEmailComposeModalGuided,
+  patchEmailSignatureHtml
+} from '@/lib/list-templates';
 import './email-compose-modal.css';
 import {
   AI_GUIDED_AUDIENCES,
-  AI_GUIDED_DEFAULTS,
   AI_GUIDED_EXTRAS,
   AI_GUIDED_GOALS,
   AI_GUIDED_LENGTHS,
@@ -324,15 +330,19 @@ export default function EmailComposeModal({
   const TABLE_GRID_ROWS = 10;
   const TABLE_GRID_COLS = 8;
 
+  const guidedInitial = useMemo(() => getSavedEmailComposeModalGuidedSync(), []);
+
   const [showAiPanel, setShowAiPanel] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
   const [aiMode, setAiMode] = useState('guided_rewrite');
-  const [aiGuidedGoal, setAiGuidedGoal] = useState(AI_GUIDED_DEFAULTS.goal);
-  const [aiGuidedTone, setAiGuidedTone] = useState(AI_GUIDED_DEFAULTS.tone);
-  const [aiGuidedAudience, setAiGuidedAudience] = useState(AI_GUIDED_DEFAULTS.audience);
-  const [aiGuidedLength, setAiGuidedLength] = useState(AI_GUIDED_DEFAULTS.length);
-  const [aiGuidedExtra, setAiGuidedExtra] = useState(AI_GUIDED_DEFAULTS.extra);
+  const [aiGuidedGoal, setAiGuidedGoal] = useState(guidedInitial.guidedGoal);
+  const [aiGuidedTone, setAiGuidedTone] = useState(guidedInitial.guidedTone);
+  const [aiGuidedAudience, setAiGuidedAudience] = useState(guidedInitial.guidedAudience);
+  const [aiGuidedLength, setAiGuidedLength] = useState(guidedInitial.guidedLength);
+  const [aiGuidedExtra, setAiGuidedExtra] = useState(guidedInitial.guidedExtra);
+  const skipGuidedPersistRef = useRef(false);
+  const [guidedTemplateSynced, setGuidedTemplateSynced] = useState(false);
   const [aiKeyword, setAiKeyword] = useState('');
   const [aiReceived, setAiReceived] = useState('');
   const [aiReplyIntent, setAiReplyIntent] = useState('approve');
@@ -377,15 +387,51 @@ export default function EmailComposeModal({
         if (cancelled) return;
         const sig = getEmailSignatureHtmlFromUser(data.user);
         setEmailSignatureHtml(sig);
-        setSignatureMetaLoaded(true);
+        const g = getEmailComposeModalGuidedFromUser(data.user);
+        setAiGuidedGoal(g.guidedGoal);
+        setAiGuidedTone(g.guidedTone);
+        setAiGuidedAudience(g.guidedAudience);
+        setAiGuidedLength(g.guidedLength);
+        setAiGuidedExtra(g.guidedExtra);
+        skipGuidedPersistRef.current = true;
       })
-      .catch(() => {
-        if (!cancelled) setSignatureMetaLoaded(true);
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) {
+          setSignatureMetaLoaded(true);
+          setGuidedTemplateSynced(true);
+        }
       });
     return () => {
       cancelled = true;
     };
   }, []);
+
+  /** 문장 다듬기 5축 — user.listTemplates.emailComposeModal.guidedRewrite (디바운스 저장) */
+  useEffect(() => {
+    if (!guidedTemplateSynced) return;
+    if (skipGuidedPersistRef.current) {
+      skipGuidedPersistRef.current = false;
+      return;
+    }
+    const id = window.setTimeout(() => {
+      void patchEmailComposeModalGuided({
+        guidedGoal: aiGuidedGoal,
+        guidedTone: aiGuidedTone,
+        guidedAudience: aiGuidedAudience,
+        guidedLength: aiGuidedLength,
+        guidedExtra: aiGuidedExtra
+      }).catch(() => {});
+    }, 450);
+    return () => window.clearTimeout(id);
+  }, [
+    guidedTemplateSynced,
+    aiGuidedGoal,
+    aiGuidedTone,
+    aiGuidedAudience,
+    aiGuidedLength,
+    aiGuidedExtra
+  ]);
 
   /** 답장·전달 인용 본문은 메일 id·인용 데이터가 바뀔 때만 주입 (명함은 /auth/me 로드 후 한 번; 저장 시에는 replaceSignatureInEditor로 갱신) */
   useEffect(() => {
@@ -481,13 +527,13 @@ export default function EmailComposeModal({
       else if (showTablePicker) setShowTablePicker(false);
       else if (showColorPicker) setShowColorPicker(false);
       else if (showEmoji) setShowEmoji(false);
-      else if (showAiPanel) setShowAiPanel(false);
+      else if (showAiPanel && !aiLoading) setShowAiPanel(false);
       else if (showSignaturePanel) setShowSignaturePanel(false);
       else onClose?.();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, showEmoji, showColorPicker, showTablePicker, showDrivePicker, sizeWarningModal, showAiPanel, showSignaturePanel]);
+  }, [onClose, showEmoji, showColorPicker, showTablePicker, showDrivePicker, sizeWarningModal, showAiPanel, showSignaturePanel, aiLoading]);
 
   useEffect(() => {
     const editor = editorRef.current;
@@ -653,10 +699,12 @@ export default function EmailComposeModal({
       if (!res.ok) throw new Error(data.error || 'AI 요청에 실패했습니다.');
       if (data.json != null) {
         setAiJsonResult(JSON.stringify(data.json, null, 2));
+        setShowAiPanel(false);
         return;
       }
       if (data.text != null && String(data.text).length > 0) {
         applyAiTextToEditor(data.text);
+        setShowAiPanel(false);
       }
     } catch (e) {
       setAiError(e.message || '오류가 발생했습니다.');
@@ -1105,20 +1153,45 @@ export default function EmailComposeModal({
     editorRef.current?.focus();
   };
 
-  /** 전송용 HTML: Drive 링크에 인라인 스타일을 넣어 받는 사람 메일에서도 박스/버튼처럼 보이게 함 */
-  const htmlForSend = (rawHtml) => {
-    if (!rawHtml || typeof rawHtml !== 'string') return rawHtml;
-    try {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(rawHtml, 'text/html');
-      const linkStyle = 'display:inline-block;padding:10px 14px;margin:6px 4px 6px 0;border:1px solid #94a3b8;border-radius:8px;background:#f1f5f9;color:#2563eb;text-decoration:none;font-weight:500;word-break:break-all;';
-      doc.querySelectorAll('a.email-compose-drive-link-inline').forEach((a) => {
-        a.setAttribute('style', linkStyle);
-      });
-      return doc.body ? doc.body.innerHTML : rawHtml;
-    } catch (_) {
-      return rawHtml;
+  const getEditorPlainBody = () => String(editorRef.current?.innerText ?? '').trim();
+
+  const requireToForHandoff = () => {
+    if (!to.trim()) {
+      setError('받는 사람을 입력해 주세요.');
+      return false;
     }
+    setError('');
+    return true;
+  };
+
+  /** Gmail API 대신 PC 기본 메일(mailto). 성공 시 true */
+  const runPcMailtoHandoff = async () => {
+    if (!requireToForHandoff()) return false;
+    const plain = getEditorPlainBody();
+    const { href, note, clipboardPlain } = buildMailtoWithFields({
+      to: to.trim(),
+      cc: cc.trim(),
+      subject: subject.trim() || '(제목 없음)',
+      body: plain
+    });
+    if (!href) {
+      setError('메일 주소를 확인해 주세요.');
+      return false;
+    }
+    if (clipboardPlain != null) {
+      try {
+        await navigator.clipboard.writeText(clipboardPlain);
+      } catch {
+        setError(
+          '본문이 길어 메일 앱으로 넘기려면 클립보드에 전체를 담아야 하는데 복사에 실패했습니다. 브라우저 권한을 확인해 주세요.'
+        );
+        return false;
+      }
+    }
+    setError('');
+    if (note) window.alert(note);
+    triggerMailtoHref(href);
+    return true;
   };
 
   const handleSubmit = async (e) => {
@@ -1128,55 +1201,23 @@ export default function EmailComposeModal({
       setError('받는 사람을 입력해 주세요.');
       return;
     }
-    const rawHtml = editorRef.current?.innerHTML ?? '';
-    const html = htmlForSend(rawHtml);
+    if (attachedFiles.length > 0) {
+      const ok = window.confirm(
+        'PC 메일로 넘길 때 첨부 파일은 mailto 주소로 전달되지 않습니다. 본문·제목·참조만 넘어갑니다. 계속할까요?'
+      );
+      if (!ok) return;
+    }
     setSending(true);
     try {
-      const token = localStorage.getItem('crm_token');
-      let attachments = [];
-      if (attachedFiles.length > 0) {
-        attachments = await Promise.all(
-          attachedFiles.map(async (a) => {
-            const buf = await a.file.arrayBuffer();
-            const bytes = new Uint8Array(buf);
-            let binary = '';
-            const chunk = 8192;
-            for (let i = 0; i < bytes.length; i += chunk) {
-              binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-            }
-            const contentBase64 = btoa(binary);
-            return { filename: a.name, mimeType: a.mimeType, contentBase64 };
-          })
-        );
-      }
-      const payload = {
-        to: to.trim(),
-        subject: subject.trim() || '(제목 없음)',
-        body: editorRef.current?.innerText ?? '',
-        bodyHtml: html || undefined,
-        ...(cc.trim() ? { cc: cc.trim() } : {}),
-        ...(composeMode === 'reply' && replyThreadId ? { threadId: replyThreadId } : {}),
-        ...(attachments.length ? { attachments } : {})
-      };
-      const res = await fetch(`${API_BASE}/gmail/messages/send`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(data.error || '전송에 실패했습니다.');
-        return;
-      }
+      const ok = await runPcMailtoHandoff();
+      if (!ok) return;
       onSent?.({
         to: to.trim(),
         cc: cc.trim(),
         subject: subject.trim() || '(제목 없음)',
-        body: editorRef.current?.innerText ?? ''
+        body: getEditorPlainBody()
       });
       onClose?.();
-    } catch (_) {
-      setError('전송할 수 없습니다.');
     } finally {
       setSending(false);
     }
@@ -1196,15 +1237,15 @@ export default function EmailComposeModal({
             className="email-compose-send-icon"
             disabled={sending}
             onClick={() => void handleSubmit()}
-            aria-label={sending ? '전송 중' : '보내기'}
-            title={sending ? '전송 중…' : '보내기'}
+            aria-label={sending ? '준비 중' : 'PC 메일 앱으로 넘기기'}
+            title={sending ? '준비 중…' : 'PC 기본 메일 앱으로 넘기기 (mailto)'}
           >
             <span
               className={'material-symbols-outlined' + (sending ? ' email-compose-send-icon--spin' : '')}
               style={sending ? undefined : { fontVariationSettings: "'FILL' 1" }}
               aria-hidden
             >
-              {sending ? 'progress_activity' : 'send'}
+              {sending ? 'progress_activity' : 'mail'}
             </span>
           </button>
           <button type="button" className="email-compose-close" onClick={onClose} aria-label="닫기">
@@ -1438,192 +1479,6 @@ export default function EmailComposeModal({
             </div>
           )}
 
-          {showAiPanel && (
-            <div className="email-compose-ai-panel" role="region" aria-label="AI 문장 다듬기">
-              <div className="email-compose-ai-panel-head">
-                <span className="material-symbols-outlined" aria-hidden>auto_awesome</span>
-                <span>AI 문장 다듬기</span>
-                <button type="button" className="email-compose-ai-close" onClick={() => setShowAiPanel(false)} aria-label="AI 패널 닫기">
-                  <span className="material-symbols-outlined">expand_less</span>
-                </button>
-              </div>
-              <p className="email-compose-ai-hint">
-                <strong>문장 다듬기</strong>는 아래 다섯 가지(목적·톤·독자·길이·추가)를 조합해 Gemini가 본문을 요청대로 고칩니다. 본문을 입력하거나 <strong>적용할 문장만 선택</strong>한 뒤 실행하세요. 다른 기능(요약·번역·초안 등)은 위에서 고른 뒤 안내된 입력란만 사용합니다.
-              </p>
-              <label className="email-compose-ai-label" htmlFor="email-compose-ai-mode">기능</label>
-              <select
-                id="email-compose-ai-mode"
-                className="email-compose-ai-select"
-                value={aiMode}
-                onChange={(e) => setAiMode(e.target.value)}
-              >
-                <option value="guided_rewrite">문장 다듬기 (목적·톤·독자·길이·추가)</option>
-                <option value="proofread">맞춤법·문법만 교정</option>
-                <option value="summarize">핵심 3줄 요약</option>
-                <option value="translate">번역 (한↔영)</option>
-                <option value="auto_draft">키워드로 본문 초안</option>
-                <option value="smart_reply">받은 메일 답장 초안</option>
-                <option value="personalize">수신자 맞춤 (이름·회사)</option>
-              </select>
-
-              {aiMode === 'guided_rewrite' && (
-                <div className="email-compose-ai-guided" role="group" aria-label="문장 다듬기 옵션">
-                  <div className="email-compose-ai-row">
-                    <label htmlFor="email-compose-ai-g-goal">1. 목적</label>
-                    <select
-                      id="email-compose-ai-g-goal"
-                      className="email-compose-ai-select"
-                      value={aiGuidedGoal}
-                      onChange={(e) => setAiGuidedGoal(e.target.value)}
-                    >
-                      {AI_GUIDED_GOALS.map((o) => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="email-compose-ai-row">
-                    <label htmlFor="email-compose-ai-g-tone">2. 톤·스타일</label>
-                    <select
-                      id="email-compose-ai-g-tone"
-                      className="email-compose-ai-select"
-                      value={aiGuidedTone}
-                      onChange={(e) => setAiGuidedTone(e.target.value)}
-                    >
-                      {AI_GUIDED_TONES.map((o) => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="email-compose-ai-row">
-                    <label htmlFor="email-compose-ai-g-aud">3. 대상 독자</label>
-                    <select
-                      id="email-compose-ai-g-aud"
-                      className="email-compose-ai-select"
-                      value={aiGuidedAudience}
-                      onChange={(e) => setAiGuidedAudience(e.target.value)}
-                    >
-                      {AI_GUIDED_AUDIENCES.map((o) => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="email-compose-ai-row">
-                    <label htmlFor="email-compose-ai-g-len">4. 길이</label>
-                    <select
-                      id="email-compose-ai-g-len"
-                      className="email-compose-ai-select"
-                      value={aiGuidedLength}
-                      onChange={(e) => setAiGuidedLength(e.target.value)}
-                    >
-                      {AI_GUIDED_LENGTHS.map((o) => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="email-compose-ai-row">
-                    <label htmlFor="email-compose-ai-g-ex">5. 추가 옵션</label>
-                    <select
-                      id="email-compose-ai-g-ex"
-                      className="email-compose-ai-select"
-                      value={aiGuidedExtra}
-                      onChange={(e) => setAiGuidedExtra(e.target.value)}
-                    >
-                      {AI_GUIDED_EXTRAS.map((o) => (
-                        <option key={o.value} value={o.value}>{o.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              )}
-
-              {aiMode === 'translate' && (
-                <div className="email-compose-ai-row">
-                  <label htmlFor="email-compose-ai-lang">번역 방향</label>
-                  <select id="email-compose-ai-lang" className="email-compose-ai-select" value={aiTargetLang} onChange={(e) => setAiTargetLang(e.target.value)}>
-                    <option value="en">→ 영어</option>
-                    <option value="ko">→ 한국어</option>
-                  </select>
-                </div>
-              )}
-
-              {aiMode === 'auto_draft' && (
-                <>
-                  <label className="email-compose-ai-label" htmlFor="email-compose-ai-keyword">키워드·상황 한 줄</label>
-                  <input
-                    id="email-compose-ai-keyword"
-                    className="email-compose-ai-input"
-                    value={aiKeyword}
-                    onChange={(e) => setAiKeyword(e.target.value)}
-                    placeholder="예: 거래처 일정 변경 요청"
-                  />
-                  <label className="email-compose-ai-label" htmlFor="email-compose-ai-purpose">추가 맥락 (선택)</label>
-                  <input
-                    id="email-compose-ai-purpose"
-                    className="email-compose-ai-input"
-                    value={aiPurpose}
-                    onChange={(e) => setAiPurpose(e.target.value)}
-                    placeholder="날짜, 상대방, 부탁 내용 등"
-                  />
-                </>
-              )}
-
-              {aiMode === 'smart_reply' && (
-                <>
-                  <label className="email-compose-ai-label" htmlFor="email-compose-ai-received">받은 메일 본문</label>
-                  <textarea
-                    id="email-compose-ai-received"
-                    className="email-compose-ai-textarea"
-                    rows={5}
-                    value={aiReceived}
-                    onChange={(e) => setAiReceived(e.target.value)}
-                    placeholder="답장할 원문을 붙여 넣으세요."
-                  />
-                  <div className="email-compose-ai-row">
-                    <label htmlFor="email-compose-ai-intent">답장 유형</label>
-                    <select id="email-compose-ai-intent" className="email-compose-ai-select" value={aiReplyIntent} onChange={(e) => setAiReplyIntent(e.target.value)}>
-                      <option value="approve">승인·긍정</option>
-                      <option value="reject">거절·정중 거절</option>
-                      <option value="more">추가 정보 요청</option>
-                    </select>
-                  </div>
-                </>
-              )}
-
-              {aiMode === 'personalize' && (
-                <>
-                  <label className="email-compose-ai-label" htmlFor="email-compose-ai-rn">수신자 이름 (선택)</label>
-                  <input id="email-compose-ai-rn" className="email-compose-ai-input" value={aiRecipientName} onChange={(e) => setAiRecipientName(e.target.value)} placeholder="홍길동" />
-                  <label className="email-compose-ai-label" htmlFor="email-compose-ai-cn">회사명 (선택)</label>
-                  <input id="email-compose-ai-cn" className="email-compose-ai-input" value={aiCompanyName} onChange={(e) => setAiCompanyName(e.target.value)} placeholder="(주)예시" />
-                  <label className="email-compose-ai-label" htmlFor="email-compose-ai-purpose2">목적·상황 (선택)</label>
-                  <input id="email-compose-ai-purpose2" className="email-compose-ai-input" value={aiPurpose} onChange={(e) => setAiPurpose(e.target.value)} placeholder="견적 후속 안내 등" />
-                </>
-              )}
-
-              {aiError ? <p className="email-compose-ai-err">{aiError}</p> : null}
-              <div className="email-compose-ai-actions">
-                <button type="button" className="email-compose-ai-run" onClick={runEmailAiAssist} disabled={aiLoading}>
-                  {aiLoading ? '처리 중…' : '실행'}
-                </button>
-              </div>
-              {aiJsonResult ? (
-                <div className="email-compose-ai-json-wrap">
-                  <div className="email-compose-ai-json-head">
-                    <span>분석 결과 (JSON)</span>
-                    <button
-                      type="button"
-                      className="email-compose-ai-copy-json"
-                      onClick={() => copyTextToClipboard(aiJsonResult)}
-                    >
-                      복사
-                    </button>
-                  </div>
-                  <pre className="email-compose-ai-json">{aiJsonResult}</pre>
-                </div>
-              ) : null}
-            </div>
-          )}
-
           {inTable && (
             <div className="email-compose-table-toolbar">
               <span className="email-compose-table-toolbar-label">테이블</span>
@@ -1726,8 +1581,17 @@ export default function EmailComposeModal({
           />
         {error && <p className="email-compose-error">{error}</p>}
         <footer className="email-compose-footer">
-          <button type="submit" className="email-compose-send" disabled={sending}>{sending ? '전송 중…' : '보내기'}</button>
-          <button type="button" className="email-compose-close-btn" onClick={onClose}>닫기</button>
+          <div className="email-compose-footer-actions">
+            <button
+              type="submit"
+              className="email-compose-send"
+              disabled={sending}
+              title="PC 기본 메일 앱으로 받는 사람·제목·본문 넘기기 (mailto)"
+            >
+              {sending ? '준비 중…' : '보내기'}
+            </button>
+            <button type="button" className="email-compose-close-btn" onClick={onClose}>닫기</button>
+          </div>
         </footer>
       </form>
 
@@ -1828,6 +1692,278 @@ export default function EmailComposeModal({
             <p className="email-compose-size-warning-message">{sizeWarningModal}</p>
             <footer className="email-compose-size-warning-footer">
               <button type="button" className="email-compose-size-warning-btn" onClick={() => setSizeWarningModal(null)}>확인</button>
+            </footer>
+          </div>
+        </div>
+      )}
+
+      {showAiPanel && (
+        <div
+          className="email-compose-ai-modal-overlay"
+          onClick={() => {
+            if (!aiLoading) setShowAiPanel(false);
+          }}
+          role="presentation"
+        >
+          <div
+            className="email-compose-ai-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="email-compose-ai-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="email-compose-ai-modal-header">
+              <span className="material-symbols-outlined email-compose-ai-modal-header-icon" aria-hidden>
+                auto_awesome
+              </span>
+              <h2 id="email-compose-ai-modal-title" className="email-compose-ai-modal-title">
+                AI 문장 다듬기
+              </h2>
+              <button
+                type="button"
+                className="email-compose-drive-modal-close"
+                onClick={() => {
+                  if (!aiLoading) setShowAiPanel(false);
+                }}
+                aria-label="닫기"
+                disabled={aiLoading}
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <div className="email-compose-ai-modal-body">
+              <p className="email-compose-ai-hint">
+                <strong>문장 다듬기</strong>는 아래 다섯 가지(목적·톤·독자·길이·추가)를 조합해 Gemini가 본문을 요청대로 고칩니다. 본문을 입력하거나 <strong>적용할 문장만 선택</strong>한 뒤 실행하세요. 다른 기능(요약·번역·초안 등)은 위에서 고른 뒤 안내된 입력란만 사용합니다.
+              </p>
+              <label className="email-compose-ai-label" htmlFor="email-compose-ai-mode">
+                기능
+              </label>
+              <select
+                id="email-compose-ai-mode"
+                className="email-compose-ai-select"
+                value={aiMode}
+                onChange={(e) => setAiMode(e.target.value)}
+              >
+                <option value="guided_rewrite">문장 다듬기 (목적·톤·독자·길이·추가)</option>
+                <option value="proofread">맞춤법·문법만 교정</option>
+                <option value="summarize">핵심 3줄 요약</option>
+                <option value="translate">번역 (한↔영)</option>
+                <option value="auto_draft">키워드로 본문 초안</option>
+                <option value="smart_reply">받은 메일 답장 초안</option>
+                <option value="personalize">수신자 맞춤 (이름·회사)</option>
+              </select>
+
+              {aiMode === 'guided_rewrite' && (
+                <div className="email-compose-ai-guided" role="group" aria-label="문장 다듬기 옵션">
+                  <div className="email-compose-ai-row">
+                    <label htmlFor="email-compose-ai-g-goal">1. 목적</label>
+                    <select
+                      id="email-compose-ai-g-goal"
+                      className="email-compose-ai-select"
+                      value={aiGuidedGoal}
+                      onChange={(e) => setAiGuidedGoal(e.target.value)}
+                    >
+                      {AI_GUIDED_GOALS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="email-compose-ai-row">
+                    <label htmlFor="email-compose-ai-g-tone">2. 톤·스타일</label>
+                    <select
+                      id="email-compose-ai-g-tone"
+                      className="email-compose-ai-select"
+                      value={aiGuidedTone}
+                      onChange={(e) => setAiGuidedTone(e.target.value)}
+                    >
+                      {AI_GUIDED_TONES.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="email-compose-ai-row">
+                    <label htmlFor="email-compose-ai-g-aud">3. 대상 독자</label>
+                    <select
+                      id="email-compose-ai-g-aud"
+                      className="email-compose-ai-select"
+                      value={aiGuidedAudience}
+                      onChange={(e) => setAiGuidedAudience(e.target.value)}
+                    >
+                      {AI_GUIDED_AUDIENCES.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="email-compose-ai-row">
+                    <label htmlFor="email-compose-ai-g-len">4. 길이</label>
+                    <select
+                      id="email-compose-ai-g-len"
+                      className="email-compose-ai-select"
+                      value={aiGuidedLength}
+                      onChange={(e) => setAiGuidedLength(e.target.value)}
+                    >
+                      {AI_GUIDED_LENGTHS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="email-compose-ai-row">
+                    <label htmlFor="email-compose-ai-g-ex">5. 추가 옵션</label>
+                    <select
+                      id="email-compose-ai-g-ex"
+                      className="email-compose-ai-select"
+                      value={aiGuidedExtra}
+                      onChange={(e) => setAiGuidedExtra(e.target.value)}
+                    >
+                      {AI_GUIDED_EXTRAS.map((o) => (
+                        <option key={o.value} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {aiMode === 'translate' && (
+                <div className="email-compose-ai-row">
+                  <label htmlFor="email-compose-ai-lang">번역 방향</label>
+                  <select
+                    id="email-compose-ai-lang"
+                    className="email-compose-ai-select"
+                    value={aiTargetLang}
+                    onChange={(e) => setAiTargetLang(e.target.value)}
+                  >
+                    <option value="en">→ 영어</option>
+                    <option value="ko">→ 한국어</option>
+                  </select>
+                </div>
+              )}
+
+              {aiMode === 'auto_draft' && (
+                <>
+                  <label className="email-compose-ai-label" htmlFor="email-compose-ai-keyword">
+                    키워드·상황 한 줄
+                  </label>
+                  <input
+                    id="email-compose-ai-keyword"
+                    className="email-compose-ai-input"
+                    value={aiKeyword}
+                    onChange={(e) => setAiKeyword(e.target.value)}
+                    placeholder="예: 거래처 일정 변경 요청"
+                  />
+                  <label className="email-compose-ai-label" htmlFor="email-compose-ai-purpose">
+                    추가 맥락 (선택)
+                  </label>
+                  <input
+                    id="email-compose-ai-purpose"
+                    className="email-compose-ai-input"
+                    value={aiPurpose}
+                    onChange={(e) => setAiPurpose(e.target.value)}
+                    placeholder="날짜, 상대방, 부탁 내용 등"
+                  />
+                </>
+              )}
+
+              {aiMode === 'smart_reply' && (
+                <>
+                  <label className="email-compose-ai-label" htmlFor="email-compose-ai-received">
+                    받은 메일 본문
+                  </label>
+                  <textarea
+                    id="email-compose-ai-received"
+                    className="email-compose-ai-textarea"
+                    rows={5}
+                    value={aiReceived}
+                    onChange={(e) => setAiReceived(e.target.value)}
+                    placeholder="답장할 원문을 붙여 넣으세요."
+                  />
+                  <div className="email-compose-ai-row">
+                    <label htmlFor="email-compose-ai-intent">답장 유형</label>
+                    <select
+                      id="email-compose-ai-intent"
+                      className="email-compose-ai-select"
+                      value={aiReplyIntent}
+                      onChange={(e) => setAiReplyIntent(e.target.value)}
+                    >
+                      <option value="approve">승인·긍정</option>
+                      <option value="reject">거절·정중 거절</option>
+                      <option value="more">추가 정보 요청</option>
+                    </select>
+                  </div>
+                </>
+              )}
+
+              {aiMode === 'personalize' && (
+                <>
+                  <label className="email-compose-ai-label" htmlFor="email-compose-ai-rn">
+                    수신자 이름 (선택)
+                  </label>
+                  <input
+                    id="email-compose-ai-rn"
+                    className="email-compose-ai-input"
+                    value={aiRecipientName}
+                    onChange={(e) => setAiRecipientName(e.target.value)}
+                    placeholder="홍길동"
+                  />
+                  <label className="email-compose-ai-label" htmlFor="email-compose-ai-cn">
+                    회사명 (선택)
+                  </label>
+                  <input
+                    id="email-compose-ai-cn"
+                    className="email-compose-ai-input"
+                    value={aiCompanyName}
+                    onChange={(e) => setAiCompanyName(e.target.value)}
+                    placeholder="(주)예시"
+                  />
+                  <label className="email-compose-ai-label" htmlFor="email-compose-ai-purpose2">
+                    목적·상황 (선택)
+                  </label>
+                  <input
+                    id="email-compose-ai-purpose2"
+                    className="email-compose-ai-input"
+                    value={aiPurpose}
+                    onChange={(e) => setAiPurpose(e.target.value)}
+                    placeholder="견적 후속 안내 등"
+                  />
+                </>
+              )}
+
+              {aiError ? <p className="email-compose-ai-err">{aiError}</p> : null}
+              {aiJsonResult ? (
+                <div className="email-compose-ai-json-wrap">
+                  <div className="email-compose-ai-json-head">
+                    <span>분석 결과 (JSON)</span>
+                    <button type="button" className="email-compose-ai-copy-json" onClick={() => copyTextToClipboard(aiJsonResult)}>
+                      복사
+                    </button>
+                  </div>
+                  <pre className="email-compose-ai-json">{aiJsonResult}</pre>
+                </div>
+              ) : null}
+            </div>
+            <footer className="email-compose-ai-modal-footer">
+              <button
+                type="button"
+                className="email-compose-ai-modal-btn-cancel"
+                onClick={() => {
+                  if (!aiLoading) setShowAiPanel(false);
+                }}
+                disabled={aiLoading}
+              >
+                닫기
+              </button>
+              <button type="button" className="email-compose-ai-run email-compose-ai-modal-run" onClick={runEmailAiAssist} disabled={aiLoading}>
+                {aiLoading ? '처리 중…' : '실행'}
+              </button>
             </footer>
           </div>
         </div>

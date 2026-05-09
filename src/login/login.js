@@ -12,6 +12,7 @@ const LEGAL_QUERY = 'legal';
 const LEGAL_VALUES = /** @type {const} */ (['privacy', 'terms', 'google']);
 
 const getGoogleAuthUrl = () => `${API_BASE}/auth/google`;
+const getMicrosoftAuthUrl = () => `${API_BASE}/auth/microsoft`;
 
 const ECOSYSTEM_ICONS = [
   { icon: 'mail', title: 'Gmail Integration' },

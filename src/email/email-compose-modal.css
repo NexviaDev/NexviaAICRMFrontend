@@ -856,10 +856,21 @@
 
 .email-compose-footer {
   display: flex;
-  justify-content: flex-end;
-  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
   padding: 1rem 1.25rem;
   border-top: 1px solid var(--card-border);
+}
+
+.email-compose-footer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .email-compose-close-btn,
@@ -1059,43 +1070,99 @@
   cursor: not-allowed;
 }
 
-.email-compose-ai-panel {
-  margin: 0 1rem 0.75rem;
-  padding: 0.85rem 1rem;
-  border-radius: 0.65rem;
-  border: 1px solid rgba(183, 180, 224, 0.45);
-  background: linear-gradient(145deg, rgba(245, 243, 255, 0.95), rgba(236, 252, 247, 0.85));
-  font-size: 0.8125rem;
-}
-
-.email-compose-ai-panel-head {
+/* AI 문장 다듬기 — 별도 전체 화면 오버레이 (작성 모달 위에 표시, 하단 실행 고정) */
+.email-compose-ai-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10100;
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  justify-content: center;
+  padding: 1rem;
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 0));
+  background: rgba(15, 23, 42, 0.5);
+  backdrop-filter: blur(4px);
+  animation: emailComposeOverlayIn 0.2s ease-out;
+}
+
+.email-compose-ai-modal {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 28rem;
+  max-height: min(90vh, 36rem);
+  background: var(--card, #fafbfc);
+  border-radius: 0.75rem;
+  border: 1px solid rgba(183, 180, 224, 0.4);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+  animation: emailComposeModalIn 0.2s ease-out;
+}
+
+.email-compose-ai-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid rgba(183, 180, 224, 0.35);
+  background: rgba(248, 247, 255, 0.95);
+}
+
+.email-compose-ai-modal-header-icon {
+  font-size: 1.25rem;
+  color: #8b7ec8;
+  flex-shrink: 0;
+}
+
+.email-compose-ai-modal-title {
+  margin: 0;
+  flex: 1;
+  font-size: 1rem;
   font-weight: 700;
   color: #5b5678;
-  margin-bottom: 0.5rem;
 }
 
-.email-compose-ai-panel-head .material-symbols-outlined {
-  font-size: 1.15rem;
-  color: #8b7ec8;
+.email-compose-ai-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0.85rem 1rem 1rem;
+  font-size: 0.8125rem;
+  -webkit-overflow-scrolling: touch;
 }
 
-.email-compose-ai-close {
-  margin-left: auto;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  padding: 0.2rem;
-  border-radius: 0.35rem;
-  color: #64748b;
+.email-compose-ai-modal-footer {
+  flex-shrink: 0;
   display: flex;
+  justify-content: flex-end;
   align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid rgba(183, 180, 224, 0.35);
+  background: rgba(252, 251, 255, 0.98);
 }
 
-.email-compose-ai-close:hover {
-  background: rgba(255, 255, 255, 0.7);
+.email-compose-ai-modal-btn-cancel {
+  padding: 0.45rem 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 0.5rem;
+  font-weight: 600;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  background: #fff;
+  color: #64748b;
+}
+
+.email-compose-ai-modal-btn-cancel:hover:not(:disabled) {
+  background: rgba(248, 250, 252, 0.95);
+  color: #475569;
+}
+
+.email-compose-ai-modal-btn-cancel:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .email-compose-ai-hint {
@@ -1170,12 +1237,6 @@
   font-size: 0.8rem;
 }
 
-.email-compose-ai-actions {
-  margin-top: 0.65rem;
-  display: flex;
-  gap: 0.5rem;
-}
-
 .email-compose-ai-run {
   padding: 0.45rem 1.1rem;
   border: none;
@@ -1183,9 +1244,9 @@
   font-weight: 600;
   font-size: 0.8125rem;
   cursor: pointer;
-  background: linear-gradient(135deg, #a8a4e0, #8ec5b6);
+  background: #a8a4e0;
   color: #fff;
-  box-shadow: 0 2px 8px rgba(139, 126, 200, 0.25);
+  box-shadow: 0 1px 4px rgba(139, 126, 200, 0.2);
 }
 
 .email-compose-ai-run:hover:not(:disabled) {
@@ -1327,5 +1388,11 @@
   .email-compose-inline .email-compose-form,
   .email-compose-modal .email-compose-form {
     padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+
+  .email-compose-ai-modal {
+    max-height: min(92dvh, 40rem);
+    max-width: none;
+    width: calc(100% - 1rem);
   }
 }

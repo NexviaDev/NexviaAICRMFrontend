@@ -822,6 +822,36 @@
   color: #2f6789;
 }
 
+.event-modal-reminder-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.85rem;
+  padding: 0.8rem 0.9rem;
+  margin-bottom: 0.75rem;
+  border: 1px solid rgba(47, 103, 137, 0.14);
+  border-radius: 0.85rem;
+  background: #f5fafc;
+  cursor: pointer;
+}
+
+.event-modal-reminder-toggle span {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+}
+
+.event-modal-reminder-toggle strong {
+  font-size: 0.9rem;
+  color: #243342;
+}
+
+.event-modal-reminder-toggle small {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  line-height: 1.35;
+}
+
 .event-modal-modern-actions {
   display: flex;
   flex-direction: column;

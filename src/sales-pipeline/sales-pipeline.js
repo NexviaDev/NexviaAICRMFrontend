@@ -1401,7 +1401,7 @@ export default function SalesPipeline() {
           </>
           ) : null}
 
-          <div className="sp-board">
+          <div className={`sp-board${pipelineViewMode === 'table' ? ' sp-board--table-view' : ''}`}>
             {pipelineViewMode === 'kanban' ? (
             <div className="sp-board-desktop">
               <div className="sp-kanban">
@@ -1484,52 +1484,54 @@ export default function SalesPipeline() {
             )}
 
           {/* Drop Zones — Won / Lost / 보류 */}
-          <div className="sp-dropzones-section">
-            <div className="sp-dropzones">
-              {Object.entries(DROP_ZONE_CONFIG).map(([stage, cfg]) => {
-                const items = grouped[stage] || [];
-                const dzFp = stageForecastPercent[stage];
-                const dzForecastSum =
-                  canViewAdminContent && Number.isFinite(dzFp) ? sumForecastExpectedAmount(items, dzFp) : null;
-                const dzCurrency = firstOppCurrency(items);
-                return (
-                  <div key={stage} className="sp-dz-wrapper">
-                    <div
-                      className={`sp-dropzone ${cfg.colorClass}`}
-                      onDragOver={handleDragOver}
-                      onDragLeave={handleDragLeave}
-                      onDrop={(e) => handleDrop(e, stage)}
-                      onClick={() => items.length > 0 && setDropZoneListStage(stage)}
-                      style={{ cursor: items.length > 0 ? 'pointer' : 'default' }}
-                    >
-                      <span className="material-symbols-outlined sp-dz-icon sp-dz-icon--fill">{cfg.icon}</span>
-                      <span className="sp-dz-label-wrap">
-                        <span className="sp-dz-label">{cfg.label}</span>
-                        {Number.isFinite(stageForecastPercent[stage]) ? (
-                          <span className="sp-dz-forecast" title="Forecast (expected probability)">
-                            Forecast {stageForecastPercent[stage]}%
-                          </span>
-                        ) : null}
-                        {dzForecastSum != null ? (
-                          <span className="sp-dz-forecast-expected" title={`금액 합 × Forecast ${dzFp}%`}>
-                            예상 {formatCurrency(dzForecastSum, dzCurrency)}
-                          </span>
-                        ) : null}
-                      </span>
-                      {items.length > 0 && (
-                        <span className="sp-dz-count">
-                          {items.length}건
-                          <span className="material-symbols-outlined sp-dz-chevron" aria-hidden>
-                            chevron_right
-                          </span>
+          {pipelineViewMode === 'kanban' ? (
+            <div className="sp-dropzones-section">
+              <div className="sp-dropzones">
+                {Object.entries(DROP_ZONE_CONFIG).map(([stage, cfg]) => {
+                  const items = grouped[stage] || [];
+                  const dzFp = stageForecastPercent[stage];
+                  const dzForecastSum =
+                    canViewAdminContent && Number.isFinite(dzFp) ? sumForecastExpectedAmount(items, dzFp) : null;
+                  const dzCurrency = firstOppCurrency(items);
+                  return (
+                    <div key={stage} className="sp-dz-wrapper">
+                      <div
+                        className={`sp-dropzone ${cfg.colorClass}`}
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={(e) => handleDrop(e, stage)}
+                        onClick={() => items.length > 0 && setDropZoneListStage(stage)}
+                        style={{ cursor: items.length > 0 ? 'pointer' : 'default' }}
+                      >
+                        <span className="material-symbols-outlined sp-dz-icon sp-dz-icon--fill">{cfg.icon}</span>
+                        <span className="sp-dz-label-wrap">
+                          <span className="sp-dz-label">{cfg.label}</span>
+                          {Number.isFinite(stageForecastPercent[stage]) ? (
+                            <span className="sp-dz-forecast" title="Forecast (expected probability)">
+                              Forecast {stageForecastPercent[stage]}%
+                            </span>
+                          ) : null}
+                          {dzForecastSum != null ? (
+                            <span className="sp-dz-forecast-expected" title={`금액 합 × Forecast ${dzFp}%`}>
+                              예상 {formatCurrency(dzForecastSum, dzCurrency)}
+                            </span>
+                          ) : null}
                         </span>
-                      )}
+                        {items.length > 0 && (
+                          <span className="sp-dz-count">
+                            {items.length}건
+                            <span className="material-symbols-outlined sp-dz-chevron" aria-hidden>
+                              chevron_right
+                            </span>
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          ) : null}
         </div>
         </>
       )}

@@ -507,6 +507,7 @@
   .customer-company-employees-page .cce-mobile-name-email-row {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 0.35rem;
     margin-top: 0.2rem;
     max-width: 100%;
@@ -528,6 +529,40 @@
     flex-shrink: 0;
     width: 1.85rem;
     height: 1.85rem;
+  }
+
+  .customer-company-employees-page .cce-mobile-email-action-btns {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.28rem;
+    flex-shrink: 0;
+    max-width: 100%;
+  }
+
+  .customer-company-employees-page .cce-mobile-email-action-btns .cce-mobile-quick-btn {
+    width: 1.9rem;
+    height: 1.9rem;
+  }
+
+  .customer-company-employees-page .cce-mobile-email-action-btns .cce-mobile-email-crm-btn {
+    background: rgba(187, 210, 247, 0.55);
+    color: #4a6fa5;
+  }
+
+  .customer-company-employees-page .cce-mobile-email-action-btns .cce-mobile-email-outlook-office-btn {
+    background: rgba(178, 223, 200, 0.55);
+    color: #3d6b52;
+  }
+
+  .customer-company-employees-page .cce-mobile-email-action-btns .cce-mobile-email-outlook-live-btn {
+    background: rgba(180, 210, 240, 0.55);
+    color: #3d5a87;
+  }
+
+  .customer-company-employees-page .cce-mobile-email-action-btns .cce-mobile-quick-btn:hover {
+    filter: brightness(0.94);
+    transform: scale(1.04);
   }
 
   .customer-company-employees-page .cce-mobile-card-company {

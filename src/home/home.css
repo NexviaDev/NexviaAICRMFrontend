@@ -2814,6 +2814,8 @@
   .home-page {
     background: #f8fafa;
     color: #2c3435;
+    max-width: 100%;
+    overflow-x: hidden;
   }
 
   .home-page > .page-header {
@@ -2834,6 +2836,28 @@
   .home-page-content.page-content {
     padding: 1rem 1.25rem 5.5rem;
     background: #f8fafa;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .home-page *,
+  .home-page *::before,
+  .home-page *::after {
+    box-sizing: border-box;
+  }
+
+  .home-insights-top,
+  .home-top-grid,
+  .home-bottom,
+  .home-schedule-split,
+  .home-schedule-left-stack,
+  .home-kpi-strip,
+  .home-contribution-panel,
+  .home-chart-panel,
+  .home-forecast-panel,
+  .home-leader-breakdown-panel {
+    min-width: 0;
+    max-width: 100%;
   }
 
   .home-mobile-hero {
@@ -2963,6 +2987,7 @@
     box-shadow: 0 4px 20px rgba(44, 52, 53, 0.05);
     background: #ffffff;
     border-radius: 0.75rem;
+    max-width: 100%;
   }
 
   .panel-head {
@@ -3067,6 +3092,21 @@
 
   .home-chart-panel .panel-head {
     background: transparent;
+  }
+
+  .home-chart-panel,
+  .home-chart-body,
+  .home-bar-chart-wrap,
+  .home-line-chart-wrap {
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .home-contribution-ach-frame,
+  .home-contribution-ach-live {
+    max-width: 100%;
+    overflow: hidden;
   }
 
   .sales-pipeline.panel {

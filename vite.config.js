@@ -60,6 +60,7 @@ export default defineConfig({
         ]
       },
       workbox: {
+        importScripts: ['/firebase-messaging-push.js'],
         globPatterns: ['**/*.{js,css,html,ico,svg,png,woff2}'],
         /** 새 SW 활성화 직후 클라이언트에 즉시 적용, 오래된 프리캐시 정리 */
         clientsClaim: true,

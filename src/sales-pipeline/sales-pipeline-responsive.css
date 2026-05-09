@@ -455,6 +455,26 @@
     overflow: visible;
   }
 
+  .sp-board--table-view {
+    flex: 1 1 auto;
+    min-height: calc(100dvh - 10rem);
+    display: flex;
+    flex-direction: column;
+    padding: 0 1rem 1rem;
+    overflow: hidden;
+  }
+
+  .sp-board--table-view .sp-pipeline-table-section {
+    flex: 1 1 auto;
+    min-height: calc(100dvh - 11rem);
+    margin-top: 0;
+  }
+
+  .sp-board--table-view .sp-pipeline-table-dz-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
   .sp-dropzones-section {
     width: 100%;
     max-width: 100%;

@@ -3,9 +3,18 @@
  * customerCompanies, customerCompanyEmployees, productList 열 순서·표시 여부,
  * calendar 보기(월/주/일), salesPipeline 필터 저장/복원, 홈 대시보드 인사이트(homeDashboard),
  * 드롭존 목록(dropZoneListModal): columnOrder, showScheduleCustomDateColumns, scheduleCustomDateColumnVisibility(키별 숨김=false만 저장).
+ * 메일 작성 AI 문장 다듬기(guided_rewrite 5축) — listTemplates.emailComposeModal.guidedRewrite
  */
 
 import { API_BASE } from '@/config';
+import {
+  AI_GUIDED_AUDIENCES,
+  AI_GUIDED_DEFAULTS,
+  AI_GUIDED_EXTRAS,
+  AI_GUIDED_GOALS,
+  AI_GUIDED_LENGTHS,
+  AI_GUIDED_TONES
+} from './gmail-ai-guided-options';
 
 export const LIST_IDS = {
   CUSTOMER_COMPANIES: 'customerCompanies',
@@ -26,8 +35,74 @@ export const LIST_IDS = {
   /** 홈 일일 대시보드 — listTemplates.homeDashboard { companyWideInsight, kpiPeriod, consumerChartMode, marginChartMode, productChartMode, quantityChartMode, … } */
   HOME_DASHBOARD: 'homeDashboard',
   /** 결과 드롭존 목록 표 열 순서 — listTemplates.dropZoneListModal { columnOrder } */
-  DROP_ZONE_LIST_MODAL: 'dropZoneListModal'
+  DROP_ZONE_LIST_MODAL: 'dropZoneListModal',
+  /** 메일 작성 모달 AI 문장 다듬기 기본값 — listTemplates.emailComposeModal { guidedRewrite } */
+  EMAIL_COMPOSE_MODAL: 'emailComposeModal'
 };
+
+function pickGuidedOption(value, options, fallback) {
+  const allowed = new Set(options.map((o) => o.value));
+  const v = String(value ?? '').trim();
+  return allowed.has(v) ? v : fallback;
+}
+
+/**
+ * user.listTemplates.emailComposeModal.guidedRewrite 에서 문장 다듬기 5축 복원 (crm_user·GET /auth/me user)
+ */
+export function getEmailComposeModalGuidedFromUser(user) {
+  const raw = user?.listTemplates?.emailComposeModal?.guidedRewrite;
+  const g = raw && typeof raw === 'object' ? raw : {};
+  return {
+    guidedGoal: pickGuidedOption(g.guidedGoal, AI_GUIDED_GOALS, AI_GUIDED_DEFAULTS.goal),
+    guidedTone: pickGuidedOption(g.guidedTone, AI_GUIDED_TONES, AI_GUIDED_DEFAULTS.tone),
+    guidedAudience: pickGuidedOption(g.guidedAudience, AI_GUIDED_AUDIENCES, AI_GUIDED_DEFAULTS.audience),
+    guidedLength: pickGuidedOption(g.guidedLength, AI_GUIDED_LENGTHS, AI_GUIDED_DEFAULTS.length),
+    guidedExtra: pickGuidedOption(g.guidedExtra, AI_GUIDED_EXTRAS, AI_GUIDED_DEFAULTS.extra)
+  };
+}
+
+/** 로컬 crm_user 동기 복원 — 모달 초기 state용 */
+export function getSavedEmailComposeModalGuidedSync() {
+  try {
+    const raw = localStorage.getItem('crm_user');
+    const user = raw ? JSON.parse(raw) : null;
+    return getEmailComposeModalGuidedFromUser(user);
+  } catch (_) {
+    return getEmailComposeModalGuidedFromUser(null);
+  }
+}
+
+/**
+ * PATCH /api/auth/list-templates — listId: emailComposeModal, guidedGoal·guidedTone·… (부분 갱신)
+ */
+export async function patchEmailComposeModalGuided(fields) {
+  if (!fields || typeof fields !== 'object') {
+    throw new Error('저장할 값이 없습니다.');
+  }
+  const keys = ['guidedGoal', 'guidedTone', 'guidedAudience', 'guidedLength', 'guidedExtra'];
+  const payload = { listId: LIST_IDS.EMAIL_COMPOSE_MODAL };
+  let n = 0;
+  for (const k of keys) {
+    if (fields[k] !== undefined) {
+      payload[k] = fields[k];
+      n += 1;
+    }
+  }
+  if (n === 0) throw new Error('저장할 값이 없습니다.');
+  const res = await fetch(`${API_BASE}/auth/list-templates`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    credentials: 'include',
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || '저장에 실패했습니다.');
+  const userRaw = localStorage.getItem('crm_user');
+  const user = userRaw ? JSON.parse(userRaw) : {};
+  user.listTemplates = data.listTemplates || user.listTemplates || {};
+  localStorage.setItem('crm_user', JSON.stringify(user));
+  return data;
+}
 
 /** 로컬 crm_user — 홈 인사이트·차트 표현 저장값 */
 export function getSavedHomeDashboardTemplate() {

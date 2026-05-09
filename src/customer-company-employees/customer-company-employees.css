@@ -576,7 +576,7 @@
   max-width: 100%;
 }
 
-/* 이메일 + 작성 (Gmail 새 메일) */
+/* 이메일 + CRM / Outlook 웹 / mailto (전화·문자와 동일하게 액션 분리) */
 .cce-email-cell {
   display: inline-flex;
   align-items: center;
@@ -595,6 +595,14 @@
 .cce-email-text {
   min-width: 0;
   word-break: break-all;
+}
+
+.cce-email-action-btns {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 .cce-email-compose-btn {
@@ -620,6 +628,50 @@
 }
 
 .cce-email-compose-btn .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
+.cce-email-outlook-office-btn,
+.cce-email-outlook-live-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+  box-sizing: border-box;
+}
+
+.cce-email-outlook-office-btn {
+  background: rgba(178, 223, 200, 0.42);
+  color: #3d6b52;
+}
+
+.cce-email-outlook-office-btn:hover {
+  background: rgba(178, 223, 200, 0.65);
+  color: #2d5a40;
+  transform: scale(1.05);
+}
+
+.cce-email-outlook-live-btn {
+  background: rgba(180, 210, 240, 0.48);
+  color: #3d5a87;
+}
+
+.cce-email-outlook-live-btn:hover {
+  background: rgba(180, 210, 240, 0.72);
+  color: #2c4a6e;
+  transform: scale(1.05);
+}
+
+.cce-email-outlook-office-btn .material-symbols-outlined,
+.cce-email-outlook-live-btn .material-symbols-outlined {
   font-size: 1.05rem;
 }
 

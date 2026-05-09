@@ -810,20 +810,26 @@ export default function CustomerCompanyEmployees() {
     setBulkSmsRows(withPhone);
   }, [selected]);
 
-  const openBulkEmailFromSelection = useCallback(() => {
+  const collectBulkEmailsFromSelection = useCallback(() => {
     const rows = [...selected].map((id) => selectedRowsRef.current.get(id)).filter(Boolean);
     const withEmail = rows.filter((r) => String(r.email || '').trim());
-    const skipped = rows.length - withEmail.length;
     if (withEmail.length === 0) {
       window.alert('선택한 연락처에 이메일이 있는 사람이 없습니다.');
-      return;
+      return null;
     }
+    const skipped = rows.length - withEmail.length;
     if (skipped > 0) {
-      window.alert(`이메일이 없는 ${skipped}명은 제외하고 ${withEmail.length}명의 주소로 메일 작성 화면을 엽니다.`);
+      window.alert(`이메일이 없는 ${skipped}명은 제외하고 ${withEmail.length}명의 주소만 사용합니다.`);
     }
     const unique = [...new Set(withEmail.map((r) => String(r.email).trim()))];
-    setEmailCompose({ initialTo: unique.join(', '), contacts: withEmail });
+    return { unique, withEmail };
   }, [selected]);
+
+  const openBulkEmailFromSelection = useCallback(() => {
+    const pack = collectBulkEmailsFromSelection();
+    if (!pack) return;
+    setEmailCompose({ initialTo: pack.unique.join(', '), contacts: pack.withEmail });
+  }, [collectBulkEmailsFromSelection]);
 
   const renderMobileCard = (row, idxInMobileList) => {
     const sortedIdx = sortedItems.findIndex((r) => r._id === row._id);
@@ -929,8 +935,8 @@ export default function CustomerCompanyEmployees() {
               {em ? (
                 <button
                   type="button"
-                  className="cce-mobile-quick-btn cce-mobile-name-email-icon"
-                  title="메일 작성"
+                  className="cce-mobile-quick-btn cce-mobile-name-email-icon cce-mobile-email-crm-btn"
+                  title="메일 작성 — 보내기 시 PC 기본 메일로 넘기기"
                   aria-label={`${em}에게 메일 작성`}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -1082,10 +1088,10 @@ export default function CustomerCompanyEmployees() {
                 type="button"
                 className="cce-action-bar-email-bulk"
                 onClick={openBulkEmailFromSelection}
-                title="이메일이 있는 연락처만 받는 사람 칸에 넣고 새 메일 작성을 엽니다 (중복 주소는 한 번만)."
+                title="이메일이 있는 연락처만 받는 사람 칸에 넣고 메일 작성 모달을 엽니다. 보내기는 PC 기본 메일로 넘깁니다."
               >
                 <span className="material-symbols-outlined" aria-hidden>mail</span>
-                메일 (단체)
+                메일 CRM (단체)
               </button>
               <button
                 type="button"
@@ -1445,7 +1451,7 @@ export default function CustomerCompanyEmployees() {
                                     <button
                                       type="button"
                                       className="cce-email-compose-btn"
-                                      title="메일 작성"
+                                      title="메일 작성 — 보내기 시 PC 기본 메일로 넘기기"
                                       aria-label={`${em}에게 메일 작성`}
                                       onClick={(e) => {
                                         e.stopPropagation();
