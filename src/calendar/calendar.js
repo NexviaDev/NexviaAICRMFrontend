@@ -1149,21 +1149,23 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
               </div>
             </div>
             <div className="calendar-hero-aside">
-              <div className="calendar-push-control">
-                <button
-                  type="button"
-                  className={`calendar-push-btn ${pushStatus.permission === 'granted' ? 'active' : ''}`}
-                  onClick={handleEnablePush}
-                  disabled={pushBusy || !pushStatus.supported}
-                  title="캘린더 CRM 일정 푸시 알림을 휴대폰/PWA에 등록합니다."
-                >
-                  <span className="material-symbols-outlined" aria-hidden>
-                    {pushStatus.permission === 'granted' ? 'notifications_active' : 'notifications'}
-                  </span>
-                  {pushBusy ? '알림 설정 중…' : pushButtonLabel}
-                </button>
-                {pushMessage && <span className="calendar-push-message" role="status">{pushMessage}</span>}
-              </div>
+              {false && (
+                <div className="calendar-push-control">
+                  <button
+                    type="button"
+                    className={`calendar-push-btn ${pushStatus.permission === 'granted' ? 'active' : ''}`}
+                    onClick={handleEnablePush}
+                    disabled={pushBusy || !pushStatus.supported}
+                    title="캘린더 CRM 일정 푸시 알림을 휴대폰/PWA에 등록합니다."
+                  >
+                    <span className="material-symbols-outlined" aria-hidden>
+                      {pushStatus.permission === 'granted' ? 'notifications_active' : 'notifications'}
+                    </span>
+                    {pushBusy ? '알림 설정 중…' : pushButtonLabel}
+                  </button>
+                  {pushMessage && <span className="calendar-push-message" role="status">{pushMessage}</span>}
+                </div>
+              )}
               <div className="calendar-view-tabs" role="tablist" aria-label="보기 방식">
                 {VIEW_OPTIONS.map((opt) => (
                   <button

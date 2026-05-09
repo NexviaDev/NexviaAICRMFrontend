@@ -190,11 +190,64 @@
   flex-shrink: 0;
   padding: 0.75rem 1.25rem;
   border-bottom: 1px solid var(--card-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
 }
 
 .all-employees-list-toolbar .all-employees-modal-bring-btn {
   width: 100%;
   justify-content: center;
+}
+
+.all-employees-bulk-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.all-employees-bulk-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 0.48rem 0.65rem;
+  border: 1px solid rgba(47, 103, 137, 0.18);
+  border-radius: 0.65rem;
+  background: #eef7fb;
+  color: #2f6789;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.18s, border-color 0.18s, transform 0.18s, opacity 0.18s;
+}
+
+.all-employees-bulk-action-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(47, 103, 137, 0.32);
+  background: #e7f3f8;
+}
+
+.all-employees-bulk-action-btn--sms {
+  background: #f2f8ef;
+  color: #4c7657;
+  border-color: rgba(76, 118, 87, 0.2);
+}
+
+.all-employees-bulk-action-btn--sms:hover:not(:disabled) {
+  background: #eaf5e7;
+  border-color: rgba(76, 118, 87, 0.34);
+}
+
+.all-employees-bulk-action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.all-employees-bulk-action-btn .material-symbols-outlined {
+  font-size: 1rem;
 }
 
 .all-employees-modal-add-btn.block {

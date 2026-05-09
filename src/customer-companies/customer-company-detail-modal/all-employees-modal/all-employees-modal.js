@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import AddContactModal from '../../../customer-company-employees/add-customer-company-employees-modal/add-customer-company-employees-modal';
+import SmsDraftModal, { phoneToSmsHref } from '../../../customer-company-employees/sms-draft-modal/sms-draft-modal';
+import EmailComposeModal from '../../../email/email-compose-modal.jsx';
 import BringContactsModal from './bring-contacts-modal';
 import './all-employees-modal.css';
 
@@ -15,6 +17,8 @@ function getAuthHeader() {
 export default function AllEmployeesModal({ employees: initialEmployees, customerCompany, onClose, onSelectContact, onRefreshEmployees }) {
   const [showAddContactModal, setShowAddContactModal] = useState(false);
   const [showBringContactsModal, setShowBringContactsModal] = useState(false);
+  const [emailCompose, setEmailCompose] = useState(null);
+  const [smsBulkRows, setSmsBulkRows] = useState(null);
   const [list, setList] = useState(initialEmployees || []);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(new Set());
@@ -50,13 +54,15 @@ export default function AllEmployeesModal({ employees: initialEmployees, custome
   useEffect(() => {
     const onKey = (e) => {
       if (e.key !== 'Escape') return;
-      if (showBringContactsModal) setShowBringContactsModal(false);
+      if (emailCompose) setEmailCompose(null);
+      else if (smsBulkRows) setSmsBulkRows(null);
+      else if (showBringContactsModal) setShowBringContactsModal(false);
       else if (showAddContactModal) setShowAddContactModal(false);
       else onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, showAddContactModal, showBringContactsModal]);
+  }, [onClose, showAddContactModal, showBringContactsModal, emailCompose, smsBulkRows]);
 
   const handleItemClick = (emp) => {
     if (onSelectContact) onSelectContact(emp);
@@ -95,6 +101,45 @@ export default function AllEmployeesModal({ employees: initialEmployees, custome
     }
   };
 
+  const selectedEmployees = () => [...selected].map((id) => list.find((emp) => String(emp._id) === String(id))).filter(Boolean);
+
+  const openEmailForSelected = () => {
+    const rows = selectedEmployees();
+    if (rows.length === 0) {
+      window.alert('메일을 보낼 직원을 체크박스로 선택해 주세요.');
+      return;
+    }
+    const withEmail = rows.filter((emp) => String(emp.email || '').trim());
+    if (withEmail.length === 0) {
+      window.alert('선택한 직원 중 이메일이 등록된 사람이 없습니다.');
+      return;
+    }
+    const skipped = rows.length - withEmail.length;
+    if (skipped > 0) {
+      window.alert(`이메일이 없는 ${skipped}명은 제외하고 ${withEmail.length}명에게 메일을 준비합니다.`);
+    }
+    const uniqueEmails = [...new Set(withEmail.map((emp) => String(emp.email).trim()))];
+    setEmailCompose({ initialTo: uniqueEmails.join(', '), contacts: withEmail });
+  };
+
+  const openSmsForSelected = () => {
+    const rows = selectedEmployees();
+    if (rows.length === 0) {
+      window.alert('문자를 보낼 직원을 체크박스로 선택해 주세요.');
+      return;
+    }
+    const withPhone = rows.filter((emp) => phoneToSmsHref(emp.phone, ''));
+    if (withPhone.length === 0) {
+      window.alert('선택한 직원 중 전화번호가 등록된 사람이 없습니다.');
+      return;
+    }
+    const skipped = rows.length - withPhone.length;
+    if (skipped > 0) {
+      window.alert(`전화번호가 없는 ${skipped}명은 제외하고 ${withPhone.length}명에게 문자를 준비합니다.`);
+    }
+    setSmsBulkRows(withPhone);
+  };
+
   if (!customerCompany) return null;
 
   return (
@@ -120,6 +165,28 @@ export default function AllEmployeesModal({ employees: initialEmployees, custome
               <span className="material-symbols-outlined">group_add</span>
               DB에서 연락처 가지고 오기
             </button>
+            <div className="all-employees-bulk-actions" aria-label="선택 직원 일괄 연락">
+              <button
+                type="button"
+                className="all-employees-bulk-action-btn all-employees-bulk-action-btn--mail"
+                onClick={openEmailForSelected}
+                disabled={selected.size === 0}
+                title="체크한 직원에게 메일 보내기"
+              >
+                <span className="material-symbols-outlined">mail</span>
+                메일 보내기
+              </button>
+              <button
+                type="button"
+                className="all-employees-bulk-action-btn all-employees-bulk-action-btn--sms"
+                onClick={openSmsForSelected}
+                disabled={selected.size === 0}
+                title="체크한 직원에게 문자 보내기"
+              >
+                <span className="material-symbols-outlined">sms</span>
+                문자 보내기
+              </button>
+            </div>
           </div>
 
           <ul className="all-employees-list">
@@ -225,6 +292,20 @@ export default function AllEmployeesModal({ employees: initialEmployees, custome
           }}
         />
       )}
+      <SmsDraftModal
+        open={Array.isArray(smsBulkRows) && smsBulkRows.length > 0}
+        onClose={() => setSmsBulkRows(null)}
+        companyName={customerCompany.name}
+        bulkContacts={smsBulkRows || undefined}
+      />
+      {emailCompose ? (
+        <EmailComposeModal
+          key={emailCompose.initialTo}
+          initialTo={emailCompose.initialTo}
+          onClose={() => setEmailCompose(null)}
+          onSent={() => setEmailCompose(null)}
+        />
+      ) : null}
     </>
   );
 }

@@ -39,9 +39,10 @@
 }
 
 .email-compose-modal {
-  width: 100%;
-  max-width: 42rem;
-  max-height: 90vh;
+  width: min(96vw, 58rem);
+  max-width: 58rem;
+  height: min(92vh, 52rem);
+  max-height: 92vh;
   background: var(--card);
   border-radius: 0.75rem;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);

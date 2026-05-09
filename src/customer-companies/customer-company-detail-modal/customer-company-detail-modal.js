@@ -5,6 +5,8 @@ import AllHistoryModal from './all-history-modal/all-history-modal';
 import ProductSalesModal from '../../shared/product-sales-modal/product-sales-modal';
 import OpportunityModal from '../../sales-pipeline/opportunity-modal/opportunity-modal';
 import ContactDetailModal from '../../customer-company-employees/customer-company-employees-detail-modal/customer-company-employees-detail-modal';
+import SmsDraftModal, { phoneToSmsHref } from '../../customer-company-employees/sms-draft-modal/sms-draft-modal';
+import EmailComposeModal from '../../email/email-compose-modal.jsx';
 import AddCompanyModal from '../add-company-modal/add-company-modal';
 import CustomFieldsDisplay from '../../shared/custom-fields-display';
 import './customer-company-detail-modal.css';
@@ -170,6 +172,8 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
   const [employees, setEmployees] = useState([]);
   const [loadingEmployees, setLoadingEmployees] = useState(true);
   const [showAllEmployeesModal, setShowAllEmployeesModal] = useState(false);
+  const [employeeEmailCompose, setEmployeeEmailCompose] = useState(null);
+  const [employeeSmsRows, setEmployeeSmsRows] = useState(null);
   const [showAllHistoryModal, setShowAllHistoryModal] = useState(false);
   const [showProductSalesModal, setShowProductSalesModal] = useState(false);
   const [showRegisterSaleModal, setShowRegisterSaleModal] = useState(false);
@@ -580,6 +584,35 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
     };
     list.sort((a, b) => regTime(b) - regTime(a));
     return list.slice(0, 5);
+  }, [employees]);
+
+  const openEmployeeEmailCompose = useCallback(() => {
+    const rows = Array.isArray(employees) ? employees : [];
+    const withEmail = rows.filter((emp) => String(emp.email || '').trim());
+    if (withEmail.length === 0) {
+      window.alert('이 고객사 직원 중 이메일이 등록된 사람이 없습니다.');
+      return;
+    }
+    const skipped = rows.length - withEmail.length;
+    if (skipped > 0) {
+      window.alert(`이메일이 없는 ${skipped}명은 제외하고 ${withEmail.length}명에게 메일을 준비합니다.`);
+    }
+    const uniqueEmails = [...new Set(withEmail.map((emp) => String(emp.email).trim()))];
+    setEmployeeEmailCompose({ initialTo: uniqueEmails.join(', '), contacts: withEmail });
+  }, [employees]);
+
+  const openEmployeeSmsDraft = useCallback(() => {
+    const rows = Array.isArray(employees) ? employees : [];
+    const withPhone = rows.filter((emp) => phoneToSmsHref(emp.phone, ''));
+    if (withPhone.length === 0) {
+      window.alert('이 고객사 직원 중 전화번호가 등록된 사람이 없습니다.');
+      return;
+    }
+    const skipped = rows.length - withPhone.length;
+    if (skipped > 0) {
+      window.alert(`전화번호가 없는 ${skipped}명은 제외하고 ${withPhone.length}명에게 문자를 준비합니다.`);
+    }
+    setEmployeeSmsRows(withPhone);
   }, [employees]);
 
   if (!company) return null;
@@ -1436,10 +1469,32 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
             >
             <section className="customer-company-detail-section">
               <div className="customer-company-detail-section-head">
-                <h3 className="customer-company-detail-section-title">
-                  <span className="material-symbols-outlined">group</span>
-                  직원 리스트
-                </h3>
+                <div className="customer-company-detail-section-title-actions">
+                  <h3 className="customer-company-detail-section-title">
+                    <span className="material-symbols-outlined">group</span>
+                    직원 리스트
+                  </h3>
+                  <div className="customer-company-detail-employee-contact-actions" aria-label="직원 리스트 일괄 연락">
+                    <button
+                      type="button"
+                      className="customer-company-detail-employee-contact-btn customer-company-detail-employee-contact-btn--mail"
+                      onClick={openEmployeeEmailCompose}
+                      disabled={loadingEmployees || employees.length === 0}
+                      title="직원 리스트 전체에게 메일 보내기"
+                    >
+                      <span className="material-symbols-outlined">mail</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="customer-company-detail-employee-contact-btn customer-company-detail-employee-contact-btn--sms"
+                      onClick={openEmployeeSmsDraft}
+                      disabled={loadingEmployees || employees.length === 0}
+                      title="직원 리스트 전체에게 문자 보내기"
+                    >
+                      <span className="material-symbols-outlined">sms</span>
+                    </button>
+                  </div>
+                </div>
                 {!loadingEmployees && (
                   <button
                     type="button"
@@ -1680,7 +1735,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
             {showAllEmployeesModal && (
               <AllEmployeesModal
                 employees={employees}
-                customerCompany={company}
+                customerCompany={companyToShow}
                 onClose={() => setShowAllEmployeesModal(false)}
                 onSelectContact={(emp) => {
                   setContactForDetailModal(emp);
@@ -1689,6 +1744,20 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                 onRefreshEmployees={fetchEmployees}
               />
             )}
+            <SmsDraftModal
+              open={Array.isArray(employeeSmsRows) && employeeSmsRows.length > 0}
+              onClose={() => setEmployeeSmsRows(null)}
+              companyName={companyToShow.name}
+              bulkContacts={employeeSmsRows || undefined}
+            />
+            {employeeEmailCompose ? (
+              <EmailComposeModal
+                key={employeeEmailCompose.initialTo}
+                initialTo={employeeEmailCompose.initialTo}
+                onClose={() => setEmployeeEmailCompose(null)}
+                onSent={() => setEmployeeEmailCompose(null)}
+              />
+            ) : null}
             {contactForDetailModal && (
               <ContactDetailModal
                 contact={contactForDetailModal}

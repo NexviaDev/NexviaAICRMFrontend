@@ -1240,13 +1240,6 @@ export default function EmailComposeModal({
             aria-label={sending ? '준비 중' : 'PC 메일 앱으로 넘기기'}
             title={sending ? '준비 중…' : 'PC 기본 메일 앱으로 넘기기 (mailto)'}
           >
-            <span
-              className={'material-symbols-outlined' + (sending ? ' email-compose-send-icon--spin' : '')}
-              style={sending ? undefined : { fontVariationSettings: "'FILL' 1" }}
-              aria-hidden
-            >
-              {sending ? 'progress_activity' : 'mail'}
-            </span>
           </button>
           <button type="button" className="email-compose-close" onClick={onClose} aria-label="닫기">
             <span className="material-symbols-outlined">close</span>
