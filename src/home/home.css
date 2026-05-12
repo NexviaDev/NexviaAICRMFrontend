@@ -285,6 +285,7 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1.5rem;
+  overflow: visible;
 }
 
 /** 소비자가·순마진 — 페이지 상단 배치 */
@@ -293,6 +294,7 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1.5rem;
   margin-bottom: 2rem;
+  overflow: visible;
 }
 
 .home-insights-top .home-insight-toolbar {
@@ -1695,8 +1697,31 @@
 }
 
 .home-chart-panel {
+  position: relative;
+  z-index: 1;
   background: #f9fbfd;
   overflow: visible;
+}
+
+/* global.css `.panel { overflow: hidden }` 이후에도 차트 플라이아웃이 잘리지 않도록(동률·로드순 이김 방지) */
+.panel.home-chart-panel {
+  overflow: visible;
+}
+
+/* 막대/라인 툴팁이 헤더 영역으로 겹칠 때 panel-head 배경·테두리가 위에 올라가 덮이지 않게 */
+.panel.home-chart-panel > .panel-head {
+  position: relative;
+  z-index: 0;
+}
+
+.panel.home-chart-panel > .home-chart-body {
+  position: relative;
+  z-index: 1;
+}
+
+.home-chart-panel:hover,
+.home-chart-panel:focus-within {
+  z-index: 80;
 }
 
 .home-bar-chart-wrap {
@@ -1766,9 +1791,26 @@
   font-size: 0.75rem;
   font-weight: 600;
   color: #3d5348;
-  white-space: nowrap;
-  z-index: 5;
+  width: max-content;
+  max-width: min(24rem, calc(100vw - 2rem));
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+  z-index: 30;
   pointer-events: none;
+}
+
+.home-mini-chart-col:first-child .home-chart-tooltip-fly--bar,
+.home-line-chart-hover-zone:first-child .home-chart-tooltip-fly--line {
+  left: 0;
+  transform: none;
+}
+
+.home-mini-chart-col:last-child .home-chart-tooltip-fly--bar,
+.home-line-chart-hover-zone:last-child .home-chart-tooltip-fly--line {
+  right: 0;
+  left: auto;
+  transform: none;
 }
 
 .home-chart-tooltip-fly strong {
@@ -3100,7 +3142,7 @@
   .home-line-chart-wrap {
     min-width: 0;
     max-width: 100%;
-    overflow-x: hidden;
+    overflow: visible;
   }
 
   .home-contribution-ach-frame,

@@ -5,7 +5,10 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { API_BASE } from '@/config';
 import ContactExcelImportMappingModal from './contact-excel-import-mapping-modal';
+import ContactImportPreviewModal from '../add-customer-company-employees-modal/contact-import-preview-modal';
+import BulkContactDuplicateReviewModal from '../add-customer-company-employees-modal/bulk-contact-duplicate-review-modal';
 import ImportResultModal from '../../customer-companies/customer-companies-excel-import-modal/import-result-modal';
+import { normalizeBulkImportCompanyGroupKey } from '@/lib/bulk-import-company-group-key';
 import '../../lead-capture/lead-capture-crm-mapping/lead-capture-crm-mapping-modal.css';
 import '../../customer-companies/customer-companies-excel-import-modal/customer-companies-excel-import-modal.css';
 import {
@@ -133,6 +136,40 @@ function buildContactPayloadFromExcelRow(excelRow, mappings) {
   }
 
   return payload;
+}
+
+function buildPreviewRowFromContactPayload(payload, rowIndex) {
+  return {
+    rowIndex,
+    name: payload.name || '',
+    email: payload.email || '',
+    phone: payload.phone || '',
+    position: payload.position || '',
+    address: payload.address || '',
+    birthDate: payload.birthDate || '',
+    memo: payload.memo || '',
+    status: payload.status || 'Lead',
+    customFields: payload.customFields || {},
+    companyName: payload.companyName || '',
+    customerCompanyId: payload.customerCompanyId || null,
+    linkedCompany: null,
+    companyStatus: 'active',
+    companyCustomFields: {}
+  };
+}
+
+function buildPreflightEntryFromPreviewRow(row) {
+  return {
+    name: String(row.name || '').replace(/\s/g, '').trim(),
+    phone: row.phone ? formatPhoneInput(String(row.phone)) : '',
+    companyName: (row.companyName || row.linkedCompany?.name || '').trim(),
+    customerCompanyId: row.customerCompanyId != null ? String(row.customerCompanyId).trim() : ''
+  };
+}
+
+function rowNeedsContactDuplicateHold(preflightResult) {
+  if (!preflightResult) return false;
+  return (preflightResult.contactCandidates || []).length > 0;
 }
 
 async function parseExcelToRows(file) {
@@ -314,6 +351,9 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
   const [previewChecking, setPreviewChecking] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null);
   const [importResult, setImportResult] = useState(null);
+  const [contactPreviewOpen, setContactPreviewOpen] = useState(false);
+  const [contactPreviewItems, setContactPreviewItems] = useState([]);
+  const [contactPreviewPreReview, setContactPreviewPreReview] = useState(null);
   const [resolvedHoldActions, setResolvedHoldActions] = useState([]);
   const [appliedHoldGroupKeys, setAppliedHoldGroupKeys] = useState({});
   const [showAssigneePicker, setShowAssigneePicker] = useState(false);
@@ -423,6 +463,9 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
       setDragOver(false);
       setSaveMsg(null);
       setImportResult(null);
+      setContactPreviewOpen(false);
+      setContactPreviewItems([]);
+      setContactPreviewPreReview(null);
       setResolvedHoldActions([]);
       setAppliedHoldGroupKeys({});
       setShowAssigneePicker(false);
@@ -430,6 +473,9 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
     }
     setSaveMsg(null);
     setImportResult(null);
+    setContactPreviewOpen(false);
+    setContactPreviewItems([]);
+    setContactPreviewPreReview(null);
     setResolvedHoldActions([]);
     setAppliedHoldGroupKeys({});
     const initial = stripContactMappingRows(
@@ -539,39 +585,204 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
       return;
     }
 
-    setPreviewChecking(true);
     setSaveMsg(null);
     setImportResult(null);
+    setContactPreviewOpen(false);
+    setContactPreviewItems([]);
+    setContactPreviewPreReview(null);
     setResolvedHoldActions([]);
     setAppliedHoldGroupKeys({});
 
     try {
-      const previewRes = await fetch(`${API_BASE}/customer-company-employees/import-excel/preview`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        credentials: 'include',
-        body: JSON.stringify({
-          mappings,
-          rows: excelRows,
-          assigneeUserIds: resolveAssigneeUserIds()
+      const items = excelRows
+        .map((excelRow, idx) => {
+          const payload = buildContactPayloadFromExcelRow(excelRow, mappings);
+          return payload ? buildPreviewRowFromContactPayload(payload, idx) : null;
         })
-      });
-      const previewData = await previewRes.json().catch(() => ({}));
-      if (!previewRes.ok) throw new Error(previewData.error || '중복 검사에 실패했습니다.');
-
-      const list = Array.isArray(previewData.results) ? previewData.results : [];
-      setImportResult({
-        phase: 'preview',
-        rawPreviewResults: list,
-        summary: buildPreviewSummary(list),
-        results: mapPreviewResultsToUiResults(list)
-      });
+        .filter(Boolean);
+      if (!items.length) {
+        setSaveMsg('등록할 유효한 행이 없습니다. 이름·이메일·전화 중 하나 이상이 필요합니다.');
+        return;
+      }
+      setContactPreviewItems(items);
+      setContactPreviewOpen(true);
     } catch (e) {
       setSaveMsg(e.message || '실패');
-    } finally {
-      setPreviewChecking(false);
     }
   };
+
+  const runContactPreviewRowsImport = useCallback(
+    async (rowsToImport, preResults = [], forceAll = false) => {
+      const assigneeUserIds = resolveAssigneeUserIds();
+      const batchCustomerCompanyIdByNormKey = new Map();
+      const perRowDecisions =
+        forceAll && typeof forceAll === 'object' && forceAll.mode === 'perRow' && forceAll.decisions
+          ? forceAll.decisions
+          : null;
+      let success = 0;
+      let fail = 0;
+      let skipped = 0;
+
+      setSaving(true);
+      setSaveMsg(null);
+      try {
+        for (let idx = 0; idx < rowsToImport.length; idx += 1) {
+          const row = rowsToImport[idx];
+          const preResult = preResults[idx] || {};
+          const decisionKey = Number.isInteger(Number(preResult.index)) ? String(Number(preResult.index)) : String(idx);
+          const rowDecision = perRowDecisions ? perRowDecisions[decisionKey] : null;
+          if (rowDecision === 'exclude' || (rowNeedsContactDuplicateHold(preResult) && rowDecision !== 'force' && forceAll !== true)) {
+            skipped += 1;
+            continue;
+          }
+          try {
+            const payload = {
+              name: String(row.name || '').replace(/\s/g, '').trim(),
+              email: (row.email || '').trim(),
+              phone: row.phone ? formatPhoneInput(String(row.phone)) : '',
+              position: (row.position || '').trim() || undefined,
+              address: (row.address || '').trim() || undefined,
+              birthDate: (row.birthDate || '').trim() || undefined,
+              memo: (row.memo || '').trim() || undefined,
+              status: row.status || 'Lead',
+              assigneeUserIds
+            };
+
+            if (row.customFields && Object.keys(row.customFields).length) {
+              payload.customFields = row.customFields;
+            }
+
+            const linkedRaw = row.customerCompanyId != null ? String(row.customerCompanyId).trim() : '';
+            const linkedOk = linkedRaw && /^[a-f\d]{24}$/i.test(linkedRaw);
+            if (linkedOk) {
+              const cnLink = (row.companyName || row.linkedCompany?.name || '').trim();
+              payload.customerCompanyId = linkedRaw;
+              payload.companyName = cnLink;
+              const gkLink = normalizeBulkImportCompanyGroupKey(cnLink);
+              if (gkLink) batchCustomerCompanyIdByNormKey.set(gkLink, linkedRaw);
+            } else {
+              const cn = (row.companyName || '').trim();
+              if (cn) {
+                const gk = normalizeBulkImportCompanyGroupKey(cn);
+                const reuseId = gk ? batchCustomerCompanyIdByNormKey.get(gk) : null;
+                if (reuseId) {
+                  payload.customerCompanyId = reuseId;
+                  payload.companyName = cn;
+                } else {
+                  payload.customerCompanyId = null;
+                  payload.companyName = cn;
+                  payload.forceCreateNewCustomerCompany = true;
+                }
+              } else {
+                payload.isIndividual = true;
+                payload.customerCompanyId = null;
+                payload.companyName = '';
+              }
+            }
+
+            if (!payload.name && !payload.email && !payload.phone) {
+              fail += 1;
+              continue;
+            }
+            if (rowNeedsContactDuplicateHold(preResult) && (forceAll === true || rowDecision === 'force')) {
+              payload.forceCreateDespiteContactDuplicate = true;
+            }
+
+            const res = await fetch(`${API_BASE}/customer-company-employees`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+              credentials: 'include',
+              body: JSON.stringify(payload)
+            });
+            const data = await res.json().catch(() => ({}));
+            if (res.ok) {
+              success += 1;
+              const cn = (row.companyName || '').trim();
+              if (cn && data.customerCompanyId) {
+                const gk = normalizeBulkImportCompanyGroupKey(cn);
+                if (gk && !batchCustomerCompanyIdByNormKey.has(gk)) {
+                  batchCustomerCompanyIdByNormKey.set(gk, String(data.customerCompanyId));
+                }
+              }
+            } else {
+              fail += 1;
+            }
+          } catch (_) {
+            fail += 1;
+          }
+        }
+
+        setContactPreviewOpen(false);
+        setContactPreviewItems([]);
+        window.alert(`등록 ${success}건${skipped ? `, 제외 ${skipped}건` : ''}${fail ? `, 실패 ${fail}건` : ''} (총 ${rowsToImport.length}건).`);
+        if (success > 0) {
+          onImported?.({ summary: { total: rowsToImport.length, created: success, skipped, failed: fail } });
+          onClose?.();
+        } else {
+          setSaveMsg(`등록에 실패했습니다. (${fail}건${skipped ? `, 제외 ${skipped}건` : ''})`);
+        }
+      } catch (e) {
+        setSaveMsg(e.message || '등록 중 오류가 났습니다.');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [onClose, onImported, resolveAssigneeUserIds]
+  );
+
+  const confirmContactPreviewImport = useCallback(
+    async (editedRows) => {
+      const rowsToImport = (Array.isArray(editedRows) ? editedRows : contactPreviewItems).filter(
+        (r) => !r.error && ((r.name || '').trim() || (r.email || '').trim() || (r.phone || '').trim())
+      );
+      if (!rowsToImport.length) {
+        setSaveMsg('등록할 유효한 행이 없습니다.');
+        return;
+      }
+
+      setSaving(true);
+      setSaveMsg(null);
+      setContactPreviewPreReview(null);
+      try {
+        const entries = rowsToImport.map((row) => buildPreflightEntryFromPreviewRow(row));
+        const preRes = await fetch(`${API_BASE}/customer-company-employees/save-preflight`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+          credentials: 'include',
+          body: JSON.stringify({ entries })
+        });
+        const preData = await preRes.json().catch(() => ({}));
+        if (!preRes.ok) throw new Error(preData.error || '대량 등록을 미리 확인하는 데 실패했습니다.');
+        const preResults = Array.isArray(preData.results) ? preData.results : [];
+        const hasDuplicateContacts = preResults.some((pr) => rowNeedsContactDuplicateHold(pr));
+        if (hasDuplicateContacts) {
+          setContactPreviewPreReview({
+            source: 'excel',
+            importRows: rowsToImport,
+            preResults,
+            entries
+          });
+          return;
+        }
+        await runContactPreviewRowsImport(rowsToImport, preResults, false);
+      } catch (e) {
+        setSaveMsg(e.message || '대량 등록을 미리 확인하는 데 실패했습니다.');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [contactPreviewItems, runContactPreviewRowsImport]
+  );
+
+  const resolveContactPreviewPreReview = useCallback(
+    async (forceAll) => {
+      if (!contactPreviewPreReview) return;
+      const b = contactPreviewPreReview;
+      setContactPreviewPreReview(null);
+      await runContactPreviewRowsImport(b.importRows || [], b.preResults || [], forceAll);
+    },
+    [contactPreviewPreReview, runContactPreviewRowsImport]
+  );
 
   const summary = useMemo(() => {
     let err = 0;
@@ -680,6 +891,30 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
       setAppliedHoldGroupKeys({});
     }
   }, [importResult]);
+
+  if (contactPreviewOpen) {
+    return (
+      <>
+        <ContactImportPreviewModal
+          open={contactPreviewOpen}
+          items={contactPreviewItems}
+          bulkSaving={saving}
+          fixedCompany={false}
+          onClose={() => !saving && setContactPreviewOpen(false)}
+          onConfirm={(editedRows) => {
+            if (Array.isArray(editedRows)) setContactPreviewItems(editedRows);
+            void confirmContactPreviewImport(editedRows);
+          }}
+        />
+        <BulkContactDuplicateReviewModal
+          review={contactPreviewPreReview}
+          saving={saving}
+          onClose={() => setContactPreviewPreReview(null)}
+          onConfirmForce={(forceAll) => void resolveContactPreviewPreReview(forceAll)}
+        />
+      </>
+    );
+  }
 
   if (previewChecking) {
     return (

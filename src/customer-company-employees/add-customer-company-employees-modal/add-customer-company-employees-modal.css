@@ -1028,7 +1028,8 @@
 .add-contact-pregate-overlay {
   position: fixed;
   inset: 0;
-  z-index: 1900;
+  /* contact-import-preview-overlay(2100) 위 — 중복·유사 확인 모달이 가려지지 않도록 */
+  z-index: 2500;
   display: flex;
   align-items: center;
   justify-content: center;

@@ -3,7 +3,7 @@ const CONTACT = 'develop@nexvia.co.kr';
 export default function TermsOfServiceBody() {
   return (
     <>
-      <p className="legal-muted">시행일: 2026년 3월 20일 · 최종 수정일: 2026년 3월 20일</p>
+      <p className="legal-muted">시행일: 2026년 3월 20일 · 최종 수정일: 2026년 5월 11일</p>
       <p>
         본 약관은 주식회사 넥스비아(이하 &quot;회사&quot;)가 제공하는 Nexvia CRM 서비스(이하 &quot;서비스&quot;)의 이용과 관련하여 회사와
         이용자 간의 권리·의무 및 책임사항을 규정합니다.
@@ -27,8 +27,10 @@ export default function TermsOfServiceBody() {
 
       <h2>제4조 (서비스의 제공)</h2>
       <p>
-        회사는 Google 계정 연동을 전제로 하는 서비스를 제공합니다. 서비스는 운영상·기술상의 필요에 따라 일시 중단되거나
-        변경될 수 있습니다.
+        회사는 이메일 기반 가입·로그인, Google 또는 Microsoft 계정 연동 등 회사가 제공하는 인증 수단을 통해 서비스를
+        제공합니다. Google API·Gmail·Calendar·Drive·Contacts 등 Google 연동 기능을 사용하는 경우, Google API 서비스
+        이용약관·사용자 데이터 정책 및 Google 앱 검증(Verification)·OAuth 동의 화면 관련 요구사항을 준수합니다. 서비스는
+        운영상·기술상의 필요에 따라 일시 중단되거나 변경될 수 있습니다.
       </p>
 
       <h2>제5조 (이용자의 의무)</h2>
@@ -46,8 +48,9 @@ export default function TermsOfServiceBody() {
 
       <h2>제7조 (면책)</h2>
       <p>
-        회사는 천재지변, Google·외부 서비스 장애, 이용자 귀책 사유 등 불가항력으로 인한 서비스 중단에 대하여 책임을 지지
-        않을 수 있습니다. Google 서비스의 가용성·정책 변경은 Google의 정책에 따릅니다.
+        회사는 천재지변, Google·Microsoft·전자우편(SMTP) 제공자·호스팅 등 외부 서비스 장애, 이용자 귀책 사유 등 불가항력으로
+        인한 서비스 중단에 대하여 책임을 지지 않을 수 있습니다. 외부 서비스의 가용성·정책 변경은 해당 제공자의 정책에
+        따릅니다.
       </p>
 
       <h2>제8조 (준거법 및 분쟁)</h2>

@@ -1,11 +1,12 @@
 .cc-search-modal-overlay {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  /* 연락처 일괄 미리보기(2100) 등 위에 표시 */
+  z-index: 2400;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1.5rem;
+  padding: 0.5rem;
   background: rgba(29, 40, 58, 0.4);
   backdrop-filter: blur(4px);
   animation: ccSearchOverlayIn 0.2s ease-out;
@@ -18,7 +19,7 @@
 
 .cc-search-modal {
   width: 100%;
-  max-width: 28rem;
+  max-width: 36rem;
   max-height: 85vh;
   background: var(--card);
   border-radius: 0.75rem;
@@ -30,6 +31,28 @@
   animation: ccSearchModalIn 0.2s ease-out;
 }
 
+/* 고객사 목록 페이지를 제품 검색 모달처럼 그대로 임베드 */
+.cc-search-modal--embed-list {
+  width: calc(100vw - 1rem);
+  max-width: none;
+  height: calc(100vh - 1rem);
+  max-height: calc(100vh - 1rem);
+  min-height: 0;
+  border-radius: 0.5rem;
+}
+
+.cc-search-modal--embed-list .cc-search-modal-header {
+  padding: 0.6rem 0.85rem;
+}
+
+.cc-search-modal-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 @keyframes ccSearchModalIn {
   from { opacity: 0; transform: scale(0.96); }
   to { opacity: 1; transform: scale(1); }
@@ -39,6 +62,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.75rem;
   padding: 1rem 1.25rem;
   border-bottom: 1px solid var(--card-border);
   flex-shrink: 0;
@@ -49,6 +73,38 @@
   font-size: 1.125rem;
   font-weight: 700;
   color: var(--text);
+}
+
+.cc-search-modal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cc-search-modal-add-header-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid #d9ccec;
+  border-radius: 999px;
+  background: #f6f2fa;
+  color: #5c4d72;
+  font-size: 0.875rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, transform 0.2s;
+}
+
+.cc-search-modal-add-header-btn:hover {
+  background: #ede6f7;
+  border-color: #c8b8df;
+  transform: translateY(-1px);
+}
+
+.cc-search-modal-add-header-btn .material-symbols-outlined {
+  font-size: 1.1rem;
 }
 
 .cc-search-modal-close {
@@ -107,6 +163,10 @@
 }
 
 .cc-search-modal-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
   padding: 0.5rem 1rem;
   font-size: 0.875rem;
   font-weight: 500;
@@ -117,6 +177,10 @@
   cursor: pointer;
   transition: opacity 0.2s;
   flex-shrink: 0;
+}
+
+.cc-search-modal-btn .material-symbols-outlined {
+  font-size: 1rem;
 }
 
 .cc-search-modal-btn:hover:not(:disabled) {
@@ -151,75 +215,79 @@
 
 .cc-search-modal-empty {
   margin: 0;
-  padding: 2rem 1.25rem;
+  padding: 0;
   font-size: 0.875rem;
   color: var(--text-muted);
   text-align: center;
 }
 
-.cc-search-modal-list {
-  list-style: none;
-  margin: 0;
-  padding: 0 1.25rem 1rem;
+.cc-search-modal-empty-action {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 2rem 1.25rem;
 }
 
-.cc-search-modal-item {
-  display: flex;
+.cc-search-modal-empty-add {
+  display: inline-flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 1rem 1rem;
-  background: var(--card);
+  gap: 0.35rem;
+  padding: 0.65rem 1rem;
+  border: 1px solid #d9ccec;
+  border-radius: 999px;
+  background: #f6f2fa;
+  color: #5c4d72;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, transform 0.2s;
+}
+
+.cc-search-modal-empty-add:hover {
+  background: #ede6f7;
+  border-color: #c8b8df;
+  transform: translateY(-1px);
+}
+
+.cc-search-modal-empty-add .material-symbols-outlined {
+  font-size: 1.1rem;
+}
+
+.cc-search-modal-table-wrap {
+  margin: 0 1rem 1rem;
   border: 1px solid var(--card-border);
   border-radius: 0.75rem;
-  cursor: pointer;
-  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+  overflow: auto;
+  background: var(--card);
 }
 
-.cc-search-modal-item:hover {
-  background: var(--pastel-sky);
-  border-color: var(--primary);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+.cc-search-modal-table {
+  font-size: 0.8125rem;
+  min-width: 48rem;
 }
 
-.cc-search-modal-item-icon {
-  font-size: 1.5rem;
-  color: var(--primary);
-  flex-shrink: 0;
-}
-
-.cc-search-modal-item-content {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.cc-search-modal-item-name {
-  font-size: 0.9375rem;
-  font-weight: 600;
-  color: var(--text);
-}
-
-.cc-search-modal-item-sub {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
+.cc-search-modal-table th,
+.cc-search-modal-table td {
+  padding: 0.75rem 0.9rem;
   white-space: nowrap;
 }
 
-.cc-search-modal-item-arrow {
-  font-size: 1.125rem;
-  color: var(--text-muted);
-  flex-shrink: 0;
+.cc-search-modal-table .cc-name-cell {
+  min-width: 12rem;
 }
 
-.cc-search-modal-item:hover .cc-search-modal-item-arrow {
-  color: var(--primary);
+.cc-search-modal-table .cc-name-cell-avatar {
+  width: 2rem;
+  height: 2rem;
+}
+
+.cc-search-modal-table .cc-name-cell-initials {
+  font-size: 0.68rem;
+}
+
+.cc-search-modal-table tbody tr:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
 }
 
 .cc-search-modal-spinner-wrap {
@@ -247,4 +315,8 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+.cc-search-modal-add-layer .add-company-modal-overlay {
+  z-index: 2500;
 }

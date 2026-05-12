@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { API_BASE } from '@/config';
+import { pingBackendHealth } from '@/lib/backend-wake';
+import FindIdModal from './find-id-modal';
 import './login.css';
 
 /** Login.html — minimalist workspace header (same asset as sample design) */
@@ -12,10 +14,11 @@ const LEGAL_QUERY = 'legal';
 const LEGAL_VALUES = /** @type {const} */ (['privacy', 'terms', 'google']);
 
 const getGoogleAuthUrl = () => `${API_BASE}/auth/google`;
-const getMicrosoftAuthUrl = () => `${API_BASE}/auth/microsoft`;
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const ECOSYSTEM_ICONS = [
-  { icon: 'mail', title: 'Gmail Integration' },
+  { icon: 'mail', title: '메일 작성' },
   { icon: 'calendar_today', title: 'Calendar Sync' },
   { icon: 'mic', title: 'Voice Notes & Summaries' },
   { icon: 'map', title: 'Location Mapping' },
@@ -27,6 +30,12 @@ export default function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [error, setError] = useState('');
+
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginCode, setLoginCode] = useState('');
+  const [loginCodeSent, setLoginCodeSent] = useState(false);
+  const [loginBusy, setLoginBusy] = useState(false);
+  const [findIdOpen, setFindIdOpen] = useState(false);
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -64,6 +73,84 @@ export default function Login() {
     if (err) setError(decodeURIComponent(err));
   }, [navigate, searchParams]);
 
+  const sendLoginOtp = async () => {
+    setError('');
+    const e = loginEmail.trim().toLowerCase();
+    if (!e) {
+      setError('아이디(이메일)를 입력해 주세요.');
+      return;
+    }
+    if (!EMAIL_REGEX.test(e)) {
+      setError('올바른 이메일 형식이 아닙니다.');
+      return;
+    }
+    setLoginBusy(true);
+    try {
+      await pingBackendHealth();
+      const res = await fetch(`${API_BASE}/auth/send-login-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: e })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || '인증 번호를 보내지 못했습니다.');
+        setLoginCodeSent(false);
+        return;
+      }
+      setLoginCodeSent(true);
+      setLoginCode('');
+    } catch (_) {
+      setError('서버에 연결할 수 없습니다.');
+      setLoginCodeSent(false);
+    } finally {
+      setLoginBusy(false);
+    }
+  };
+
+  const submitPasswordLogin = async (e) => {
+    e.preventDefault();
+    setError('');
+    const eVal = loginEmail.trim().toLowerCase();
+    if (!eVal || !EMAIL_REGEX.test(eVal)) {
+      setError('아이디(이메일)를 확인해 주세요.');
+      return;
+    }
+    if (!loginCodeSent) {
+      setError('먼저 옆의 로그인 버튼으로 이메일 인증 번호를 받아 주세요.');
+      return;
+    }
+    const code = loginCode.trim();
+    if (!code) {
+      setError('이메일로 받은 인증 번호를 입력해 주세요.');
+      return;
+    }
+    setLoginBusy(true);
+    try {
+      await pingBackendHealth();
+      const res = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: eVal,
+          verificationCode: code
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.token) {
+        localStorage.setItem('crm_token', data.token);
+        if (data.user) localStorage.setItem('crm_user', JSON.stringify(data.user));
+        navigate(data.user?.role === 'pending' ? '/company-overview' : '/', { replace: true });
+        return;
+      }
+      setError(data.error || '로그인에 실패했습니다.');
+    } catch (_) {
+      setError('서버에 연결할 수 없습니다.');
+    } finally {
+      setLoginBusy(false);
+    }
+  };
+
   return (
     <div className="login-page">
       <div className="login-bg-decor" aria-hidden>
@@ -84,10 +171,87 @@ export default function Login() {
           <div className="login-card-body">
             <div className="login-brand">
               <h1 className="login-brand-title">Nexvia CRM</h1>
-              <p className="login-brand-sub">Integrated Sanctuary</p>
             </div>
 
             {error && <p className="login-error">{error}</p>}
+
+            <form className="login-email-panel" onSubmit={submitPasswordLogin}>
+              <p className="login-email-panel-title">이메일 로그인</p>
+              <div className="login-email-row">
+                <label className="login-sr-only" htmlFor="login-email-input">아이디(이메일)</label>
+                <input
+                  id="login-email-input"
+                  type="email"
+                  className="login-email-input"
+                  value={loginEmail}
+                  onChange={(ev) => {
+                    setLoginEmail(ev.target.value);
+                    setLoginCodeSent(false);
+                    setLoginCode('');
+                  }}
+                  onKeyDown={(ev) => {
+                    if (ev.key !== 'Enter') return;
+                    ev.preventDefault();
+                    if (loginBusy) return;
+                    void sendLoginOtp();
+                  }}
+                  placeholder="아이디(이메일)"
+                  autoComplete="username"
+                  disabled={loginBusy}
+                />
+                <button
+                  type="button"
+                  className="login-send-code-btn"
+                  onClick={sendLoginOtp}
+                  disabled={loginBusy}
+                >
+                  {loginBusy && !loginCodeSent ? (
+                    <span className="login-inline-spinner login-inline-spinner--dark" aria-hidden />
+                  ) : null}
+                  로그인
+                </button>
+              </div>
+              {loginCodeSent ? (
+                <>
+                  <label className="login-field-label" htmlFor="login-code-input">인증 번호</label>
+                  <input
+                    id="login-code-input"
+                    type="text"
+                    className="login-field-input"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    value={loginCode}
+                    onChange={(ev) => setLoginCode(ev.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="6자리"
+                    disabled={loginBusy}
+                  />
+                  <div className="login-email-actions">
+                    <button type="button" className="login-linkish" onClick={sendLoginOtp} disabled={loginBusy}>
+                      인증 번호 다시 받기
+                    </button>
+                    <button type="submit" className="login-submit-email-btn" disabled={loginBusy}>
+                      {loginBusy ? (
+                        <span className="login-inline-spinner login-inline-spinner--dark" aria-hidden />
+                      ) : null}
+                      이메일로 로그인 완료
+                    </button>
+                  </div>
+                </>
+              ) : null}
+            </form>
+
+            <div className="login-subnav">
+              <Link to="/register" className="login-subnav-link">회원가입</Link>
+              <span className="login-subnav-sep" aria-hidden>|</span>
+              <button type="button" className="login-subnav-link login-subnav-btn" onClick={() => setFindIdOpen(true)}>
+                아이디 찾기
+              </button>
+            </div>
+
+            <div className="login-oauth-divider">
+              <span>또는</span>
+            </div>
 
             <button
               type="button"
@@ -149,6 +313,8 @@ export default function Login() {
           </p>
         </footer>
       </main>
+
+      <FindIdModal open={findIdOpen} onClose={() => setFindIdOpen(false)} />
     </div>
   );
 }

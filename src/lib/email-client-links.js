@@ -1,5 +1,5 @@
 /**
- * 외부 메일 클라이언트로 보내기 (CRM Gmail 모달과 병행).
+ * 외부 메일 클라이언트로 보내기 (CRM 작성 모달의 mailto 흐름과 병행).
  * - Outlook 웹: 브라우저(OWA / outlook.live.com)
  * - PC 작성(받는 사람 채움): `mailto:` — Windows 기본 메일이 Outlook이면 데스크톱 Outlook 작성창이 열리고 To가 채워짐.
  *   (`ms-outlook://compose?to=` 는 새 Outlook 등에서 앱만 켜지고 수신자가 비는 경우가 많아 사용하지 않음.)

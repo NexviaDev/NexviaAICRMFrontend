@@ -11,6 +11,13 @@ import {
   patchListTemplate
 } from '../lib/list-templates';
 import { listColumnValueInlineStyle } from '@/lib/list-column-cell-styles';
+import {
+  cellValue,
+  formatBusinessNumber,
+  formatAddressForList,
+  getNameInitials,
+  COMPANY_STATUS_LABEL
+} from './customer-companies-list-cells';
 import './customer-companies.css';
 import './customer-companies-responsive.css';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
@@ -30,6 +37,7 @@ const MODAL_EXCEL_IMPORT = 'excel-import';
 const MODAL_DETAIL = 'detail';
 const DETAIL_ID_PARAM = 'id';
 const LIMIT = 10;
+const LIMIT_SEARCH_MODAL = 500;
 const EXPORT_PAGE_LIMIT = 100;
 
 function getAuthHeader() {
@@ -37,65 +45,11 @@ function getAuthHeader() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-function formatBusinessNumber(num) {
-  if (!num) return '—';
-  const s = String(num).replace(/\D/g, '');
-  if (s.length <= 3) return s;
-  if (s.length <= 5) return `${s.slice(0, 3)}-${s.slice(3)}`;
-  return `${s.slice(0, 3)}-${s.slice(3, 5)}-${s.slice(5, 10)}`;
-}
-
-const ADDRESS_LIST_DISPLAY_MAX = 15;
-
-/** 목록·카드 등 화면 표시용: 주소가 길면 앞 15자 + ... */
-function formatAddressForList(address) {
-  if (address === undefined || address === null || address === '') return '—';
-  const s = String(address);
-  return s.length > ADDRESS_LIST_DISPLAY_MAX ? `${s.slice(0, ADDRESS_LIST_DISPLAY_MAX)}...` : s;
-}
-
-/** 기업명 아바타 이니셜 (연락처 리스트 getNameInitials 와 동일 규칙) */
-function getNameInitials(name) {
-  const s = (name || '?').trim();
-  if (!s) return '?';
-  const parts = s.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) {
-    return (parts[0][0] + parts[1][0]).toUpperCase().slice(0, 2);
-  }
-  return s.slice(0, 2).toUpperCase();
-}
-
 const LIST_ID = LIST_IDS.CUSTOMER_COMPANIES;
 
-const COMPANY_STATUS_LABEL = { active: '활성', inactive: '비활성', lead: '리드' };
-
-/** @param {Record<string, string>} [assigneeIdToName] - userId → 이름 (목록 담당자 셀 표시용) */
-function cellValue(row, key, assigneeIdToName = {}, assigneeNamesReady = false) {
-  if (key === 'name') return row.name || '—';
-  if (key === 'representativeName') return row.representativeName || '—';
-  if (key === 'industry') return row.industry || '—';
-  if (key === 'businessNumber') return formatBusinessNumber(row.businessNumber);
-  if (key === 'address') return formatAddressForList(row.address);
-  if (key === 'status') {
-    const st = (row.status || 'active').toLowerCase();
-    return COMPANY_STATUS_LABEL[st] || row.status || '—';
-  }
-  if (key === 'assigneeUserIds') {
-    const ids = Array.isArray(row.assigneeUserIds) ? row.assigneeUserIds : [];
-    const names = ids.map((id) => assigneeIdToName[String(id)] || '').filter(Boolean);
-    if (names.length) return names.join(', ');
-    if (ids.length === 0) return '—';
-    return assigneeNamesReady ? '—' : '담당자 불러오는 중...';
-  }
-  if (key.startsWith(CUSTOM_FIELDS_PREFIX)) {
-    const fieldKey = key.slice(CUSTOM_FIELDS_PREFIX.length);
-    const v = row.customFields?.[fieldKey];
-    return v !== undefined && v !== null && v !== '' ? String(v) : '—';
-  }
-  return '—';
-}
-
-export default function CustomerCompanies() {
+export default function CustomerCompanies({ listVariant = 'page', onSearchModalConfirm }) {
+  const isSearchModal = listVariant === 'searchModal';
+  const listPageLimit = isSearchModal ? LIMIT_SEARCH_MODAL : LIMIT;
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
@@ -111,7 +65,7 @@ export default function CustomerCompanies() {
   const [companyEmployees, setCompanyEmployees] = useState([]); // 사내 직원 (담당자 이름 표시용)
   const [companyEmployeesLoaded, setCompanyEmployeesLoaded] = useState(false);
   const [searchField, setSearchField] = useState('');
-  const [pagination, setPagination] = useState({ page: 1, limit: LIMIT, total: 0, totalPages: 0 });
+  const [pagination, setPagination] = useState({ page: 1, limit: listPageLimit, total: 0, totalPages: 0 });
   const [selectedCompanyIds, setSelectedCompanyIds] = useState(new Set());
   const [selectedCompanyMap, setSelectedCompanyMap] = useState({});
   const [exportExcelLoading, setExportExcelLoading] = useState(false);
@@ -131,6 +85,7 @@ export default function CustomerCompanies() {
   const [mergeModalOpen, setMergeModalOpen] = useState(false);
   const [bulkSalesPipelineOpen, setBulkSalesPipelineOpen] = useState(false);
   const [showCustomFieldsManageModal, setShowCustomFieldsManageModal] = useState(false);
+  const [searchModalAddOpen, setSearchModalAddOpen] = useState(false);
 
   const searchFieldLabelByKey = useMemo(() => {
     const map = {};
@@ -162,10 +117,10 @@ export default function CustomerCompanies() {
   /** URL로 연 상세 모달용: 목록에 없을 때 id로 따로 조회한 회사 (새로고침 시 items 비어 있을 수 있음) */
   const [detailCompanyById, setDetailCompanyById] = useState(null);
   const [loadingDetailCompany, setLoadingDetailCompany] = useState(false);
-  const isAddModalOpen = searchParams.get(MODAL_PARAM) === MODAL_ADD_COMPANY;
-  const isExcelImportOpen = searchParams.get(MODAL_PARAM) === MODAL_EXCEL_IMPORT;
+  const isAddModalOpen = isSearchModal ? searchModalAddOpen : searchParams.get(MODAL_PARAM) === MODAL_ADD_COMPANY;
+  const isExcelImportOpen = !isSearchModal && searchParams.get(MODAL_PARAM) === MODAL_EXCEL_IMPORT;
   const detailId = searchParams.get(DETAIL_ID_PARAM);
-  const isDetailOpen = searchParams.get(MODAL_PARAM) === MODAL_DETAIL && detailId;
+  const isDetailOpen = !isSearchModal && searchParams.get(MODAL_PARAM) === MODAL_DETAIL && detailId;
   const selectedCompanyFromList = isDetailOpen
     ? items.find((c) => c._id === detailId) || null
     : null;
@@ -215,7 +170,7 @@ export default function CustomerCompanies() {
     listFetchSilentOnceRef.current = false;
     if (!silent) setLoading(true);
     try {
-      const params = new URLSearchParams({ page: String(page), limit: String(LIMIT) });
+      const params = new URLSearchParams({ page: String(page), limit: String(listPageLimit) });
       if (searchApplied) {
         params.set('search', searchApplied);
         if (searchField) params.set('searchField', searchField);
@@ -226,7 +181,7 @@ export default function CustomerCompanies() {
       if (res.ok) {
         const data = await res.json();
         setItems(data.items || []);
-        setPagination(data.pagination || { page: 1, limit: LIMIT, total: 0, totalPages: 0 });
+        setPagination(data.pagination || { page: 1, limit: listPageLimit, total: 0, totalPages: 0 });
       } else {
         setItems([]);
         setPagination((p) => ({ ...p, total: 0, totalPages: 0 }));
@@ -237,7 +192,7 @@ export default function CustomerCompanies() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [searchApplied, searchField, assigneeMeOnly]);
+  }, [searchApplied, searchField, assigneeMeOnly, listPageLimit]);
 
   const handleAddCompanySaved = useCallback(
     (company) => {
@@ -258,19 +213,19 @@ export default function CustomerCompanies() {
         return;
       }
       if (pagination.page !== 1) {
-        setPagination((p) => ({ ...p, total: (p.total || 0) + 1, totalPages: Math.max(1, Math.ceil(((p.total || 0) + 1) / (p.limit || LIMIT))) }));
+        setPagination((p) => ({ ...p, total: (p.total || 0) + 1, totalPages: Math.max(1, Math.ceil(((p.total || 0) + 1) / (p.limit || listPageLimit))) }));
         return;
       }
       setItems((prev) => {
         const next = [company, ...prev];
-        return next.length > LIMIT ? next.slice(0, LIMIT) : next;
+        return next.length > listPageLimit ? next.slice(0, listPageLimit) : next;
       });
       setPagination((p) => {
         const total = (p.total || 0) + 1;
-        return { ...p, total, totalPages: Math.max(1, Math.ceil(total / (p.limit || LIMIT))) };
+        return { ...p, total, totalPages: Math.max(1, Math.ceil(total / (p.limit || listPageLimit))) };
       });
     },
-    [fetchList, pagination.page, searchApplied, assigneeMeOnly, me, LIMIT]
+    [fetchList, pagination.page, searchApplied, assigneeMeOnly, me, listPageLimit]
   );
 
   /** 검색·필터와 동일 조건으로 전체 고객사 목록 (전체 선택용) */
@@ -334,8 +289,18 @@ export default function CustomerCompanies() {
     loadCustomerCompanyCustomFieldColumns();
   }, [loadCustomerCompanyCustomFieldColumns]);
 
-  const openAddModal = () => setSearchParams({ [MODAL_PARAM]: MODAL_ADD_COMPANY });
+  const openAddModal = () => {
+    if (isSearchModal) {
+      setSearchModalAddOpen(true);
+      return;
+    }
+    setSearchParams({ [MODAL_PARAM]: MODAL_ADD_COMPANY });
+  };
   const closeAddModal = () => {
+    if (isSearchModal) {
+      setSearchModalAddOpen(false);
+      return;
+    }
     const next = new URLSearchParams(searchParams);
     next.delete(MODAL_PARAM);
     setSearchParams(next, { replace: true });
@@ -343,6 +308,10 @@ export default function CustomerCompanies() {
 
   const openDetailModal = (row) => {
     if (!row?._id) return;
+    if (isSearchModal) {
+      onSearchModalConfirm?.(row);
+      return;
+    }
     setSearchParams({ [MODAL_PARAM]: MODAL_DETAIL, [DETAIL_ID_PARAM]: row._id });
   };
   const closeDetailModal = () => {
@@ -769,7 +738,7 @@ export default function CustomerCompanies() {
   }, []);
 
   return (
-    <div className="page customer-companies-page">
+    <div className={`page customer-companies-page${isSearchModal ? ' customer-companies-page--search-modal' : ''}`}>
       <header className="page-header">
         <div className="header-search">
           <button type="submit" form="customer-companies-search-form" className="header-search-icon-btn" aria-label="검색">
@@ -818,10 +787,11 @@ export default function CustomerCompanies() {
           <button type="button" className="icon-btn" aria-label="리스트 열 설정" onClick={() => { setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), customFieldColumns)); setSettingsOpen(true); }} title="리스트 열 설정">
             <span className="material-symbols-outlined">settings</span>
           </button>
-          <PageHeaderNotifyChat noWrapper buttonClassName="icon-btn" />
+          {!isSearchModal ? <PageHeaderNotifyChat noWrapper buttonClassName="icon-btn" /> : null}
         </div>
       </header>
       <div className="page-content">
+        {!isSearchModal ? (
         <div className="customer-companies-top">
           <div>
             <h2>기업 리스트</h2>
@@ -885,7 +855,8 @@ export default function CustomerCompanies() {
             <button type="button" className="btn-primary" onClick={openAddModal}><span className="material-symbols-outlined">add</span> 기업 추가</button>
           </div>
         </div>
-        {selectedCompanyIds.size > 0 && (
+        ) : null}
+        {!isSearchModal && selectedCompanyIds.size > 0 && (
           <div className="cc-selection-action-bar">
             <span className="cc-selection-action-bar-count">
               <strong>{selectedCompanyIds.size}</strong>곳 선택됨
@@ -1179,6 +1150,7 @@ export default function CustomerCompanies() {
               </tbody>
             </table>
           </div>
+          {!isSearchModal ? (
           <div className="pagination-bar">
             <p className="pagination-info">
               <strong>{pagination.total}</strong>개 중 <strong>{items.length ? (pagination.page - 1) * pagination.limit + 1 : 0}</strong>–<strong>{(pagination.page - 1) * pagination.limit + items.length}</strong>건 표시
@@ -1189,6 +1161,7 @@ export default function CustomerCompanies() {
               onPageChange={(nextPage) => setPagination((p) => ({ ...p, page: nextPage }))}
             />
           </div>
+          ) : null}
         </div>
       </div>
       {settingsOpen && (
@@ -1213,8 +1186,14 @@ export default function CustomerCompanies() {
       )}
       {isAddModalOpen && (
         <AddCompanyModal
+          initialName={isSearchModal ? (searchApplied || searchInput) : ''}
           onClose={closeAddModal}
           onSaved={(payload) => {
+            if (isSearchModal && payload?._id) {
+              closeAddModal();
+              onSearchModalConfirm?.(payload);
+              return;
+            }
             handleAddCompanySaved(payload);
           }}
         />

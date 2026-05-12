@@ -1,0 +1,281 @@
+/* 연락처 대량 미리보기 — 엑셀형·고정 헤더/푸터·고객사 셀 편집 */
+.contact-import-preview-overlay {
+  z-index: 2100;
+}
+
+.contact-import-preview-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(99vw, 92rem);
+  max-width: min(99vw, 92rem) !important;
+  max-height: 96vh;
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.add-contact-import-preview-panel.contact-import-preview-panel {
+  max-width: min(99vw, 92rem) !important;
+}
+
+.contact-import-preview-header {
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  padding: 0.85rem 1.15rem 0.65rem;
+  background: #f6f2fa;
+  border-bottom: 1px solid #e4dcef;
+}
+
+.contact-import-preview-title {
+  margin: 0 0 0.35rem;
+}
+
+.contact-import-preview-header-stats {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #4a3f55;
+}
+
+.contact-import-preview-header-sep {
+  margin: 0 0.35rem;
+  color: #b8a8c8;
+}
+
+/* 헤더·푸터 사이 본문만 스크롤 — 세로·가로 한 곳(푸터 바로 위에 가로 스크롤바) */
+.contact-import-preview-scroll {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  padding: 0.5rem 1rem 0.5rem;
+}
+
+.contact-import-preview-table-outer {
+  margin: 0 0 0.5rem;
+  border: 1px solid #e8e0f0;
+  border-radius: 0.5rem;
+  overflow: visible;
+  background: #fdfcfe;
+}
+
+.contact-import-preview-main-table {
+  font-size: 0.8125rem;
+  width: max-content;
+  min-width: 100%;
+}
+
+.contact-import-preview-main-table .cip-col-company {
+  width: 13.5rem;
+  min-width: 13.5rem;
+}
+
+/* 같은 소속(동일 묶음) 행: 행/셀 테두리가 아니라 기업명 값에만 밑줄 */
+.contact-import-preview-main-table tbody tr.contact-import-preview-body-row .cip-name-field-input {
+  transition: text-decoration-color 0.12s ease, text-underline-offset 0.12s ease;
+}
+
+.contact-import-preview-main-table tbody tr.contact-import-preview-body-row.contact-import-preview-body-row--aff-hover .cip-name-field-input {
+  text-decoration-line: underline;
+  text-decoration-thickness: 2px;
+  text-decoration-color: #5c4b78;
+  text-underline-offset: 0.22rem;
+}
+
+.contact-import-preview-main-table .cip-readonly {
+  color: #3d3545;
+  white-space: nowrap;
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cip-th-index,
+.cip-td-index {
+  text-align: center;
+  color: #8b7fa3;
+  font-weight: 600;
+}
+
+.cip-th-company {
+  width: 13.5rem;
+  min-width: 13.5rem;
+  white-space: nowrap;
+}
+
+.cip-th-company .list-template-th-content {
+  display: block;
+  max-width: 20ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cip-td-company {
+  vertical-align: middle;
+}
+
+.cip-td-contact {
+  vertical-align: middle;
+  min-width: 0;
+}
+
+.contact-import-preview-main-table .cip-contact-field-input {
+  border: 1px solid #ddd6ee;
+  border-radius: 0.3rem;
+  background: #fff;
+  color: #3d3545;
+}
+
+.contact-import-preview-main-table .cip-contact-field-input:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+/* 기업명 열: 엑셀 셀 선택 — 입력칸 안에서는 텍스트 선택 가능 */
+.cip-td-company.cip-td-excel-name {
+  cursor: cell;
+  position: relative;
+}
+
+.cip-name-field-shell,
+.cip-name-field-input {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.cip-td-company.cip-td-excel-name.cip-name-cell--selected {
+  outline: 2px solid #8b7cb8;
+  outline-offset: -2px;
+  background: rgba(139, 124, 184, 0.12);
+}
+
+/* 기업명: 한 칸 안에 미니 아바타 + 입력 + 돋보기 */
+.cip-name-field-shell {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  min-width: 0;
+  flex: 1;
+  border: 1px solid #ddd6ee;
+  border-radius: 0.35rem;
+  background: #fff;
+  padding: 0.08rem 0.12rem 0.08rem 0.18rem;
+}
+
+.cip-name-field-shell--linked-sync {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.cip-name-field-shell--linked-sync .cip-name-field-input {
+  font-weight: 700;
+  color: #2a2438;
+}
+
+.cip-name-field-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  font-size: 0.78rem;
+  padding: 0.2rem 0.15rem;
+  outline: none;
+}
+
+.cip-name-field-input:disabled {
+  color: #2a2438;
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+.cip-name-avatar-mini {
+  width: 1.28rem;
+  height: 1.28rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.cip-name-avatar-mini-initials {
+  font-size: 0.52rem;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1;
+}
+
+.cip-name-avatar-mini--0 {
+  background: #8b9dc9;
+}
+
+.cip-name-avatar-mini--1 {
+  background: #a395c9;
+}
+
+.cip-name-avatar-mini--2 {
+  background: #7ba8c4;
+}
+
+.cip-name-search-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.72rem;
+  height: 1.72rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.3rem;
+  background: #ede6f7;
+  color: #5c4d72;
+  cursor: pointer;
+}
+
+.cip-name-search-btn:hover:not(:disabled) {
+  background: #e2d8f2;
+}
+
+.cip-name-search-btn--unlink {
+  background: #f6e7ea;
+  color: #8a3f4b;
+}
+
+.cip-name-search-btn--unlink:hover:not(:disabled) {
+  background: #efd8dd;
+}
+
+.cip-name-search-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.cip-name-search-btn .material-symbols-outlined {
+  font-size: 1.12rem;
+}
+
+.contact-import-preview-footer {
+  flex-shrink: 0;
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  padding: 0.65rem 1rem 0.85rem;
+  background: #f6f2fa;
+  border-top: 1px solid #e4dcef;
+}
+
+.contact-import-preview-footer-actions {
+  margin: 0;
+  justify-content: flex-end;
+}
+
+.add-contact-import-company-input--in-table {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  font-size: 0.78rem;
+  padding: 0.22rem 0.35rem;
+}

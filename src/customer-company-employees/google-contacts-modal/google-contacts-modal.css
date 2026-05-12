@@ -5,7 +5,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1100;
+  /* add-contact-modal-overlay(1200)·패널(1201) 위에 겹침 — DOM이 그 안에 있어도 형제보다 위 */
+  z-index: 1300;
   padding: 1rem;
   animation: gcontactsOverlayIn 0.18s ease-out;
 }
@@ -29,8 +30,9 @@
 }
 
 .gcontacts-modal.bulk {
-  max-width: 600px;
-  max-height: 85vh;
+  max-width: min(98vw, 76rem);
+  max-height: 94vh;
+  width: 100%;
 }
 
 @keyframes gcontactsSlideIn {
@@ -171,7 +173,97 @@
 .gcontacts-modal-body {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 0.5rem 0;
+  min-height: 0;
+}
+
+/* 대량 모드: 이름 → 연락처 → 회사명 → 이메일 (체크박스 열) */
+.gcontacts-table-wrap {
+  margin: 0 0.65rem 0.5rem;
+  max-height: min(70vh, 680px);
+  overflow: auto;
+  border: 1px solid #e8e0f0;
+  border-radius: 0.55rem;
+  background: #fdfcfe;
+}
+
+.gcontacts-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  table-layout: fixed;
+}
+
+.gcontacts-table th,
+.gcontacts-table td {
+  padding: 0.42rem 0.5rem;
+  text-align: left;
+  vertical-align: middle;
+  border-bottom: 1px solid #ede8f4;
+  word-break: break-word;
+}
+
+.gcontacts-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f0eaf8;
+  font-weight: 600;
+  color: #4a3f55;
+  font-size: 0.78rem;
+}
+
+.gcontacts-th-check {
+  width: 2.35rem;
+  text-align: center;
+}
+
+.gcontacts-td-check {
+  width: 2.35rem;
+  text-align: center;
+}
+
+.gcontacts-table tbody tr {
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s;
+}
+
+.gcontacts-table tbody tr:hover {
+  background: #f7f4fc;
+}
+
+.gcontacts-table tbody tr.gcontacts-tr-checked {
+  background: rgba(167, 139, 200, 0.14);
+}
+
+.gcontacts-td-name {
+  font-weight: 600;
+  color: #3d3545;
+  width: 18%;
+}
+
+.gcontacts-td-phone {
+  width: 20%;
+  color: #4d4458;
+}
+
+.gcontacts-td-company {
+  width: 22%;
+  color: #4d4458;
+}
+
+.gcontacts-td-email {
+  width: 34%;
+  color: #4d4458;
+  font-size: 0.78rem;
+}
+
+.gcontacts-table .gcontacts-item-checkbox {
+  margin: 0;
+  cursor: pointer;
+  accent-color: #8b7cb8;
 }
 
 .gcontacts-modal-status {
@@ -349,6 +441,85 @@
 .gcontacts-footer-btn.confirm:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* 이메일(OTP) 로그인 후 Google 주소록 연동 유도 */
+.gcontacts-google-link-banner {
+  margin: 0 1rem 0.75rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.65rem;
+  background: #eef4fb;
+  border: 1px solid #c5d9ec;
+}
+
+.gcontacts-google-link-text {
+  margin: 0 0 0.75rem;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: #3d4f5f;
+}
+
+.gcontacts-google-link-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  width: 100%;
+  padding: 0.65rem 1rem;
+  border: none;
+  border-radius: 0.5rem;
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: #8eb4d4;
+  color: #1a3344;
+}
+
+.gcontacts-google-link-btn:hover {
+  background: #7aa3c7;
+}
+
+.gcontacts-google-link-btn .material-symbols-outlined {
+  font-size: 1.15rem;
+}
+
+.gcontacts-google-link-btn--primary {
+  background: #b8d4f0;
+  color: #1a2c3d;
+  margin-bottom: 0.65rem;
+}
+
+.gcontacts-google-link-btn--primary:hover:not(:disabled) {
+  background: #a3c6e8;
+}
+
+.gcontacts-google-link-btn:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.gcontacts-google-link-sub {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: #5a6b7a;
+}
+
+.gcontacts-google-link-inline {
+  display: inline;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #4a6fa5;
+  font: inherit;
+  font-size: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.gcontacts-google-link-inline:hover {
+  color: #385580;
 }
 
 @media (max-width: 480px) {

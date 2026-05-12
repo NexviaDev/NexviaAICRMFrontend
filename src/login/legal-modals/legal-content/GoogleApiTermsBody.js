@@ -3,7 +3,7 @@ const CONTACT = 'develop@nexvia.co.kr';
 export default function GoogleApiTermsBody() {
   return (
     <>
-      <p className="legal-muted">시행일: 2026년 3월 20일 · 최종 수정일: 2026년 3월 20일</p>
+      <p className="legal-muted">시행일: 2026년 3월 20일 · 최종 수정일: 2026년 5월 11일</p>
 
       <div className="legal-box">
         <p>

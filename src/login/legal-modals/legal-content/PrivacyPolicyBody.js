@@ -3,7 +3,7 @@ const CONTACT = 'develop@nexvia.co.kr';
 export default function PrivacyPolicyBody() {
   return (
     <>
-      <p className="legal-muted">시행일: 2026년 4월 18일 · 최종 수정일: 2026년 4월 18일</p>
+      <p className="legal-muted">시행일: 2026년 4월 18일 · 최종 수정일: 2026년 5월 11일</p>
       <p>
         주식회사 넥스비아(이하 &quot;회사&quot;)는 Nexvia CRM 서비스(이하 &quot;서비스&quot;)를 제공하면서 이용자의 개인정보를 중요하게
         생각하며, 「개인정보 보호법」 등 관련 법령을 준수합니다.
@@ -13,8 +13,12 @@ export default function PrivacyPolicyBody() {
       <p>회사는 서비스 제공을 위해 다음과 같은 정보를 수집할 수 있습니다.</p>
       <ul>
         <li>
-          <strong>계정·인증</strong>: Google OAuth를 통해 제공받는 식별자, 이메일 주소, 표시 이름 등 Google이 허용하는 범위의
-          프로필 정보
+          <strong>계정·인증(이메일 가입)</strong>: 이용자가 입력한 이메일 주소(로그인 아이디), 이름, 연락처, 소속 회사·부서
+          등 가입·프로필 정보, 이메일 인증·로그인 보안을 위한 일회용 인증번호 발송 기록(필요 시)
+        </li>
+        <li>
+          <strong>계정·인증(OAuth)</strong>: Google 또는 Microsoft OAuth를 통해 제공받는 식별자, 이메일 주소, 표시 이름 등
+          해당 플랫폼이 허용하는 범위의 프로필 정보
         </li>
         <li>
           <strong>서비스 이용 정보</strong>: CRM에 입력·저장되는 고객사·연락처·영업기회 등 업무 데이터(해당 데이터의 개인정보
@@ -28,8 +32,9 @@ export default function PrivacyPolicyBody() {
       <h2>2. 민감정보 및 서비스에서 다루는 정보 유형</h2>
       <p>
         「개인정보 보호법」상 민감정보에 해당하는 정보를 처리할 경우, 회사는 법령에서 정한 요건(동의 등)을 갖추고 별도
-        안내·동의 절차를 진행합니다. 서비스 연동 과정에서 Google API를 통해 접근·처리될 수 있는 정보 유형에는 다음이 포함될 수
-        있으며, 실제 수집·이용 범위는 이용자가 부여한 권한과 서비스 설정에 따릅니다.
+        안내·동의 절차를 진행합니다. 이용자가 Google 연동을 사용하는 경우 Google API를 통해 접근·처리될 수 있는 정보 유형에
+        는 다음이 포함될 수 있으며, 실제 수집·이용 범위는 이용자가 부여한 권한과 서비스 설정에 따릅니다. Google을 사용하지 않는
+        계정은 해당 항목이 적용되지 않을 수 있습니다.
       </p>
       <ul>
         <li>연락처·조직 정보(Google Contacts 등 연동 시)</li>
@@ -47,8 +52,9 @@ export default function PrivacyPolicyBody() {
 
       <h2>3. 개인정보의 이용 목적</h2>
       <ul>
-        <li>회원 식별, 로그인 및 서비스 제공·유지·개선</li>
-        <li>Google API 연동(Gmail, Calendar, Drive, Contacts 등) 기능 제공에 필요한 범위에서의 이용</li>
+        <li>회원 식별, 로그인(이메일·일회용 인증번호, OAuth 등) 및 서비스 제공·유지·개선</li>
+        <li>이메일을 통한 인증번호 발송, 회사명·사업자번호 등으로 로그인 아이디 확인 등 계정 지원</li>
+        <li>이용자가 연동을 선택한 경우에 한하여 Google API(Gmail, Calendar, Drive, Contacts 등) 기능 제공에 필요한 범위에서의 이용</li>
         <li>보안, 부정 이용 방지, 문의 응대, 법적 의무 이행</li>
       </ul>
 
@@ -72,7 +78,8 @@ export default function PrivacyPolicyBody() {
         </li>
         <li>
           <strong>Google 연동 데이터</strong>: Google OAuth로 발급받은 토큰 및 Google API를 통해 수신한 데이터는 서비스
-          제공에 필요한 목적 범위에서만 처리하며, 정책이 허용하지 않는 제3자 제공·광고 목적 등의 사용을 하지 않습니다. 보관
+          제공에 필요한 목적 범위에서만 처리하며, Google API Services User Data Policy 및 앱 검증(Verification) 절차에 부합하도록
+          Limited Use 등 적용 요건을 준수합니다. 정책이 허용하지 않는 제3자 제공·광고 목적 등의 사용을 하지 않습니다. 보관
           기간·파기는 본 방침의 보관 및 파기, 관련 약관 및 이용자 설정에 따릅니다.
         </li>
         <li>
@@ -85,10 +92,11 @@ export default function PrivacyPolicyBody() {
         </li>
       </ul>
 
-      <h2>5. Google 정보의 처리</h2>
+      <h2>5. Google 정보의 처리 (연동을 선택한 이용자에 한함)</h2>
       <p>
-        서비스는 Google OAuth 및 Google API를 사용합니다. Google에서 받은 정보는 <strong>서비스 제공에 필요한 목적</strong>
-        으로만 사용하며, Google API 서비스 이용 약관 및 Google의 요구사항(예: Limited Use 요구사항 해당 시)을 준수합니다.
+        서비스는 이용자가 Google 계정 연동을 사용하는 경우에 한하여 Google OAuth 및 Google API를 사용합니다. Google에서
+        받은 정보는 <strong>서비스 제공에 필요한 목적</strong>으로만 사용하며, Google API 서비스 이용 약관·사용자 데이터 정책
+        및 Google 앱 검증(Verification)·OAuth 동의 화면과 관련된 요구사항(예: Limited Use 요구사항 해당 시)을 준수합니다.
         자세한 내용은 별도 「Google API 및 연동 약관」을 참고하십시오.
       </p>
 

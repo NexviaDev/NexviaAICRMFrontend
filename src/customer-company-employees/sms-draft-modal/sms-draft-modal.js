@@ -70,7 +70,7 @@ export function phonesToGroupSmsHref(phones, body) {
 }
 
 /**
- * 이메일 작성과 동일한 AI 모드(`/gmail/ai-assist` + channel: sms) + 문자 앱 이동
+ * 이메일 작성과 동일한 AI 모드(`/compose/ai-assist` + channel: sms) + 문자 앱 이동
  */
 export default function SmsDraftModal({
   open,
@@ -204,7 +204,7 @@ export default function SmsDraftModal({
         guidedLength: aiMode === 'guided_rewrite' ? aiGuidedLength : undefined,
         guidedExtra: aiMode === 'guided_rewrite' ? aiGuidedExtra : undefined
       };
-      const res = await fetch(`${API_BASE}/gmail/ai-assist`, {
+      const res = await fetch(`${API_BASE}/compose/ai-assist`, {
         method: 'POST',
         headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -330,11 +330,24 @@ export default function SmsDraftModal({
                 className="sms-draft-ai-run-inline"
                 onClick={runSmsAiAssist}
                 disabled={aiLoading || (isBulk && bulkPhones.length === 0)}
+                aria-busy={aiLoading}
+                aria-label={aiLoading ? 'AI 처리 중' : 'AI 실행'}
               >
-                <span className="material-symbols-outlined sms-draft-ai-bolt" aria-hidden>
-                  bolt
-                </span>
-                {aiLoading ? '처리 중…' : '실행'}
+                {aiLoading ? (
+                  <>
+                    <span className="material-symbols-outlined sms-draft-ai-bolt sms-draft-spin" aria-hidden>
+                      progress_activity
+                    </span>
+                    처리 중…
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined sms-draft-ai-bolt" aria-hidden>
+                      bolt
+                    </span>
+                    실행
+                  </>
+                )}
               </button>
             </div>
 

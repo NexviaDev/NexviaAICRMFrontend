@@ -139,6 +139,252 @@
   color: var(--on-surface-variant);
 }
 
+.login-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* —— Email + OTP login —— */
+.login-email-panel {
+  width: 100%;
+  text-align: left;
+  margin-bottom: 1.25rem;
+}
+
+.login-email-panel-title {
+  margin: 0 0 0.75rem;
+  width: 100%;
+  text-align: center;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+}
+
+.login-email-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+.login-email-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 45%, transparent);
+  border-radius: 0.5rem;
+  font-family: inherit;
+  font-size: 0.875rem;
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+}
+
+.login-email-input:focus {
+  outline: none;
+  border-color: #7eb8d4;
+  box-shadow: 0 0 0 2px rgba(160, 213, 251, 0.45);
+}
+
+/* sales-pipeline `.sp-add-btn`과 동일 톤·호버·active */
+.login-send-code-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.5rem 1.15rem;
+  border: none;
+  border-radius: 0.5rem;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: #2c6485;
+  color: #f5f9ff;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px -4px rgba(44, 100, 133, 0.35);
+  transition: filter 0.15s ease, transform 0.1s ease;
+}
+
+.login-send-code-btn:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.login-send-code-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.login-send-code-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  filter: none;
+  transform: none;
+}
+
+.login-email-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--on-surface-variant);
+}
+
+.login-field-label {
+  display: block;
+  margin: 0.85rem 0 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.login-field-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--outline-variant) 45%, transparent);
+  border-radius: 0.5rem;
+  font-family: inherit;
+  font-size: 0.875rem;
+  background: var(--surface-container-lowest);
+  color: var(--on-surface);
+}
+
+.login-field-input:focus {
+  outline: none;
+  border-color: #7eb8d4;
+  box-shadow: 0 0 0 2px rgba(160, 213, 251, 0.45);
+}
+
+.login-email-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.login-linkish {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--primary);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.login-linkish:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.login-submit-email-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.65rem 1rem;
+  border: none;
+  border-radius: 0.5rem;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  cursor: pointer;
+  background: #7a9eb5;
+  color: #fff;
+}
+
+.login-submit-email-btn:hover:not(:disabled) {
+  background: #6a8fa8;
+}
+
+.login-submit-email-btn:disabled {
+  opacity: 0.75;
+  cursor: not-allowed;
+}
+
+.login-inline-spinner {
+  width: 0.95rem;
+  height: 0.95rem;
+  border: 2px solid rgba(26, 74, 102, 0.25);
+  border-top-color: #1a4a66;
+  border-radius: 50%;
+  animation: login-spin 0.65s linear infinite;
+}
+
+.login-inline-spinner--dark {
+  border-color: rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+}
+
+@keyframes login-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.login-subnav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  font-size: 0.8125rem;
+}
+
+.login-subnav-link {
+  color: var(--primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.login-subnav-link:hover {
+  text-decoration: underline;
+}
+
+.login-subnav-btn {
+  cursor: pointer;
+  border: none;
+  background: none;
+  font: inherit;
+  padding: 0;
+}
+
+.login-subnav-sep {
+  color: #cbd5e1;
+  user-select: none;
+}
+
+.login-oauth-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0.5rem 0 1.25rem;
+  color: var(--on-surface-variant);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.login-oauth-divider::before,
+.login-oauth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: color-mix(in srgb, var(--outline-variant) 50%, transparent);
+}
+
 /* —— Google —— */
 .login-error {
   width: 100%;

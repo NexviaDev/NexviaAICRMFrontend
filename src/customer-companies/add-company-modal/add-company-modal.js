@@ -119,7 +119,7 @@ function buildCertificateDriveFileName(companyName, businessNumberRaw, mimeType,
 
 const INFORMATION_FOLDER_NAME = 'information';
 
-export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }) {
+export default function AddCompanyModal({ company, initialName = '', onClose, onSaved, onUpdated }) {
   const isEdit = Boolean(company);
   /** 수정 모드: 기업명 변경은 서버가 Admin 이상만 허용 — UI에서도 동일하게 막음 */
   const canEditCompanyNameInEdit = useMemo(
@@ -222,6 +222,13 @@ export default function AddCompanyModal({ company, onClose, onSaved, onUpdated }
     setCertificateFile(null);
     setAssigneeDisplayText(undefined);
   }, [company]);
+
+  useEffect(() => {
+    if (company) return;
+    const name = String(initialName || '').trim();
+    if (!name) return;
+    setForm((prev) => (prev.name ? prev : { ...prev, name }));
+  }, [company, initialName]);
 
   useEffect(() => {
     setDisplayedCompany((prev) => ({ ...(prev || {}), ...(company || {}) }));

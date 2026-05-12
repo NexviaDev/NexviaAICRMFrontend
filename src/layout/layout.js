@@ -26,6 +26,8 @@ function clearLegacySplitSession() {
 export default function Layout() {
   const [sidebarDrawerOpen, setSidebarDrawerOpen] = useState(false);
   const [importBanner, setImportBanner] = useState(null);
+  /** Google 주소록 등 OAuth 연동 콜백 후 ?google_link / ?google_link_error 표시 */
+  const [googleLinkBanner, setGoogleLinkBanner] = useState(null);
   const [currentUser, setCurrentUser] = useState(() => {
     try {
       const raw = localStorage.getItem('crm_user');
@@ -74,6 +76,28 @@ export default function Layout() {
       navigate('/company-overview', { replace: true });
     }
   }, [currentUser?.role, location.pathname, navigate]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const err = params.get('google_link_error');
+    const ok = params.get('google_link');
+    if (!err && !ok) return;
+
+    if (err) {
+      setGoogleLinkBanner({ kind: 'error', text: err });
+    } else {
+      setGoogleLinkBanner({
+        kind: 'success',
+        text: 'Google 연동이 완료되었습니다. 주소록 등 해당 기능을 다시 이용해 보세요.'
+      });
+    }
+
+    const next = new URLSearchParams(location.search);
+    next.delete('google_link_error');
+    next.delete('google_link');
+    const qs = next.toString();
+    navigate({ pathname: location.pathname, search: qs ? `?${qs}` : '' }, { replace: true });
+  }, [location.search, location.pathname, navigate]);
 
   useEffect(() => {
     const token = localStorage.getItem('crm_token');
@@ -154,6 +178,19 @@ export default function Layout() {
           <div className={`app-import-banner app-import-banner--${importBanner.kind}`} role="status">
             <span>{importBanner.text}</span>
             <button type="button" className="app-import-banner-dismiss" onClick={() => setImportBanner(null)} aria-label="알림 닫기">
+              ×
+            </button>
+          </div>
+        )}
+        {googleLinkBanner && (
+          <div className={`app-import-banner app-import-banner--${googleLinkBanner.kind}`} role="status">
+            <span>{googleLinkBanner.text}</span>
+            <button
+              type="button"
+              className="app-import-banner-dismiss"
+              onClick={() => setGoogleLinkBanner(null)}
+              aria-label="알림 닫기"
+            >
               ×
             </button>
           </div>

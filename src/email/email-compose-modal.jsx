@@ -1,5 +1,7 @@
-import { useRef, useEffect, useState, useMemo } from 'react';
+import { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 import { API_BASE, MAX_DRIVE_JSON_UPLOAD_BYTES } from '@/config';
+import { buildParticipantDirectoryFromOverview } from '@/lib/participant-directory-merge';
+import ParticipantModal from '@/shared/participant-modal/participant-modal';
 import { buildMailtoWithFields, triggerMailtoHref } from '@/lib/email-client-links';
 import {
   getEmailComposeModalGuidedFromUser,
@@ -358,6 +360,8 @@ export default function EmailComposeModal({
   const [signaturePanelText, setSignaturePanelText] = useState('');
   const [signatureSaving, setSignatureSaving] = useState(false);
   const [signatureSaveError, setSignatureSaveError] = useState('');
+  const [showCcParticipantModal, setShowCcParticipantModal] = useState(false);
+  const [teamMembersForCc, setTeamMembersForCc] = useState([]);
 
   const signaturePreviewSrcDoc = useMemo(
     () => buildEmailSignaturePreviewSrcDoc(signaturePanelText),
@@ -377,7 +381,77 @@ export default function EmailComposeModal({
     setAttachedFiles([]);
     setShowAiPanel(false);
     setShowSignaturePanel(false);
+    setShowCcParticipantModal(false);
   }, [composeMode, initialTo, initialCc, initialSubject, replyThreadId]);
+
+  const fetchTeamMembersForCc = useCallback(() => {
+    const headers = getAuthHeader();
+    Promise.all([
+      fetch(`${API_BASE}/calendar-events/team-members`, { headers, credentials: 'include' })
+        .then((r) => r.json().catch(() => ({})))
+        .catch(() => ({})),
+      fetch(`${API_BASE}/companies/overview`, { headers, credentials: 'include' })
+        .then((r) => r.json().catch(() => ({})))
+        .catch(() => ({}))
+    ]).then(([teamData, overviewData]) => {
+      const fromTeam = Array.isArray(teamData?.members) ? teamData.members : [];
+      const merged = buildParticipantDirectoryFromOverview(
+        fromTeam,
+        overviewData && typeof overviewData === 'object' ? overviewData : null
+      );
+      setTeamMembersForCc(merged);
+    });
+  }, []);
+
+  const openCcParticipantModal = useCallback(() => {
+    if (teamMembersForCc.length === 0) fetchTeamMembersForCc();
+    setShowCcParticipantModal(true);
+  }, [teamMembersForCc.length, fetchTeamMembersForCc]);
+
+  const ccParticipantSelected = useMemo(() => {
+    const parts = cc.split(/[,;]/).map((s) => s.trim()).filter(Boolean);
+    const emails = new Set(parts.map((p) => p.toLowerCase()));
+    const out = [];
+    for (const m of teamMembersForCc) {
+      const em = (m.email || '').trim().toLowerCase();
+      if (em && emails.has(em)) {
+        out.push({ userId: m._id, name: m.name || m.email });
+      }
+    }
+    return out;
+  }, [cc, teamMembersForCc]);
+
+  const handleCcParticipantConfirm = useCallback(
+    (selected) => {
+      const map = new Map();
+      for (const raw of cc.split(/[,;]/).map((s) => s.trim()).filter(Boolean)) {
+        const key = raw.toLowerCase();
+        if (!map.has(key)) map.set(key, raw);
+      }
+      for (const p of selected) {
+        const m = teamMembersForCc.find((t) => String(t._id) === String(p.userId));
+        const em = (m?.email || '').trim();
+        if (em) {
+          const key = em.toLowerCase();
+          if (!map.has(key)) map.set(key, em);
+        }
+      }
+      setCc(Array.from(map.values()).join(', '));
+      setShowCcParticipantModal(false);
+    },
+    [cc, teamMembersForCc]
+  );
+
+  const currentUserForCc = useMemo(() => {
+    try {
+      const raw = localStorage.getItem('crm_user');
+      const u = raw ? JSON.parse(raw) : null;
+      if (!u) return null;
+      return { _id: u.id || u._id, name: u.name, email: u.email };
+    } catch {
+      return null;
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -481,7 +555,7 @@ export default function EmailComposeModal({
     }
   }
 
-  /** textarea는 기본 붙여넣기가 text/plain만 받음 — Gmail 등에서 복사한 HTML은 text/html로 넣어 태그 유지 */
+  /** textarea는 기본 붙여넣기가 text/plain만 받음 — 웹메일 등에서 복사한 HTML은 text/html로 넣어 태그 유지 */
   function handleSignatureHtmlPaste(e) {
     const html = e.clipboardData?.getData('text/html');
     if (html == null || !String(html).trim()) return;
@@ -689,7 +763,7 @@ export default function EmailComposeModal({
         guidedLength: aiMode === 'guided_rewrite' ? aiGuidedLength : undefined,
         guidedExtra: aiMode === 'guided_rewrite' ? aiGuidedExtra : undefined
       };
-      const res = await fetch(`${API_BASE}/gmail/ai-assist`, {
+      const res = await fetch(`${API_BASE}/compose/ai-assist`, {
         method: 'POST',
         headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -1164,7 +1238,7 @@ export default function EmailComposeModal({
     return true;
   };
 
-  /** Gmail API 대신 PC 기본 메일(mailto). 성공 시 true */
+  /** PC 기본 메일(mailto). 성공 시 true */
   const runPcMailtoHandoff = async () => {
     if (!requireToForHandoff()) return false;
     const plain = getEditorPlainBody();
@@ -1252,9 +1326,23 @@ export default function EmailComposeModal({
             <label>받는 사람</label>
             <input type="text" value={to} onChange={(e) => setTo(e.target.value)} placeholder="이메일 주소" required />
           </div>
-          <div className="email-compose-field">
-            <label>참조 (Cc)</label>
+          <div className="email-compose-field email-compose-field--cc">
+            <div className="email-compose-field-label-row">
+              <label htmlFor="email-compose-cc-input">참조 (Cc)</label>
+              <button
+                type="button"
+                className="email-compose-cc-participant-btn"
+                onClick={openCcParticipantModal}
+                title="사내 팀원을 선택해 참조에 추가"
+              >
+                <span className="material-symbols-outlined" aria-hidden>
+                  group_add
+                </span>
+                팀원에서 선택
+              </button>
+            </div>
             <input
+              id="email-compose-cc-input"
               type="text"
               value={cc}
               onChange={(e) => setCc(e.target.value)}
@@ -1425,7 +1513,7 @@ export default function EmailComposeModal({
                 </button>
               </div>
               <p className="email-compose-sig-hint">
-                HTML 소스를 넣으면 발송 본문 하단에 표시됩니다. 답장 시에는 원본 메일 인용 <strong>바로 위</strong>에 붙습니다. 저장 시 계정의 <strong>listTemplates.emailSignature</strong>에 반영되며, 다른 기기에서도 동일하게 불러옵니다. Gmail 등에서 복사한 블록은{' '}
+                HTML 소스를 넣으면 발송 본문 하단에 표시됩니다. 답장 시에는 원본 메일 인용 <strong>바로 위</strong>에 붙습니다. 저장 시 계정의 <strong>listTemplates.emailSignature</strong>에 반영되며, 다른 기기에서도 동일하게 불러옵니다. 웹메일 등에서 복사한 블록은{' '}
                 <strong>태그가 포함된 HTML</strong>로 붙여넣기됩니다(일반 textarea와 달리 처리).
               </p>
               <label className="email-compose-sig-label" htmlFor="email-compose-sig-html">
@@ -1954,11 +2042,41 @@ export default function EmailComposeModal({
               >
                 닫기
               </button>
-              <button type="button" className="email-compose-ai-run email-compose-ai-modal-run" onClick={runEmailAiAssist} disabled={aiLoading}>
-                {aiLoading ? '처리 중…' : '실행'}
+              <button
+                type="button"
+                className="email-compose-ai-run email-compose-ai-modal-run"
+                onClick={runEmailAiAssist}
+                disabled={aiLoading}
+                aria-busy={aiLoading}
+                aria-label={aiLoading ? 'AI 처리 중' : 'AI 실행'}
+              >
+                {aiLoading ? (
+                  <>
+                    <span className="material-symbols-outlined email-compose-send-icon--spin" aria-hidden>
+                      progress_activity
+                    </span>
+                    <span>처리 중…</span>
+                  </>
+                ) : (
+                  '실행'
+                )}
               </button>
             </footer>
           </div>
+        </div>
+      )}
+
+      {showCcParticipantModal && (
+        <div className="email-compose-participant-portal">
+          <ParticipantModal
+            teamMembers={teamMembersForCc}
+            selected={ccParticipantSelected}
+            currentUser={currentUserForCc}
+            onConfirm={handleCcParticipantConfirm}
+            onClose={() => setShowCcParticipantModal(false)}
+            title="참조(Cc) 선택"
+            bulkAddLabel="표시된 인원 모두 참조에 추가"
+          />
         </div>
       )}
     </>

@@ -1162,6 +1162,164 @@ function resolveHomeKpiTargetPeriod(kpiPeriod, now = new Date()) {
   return { year, periodType: 'monthly', periodValue: month, periodLabel: '월간 목표' };
 }
 
+function distributeEvenIntForHomeKpi(total, partCount) {
+  const n = Math.max(0, Math.floor(Number(total) || 0));
+  const p = Math.max(1, Math.floor(Number(partCount) || 1));
+  const base = Math.floor(n / p);
+  const rem = n - base * p;
+  return Array.from({ length: p }, (_, idx) => base + (idx < rem ? 1 : 0));
+}
+
+function homeKpiTopDownFromAnnual(annual) {
+  const annualValue = Math.max(0, Math.round(Number(annual) || 0));
+  const semi = distributeEvenIntForHomeKpi(annualValue, 2);
+  const quarter = [
+    ...distributeEvenIntForHomeKpi(semi[0], 2),
+    ...distributeEvenIntForHomeKpi(semi[1], 2)
+  ];
+  const month = [];
+  for (let qi = 0; qi < 4; qi += 1) {
+    month.push(...distributeEvenIntForHomeKpi(quarter[qi], 3));
+  }
+  return { annual: annualValue, semi, quarter, month };
+}
+
+function homeKpiBlockFromYearMatrix(matrix) {
+  const monthly = Array.from({ length: 12 }, (_, idx) => {
+    const hit = (Array.isArray(matrix?.monthly) ? matrix.monthly : []).find((row) => Number(row?.periodValue) === idx + 1);
+    return Math.max(0, Math.round(Number(hit?.targetRevenue) || 0));
+  });
+  const quarter = Array.from({ length: 4 }, (_, idx) => {
+    const hit = (Array.isArray(matrix?.quarterly) ? matrix.quarterly : []).find((row) => Number(row?.periodValue) === idx + 1);
+    return Math.max(0, Math.round(Number(hit?.targetRevenue) || 0));
+  });
+  const semi = Array.from({ length: 2 }, (_, idx) => {
+    const hit = (Array.isArray(matrix?.semiannual) ? matrix.semiannual : []).find((row) => Number(row?.periodValue) === idx + 1);
+    return Math.max(0, Math.round(Number(hit?.targetRevenue) || 0));
+  });
+  return {
+    annual: Math.max(0, Math.round(Number(matrix?.annual?.targetRevenue) || 0)),
+    semi,
+    quarter,
+    month: monthly
+  };
+}
+
+function homeKpiBlockHasStoredTarget(block) {
+  return (
+    Math.max(0, Math.round(Number(block?.annual) || 0)) > 0 ||
+    (Array.isArray(block?.month) && block.month.some((value) => Math.max(0, Math.round(Number(value) || 0)) > 0))
+  );
+}
+
+function homeKpiTargetValueFromBlock(block, period) {
+  if (!block) return 0;
+  if (period.periodType === 'annual') return Math.max(0, Math.round(Number(block.annual) || 0));
+  if (period.periodType === 'semiannual') {
+    return Math.max(0, Math.round(Number(block.semi?.[Number(period.periodValue) - 1]) || 0));
+  }
+  if (period.periodType === 'quarterly') {
+    return Math.max(0, Math.round(Number(block.quarter?.[Number(period.periodValue) - 1]) || 0));
+  }
+  return Math.max(0, Math.round(Number(block.month?.[Number(period.periodValue) - 1]) || 0));
+}
+
+function normalizeHomeKpiUserId(user) {
+  return String(user?.id || user?._id || '').trim();
+}
+
+function normalizeHomeKpiUserDept(user) {
+  return String(user?.companyDepartment || user?.departmentId || user?.department || '').trim();
+}
+
+async function fetchHomeKpiYearMatrix(year, scopeType, scopeId = '') {
+  const params = new URLSearchParams({
+    year: String(year),
+    scopeType
+  });
+  if (scopeType !== 'company') params.set('scopeId', String(scopeId || ''));
+  const res = await fetch(`${API_BASE}/kpi/targets/year-matrix?${params.toString()}`, {
+    headers: getAuthHeader(),
+    credentials: 'include'
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json?.error || '목표 정보를 불러오지 못했습니다.');
+  return json;
+}
+
+async function fetchHomeKpiCurrentEmployees() {
+  const res = await fetch(`${API_BASE}/companies/overview`, {
+    headers: getAuthHeader(),
+    credentials: 'include'
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json?.error || '회사 직원 목록을 불러오지 못했습니다.');
+  return Array.isArray(json?.employees) ? json.employees : [];
+}
+
+async function buildHomeKpiOrgAdjustedTargetResolver({ period, filterUsers = [], filterDepartments = [] }) {
+  const overviewEmployees = await fetchHomeKpiCurrentEmployees();
+  const userById = new Map();
+  [...overviewEmployees, ...(Array.isArray(filterUsers) ? filterUsers : [])].forEach((user) => {
+    const id = normalizeHomeKpiUserId(user);
+    if (!id) return;
+    userById.set(id, { ...(userById.get(id) || {}), ...user, id });
+  });
+  const deptIds = Array.from(
+    new Set([
+      ...(Array.isArray(filterDepartments) ? filterDepartments : []).map((dept) => String(dept?.id || '').trim()),
+      ...[...userById.values()].map((user) => normalizeHomeKpiUserDept(user))
+    ].filter(Boolean))
+  );
+  const teamMatrixCache = new Map();
+  const userMatrixCache = new Map();
+  const deptMemberIds = (deptId) =>
+    [...userById.values()]
+      .filter((user) => normalizeHomeKpiUserDept(user) === String(deptId || '').trim())
+      .map((user) => normalizeHomeKpiUserId(user))
+      .filter(Boolean);
+  const getTeamBlock = async (deptId) => {
+    const id = String(deptId || '').trim();
+    if (!id) return { annual: 0, semi: [0, 0], quarter: [0, 0, 0, 0], month: Array(12).fill(0) };
+    if (!teamMatrixCache.has(id)) {
+      teamMatrixCache.set(id, fetchHomeKpiYearMatrix(period.year, 'team', id).then(homeKpiBlockFromYearMatrix));
+    }
+    return teamMatrixCache.get(id);
+  };
+  const getUserBlock = async (userId) => {
+    const id = String(userId || '').trim();
+    if (!id) return { annual: 0, semi: [0, 0], quarter: [0, 0, 0, 0], month: Array(12).fill(0) };
+    if (!userMatrixCache.has(id)) {
+      userMatrixCache.set(id, (async () => {
+        const stored = homeKpiBlockFromYearMatrix(await fetchHomeKpiYearMatrix(period.year, 'user', id));
+        if (homeKpiBlockHasStoredTarget(stored)) return stored;
+        const deptId = normalizeHomeKpiUserDept(userById.get(id));
+        if (!deptId) return stored;
+        const teamBlock = await getTeamBlock(deptId);
+        const memberCount = Math.max(1, deptMemberIds(deptId).length || 1);
+        return homeKpiTopDownFromAnnual(Math.floor((Number(teamBlock?.annual) || 0) / memberCount));
+      })());
+    }
+    return userMatrixCache.get(id);
+  };
+  const getUserTarget = async (userId) => homeKpiTargetValueFromBlock(await getUserBlock(userId), period);
+  const getTeamTarget = async (deptId) => {
+    const members = deptMemberIds(deptId);
+    if (members.length > 0) {
+      const values = await Promise.all(members.map((uid) => getUserTarget(uid).catch(() => 0)));
+      return values.reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0);
+    }
+    return homeKpiTargetValueFromBlock(await getTeamBlock(deptId), period);
+  };
+  const getCompanyTarget = async (preferredDeptIds = []) => {
+    const ids = Array.from(new Set((preferredDeptIds.length ? preferredDeptIds : deptIds).map((id) => String(id || '').trim()).filter(Boolean)));
+    if (!ids.length) return 0;
+    const values = await Promise.all(ids.map((id) => getTeamTarget(id).catch(() => 0)));
+    return values.reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0);
+  };
+  return { getUserTarget, getTeamTarget, getCompanyTarget };
+}
+
 function formatLeaderEmployeeOptionLabel(u, departments) {
   const deptLabel = (departments || []).find((d) => d.id === u.departmentId)?.label;
   if (deptLabel) return `${u.name} (${deptLabel})`;
@@ -1750,64 +1908,15 @@ export default function Home() {
       const period = resolveHomeKpiTargetPeriod(kpiPeriod, new Date());
       const base = { loading: false, periodLabel: period.periodLabel, reason: '', target: null };
       const leaderScope = Boolean(data?.insightScope?.leaderSubtree);
-      const fetchTargetByScope = async (scopeType, scopeId = '') => {
-        const q = new URLSearchParams({
-          year: String(period.year),
-          periodType: period.periodType,
-          periodValue: String(period.periodValue),
-          scopeType
-        });
-        if (scopeType !== 'company') q.set('scopeId', scopeId);
-        const res = await fetch(`${API_BASE}/kpi/targets?${q.toString()}`, {
-          headers: getAuthHeader(),
-          credentials: 'include'
-        });
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(json?.error || '목표 정보를 불러오지 못했습니다.');
-        return json?.target || null;
-      };
-      const fetchCompanyUserIds = async () => {
-        const res = await fetch(`${API_BASE}/companies/overview`, {
-          headers: getAuthHeader(),
-          credentials: 'include'
-        });
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(json?.error || '회사 직원 목록을 불러오지 못했습니다.');
-        return Array.from(
-          new Set(
-            (Array.isArray(json?.employees) ? json.employees : [])
-              .map((e) => String(e?.id || e?._id || '').trim())
-              .filter(Boolean)
-          )
-        );
-      };
-      const aggregateUserTargets = async (userIds, periodLabelSuffix = '') => {
-        if (!Array.isArray(userIds) || userIds.length === 0) return null;
-        const rows = await Promise.allSettled(userIds.map((uid) => fetchTargetByScope('user', uid)));
-        const aggregate = rows.reduce(
-          (acc, row) => {
-            if (row.status !== 'fulfilled' || !row.value) return acc;
-            acc.targetRevenue += Number(row.value?.targetRevenue || 0);
-            return acc;
-          },
-          { targetRevenue: 0 }
-        );
-        return {
-          loading: false,
-          periodLabel: `${period.periodLabel}${periodLabelSuffix}`,
-          reason: '',
-          target: aggregate
-        };
-      };
-      let scopeType = 'company';
-      let scopeId = '';
+      const filterUsers = Array.isArray(data?.insightLeaderFilters?.users) ? data.insightLeaderFilters.users : [];
+      const filterDepartments = Array.isArray(data?.insightLeaderFilters?.departments) ? data.insightLeaderFilters.departments : [];
       if (!isCompanyWideInsight) {
         if (leaderScope && leaderInsightViewKind === 'team') {
           if (!insightDeptQ) {
             const userIds = Array.from(
               new Set(
-                (Array.isArray(data?.insightLeaderFilters?.users) ? data.insightLeaderFilters.users : [])
-                  .map((u) => String(u?.id || '').trim())
+                filterUsers
+                  .map((u) => normalizeHomeKpiUserId(u))
                   .filter(Boolean)
               )
             );
@@ -1817,9 +1926,16 @@ export default function Home() {
             }
             if (!cancelled) setHomeKpiTargetSnapshot((prev) => ({ ...prev, loading: true, periodLabel: period.periodLabel, reason: '' }));
             try {
-              const snapshot = await aggregateUserTargets(userIds, ' (팀 누적)');
+              const resolver = await buildHomeKpiOrgAdjustedTargetResolver({ period, filterUsers, filterDepartments });
+              const values = await Promise.all(userIds.map((uid) => resolver.getUserTarget(uid).catch(() => 0)));
+              const targetRevenue = values.reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0);
               if (!cancelled) {
-                setHomeKpiTargetSnapshot(snapshot || base);
+                setHomeKpiTargetSnapshot({
+                  loading: false,
+                  periodLabel: `${period.periodLabel} (팀 누적)`,
+                  reason: '',
+                  target: { targetRevenue }
+                });
               }
             } catch (err) {
               if (!cancelled) {
@@ -1833,8 +1949,29 @@ export default function Home() {
             }
             return;
           }
-          scopeType = 'team';
-          scopeId = insightDeptQ;
+          if (!cancelled) setHomeKpiTargetSnapshot((prev) => ({ ...prev, loading: true, periodLabel: period.periodLabel, reason: '' }));
+          try {
+            const resolver = await buildHomeKpiOrgAdjustedTargetResolver({ period, filterUsers, filterDepartments });
+            const targetRevenue = await resolver.getTeamTarget(insightDeptQ);
+            if (!cancelled) {
+              setHomeKpiTargetSnapshot({
+                loading: false,
+                periodLabel: period.periodLabel,
+                reason: '',
+                target: { targetRevenue }
+              });
+            }
+          } catch (err) {
+            if (!cancelled) {
+              setHomeKpiTargetSnapshot({
+                loading: false,
+                periodLabel: period.periodLabel,
+                reason: err.message || '목표 정보를 불러오지 못했습니다.',
+                target: null
+              });
+            }
+          }
+          return;
         } else {
           const uid = String((leaderInsightViewKind === 'personal' ? insightUserQ : '') || myCrmUserId || '').trim();
           if (!uid) {
@@ -1843,27 +1980,41 @@ export default function Home() {
             }
             return;
           }
-          scopeType = 'user';
-          scopeId = uid;
+          if (!cancelled) setHomeKpiTargetSnapshot((prev) => ({ ...prev, loading: true, periodLabel: period.periodLabel, reason: '' }));
+          try {
+            const resolver = await buildHomeKpiOrgAdjustedTargetResolver({ period, filterUsers, filterDepartments });
+            const targetRevenue = await resolver.getUserTarget(uid);
+            if (!cancelled) {
+              setHomeKpiTargetSnapshot({
+                loading: false,
+                periodLabel: period.periodLabel,
+                reason: '',
+                target: { targetRevenue }
+              });
+            }
+          } catch (err) {
+            if (!cancelled) {
+              setHomeKpiTargetSnapshot({
+                loading: false,
+                periodLabel: period.periodLabel,
+                reason: err.message || '목표 정보를 불러오지 못했습니다.',
+                target: null
+              });
+            }
+          }
+          return;
         }
       }
       if (!cancelled) setHomeKpiTargetSnapshot((prev) => ({ ...prev, loading: true, periodLabel: period.periodLabel, reason: '' }));
       try {
-        const target = await fetchTargetByScope(scopeType, scopeId);
-        if (scopeType === 'company' && (!target || !Number(target?.targetRevenue))) {
-          const allUserIds = await fetchCompanyUserIds();
-          const snapshot = await aggregateUserTargets(allUserIds, ' (회사 누적)');
-          if (!cancelled && snapshot) {
-            setHomeKpiTargetSnapshot(snapshot);
-            return;
-          }
-        }
+        const resolver = await buildHomeKpiOrgAdjustedTargetResolver({ period, filterUsers, filterDepartments });
+        const targetRevenue = await resolver.getCompanyTarget();
         if (!cancelled) {
           setHomeKpiTargetSnapshot({
             loading: false,
-            periodLabel: period.periodLabel,
+            periodLabel: `${period.periodLabel}`,
             reason: '',
-            target
+            target: { targetRevenue }
           });
         }
       } catch (err) {
@@ -1890,6 +2041,8 @@ export default function Home() {
     kpiPeriod,
     data?.insightScope?.leaderSubtree,
     data?.insightLeaderFilters?.users,
+    data?.insightLeaderFilters?.departments,
+    data?.homeContributionBar,
     dashboardRefreshTick
   ]);
 
@@ -1903,24 +2056,22 @@ export default function Home() {
         return;
       }
       const period = resolveHomeKpiTargetPeriod(kpiPeriod, new Date());
-      const scopeType = baseBar.mode === 'team' ? 'team' : 'user';
+      const filterUsers = Array.isArray(data?.insightLeaderFilters?.users) ? data.insightLeaderFilters.users : [];
+      const filterDepartments = Array.isArray(data?.insightLeaderFilters?.departments) ? data.insightLeaderFilters.departments : [];
+      let resolver = null;
+      try {
+        resolver = await buildHomeKpiOrgAdjustedTargetResolver({ period, filterUsers, filterDepartments });
+      } catch {
+        resolver = null;
+      }
       const resolved = await Promise.all(
         segments.map(async (seg) => {
           try {
-            const q = new URLSearchParams({
-              year: String(period.year),
-              periodType: period.periodType,
-              periodValue: String(period.periodValue),
-              scopeType,
-              scopeId: String(seg.id || '')
-            });
-            const res = await fetch(`${API_BASE}/kpi/targets?${q.toString()}`, {
-              headers: getAuthHeader(),
-              credentials: 'include'
-            });
-            const json = await res.json().catch(() => ({}));
-            if (!res.ok) return { ...seg, achievement: null, targetRevenue: 0 };
-            const targetRevenue = Math.max(0, Number(json?.target?.targetRevenue || 0));
+            if (!resolver) return { ...seg, achievement: null, targetRevenue: 0 };
+            const targetRevenue =
+              baseBar.mode === 'team'
+                ? Math.max(0, Number(await resolver.getTeamTarget(seg.id)) || 0)
+                : Math.max(0, Number(await resolver.getUserTarget(seg.id)) || 0);
             const amount = Math.max(0, Number(seg.amount || 0));
             const achievement = targetRevenue > 0 ? Number(((amount / targetRevenue) * 100).toFixed(1)) : null;
             return { ...seg, achievement, targetRevenue };
@@ -1944,7 +2095,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [data?.homeContributionBar, kpiPeriod]);
+  }, [data?.homeContributionBar, data?.insightLeaderFilters?.users, data?.insightLeaderFilters?.departments, kpiPeriod]);
 
   useEffect(() => {
     let cancelled = false;

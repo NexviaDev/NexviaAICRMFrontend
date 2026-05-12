@@ -1,5 +1,5 @@
 /**
- * Gmail/문자 AI — 문장 다듬기(guided_rewrite) 5축 옵션 (라벨만 UI용, value는 API·프롬프트와 일치)
+ * 메일·문자 AI — 문장 다듬기(guided_rewrite) 5축 옵션 (라벨만 UI용, value는 API·프롬프트와 일치)
  */
 export const AI_GUIDED_DEFAULTS = {
   goal: 'polish',

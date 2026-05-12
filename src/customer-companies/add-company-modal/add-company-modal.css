@@ -18,8 +18,8 @@
 
 .add-company-modal {
   width: 100%;
-  max-width: 32rem;
-  max-height: 90vh;
+  max-width: min(96vw, 44rem);
+  max-height: 94vh;
   background: var(--card);
   border-radius: 0.75rem;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
@@ -30,9 +30,9 @@
   animation: addCompanyModalIn 0.2s ease-out;
 }
 
-/* 샘플 디자인: 800px 모달 */
+/* 샘플 디자인: 넓은 폼용 중앙 모달 */
 .add-company-modal-sample {
-  max-width: 50rem;
+  max-width: min(96vw, 72rem);
   border-radius: 0.75rem;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
 }
@@ -1232,7 +1232,7 @@
   right: 0;
   bottom: 0;
   width: 100%;
-  max-width: 36rem;
+  max-width: min(96vw, 52rem);
   background: var(--card);
   box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
   border-left: 1px solid var(--card-border);

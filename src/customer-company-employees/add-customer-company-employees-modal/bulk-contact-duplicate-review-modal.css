@@ -1,0 +1,192 @@
+.bulk-contact-review-panel {
+  width: min(96vw, 78rem);
+  max-width: min(96vw, 78rem);
+  padding: 1rem 1.05rem 1.1rem;
+}
+
+.bulk-contact-review-quick-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  margin: 0 0 0.65rem;
+}
+
+.bulk-contact-review-quick-actions button {
+  padding: 0.42rem 0.7rem;
+  border: 1px solid rgba(167, 139, 200, 0.45);
+  border-radius: 999px;
+  background: #f0ebf8;
+  color: #4a3f55;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.bulk-contact-review-quick-actions button:hover:not(:disabled) {
+  background: #e6def3;
+}
+
+.bulk-contact-review-quick-actions button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.bulk-contact-review-table-wrap {
+  max-height: min(52vh, 30rem);
+  overflow: auto;
+  border: 1px solid rgba(200, 190, 220, 0.55);
+  border-radius: 0.55rem;
+  background: #fff;
+}
+
+.bulk-contact-review-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.8125rem;
+}
+
+.bulk-contact-review-table th,
+.bulk-contact-review-table td {
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid rgba(220, 215, 235, 0.72);
+  vertical-align: middle;
+  text-align: left;
+}
+
+.bulk-contact-review-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f6f2fa;
+  color: #5c5466;
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.bulk-contact-review-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.bulk-contact-review-table tbody tr:hover {
+  background: #faf8fd;
+}
+
+.bulk-contact-review-row-no {
+  width: 3.25rem;
+  text-align: center;
+  color: #8b7fa3;
+  font-weight: 800;
+}
+
+.bulk-contact-review-target,
+.bulk-contact-review-existing,
+.bulk-contact-review-existing-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+
+.bulk-contact-review-target {
+  min-width: 11rem;
+}
+
+.bulk-contact-review-target strong,
+.bulk-contact-review-existing-item strong {
+  color: #3d3650;
+  font-weight: 800;
+}
+
+.bulk-contact-review-target span,
+.bulk-contact-review-existing-item span,
+.bulk-contact-review-more {
+  color: #6b6478;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.bulk-contact-review-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  min-width: 7.5rem;
+}
+
+.bulk-contact-review-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.bulk-contact-review-badge.danger {
+  background: #f8e7eb;
+  color: #8a3f4b;
+}
+
+.bulk-contact-review-badge.soft {
+  background: #e8eef8;
+  color: #4b5f86;
+}
+
+.bulk-contact-review-existing {
+  min-width: 18rem;
+  max-width: 26rem;
+}
+
+.bulk-contact-review-existing-item {
+  padding: 0.32rem 0.42rem;
+  border: 1px solid rgba(220, 215, 235, 0.7);
+  border-radius: 0.35rem;
+  background: #fdfcff;
+}
+
+.bulk-contact-review-more {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 0.15rem 0.4rem;
+  border-radius: 999px;
+  background: #f0ebf8;
+  font-weight: 700;
+}
+
+.bulk-contact-review-choice {
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.18rem;
+  border: 1px solid rgba(200, 190, 220, 0.72);
+  border-radius: 999px;
+  background: #f8f5fb;
+  white-space: nowrap;
+}
+
+.bulk-contact-review-choice button {
+  padding: 0.35rem 0.6rem;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #6b6478;
+  font-size: 0.78rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.bulk-contact-review-choice button.active.force {
+  background: #e6e2f5;
+  color: #4a3f55;
+}
+
+.bulk-contact-review-choice button.active.exclude {
+  background: #f6e7ea;
+  color: #8a3f4b;
+}
+
+.bulk-contact-review-choice button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

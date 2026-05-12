@@ -17,10 +17,12 @@ export default function Register() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const tokenFromUrl = searchParams.get('token');
-  const needsRegister = searchParams.get('needsRegister') === '1';
   const isEditMode = searchParams.get('edit') === '1';
+  /** OAuth 후 추가 정보 입력(/register?token=...)일 때만 Google API 동의 표시 */
+  const needsGoogleApiConsent = !isEditMode && !!tokenFromUrl;
 
-  const [mode, setMode] = useState('email'); // 'email' | 'verify' | 'form' | 'google-complete'
+  const initialMode = isEditMode || tokenFromUrl ? 'google-complete' : 'email-register';
+  const [mode, setMode] = useState(initialMode); // 'email-register' | 'google-complete'
   const [email, setEmail] = useState('');
   const [emailChecked, setEmailChecked] = useState(false);
   const [verificationCode, setVerificationCode] = useState('');
@@ -204,7 +206,7 @@ export default function Register() {
   };
 
   useEffect(() => {
-    if (tokenFromUrl && needsRegister) {
+    if (tokenFromUrl) {
       setMode('google-complete');
       fetch(`${API_BASE}/auth/me?token=${encodeURIComponent(tokenFromUrl)}`)
         .then(async (res) => {
@@ -244,7 +246,7 @@ export default function Register() {
           navigate('/login', { replace: true });
         });
     }
-  }, [tokenFromUrl, needsRegister, navigate, applyServerAvatar]);
+  }, [tokenFromUrl, navigate, applyServerAvatar]);
 
   useEffect(() => {
     if (isEditMode) {
@@ -357,6 +359,7 @@ export default function Register() {
     }
     setLoading(true);
     try {
+      await pingBackendHealth();
       const res = await fetch(`${API_BASE}/auth/check-email`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -366,8 +369,7 @@ export default function Register() {
       if (res.ok && data.ok) {
         setEmail(e);
         setEmailChecked(true);
-        setSuccess('사용 가능한 이메일입니다. 인증 번호를 발송합니다.');
-        setMode('verify');
+        setSuccess('사용 가능한 이메일입니다. 인증 번호를 발송했습니다. 메일함을 확인해 주세요.');
         fetch(`${API_BASE}/auth/send-verification`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -388,6 +390,7 @@ export default function Register() {
     setSuccess('');
     setLoading(true);
     try {
+      await pingBackendHealth();
       const res = await fetch(`${API_BASE}/auth/send-verification`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -406,18 +409,17 @@ export default function Register() {
     }
   };
 
-  const handleVerifyAndGoForm = () => {
-    if (!verificationCode.trim()) {
-      setError('인증 번호를 입력해 주세요.');
-      return;
-    }
-    setError('');
-    setMode('form');
-  };
-
   const handleRegisterSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    if (!agreePrivacy || !agreeTerms) {
+      setError('개인정보 보호정책 및 서비스 이용약관에 동의해 주세요.');
+      return;
+    }
+    if (!emailChecked) {
+      setError('이메일 중복 검사를 눌러 인증 번호를 먼저 받아 주세요.');
+      return;
+    }
     setLoading(true);
     const eVal = email.trim().toLowerCase();
     if (!EMAIL_REGEX.test(eVal)) {
@@ -472,6 +474,7 @@ export default function Register() {
       return;
     }
     try {
+      await pingBackendHealth();
       const res = await fetch(`${API_BASE}/auth/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -523,8 +526,12 @@ export default function Register() {
     e.preventDefault();
     setError('');
     setLoading(true);
-    if (!isEditMode && (!agreePrivacy || !agreeTerms || !agreeGoogleApi)) {
-      setError('개인정보 보호정책, 서비스 이용약관, Google API 약관에 모두 동의해 주세요.');
+    if (!isEditMode && (!agreePrivacy || !agreeTerms || (needsGoogleApiConsent && !agreeGoogleApi))) {
+      setError(
+        needsGoogleApiConsent
+          ? '개인정보 보호정책, 서비스 이용약관, Google API 및 연동 약관에 모두 동의해 주세요.'
+          : '개인정보 보호정책 및 서비스 이용약관에 동의해 주세요.'
+      );
       setLoading(false);
       return;
     }
@@ -570,6 +577,7 @@ export default function Register() {
       return;
     }
     try {
+      await pingBackendHealth(() => authHeader());
       const body = {
         name: name.trim(),
         phone: phone.trim(),
@@ -766,19 +774,21 @@ export default function Register() {
                         에 동의합니다 (필수)
                       </span>
                     </label>
-                    <label className="register-legal-row">
-                      <input
-                        type="checkbox"
-                        checked={agreeGoogleApi}
-                        onChange={(e) => setAgreeGoogleApi(e.target.checked)}
-                      />
-                      <span>
-                        <button type="button" className="register-legal-link" onClick={() => setLegalModal('google')}>
-                          Google API 및 연동 약관·고지
-                        </button>
-                        에 동의합니다 (필수)
-                      </span>
-                    </label>
+                    {needsGoogleApiConsent ? (
+                      <label className="register-legal-row">
+                        <input
+                          type="checkbox"
+                          checked={agreeGoogleApi}
+                          onChange={(e) => setAgreeGoogleApi(e.target.checked)}
+                        />
+                        <span>
+                          <button type="button" className="register-legal-link" onClick={() => setLegalModal('google')}>
+                            Google API 및 연동 약관·고지
+                          </button>
+                          에 동의합니다 (필수)
+                        </span>
+                      </label>
+                    ) : null}
                   </div>
                 ) : null}
                 <button type="submit" className="register-submit" disabled={loading}>{loading ? '저장 중...' : '저장'}</button>
@@ -808,185 +818,176 @@ export default function Register() {
     );
   }
 
-  if (mode === 'form') {
-    return (
-      <div className="register-page">
-        <div className="register-container">
-          <div className="register-card">
-            <div className="register-header">
-              {registerAvatarHeaderTap}
-              <h2>회원가입</h2>
-              <p>정보를 입력해 주세요</p>
-            </div>
-            <div className="register-body">
-              <span className="register-step-badge">2/2</span>
-              {error && <p className="register-error">{error}</p>}
-              <form onSubmit={handleRegisterSubmit} className="register-form">
-                <div className="register-field">
-                  <label>이메일 (인증 완료)</label>
-                  <input type="email" value={email} readOnly />
-                </div>
-                <div className="register-field">
-                  <label htmlFor="form-code">인증 번호 *</label>
-                  <input id="form-code" type="text" value={verificationCode} onChange={(e) => setVerificationCode(e.target.value)} placeholder="6자리 인증 번호" maxLength={6} required />
-                </div>
-                <div className="register-field">
-                  <label htmlFor="form-name">이름 *</label>
-                  <input id="form-name" type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="이름" required />
-                </div>
-                <div className="register-field">
-                  <label htmlFor="form-phone">연락처 *</label>
-                  <input id="form-phone" type="tel" value={phone} onChange={(e) => handlePhoneChange(e.target.value)} placeholder="010-1234-5678" required />
-                </div>
-                <div className="register-field register-company-wrap">
-                  <label>회사 *</label>
-                  <div className="register-company-input-row">
-                    <input type="text" value={companyName} readOnly placeholder="돋보기를 눌러 회사를 검색하세요" />
-                    <button type="button" className="register-company-search-btn" onClick={() => setCompanySearchModalOpen(true)}>
-                      <span className="material-symbols-outlined">search</span>
-                    </button>
-                  </div>
-                  {companyConfirmed && companyBusinessNumber && (
-                    <span className="register-company-biz-number">
-                      <span className="material-symbols-outlined">badge</span> 사업자번호: {companyBusinessNumber}
-                    </span>
-                  )}
-                  {!companyConfirmed && (
-                    <span className="register-company-status unconfirmed">
-                      <span className="material-symbols-outlined">info</span> 돋보기를 눌러 검색하거나, 회사 추가를 이용해 주세요
-                    </span>
-                  )}
-                  {companyConfirmed && (
-                    <span className="register-company-status confirmed">
-                      <span className="material-symbols-outlined">verified_user</span> 새 회사라면 저장 시 최초 저장자에게 자동으로 `Owner` 권한이 부여됩니다.
-                    </span>
-                  )}
-                  <button type="button" className="register-company-add-btn" onClick={() => setAddCompanyModalOpen(true)}>+ 회사 추가</button>
-                </div>
-                <div className="register-field">
-                  <label>회사 주소</label>
-                  <input type="text" value={companyAddress} readOnly placeholder="회사 선택 시 자동 입력" />
-                </div>
-                <div className="register-field">
-                  <label>회사 상세주소</label>
-                  <input type="text" value={companyAddressDetail} readOnly placeholder="회사 선택 시 자동 입력" />
-                </div>
-                <div className="register-field">
-                  <label htmlFor="form-dept-select">부서명 *</label>
-                  <select
-                    id="form-dept-select"
-                    className="register-select"
-                    value={departmentOptions.some((o) => String(o.id) === String(companyDepartment)) ? String(companyDepartment) : ''}
-                    onChange={(e) => setCompanyDepartment(e.target.value)}
-                    disabled={departmentLoading || departmentOptions.length === 0}
-                  >
-                    <option value="">
-                      {departmentLoading ? '부서 목록 불러오는 중…' : (departmentOptions.length ? '부서 선택 (직접 입력도 가능)' : '부서 목록 없음 (직접 입력)')}
-                    </option>
-                    {departmentOptions.map((opt) => (
-                      <option key={String(opt.id)} value={String(opt.id)}>{opt.label}</option>
-                    ))}
-                  </select>
-                  <input
-                    id="form-dept"
-                    type="text"
-                    value={getDepartmentDisplayText()}
-                    onChange={(e) => setCompanyDepartment(e.target.value)}
-                    placeholder="직접 부서명 입력 가능"
-                    required
-                  />
-                </div>
-                <button type="submit" className="register-submit" disabled={loading}>{loading ? '가입 중...' : '가입하기'}</button>
-              </form>
-            </div>
-            <div className="register-footer">
-              <p>이미 계정이 있으신가요? <Link to="/login">로그인</Link></p>
-            </div>
-          </div>
-        </div>
-        <SearchCompany
-          isOpen={companySearchModalOpen}
-          onClose={() => setCompanySearchModalOpen(false)}
-          onSelect={handleCompanySelect}
-        />
-        <AddCompany
-          isOpen={addCompanyModalOpen}
-          onClose={() => setAddCompanyModalOpen(false)}
-          onSuccess={(company) => { handleCompanySelect(company); setAddCompanyModalOpen(false); }}
-          setError={setError}
-        />
-        <div className="register-top-bar" />
-      </div>
-    );
-  }
-
-  if (mode === 'verify') {
-    return (
-      <div className="register-page">
-        <div className="register-container">
-          <div className="register-card">
-            <div className="register-header">
-              <div className="register-logo">
-                <span className="material-symbols-outlined">hub</span>
-              </div>
-              <h2>이메일 인증</h2>
-              <p>{email} 로 인증 번호를 발송합니다</p>
-            </div>
-            <div className="register-body">
-              <span className="register-step-badge">1/2</span>
-              {error && <p className="register-error">{error}</p>}
-              {success && <p className="register-success">{success}</p>}
-              <div className="register-form">
-                <div className="register-field">
-                  <label htmlFor="verify-code">인증 번호 *</label>
-                  <input id="verify-code" type="text" value={verificationCode} onChange={(e) => setVerificationCode(e.target.value)} placeholder="6자리 인증 번호" maxLength={6} />
-                </div>
-                <div className="register-actions">
-                  <button type="button" className="register-btn register-btn-secondary" onClick={handleSendCode} disabled={loading}>인증 번호 다시 받기</button>
-                  <button type="button" className="register-btn register-btn-primary" onClick={handleVerifyAndGoForm} disabled={loading}>인증 후 다음</button>
-                </div>
-              </div>
-            </div>
-            <div className="register-footer">
-              <p>다른 이메일로 하시려면 <button type="button" style={{ background: 'none', border: 'none', cursor: 'pointer', font: 'inherit', textDecoration: 'underline', fontWeight: 700 }} onClick={() => { setMode('email'); setEmailChecked(false); setVerificationCode(''); setSuccess(''); setError(''); }}>처음으로</button></p>
-            </div>
-          </div>
-        </div>
-        <div className="register-top-bar" />
-      </div>
-    );
-  }
-
   return (
     <div className="register-page">
       <div className="register-container">
         <div className="register-card">
           <div className="register-header">
-            <div className="register-logo">
-              <span className="material-symbols-outlined">hub</span>
-            </div>
+            {registerAvatarHeaderTap}
             <h2>회원가입</h2>
-            <p>이메일 인증 후 가입을 진행합니다</p>
+            <p>이메일 인증 후 정보를 입력하고, 약관 동의 뒤 저장하면 계정이 등록됩니다</p>
           </div>
           <div className="register-body">
-            <span className="register-step-badge">1/2</span>
             {error && <p className="register-error">{error}</p>}
             {success && <p className="register-success">{success}</p>}
-            <div className="register-form">
+            <form onSubmit={handleRegisterSubmit} className="register-form">
               <div className="register-field">
-                <label htmlFor="reg-email">아이디 (이메일) *</label>
-                <input id="reg-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="example@company.com" disabled={!!emailChecked} />
+                <label htmlFor="reg-email-unified">아이디 (이메일) *</label>
+                <div className="register-company-input-row register-email-check-row">
+                  <input
+                    id="reg-email-unified"
+                    type="email"
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      setEmailChecked(false);
+                      setVerificationCode('');
+                      setSuccess('');
+                    }}
+                    placeholder="example@company.com"
+                    autoComplete="email"
+                  />
+                  <button type="button" className="register-company-search-btn register-email-check-btn" onClick={handleCheckEmail} disabled={loading}>
+                    {loading ? '…' : '중복 검사'}
+                  </button>
+                </div>
+                <p className="register-field-hint">중복 검사 통과 시 위 이메일로 인증 번호가 발송됩니다.</p>
               </div>
-              <div className="register-actions">
-                <button type="button" className="register-btn register-btn-primary" onClick={handleCheckEmail} disabled={loading}>{loading ? '확인 중...' : '중복 검사'}</button>
+              <div className="register-field">
+                <label htmlFor="reg-code-unified">인증 번호 *</label>
+                <div className="register-inline-actions">
+                  <input
+                    id="reg-code-unified"
+                    type="text"
+                    inputMode="numeric"
+                    value={verificationCode}
+                    onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    placeholder="6자리"
+                    maxLength={6}
+                    required
+                  />
+                  <button type="button" className="register-btn register-btn-secondary" onClick={handleSendCode} disabled={loading || !email.trim()}>
+                    번호 다시 받기
+                  </button>
+                </div>
               </div>
-            </div>
+              <div className="register-field">
+                <label htmlFor="reg-name-unified">이름 *</label>
+                <input id="reg-name-unified" type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="이름" required />
+              </div>
+              <div className="register-field">
+                <label htmlFor="reg-phone-unified">연락처 *</label>
+                <input id="reg-phone-unified" type="tel" value={phone} onChange={(e) => handlePhoneChange(e.target.value)} placeholder="010-1234-5678" required />
+              </div>
+              <div className="register-field register-company-wrap">
+                <label>회사 *</label>
+                <div className="register-company-input-row">
+                  <input type="text" value={companyName} readOnly placeholder="돋보기를 눌러 회사를 검색하세요" />
+                  <button type="button" className="register-company-search-btn" onClick={() => setCompanySearchModalOpen(true)}>
+                    <span className="material-symbols-outlined">search</span>
+                  </button>
+                </div>
+                {companyConfirmed && companyBusinessNumber && (
+                  <span className="register-company-biz-number">
+                    <span className="material-symbols-outlined">badge</span> 사업자번호: {companyBusinessNumber}
+                  </span>
+                )}
+                {!companyConfirmed && (
+                  <span className="register-company-status unconfirmed">
+                    <span className="material-symbols-outlined">info</span> 돋보기를 눌러 검색하거나, 회사 추가를 이용해 주세요
+                  </span>
+                )}
+                {companyConfirmed && (
+                  <span className="register-company-status confirmed">
+                    <span className="material-symbols-outlined">verified_user</span> 새 회사라면 저장 시 최초 저장자에게 자동으로 Owner 권한이 부여됩니다.
+                  </span>
+                )}
+                <button type="button" className="register-company-add-btn" onClick={() => setAddCompanyModalOpen(true)}>+ 회사 추가</button>
+              </div>
+              <div className="register-field">
+                <label>회사 주소</label>
+                <input type="text" value={companyAddress} readOnly placeholder="회사 선택 시 자동 입력" />
+              </div>
+              <div className="register-field">
+                <label>회사 상세주소</label>
+                <input type="text" value={companyAddressDetail} readOnly placeholder="회사 선택 시 자동 입력" />
+              </div>
+              <div className="register-field">
+                <label htmlFor="reg-dept-select-unified">부서명 *</label>
+                <select
+                  id="reg-dept-select-unified"
+                  className="register-select"
+                  value={departmentOptions.some((o) => String(o.id) === String(companyDepartment)) ? String(companyDepartment) : ''}
+                  onChange={(e) => setCompanyDepartment(e.target.value)}
+                  disabled={departmentLoading || departmentOptions.length === 0}
+                >
+                  <option value="">
+                    {departmentLoading ? '부서 목록 불러오는 중…' : (departmentOptions.length ? '부서 선택 (직접 입력도 가능)' : '부서 목록 없음 (직접 입력)')}
+                  </option>
+                  {departmentOptions.map((opt) => (
+                    <option key={String(opt.id)} value={String(opt.id)}>{opt.label}</option>
+                  ))}
+                </select>
+                <input
+                  id="reg-dept-unified"
+                  type="text"
+                  value={getDepartmentDisplayText()}
+                  onChange={(e) => setCompanyDepartment(e.target.value)}
+                  placeholder="직접 부서명 입력 가능"
+                  required
+                />
+              </div>
+              <div className="register-legal-consent" role="group" aria-labelledby="register-legal-consent-email-title">
+                <p id="register-legal-consent-email-title" className="register-legal-consent-title">필수 동의 (저장 전)</p>
+                <label className="register-legal-row">
+                  <input
+                    type="checkbox"
+                    checked={agreePrivacy}
+                    onChange={(e) => setAgreePrivacy(e.target.checked)}
+                  />
+                  <span>
+                    <button type="button" className="register-legal-link" onClick={() => setLegalModal('privacy')}>
+                      개인정보 보호정책
+                    </button>
+                    에 동의합니다 (필수)
+                  </span>
+                </label>
+                <label className="register-legal-row">
+                  <input
+                    type="checkbox"
+                    checked={agreeTerms}
+                    onChange={(e) => setAgreeTerms(e.target.checked)}
+                  />
+                  <span>
+                    <button type="button" className="register-legal-link" onClick={() => setLegalModal('terms')}>
+                      서비스 이용약관
+                    </button>
+                    에 동의합니다 (필수)
+                  </span>
+                </label>
+              </div>
+              <button type="submit" className="register-submit" disabled={loading}>{loading ? '저장 중...' : '저장 · 가입 완료'}</button>
+            </form>
           </div>
           <div className="register-footer">
             <p>이미 계정이 있으신가요? <Link to="/login">로그인</Link></p>
           </div>
         </div>
       </div>
+      <SearchCompany
+        isOpen={companySearchModalOpen}
+        onClose={() => setCompanySearchModalOpen(false)}
+        onSelect={handleCompanySelect}
+      />
+      <AddCompany
+        isOpen={addCompanyModalOpen}
+        onClose={() => setAddCompanyModalOpen(false)}
+        onSuccess={(company) => { handleCompanySelect(company); setAddCompanyModalOpen(false); }}
+        setError={setError}
+      />
+      <PrivacyPolicyModal open={legalModal === 'privacy'} onClose={() => setLegalModal(null)} />
+      <TermsOfServiceModal open={legalModal === 'terms'} onClose={() => setLegalModal(null)} />
+      <GoogleApiTermsModal open={legalModal === 'google'} onClose={() => setLegalModal(null)} />
       <div className="register-top-bar" />
     </div>
   );

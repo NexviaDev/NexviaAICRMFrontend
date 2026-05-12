@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import './google-contacts-modal.css';
 
 import { API_BASE } from '@/config';
+import { startGoogleFeatureLink } from '@/lib/google-feature-link';
+
+const GCONTACTS_MSG = 'nexvia-google-contacts-import';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -23,6 +26,7 @@ export default function GoogleContactsModal({ mode = 'single', onSelect, onBulkS
   const [searchInput, setSearchInput] = useState('');
   const [nextPageToken, setNextPageToken] = useState(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [needsGoogleConnect, setNeedsGoogleConnect] = useState(false);
 
   const [selected, setSelected] = useState(new Set());
   const lastClickedIdx = useRef(null);
@@ -56,6 +60,7 @@ export default function GoogleContactsModal({ mode = 'single', onSelect, onBulkS
     if (isMore) setLoadingMore(true);
     else { setLoading(true); setContacts([]); }
     setError('');
+    setNeedsGoogleConnect(false);
     try {
       const params = new URLSearchParams({ pageSize: '100' });
       if (query) params.set('query', query);
@@ -64,6 +69,7 @@ export default function GoogleContactsModal({ mode = 'single', onSelect, onBulkS
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || '연락처를 불러올 수 없습니다.');
+        setNeedsGoogleConnect(!!(data.needsGoogleLink || data.needsReauth));
         return;
       }
       if (isMore) setContacts((prev) => [...prev, ...(data.contacts || [])]);
@@ -142,6 +148,11 @@ export default function GoogleContactsModal({ mode = 'single', onSelect, onBulkS
     }
   };
 
+  const handleGoogleConnect = () => {
+    const ret = `${window.location.pathname}${window.location.search}`;
+    startGoogleFeatureLink('contacts', ret);
+  };
+
   const handleCancel = () => {
     if (new URL(window.location).searchParams.has('googleContactsModal')) {
       window.history.back();
@@ -176,6 +187,18 @@ export default function GoogleContactsModal({ mode = 'single', onSelect, onBulkS
           />
           <button type="submit" className="gcontacts-search-btn">검색</button>
         </form>
+
+        {needsGoogleConnect && (
+          <div className="gcontacts-google-link-banner" role="region" aria-label="Google 연동">
+            <p className="gcontacts-google-link-text">
+              이메일 인증번호로만 로그인한 경우, Google 주소록 API는 별도 동의가 필요합니다. 아래 버튼으로 한 번 연동한 뒤 이 페이지로 돌아와 주소록을 다시 여세요. (Nexvia 로그인 이메일과 같은 Google 계정이어야 합니다.)
+            </p>
+            <button type="button" className="gcontacts-google-link-btn" onClick={handleGoogleConnect}>
+              <span className="material-symbols-outlined" aria-hidden>link</span>
+              Google 계정 연동 (주소록)
+            </button>
+          </div>
+        )}
 
         {isBulk && contacts.length > 0 && !loading && (
           <div className="gcontacts-bulk-bar">

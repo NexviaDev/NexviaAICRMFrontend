@@ -949,3 +949,55 @@
     padding: 0.4rem 0.85rem;
   }
 }
+
+.customer-companies-page--search-modal {
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+}
+
+.customer-companies-page--search-modal .page-header {
+  height: auto;
+  min-height: 0;
+  padding: 0.5rem 0.75rem;
+}
+
+.customer-companies-page--search-modal .page-content {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0.35rem 0.5rem 0.25rem;
+}
+
+.customer-companies-page--search-modal .panel.table-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  margin-bottom: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.customer-companies-page--search-modal .table-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--card);
+  isolation: isolate;
+  -webkit-overflow-scrolling: touch;
+}
+
+.customer-companies-page--search-modal .customer-companies-row-clickable {
+  cursor: pointer;
+}
+
+.customer-companies-page--search-modal .customer-companies-row-clickable:hover {
+  background: var(--bg-light);
+}

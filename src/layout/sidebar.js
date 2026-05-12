@@ -27,12 +27,6 @@ const CATEGORY_ITEMS = [
   { key: 'etc', label: '기타', icon: 'more_horiz' }
 ];
 
-/** 사이드바 전용 외부 링크 키(라우터와 충돌 방지). 저장된 itemOrders에 `to`로 쓰임 */
-const SIDEBAR_EXT_GMAIL = '__sidebar_ext_gmail__';
-const GOOGLE_GMAIL_INBOX_URL = 'https://mail.google.com/mail/u/0/#inbox';
-const SIDEBAR_EXT_GOOGLE_CHAT = '__sidebar_ext_google_chat__';
-const GOOGLE_CHAT_URL = 'https://chat.google.com/';
-
 const SUBMENU_ITEMS = [
   { to: '/', icon: 'dashboard', label: '대시보드', category: 'inhouse' },
   { to: '/company-overview', icon: 'domain', label: '사내 현황', category: 'inhouse' },
@@ -49,22 +43,6 @@ const SUBMENU_ITEMS = [
   { to: '/project', icon: 'folder', label: '프로젝트', category: 'schedule' },
   { to: '/todo-list', icon: 'checklist', label: 'Todo List', category: 'schedule' },
   { to: '/ai-voice', icon: 'mic', label: 'AI 음성 기록', category: 'etc' },
-  {
-    to: SIDEBAR_EXT_GMAIL,
-    href: GOOGLE_GMAIL_INBOX_URL,
-    external: true,
-    icon: 'mail',
-    label: '이메일',
-    category: 'etc'
-  },
-  {
-    to: SIDEBAR_EXT_GOOGLE_CHAT,
-    href: GOOGLE_CHAT_URL,
-    external: true,
-    icon: 'chat',
-    label: '메신저',
-    category: 'etc'
-  },
   { to: '/subscription', icon: 'subscriptions', label: '구독관리', category: 'etc' }
 ];
 
