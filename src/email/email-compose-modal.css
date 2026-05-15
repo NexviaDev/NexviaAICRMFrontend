@@ -974,45 +974,6 @@
   background: rgba(167, 214, 220, 0.4);
 }
 
-.email-compose-sig-panel {
-  margin: 0 1rem 0.75rem;
-  padding: 0.85rem 1rem;
-  border-radius: 0.65rem;
-  border: 1px solid rgba(167, 214, 220, 0.5);
-  background: linear-gradient(145deg, rgba(240, 252, 254, 0.95), rgba(245, 250, 255, 0.9));
-  font-size: 0.8125rem;
-}
-
-.email-compose-sig-panel-head {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-weight: 700;
-  color: #4a6670;
-  margin-bottom: 0.5rem;
-}
-
-.email-compose-sig-panel-head .material-symbols-outlined {
-  font-size: 1.15rem;
-  color: #5a9aaa;
-}
-
-.email-compose-sig-close {
-  margin-left: auto;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  padding: 0.2rem;
-  border-radius: 0.35rem;
-  color: #64748b;
-  display: flex;
-  align-items: center;
-}
-
-.email-compose-sig-close:hover {
-  background: rgba(255, 255, 255, 0.7);
-}
-
 .email-compose-sig-hint {
   margin: 0 0 0.65rem;
   color: #64748b;
@@ -1036,7 +997,7 @@
   background: #fff;
   font-size: 0.75rem;
   resize: vertical;
-  min-height: 6rem;
+  min-height: 8rem;
   font-family: ui-monospace, 'Cascadia Code', 'Segoe UI Mono', monospace;
   line-height: 1.4;
 }
@@ -1065,7 +1026,7 @@
   display: block;
   width: 100%;
   min-height: 5.5rem;
-  max-height: 32rem;
+  max-height: 40rem;
   border: none;
   background: #f8fafc;
 }
@@ -1085,12 +1046,6 @@
   font-size: 0.8rem;
 }
 
-.email-compose-sig-actions {
-  margin-top: 0.65rem;
-  display: flex;
-  gap: 0.5rem;
-}
-
 .email-compose-sig-save {
   padding: 0.45rem 1.1rem;
   border: none;
@@ -1099,11 +1054,11 @@
   font-size: 0.8125rem;
   cursor: pointer;
   color: #fff;
-  background: linear-gradient(135deg, #7eb8c4, #6a9fb0);
+  background: #6a9fb0;
 }
 
 .email-compose-sig-save:hover:not(:disabled) {
-  filter: brightness(1.05);
+  background: #5d92a3;
 }
 
 .email-compose-sig-save:disabled {
@@ -1130,8 +1085,8 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-  max-width: 28rem;
-  max-height: min(90vh, 36rem);
+  max-width: min(52rem, 96vw);
+  max-height: min(92vh, 48rem);
   background: var(--card, #fafbfc);
   border-radius: 0.75rem;
   border: 1px solid rgba(183, 180, 224, 0.4);
@@ -1154,6 +1109,15 @@
   font-size: 1.25rem;
   color: #8b7ec8;
   flex-shrink: 0;
+}
+
+.email-compose-ai-modal-header.email-compose-sig-ai-modal-header {
+  background: rgba(240, 252, 254, 0.96);
+  border-bottom-color: rgba(167, 214, 220, 0.45);
+}
+
+.email-compose-ai-modal-header-icon.email-compose-sig-modal-header-icon {
+  color: #5a9aaa;
 }
 
 .email-compose-ai-modal-title {
@@ -1440,8 +1404,9 @@
     padding-bottom: env(safe-area-inset-bottom, 0);
   }
 
-  .email-compose-ai-modal {
-    max-height: min(92dvh, 40rem);
+  .email-compose-ai-modal,
+  .email-compose-sig-ai-modal.email-compose-ai-modal {
+    max-height: min(92dvh, 52rem);
     max-width: none;
     width: calc(100% - 1rem);
   }

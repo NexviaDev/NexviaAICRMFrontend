@@ -1,6 +1,11 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { API_BASE } from '@/config';
 import { pingBackendHealth } from '@/lib/backend-wake';
+import {
+  DEFAULT_PIPELINE_STAGE_SEED,
+  PIPELINE_STAGES_ENTITY_TYPE,
+  notifyPipelineStagesUpdated
+} from '../pipeline-stage-labels';
 import './pipeline-stages-manage-modal.css';
 
 function getAuthHeader() {
@@ -8,7 +13,7 @@ function getAuthHeader() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-const ENTITY_TYPE = 'salesPipelineStage';
+const ENTITY_TYPE = PIPELINE_STAGES_ENTITY_TYPE;
 const SYSTEM_FIXED_STAGE_KEY = 'Won';
 
 /** sidebar.js `application/x-sidebar-to` 와 동일한 역할 — 브라우저 기본 드래그와 구분 */
@@ -41,15 +46,7 @@ function isPipelineStageReorderDrag(dataTransfer) {
 }
 
 /** DB에 단계가 없을 때 한 번에 올릴 기본 진행 단계 + Won (Forecast %) */
-const DEFAULT_STAGE_SEED = [
-  { key: 'NewLead', label: '신규 리드 & 추가 구매건', forecastPercent: 20 },
-  { key: 'Contacted', label: '연락 완료', forecastPercent: 30 },
-  { key: 'ProposalSent', label: '제안서 전달 완료', forecastPercent: 50 },
-  { key: 'TechDemo', label: '기술 시연', forecastPercent: 60 },
-  { key: 'Quotation', label: '견적', forecastPercent: 70 },
-  { key: 'Negotiation', label: '최종 협상', forecastPercent: 90 },
-  { key: 'Won', label: '수주 성공', forecastPercent: 100 }
-];
+const DEFAULT_STAGE_SEED = DEFAULT_PIPELINE_STAGE_SEED;
 
 function parseForecastPercent(raw) {
   if (raw == null) return null;
@@ -70,11 +67,7 @@ function forecastInputFromDef(def) {
 }
 
 function notifyStagesUpdated() {
-  try {
-    window.dispatchEvent(new CustomEvent('nexvia-pipeline-stages-updated'));
-  } catch {
-    /* ignore */
-  }
+  notifyPipelineStagesUpdated();
 }
 
 /**

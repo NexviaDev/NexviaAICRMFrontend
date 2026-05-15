@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
+import './add-customer-company-employees-modal.css';
 import './bulk-contact-duplicate-review-modal.css';
-
-const FORCE = 'force';
-const EXCLUDE = 'exclude';
+import { BULK_ROW_EXCLUDE, BULK_ROW_FORCE, BULK_ROW_MERGE } from './bulk-contact-merge-utils';
 
 function asText(value, fallback = '—') {
   const text = String(value ?? '').trim();
@@ -21,6 +20,10 @@ function matchReasonLabel(reason) {
   return '중복';
 }
 
+function candidateId(candidate) {
+  return String(candidate?._id || '').trim();
+}
+
 function buildIssueRows(review) {
   const importRows = Array.isArray(review?.importRows) ? review.importRows : [];
   const entries = Array.isArray(review?.entries) ? review.entries : [];
@@ -30,19 +33,15 @@ function buildIssueRows(review) {
       const row = importRows[rowIndex] || importRows[fallbackIndex] || {};
       const entry = entries[rowIndex] || entries[fallbackIndex] || {};
       const contactCandidates = Array.isArray(preResult?.contactCandidates) ? preResult.contactCandidates : [];
-      const similarCustomerCompanies = Array.isArray(preResult?.similarCustomerCompanies)
-        ? preResult.similarCustomerCompanies
-        : [];
       return {
         key: rowKeyFromPreResult(preResult, fallbackIndex),
         displayNo: rowIndex + 1,
         row,
         entry,
-        contactCandidates,
-        similarCustomerCompanies
+        contactCandidates
       };
     })
-    .filter((r) => r.contactCandidates.length || r.similarCustomerCompanies.length);
+    .filter((r) => r.contactCandidates.length > 0);
 }
 
 export default function BulkContactDuplicateReviewModal({
@@ -53,20 +52,46 @@ export default function BulkContactDuplicateReviewModal({
 }) {
   const source = review?.source || 'import';
   const importLike = source === 'import' || source === 'excel';
-  const title = importLike ? '대량 등록 — 연락처 중복' : '대량 등록 — 중복·유사';
+  const title = '대량 등록 — 연락처 중복';
   const issueRows = useMemo(() => buildIssueRows(review), [review]);
   const [decisions, setDecisions] = useState({});
+  const [mergeContactIds, setMergeContactIds] = useState({});
 
   useEffect(() => {
-    const next = {};
+    const nextDecisions = {};
+    const nextContact = {};
     issueRows.forEach((row) => {
-      next[row.key] = decisions[row.key] || EXCLUDE;
+      nextDecisions[row.key] = decisions[row.key] || BULK_ROW_EXCLUDE;
+      if (mergeContactIds[row.key]) nextContact[row.key] = mergeContactIds[row.key];
     });
-    setDecisions(next);
+    setDecisions(nextDecisions);
+    setMergeContactIds(nextContact);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [issueRows.map((row) => row.key).join('|')]);
 
+  useEffect(() => {
+    if (!review || !Array.isArray(review.preResults) || review.preResults.length === 0 || issueRows.length === 0) {
+      return undefined;
+    }
+    const onKeyDown = (e) => {
+      if (e.key !== 'Escape') return;
+      if (saving) return;
+      e.preventDefault();
+      onClose?.();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [review, saving, onClose, issueRows.length]);
+
   if (!review || !Array.isArray(review.preResults) || review.preResults.length === 0 || issueRows.length === 0) return null;
+
+  const clearMergeForRow = (key) => {
+    setMergeContactIds((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
 
   const setAllDecisions = (action) => {
     const next = {};
@@ -74,18 +99,43 @@ export default function BulkContactDuplicateReviewModal({
       next[row.key] = action;
     });
     setDecisions(next);
+    if (action !== BULK_ROW_MERGE) {
+      setMergeContactIds({});
+    }
   };
 
   const setRowDecision = (key, action) => {
     setDecisions((prev) => ({ ...prev, [key]: action }));
+    if (action !== BULK_ROW_MERGE) clearMergeForRow(key);
+  };
+
+  const selectMergeContact = (rowKey, employeeId) => {
+    const id = String(employeeId || '').trim();
+    if (!id) return;
+    setDecisions((prev) => ({ ...prev, [rowKey]: BULK_ROW_MERGE }));
+    setMergeContactIds((prev) => ({ ...prev, [rowKey]: id }));
   };
 
   const confirmSelected = () => {
+    for (const row of issueRows) {
+      const d = decisions[row.key] || BULK_ROW_EXCLUDE;
+      if (d !== BULK_ROW_MERGE) continue;
+      if (!mergeContactIds[row.key]) {
+        window.alert(`${row.displayNo}행: 병합할 기존 연락처를 목록에서 선택해 주세요.`);
+        return;
+      }
+    }
+
     const next = {};
     issueRows.forEach((row) => {
-      next[row.key] = decisions[row.key] || EXCLUDE;
+      next[row.key] = decisions[row.key] || BULK_ROW_EXCLUDE;
     });
-    onConfirmForce?.({ mode: 'perRow', decisions: next });
+    onConfirmForce?.({
+      mode: 'perRow',
+      decisions: next,
+      mergeContactIds: { ...mergeContactIds },
+      mergeCompanyIds: {}
+    });
   };
 
   return (
@@ -101,22 +151,40 @@ export default function BulkContactDuplicateReviewModal({
         <p className="add-contact-pregate-hint">
           {importLike ? (
             <>
-              아래 표에서 어떤 연락처가 기존 데이터와 겹치는지 확인한 뒤, 행별로 <strong>강제 등록</strong> 또는{' '}
-              <strong>제외</strong>를 선택하세요.
+              아래 표에서 겹치는 연락처를 확인하세요. <strong>기존 연락처</strong>를 누르면 해당 건에 병합됩니다(빈
+              필드만 채움). 또는 행별로 <strong>강제 등록</strong>·<strong>제외</strong>를 선택할 수 있습니다.
             </>
           ) : (
             <>
-              아래 표에서 연락처 중복과 고객사 유사 항목을 확인한 뒤, 행별로 <strong>강제 등록</strong> 또는{' '}
-              <strong>제외</strong>를 선택하세요.
+              아래 표에서 연락처 중복을 확인하세요. <strong>기존 연락처</strong>를 눌러 병합하거나, 행별로{' '}
+              <strong>강제 등록</strong>·<strong>제외</strong>를 선택하세요.
             </>
           )}
         </p>
         <div className="bulk-contact-review-quick-actions" role="group" aria-label="일괄 선택">
-          <button type="button" onClick={() => setAllDecisions(EXCLUDE)} disabled={saving}>
+          <button
+            type="button"
+            className="add-contact-modal-save"
+            onClick={() => setAllDecisions(BULK_ROW_EXCLUDE)}
+            disabled={saving}
+          >
             전체 제외
           </button>
-          <button type="button" onClick={() => setAllDecisions(FORCE)} disabled={saving}>
+          <button
+            type="button"
+            className="add-contact-modal-save"
+            onClick={() => setAllDecisions(BULK_ROW_FORCE)}
+            disabled={saving}
+          >
             전체 강제 등록
+          </button>
+          <button
+            type="button"
+            className="add-contact-modal-save"
+            disabled={saving}
+            onClick={() => onConfirmForce?.(false)}
+          >
+            전체 제외로 등록
           </button>
         </div>
         <div className="bulk-contact-review-table-wrap">
@@ -125,8 +193,8 @@ export default function BulkContactDuplicateReviewModal({
               <tr>
                 <th>행</th>
                 <th>등록 예정</th>
-                <th>겹치는 종류</th>
-                <th>기존 데이터</th>
+                <th>겹침</th>
+                <th>기존 연락처 (클릭하여 병합)</th>
                 <th>처리</th>
               </tr>
             </thead>
@@ -134,11 +202,11 @@ export default function BulkContactDuplicateReviewModal({
               {issueRows.map((issueRow) => {
                 const row = issueRow.row || {};
                 const entry = issueRow.entry || {};
-                const contactIssue = issueRow.contactCandidates.length > 0;
-                const companyIssue = issueRow.similarCustomerCompanies.length > 0;
-                const decision = decisions[issueRow.key] || EXCLUDE;
+                const decision = decisions[issueRow.key] || BULK_ROW_EXCLUDE;
+                const pickedContactId = mergeContactIds[issueRow.key] || '';
+                const isMerge = decision === BULK_ROW_MERGE;
                 return (
-                  <tr key={issueRow.key}>
+                  <tr key={issueRow.key} className={isMerge ? 'bulk-contact-review-row--merge' : undefined}>
                     <td className="bulk-contact-review-row-no">{issueRow.displayNo}</td>
                     <td>
                       <div className="bulk-contact-review-target">
@@ -149,51 +217,57 @@ export default function BulkContactDuplicateReviewModal({
                     </td>
                     <td>
                       <div className="bulk-contact-review-badges">
-                        {contactIssue ? <span className="bulk-contact-review-badge danger">연락처 중복</span> : null}
-                        {companyIssue ? <span className="bulk-contact-review-badge soft">고객사 유사</span> : null}
+                        <span className="bulk-contact-review-badge danger">연락처 중복</span>
+                        {isMerge ? <span className="bulk-contact-review-badge merge">병합</span> : null}
                       </div>
                     </td>
                     <td>
                       <div className="bulk-contact-review-existing">
-                        {issueRow.contactCandidates.slice(0, 3).map((candidate) => (
-                          <div key={`c-${candidate._id || candidate.phone || candidate.name}`} className="bulk-contact-review-existing-item">
-                            <strong>
-                              {asText(candidate.name)} · {asText(candidate.phone)}
-                            </strong>
-                            <span>
-                              {matchReasonLabel(candidate.matchReason)} 일치 · {asText(candidate.companyName || candidate.customerCompanyId?.name, '소속 미지정')}
-                            </span>
-                          </div>
-                        ))}
-                        {issueRow.similarCustomerCompanies.slice(0, 3).map((company) => (
-                          <div key={`co-${company._id || company.name}`} className="bulk-contact-review-existing-item">
-                            <strong>{asText(company.name)}</strong>
-                            <span>
-                              사업자 {asText(company.businessNumber)} · {asText(company.address, '주소 없음')}
-                            </span>
-                          </div>
-                        ))}
-                        {issueRow.contactCandidates.length + issueRow.similarCustomerCompanies.length > 3 ? (
-                          <span className="bulk-contact-review-more">
-                            외 {issueRow.contactCandidates.length + issueRow.similarCustomerCompanies.length - 3}건
-                          </span>
-                        ) : null}
+                        {issueRow.contactCandidates.map((candidate) => {
+                          const cid = candidateId(candidate);
+                          const selected = isMerge && pickedContactId === cid;
+                          return (
+                            <button
+                              key={`c-${cid || candidate.phone || candidate.name}`}
+                              type="button"
+                              className={`bulk-contact-review-existing-item bulk-contact-review-pick${
+                                selected ? ' bulk-contact-review-pick--selected' : ''
+                              }`}
+                              disabled={saving || !cid}
+                              onClick={() => selectMergeContact(issueRow.key, cid)}
+                              title="이 연락처에 등록 예정 정보 병합"
+                            >
+                              <strong>
+                                {asText(candidate.name)} · {asText(candidate.phone)}
+                              </strong>
+                              <span>
+                                {matchReasonLabel(candidate.matchReason)} 일치 ·{' '}
+                                {asText(candidate.companyName || candidate.customerCompanyId?.name, '소속 미지정')}
+                              </span>
+                              {selected ? <span className="bulk-contact-review-pick-mark">선택됨 · 병합</span> : null}
+                            </button>
+                          );
+                        })}
                       </div>
                     </td>
                     <td>
                       <div className="bulk-contact-review-choice" role="group" aria-label={`${issueRow.displayNo}행 처리 선택`}>
                         <button
                           type="button"
-                          className={decision === FORCE ? 'active force' : ''}
-                          onClick={() => setRowDecision(issueRow.key, FORCE)}
+                          className={`add-contact-modal-save bulk-contact-review-choice-btn${
+                            decision === BULK_ROW_FORCE ? '' : ' bulk-contact-review-choice-btn--idle'
+                          }`}
+                          onClick={() => setRowDecision(issueRow.key, BULK_ROW_FORCE)}
                           disabled={saving}
                         >
                           강제 등록
                         </button>
                         <button
                           type="button"
-                          className={decision === EXCLUDE ? 'active exclude' : ''}
-                          onClick={() => setRowDecision(issueRow.key, EXCLUDE)}
+                          className={`add-contact-modal-save bulk-contact-review-choice-btn${
+                            decision === BULK_ROW_EXCLUDE ? '' : ' bulk-contact-review-choice-btn--idle'
+                          }`}
+                          onClick={() => setRowDecision(issueRow.key, BULK_ROW_EXCLUDE)}
                           disabled={saving}
                         >
                           제외
@@ -207,6 +281,9 @@ export default function BulkContactDuplicateReviewModal({
           </table>
         </div>
         <div className="add-contact-pregate-actions add-contact-pregate-actions--bulk">
+          <button type="button" className="add-contact-modal-save" disabled={saving} onClick={confirmSelected}>
+            선택대로 처리
+          </button>
           <button
             type="button"
             className="add-contact-modal-cancel"
@@ -214,22 +291,6 @@ export default function BulkContactDuplicateReviewModal({
             disabled={saving}
           >
             취소
-          </button>
-          <button
-            type="button"
-            className="add-contact-modal-save add-contact-pregate-btn-muted"
-            disabled={saving}
-            onClick={() => onConfirmForce?.(false)}
-          >
-            전체 제외로 등록
-          </button>
-          <button
-            type="button"
-            className="add-contact-modal-save"
-            disabled={saving}
-            onClick={confirmSelected}
-          >
-            선택대로 처리
           </button>
         </div>
       </div>

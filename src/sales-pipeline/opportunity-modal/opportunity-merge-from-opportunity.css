@@ -1,0 +1,367 @@
+/*
+ * 기회 문서 매핑 모달: 뷰포트 전체(전체화면에 가깝게).
+ * lc-crm-map-overlay 기본값 left:16rem(사이드바 비움)을 무시 — 옆으로 배경만 밀리는 현상 방지.
+ */
+.lc-crm-map-overlay.opp-merge-from-opp-overlay {
+  inset: 0;
+  left: 0;
+  width: 100%;
+  max-width: none;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: 0;
+  align-items: stretch;
+  justify-content: stretch;
+  overflow: hidden;
+  z-index: 1500;
+  box-sizing: border-box;
+}
+
+.lc-crm-map-overlay.opp-merge-from-opp-overlay .lc-crm-map-panel {
+  width: 100%;
+  max-width: none;
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.lc-crm-map-overlay.opp-merge-from-opp-overlay .lc-crm-map-head {
+  flex-shrink: 0;
+  border-radius: 0;
+}
+
+.lc-crm-map-overlay.opp-merge-from-opp-overlay .lc-crm-map-body {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* 필드 구성 + 자주 쓰는 매핑: 넓은 화면 1행 2열, 좁은 화면은 2행(세로)으로 공간 활용 */
+.opp-merge-setup-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem 1.5rem;
+  align-items: start;
+  margin-bottom: 1rem;
+  box-sizing: border-box;
+}
+
+.opp-merge-setup-grid-cell {
+  min-width: 0;
+  margin: 0;
+}
+
+@media (max-width: 52rem) {
+  .opp-merge-setup-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.opp-merge-flow-section {
+  margin-bottom: 1rem;
+}
+
+.opp-merge-flow-sub {
+  margin: 0 0 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #475569;
+}
+
+.opp-merge-flow-muted {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #94a3b8;
+}
+
+.opp-merge-preset-row {
+  display: block;
+  max-width: 100%;
+}
+
+.opp-merge-saved-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.opp-merge-select {
+  font-family: inherit;
+  font-size: 0.78rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155;
+  min-width: 10rem;
+}
+
+.opp-merge-select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.opp-merge-select--wide {
+  width: 100%;
+  max-width: 100%;
+}
+
+.opp-merge-input {
+  font-family: inherit;
+  font-size: 0.78rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  flex: 1 1 10rem;
+  min-width: 8rem;
+}
+
+.opp-merge-btn {
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.opp-merge-btn--ghost {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
+.opp-merge-btn--secondary {
+  background: #ede9fe;
+  border-color: rgba(167, 139, 250, 0.4);
+  color: #4c3a75;
+}
+
+.opp-merge-btn--primary {
+  background: #bfdbfe;
+  border-color: rgba(59, 130, 246, 0.35);
+  color: #0c2a4d;
+}
+
+.opp-merge-btn--primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* 자주 사용하는 매핑 — 커스텀 드롭다운 */
+.opp-merge-saved-dropdown {
+  position: relative;
+  max-width: 100%;
+}
+
+.opp-merge-saved-dropdown-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.65rem;
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #334155;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  text-align: left;
+  box-sizing: border-box;
+}
+
+.opp-merge-saved-dropdown-trigger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.opp-merge-saved-dropdown-trigger-text {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.opp-merge-saved-dropdown-chevron {
+  flex-shrink: 0;
+  font-size: 1.25rem;
+  color: #64748b;
+  transition: transform 0.15s ease;
+}
+
+.opp-merge-saved-dropdown-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.opp-merge-saved-dropdown-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  margin-top: 4px;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.5rem;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.1);
+  max-height: min(18rem, 55vh);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.opp-merge-saved-dropdown-empty {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.78rem;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+.opp-merge-saved-dropdown-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.opp-merge-saved-dropdown-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  border-bottom: 1px solid #e8eef4;
+}
+
+.opp-merge-saved-dropdown-row:last-of-type {
+  border-bottom: none;
+}
+
+.opp-merge-saved-dropdown-option {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.45rem 0.6rem;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #334155;
+  background: #fafbfc;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.opp-merge-saved-dropdown-option:hover:not(:disabled) {
+  background: #eef2f7;
+}
+
+.opp-merge-saved-dropdown-option.is-active {
+  background: #e0effc;
+  color: #1e3a5f;
+}
+
+.opp-merge-saved-dropdown-option:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.opp-merge-saved-dropdown-del {
+  flex-shrink: 0;
+  width: 2.4rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-left: 1px solid #e8eef4;
+  background: #f8fafc;
+  cursor: pointer;
+  color: #64748b;
+  padding: 0;
+}
+
+.opp-merge-saved-dropdown-del .material-symbols-outlined {
+  font-size: 1.15rem;
+}
+
+.opp-merge-saved-dropdown-del:hover:not(:disabled) {
+  background: #fef2f2;
+  color: #b45353;
+}
+
+.opp-merge-saved-dropdown-del:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.opp-merge-saved-dropdown-footer {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.6rem;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.opp-merge-saved-dropdown-footer-input {
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+
+.opp-merge-saved-dropdown-register {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+}
+
+.opp-merge-map-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.opp-merge-map-table th,
+.opp-merge-map-table td {
+  padding: 0.45rem 0.5rem;
+  border-bottom: 1px solid #f1f5f9;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.opp-merge-map-table th {
+  background: #f8fafc;
+  font-weight: 700;
+  color: #475569;
+}
+
+.opp-merge-map-table code {
+  font-size: 0.72rem;
+  background: #f1f5f9;
+  padding: 0.1rem 0.25rem;
+  border-radius: 4px;
+}
+
+.opp-merge-flow-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid #e2e8f0;
+}

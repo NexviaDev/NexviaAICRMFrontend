@@ -4,21 +4,34 @@
   position: relative;
 }
 
-.meeting-minutes-page .header-actions {
+/* 사내 현황(company-overview) 상단과 동일한 제목·툴바 패턴 */
+.meeting-minutes-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 1rem;
+}
+
+.meeting-minutes-header .header-search {
+  flex: 1;
+  min-width: 0;
+  max-width: 32rem;
+}
+
+.meeting-minutes-header-tools {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
-.meeting-minutes-top {
-  margin-bottom: 1.5rem;
-}
-
-.meeting-minutes-title {
+.meeting-minutes-page .page-header .page-title {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: 1.25rem;
   font-weight: 700;
-  color: var(--text);
+  color: var(--text, #1e293b);
+  flex-shrink: 0;
 }
 
 .meeting-minutes-cell-title {

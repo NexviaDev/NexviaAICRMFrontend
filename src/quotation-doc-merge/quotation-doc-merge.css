@@ -1,0 +1,1242 @@
+/* 사내 현황(company-overview) 상단과 동일 패턴 */
+.quotation-doc-merge-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.quotation-doc-merge-header-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-left: auto;
+}
+
+/* 상단 바는 레이아웃 전체 너비(양옆 빈칸 없음). 본문 카드만 아래 규칙으로 가운데 정렬 */
+.quotation-doc-merge-page > .page-header.quotation-doc-merge-header {
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+  box-sizing: border-box;
+}
+
+.quotation-doc-merge-page .page-header .page-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text, #1e293b);
+}
+
+.quotation-doc-merge-page .page-content.quotation-doc-merge-content {
+  display: grid;
+  gap: 1rem;
+  /* 넓은 화면: 카드 열을 넉넉한 최대 너비로 두고 가운데 정렬 */
+  width: min(97%);
+  max-width: 100%;
+  margin-inline: auto;
+  padding-top: 1.25rem;
+  padding-inline: clamp(0.5rem, 1.25vw, 0.85rem);
+  padding-bottom: 2rem;
+  box-sizing: border-box;
+}
+
+.quotation-doc-merge-content > .quotation-doc-merge-card {
+  min-width: 0;
+}
+
+.qdm-code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.82em;
+  background: #f1f5f9;
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.3rem;
+  color: #0f172a;
+}
+
+.qdm-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.qdm-card-head .quotation-doc-merge-card-title {
+  margin: 0;
+}
+
+.qdm-card-head-left {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+}
+
+.qdm-card-head-right {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.qdm-sr-only-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.qdm-template-add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  border-radius: 0.45rem;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.qdm-template-add-btn:hover:not(:disabled) {
+  color: #475569;
+  background: #f1f5f9;
+}
+
+.qdm-template-add-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.qdm-template-add-btn .material-symbols-outlined {
+  font-size: 1.45rem;
+  line-height: 1;
+}
+
+.qdm-template-drop-zone {
+  border-radius: 0.55rem;
+  min-height: 3.25rem;
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.qdm-template-drop-zone--active {
+  background: #f8fafc;
+  box-shadow: inset 0 0 0 2px #cbd5e1;
+}
+
+.qdm-template-drop-empty {
+  margin: 0;
+  padding: 0.65rem 0;
+}
+
+.qdm-template-uploading-note {
+  margin: 0 0 0.4rem;
+  font-size: 0.86rem;
+  color: #64748b;
+}
+
+.qdm-inline-label--row {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.qdm-inline-label-muted {
+  font-size: 0.78rem;
+  color: #64748b;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.qdm-select-compact {
+  min-width: 12rem;
+  max-width: 22rem;
+}
+
+.qdm-selected-template-hint {
+  margin: 0 0 0.65rem;
+}
+
+.qdm-upload-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  align-items: flex-end;
+}
+
+.qdm-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  color: #475569;
+  min-width: 12rem;
+}
+
+.qdm-label input[type='text'],
+.qdm-label input[type='file'] {
+  font-size: 0.88rem;
+}
+
+.qdm-label input[type='text'] {
+  border: 1px solid #d5dfec;
+  border-radius: 0.55rem;
+  padding: 0.45rem 0.55rem;
+}
+
+.qdm-btn {
+  border-radius: 0.55rem;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.qdm-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.qdm-btn-small {
+  padding: 0.35rem 0.55rem;
+  font-size: 0.8rem;
+}
+
+.qdm-btn-ghost {
+  background: #fff;
+  border-color: #c9daf4;
+  color: #1e3a5f;
+}
+
+.qdm-btn-ghost:hover:not(:disabled) {
+  background: #f0f6ff;
+}
+
+.qdm-btn-primary {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1e40af;
+}
+
+.qdm-btn-primary:hover:not(:disabled) {
+  background: #bfdbfe;
+}
+
+.qdm-btn-danger {
+  background: #fff1f2;
+  border-color: #fecdd3;
+  color: #9f1239;
+}
+
+.qdm-btn-danger:hover:not(:disabled) {
+  background: #ffe4e6;
+}
+
+.qdm-banner {
+  margin: 0 0 0.65rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.55rem;
+  font-size: 0.84rem;
+}
+
+.qdm-banner-error {
+  color: #7f1d1d;
+  background: #feecec;
+  border: 1px solid #f8caca;
+}
+
+.qdm-banner-ok {
+  color: #14532d;
+  background: #ecfdf3;
+  border: 1px solid #bbf7d0;
+}
+
+.qdm-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.15rem 0.45rem;
+  border-radius: 0.4rem;
+  border: 1px solid transparent;
+}
+
+.qdm-badge-cloud {
+  background: #e0f2fe;
+  border-color: #7dd3fc;
+  color: #0369a1;
+}
+
+.qdm-badge-db {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #475569;
+}
+
+.qdm-table-wrap {
+  overflow: auto;
+  border: 1px solid #e4e9f2;
+  border-radius: 0.65rem;
+}
+
+.qdm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.qdm-table th,
+.qdm-table td {
+  padding: 0.5rem 0.65rem;
+  text-align: left;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.qdm-table th {
+  background: #f8fafc;
+  color: #475569;
+  font-weight: 600;
+}
+
+.qdm-table-actions {
+  white-space: nowrap;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.qdm-excel-td--actions.qdm-table-actions {
+  justify-content: flex-end;
+  gap: 0.2rem;
+}
+
+.qdm-template-row {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.qdm-template-row:hover {
+  background: #f8fafc;
+}
+
+.qdm-template-row--default {
+  background: #eef4ff;
+}
+
+.qdm-template-row--default:hover {
+  background: #e4edfc;
+}
+
+/* 등록 양식 표: 엑셀 격자 + 행 선택(파스텔, 그라데이션 없음) */
+.qdm-kbd {
+  display: inline-block;
+  padding: 0.08rem 0.35rem;
+  margin: 0 0.1rem;
+  font-size: 0.78rem;
+  font-family: ui-monospace, monospace;
+  color: #334155;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.25rem;
+  vertical-align: baseline;
+}
+
+.qdm-excel-template-scope {
+  outline: none;
+}
+
+.qdm-excel-template-scope:focus-visible {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px #93c5fd;
+  border-radius: 0.35rem;
+}
+
+.qdm-excel-selection-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+  padding: 0.45rem 0.6rem;
+  background: #eef6ff;
+  border: 1px solid #c7dbf5;
+  border-radius: 0.4rem;
+  font-size: 0.82rem;
+  color: #334155;
+}
+
+.qdm-excel-selection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.qdm-excel-selection-actions .icon-btn {
+  flex-shrink: 0;
+}
+
+.qdm-excel-selection-icon--primary {
+  color: #1d4ed8;
+  background: #e8f0fe;
+}
+
+.qdm-excel-selection-icon--primary:hover:not(:disabled) {
+  background: #dbeafe;
+  color: #1e3a8a;
+}
+
+.qdm-excel-selection-icon--primary:disabled {
+  opacity: 0.45;
+}
+
+.qdm-excel-row-icon-btn {
+  width: 2rem;
+  height: 2rem;
+  flex-shrink: 0;
+}
+
+.qdm-excel-row-icon-btn .material-symbols-outlined {
+  font-size: 1.1rem;
+}
+
+.qdm-excel-row-icon-btn--danger:hover:not(:disabled) {
+  color: #b91c1c;
+  background: #fee2e2;
+}
+
+.qdm-table-wrap--excel-template {
+  overflow: auto;
+  max-height: min(70vh, 32rem);
+  border: 1px solid #8fa8bc;
+  border-radius: 0;
+  background: #fff;
+}
+
+.qdm-table.qdm-table--excel {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  font-family: 'Segoe UI', 'Malgun Gothic', ui-sans-serif, system-ui, sans-serif;
+}
+
+.qdm-table.qdm-table--excel th,
+.qdm-table.qdm-table--excel td {
+  padding: 0.28rem 0.45rem;
+  text-align: left;
+  vertical-align: middle;
+  border: 1px solid #b8c5d4;
+  box-sizing: border-box;
+}
+
+.qdm-table.qdm-table--excel thead th {
+  background: #dfe8f2;
+  color: #1e293b;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  box-shadow: inset 0 -1px 0 #b8c5d4;
+}
+
+.qdm-excel-th--gutter,
+.qdm-excel-td--gutter {
+  width: 2.35rem;
+  min-width: 2.35rem;
+  max-width: 2.75rem;
+  text-align: center !important;
+  background: #e8eef6 !important;
+  color: #475569;
+  font-weight: 600;
+  cursor: default;
+  user-select: none;
+}
+
+.qdm-excel-th--actions,
+.qdm-excel-td--actions {
+  width: 5.25rem;
+  min-width: 5.25rem;
+  text-align: right;
+  background: #f4f7fb;
+}
+
+.qdm-table.qdm-table--excel tbody tr:nth-child(even) .qdm-excel-td:not(.qdm-excel-td--gutter):not(.qdm-excel-td--actions) {
+  background: #fafcfe;
+}
+
+.qdm-table.qdm-table--excel .qdm-template-row--excel:hover .qdm-excel-td:not(.qdm-excel-td--gutter):not(.qdm-excel-td--actions) {
+  background: #f0f6fc;
+}
+
+.qdm-table.qdm-table--excel .qdm-template-row--range-selected .qdm-excel-td {
+  background: #d4e8fb !important;
+}
+
+.qdm-table.qdm-table--excel .qdm-template-row--default .qdm-excel-td:not(.qdm-excel-td--gutter):not(.qdm-excel-td--actions) {
+  background: #e8f0fc;
+}
+
+.qdm-table.qdm-table--excel .qdm-template-row--default.qdm-template-row--range-selected .qdm-excel-td:not(.qdm-excel-td--gutter):not(.qdm-excel-td--actions) {
+  background: #c8ddf5 !important;
+}
+
+.qdm-merge-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: flex-end;
+  margin-bottom: 0.75rem;
+  width: 100%;
+}
+
+.qdm-merge-download-row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.qdm-merge-download-row--end {
+  margin-left: auto;
+}
+
+.qdm-merge-zip-toolbar {
+  padding-bottom: 0.05rem;
+}
+
+.qdm-merge-zip-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  user-select: none;
+}
+
+.qdm-merge-zip-label input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: #2563eb;
+  cursor: pointer;
+}
+
+.qdm-merge-zip-label:has(input:disabled) {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.qdm-sheet-th--check,
+.qdm-sheet-td--check {
+  width: 2.75rem;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.qdm-sheet-th--template,
+.qdm-sheet-td--template {
+  min-width: 11rem;
+  max-width: 16rem;
+  vertical-align: middle;
+}
+
+.qdm-sheet-template-select {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  font-size: 0.8rem;
+  padding: 0 0.4rem;
+  box-sizing: border-box;
+  min-height: 2.35rem;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+/* 시트 안 셀 전용: 격자만 보이고 컨트롤은 셀을 가득 채움 (td는 table-cell 유지) */
+.qdm-grid--sheet tbody .qdm-sheet-td--template .qdm-select.qdm-sheet-template-select {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  min-height: 2.35rem;
+  height: auto;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.qdm-row-include-checkbox {
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: #2563eb;
+  cursor: pointer;
+}
+
+.qdm-inline-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: #475569;
+}
+
+.qdm-select {
+  min-width: 14rem;
+  border: 1px solid #d5dfec;
+  border-radius: 0.55rem;
+  padding: 0.45rem 0.5rem;
+  font-size: 0.88rem;
+  background: #fff;
+}
+
+.qdm-grid-scroll {
+  overflow: auto;
+  border: 1px solid #e4e9f2;
+  border-radius: 0.65rem;
+}
+
+.qdm-grid:not(.qdm-grid--sheet) {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.qdm-grid:not(.qdm-grid--sheet) th,
+.qdm-grid:not(.qdm-grid--sheet) td {
+  padding: 0.4rem;
+  border-bottom: 1px solid #eef2f7;
+  vertical-align: top;
+}
+
+.qdm-grid:not(.qdm-grid--sheet) th {
+  background: #f8fafc;
+  color: #475569;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.qdm-cell {
+  width: 100%;
+  min-width: 6rem;
+  box-sizing: border-box;
+  border: 1px solid #d5dfec;
+  border-radius: 0.45rem;
+  padding: 0.35rem 0.45rem;
+  font-size: 0.82rem;
+  font-family: inherit;
+}
+
+.qdm-cell-tall {
+  min-height: 2.6rem;
+  resize: vertical;
+}
+
+/* 메일머지 시트: 한 줄 칸도 textarea로 두되 엑셀처럼 보이게 */
+.qdm-cell-sheet-single {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.qdm-icon-btn {
+  border: none;
+  background: #f1f5f9;
+  color: #64748b;
+  border-radius: 0.45rem;
+  width: 2rem;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.qdm-icon-btn:hover:not(:disabled) {
+  background: #e2e8f0;
+  color: #b91c1c;
+}
+
+.qdm-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.qdm-icon-btn .material-symbols-outlined {
+  font-size: 1.15rem;
+}
+
+.qdm-field-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.qdm-field-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.65rem;
+  font-size: 0.86rem;
+  color: #475569;
+}
+
+.qdm-field-label {
+  font-weight: 600;
+  color: #334155;
+}
+
+.qdm-field-ex {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.qdm-global-spinner {
+  position: fixed;
+  bottom: 1.25rem;
+  right: 1.25rem;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.85rem;
+  background: #fff;
+  border: 1px solid #bfdbfe;
+  border-radius: 0.65rem;
+  box-shadow: 0 4px 20px rgba(15, 23, 42, 0.08);
+  font-size: 0.86rem;
+  color: #1e40af;
+}
+
+.qdm-spinner {
+  width: 1.1rem;
+  height: 1.1rem;
+  border: 2px solid #bfdbfe;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: qdm-spin 0.7s linear infinite;
+}
+
+@keyframes qdm-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.quotation-doc-merge-card {
+  background: #ffffff;
+  border: 1px solid #e4e9f2;
+  border-radius: 0.8rem;
+  padding: 1rem 1rem;
+}
+
+.quotation-doc-merge-card-muted {
+  background: #f8fafc;
+}
+
+.quotation-doc-merge-card-title {
+  margin: 0 0 0.65rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.quotation-doc-merge-lead {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+  color: #5f6f86;
+  line-height: 1.55;
+}
+
+.quotation-doc-merge-desc {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #64748b;
+  line-height: 1.55;
+}
+
+.quotation-doc-merge-list {
+  margin: 0;
+  padding-left: 1.15rem;
+  font-size: 0.88rem;
+  color: #475569;
+  line-height: 1.65;
+}
+
+.quotation-doc-merge-list li + li {
+  margin-top: 0.35rem;
+}
+
+/* 메일머지 데이터 표: 스프레드시트 느낌 + 이 블록만 가로 스크롤(페이지·다른 섹션 너비 고정) */
+.qdm-merge-sheet-outer {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.qdm-merge-sheet-scroll {
+  overflow-x: auto;
+  overflow-y: visible;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  border: 1px solid #b8cad8;
+  border-radius: 0.5rem;
+  background: #e8eef4;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.qdm-grid.qdm-grid--sheet {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  table-layout: auto;
+  font-size: 0.8125rem;
+  font-family: ui-sans-serif, system-ui, 'Segoe UI', 'Malgun Gothic', sans-serif;
+  background: #fff;
+}
+
+.qdm-grid--sheet .qdm-sheet-th {
+  white-space: normal;
+  vertical-align: bottom;
+  min-width: 7.25rem;
+  max-width: 12rem;
+  padding: 0.35rem 0.45rem;
+  background: #cfe2f3;
+  color: #1e3a5f;
+  border: 1px solid #9db8cf;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  box-shadow: inset 0 -1px 0 #9db8cf;
+}
+
+.qdm-grid--sheet tbody tr:nth-child(even) .qdm-sheet-td {
+  background: #f6f9fc;
+}
+
+.qdm-sheet-td {
+  padding: 0;
+  border: 1px solid #b8cad8;
+  vertical-align: middle;
+  background: #fff;
+}
+
+.qdm-grid--sheet tbody tr {
+  min-height: 2.35rem;
+}
+
+/* tbody 셀은 반드시 table-cell — td에 display:flex 를 주면 표 열이 깨져 첫 칸에만 내용이 세로로 쌓임 */
+.qdm-grid--sheet tbody .qdm-sheet-td {
+  vertical-align: top;
+}
+
+.qdm-grid--sheet tbody .qdm-sheet-td--check {
+  text-align: center;
+  vertical-align: middle;
+}
+
+.qdm-grid--sheet tbody .qdm-sheet-td--template {
+  vertical-align: middle;
+}
+
+.qdm-grid--sheet tbody .qdm-sheet-td:has(> span.qdm-cell-static.qdm-cell--sheet) {
+  text-align: center;
+  vertical-align: middle;
+}
+
+.qdm-grid--sheet tbody .qdm-sheet-td--field,
+.qdm-grid--sheet tbody .qdm-sheet-td--mail-input {
+  position: relative;
+  padding: 0;
+  vertical-align: middle;
+}
+
+.qdm-grid--sheet tbody .qdm-sheet-td--field:has(textarea.qdm-cell-tall.qdm-cell--sheet),
+.qdm-grid--sheet tbody .qdm-sheet-td--mail-input:has(textarea.qdm-cell-tall.qdm-cell--sheet) {
+  min-height: 3.35rem;
+}
+
+/* 시트 치환 필드 칸: textarea가 셀 테두리까지 꽉 참 */
+.qdm-grid--sheet .qdm-sheet-td--field > textarea.qdm-cell.qdm-cell--sheet,
+.qdm-grid--sheet .qdm-sheet-td--mail-input > textarea.qdm-cell.qdm-cell--sheet {
+  display: block;
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  max-width: none;
+  box-sizing: border-box;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  margin: 0;
+  font: inherit;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  background: transparent;
+  color: #0f172a;
+  appearance: none;
+  -webkit-appearance: none;
+  resize: none;
+}
+
+.qdm-grid--sheet .qdm-sheet-td--field > textarea.qdm-cell-tall.qdm-cell--sheet,
+.qdm-grid--sheet .qdm-sheet-td--mail-input > textarea.qdm-cell-tall.qdm-cell--sheet {
+  min-height: 3.25rem;
+  padding: 0.4rem 0.28rem;
+}
+
+.qdm-grid--sheet .qdm-sheet-td--field > textarea.qdm-cell-sheet-single.qdm-cell--sheet,
+.qdm-grid--sheet .qdm-sheet-td--mail-input > textarea.qdm-cell-sheet-single.qdm-cell--sheet {
+  min-height: 2.35rem;
+  padding: 0.28rem 0.28rem;
+}
+
+.qdm-grid--sheet .qdm-sheet-td--field > textarea.qdm-cell.qdm-cell--sheet:focus,
+.qdm-grid--sheet .qdm-sheet-td--mail-input > textarea.qdm-cell.qdm-cell--sheet:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 2px #7cb8f5;
+  position: relative;
+}
+
+.qdm-grid--sheet .qdm-cell-static.qdm-cell--sheet {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 2.35rem;
+  box-sizing: border-box;
+  background: #e8f0f7;
+  color: #64748b;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  cursor: help;
+}
+
+.qdm-grid--sheet .qdm-th-label {
+  color: #1e3a5f;
+}
+
+.qdm-grid--sheet .qdm-th-code {
+  color: #3d5a80;
+}
+
+.qdm-th-label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #334155;
+  line-height: 1.25;
+  margin-bottom: 0.15rem;
+}
+
+.qdm-th-code {
+  display: block;
+  font-family: ui-monospace, monospace;
+  font-size: 0.68rem;
+  font-weight: 500;
+  color: #64748b;
+  word-break: break-all;
+}
+
+.qdm-cell-static {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+  background: #f8fafc;
+  color: #64748b;
+  cursor: help;
+}
+
+.qdm-field-editor {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed #cbd5e1;
+}
+
+.qdm-field-editor-toolbar {
+  margin-bottom: 0.5rem;
+}
+
+.qdm-field-editor-table-wrap {
+  overflow: auto;
+  border: 1px solid #e4e9f2;
+  border-radius: 0.55rem;
+  margin-bottom: 0.65rem;
+}
+
+.qdm-field-editor-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.qdm-field-editor-table th,
+.qdm-field-editor-table td {
+  padding: 0.4rem;
+  border-bottom: 1px solid #eef2f7;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.qdm-field-editor-table th {
+  background: #f1f5f9;
+  color: #475569;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.qdm-field-editor-th-excel {
+  max-width: 6.5rem;
+  white-space: normal;
+  line-height: 1.25;
+  font-size: 0.72rem;
+}
+
+.qdm-field-editor-th-key {
+  min-width: 7.5rem;
+}
+
+.qdm-field-editor-th-kind,
+.qdm-field-editor-th-format {
+  min-width: 7.5rem;
+  max-width: 9.5rem;
+}
+
+.qdm-field-editor-select {
+  width: 100%;
+  max-width: 10rem;
+  border: 1px solid #d5dfec;
+  border-radius: 0.45rem;
+  padding: 0.35rem 0.4rem;
+  font-size: 0.8rem;
+  background: #fff;
+  color: #334155;
+}
+
+.qdm-field-editor-select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.qdm-field-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  justify-content: flex-end;
+}
+
+/* 양식 + 업로드 전: 프로필·치환 필드 도달창 */
+.qdm-template-prepare-modal-root {
+  position: fixed;
+  inset: 0;
+  z-index: 1320;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem;
+  box-sizing: border-box;
+}
+
+.qdm-template-prepare-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: rgba(51, 65, 85, 0.4);
+  cursor: pointer;
+}
+
+.qdm-template-prepare-modal-panel {
+  position: relative;
+  z-index: 1;
+  width: min(52rem, 100%);
+  max-height: min(90vh, 44rem);
+  background: #fff;
+  border: 1px solid #d5dfec;
+  border-radius: 0.85rem;
+  box-shadow: 0 14px 44px rgba(15, 23, 42, 0.12);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.qdm-template-prepare-modal-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid #e8eef5;
+  background: #f8fafc;
+}
+
+.qdm-template-prepare-modal-title {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.qdm-template-prepare-modal-sub {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #64748b;
+  line-height: 1.45;
+  max-width: 40rem;
+}
+
+.qdm-template-prepare-modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.85rem 1rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.qdm-template-prepare-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.qdm-template-prepare-select {
+  max-width: min(28rem, 100%);
+}
+
+.qdm-template-prepare-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.qdm-template-prepare-hint {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  color: #475569;
+  line-height: 1.45;
+}
+
+.qdm-template-prepare-table-wrap {
+  border: 1px solid #d5dfec;
+  border-radius: 0.55rem;
+  overflow: auto;
+  max-height: min(36vh, 16rem);
+  background: #fdfefe;
+}
+
+.qdm-template-prepare-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.qdm-template-prepare-table th,
+.qdm-template-prepare-table td {
+  padding: 0.35rem 0.45rem;
+  border-bottom: 1px solid #e8eef5;
+  text-align: left;
+  vertical-align: top;
+}
+
+.qdm-template-prepare-table th {
+  background: #f1f5f9;
+  color: #475569;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.qdm-template-prepare-code {
+  font-size: 0.76rem;
+  background: #eef2f7;
+  padding: 0.12rem 0.3rem;
+  border-radius: 0.3rem;
+  color: #334155;
+  white-space: nowrap;
+}
+
+.qdm-template-prepare-td-example {
+  max-width: 10rem;
+  word-break: break-word;
+}
+
+.qdm-template-prepare-td-flags {
+  white-space: nowrap;
+  color: #64748b;
+  font-size: 0.74rem;
+}
+
+.qdm-template-prepare-copy-block {
+  margin-top: 0.35rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.55rem;
+  border: 1px solid #d5dfec;
+  background: #f8fafc;
+}
+
+.qdm-template-prepare-copy-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  margin-bottom: 0.35rem;
+}
+
+.qdm-template-prepare-copy-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.qdm-template-prepare-copy-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: ui-monospace, monospace;
+  font-size: 0.76rem;
+  line-height: 1.35;
+  padding: 0.45rem 0.5rem;
+  border: 1px solid #c9d6e8;
+  border-radius: 0.4rem;
+  resize: vertical;
+  min-height: 5rem;
+  color: #334155;
+  background: #fff;
+}
+
+.qdm-template-prepare-modal-foot {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid #e8eef5;
+  background: #fdfefe;
+}

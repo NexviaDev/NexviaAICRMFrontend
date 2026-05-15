@@ -806,7 +806,13 @@ export default function ProductList({
 
   return (
     <div className={`page product-list-page${isSearchModal ? ' product-list-page--search-modal' : ''}`}>
-      <header className="page-header">
+      <header className="page-header product-list-header">
+        {!isSearchModal ? (
+          <div className="product-list-header-main">
+            <h1 className="page-title">제품 리스트</h1>
+            <p className="page-desc">총 {pagination.total}개 제품</p>
+          </div>
+        ) : null}
         <div className="header-search">
           <button type="submit" form="product-list-search-form" className="header-search-icon-btn" aria-label="검색">
             <span className="material-symbols-outlined">search</span>
@@ -833,6 +839,36 @@ export default function ProductList({
           </select>
         </div>
         <div className="header-actions">
+          {!isSearchModal ? (
+            <>
+              {canExportExcel ? (
+                <button
+                  type="button"
+                  className="btn-outline product-list-excel-btn"
+                  onClick={openExcelImportModal}
+                  title="엑셀 열을 제품 필드에 매핑하여 여러 건을 한 번에 등록합니다. (Owner / Admin 전용)"
+                >
+                  <span className="material-symbols-outlined">upload_file</span>
+                  엑셀 가져오기
+                </button>
+              ) : null}
+              {canExportExcel ? (
+                <button
+                  type="button"
+                  className="btn-outline product-list-excel-btn"
+                  onClick={handleDownloadExcel}
+                  disabled={exportExcelLoading}
+                  title="현재 검색·필터 조건에 맞는 제품 전체를 엑셀(.xlsx)로 받습니다. (Owner / Admin 전용)"
+                >
+                  <span className="material-symbols-outlined">download</span>
+                  {exportExcelLoading ? '준비 중…' : '보내기'}
+                </button>
+              ) : null}
+              <button type="button" className="btn-primary" onClick={openAdd}>
+                <span className="material-symbols-outlined">add</span> 제품 추가
+              </button>
+            </>
+          ) : null}
           <button
             type="button"
             className="icon-btn"
@@ -903,42 +939,6 @@ export default function ProductList({
             </div>
           </div>
         </section>
-        ) : null}
-        {!isSearchModal ? (
-        <div className="product-list-top pl-desktop-only">
-          <div>
-            <h2>제품 리스트</h2>
-            <p className="page-desc">총 {pagination.total}개 제품</p>
-          </div>
-          <div className="product-list-top-actions">
-            {canExportExcel ? (
-              <button
-                type="button"
-                className="btn-outline product-list-excel-btn"
-                onClick={openExcelImportModal}
-                title="엑셀 열을 제품 필드에 매핑하여 여러 건을 한 번에 등록합니다. (Owner / Admin 전용)"
-              >
-                <span className="material-symbols-outlined">upload_file</span>
-                엑셀 가져오기
-              </button>
-            ) : null}
-            {canExportExcel ? (
-              <button
-                type="button"
-                className="btn-outline product-list-excel-btn"
-                onClick={handleDownloadExcel}
-                disabled={exportExcelLoading}
-                title="현재 검색·필터 조건에 맞는 제품 전체를 엑셀(.xlsx)로 받습니다. (Owner / Admin 전용)"
-              >
-                <span className="material-symbols-outlined">download</span>
-                {exportExcelLoading ? '준비 중…' : '내보내기'}
-              </button>
-            ) : null}
-            <button type="button" className="btn-primary" onClick={openAdd}>
-              <span className="material-symbols-outlined">add</span> 제품 추가
-            </button>
-          </div>
-        </div>
         ) : null}
         <div className="panel table-panel">
           <div className="pl-mobile-cards-wrap">

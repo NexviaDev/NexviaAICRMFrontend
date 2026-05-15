@@ -3197,25 +3197,28 @@ export default function Kpi() {
   return (
     <div className="page kpi-page">
       <header className="page-header kpi-page-header">
-        <div className="kpi-page-header-spacer" />
-        <div className="kpi-page-header-actions">
-          <PageHeaderNotifyChat noWrapper buttonClassName="icon-btn" />
+        <div className="kpi-page-header-main">
+          <nav className="kpi-breadcrumb" aria-label="현재 위치">
+            <span>성과 관리</span>
+            <span className="material-symbols-outlined" aria-hidden>chevron_right</span>
+            <span className="kpi-breadcrumb-current">KPI 분석</span>
+          </nav>
+          <h1 className="page-title">{scopeTitle}</h1>
         </div>
-        <button type="button" className="kpi-target-open-button kpi-target-open-button--hero" onClick={openTargetModal}>
-          목표 설정
-        </button>
+        <div className="kpi-page-header-right">
+          <div className="kpi-page-header-actions">
+            <PageHeaderNotifyChat noWrapper buttonClassName="icon-btn" />
+          </div>
+          <button type="button" className="kpi-target-open-button kpi-target-open-button--hero" onClick={openTargetModal}>
+            목표 설정
+          </button>
+        </div>
       </header>
 
       <div className="page-content kpi-page-content">
         <section className="kpi-hero">
           <div className="kpi-hero-copy-row">
             <div className="kpi-hero-copy">
-              <nav className="kpi-breadcrumb" aria-label="현재 위치">
-                <span>성과 관리</span>
-                <span className="material-symbols-outlined" aria-hidden>chevron_right</span>
-                <span className="kpi-breadcrumb-current">KPI 분석</span>
-              </nav>
-              <h1>{scopeTitle}</h1>
               <p>{scopeDescription} {currentPeriodLabel} 기준 KPI 흐름과 목표 달성 현황을 한눈에 확인할 수 있습니다.</p>
             </div>
           </div>

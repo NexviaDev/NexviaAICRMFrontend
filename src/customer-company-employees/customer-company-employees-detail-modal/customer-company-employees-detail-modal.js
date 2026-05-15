@@ -1660,7 +1660,10 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
               : {})
           }}
           onClose={() => setSelectedSaleForEdit(null)}
-          onSaved={() => { setSelectedSaleForEdit(null); fetchProductSales(); }}
+          onSaved={(payload, meta) => {
+            void fetchProductSales();
+            if (!meta?.keepOpen) setSelectedSaleForEdit(null);
+          }}
         />
       )}
       {showRegisterSaleModal && (
@@ -1680,7 +1683,14 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
               : {})
           }}
           onClose={() => setShowRegisterSaleModal(false)}
-          onSaved={() => { setShowRegisterSaleModal(false); fetchProductSales(); }}
+          onSaved={(payload, meta) => {
+            void fetchProductSales();
+            if (!meta?.keepOpen) setShowRegisterSaleModal(false);
+          }}
+          onSwitchToEditAfterCreate={(id) => {
+            setShowRegisterSaleModal(false);
+            setSelectedSaleForEdit({ _id: id });
+          }}
         />
       )}
 

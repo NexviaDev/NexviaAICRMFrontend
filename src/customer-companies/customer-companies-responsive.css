@@ -59,7 +59,7 @@
   }
 
   /* Search and Action Bar (customerForMobile.html section: count + Export/Add) */
-  .customer-companies-page .customer-companies-top {
+  .customer-companies-page .customer-companies-header {
     display: flex;
     flex-direction: row;
     align-items: center;
@@ -73,30 +73,30 @@
     border-radius: 0.5rem;
   }
 
-  .customer-companies-page .customer-companies-top h2 {
+  .customer-companies-page .customer-companies-header h1 {
     display: none;
   }
 
-  .customer-companies-page .customer-companies-top > div:first-child {
+  .customer-companies-page .customer-companies-header-main {
     flex: 1;
     min-width: 0;
   }
 
-  .customer-companies-page .customer-companies-top .page-desc {
+  .customer-companies-page .customer-companies-header-main .page-desc {
     font-size: 0.75rem;
     font-weight: 500;
     color: var(--text-muted, #64748b);
     margin: 0;
   }
 
-  .customer-companies-page .customer-companies-top .customer-companies-actions {
+  .customer-companies-page .customer-companies-header-tools {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     flex-shrink: 0;
   }
 
-  .customer-companies-page .customer-companies-actions .btn-outline {
+  .customer-companies-page .customer-companies-header-tools .btn-outline {
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
@@ -109,7 +109,7 @@
     color: var(--text, #334155);
   }
 
-  .customer-companies-page .customer-companies-actions .btn-primary {
+  .customer-companies-page .customer-companies-header-tools .btn-primary {
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
@@ -305,12 +305,12 @@
 }
 
 @media (max-width: 480px) {
-  .customer-companies-page .customer-companies-actions {
+  .customer-companies-page .customer-companies-header-tools {
     width: 100%;
   }
 
-  .customer-companies-page .customer-companies-actions .btn-primary,
-  .customer-companies-page .customer-companies-actions .btn-outline {
+  .customer-companies-page .customer-companies-header-tools .btn-primary,
+  .customer-companies-page .customer-companies-header-tools .btn-outline {
     flex: 1;
     justify-content: center;
   }

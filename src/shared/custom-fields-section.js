@@ -9,7 +9,10 @@ export default function CustomFieldsSection({
   definitions = [],
   values = {},
   onChangeValues,
-  fieldClassName = ''
+  fieldClassName = '',
+  hideTitle = false,
+  /** e.g. `opp-input` — native controls only (checkbox excluded). */
+  inputClassName = ''
 }) {
   const [openMultiselectKey, setOpenMultiselectKey] = useState(null);
   const multiselectRef = useRef(null);
@@ -50,9 +53,11 @@ export default function CustomFieldsSection({
 
   return (
     <>
-      <div className={`${fieldClassName} custom-fields-section-title`.trim()}>
-        <span className="custom-fields-section-label">추가된 필드</span>
-      </div>
+      {!hideTitle ? (
+        <div className={`${fieldClassName} custom-fields-section-title`.trim()}>
+          <span className="custom-fields-section-label">추가된 필드</span>
+        </div>
+      ) : null}
       {definitions.map((def) => {
         const key = def.key;
         const val = values[key];
@@ -81,6 +86,7 @@ export default function CustomFieldsSection({
                   <label htmlFor={id}>{label}{required ? ' *' : ''}</label>
                   <select
                     id={id}
+                    className={inputClassName || undefined}
                     value={displayValue}
                     onChange={handleValueChange(key, 'text')}
                     required={required}
@@ -130,6 +136,7 @@ export default function CustomFieldsSection({
                   <label htmlFor={id}>{label}{required ? ' *' : ''}</label>
                   <input
                     id={id}
+                    className={inputClassName || undefined}
                     type={def.type === 'number' ? 'number' : def.type === 'date' ? 'date' : 'text'}
                     value={displayValue}
                     onChange={handleValueChange(key, 'text')}

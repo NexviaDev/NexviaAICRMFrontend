@@ -1151,6 +1151,11 @@
   min-height: 1.15em;
 }
 
+.sp-kanban-card-field-val-inner {
+  display: block;
+  white-space: inherit;
+}
+
 .sp-card-lucid-footer--segment {
   margin-top: 0.2rem;
   padding-top: 0.35rem;
@@ -2068,6 +2073,14 @@
   vertical-align: middle;
   max-width: none;
   min-width: 8.5rem;
+  /* 필터 팝오버(.sp-dz-col-filter-pop)가 th 밖으로 펼쳐져야 함 */
+  overflow: visible;
+}
+
+.sp-dz-data-table__th--col-tools.sp-dz-data-table__th--filter-open,
+.sp-dz-data-table__th--col-tools:has(.sp-dz-col-filter-pop) {
+  z-index: 45;
+  overflow: visible;
 }
 
 .sp-dz-data-table__th--dz-col-reorder {
@@ -2135,7 +2148,7 @@
   position: absolute;
   top: calc(100% + 0.2rem);
   left: 0;
-  z-index: 40;
+  z-index: 50;
   min-width: 13.5rem;
   max-width: min(20rem, 85vw);
   padding: 0.45rem 0.5rem 0.5rem;
@@ -2311,6 +2324,12 @@
   min-width: 6rem;
   overflow: visible;
   background: #fff;
+}
+
+/* 다중 품목 제품명: 줄바꿈 표시(데이터는 \\n 구분) */
+.sp-dz-data-table__td--product-name {
+  white-space: pre-line;
+  vertical-align: top;
 }
 
 .sp-dz-data-table__td--stack {

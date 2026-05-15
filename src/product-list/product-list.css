@@ -4,8 +4,41 @@
   min-height: 100%;
 }
 
+.product-list-page .page-header.product-list-header {
+  height: auto;
+  min-height: 4rem;
+  align-items: center;
+  flex-wrap: wrap;
+  row-gap: 0.5rem;
+  justify-content: flex-start;
+}
+
+.product-list-header-main {
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.product-list-page .product-list-header .page-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text, #1e293b);
+}
+
+.product-list-header-main .page-desc {
+  margin: 0.2rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.product-list-page .product-list-header .header-search {
+  flex: 1;
+  min-width: 0;
+}
+
 .product-list-page .page-header {
-  height: 4rem;
+  min-height: 4rem;
+  height: auto;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -80,6 +113,11 @@
   max-width: 11rem;
 }
 
+.product-list-page .product-list-header .header-actions {
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
 .product-list-page .header-actions {
   display: flex;
   align-items: center;
@@ -92,48 +130,14 @@
   color: var(--primary);
 }
 
-.product-list-top {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-@media (min-width: 640px) {
-  .product-list-top {
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
-  }
-}
-
-.product-list-top-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
 .product-list-excel-btn .material-symbols-outlined {
   font-size: 1.15rem;
 }
 
-.product-list-top .btn-primary {
+.product-list-page .header-actions .btn-primary {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-}
-
-.product-list-top h2 {
-  margin: 0;
-  font-size: 1.35rem;
-  font-weight: 700;
-}
-
-.product-list-top .page-desc {
-  margin: 0.25rem 0 0;
-  font-size: 0.8125rem;
-  color: var(--text-muted);
 }
 
 .product-list-row-clickable {
@@ -372,16 +376,6 @@
     overflow: hidden;
     /* global .page-content padding(2rem) 제거: 표 패널을 좌·하단 메인 끝까지 맞춤 */
     padding: 2rem 0 0;
-  }
-
-  .product-list-page:not(.product-list-page--search-modal) .cce-action-bar,
-  .product-list-page:not(.product-list-page--search-modal) .product-list-top {
-    flex-shrink: 0;
-  }
-
-  .product-list-page:not(.product-list-page--search-modal) .product-list-top {
-    padding-left: 2rem;
-    padding-right: 2rem;
   }
 
   .product-list-page:not(.product-list-page--search-modal) .cce-action-bar {

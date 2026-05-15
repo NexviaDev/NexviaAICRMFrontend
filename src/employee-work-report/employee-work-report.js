@@ -276,17 +276,6 @@ export default function EmployeeWorkReport() {
     today: { label: '금일 업무', items: todayAll },
     upcoming: { label: '예정 업무', items: upcomingAll }
   };
-  const salesCount = activities.filter((a) => a.title.startsWith('[영업]')).length;
-  const meetingCount = activities.filter((a) => a.title.startsWith('[일정]')).length;
-  const adminCount = Math.max(0, total - salesCount - meetingCount);
-  const workload = total > 0
-    ? {
-        sales: Math.round((salesCount / total) * 100),
-        meetings: Math.round((meetingCount / total) * 100),
-        admin: Math.max(0, 100 - Math.round((salesCount / total) * 100) - Math.round((meetingCount / total) * 100))
-      }
-    : { sales: 0, meetings: 0, admin: 0 };
-  const rating = Number((((workload.sales * 0.05) + (completionRate * 0.05))).toFixed(1));
   const rangeText = activities.length > 0
     ? `${activities[activities.length - 1].date || '-'} - ${activities[0].date || '-'}`
     : '기록 없음';
@@ -498,35 +487,6 @@ export default function EmployeeWorkReport() {
           );
         })}
 
-        <div className="insights-grid">
-          <div className="panel workload-panel">
-            <div className="panel-head">
-              <h4>업무 부하 분포</h4>
-              <span className="material-symbols-outlined text-muted">info</span>
-            </div>
-            <div className="workload-bars">
-              <div className="workload-item">
-                <div className="workload-label"><span>영업·파이프라인</span><span className="font-bold">{workload.sales}%</span></div>
-                <div className="workload-bar-wrap"><div className="workload-bar primary" style={{ width: workload.sales + '%' }} /></div>
-              </div>
-              <div className="workload-item">
-                <div className="workload-label"><span>회의·동기화</span><span className="font-bold">{workload.meetings ?? 25}%</span></div>
-                <div className="workload-bar-wrap"><div className="workload-bar blue" style={{ width: (workload.meetings ?? 25) + '%' }} /></div>
-              </div>
-              <div className="workload-item">
-                <div className="workload-label"><span>관리 업무</span><span className="font-bold">{workload.admin}%</span></div>
-                <div className="workload-bar-wrap"><div className="workload-bar gray" style={{ width: (workload.admin ?? 15) + '%' }} /></div>
-              </div>
-            </div>
-          </div>
-          <div className="panel rating-panel">
-            <h4>효율 점수</h4>
-            <p className="rating-desc">업무 완료율과 근무 시간 비율 기준입니다.</p>
-            <p className="rating-value">{rating}</p>
-            <p className="rating-badge">우수</p>
-            <button type="button" className="rating-btn">전체 분석 보기</button>
-          </div>
-        </div>
       </div>
     </div>
   );

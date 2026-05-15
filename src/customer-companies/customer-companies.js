@@ -47,7 +47,12 @@ function getAuthHeader() {
 
 const LIST_ID = LIST_IDS.CUSTOMER_COMPANIES;
 
-export default function CustomerCompanies({ listVariant = 'page', onSearchModalConfirm }) {
+export default function CustomerCompanies({
+  listVariant = 'page',
+  onSearchModalConfirm,
+  searchModalMultiSelect,
+  onSearchModalConfirmBatch
+}) {
   const isSearchModal = listVariant === 'searchModal';
   const listPageLimit = isSearchModal ? LIMIT_SEARCH_MODAL : LIMIT;
   const [searchParams, setSearchParams] = useSearchParams();
@@ -309,6 +314,11 @@ export default function CustomerCompanies({ listVariant = 'page', onSearchModalC
   const openDetailModal = (row) => {
     if (!row?._id) return;
     if (isSearchModal) {
+      if (searchModalMultiSelect && onSearchModalConfirmBatch) {
+        const idx = sortedItems.findIndex((r) => String(r._id) === String(row._id));
+        if (idx >= 0) toggleCompanySelection(idx, false);
+        return;
+      }
       onSearchModalConfirm?.(row);
       return;
     }
@@ -739,7 +749,12 @@ export default function CustomerCompanies({ listVariant = 'page', onSearchModalC
 
   return (
     <div className={`page customer-companies-page${isSearchModal ? ' customer-companies-page--search-modal' : ''}`}>
-      <header className="page-header">
+      <header className="page-header customer-companies-header">
+        {!isSearchModal ? (
+          <div className="customer-companies-header-main">
+            <h1 className="page-title">기업 리스트</h1>
+          </div>
+        ) : null}
         <div className="header-search">
           <button type="submit" form="customer-companies-search-form" className="header-search-icon-btn" aria-label="검색">
             <span className="material-symbols-outlined">search</span>
@@ -783,7 +798,64 @@ export default function CustomerCompanies({ listVariant = 'page', onSearchModalC
             ) : null}
           </select>
         </div>
-        <div className="header-actions">
+        <div className="customer-companies-header-tools">
+          {!isSearchModal ? (
+            <>
+              <button
+                type="button"
+                className={`icon-btn cc-assignee-filter-btn ${assigneeMeOnly ? 'active' : ''}`}
+                onClick={() => {
+                  const next = !assigneeMeOnly;
+                  setSelectedCompanyIds(new Set());
+                  setSelectedCompanyMap({});
+                  setAssigneeMeOnly(next);
+                  patchListTemplate(LIST_ID, { assigneeMeOnly: next }).catch((err) => {
+                    alert(err?.message || '저장에 실패했습니다.');
+                    setAssigneeMeOnly(assigneeMeOnly);
+                  });
+                }}
+                title={assigneeMeOnly ? '전체 고객사 보기' : '내 담당 업체 보기'}
+                aria-label={assigneeMeOnly ? '전체 고객사 보기' : '내 담당 업체 보기'}
+              >
+                <span className="material-symbols-outlined">person_pin_circle</span>
+                <span className="cc-filter-label">내 담당</span>
+              </button>
+              <button
+                type="button"
+                className="icon-btn cc-assignee-filter-btn"
+                onClick={openExcelImportModal}
+                title="엑셀 파일을 매핑하여 고객사 일괄 등록"
+                aria-label="엑셀 매핑 가져오기"
+              >
+                <span className="material-symbols-outlined">upload_file</span>
+                <span className="cc-filter-label">엑셀 매핑</span>
+              </button>
+              {canExportExcel ? (
+                <button
+                  type="button"
+                  className="btn-outline"
+                  onClick={handleExportSelectedCompanies}
+                  disabled={exportExcelLoading}
+                  title="선택한 고객사만 엑셀(.xlsx)로보냅니다. (Owner / Admin 전용)"
+                >
+                  <span className="material-symbols-outlined">file_download</span>
+                  {exportExcelLoading ? '' : `${selectedCompanyIds.size ? ` (${selectedCompanyIds.size})` : ''}`}
+                </button>
+              ) : null}
+              {canManageCustomFieldDefinitions ? (
+                <button
+                  type="button"
+                  className="btn-outline"
+                  onClick={() => setShowCustomFieldsManageModal(true)}
+                  title="고객사에 쓸 사용자 정의 필드를 추가합니다"
+                >
+                  <span className="material-symbols-outlined">playlist_add</span>
+                  필드 추가
+                </button>
+              ) : null}
+              <button type="button" className="btn-primary" onClick={openAddModal}><span className="material-symbols-outlined">add</span> 기업 추가</button>
+            </>
+          ) : null}
           <button type="button" className="icon-btn" aria-label="리스트 열 설정" onClick={() => { setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), customFieldColumns)); setSettingsOpen(true); }} title="리스트 열 설정">
             <span className="material-symbols-outlined">settings</span>
           </button>
@@ -791,71 +863,6 @@ export default function CustomerCompanies({ listVariant = 'page', onSearchModalC
         </div>
       </header>
       <div className="page-content">
-        {!isSearchModal ? (
-        <div className="customer-companies-top">
-          <div>
-            <h2>기업 리스트</h2>
-            <p className="page-desc">
-              총 {pagination.total || 0}개 고객사를 관리 중입니다
-            </p>
-          </div>
-          <div className="customer-companies-actions">
-            <button
-              type="button"
-              className={`icon-btn cc-assignee-filter-btn ${assigneeMeOnly ? 'active' : ''}`}
-              onClick={() => {
-                const next = !assigneeMeOnly;
-                setSelectedCompanyIds(new Set());
-                setSelectedCompanyMap({});
-                setAssigneeMeOnly(next);
-                patchListTemplate(LIST_ID, { assigneeMeOnly: next }).catch((err) => {
-                  alert(err?.message || '저장에 실패했습니다.');
-                  setAssigneeMeOnly(assigneeMeOnly);
-                });
-              }}
-              title={assigneeMeOnly ? '전체 고객사 보기' : '내 담당 업체 보기'}
-              aria-label={assigneeMeOnly ? '전체 고객사 보기' : '내 담당 업체 보기'}
-            >
-              <span className="material-symbols-outlined">person_pin_circle</span>
-              <span className="cc-filter-label">내 담당 업체 보기</span>
-            </button>
-            <button
-              type="button"
-              className="icon-btn cc-assignee-filter-btn"
-              onClick={openExcelImportModal}
-              title="엑셀 파일을 매핑하여 고객사 일괄 등록"
-              aria-label="엑셀 매핑 가져오기"
-            >
-              <span className="material-symbols-outlined">upload_file</span>
-              <span className="cc-filter-label">엑셀 매핑</span>
-            </button>
-            {canExportExcel ? (
-              <button
-                type="button"
-                className="btn-outline"
-                onClick={handleExportSelectedCompanies}
-                disabled={exportExcelLoading}
-                title="선택한 고객사만 엑셀(.xlsx)로 내보냅니다. (Owner / Admin 전용)"
-              >
-                <span className="material-symbols-outlined">file_download</span>
-                {exportExcelLoading ? '내보내는 중…' : `내보내기${selectedCompanyIds.size ? ` (${selectedCompanyIds.size})` : ''}`}
-              </button>
-            ) : null}
-            {canManageCustomFieldDefinitions ? (
-              <button
-                type="button"
-                className="btn-outline"
-                onClick={() => setShowCustomFieldsManageModal(true)}
-                title="고객사에 쓸 사용자 정의 필드를 추가합니다"
-              >
-                <span className="material-symbols-outlined">playlist_add</span>
-                필드 추가
-              </button>
-            ) : null}
-            <button type="button" className="btn-primary" onClick={openAddModal}><span className="material-symbols-outlined">add</span> 기업 추가</button>
-          </div>
-        </div>
-        ) : null}
         {!isSearchModal && selectedCompanyIds.size > 0 && (
           <div className="cc-selection-action-bar">
             <span className="cc-selection-action-bar-count">
@@ -926,6 +933,37 @@ export default function CustomerCompanies({ listVariant = 'page', onSearchModalC
             </div>
           </div>
         )}
+        {isSearchModal && searchModalMultiSelect && onSearchModalConfirmBatch ? (
+          <div className="cc-search-modal-merge-batch-bar" role="region" aria-label="문서 메일머지용 다중 선택">
+            <p className="cc-search-modal-merge-batch-bar-text">
+              {selectedCompanyIds.size > 0 ? (
+                <>
+                  <strong>{selectedCompanyIds.size}</strong>곳 선택됨 — 아래 버튼으로 문서 메일머지 표에 한 번에 넣습니다.
+                </>
+              ) : (
+                <>체크박스를 켜거나 행을 눌러 여러 고객사를 선택하세요. (Shift+클릭으로 범위 선택)</>
+              )}
+            </p>
+            <div className="cc-search-modal-merge-batch-bar-btns">
+              <button type="button" className="cc-search-modal-merge-batch-clear" onClick={clearCompanySelection} disabled={!selectedCompanyIds.size}>
+                선택 해제
+              </button>
+              <button
+                type="button"
+                className="cc-search-modal-merge-batch-add"
+                disabled={!selectedCompanyIds.size}
+                onClick={() => {
+                  const list = [...selectedCompanyIds]
+                    .map((id) => selectedCompanyMap[id] || sortedItems.find((r) => String(r._id) === String(id)))
+                    .filter(Boolean);
+                  if (list.length) onSearchModalConfirmBatch(list);
+                }}
+              >
+                선택 항목 표에 추가 ({selectedCompanyIds.size})
+              </button>
+            </div>
+          </div>
+        ) : null}
         <div className="panel table-panel">
           {/* 모바일 전용 카드 목록 (customerForMobile.html 구조) */}
           <div className="customer-companies-mobile-cards-wrap">
@@ -1191,7 +1229,11 @@ export default function CustomerCompanies({ listVariant = 'page', onSearchModalC
           onSaved={(payload) => {
             if (isSearchModal && payload?._id) {
               closeAddModal();
-              onSearchModalConfirm?.(payload);
+              if (searchModalMultiSelect && onSearchModalConfirmBatch) {
+                onSearchModalConfirmBatch([payload]);
+              } else {
+                onSearchModalConfirm?.(payload);
+              }
               return;
             }
             handleAddCompanySaved(payload);

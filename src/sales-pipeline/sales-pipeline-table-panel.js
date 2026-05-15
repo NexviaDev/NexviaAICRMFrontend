@@ -3,7 +3,12 @@ import {
   fetchSalesOpportunityScheduleFieldContext,
   SALES_OPPORTUNITY_SCHEDULE_DEFS_CHANGED
 } from '@/lib/sales-opportunity-schedule-labels';
+import {
+  fetchSalesOpportunityFinanceFieldContext,
+  SALES_OPPORTUNITY_FINANCE_DEFS_CHANGED
+} from '@/lib/sales-opportunity-finance-labels';
 import { listColumnValueInlineStyle } from '@/lib/list-column-cell-styles';
+import { usePipelineStageLabelMap, resolvePipelineStageLabel } from './pipeline-stage-labels';
 import {
   formatSummaryRowCell,
   formatChildRowCell,
@@ -49,12 +54,7 @@ function pipelineFlatRowCellText(colKey, flatRow, fpMap, stageLabels, canViewAdm
   if (!canViewAdmin && PIPELINE_TABLE_ADMIN_ONLY_KEYS.has(colKey)) return '—';
   if (colKey === 'stage') {
     if (flatRow.kind === 'line') return '';
-    const sk = opp.stage;
-    if (stageLabels?.[sk]) return stageLabels[sk];
-    if (sk === 'Lost') return '기회 상실';
-    if (sk === 'Abandoned') return '보류';
-    if (sk === 'Won') return '수주 성공';
-    return String(sk ?? '');
+    return resolvePipelineStageLabel(opp.stage, stageLabels);
   }
   if (flatRow.kind === 'summary') return formatSummaryRowCell(colKey, opp, fp);
   if (flatRow.kind === 'line') return formatChildRowCell(colKey, flatRow.line);
@@ -69,13 +69,18 @@ export default function SalesPipelineTablePanel({
   pipelineListTemplate,
   displayColumnKeys,
   stageForecastPercent,
-  stageLabels,
+  stageLabels: stageLabelsProp,
   canViewAdminContent,
   onOpenEdit,
   onDragStart,
   onDragEnd,
   onSaveColumnOrder
 }) {
+  const { stageLabelMap: stageLabelsFromApi } = usePipelineStageLabelMap(getAuthHeader);
+  const stageLabels = useMemo(
+    () => ({ ...stageLabelsFromApi, ...(stageLabelsProp && typeof stageLabelsProp === 'object' ? stageLabelsProp : {}) }),
+    [stageLabelsFromApi, stageLabelsProp]
+  );
   const [sortState, setSortState] = useState({ key: null, dir: null });
   const [columnFilters, setColumnFilters] = useState({});
   const [openFilterCol, setOpenFilterCol] = useState(null);
@@ -85,6 +90,7 @@ export default function SalesPipelineTablePanel({
   const dataTableRef = useRef(null);
   const [measuredColWidths, setMeasuredColWidths] = useState(null);
   const [scheduleFieldLabelByKey, setScheduleFieldLabelByKey] = useState({});
+  const [financeFieldLabelByKey, setFinanceFieldLabelByKey] = useState({});
   const columnCellStyles = pipelineListTemplate?.columnCellStyles || {};
 
   useEffect(() => {
@@ -101,6 +107,23 @@ export default function SalesPipelineTablePanel({
     return () => {
       cancelled = true;
       window.removeEventListener(SALES_OPPORTUNITY_SCHEDULE_DEFS_CHANGED, onDefs);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const ctx = await fetchSalesOpportunityFinanceFieldContext(getAuthHeader);
+      if (!cancelled) setFinanceFieldLabelByKey(ctx.labelByKey);
+    };
+    void load();
+    const onDefs = () => {
+      void load();
+    };
+    window.addEventListener(SALES_OPPORTUNITY_FINANCE_DEFS_CHANGED, onDefs);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(SALES_OPPORTUNITY_FINANCE_DEFS_CHANGED, onDefs);
     };
   }, []);
 
@@ -170,8 +193,11 @@ export default function SalesPipelineTablePanel({
   const filterUniqueForUi = useMemo(() => {
     const q = colFilterSearch.trim().toLowerCase();
     if (!q) return filterUniqueOptions;
-    return filterUniqueOptions.filter((k) => filterValueDisplay(k).toLowerCase().includes(q));
-  }, [filterUniqueOptions, colFilterSearch]);
+    return filterUniqueOptions.filter((k) => {
+      const label = filterValueDisplay(k, openFilterCol, stageLabels);
+      return label.toLowerCase().includes(q) || String(k).toLowerCase().includes(q);
+    });
+  }, [filterUniqueOptions, colFilterSearch, openFilterCol, stageLabels]);
 
   const totalsByColumn = useMemo(() => {
     const out = {};
@@ -187,8 +213,8 @@ export default function SalesPipelineTablePanel({
   }, [displayColumnKeys, sortedFiltered, stageForecastPercent, canViewAdminContent]);
 
   const labelForCol = useCallback(
-    (k) => columnHeaderLabel(k, scheduleFieldLabelByKey),
-    [scheduleFieldLabelByKey]
+    (k) => columnHeaderLabel(k, scheduleFieldLabelByKey, financeFieldLabelByKey),
+    [scheduleFieldLabelByKey, financeFieldLabelByKey]
   );
 
   const measureTableColWidths = useCallback(() => {
@@ -383,7 +409,9 @@ export default function SalesPipelineTablePanel({
                     return (
                       <th
                         key={colKey}
-                        className="sp-pl-data-table__th sp-dz-data-table__th sp-dz-data-table__th--col-tools sp-dz-data-table__th--dz-col-reorder"
+                        className={`sp-pl-data-table__th sp-dz-data-table__th sp-dz-data-table__th--col-tools sp-dz-data-table__th--dz-col-reorder${
+                          openFilterCol === colKey ? ' sp-dz-data-table__th--filter-open' : ''
+                        }`}
                         scope="col"
                         title={labelForCol(colKey)}
                         draggable
@@ -518,7 +546,7 @@ export default function SalesPipelineTablePanel({
                                             }
                                           />
                                           <span className="sp-dz-col-filter-pop__val">
-                                            {filterValueDisplay(valueKey)}
+                                            {filterValueDisplay(valueKey, colKey, stageLabels)}
                                           </span>
                                         </label>
                                       </li>
@@ -599,7 +627,7 @@ export default function SalesPipelineTablePanel({
                               key={colKey}
                               className={`sp-dz-data-table__td sp-pl-data-table__td${
                                 flatRow.kind === 'line' ? ' sp-dz-data-table__td--tree-line-indent' : ''
-                              }`}
+                              }${colKey === 'productName' ? ' sp-dz-data-table__td--product-name' : ''}`}
                               title={text}
                             >
                               <span className="list-col-value-style" style={kStyle || undefined}>

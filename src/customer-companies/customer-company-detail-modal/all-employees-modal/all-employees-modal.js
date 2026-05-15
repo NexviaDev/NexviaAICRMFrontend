@@ -119,7 +119,7 @@ export default function AllEmployeesModal({ employees: initialEmployees, custome
       window.alert(`이메일이 없는 ${skipped}명은 제외하고 ${withEmail.length}명에게 메일을 준비합니다.`);
     }
     const uniqueEmails = [...new Set(withEmail.map((emp) => String(emp.email).trim()))];
-    setEmailCompose({ initialTo: uniqueEmails.join(', '), contacts: withEmail });
+    setEmailCompose({ initialTo: uniqueEmails.join(','), contacts: withEmail });
   };
 
   const openSmsForSelected = () => {

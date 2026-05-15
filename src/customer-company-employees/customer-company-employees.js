@@ -106,6 +106,7 @@ const CUSTOM_FIELDS_PREFIX = 'customFields.';
 export default function CustomerCompanyEmployees() {
   const me = useMemo(() => getStoredCrmUser(), []);
   const canManageCustomFieldDefinitions = isAdminOrAboveRole(me?.role);
+  const canExportExcel = isAdminOrAboveRole(me?.role);
   const canBulkDeleteSelected = isAdminOrAboveRole(me?.role);
   const canRequestAssigneeHandover = !!(me && String(me.role || '').toLowerCase() !== 'pending');
   const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
@@ -828,7 +829,7 @@ export default function CustomerCompanyEmployees() {
   const openBulkEmailFromSelection = useCallback(() => {
     const pack = collectBulkEmailsFromSelection();
     if (!pack) return;
-    setEmailCompose({ initialTo: pack.unique.join(', '), contacts: pack.withEmail });
+    setEmailCompose({ initialTo: pack.unique.join(','), contacts: pack.withEmail });
   }, [collectBulkEmailsFromSelection]);
 
   const renderMobileCard = (row, idxInMobileList) => {
@@ -973,7 +974,11 @@ export default function CustomerCompanyEmployees() {
 
   return (
     <div className="page customer-company-employees-page">
-      <header className="page-header">
+      <header className="page-header customer-company-employees-header">
+        <div className="customer-company-employees-header-main">
+          <h1 className="page-title">연락처</h1>
+
+        </div>
         <div className="header-search">
           <button type="submit" form="customer-company-employees-search-form" className="header-search-icon-btn" aria-label="검색">
             <span className="material-symbols-outlined">search</span>
@@ -999,74 +1004,80 @@ export default function CustomerCompanyEmployees() {
             ))}
           </select>
         </div>
-        <div className="header-actions">
-          <button type="button" className="icon-btn" aria-label="리스트 열 설정" onClick={() => { setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), customFieldColumns)); setSettingsOpen(true); }} title="리스트 열 설정">
+        <div className="customer-company-employees-header-tools">
+          <button
+            type="button"
+            className={`icon-btn cce-assignee-filter-btn ${assigneeMeOnly ? 'active' : ''}`}
+            onClick={() => {
+              const next = !assigneeMeOnly;
+              clearSelection();
+              setAssigneeMeOnly(next);
+              setMobileChipFilter(next ? 'assignee' : 'all');
+              patchListTemplate(LIST_ID, { assigneeMeOnly: next }).catch((err) => {
+                alert(err?.message || '저장에 실패했습니다.');
+                setAssigneeMeOnly(!next);
+                setMobileChipFilter(!next ? 'assignee' : 'all');
+              });
+            }}
+            title={assigneeMeOnly ? '전체 연락처 보기' : '내가 담당인 연락처만 보기'}
+            aria-label={assigneeMeOnly ? '전체 연락처 보기' : '내 담당 연락처 보기'}
+          >
+            <span className="material-symbols-outlined">person_pin_circle</span>
+            <span className="cce-filter-label">내 담당</span>
+          </button>
+          <button
+            type="button"
+            className="icon-btn cce-assignee-filter-btn"
+            onClick={openExcelImportModal}
+            title="엑셀 파일을 매핑하여 연락처 일괄 등록"
+            aria-label="엑셀 매핑 가져오기"
+          >
+            <span className="material-symbols-outlined">upload_file</span>
+            <span className="cce-filter-label">엑셀 가져오기</span>
+          </button>
+          {canExportExcel ? (
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={() => void handleDownloadExcel()}
+              disabled={exportExcelLoading}
+              title="현재 검색·내 담당 조건에 맞는 연락처 전체를 엑셀(.xlsx)로 받습니다. (Owner / Admin 전용)"
+            >
+              <span className="material-symbols-outlined">file_download</span>
+              {exportExcelLoading ? '' : ''}
+            </button>
+          ) : null}
+          {canManageCustomFieldDefinitions ? (
+            <button
+              type="button"
+              className="btn-outline"
+              onClick={() => setShowCustomFieldsManageModal(true)}
+              title="연락처에 쓸 사용자 정의 필드를 추가합니다"
+            >
+              <span className="material-symbols-outlined">playlist_add</span>
+              필드 추가
+            </button>
+          ) : null}
+          <button type="button" className="btn-primary" onClick={openAddModal}>
+            <span className="material-symbols-outlined">add</span>
+            새 연락처
+          </button>
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="리스트 열 설정"
+            onClick={() => {
+              setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), customFieldColumns));
+              setSettingsOpen(true);
+            }}
+            title="리스트 열 설정"
+          >
             <span className="material-symbols-outlined">settings</span>
           </button>
           <PageHeaderNotifyChat noWrapper buttonClassName="icon-btn" />
         </div>
       </header>
       <div className="page-content">
-        <div className="customer-company-employees-top">
-          <div>
-            <h2>연락처</h2>
-            <p className="page-desc">총 {pagination.total || 0}건의 연락처를 관리 중입니다</p>
-          </div>
-          <div className="customer-company-employees-actions">
-            <button
-              type="button"
-              className={`icon-btn cce-assignee-filter-btn ${assigneeMeOnly ? 'active' : ''}`}
-              onClick={() => {
-                const next = !assigneeMeOnly;
-                clearSelection();
-                setAssigneeMeOnly(next);
-                setMobileChipFilter(next ? 'assignee' : 'all');
-                patchListTemplate(LIST_ID, { assigneeMeOnly: next }).catch((err) => {
-                  alert(err?.message || '저장에 실패했습니다.');
-                  setAssigneeMeOnly(assigneeMeOnly);
-                  setMobileChipFilter(assigneeMeOnly ? 'assignee' : 'all');
-                });
-              }}
-              title={assigneeMeOnly ? '전체 연락처 보기' : '내 담당 직원 보기'}
-              aria-label={assigneeMeOnly ? '전체 연락처 보기' : '내 담당 직원 보기'}
-            >
-              <span className="material-symbols-outlined">person_pin_circle</span>
-              <span className="cce-filter-label">내 담당 직원 보기</span>
-            </button>
-            <button
-              type="button"
-              className="btn-outline cce-excel-import-btn"
-              onClick={openExcelImportModal}
-              title="엑셀 열을 이름·회사·연락처·이메일 등에 매핑하여 연락처를 한 번에 등록합니다."
-            >
-              <span className="material-symbols-outlined">upload_file</span>
-              엑셀 매핑
-            </button>
-            <button
-              type="button"
-              className="btn-outline cce-excel-export-btn"
-              onClick={handleDownloadExcel}
-              disabled={exportExcelLoading}
-              title="현재 검색·내 담당 필터에 맞는 연락처 전체를 엑셀(.xlsx)로 받습니다."
-            >
-              <span className="material-symbols-outlined">download</span>
-              {exportExcelLoading ? '준비 중…' : '내보내기'}
-            </button>
-            {canManageCustomFieldDefinitions ? (
-              <button
-                type="button"
-                className="btn-outline"
-                onClick={() => setShowCustomFieldsManageModal(true)}
-                title="연락처에 쓸 사용자 정의 필드를 추가합니다"
-              >
-                <span className="material-symbols-outlined">playlist_add</span>
-                필드 추가
-              </button>
-            ) : null}
-            <button type="button" className="btn-primary" onClick={openAddModal}><span className="material-symbols-outlined">add</span> 새 연락처 추가</button>
-          </div>
-        </div>
-
         {/* 선택 액션 바 */}
         {selected.size > 0 && (
           <div className="cce-action-bar">

@@ -1476,7 +1476,7 @@ export default function EmailComposeModal({
                   return next;
                 });
               }}
-              title="메일 명함 (HTML)"
+              title="메일 명함 (HTML) — 별도 창"
             >
               <span className="material-symbols-outlined">badge</span>
             </button>
@@ -1495,70 +1495,6 @@ export default function EmailComposeModal({
               <span className="material-symbols-outlined">folder</span>
             </button>
           </div>
-
-          {showSignaturePanel && (
-            <div className="email-compose-sig-panel" role="region" aria-label="메일 명함">
-              <div className="email-compose-sig-panel-head">
-                <span className="material-symbols-outlined" aria-hidden>
-                  badge
-                </span>
-                <span>메일 명함</span>
-                <button
-                  type="button"
-                  className="email-compose-sig-close"
-                  onClick={() => setShowSignaturePanel(false)}
-                  aria-label="명함 패널 닫기"
-                >
-                  <span className="material-symbols-outlined">expand_less</span>
-                </button>
-              </div>
-              <p className="email-compose-sig-hint">
-                HTML 소스를 넣으면 발송 본문 하단에 표시됩니다. 답장 시에는 원본 메일 인용 <strong>바로 위</strong>에 붙습니다. 저장 시 계정의 <strong>listTemplates.emailSignature</strong>에 반영되며, 다른 기기에서도 동일하게 불러옵니다. 웹메일 등에서 복사한 블록은{' '}
-                <strong>태그가 포함된 HTML</strong>로 붙여넣기됩니다(일반 textarea와 달리 처리).
-              </p>
-              <label className="email-compose-sig-label" htmlFor="email-compose-sig-html">
-                명함 HTML
-              </label>
-              <textarea
-                id="email-compose-sig-html"
-                className="email-compose-sig-textarea"
-                rows={8}
-                value={signaturePanelText}
-                onChange={(e) => setSignaturePanelText(e.target.value)}
-                onPaste={handleSignatureHtmlPaste}
-                placeholder="예: &lt;div&gt;…&lt;/div&gt; 또는 &lt;table&gt;…&lt;/table&gt;"
-                spellCheck={false}
-              />
-              <div className="email-compose-sig-preview-block">
-                <span className="email-compose-sig-preview-title" id="email-compose-sig-preview-label">
-                  미리보기
-                </span>
-                <div
-                  className="email-compose-sig-preview-wrap"
-                  role="region"
-                  aria-labelledby="email-compose-sig-preview-label"
-                >
-                  {signaturePanelText.trim() ? (
-                    <iframe
-                      className="email-compose-sig-preview-frame"
-                      title="명함 HTML 미리보기"
-                      sandbox=""
-                      srcDoc={signaturePreviewSrcDoc}
-                      onLoad={handleSignaturePreviewFrameLoad}
-                    />
-                  ) : (
-                    <p className="email-compose-sig-preview-empty">HTML을 입력하면 발송 시와 비슷하게 여기에 표시됩니다. 저장 전에 확인해 보세요.</p>
-                  )}
-                </div>
-              </div>
-              {signatureSaveError ? <p className="email-compose-sig-err">{signatureSaveError}</p> : null}
-              <div className="email-compose-sig-actions">
-                <button type="button" className="email-compose-sig-save" onClick={saveEmailSignature} disabled={signatureSaving}>
-                  {signatureSaving ? '저장 중…' : '저장'}
-                </button>
-              </div>
-            </div>
-          )}
 
           {inTable && (
             <div className="email-compose-table-toolbar">
@@ -1773,6 +1709,102 @@ export default function EmailComposeModal({
             <p className="email-compose-size-warning-message">{sizeWarningModal}</p>
             <footer className="email-compose-size-warning-footer">
               <button type="button" className="email-compose-size-warning-btn" onClick={() => setSizeWarningModal(null)}>확인</button>
+            </footer>
+          </div>
+        </div>
+      )}
+
+      {showSignaturePanel && (
+        <div
+          className="email-compose-ai-modal-overlay"
+          onClick={() => {
+            if (!signatureSaving) setShowSignaturePanel(false);
+          }}
+          role="presentation"
+        >
+          <div
+            className="email-compose-ai-modal email-compose-sig-ai-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="email-compose-sig-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="email-compose-ai-modal-header email-compose-sig-ai-modal-header">
+              <span className="material-symbols-outlined email-compose-ai-modal-header-icon email-compose-sig-modal-header-icon" aria-hidden>
+                badge
+              </span>
+              <h2 id="email-compose-sig-modal-title" className="email-compose-ai-modal-title">
+                메일 명함
+              </h2>
+              <button
+                type="button"
+                className="email-compose-drive-modal-close"
+                onClick={() => {
+                  if (!signatureSaving) setShowSignaturePanel(false);
+                }}
+                aria-label="닫기"
+                disabled={signatureSaving}
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <div className="email-compose-ai-modal-body">
+              <p className="email-compose-sig-hint">
+                HTML 소스를 넣으면 발송 본문 하단에 표시됩니다. 답장 시에는 원본 메일 인용 <strong>바로 위</strong>에 붙습니다. 저장 시 계정의{' '}
+                <strong>listTemplates.emailSignature</strong>에 반영되며, 다른 기기에서도 동일하게 불러옵니다. 웹메일 등에서 복사한 블록은{' '}
+                <strong>태그가 포함된 HTML</strong>로 붙여넣기됩니다(일반 textarea와 달리 처리).
+              </p>
+              <label className="email-compose-sig-label" htmlFor="email-compose-sig-html">
+                명함 HTML
+              </label>
+              <textarea
+                id="email-compose-sig-html"
+                className="email-compose-sig-textarea"
+                rows={12}
+                value={signaturePanelText}
+                onChange={(e) => setSignaturePanelText(e.target.value)}
+                onPaste={handleSignatureHtmlPaste}
+                placeholder="예: &lt;div&gt;…&lt;/div&gt; 또는 &lt;table&gt;…&lt;/table&gt;"
+                spellCheck={false}
+              />
+              <div className="email-compose-sig-preview-block">
+                <span className="email-compose-sig-preview-title" id="email-compose-sig-preview-label">
+                  미리보기
+                </span>
+                <div
+                  className="email-compose-sig-preview-wrap"
+                  role="region"
+                  aria-labelledby="email-compose-sig-preview-label"
+                >
+                  {signaturePanelText.trim() ? (
+                    <iframe
+                      className="email-compose-sig-preview-frame"
+                      title="명함 HTML 미리보기"
+                      sandbox=""
+                      srcDoc={signaturePreviewSrcDoc}
+                      onLoad={handleSignaturePreviewFrameLoad}
+                    />
+                  ) : (
+                    <p className="email-compose-sig-preview-empty">HTML을 입력하면 발송 시와 비슷하게 여기에 표시됩니다. 저장 전에 확인해 보세요.</p>
+                  )}
+                </div>
+              </div>
+              {signatureSaveError ? <p className="email-compose-sig-err">{signatureSaveError}</p> : null}
+            </div>
+            <footer className="email-compose-ai-modal-footer">
+              <button
+                type="button"
+                className="email-compose-ai-modal-btn-cancel"
+                onClick={() => {
+                  if (!signatureSaving) setShowSignaturePanel(false);
+                }}
+                disabled={signatureSaving}
+              >
+                닫기
+              </button>
+              <button type="button" className="email-compose-sig-save" onClick={saveEmailSignature} disabled={signatureSaving}>
+                {signatureSaving ? '저장 중…' : '저장'}
+              </button>
             </footer>
           </div>
         </div>

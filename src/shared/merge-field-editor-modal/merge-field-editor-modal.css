@@ -1,0 +1,137 @@
+/* 데이터 입력 시트(.merge-data-sheet-modal-root z-index 2200) 위에 표시 */
+.merge-field-editor-modal-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2300;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+.merge-field-editor-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(30, 41, 59, 0.42);
+  pointer-events: none;
+}
+
+.merge-field-editor-modal-panel {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0;
+  width: 100%;
+  max-width: none;
+  border-radius: 0;
+  background: #eef2f7;
+  border: none;
+  box-shadow: none;
+  box-sizing: border-box;
+}
+
+.merge-field-editor-modal-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 1rem;
+  background: #fff;
+  border-bottom: 1px solid #d5dfec;
+}
+
+.merge-field-editor-modal-head-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.merge-field-editor-modal-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.merge-field-editor-modal-profile-name-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.6rem;
+}
+
+.merge-field-editor-modal-profile-name-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #475569;
+  white-space: nowrap;
+}
+
+.merge-field-editor-modal-profile-name-input {
+  flex: 1;
+  min-width: 10rem;
+  max-width: min(22rem, 100%);
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #c9d6e8;
+  border-radius: 6px;
+  background: #f8fafc;
+  font-size: 0.88rem;
+  color: #1e293b;
+}
+
+.merge-field-editor-modal-profile-name-input:focus {
+  outline: none;
+  border-color: #94a8c4;
+  background: #fff;
+}
+
+.merge-field-editor-modal-profile-name-input:disabled {
+  background: #f1f5f9;
+  color: #64748b;
+  cursor: not-allowed;
+}
+
+.merge-field-editor-modal-profile-name-hint {
+  width: 100%;
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.76rem;
+  color: #64748b;
+  line-height: 1.35;
+}
+
+.merge-field-editor-modal-profile-actions {
+  flex-basis: 100%;
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.1rem 0 0;
+}
+
+.merge-field-editor-modal-profile-action-btn {
+  flex-shrink: 0;
+}
+
+.merge-field-editor-modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.75rem 1rem 1rem;
+}
+
+.merge-field-editor-modal-body .qdm-field-editor {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.merge-field-editor-modal-banner {
+  margin: 0 0 0.65rem;
+}

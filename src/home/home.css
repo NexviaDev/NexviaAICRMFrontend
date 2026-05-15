@@ -405,6 +405,25 @@
   font-size: 0.68rem;
   color: #7a8fa3;
   line-height: 1.35;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.home-kpi-goal-footnotes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0 0 0.65rem;
+}
+
+.home-kpi-card-hint--goal-foot {
+  margin: 0;
+}
+
+.home-kpi-footnote-num {
+  color: #b85555;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .home-kpi-card--project-preview .home-kpi-card-hint {
@@ -3244,3 +3263,13 @@
   margin-bottom: 0.35rem;
 }
 
+.home-project-fetch-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(248, 250, 252, 0.78);
+  backdrop-filter: blur(3px);
+}

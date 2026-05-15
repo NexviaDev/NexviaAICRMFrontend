@@ -12,6 +12,10 @@ const TABS = [
   { key: 'gantt', label: '간트차트' }
 ];
 
+/** 홈 KPI 등에서 `navigate('/project?projectModal=edit&projectId=…')`로 연 뒤 뒤로가기로 닫을 수 있게 함 */
+const PROJECT_URL_MODAL_PARAM = 'projectModal';
+const PROJECT_URL_ID_PARAM = 'projectId';
+
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -918,6 +922,38 @@ export default function Project() {
     [board.kanban?.columns]
   );
 
+  const fetchKanbanCardForProjectId = useCallback(async (projectId) => {
+    const sid = String(projectId || '').trim();
+    if (!sid) return null;
+    try {
+      const res = await fetch(`${API_BASE}/projects/board?projectId=${encodeURIComponent(sid)}`, {
+        headers: getAuthHeader()
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return null;
+      for (const col of data.kanban?.columns || []) {
+        for (const item of col.items || []) {
+          if (String(item?._id || '') === sid) return item;
+        }
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const clearProjectModalUrlParams = useCallback(() => {
+    setSearchParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        p.delete(PROJECT_URL_MODAL_PARAM);
+        p.delete(PROJECT_URL_ID_PARAM);
+        return p;
+      },
+      { replace: true }
+    );
+  }, [setSearchParams]);
+
   const handleOpenEditProject = useCallback(
     (projectItem) => {
       if (dragClickSuppressRef.current) return;
@@ -938,6 +974,39 @@ export default function Project() {
     },
     [handleOpenEditProject]
   );
+
+  const urlProjectModal = String(searchParams.get(PROJECT_URL_MODAL_PARAM) || '').trim();
+  const urlProjectId = String(searchParams.get(PROJECT_URL_ID_PARAM) || '').trim();
+
+  useEffect(() => {
+    if (loading || urlProjectModal !== 'edit' || !urlProjectId) return;
+    if (showProjectFormModal && String(editingProject?._id || '') === urlProjectId) return;
+
+    const resolved = resolveBoardItemById(urlProjectId);
+    if (resolved) {
+      handleOpenEditProject(resolved);
+      return undefined;
+    }
+
+    let cancelled = false;
+    (async () => {
+      const item = await fetchKanbanCardForProjectId(urlProjectId);
+      if (cancelled || !item) return;
+      handleOpenEditProject(item);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    loading,
+    urlProjectModal,
+    urlProjectId,
+    showProjectFormModal,
+    editingProject?._id,
+    resolveBoardItemById,
+    handleOpenEditProject,
+    fetchKanbanCardForProjectId
+  ]);
 
   const handleSaveProject = async (payload) => {
     setSavingProject(true);
@@ -962,6 +1031,7 @@ export default function Project() {
       if (!res.ok) throw new Error(data.error || '프로젝트 저장에 실패했습니다.');
       setShowProjectFormModal(false);
       setEditingProject(null);
+      clearProjectModalUrlParams();
       await fetchBoard();
     } catch (err) {
       window.alert(err.message || '프로젝트 저장에 실패했습니다.');
@@ -991,7 +1061,7 @@ export default function Project() {
     e.dataTransfer.effectAllowed = 'move';
     try {
       e.dataTransfer.setData('text/plain', id);
-    } catch (_) {}
+    } catch (_) { }
     e.currentTarget.classList.add('project-kanban-card-dragging');
   }, []);
 
@@ -1027,7 +1097,7 @@ export default function Project() {
       let droppedTaskId = '';
       try {
         droppedTaskId = String(e.dataTransfer.getData('text/plain') || '').trim();
-      } catch (_) {}
+      } catch (_) { }
       const itemId = String(droppedTaskId || kanbanDragIdRef.current || '').trim();
       if (!itemId) return;
 
@@ -1060,7 +1130,7 @@ export default function Project() {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || '단계 변경에 실패했습니다.');
-        fetchBoard().catch(() => {});
+        fetchBoard().catch(() => { });
       } catch (err) {
         if (snapshot) setBoard(snapshot);
         window.alert(err.message || '단계 변경에 실패했습니다.');
@@ -1079,7 +1149,10 @@ export default function Project() {
 
   return (
     <div className={`page project-page ${view === 'gantt' ? 'project-page--gantt' : ''} ${view === 'kanban' ? 'project-page--kanban' : ''}`}>
-      <header className="page-header">
+      <header className="page-header project-page-header">
+        <div className="project-header-main">
+          <h1 className="page-title">프로젝트</h1>
+        </div>
         <div className="header-search">
           <button type="submit" form="project-search-form" className="header-search-icon-btn" aria-label="검색">
             <span className="material-symbols-outlined">search</span>
@@ -1094,34 +1167,29 @@ export default function Project() {
       </header>
 
       <div className="page-content">
-        <div className="project-topbar">
-          <div>
-            <p className="project-breadcrumb">일정 / 프로젝트</p>
-            <h1>프로젝트</h1>
-            <p className="project-subtitle">프로젝트 진행 상황을 한눈에 확인하고 일정 관리를 쉽게 할 수 있습니다.</p>
-          </div>
+        <div className="project-topbar project-topbar--tools-only">
           <div className="project-topbar-aside">
             <div className="project-toolbar">
+              <nav className="project-tabs" aria-label="프로젝트 뷰 선택">
+                {TABS.map((tab) => (
+                  <NavLink
+                    key={tab.key}
+                    to={tabSearchString(tab.key)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setView(tab.key);
+                    }}
+                    className={`project-tab ${view === tab.key ? 'active' : ''}`}
+                  >
+                    {tab.label}
+                  </NavLink>
+                ))}
+              </nav>
               <button type="button" className="btn-primary" onClick={handleOpenCreateProject} disabled={loading}>
                 <span className="material-symbols-outlined">add</span>
                 프로젝트 추가
               </button>
             </div>
-            <nav className="project-tabs" aria-label="프로젝트 뷰 선택">
-              {TABS.map((tab) => (
-                <NavLink
-                  key={tab.key}
-                  to={tabSearchString(tab.key)}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setView(tab.key);
-                  }}
-                  className={`project-tab ${view === tab.key ? 'active' : ''}`}
-                >
-                  {tab.label}
-                </NavLink>
-              ))}
-            </nav>
           </div>
         </div>
 
@@ -1171,6 +1239,7 @@ export default function Project() {
             if (savingProject) return;
             setShowProjectFormModal(false);
             setEditingProject(null);
+            clearProjectModalUrlParams();
           }}
         />
       ) : null}

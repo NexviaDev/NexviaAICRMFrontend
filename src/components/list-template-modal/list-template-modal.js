@@ -5,6 +5,11 @@ import {
   SALES_OPPORTUNITY_SCHEDULE_DEFS_CHANGED,
   scheduleCustomDatesColumnTitle
 } from '@/lib/sales-opportunity-schedule-labels';
+import {
+  fetchSalesOpportunityFinanceFieldContext,
+  SALES_OPPORTUNITY_FINANCE_DEFS_CHANGED,
+  financeCustomFieldsColumnTitle
+} from '@/lib/sales-opportunity-finance-labels';
 import { LIST_IDS } from '@/lib/list-templates';
 import { SALES_PIPELINE_DEFAULT_VISIBLE_COLUMN_KEYS } from '@/sales-pipeline/drop-zone-list-modal/drop-zone-list-modal';
 import { compactColumnCellStylesForSave } from '@/lib/list-column-cell-styles';
@@ -75,8 +80,12 @@ export default function ListTemplateModal({
   const [localColumnCellStyles, setLocalColumnCellStyles] = useState(() => ({}));
   /** scheduleCustomDates.* → CustomFieldDefinition 라벨 (파이프라인 표·드롭존과 동일 API) */
   const [scheduleFieldLabelByKey, setScheduleFieldLabelByKey] = useState({});
+  /** financeCustomFields.* → CustomFieldDefinition(salesOpportunityFinance) 라벨 */
+  const [financeFieldLabelByKey, setFinanceFieldLabelByKey] = useState({});
   /** 세일즈 파이프라인 열 설정: 정의에만 있는 일정 키도 목록에 붙일 때 사용 */
   const [salesPipelineScheduleAllowedKeys, setSalesPipelineScheduleAllowedKeys] = useState(() => new Set());
+  /** 세일즈 파이프라인: 계약·수금 추가 필드 정의 키 */
+  const [salesPipelineFinanceAllowedKeys, setSalesPipelineFinanceAllowedKeys] = useState(() => new Set());
 
   const draggedKeyRef = useRef(null);
   const [draggingKey, setDraggingKey] = useState(null);
@@ -109,6 +118,33 @@ export default function ListTemplateModal({
     };
   }, [isSalesPipelineScheduleMerge]);
 
+  const isSalesPipelineFinanceMerge = listId === LIST_IDS.SALES_PIPELINE;
+
+  useEffect(() => {
+    if (!isSalesPipelineFinanceMerge) {
+      setFinanceFieldLabelByKey({});
+      setSalesPipelineFinanceAllowedKeys(new Set());
+      return undefined;
+    }
+    let cancelled = false;
+    const load = async () => {
+      const ctx = await fetchSalesOpportunityFinanceFieldContext(getAuthHeader);
+      if (!cancelled) {
+        setFinanceFieldLabelByKey(ctx.labelByKey);
+        setSalesPipelineFinanceAllowedKeys(ctx.allowedKeys);
+      }
+    };
+    void load();
+    const onDefs = () => {
+      void load();
+    };
+    window.addEventListener(SALES_OPPORTUNITY_FINANCE_DEFS_CHANGED, onDefs);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(SALES_OPPORTUNITY_FINANCE_DEFS_CHANGED, onDefs);
+    };
+  }, [isSalesPipelineFinanceMerge]);
+
   const needsScheduleFieldLabelsNonPipeline = useMemo(
     () =>
       !isSalesPipelineScheduleMerge &&
@@ -137,31 +173,51 @@ export default function ListTemplateModal({
     };
   }, [isSalesPipelineScheduleMerge, needsScheduleFieldLabelsNonPipeline]);
 
-  /** 파이프라인 표: 저장된 순서 + CustomFieldDefinition(salesOpportunitySchedule)에만 있고 순서에 없는 일정 열 */
+  /** 파이프라인 표: 저장된 순서 + 일정·계약수금 정의에만 있고 순서에 없는 열 */
   const mergedColumnOrder = useMemo(() => {
     const base = [...(columnOrder || [])];
-    if (!isSalesPipelineScheduleMerge || !salesPipelineScheduleAllowedKeys.size) return base;
     const have = new Set(base);
-    const extra = [];
-    for (const ik of salesPipelineScheduleAllowedKeys) {
-      const ck = `scheduleCustomDates.${ik}`;
-      if (!have.has(ck)) {
-        have.add(ck);
-        extra.push(ck);
+    const trail = [];
+
+    if (isSalesPipelineScheduleMerge && salesPipelineScheduleAllowedKeys.size) {
+      for (const ik of salesPipelineScheduleAllowedKeys) {
+        const ck = `scheduleCustomDates.${ik}`;
+        if (!have.has(ck)) {
+          have.add(ck);
+          trail.push(ck);
+        }
       }
     }
-    extra.sort((a, b) => a.localeCompare(b));
-    return [...base, ...extra];
-  }, [isSalesPipelineScheduleMerge, columnOrder, salesPipelineScheduleAllowedKeys]);
+    if (isSalesPipelineFinanceMerge && salesPipelineFinanceAllowedKeys.size) {
+      for (const ik of salesPipelineFinanceAllowedKeys) {
+        const ck = `financeCustomFields.${ik}`;
+        if (!have.has(ck)) {
+          have.add(ck);
+          trail.push(ck);
+        }
+      }
+    }
+    trail.sort((a, b) => a.localeCompare(b));
+    return trail.length ? [...base, ...trail] : base;
+  }, [
+    isSalesPipelineScheduleMerge,
+    isSalesPipelineFinanceMerge,
+    columnOrder,
+    salesPipelineScheduleAllowedKeys,
+    salesPipelineFinanceAllowedKeys
+  ]);
 
   const displayLabelForCol = useCallback(
     (col) => {
       if (String(col.key).startsWith('scheduleCustomDates.')) {
         return scheduleCustomDatesColumnTitle(col.key, scheduleFieldLabelByKey) || col.label;
       }
+      if (String(col.key).startsWith('financeCustomFields.')) {
+        return financeCustomFieldsColumnTitle(col.key, financeFieldLabelByKey) || col.label;
+      }
       return col.label;
     },
-    [scheduleFieldLabelByKey]
+    [scheduleFieldLabelByKey, financeFieldLabelByKey]
   );
 
   useEffect(() => {

@@ -598,7 +598,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
       window.alert(`이메일이 없는 ${skipped}명은 제외하고 ${withEmail.length}명에게 메일을 준비합니다.`);
     }
     const uniqueEmails = [...new Set(withEmail.map((emp) => String(emp.email).trim()))];
-    setEmployeeEmailCompose({ initialTo: uniqueEmails.join(', '), contacts: withEmail });
+    setEmployeeEmailCompose({ initialTo: uniqueEmails.join(','), contacts: withEmail });
   }, [employees]);
 
   const openEmployeeSmsDraft = useCallback(() => {
@@ -1720,7 +1720,14 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                 defaultStage="Won"
                 initialCustomerCompany={{ _id: companyId, name: companyToShow.name, businessNumber: companyToShow.businessNumber }}
                 onClose={() => setShowRegisterSaleModal(false)}
-                onSaved={() => { setShowRegisterSaleModal(false); fetchProductSales(); }}
+                onSaved={(payload, meta) => {
+                  void fetchProductSales();
+                  if (!meta?.keepOpen) setShowRegisterSaleModal(false);
+                }}
+                onSwitchToEditAfterCreate={(id) => {
+                  setShowRegisterSaleModal(false);
+                  setSelectedSaleForEdit({ _id: id });
+                }}
               />
             )}
             {selectedSaleForEdit && (
@@ -1729,7 +1736,10 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                 oppId={selectedSaleForEdit._id}
                 initialCustomerCompany={{ _id: companyId, name: companyToShow.name, businessNumber: companyToShow.businessNumber }}
                 onClose={() => setSelectedSaleForEdit(null)}
-                onSaved={() => { setSelectedSaleForEdit(null); fetchProductSales(); }}
+                onSaved={(payload, meta) => {
+                  void fetchProductSales();
+                  if (!meta?.keepOpen) setSelectedSaleForEdit(null);
+                }}
               />
             )}
             {showAllEmployeesModal && (

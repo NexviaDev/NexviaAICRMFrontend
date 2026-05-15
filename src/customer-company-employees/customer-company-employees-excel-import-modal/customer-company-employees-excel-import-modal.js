@@ -2,11 +2,18 @@
  * 연락처 목록(customer-company-employees.js)에서 URL `?modal=excel-import`일 때 열립니다.
  */
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import * as XLSX from 'xlsx';
+import { readSpreadsheetFileToRows } from '@/lib/spreadsheet-file-read';
 import { API_BASE } from '@/config';
 import ContactExcelImportMappingModal from './contact-excel-import-mapping-modal';
 import ContactImportPreviewModal from '../add-customer-company-employees-modal/contact-import-preview-modal';
 import BulkContactDuplicateReviewModal from '../add-customer-company-employees-modal/bulk-contact-duplicate-review-modal';
+import {
+  BULK_ROW_EXCLUDE,
+  BULK_ROW_FORCE,
+  BULK_ROW_MERGE,
+  mergeImportRowIntoExistingEmployee,
+  parseBulkPerRowResolution
+} from '../add-customer-company-employees-modal/bulk-contact-merge-utils';
 import ImportResultModal from '../../customer-companies/customer-companies-excel-import-modal/import-result-modal';
 import { normalizeBulkImportCompanyGroupKey } from '@/lib/bulk-import-company-group-key';
 import '../../lead-capture/lead-capture-crm-mapping/lead-capture-crm-mapping-modal.css';
@@ -20,7 +27,11 @@ import {
   rowsFromSavedMappings,
   BUSINESS_CARD_AUTO_TARGET
 } from '../../lead-capture/lead-capture-crm-mapping/lead-capture-crm-mapping-utils';
-import { buildExcelSourceOptions, previewExcelMappedValue } from '../../customer-companies/customer-companies-excel-import-modal/excel-import-mapping-utils';
+import {
+  buildExcelSourceOptions,
+  previewExcelMappedValue,
+  readExcelMappedCell
+} from '../../customer-companies/customer-companies-excel-import-modal/excel-import-mapping-utils';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -71,11 +82,57 @@ const FALLBACK_TARGET_OPTIONS = [
   { value: 'contact.memo', label: '연락처 · 메모' }
 ];
 
-function readMappedExcelValue(excelRow, mapping) {
-  if (!mapping) return '';
-  if (mapping.sourceType === 'constant') return mapping.constantValue ?? '';
-  if (!mapping.sourceKey) return '';
-  return excelRow && typeof excelRow === 'object' ? excelRow[mapping.sourceKey] ?? '' : '';
+/** 엑셀 헤더(한글 등)와 기본 매핑(sourceKey=name 등) 불일치 시 대상 필드별로 열 추정 */
+function guessContactExcelSourceKey(targetKey, headers) {
+  if (!targetKey || !Array.isArray(headers) || !headers.length) return '';
+  const rules = [
+    {
+      target: 'contact.name',
+      test: (s) =>
+        /이름|성명|고객명|담당자\s*명|연락처\s*명|고객\s*이름/i.test(s) || /^name$/i.test(s)
+    },
+    {
+      target: 'contact.email',
+      test: (s) => /이메일|e[-_]?mail|메일|메일주소|전자\s*우편/i.test(s) || /^email$/i.test(s)
+    },
+    {
+      target: 'contact.phone',
+      test: (s) =>
+        /전화|휴대|핸드폰|휴대폰|연락처|모바일|mobile|tel|phone|hp/i.test(s)
+    },
+    {
+      target: 'contact.companyName',
+      test: (s) => /회사|기업|업체|법인|고객사|업체명|회사명|company/i.test(s)
+    },
+    {
+      target: 'contact.position',
+      test: (s) => /직책|직위|직급|부서|직명|title|position|role|rank|job\s*title/i.test(s)
+    },
+    {
+      target: 'contact.address',
+      test: (s) => /주소|소재지|location|address/i.test(s)
+    },
+    {
+      target: 'contact.birthDate',
+      test: (s) => /생년월일|생일|birth/i.test(s)
+    },
+    {
+      target: 'contact.status',
+      test: (s) => /상태|status|스테이터스/i.test(s)
+    },
+    {
+      target: 'contact.memo',
+      test: (s) => /메모|비고|note|memo|remarks/i.test(s)
+    }
+  ];
+  const rule = rules.find((r) => r.target === targetKey);
+  if (!rule) return '';
+  for (const h of headers) {
+    const s = String(h || '').trim();
+    if (!s) continue;
+    if (rule.test(s)) return h;
+  }
+  return '';
 }
 
 function stripContactMappingRows(rows) {
@@ -87,7 +144,8 @@ function buildContactPayloadFromExcelRow(excelRow, mappings) {
   for (const m of mappings) {
     const key = m.targetKey;
     if (!key || !String(key).startsWith('contact.')) continue;
-    const raw = readMappedExcelValue(excelRow, m);
+    const raw =
+      m.sourceType === 'constant' ? m.constantValue ?? '' : readExcelMappedCell(excelRow, m.sourceKey || '');
     vals[key] = raw == null ? '' : String(raw).trim();
   }
 
@@ -173,15 +231,7 @@ function rowNeedsContactDuplicateHold(preflightResult) {
 }
 
 async function parseExcelToRows(file) {
-  const buf = await file.arrayBuffer();
-  const data = new Uint8Array(buf);
-  const wb = XLSX.read(data, { type: 'array' });
-  const sheetName = wb.SheetNames[0];
-  if (!sheetName) throw new Error('시트가 없습니다.');
-  const sheet = wb.Sheets[sheetName];
-  const json = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
-  if (!Array.isArray(json)) return [];
-  return json;
+  return readSpreadsheetFileToRows(file);
 }
 
 function digitsOnly(value) {
@@ -381,6 +431,23 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
     }
     return excelRows[0] || {};
   }, [excelRows]);
+
+  /** 엑셀 첫 행 키(헤더)가 바뀔 때: 기본 소스키(name·email 등)가 파일에 없으면 패턴으로 열 자동 연결 */
+  useEffect(() => {
+    if (!open || !excelHeaders.length) return;
+    setRows((prev) =>
+      prev.map((row) => {
+        if (row.sourceType !== 'field' || !row.targetKey || !String(row.targetKey).startsWith('contact.')) {
+          return row;
+        }
+        if (row.sourceKey && excelHeaders.includes(row.sourceKey)) return row;
+        const guessed = guessContactExcelSourceKey(row.targetKey, excelHeaders);
+        if (guessed) return { ...row, sourceKey: guessed };
+        if (row.sourceKey && !excelHeaders.includes(row.sourceKey)) return { ...row, sourceKey: '' };
+        return row;
+      })
+    );
+  }, [open, excelHeaders]);
 
   const targetOptions = useMemo(
     () => buildTargetOptionsForTarget(registerTarget, contactSchemaFields, contactCustomDefs)
@@ -615,11 +682,8 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
     async (rowsToImport, preResults = [], forceAll = false) => {
       const assigneeUserIds = resolveAssigneeUserIds();
       const batchCustomerCompanyIdByNormKey = new Map();
-      const perRowDecisions =
-        forceAll && typeof forceAll === 'object' && forceAll.mode === 'perRow' && forceAll.decisions
-          ? forceAll.decisions
-          : null;
       let success = 0;
+      let merged = 0;
       let fail = 0;
       let skipped = 0;
 
@@ -630,12 +694,33 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
           const row = rowsToImport[idx];
           const preResult = preResults[idx] || {};
           const decisionKey = Number.isInteger(Number(preResult.index)) ? String(Number(preResult.index)) : String(idx);
-          const rowDecision = perRowDecisions ? perRowDecisions[decisionKey] : null;
-          if (rowDecision === 'exclude' || (rowNeedsContactDuplicateHold(preResult) && rowDecision !== 'force' && forceAll !== true)) {
+          const { rowDecision, mergeContactId, mergeCompanyId } = parseBulkPerRowResolution(forceAll, decisionKey);
+          if (
+            rowDecision === BULK_ROW_EXCLUDE ||
+            (rowNeedsContactDuplicateHold(preResult) &&
+              rowDecision !== BULK_ROW_FORCE &&
+              rowDecision !== BULK_ROW_MERGE &&
+              forceAll !== true)
+          ) {
             skipped += 1;
             continue;
           }
           try {
+            if (rowDecision === BULK_ROW_MERGE && mergeContactId) {
+              const mergeResult = await mergeImportRowIntoExistingEmployee({
+                employeeId: mergeContactId,
+                importRow: row,
+                getAuthHeader,
+                formatPhoneInput,
+                mergeCompanyId
+              });
+              if (mergeResult.ok) {
+                merged += 1;
+                success += 1;
+              } else fail += 1;
+              continue;
+            }
+
             const payload = {
               name: String(row.name || '').replace(/\s/g, '').trim(),
               email: (row.email || '').trim(),
@@ -660,6 +745,10 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
               payload.companyName = cnLink;
               const gkLink = normalizeBulkImportCompanyGroupKey(cnLink);
               if (gkLink) batchCustomerCompanyIdByNormKey.set(gkLink, linkedRaw);
+            } else if (rowDecision === BULK_ROW_MERGE && mergeCompanyId) {
+              const cn = (row.companyName || '').trim();
+              payload.customerCompanyId = mergeCompanyId;
+              if (cn) payload.companyName = cn;
             } else {
               const cn = (row.companyName || '').trim();
               if (cn) {
@@ -684,7 +773,7 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
               fail += 1;
               continue;
             }
-            if (rowNeedsContactDuplicateHold(preResult) && (forceAll === true || rowDecision === 'force')) {
+            if (rowNeedsContactDuplicateHold(preResult) && (forceAll === true || rowDecision === BULK_ROW_FORCE)) {
               payload.forceCreateDespiteContactDuplicate = true;
             }
 
@@ -714,9 +803,15 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
 
         setContactPreviewOpen(false);
         setContactPreviewItems([]);
-        window.alert(`등록 ${success}건${skipped ? `, 제외 ${skipped}건` : ''}${fail ? `, 실패 ${fail}건` : ''} (총 ${rowsToImport.length}건).`);
+        const created = Math.max(0, success - merged);
+        const parts = [];
+        if (created > 0) parts.push(`등록 ${created}건`);
+        if (merged > 0) parts.push(`병합 ${merged}건`);
+        if (skipped > 0) parts.push(`제외 ${skipped}건`);
+        if (fail > 0) parts.push(`실패 ${fail}건`);
+        window.alert(`${parts.join(', ')} (총 ${rowsToImport.length}건).`);
         if (success > 0) {
-          onImported?.({ summary: { total: rowsToImport.length, created: success, skipped, failed: fail } });
+          onImported?.({ summary: { total: rowsToImport.length, created: success, merged, skipped, failed: fail } });
           onClose?.();
         } else {
           setSaveMsg(`등록에 실패했습니다. (${fail}건${skipped ? `, 제외 ${skipped}건` : ''})`);

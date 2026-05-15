@@ -1,0 +1,196 @@
+.qdm-zip-modal-root {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.qdm-zip-modal-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(51, 65, 85, 0.38);
+}
+
+.qdm-zip-modal-panel {
+  position: relative;
+  width: min(32rem, 100%);
+  max-height: min(85vh, 34rem);
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.85rem;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.12);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.qdm-zip-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1rem 0.5rem;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.qdm-zip-modal-title {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.qdm-zip-modal-close {
+  border: none;
+  background: #f1f5f9;
+  color: #475569;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qdm-zip-modal-close:hover {
+  background: #e2e8f0;
+}
+
+.qdm-zip-modal-collision {
+  border-bottom: 1px solid #fed7aa;
+}
+
+.qdm-zip-modal-desc,
+.qdm-zip-modal-warn {
+  margin: 0;
+  padding: 0.65rem 1rem 0.35rem;
+  font-size: 0.84rem;
+  color: #64748b;
+  line-height: 1.5;
+}
+
+.qdm-zip-modal-warn {
+  color: #9a3412;
+  background: #fff7ed;
+}
+
+.qdm-zip-modal-fieldset {
+  margin: 0;
+  padding: 0.5rem 1rem 0.75rem;
+  border: none;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.qdm-zip-modal-legend {
+  padding: 0 1rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.qdm-zip-modal-radio {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  font-size: 0.82rem;
+  color: #475569;
+  line-height: 1.45;
+  cursor: pointer;
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.45rem;
+}
+
+.qdm-zip-modal-radio:hover {
+  background: #f8fafc;
+}
+
+.qdm-zip-modal-radio input {
+  margin-top: 0.2rem;
+  flex-shrink: 0;
+}
+
+.qdm-zip-inline-code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85em;
+  background: #f1f5f9;
+  padding: 0.05rem 0.25rem;
+  border-radius: 0.25rem;
+}
+
+.qdm-zip-modal-footnote {
+  margin: 0;
+  padding: 0 1rem 0.5rem;
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.qdm-zip-modal-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem 1rem;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.qdm-zip-modal-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.45rem 0.5rem;
+  margin-bottom: 0.35rem;
+  border-radius: 0.45rem;
+  background: #f8fafc;
+  border: 1px solid #e8eef5;
+}
+
+.qdm-zip-modal-li--renamed {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.qdm-zip-modal-idx {
+  font-size: 0.72rem;
+  color: #64748b;
+}
+
+.qdm-zip-modal-name {
+  font-size: 0.8rem;
+  color: #0f172a;
+  word-break: break-all;
+}
+
+.qdm-zip-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid #eef2f7;
+  background: #fafbfc;
+}
+
+.qdm-zip-modal-actions .qdm-btn {
+  border-radius: 0.55rem;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.qdm-zip-modal-actions .qdm-btn-ghost {
+  background: #fff;
+  border-color: #d8e4f4;
+  color: #475569;
+}
+
+.qdm-zip-modal-actions .qdm-btn-primary {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1e40af;
+}

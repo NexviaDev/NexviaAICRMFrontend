@@ -113,7 +113,9 @@ export default function ContactExcelImportMappingModal({
           >
             <span className="material-symbols-outlined cc-excel-dropzone-icon">cloud_upload</span>
             <p className="cc-excel-dropzone-title">엑셀 파일을 여기에 놓거나 클릭하여 선택</p>
-            <p className="cc-excel-dropzone-hint">.xlsx · .xls · CSV · 행이 많으면 등록에 시간이 걸릴 수 있습니다</p>
+            <p className="cc-excel-dropzone-hint">
+              .xlsx · .xls · CSV(UTF-8·한글 Excel CP949 자동 인식) · 행이 많으면 등록에 시간이 걸릴 수 있습니다
+            </p>
             {excelFileName ? (
               <div className="cc-excel-file-badge">
                 <span className="material-symbols-outlined" style={{ fontSize: '1rem' }}>

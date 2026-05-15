@@ -1,6 +1,12 @@
-/* 연락처 대량 미리보기 — 엑셀형·고정 헤더/푸터·고객사 셀 편집 */
+/* 연락처 대량 미리보기 — 전체 화면·엑셀형·고정 헤더/푸터 */
 .contact-import-preview-overlay {
   z-index: 2100;
+}
+
+.contact-import-preview-overlay--fullscreen {
+  padding: 0 !important;
+  align-items: stretch !important;
+  justify-content: stretch !important;
 }
 
 .contact-import-preview-panel {
@@ -13,8 +19,22 @@
   overflow: hidden;
 }
 
+.contact-import-preview-panel--fullscreen {
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
 .add-contact-import-preview-panel.contact-import-preview-panel {
   max-width: min(99vw, 92rem) !important;
+}
+
+.add-contact-import-preview-panel.contact-import-preview-panel--fullscreen {
+  max-width: 100vw !important;
 }
 
 .contact-import-preview-header {
@@ -61,13 +81,87 @@
 
 .contact-import-preview-main-table {
   font-size: 0.8125rem;
+  table-layout: auto;
   width: max-content;
   min-width: 100%;
 }
 
-.contact-import-preview-main-table .cip-col-company {
-  width: 13.5rem;
-  min-width: 13.5rem;
+.contact-import-preview-main-table.data-table th,
+.contact-import-preview-main-table.data-table td {
+  padding: 0.45rem 0.55rem;
+}
+
+.contact-import-preview-header-hint {
+  color: #7a6f88;
+  font-size: 0.8rem;
+}
+
+.contact-import-preview-main-table thead th.cip-th-check,
+.contact-import-preview-main-table tbody td.cip-td-check {
+  width: 2.75rem;
+  min-width: 2.75rem;
+  max-width: 2.75rem;
+  text-align: center;
+  vertical-align: middle;
+  padding-left: 0.35rem;
+  padding-right: 0.35rem;
+  box-sizing: border-box;
+}
+
+.cip-register-check {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  cursor: pointer;
+  accent-color: #5c6bc0;
+}
+
+.contact-import-preview-body-row--unchecked {
+  opacity: 0.55;
+}
+
+.contact-import-preview-body-row--unchecked .cip-contact-field-input:not(:disabled) {
+  background: #f8f6fa;
+}
+
+.contact-import-preview-main-table thead th.cip-th-index,
+.contact-import-preview-main-table tbody td.cip-td-index {
+  width: 2.75rem;
+  min-width: 2.75rem;
+  max-width: 3rem;
+  box-sizing: border-box;
+}
+
+/* 이름·이메일·전화·직책: 최소 너비 확보 + 내용에 맞게 넓어짐 */
+.contact-import-preview-main-table thead th.cip-th-contact,
+.contact-import-preview-main-table tbody td.cip-td-contact {
+  box-sizing: border-box;
+  padding-left: 0.65rem;
+  padding-right: 0.65rem;
+}
+
+.contact-import-preview-main-table thead th:nth-child(3),
+.contact-import-preview-main-table tbody td:nth-child(3) {
+  min-width: 11rem;
+}
+
+.contact-import-preview-main-table thead th:nth-child(4),
+.contact-import-preview-main-table tbody td:nth-child(4) {
+  min-width: 14rem;
+}
+
+.contact-import-preview-main-table thead th:nth-child(5),
+.contact-import-preview-main-table tbody td:nth-child(5) {
+  min-width: 11rem;
+}
+
+.contact-import-preview-main-table thead th:nth-child(6),
+.contact-import-preview-main-table tbody td:nth-child(6) {
+  min-width: 10rem;
+}
+
+.contact-import-preview-main-table .cip-th-contact {
+  white-space: nowrap;
 }
 
 /* 같은 소속(동일 묶음) 행: 행/셀 테두리가 아니라 기업명 값에만 밑줄 */
@@ -113,11 +207,12 @@
 
 .cip-td-company {
   vertical-align: middle;
+  min-width: 13.5rem;
 }
 
 .cip-td-contact {
   vertical-align: middle;
-  min-width: 0;
+  min-width: 10rem;
 }
 
 .contact-import-preview-main-table .cip-contact-field-input {
@@ -125,6 +220,11 @@
   border-radius: 0.3rem;
   background: #fff;
   color: #3d3545;
+  box-sizing: border-box;
+  min-width: 10rem;
+  width: auto;
+  max-width: min(36rem, 85vw);
+  field-sizing: content;
 }
 
 .contact-import-preview-main-table .cip-contact-field-input:disabled {
@@ -278,4 +378,11 @@
   min-width: 0;
   font-size: 0.78rem;
   padding: 0.22rem 0.35rem;
+}
+
+.contact-import-preview-main-table .add-contact-import-company-input--in-table.cip-contact-field-input {
+  width: auto;
+  min-width: 10rem;
+  max-width: min(36rem, 85vw);
+  field-sizing: content;
 }

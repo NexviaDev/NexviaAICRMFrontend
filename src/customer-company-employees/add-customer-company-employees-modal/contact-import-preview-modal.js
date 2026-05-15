@@ -152,6 +152,22 @@ function normalizeIncomingRow(r) {
   };
 }
 
+/** 엑셀·다른 소스에서 키가 달라 올 때 미리보기 표용으로 통일 */
+function normalizeContactPreviewItem(r) {
+  if (!r || typeof r !== 'object') return {};
+  const name = r.name ?? r.contactName ?? r.employeeName ?? '';
+  const email = r.email ?? r.workEmail ?? '';
+  const phone = r.phone ?? r.mobile ?? r.tel ?? '';
+  const position = r.position ?? r.title ?? r.jobTitle ?? '';
+  return {
+    ...r,
+    name: name != null ? String(name) : '',
+    email: email != null ? String(email) : '',
+    phone: phone != null ? String(phone) : '',
+    position: position != null ? String(position) : ''
+  };
+}
+
 function linkedNameSynced(row) {
   if (!row.customerCompanyId || !row.linkedCompany) return false;
   const a = String(row.companyName || '').trim();
@@ -172,6 +188,20 @@ function normalizeSelectedRows(rows) {
   return [...new Set((rows || []).filter((n) => Number.isInteger(n) && n >= 0))].sort((a, b) => a - b);
 }
 
+function allRowIndices(count) {
+  return new Set(Array.from({ length: count }, (_, i) => i));
+}
+
+function applyCheckStateToIndices(prevSet, indices, checked) {
+  const next = new Set(prevSet);
+  for (const i of indices) {
+    if (!Number.isInteger(i) || i < 0) continue;
+    if (checked) next.add(i);
+    else next.delete(i);
+  }
+  return next;
+}
+
 /**
  * @param {(rows: object[]) => void} [props.onConfirm]
  */
@@ -183,11 +213,15 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
   const [companySearchRow, setCompanySearchRow] = useState(null);
   /** 같은 소속 행 묶음 호버 — `rowAffiliationKey` 원문과 비교 */
   const [hoveredAffiliationKey, setHoveredAffiliationKey] = useState(null);
+  /** 등록 포함 여부(체크) — 기본 전체 선택 */
+  const [checkedRows, setCheckedRows] = useState(() => new Set());
 
   const [selectedNameRows, setSelectedNameRowsState] = useState([0]);
   const excelSelRef = useRef({ anchor: 0, focus: 0 });
   const selectedNameRowsRef = useRef([0]);
   const lastAnchorRef = useRef(0);
+  /** 체크박스 Shift 범위 기준 행 */
+  const checkAnchorRef = useRef(0);
   const nameDragActiveRef = useRef(false);
   const nameDragStartRef = useRef(null);
   const nameDragModeRef = useRef('replace');
@@ -262,12 +296,15 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
 
   useEffect(() => {
     if (!open) return;
-    setDraft((items || []).map((r) => normalizeIncomingRow({ ...r })));
+    const nextDraft = (items || []).map((r) => normalizeIncomingRow(normalizeContactPreviewItem({ ...r })));
+    setDraft(nextDraft);
+    setCheckedRows(allRowIndices(nextDraft.length));
     clipboardRef.current = null;
     setCompanySearchRow(null);
     setHoveredAffiliationKey(null);
     setSel(0, 0);
     lastAnchorRef.current = 0;
+    checkAnchorRef.current = 0;
   }, [open, items, setSel]);
 
   const displayColumns = useMemo(
@@ -277,16 +314,25 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
 
   const headerStats = useMemo(() => {
     const total = draft.length;
+    let checkedCount = 0;
+    for (let i = 0; i < total; i += 1) {
+      if (checkedRows.has(i)) checkedCount += 1;
+    }
     const newKeys = new Set();
-    for (const row of draft) {
+    for (let i = 0; i < draft.length; i += 1) {
+      if (!checkedRows.has(i)) continue;
+      const row = draft[i];
       if (row.customerCompanyId) continue;
       const cn = (row.companyName || '').trim();
       const ad = (row.address || '').trim();
       if (!cn && !ad) continue;
       newKeys.add(rowAffiliationKey(row));
     }
-    return { total, newCompanyCount: newKeys.size };
-  }, [draft]);
+    return { total, checkedCount, newCompanyCount: newKeys.size };
+  }, [draft, checkedRows]);
+
+  const allRowsChecked = draft.length > 0 && checkedRows.size === draft.length;
+  const someRowsChecked = checkedRows.size > 0 && !allRowsChecked;
 
   /** 같은 소속(고객사 id 또는 신규 묶음 키)은 떨어져 있어도 같은 색으로 표시 */
   const rowBackgrounds = useMemo(() => {
@@ -431,6 +477,22 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
 
   useEffect(() => {
     if (!open) return;
+    const onKeyDown = (e) => {
+      if (e.key !== 'Escape') return;
+      if (bulkSaving) return;
+      e.preventDefault();
+      if (companySearchRow != null) {
+        setCompanySearchRow(null);
+        return;
+      }
+      onClose?.();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [open, bulkSaving, onClose, companySearchRow]);
+
+  useEffect(() => {
+    if (!open) return;
 
     const endNameDrag = () => {
       if (!nameDragActiveRef.current) return;
@@ -543,7 +605,43 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
   }, [open, applyCompanyClipboardToSelection]);
 
   const handleConfirmClick = () => {
-    onConfirm?.(draft);
+    const rows = draft.filter((_, idx) => checkedRows.has(idx));
+    if (!rows.length) {
+      window.alert('등록할 연락처를 하나 이상 선택(체크)해 주세요.');
+      return;
+    }
+    onConfirm?.(rows);
+  };
+
+  const handleHeaderCheckChange = () => {
+    if (bulkSaving) return;
+    if (allRowsChecked) {
+      setCheckedRows(new Set());
+      return;
+    }
+    setCheckedRows(allRowIndices(draft.length));
+  };
+
+  /** Shift: 기준(anchor) 행과 같은 체크 상태를 범위에 일괄 적용 · 단일 클릭: 해당 행만 토글 */
+  const handleRegisterCheckClick = (e, idx) => {
+    if (bulkSaving) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (e.shiftKey) {
+      const indices = rangeRows(checkAnchorRef.current, idx);
+      const anchorChecked = checkedRows.has(checkAnchorRef.current);
+      setCheckedRows((prev) => applyCheckStateToIndices(prev, indices, anchorChecked));
+      return;
+    }
+
+    checkAnchorRef.current = idx;
+    setCheckedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
   };
 
   const handleNameCellMouseDown = (e, idx) => {
@@ -742,7 +840,7 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
 
   return (
     <div
-      className="add-company-import-preview-overlay contact-import-preview-overlay"
+      className="add-company-import-preview-overlay contact-import-preview-overlay contact-import-preview-overlay--fullscreen"
       onClick={() => !bulkSaving && onClose?.()}
       role="dialog"
       aria-modal="true"
@@ -750,7 +848,7 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
     >
       <div
         ref={panelRef}
-        className="add-company-import-preview-panel add-contact-import-preview-panel contact-import-preview-panel"
+        className="add-company-import-preview-panel add-contact-import-preview-panel contact-import-preview-panel contact-import-preview-panel--fullscreen"
         onClick={(e) => e.stopPropagation()}
         tabIndex={-1}
       >
@@ -758,35 +856,40 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
           <h3 className="add-company-section-title contact-import-preview-title">연락처 등록 예정</h3>
           <p className="contact-import-preview-header-stats">
             <span>
-              <strong>{headerStats.total}</strong>명 등록 예정
+              <strong>{headerStats.checkedCount}</strong> / {headerStats.total}명 등록 예정
             </span>
             <span className="contact-import-preview-header-sep">·</span>
             <span>
               신규 고객사(배치 내 신규 묶음) <strong>{headerStats.newCompanyCount}</strong>개
             </span>
+            <span className="contact-import-preview-header-sep">·</span>
+            <span className="contact-import-preview-header-hint">Shift: 기준 행과 같은 체크를 범위에 적용</span>
           </p>
         </header>
 
         <div className="contact-import-preview-scroll">
           <div className="contact-import-preview-table-outer">
             <table className="data-table contact-import-preview-main-table">
-              <colgroup>
-                <col style={{ width: '2.5rem' }} />
-                <col style={{ width: '7rem' }} />
-                <col style={{ width: '9rem' }} />
-                <col style={{ width: '10rem' }} />
-                <col style={{ width: '6rem' }} />
-                {displayColumns.map((col) => (
-                  <col key={col.key} className="cip-col-company" />
-                ))}
-              </colgroup>
               <thead>
                 <tr>
+                  <th className="cip-th-check" title="등록 포함">
+                    <input
+                      type="checkbox"
+                      className="cip-register-check"
+                      checked={allRowsChecked}
+                      ref={(el) => {
+                        if (el) el.indeterminate = someRowsChecked;
+                      }}
+                      disabled={bulkSaving || draft.length === 0}
+                      onChange={handleHeaderCheckChange}
+                      aria-label="전체 선택"
+                    />
+                  </th>
                   <th className="cip-th-index">#</th>
-                  <th>이름</th>
-                  <th>이메일</th>
-                  <th>전화</th>
-                  <th>직책</th>
+                  <th className="cip-th-contact cip-th-contact-name">이름</th>
+                  <th className="cip-th-contact cip-th-contact-email">이메일</th>
+                  <th className="cip-th-contact cip-th-contact-phone">전화</th>
+                  <th className="cip-th-contact cip-th-contact-position">직책</th>
                   {displayColumns.map((col) => (
                     <th key={col.key} className="list-template-th-sortable cip-th-company" title={col.label}>
                       <span className="list-template-th-content">{truncateColumnLabel(col.label)}</span>
@@ -800,15 +903,31 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
                   const aff = rowAffiliationKey(row);
                   const affHover = aff !== 'individual' && hoveredAffiliationKey === aff;
                   const companyLike = toCompanyLikeRow(row);
+                  const rowChecked = checkedRows.has(idx);
                   return (
                     <tr
                       key={idx}
-                      className={`contact-import-preview-body-row${affHover ? ' contact-import-preview-body-row--aff-hover' : ''}`}
+                      className={`contact-import-preview-body-row${affHover ? ' contact-import-preview-body-row--aff-hover' : ''}${rowChecked ? '' : ' contact-import-preview-body-row--unchecked'}`}
                       style={bg ? { background: bg } : undefined}
                       data-cip-affiliation={affiliationAttr(aff)}
                       onMouseEnter={() => handleAffRowMouseEnter(aff)}
                       onMouseLeave={(e) => handleAffRowMouseLeave(e, aff)}
                     >
+                      <td
+                        className="cip-td-check"
+                        data-cip-check-row={idx}
+                        onMouseDown={(e) => handleRegisterCheckClick(e, idx)}
+                      >
+                        <input
+                          type="checkbox"
+                          className="cip-register-check"
+                          checked={rowChecked}
+                          disabled={bulkSaving}
+                          readOnly
+                          onMouseDown={(e) => handleRegisterCheckClick(e, idx)}
+                          aria-label={`${idx + 1}행 등록 포함`}
+                        />
+                      </td>
                       <td className="cip-td-index text-muted">{idx + 1}</td>
                       <td className="cip-td-contact">
                         <input
@@ -878,13 +997,13 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
             <button
               type="button"
               className="btn-primary add-contact-import-btn-confirm"
-              disabled={bulkSaving}
+              disabled={bulkSaving || checkedRows.size === 0}
               onClick={handleConfirmClick}
             >
               <span className="material-symbols-outlined" aria-hidden>
                 {bulkSaving ? 'hourglass_empty' : 'check_circle'}
               </span>
-              {bulkSaving ? '등록 중…' : '확인 후 등록'}
+              {bulkSaving ? '등록 중…' : `확인 후 등록 (${headerStats.checkedCount}명)`}
             </button>
           </div>
         </footer>

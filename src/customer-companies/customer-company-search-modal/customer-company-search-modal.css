@@ -320,3 +320,74 @@
 .cc-search-modal-add-layer .add-company-modal-overlay {
   z-index: 2500;
 }
+
+/* 문서 메일머지 등: 검색 모달 안 다중 선택 후 일괄 추가 */
+.cc-search-modal-merge-batch-bar {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.55rem 0.75rem;
+  margin: 0 0.5rem 0.5rem;
+  border: 1px solid #e5dff0;
+  border-radius: 0.5rem;
+  background: #faf7fc;
+}
+
+.cc-search-modal-merge-batch-bar-text {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: #5c4d72;
+  line-height: 1.45;
+  flex: 1;
+  min-width: 12rem;
+}
+
+.cc-search-modal-merge-batch-bar-btns {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.cc-search-modal-merge-batch-clear {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #6b5b7d;
+  background: #fff;
+  border: 1px solid #ddd5ea;
+  border-radius: 0.45rem;
+  cursor: pointer;
+}
+
+.cc-search-modal-merge-batch-clear:hover:not(:disabled) {
+  background: #f3eef9;
+}
+
+.cc-search-modal-merge-batch-clear:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.cc-search-modal-merge-batch-add {
+  padding: 0.45rem 0.9rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: #4a3d5c;
+  background: #e8dff5;
+  border: 1px solid #d4c6e8;
+  border-radius: 0.45rem;
+  cursor: pointer;
+}
+
+.cc-search-modal-merge-batch-add:hover:not(:disabled) {
+  background: #ddd0ef;
+}
+
+.cc-search-modal-merge-batch-add:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

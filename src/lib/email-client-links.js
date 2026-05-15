@@ -5,16 +5,25 @@
  *   (`ms-outlook://compose?to=` 는 새 Outlook 등에서 앱만 켜지고 수신자가 비는 경우가 많아 사용하지 않음.)
  */
 
+/** mailto 불투명 구간: 주소는 `,` 로만 구분하는 편이 안전. `, ` 처럼 쉼표 뒤 공백은 URL에 `%20`으로 보이고 콘솔 로그가 지저분해짐 */
+export function normalizeMailtoRecipientList(raw) {
+  return String(raw || '')
+    .split(/[,;]+/)
+    .map((x) => x.trim())
+    .filter(Boolean)
+    .join(',');
+}
+
 /** @param {string} toSingleOrCommaSeparated */
 export function buildOutlookOfficeComposeUrl(toSingleOrCommaSeparated) {
-  const raw = String(toSingleOrCommaSeparated || '').trim();
+  const raw = normalizeMailtoRecipientList(toSingleOrCommaSeparated);
   if (!raw) return '';
   return `https://outlook.office.com/mail/deeplink/compose?to=${encodeURIComponent(raw)}`;
 }
 
 /** 개인 @outlook.com / @hotmail.com 등에 가까운 웹 작성 화면 */
 export function buildOutlookLiveComposeUrl(toSingleOrCommaSeparated) {
-  const raw = String(toSingleOrCommaSeparated || '').trim();
+  const raw = normalizeMailtoRecipientList(toSingleOrCommaSeparated);
   if (!raw) return '';
   return `https://outlook.live.com/mail/0/deeplink/compose?to=${encodeURIComponent(raw)}`;
 }
@@ -23,7 +32,7 @@ export function buildOutlookLiveComposeUrl(toSingleOrCommaSeparated) {
  * @param {string} toSingleOrCommaSeparated 쉼표로 여러 주소 가능 (ASCII 가정)
  */
 export function buildMailtoComposeUrl(toSingleOrCommaSeparated) {
-  const raw = String(toSingleOrCommaSeparated || '').trim();
+  const raw = normalizeMailtoRecipientList(toSingleOrCommaSeparated);
   if (!raw) return '';
   return `mailto:${raw}`;
 }
@@ -55,19 +64,20 @@ export const OUTLOOK_WEB_BODY_CHAR_MAX = 3200;
  *   `clipboardPlain`: URL 한도로 본문을 넣지 못할 때 전체 평문 본문 — 호출 측에서 클립보드로 복사 후 mailto 실행
  */
 export function buildMailtoWithFields(fields) {
-  const toPart = String(fields?.to || '').trim();
+  const toPart = normalizeMailtoRecipientList(fields?.to);
   if (!toPart) return { href: '', note: '', clipboardPlain: null };
 
   const subj = String(fields?.subject || '').trim() || '(제목 없음)';
-  const ccT = String(fields?.cc || '').trim();
+  const ccT = normalizeMailtoRecipientList(fields?.cc || '');
   const rawBody = String(fields?.body ?? '');
 
+  /** URLSearchParams는 공백을 `+`로 넣는데, mailto+데스크톱 Outlook이 이를 공백이 아니라 글자 `+`로 보이는 경우가 있어 %20 조립을 씁니다. */
   const buildHref = (bodyStr) => {
-    const qs = new URLSearchParams();
-    if (ccT) qs.set('cc', ccT);
-    qs.set('subject', subj);
-    if (bodyStr.length > 0) qs.set('body', bodyStr);
-    return `mailto:${toPart}?${qs.toString()}`;
+    const parts = [];
+    if (ccT) parts.push(`cc=${encodeURIComponent(ccT)}`);
+    parts.push(`subject=${encodeURIComponent(subj)}`);
+    if (bodyStr.length > 0) parts.push(`body=${encodeURIComponent(bodyStr)}`);
+    return `mailto:${toPart}?${parts.join('&')}`;
   };
 
   const hrefFull = buildHref(rawBody);
@@ -108,10 +118,10 @@ function shrinkMailtoToFit(toPart, ccT, subj) {
   let ccUsed = ccT;
 
   const tryBuild = () => {
-    const qs = new URLSearchParams();
-    if (ccUsed) qs.set('cc', ccUsed);
-    qs.set('subject', subjectUsed);
-    return `mailto:${toPart}?${qs.toString()}`;
+    const parts = [];
+    if (ccUsed) parts.push(`cc=${encodeURIComponent(ccUsed)}`);
+    parts.push(`subject=${encodeURIComponent(subjectUsed)}`);
+    return `mailto:${toPart}?${parts.join('&')}`;
   };
 
   let href = tryBuild();
@@ -142,37 +152,39 @@ function shrinkMailtoToFit(toPart, ccT, subj) {
 }
 
 export function buildOutlookOfficeComposeFields({ to, subject, body }) {
-  const p = new URLSearchParams();
+  const parts = [];
   const t = String(to || '').trim();
-  if (t) p.set('to', t);
+  if (t) parts.push(`to=${encodeURIComponent(t)}`);
   const s = String(subject || '').trim();
-  if (s) p.set('subject', s.length > 400 ? `${s.slice(0, 397)}…` : s);
+  if (s) parts.push(`subject=${encodeURIComponent(s.length > 400 ? `${s.slice(0, 397)}…` : s)}`);
   const b = String(body ?? '');
   if (b) {
-    p.set(
-      'body',
-      b.length > OUTLOOK_WEB_BODY_CHAR_MAX ? `${b.slice(0, OUTLOOK_WEB_BODY_CHAR_MAX - 20)}\n…(생략)` : b
-    );
+    const clipped =
+      b.length > OUTLOOK_WEB_BODY_CHAR_MAX ? `${b.slice(0, OUTLOOK_WEB_BODY_CHAR_MAX - 20)}\n…(생략)` : b;
+    parts.push(`body=${encodeURIComponent(clipped)}`);
   }
-  return `https://outlook.office.com/mail/deeplink/compose?${p.toString()}`;
+  return `https://outlook.office.com/mail/deeplink/compose?${parts.join('&')}`;
 }
 
 export function buildOutlookLiveComposeFields({ to, subject, body }) {
-  const p = new URLSearchParams();
+  const parts = [];
   const t = String(to || '').trim();
-  if (t) p.set('to', t);
+  if (t) parts.push(`to=${encodeURIComponent(t)}`);
   const s = String(subject || '').trim();
-  if (s) p.set('subject', s.length > 400 ? `${s.slice(0, 397)}…` : s);
+  if (s) parts.push(`subject=${encodeURIComponent(s.length > 400 ? `${s.slice(0, 397)}…` : s)}`);
   const b = String(body ?? '');
   if (b) {
-    p.set(
-      'body',
-      b.length > OUTLOOK_WEB_BODY_CHAR_MAX ? `${b.slice(0, OUTLOOK_WEB_BODY_CHAR_MAX - 20)}\n…(생략)` : b
-    );
+    const clipped =
+      b.length > OUTLOOK_WEB_BODY_CHAR_MAX ? `${b.slice(0, OUTLOOK_WEB_BODY_CHAR_MAX - 20)}\n…(생략)` : b;
+    parts.push(`body=${encodeURIComponent(clipped)}`);
   }
-  return `https://outlook.live.com/mail/0/deeplink/compose?${p.toString()}`;
+  return `https://outlook.live.com/mail/0/deeplink/compose?${parts.join('&')}`;
 }
 
+/**
+ * OS 기본 메일로 mailto 위임. Chromium 계열은 보안·디버깅용으로 콘솔에
+ * `Launched external handler for 'mailto:…'` 가 찍히는데, 앱 오류가 아니며 JS로 숨길 수 없습니다.
+ */
 export function triggerMailtoHref(href) {
   if (!href) return;
   window.location.assign(href);

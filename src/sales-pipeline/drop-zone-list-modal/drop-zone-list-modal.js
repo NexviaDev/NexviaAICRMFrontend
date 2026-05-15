@@ -6,6 +6,10 @@ import {
   SALES_OPPORTUNITY_SCHEDULE_DEFS_CHANGED,
   scheduleCustomDatesColumnTitle
 } from '@/lib/sales-opportunity-schedule-labels';
+import { financeCustomFieldsColumnTitle } from '@/lib/sales-opportunity-finance-labels';
+import { resolvePipelineStageLabel } from '../pipeline-stage-labels';
+
+export { resolvePipelineStageLabel };
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -27,13 +31,15 @@ const MONTH_SELECT_OPTIONS = Array.from({ length: 12 }, (_, i) => ({
 const YEAR_SPAN_PAST = 12;
 const YEAR_SPAN_FUTURE = 2;
 
-/** 목록·표 헤더용 한글 라벨 (나머지는 영문 키 그대로) */
+/** 목록·표 헤더용 한글 라벨 (없는 키는 영문 키 그대로 — 필요 시 여기에 추가) */
 const COLUMN_LABELS = {
   _id: '문서 ID',
   companyId: '회사 ID',
   customerCompanyId: '고객사 ID',
   customerCompanyEmployeeId: '연락처 ID',
   title: '제목',
+  contactPhone: '연락처 전화',
+  contactEmail: '연락처 이메일',
   contactName: '구매 담당자',
   value: '금액',
   currency: '통화',
@@ -55,6 +61,11 @@ const COLUMN_LABELS = {
   productChannelPriceSnapshot: '유통가 스냅',
   documentRefs: '문서 링크',
   driveFolderLink: 'Drive 폴더',
+  quoteDocRecipientEmail: '견적 문서 수신 이메일',
+  quoteDocCcEmail: '견적 문서 참조(CC)',
+  purchaseOrderDocRecipientEmail: '발주 문서 수신 이메일',
+  purchaseOrderDocCcEmail: '발주 문서 참조(CC)',
+  docEmailReferenceSlots: '문서 이메일 참조 슬롯',
   assignedTo: '담당자 ID',
   assignedToName: '판매 담당',
   createdById: '등록자 ID',
@@ -72,6 +83,7 @@ const COLUMN_LABELS = {
   fullCollectionCompleteDate: '수금 완료일',
   licenseCertificateDeliveredDate: '증서 전달일',
   scheduleCustomDates: '추가 일정(원본)',
+  financeCustomFields: '계약·수금 추가 필드(원본)',
   commissionRecipients: '기타 금액',
   renewalCalendarEventId: '갱신 캘린더 ID',
   wonNoticeCalendarEventId: '수주 안내 일정 ID',
@@ -132,6 +144,7 @@ const DROPZONE_TABLE_EXCLUDE_KEYS = new Set([
   'comments',
   'driveFolderLink',
   'lineItems',
+  'financeCustomFields',
   'updatedAt',
   'unitPriceBasis',
   'saleDate',
@@ -313,6 +326,17 @@ function addScheduleCustomDateKeysFromDefinitions(set, options) {
   }
 }
 
+/** 정의(salesOpportunityFinance)에만 있고 문서에는 아직 값이 없어도 financeCustomFields.* 열에 포함 */
+function addFinanceCustomFieldsKeysFromDefinitions(set, options) {
+  const { allowedFinanceCustomFieldKeys = null } = options || {};
+  if (allowedFinanceCustomFieldKeys == null || allowedFinanceCustomFieldKeys.size === 0) {
+    return;
+  }
+  for (const ik of allowedFinanceCustomFieldKeys) {
+    set.add(`financeCustomFields.${ik}`);
+  }
+}
+
 /** filtered 전체 행에서 표시할 열 키 수집 — 사용자 저장 순서·기본 순서·그 외 알파벳 */
 function collectColumnKeys(items, options) {
   const {
@@ -329,6 +353,7 @@ function collectColumnKeys(items, options) {
     if (!opp || typeof opp !== 'object') continue;
     for (const k of Object.keys(opp)) {
       if (k === 'scheduleCustomDates') continue;
+      if (k === 'financeCustomFields') continue;
       set.add(k);
     }
     const sc = opp.scheduleCustomDates;
@@ -424,13 +449,15 @@ export function collectSalesPipelineTableColumnKeys(items, options) {
     savedColumnOrder,
     showScheduleCustomDateColumns = true,
     scheduleCustomDateColumnVisibility = {},
-    allowedScheduleCustomDateKeys = null
+    allowedScheduleCustomDateKeys = null,
+    allowedFinanceCustomFieldKeys = null
   } = options || {};
   const set = new Set();
   for (const opp of items || []) {
     if (!opp || typeof opp !== 'object') continue;
     for (const k of Object.keys(opp)) {
       if (k === 'scheduleCustomDates') continue;
+      if (k === 'financeCustomFields') continue;
       set.add(k);
     }
     const sc = opp.scheduleCustomDates;
@@ -446,12 +473,20 @@ export function collectSalesPipelineTableColumnKeys(items, options) {
         set.add(`scheduleCustomDates.${ik}`);
       }
     }
+    const fc = opp.financeCustomFields;
+    if (fc && typeof fc === 'object' && !Array.isArray(fc) && allowedFinanceCustomFieldKeys != null) {
+      for (const ik of Object.keys(fc)) {
+        if (!allowedFinanceCustomFieldKeys.has(ik)) continue;
+        set.add(`financeCustomFields.${ik}`);
+      }
+    }
   }
   addScheduleCustomDateKeysFromDefinitions(set, {
     showScheduleCustomDateColumns,
     scheduleCustomDateColumnVisibility,
     allowedScheduleCustomDateKeys
   });
+  addFinanceCustomFieldsKeysFromDefinitions(set, { allowedFinanceCustomFieldKeys });
   if (addNetMargin) set.add('__dz_net_margin');
   if (addForecast) set.add('__dz_forecast_expected');
 
@@ -532,9 +567,12 @@ export function reorderColumnKeysAt(keys, fromIndex, toIndex) {
   return next;
 }
 
-function columnHeaderLabel(key, scheduleFieldLabelByKey = {}) {
+function columnHeaderLabel(key, scheduleFieldLabelByKey = {}, financeFieldLabelByKey = {}) {
   if (key.startsWith('scheduleCustomDates.')) {
     return scheduleCustomDatesColumnTitle(key, scheduleFieldLabelByKey) || key;
+  }
+  if (key.startsWith('financeCustomFields.')) {
+    return financeCustomFieldsColumnTitle(key, financeFieldLabelByKey) || key;
   }
   return COLUMN_LABELS[key] || key;
 }
@@ -663,6 +701,9 @@ export function formatSummaryRowCell(colKey, opp, forecastPercent) {
     return formatCellValue(colKey, opp, forecastPercent);
   }
   if (colKey.startsWith('scheduleCustomDates.')) {
+    return formatCellValue(colKey, opp, forecastPercent);
+  }
+  if (colKey.startsWith('financeCustomFields.')) {
     return formatCellValue(colKey, opp, forecastPercent);
   }
 
@@ -852,6 +893,24 @@ export function formatTotalsAggregateForColumnPipeline(
   return formatAmountPlain(Math.round(sum));
 }
 
+/** 계약·수금 커스텀 필드 값 → 카드·표 셀 문자열 */
+function formatFinanceCustomFieldDisplay(raw) {
+  if (raw == null || raw === '') return '';
+  if (typeof raw === 'boolean') return raw ? '예' : '아니오';
+  if (Array.isArray(raw)) {
+    return raw
+      .map((x) => (x != null && x !== '' ? String(x) : ''))
+      .filter(Boolean)
+      .join(', ');
+  }
+  if (typeof raw === 'number' && Number.isFinite(raw)) return formatAmountPlain(raw);
+  if (raw instanceof Date) return formatIsoOrDate(raw);
+  if (typeof raw === 'object') return summarizeJson(raw, 80);
+  const s = String(raw);
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return formatIsoOrDate(s);
+  return s;
+}
+
 function formatCellValue(key, opp, forecastPercent) {
   if (key === '__dz_net_margin') {
     const m = computeOppNetMargin(opp);
@@ -879,6 +938,12 @@ function formatCellValue(key, opp, forecastPercent) {
     return formatIsoOrDate(val);
   }
 
+  if (key.startsWith('financeCustomFields.')) {
+    const ik = key.slice('financeCustomFields.'.length);
+    const raw = opp.financeCustomFields?.[ik];
+    return formatFinanceCustomFieldDisplay(raw);
+  }
+
   if (key === 'lineItems') {
     const li = opp.lineItems;
     if (!Array.isArray(li) || li.length === 0) return '';
@@ -887,7 +952,9 @@ function formatCellValue(key, opp, forecastPercent) {
   }
 
   if (shouldStackLineItemColumn(key, opp)) {
-    return opp.lineItems.map((line) => formatLineItemField(key, line)).join(' | ');
+    const parts = opp.lineItems.map((line) => formatLineItemField(key, line));
+    const sep = key === 'productName' ? '\n' : ' | ';
+    return parts.join(sep);
   }
 
   val = opp[key];
@@ -957,6 +1024,11 @@ export const FILTER_VALUE_EMPTY = '__dz_filter_empty__';
 export function collectColumnFilterCandidates(colKey, opp, forecastPercent) {
   if (!opp || typeof opp !== 'object') return [FILTER_VALUE_EMPTY];
 
+  if (colKey === 'stage') {
+    const sk = String(opp.stage ?? '').trim();
+    return [sk === '' ? FILTER_VALUE_EMPTY : sk];
+  }
+
   if (hasMultiLineItems(opp)) {
     if (colKey === 'lineItems') {
       const out = new Set();
@@ -988,8 +1060,10 @@ function oppPassesColumnFilter(colKey, opp, forecastPercent, allowed) {
   return collectColumnFilterCandidates(colKey, opp, forecastPercent).some((c) => allowed.includes(c));
 }
 
-export function filterValueDisplay(key) {
-  return key === FILTER_VALUE_EMPTY ? '(빈 칸)' : key;
+export function filterValueDisplay(key, colKey, stageLabels) {
+  if (key === FILTER_VALUE_EMPTY) return '(빈 칸)';
+  if (colKey === 'stage') return resolvePipelineStageLabel(key, stageLabels);
+  return key;
 }
 
 function parseSortableDate(s) {
@@ -1028,6 +1102,10 @@ function getSortComparable(colKey, opp, forecastPercent) {
   if (colKey.startsWith('scheduleCustomDates.') || DATE_FIELD_NAMES.has(colKey)) {
     const s = formatCellValue(colKey, opp, forecastPercent);
     return { kind: 'num', n: parseSortableDate(s) };
+  }
+  if (colKey.startsWith('financeCustomFields.')) {
+    const s = formatCellValue(colKey, opp, forecastPercent);
+    return { kind: 'str', s };
   }
   if (SORT_NUMERIC_KEYS.has(colKey)) {
     if (hasMultiLineItems(opp) && LINE_ITEM_STACK_KEYS.has(colKey)) {
@@ -1892,9 +1970,11 @@ export default function DropZoneListModal({
               return (
                         <th
                           key={colKey}
-                          className="sp-dz-data-table__th sp-dz-data-table__th--col-tools sp-dz-data-table__th--dz-col-reorder"
+                          className={`sp-dz-data-table__th sp-dz-data-table__th--col-tools sp-dz-data-table__th--dz-col-reorder${
+                            openFilterCol === colKey ? ' sp-dz-data-table__th--filter-open' : ''
+                          }`}
                           scope="col"
-                          title={columnHeaderLabel(colKey, scheduleFieldLabelByKey)}
+                          title={columnHeaderLabel(colKey, scheduleFieldLabelByKey, {})}
                 draggable
                           onDragStart={(e) => handleColumnHeaderDragStart(e, colIdx)}
                           onDragOver={handleColumnHeaderDragOver}
@@ -1909,14 +1989,14 @@ export default function DropZoneListModal({
                               className={`sp-dz-th-col-trigger${hasColFilter ? ' sp-dz-th-col-trigger--filtered' : ''}`}
                               aria-expanded={openFilterCol === colKey}
                               aria-haspopup="dialog"
-                              aria-label={`${columnHeaderLabel(colKey, scheduleFieldLabelByKey)} 정렬·필터`}
+                              aria-label={`${columnHeaderLabel(colKey, scheduleFieldLabelByKey, {})} 정렬·필터`}
                       onClick={(e) => {
                         e.stopPropagation();
                                 openColumnFilter(colKey);
                               }}
                             >
                               <span className="sp-dz-th-col-trigger__label">
-                                {columnHeaderLabel(colKey, scheduleFieldLabelByKey)}
+                                {columnHeaderLabel(colKey, scheduleFieldLabelByKey, {})}
                               </span>
                               {activeSortKey === colKey && activeSortDir === 'asc' ? (
                                 <span className="material-symbols-outlined sp-dz-th-col-trigger__sort-icon" aria-hidden>
@@ -1933,7 +2013,7 @@ export default function DropZoneListModal({
                               <div
                                 className="sp-dz-col-filter-pop"
                                 role="dialog"
-                                aria-label={`${columnHeaderLabel(colKey, scheduleFieldLabelByKey)} 정렬·필터`}
+                                aria-label={`${columnHeaderLabel(colKey, scheduleFieldLabelByKey, {})} 정렬·필터`}
                                 onMouseDown={(e) => e.stopPropagation()}
                               >
                                 <div className="sp-dz-col-filter-pop__sort">
@@ -2101,7 +2181,7 @@ export default function DropZoneListModal({
                                 key={colKey}
                                 className={`sp-dz-data-table__td${
                                   flatRow.kind === 'line' ? ' sp-dz-data-table__td--tree-line-indent' : ''
-                                }`}
+                                }${colKey === 'productName' ? ' sp-dz-data-table__td--product-name' : ''}`}
                                 title={text}
                               >
                                 {node}

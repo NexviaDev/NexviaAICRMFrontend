@@ -15,15 +15,26 @@ import {
   formatCellValue
 } from './drop-zone-list-modal/drop-zone-list-modal';
 import { listColumnValueInlineStyle } from '@/lib/list-column-cell-styles';
+import { OPPORTUNITY_MERGE_SHEET_URL_PARAM } from '@/lib/merge-data-sheet-url';
 
 import { API_BASE } from '@/config';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { getMergedSalesPipelineTemplate, patchListTemplate, LIST_IDS } from '@/lib/list-templates';
 import { buildStageForecastPercentMap } from './pipeline-forecast-utils';
 import {
+  buildStageLabelMapFromDefinitions,
+  DEFAULT_PIPELINE_STAGE_SEED,
+  invalidatePipelineStageLabelCache,
+  resolvePipelineStageLabel
+} from './pipeline-stage-labels';
+import {
   fetchSalesOpportunityScheduleFieldContext,
   SALES_OPPORTUNITY_SCHEDULE_DEFS_CHANGED
 } from '@/lib/sales-opportunity-schedule-labels';
+import {
+  fetchSalesOpportunityFinanceFieldContext,
+  SALES_OPPORTUNITY_FINANCE_DEFS_CHANGED
+} from '@/lib/sales-opportunity-finance-labels';
 
 const SALES_PIPELINE_LIST_ID = LIST_IDS.SALES_PIPELINE;
 const MODAL_PARAM = 'oppModal';
@@ -46,24 +57,8 @@ function getPipelineViewerUserId() {
   }
 }
 
-const DEFAULT_STAGE_LABELS = {
-  NewLead: '신규 리드 & 추가 구매건',
-  Contacted: '연락 완료',
-  ProposalSent: '제안서 전달 완료',
-  TechDemo: '기술 시연',
-  Quotation: '견적',
-  Negotiation: '최종 협상',
-  Won: '수주 성공'
-};
-const DEFAULT_ACTIVE_STAGES = [
-  'NewLead',
-  'Contacted',
-  'ProposalSent',
-  'TechDemo',
-  'Quotation',
-  'Negotiation',
-  'Won'
-];
+const DEFAULT_STAGE_LABELS = Object.fromEntries(DEFAULT_PIPELINE_STAGE_SEED.map((row) => [row.key, row.label]));
+const DEFAULT_ACTIVE_STAGES = DEFAULT_PIPELINE_STAGE_SEED.map((row) => row.key);
 
 const DROP_ZONE_CONFIG = {
   Won: { icon: 'check_circle', label: '수주 성공 (Won)', colorClass: 'dz-green' },
@@ -89,14 +84,7 @@ const PIPELINE_KANBAN_ADMIN_ONLY_KEYS = new Set([
 
 function pipelineKanbanOppCellText(colKey, opp, fp, stageLabels, canViewAdmin) {
   if (!canViewAdmin && PIPELINE_KANBAN_ADMIN_ONLY_KEYS.has(colKey)) return '—';
-  if (colKey === 'stage') {
-    const sk = opp.stage;
-    if (stageLabels?.[sk]) return stageLabels[sk];
-    if (sk === 'Lost') return '기회 상실';
-    if (sk === 'Abandoned') return '보류';
-    if (sk === 'Won') return '수주 성공';
-    return String(sk ?? '');
-  }
+  if (colKey === 'stage') return resolvePipelineStageLabel(opp.stage, stageLabels);
   return formatCellValue(colKey, opp, fp);
 }
 
@@ -368,6 +356,8 @@ export default function SalesPipeline() {
   const [scheduleFieldLabelByKey, setScheduleFieldLabelByKey] = useState({});
   /** CustomFieldDefinition 에 등록된 일정 키만 열로 노출 */
   const [allowedScheduleCustomDateKeys, setAllowedScheduleCustomDateKeys] = useState(() => new Set());
+  const [financeFieldLabelByKey, setFinanceFieldLabelByKey] = useState({});
+  const [allowedFinanceCustomFieldKeys, setAllowedFinanceCustomFieldKeys] = useState(() => new Set());
 
   const modalMode = searchParams.get(MODAL_PARAM);
   const editOppId = searchParams.get(OPP_ID_PARAM);
@@ -382,10 +372,16 @@ export default function SalesPipeline() {
     setSearchParams(p);
   };
 
-  const openEditModal = (id) => {
+  const openEditModal = (id, stageAfterLoad) => {
+    setDropZoneListStage(null);
     const p = new URLSearchParams(searchParams);
     p.set(MODAL_PARAM, MODAL_EDIT);
     p.set(OPP_ID_PARAM, id);
+    if (stageAfterLoad != null && String(stageAfterLoad).trim() !== '') {
+      p.set(STAGE_PARAM, String(stageAfterLoad).trim());
+    } else {
+      p.delete(STAGE_PARAM);
+    }
     setSearchParams(p);
   };
 
@@ -394,6 +390,7 @@ export default function SalesPipeline() {
     p.delete(MODAL_PARAM);
     p.delete(OPP_ID_PARAM);
     p.delete(STAGE_PARAM);
+    p.delete(OPPORTUNITY_MERGE_SHEET_URL_PARAM);
     setSearchParams(p, { replace: true });
   };
 
@@ -511,8 +508,10 @@ export default function SalesPipeline() {
     try {
       const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=salesPipelineStage`, { headers: getAuthHeader() });
       const data = await res.json().catch(() => ({}));
-      if (res.ok && Array.isArray(data.items)) setStageDefinitions(data.items);
-      else setStageDefinitions([]);
+      if (res.ok && Array.isArray(data.items)) {
+        setStageDefinitions(data.items);
+        invalidatePipelineStageLabelCache();
+      } else setStageDefinitions([]);
     } catch {
       setStageDefinitions([]);
     }
@@ -538,6 +537,25 @@ export default function SalesPipeline() {
     return () => {
       cancelled = true;
       window.removeEventListener(SALES_OPPORTUNITY_SCHEDULE_DEFS_CHANGED, onDefs);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const ctx = await fetchSalesOpportunityFinanceFieldContext(getAuthHeader);
+      if (cancelled) return;
+      setFinanceFieldLabelByKey(ctx.labelByKey);
+      setAllowedFinanceCustomFieldKeys(ctx.allowedKeys);
+    };
+    void load();
+    const onDefs = () => {
+      void load();
+    };
+    window.addEventListener(SALES_OPPORTUNITY_FINANCE_DEFS_CHANGED, onDefs);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(SALES_OPPORTUNITY_FINANCE_DEFS_CHANGED, onDefs);
     };
   }, []);
 
@@ -706,8 +724,8 @@ export default function SalesPipeline() {
 
   const mineAssigneeFilterActive = Boolean(
     pipelineViewerId &&
-      filterAssigneeIds.length === 1 &&
-      filterAssigneeIds[0] === pipelineViewerId
+    filterAssigneeIds.length === 1 &&
+    filterAssigneeIds[0] === pipelineViewerId
   );
 
   const clearFilterAssigneeIds = useCallback(() => {
@@ -776,102 +794,34 @@ export default function SalesPipeline() {
     e.currentTarget.classList.remove('sp-drop-hover');
   };
 
-  const handleDrop = async (e, targetStage) => {
+  const handleDrop = (e, targetStage) => {
     e.preventDefault();
     e.currentTarget.classList.remove('sp-drop-hover');
     const rawId = e.dataTransfer.getData('text/plain') || dragId;
     const id = rawId != null ? String(rawId) : '';
-    if (!id) return;
+    if (!id) {
+      setDragId(null);
+      return;
+    }
 
-    // optimistic update (Mongo _id는 문자열/ObjectId 혼재 가능 — 엄격 비교 방지)
-    const prev = { ...grouped };
-    const newGrouped = {};
-    let movedItem = null;
     let fromStage = null;
-    for (const [stage, items] of Object.entries(prev)) {
-      newGrouped[stage] = items.filter((i) => {
-        if (String(i._id) === id) {
-          fromStage = stage;
-          movedItem = { ...i, stage: targetStage };
-          return false;
-        }
-        return true;
-      });
-    }
-    if (movedItem) {
-      if (!newGrouped[targetStage]) newGrouped[targetStage] = [];
-      newGrouped[targetStage] = [movedItem, ...newGrouped[targetStage]];
-      setGrouped(newGrouped);
-      // recalc totals
-      const newTotals = {};
-      for (const [stage, items] of Object.entries(newGrouped)) {
-        newTotals[stage] = items.reduce((s, o) => s + (o.value || 0), 0);
+    for (const [stage, items] of Object.entries(grouped || {})) {
+      if ((items || []).some((i) => String(i._id) === id)) {
+        fromStage = stage;
+        break;
       }
-      setTotals(newTotals);
+    }
+    if (fromStage == null) {
+      setDragId(null);
+      return;
+    }
+    if (String(fromStage) === String(targetStage)) {
+      setDragId(null);
+      return;
     }
 
-    try {
-      const res = await fetch(`${API_BASE}/sales-opportunities/${id}/stage`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ stage: targetStage })
-      });
-      if (!res.ok) throw new Error();
-      const data = await res.json().catch(() => ({}));
-      fetchData({ silent: true });
-      if (fromStage === 'Won' && targetStage !== 'Won') {
-        try {
-          window.dispatchEvent(new CustomEvent('nexvia-crm-calendar-refresh'));
-        } catch {
-          /* ignore */
-        }
-      }
-      if (targetStage === 'Won' && data.renewalCalendar) {
-        const rc = data.renewalCalendar;
-        if (rc.scheduled && (rc.eventStart || rc.noticeEventStart || rc.preReminderEventStart)) {
-          try {
-            window.dispatchEvent(new CustomEvent('nexvia-crm-calendar-refresh'));
-          } catch {
-            /* ignore */
-          }
-          const fmt = (iso) =>
-            new Date(iso).toLocaleString('ko-KR', { dateStyle: 'long', timeStyle: 'short' });
-          let msg = '회사 캘린더에 일정이 등록되었습니다.\n\n';
-          if (rc.noticeEventStart) {
-            msg += `· 수주 당일 안내(지금 보는 달에 표시): ${fmt(rc.noticeEventStart)}\n`;
-          }
-          if (rc.preReminderEventStart) {
-            msg += `· 사전 알림(월간=갱신 3주 전 / 연간=갱신 1개월 전): ${fmt(rc.preReminderEventStart)}\n`;
-          }
-          if (rc.eventStart) {
-            msg += `· 실제 갱신 알림(월간=1개월 후 / 연간=1년 후): ${fmt(rc.eventStart)}\n`;
-          }
-          msg += '\n캘린더는 «회사 일정» 탭에서 확인하세요. 열려 있으면 목록이 갱신됩니다.';
-          window.alert(msg);
-        } else if (rc.skipReason === 'no_product_id') {
-          window.alert(
-            '기회에 제품이 연결되어 있지 않아 갱신 일정을 등록하지 않았습니다. 기회 상세에서 제품을 선택한 뒤 다시 수주 성공으로 옮겨 주세요.'
-          );
-        } else if (rc.skipReason === 'not_subscription') {
-          window.alert(
-            '선택한 제품의 결제 주기가 월간/연간이 아니어 갱신 일정을 만들지 않았습니다. (영구 등은 제외)'
-          );
-        } else if (rc.skipReason === 'product_not_found') {
-          window.alert('연결된 제품 정보를 찾을 수 없어 갱신 일정을 등록하지 못했습니다.');
-        } else if (rc.skipReason === 'calendar_create_failed' || rc.skipReason === 'invalid_anchor') {
-          window.alert(
-            '갱신 일정 생성에 실패했습니다. 잠시 후 기회 상세에서 «갱신 캘린더» 확인을 눌러 다시 시도해 주세요.'
-          );
-        } else if (rc.skipReason === 'error' && rc.message) {
-          window.alert(`갱신 일정 처리 중 오류: ${rc.message}`);
-        } else if (!rc.scheduled && rc.skipReason) {
-          window.alert(`갱신 일정이 등록되지 않았습니다. (${rc.skipReason})`);
-        }
-      }
-    } catch {
-      setGrouped(prev);
-      fetchData();
-    }
+    setDropZoneListStage(null);
+    openEditModal(id, targetStage);
     setDragId(null);
   };
 
@@ -896,9 +846,10 @@ export default function SalesPipeline() {
     ? stageDefinitions.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((d) => d.key)
     : DEFAULT_ACTIVE_STAGES;
   const boardStages = activeStages.filter((stage) => stage !== 'Won');
-  const stageLabels = stageDefinitions.length > 0
-    ? Object.fromEntries(stageDefinitions.map((d) => [d.key, d.label]))
-    : DEFAULT_STAGE_LABELS;
+  const stageLabels = useMemo(
+    () => buildStageLabelMapFromDefinitions(stageDefinitions),
+    [stageDefinitions]
+  );
   const stageForecastPercent = useMemo(() => buildStageForecastPercentMap(stageDefinitions), [stageDefinitions]);
   const stageToneByKey = useMemo(() => {
     const tone = {};
@@ -963,19 +914,20 @@ export default function SalesPipeline() {
       savedColumnOrder: saved.columnOrder,
       addNetMargin: canViewAdminContent,
       addForecast: canViewAdminContent,
-      allowedScheduleCustomDateKeys
+      allowedScheduleCustomDateKeys,
+      allowedFinanceCustomFieldKeys
     });
     const visible = buildSalesPipelineVisibleMap(columnOrder, saved.visible);
     const columns = columnOrder.map((k) => ({
       key: k,
-      label: columnHeaderLabel(k, scheduleFieldLabelByKey)
+      label: columnHeaderLabel(k, scheduleFieldLabelByKey, financeFieldLabelByKey)
     }));
     const columnCellStyles =
       saved.columnCellStyles && typeof saved.columnCellStyles === 'object' && !Array.isArray(saved.columnCellStyles)
         ? { ...saved.columnCellStyles }
         : {};
     return { columnOrder, visible, columns, columnCellStyles };
-  }, [allOpportunities, canViewAdminContent, pipelineTemplateTick, scheduleFieldLabelByKey, allowedScheduleCustomDateKeys]);
+  }, [allOpportunities, canViewAdminContent, pipelineTemplateTick, scheduleFieldLabelByKey, allowedScheduleCustomDateKeys, financeFieldLabelByKey, allowedFinanceCustomFieldKeys]);
 
   const pipelineDisplayColumnKeys = useMemo(
     () => pipelineListTemplate.columnOrder.filter((k) => pipelineListTemplate.visible[k]),
@@ -1015,7 +967,7 @@ export default function SalesPipeline() {
               key={colKey}
               className={rowSpanFull ? 'sp-kanban-card-field sp-kanban-card-field--full' : 'sp-kanban-card-field'}
             >
-              <div className="sp-kanban-card-field-label">{columnHeaderLabel(colKey, scheduleFieldLabelByKey)}</div>
+              <div className="sp-kanban-card-field-label">{columnHeaderLabel(colKey, scheduleFieldLabelByKey, financeFieldLabelByKey)}</div>
               <div className="sp-kanban-card-field-val" title={text === '' ? undefined : text}>
                 <span className="sp-kanban-card-field-val-inner" style={kStyle || undefined}>
                   {text === '' ? '\u00A0' : text}
@@ -1065,20 +1017,18 @@ export default function SalesPipeline() {
             >
               <span className="material-symbols-outlined">settings</span>
             </button>
-            {pipelineViewMode === 'kanban' && canViewAdminContent ? (
-              <button
-                type="button"
-                className="sp-header-icon-btn"
-                onClick={() => {
-                  setDropZoneListStage(null);
-                  setShowStagesModal(true);
-                }}
-                title="파이프라인 단계 관리"
-                aria-label="단계 관리"
-              >
-                <span className="material-symbols-outlined">tune</span>
-              </button>
-            ) : null}
+            <button
+              type="button"
+              className="sp-header-icon-btn"
+              onClick={() => {
+                setDropZoneListStage(null);
+                setShowStagesModal(true);
+              }}
+              title="파이프라인 단계 관리"
+              aria-label="단계 관리"
+            >
+              <span className="material-symbols-outlined">tune</span>
+            </button>
           </div>
           <button type="button" className="sp-add-btn" onClick={() => openAddModal()}>
             <span className="material-symbols-outlined">add</span>
@@ -1236,238 +1186,238 @@ export default function SalesPipeline() {
       ) : (
         <>
           {pipelineViewMode === 'kanban' ? (
-          <>
-          <section className="sp-mobile-hero sp-mobile-only" aria-label="파이프라인 요약">
-            <h2 className="sp-mobile-hero-title">세일즈 파이프라인</h2>
-            <p className="sp-mobile-hero-desc">진행 중인 기회를 단계별로 관리합니다</p>
-            <div className="sp-mobile-bento">
-              <div className="sp-mobile-bento-card sp-mobile-bento-card--mint">
-                <span className="material-symbols-outlined" aria-hidden>payments</span>
-                <div>
-                  <p className="sp-mobile-bento-label">파이프라인 합계</p>
-                  <p className="sp-mobile-bento-value">
-                    {canViewAdminContent
-                      ? formatCurrency(totalPipelineValue, (grouped[boardStages[0]] || [])[0]?.currency || 'KRW')
-                      : '—'}
-                  </p>
-                </div>
-              </div>
-              <div className="sp-mobile-bento-card sp-mobile-bento-card--lavender">
-                <span className="material-symbols-outlined" aria-hidden>trending_up</span>
-                <div>
-                  <p className="sp-mobile-bento-label">수주 승률</p>
-                  <p className="sp-mobile-bento-value">
-                    {winRatePercent != null ? `${winRatePercent}%` : '—'}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section className="sp-mobile-mine-wrap sp-mobile-only" aria-label="내 담당 필터">
-            <div className="sp-mobile-mine-chips" role="tablist">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={!mineAssigneeFilterActive}
-                className={`sp-mobile-mine-chip ${!mineAssigneeFilterActive ? 'is-active' : ''}`}
-                onClick={() => {
-                  clearFilterAssigneeIds();
-                }}
-              >
-                전체
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mineAssigneeFilterActive}
-                className={`sp-mobile-mine-chip ${mineAssigneeFilterActive ? 'is-active' : ''}`}
-                onClick={() => {
-                  if (!pipelineViewerId) return;
-                  setFilterAssigneeIdsMineOnly();
-                }}
-              >
-                내 담당
-              </button>
-            </div>
-          </section>
-
-          <section className="sp-mobile-chips-wrap sp-mobile-only" aria-label="단계 필터">
-            <div className="sp-mobile-chips" role="tablist">
-              {boardStages.map((stage) => (
-                <button
-                  key={`mchip-${stage}`}
-                  type="button"
-                  role="tab"
-                  aria-selected={activeMobileStage === stage}
-                  className={`sp-mobile-chip ${activeMobileStage === stage ? 'is-active' : ''}`}
-                  onClick={() => setMobileListStage(stage)}
-                >
-                  {stageLabels[stage] ?? stage}
-                </button>
-              ))}
-            </div>
-          </section>
-
-          <section className="sp-mobile-deals sp-mobile-only" aria-live="polite">
-            <div className="sp-mobile-deals-head">
-              <p className="sp-mobile-deals-head-label">
-                {stageLabels[activeMobileStage] ?? activeMobileStage} ({mobileStageItems.length})
-                {mobileForecastSum != null ? (
-                  <span className="sp-mobile-deals-forecast-expected">
-                    {' '}
-                    · 예상 {formatCurrency(mobileForecastSum, mobileColCurrency)}
-                  </span>
-                ) : null}
-              </p>
-              <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: '#acb3b4' }} aria-hidden>
-                sort
-              </span>
-            </div>
-            {mobileStageItems.length === 0 ? (
-              <p className="sp-mobile-empty">이 단계에 표시할 기회가 없습니다.</p>
-            ) : (
-              <div className="sp-mobile-deals-list">
-                {mobileStageItems.map((opp, i) => {
-                  const pillClass = `sp-mobile-deal-pill--${i % 3}`;
-                  const pillText = (opp.productName && String(opp.productName).trim()) || '기회';
-                  const primary = dealTitlePrimaryLabel(opp);
-                  const isPersonalNoCompany =
-                    !(opp.customerCompanyName && String(opp.customerCompanyName).trim()) &&
-                    !!(opp.contactName && String(opp.contactName).trim());
-                  const sub = isPersonalNoCompany
-                    ? (opp.productName && String(opp.productName).trim()) ||
-                      (opp.title && String(opp.title).trim()) ||
-                      '—'
-                    : (opp.contactName && String(opp.contactName).trim()) ||
-                      (opp.title && String(opp.title).trim()) ||
-                      '—';
-                  return (
-                    <div
-                      key={opp._id}
-                      className="sp-card sp-mobile-deal-card"
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, opp._id)}
-                      onDragEnd={handleDragEnd}
-                      onClick={() => openEditModal(opp._id)}
-                    >
-                      <div className="sp-mobile-deal-top">
-                        <div>
-                          <h3 className="sp-mobile-deal-title">
-                            {[primary, opp.title].filter(Boolean).join(' · ') || '—'}
-                          </h3>
-                          <p className="sp-mobile-deal-sub">{sub}</p>
-                        </div>
-                        <span className={`sp-mobile-deal-pill ${pillClass}`}>{pillText}</span>
-                      </div>
-                      {renderOppScheduleDatesChips(opp)}
-                      <div className="sp-mobile-deal-bottom">
-                        <div className="sp-mobile-deal-owner">
-                          <span className="sp-mobile-deal-avatar" aria-hidden>
-                            {nameInitials(salesAssigneeDisplay(opp))}
-                          </span>
-                          <div className="sp-mobile-deal-owner-text">
-                            <span className="sp-mobile-deal-assignee-label">판매 담당</span>
-                            <span className="sp-mobile-deal-owner-name">
-                              {salesAssigneeDisplay(opp) || '미지정'}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="sp-mobile-deal-value-wrap">
-                          <p className="sp-mobile-deal-value">{formatOppValue(opp)}</p>
-                          {canViewAdminContent ? renderOppAdminCardFooter(opp, stageForecastPercent) : null}
-                        </div>
-                      </div>
-                      {canViewAdminContent ? (
-                        <button
-                          type="button"
-                          className="sp-card-delete sp-mobile-deal-delete"
-                          title="삭제"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(opp._id);
-                          }}
-                        >
-                          <span className="material-symbols-outlined">close</span>
-                        </button>
-                      ) : null}
+            <>
+              <section className="sp-mobile-hero sp-mobile-only" aria-label="파이프라인 요약">
+                <h2 className="sp-mobile-hero-title">세일즈 파이프라인</h2>
+                <p className="sp-mobile-hero-desc">진행 중인 기회를 단계별로 관리합니다</p>
+                <div className="sp-mobile-bento">
+                  <div className="sp-mobile-bento-card sp-mobile-bento-card--mint">
+                    <span className="material-symbols-outlined" aria-hidden>payments</span>
+                    <div>
+                      <p className="sp-mobile-bento-label">파이프라인 합계</p>
+                      <p className="sp-mobile-bento-value">
+                        {canViewAdminContent
+                          ? formatCurrency(totalPipelineValue, (grouped[boardStages[0]] || [])[0]?.currency || 'KRW')
+                          : '—'}
+                      </p>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
+                  </div>
+                  <div className="sp-mobile-bento-card sp-mobile-bento-card--lavender">
+                    <span className="material-symbols-outlined" aria-hidden>trending_up</span>
+                    <div>
+                      <p className="sp-mobile-bento-label">수주 승률</p>
+                      <p className="sp-mobile-bento-value">
+                        {winRatePercent != null ? `${winRatePercent}%` : '—'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </section>
 
-          </>
+              <section className="sp-mobile-mine-wrap sp-mobile-only" aria-label="내 담당 필터">
+                <div className="sp-mobile-mine-chips" role="tablist">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={!mineAssigneeFilterActive}
+                    className={`sp-mobile-mine-chip ${!mineAssigneeFilterActive ? 'is-active' : ''}`}
+                    onClick={() => {
+                      clearFilterAssigneeIds();
+                    }}
+                  >
+                    전체
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={mineAssigneeFilterActive}
+                    className={`sp-mobile-mine-chip ${mineAssigneeFilterActive ? 'is-active' : ''}`}
+                    onClick={() => {
+                      if (!pipelineViewerId) return;
+                      setFilterAssigneeIdsMineOnly();
+                    }}
+                  >
+                    내 담당
+                  </button>
+                </div>
+              </section>
+
+              <section className="sp-mobile-chips-wrap sp-mobile-only" aria-label="단계 필터">
+                <div className="sp-mobile-chips" role="tablist">
+                  {boardStages.map((stage) => (
+                    <button
+                      key={`mchip-${stage}`}
+                      type="button"
+                      role="tab"
+                      aria-selected={activeMobileStage === stage}
+                      className={`sp-mobile-chip ${activeMobileStage === stage ? 'is-active' : ''}`}
+                      onClick={() => setMobileListStage(stage)}
+                    >
+                      {stageLabels[stage] ?? stage}
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <section className="sp-mobile-deals sp-mobile-only" aria-live="polite">
+                <div className="sp-mobile-deals-head">
+                  <p className="sp-mobile-deals-head-label">
+                    {stageLabels[activeMobileStage] ?? activeMobileStage} ({mobileStageItems.length})
+                    {mobileForecastSum != null ? (
+                      <span className="sp-mobile-deals-forecast-expected">
+                        {' '}
+                        · 예상 {formatCurrency(mobileForecastSum, mobileColCurrency)}
+                      </span>
+                    ) : null}
+                  </p>
+                  <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: '#acb3b4' }} aria-hidden>
+                    sort
+                  </span>
+                </div>
+                {mobileStageItems.length === 0 ? (
+                  <p className="sp-mobile-empty">이 단계에 표시할 기회가 없습니다.</p>
+                ) : (
+                  <div className="sp-mobile-deals-list">
+                    {mobileStageItems.map((opp, i) => {
+                      const pillClass = `sp-mobile-deal-pill--${i % 3}`;
+                      const pillText = (opp.productName && String(opp.productName).trim()) || '기회';
+                      const primary = dealTitlePrimaryLabel(opp);
+                      const isPersonalNoCompany =
+                        !(opp.customerCompanyName && String(opp.customerCompanyName).trim()) &&
+                        !!(opp.contactName && String(opp.contactName).trim());
+                      const sub = isPersonalNoCompany
+                        ? (opp.productName && String(opp.productName).trim()) ||
+                        (opp.title && String(opp.title).trim()) ||
+                        '—'
+                        : (opp.contactName && String(opp.contactName).trim()) ||
+                        (opp.title && String(opp.title).trim()) ||
+                        '—';
+                      return (
+                        <div
+                          key={opp._id}
+                          className="sp-card sp-mobile-deal-card"
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, opp._id)}
+                          onDragEnd={handleDragEnd}
+                          onClick={() => openEditModal(opp._id)}
+                        >
+                          <div className="sp-mobile-deal-top">
+                            <div>
+                              <h3 className="sp-mobile-deal-title">
+                                {[primary, opp.title].filter(Boolean).join(' · ') || '—'}
+                              </h3>
+                              <p className="sp-mobile-deal-sub">{sub}</p>
+                            </div>
+                            <span className={`sp-mobile-deal-pill ${pillClass}`}>{pillText}</span>
+                          </div>
+                          {renderOppScheduleDatesChips(opp)}
+                          <div className="sp-mobile-deal-bottom">
+                            <div className="sp-mobile-deal-owner">
+                              <span className="sp-mobile-deal-avatar" aria-hidden>
+                                {nameInitials(salesAssigneeDisplay(opp))}
+                              </span>
+                              <div className="sp-mobile-deal-owner-text">
+                                <span className="sp-mobile-deal-assignee-label">판매 담당</span>
+                                <span className="sp-mobile-deal-owner-name">
+                                  {salesAssigneeDisplay(opp) || '미지정'}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="sp-mobile-deal-value-wrap">
+                              <p className="sp-mobile-deal-value">{formatOppValue(opp)}</p>
+                              {canViewAdminContent ? renderOppAdminCardFooter(opp, stageForecastPercent) : null}
+                            </div>
+                          </div>
+                          {canViewAdminContent ? (
+                            <button
+                              type="button"
+                              className="sp-card-delete sp-mobile-deal-delete"
+                              title="삭제"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDelete(opp._id);
+                              }}
+                            >
+                              <span className="material-symbols-outlined">close</span>
+                            </button>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+
+            </>
           ) : null}
 
           <div className={`sp-board${pipelineViewMode === 'table' ? ' sp-board--table-view' : ''}`}>
             {pipelineViewMode === 'kanban' ? (
-            <div className="sp-board-desktop">
-              <div className="sp-kanban">
-                {boardStages.map((stage) => {
-                  const items = grouped[stage] || [];
-                  const fp = stageForecastPercent[stage];
-                  const forecastExpectedSum =
-                    canViewAdminContent && Number.isFinite(fp) ? sumForecastExpectedAmount(items, fp) : null;
-                  const colCurrency = firstOppCurrency(items);
-                  return (
-                    <div
-                      key={`col-${stage}`}
-                      className="sp-kanban-col"
-                      onDragOver={handleDragOver}
-                      onDragLeave={handleDragLeave}
-                      onDrop={(e) => handleDrop(e, stage)}
-                    >
-                      <div className="sp-kanban-col-head">
-                        <div className="sp-kanban-col-head-main">
-                          <span className={`sp-kanban-dot ${stageToneByKey[stage] || 'tone-0'}`} aria-hidden />
-                          <h3 className="sp-kanban-col-title">{stageLabels[stage] ?? stage}</h3>
-                          <span className="sp-kanban-count">{items.length}</span>
-                        </div>
-                        <button
-                          type="button"
-                          className="sp-kanban-add"
-                          title="이 단계에 추가"
-                          onClick={() => openAddModal(stage)}
-                          aria-label={`${stageLabels[stage] ?? stage}에 기회 추가`}
-                        >
-                          <span className="material-symbols-outlined">add</span>
-                        </button>
-                      </div>
-                      {stageForecastPercent[stage] != null || forecastExpectedSum != null ? (
-                        <div className="sp-kanban-forecast-row">
-                          {stageForecastPercent[stage] != null ? (
-                            <p className="sp-kanban-forecast" title="Forecast (expected probability)">
-                              Forecast {stageForecastPercent[stage]}%
-                            </p>
-                          ) : (
-                            <span className="sp-kanban-forecast-spacer" aria-hidden />
-                          )}
-                          {forecastExpectedSum != null ? (
-                            <p
-                              className="sp-kanban-forecast-expected"
-                              title={`이 단계 카드 금액 합 × Forecast ${fp}%`}
-                            >
-                              예상 매출 {formatCurrency(forecastExpectedSum, colCurrency)}
-                            </p>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      <div className="sp-kanban-cards">
-                        {items.length === 0 ? (
-                          <div className="sp-kanban-empty" aria-hidden>
-                            카드를 여기로 드래그하세요
+              <div className="sp-board-desktop">
+                <div className="sp-kanban">
+                  {boardStages.map((stage) => {
+                    const items = grouped[stage] || [];
+                    const fp = stageForecastPercent[stage];
+                    const forecastExpectedSum =
+                      canViewAdminContent && Number.isFinite(fp) ? sumForecastExpectedAmount(items, fp) : null;
+                    const colCurrency = firstOppCurrency(items);
+                    return (
+                      <div
+                        key={`col-${stage}`}
+                        className="sp-kanban-col"
+                        onDragOver={handleDragOver}
+                        onDragLeave={handleDragLeave}
+                        onDrop={(e) => handleDrop(e, stage)}
+                      >
+                        <div className="sp-kanban-col-head">
+                          <div className="sp-kanban-col-head-main">
+                            <span className={`sp-kanban-dot ${stageToneByKey[stage] || 'tone-0'}`} aria-hidden />
+                            <h3 className="sp-kanban-col-title">{stageLabels[stage] ?? stage}</h3>
+                            <span className="sp-kanban-count">{items.length}</span>
                           </div>
-                        ) : (
-                          items.map((opp) => renderDesktopKanbanLucidCard(opp))
-                        )}
+                          <button
+                            type="button"
+                            className="sp-kanban-add"
+                            title="이 단계에 추가"
+                            onClick={() => openAddModal(stage)}
+                            aria-label={`${stageLabels[stage] ?? stage}에 기회 추가`}
+                          >
+                            <span className="material-symbols-outlined">add</span>
+                          </button>
+                        </div>
+                        {stageForecastPercent[stage] != null || forecastExpectedSum != null ? (
+                          <div className="sp-kanban-forecast-row">
+                            {stageForecastPercent[stage] != null ? (
+                              <p className="sp-kanban-forecast" title="Forecast (expected probability)">
+                                Forecast {stageForecastPercent[stage]}%
+                              </p>
+                            ) : (
+                              <span className="sp-kanban-forecast-spacer" aria-hidden />
+                            )}
+                            {forecastExpectedSum != null ? (
+                              <p
+                                className="sp-kanban-forecast-expected"
+                                title={`이 단계 카드 금액 합 × Forecast ${fp}%`}
+                              >
+                                예상 매출 {formatCurrency(forecastExpectedSum, colCurrency)}
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        <div className="sp-kanban-cards">
+                          {items.length === 0 ? (
+                            <div className="sp-kanban-empty" aria-hidden>
+                              카드를 여기로 드래그하세요
+                            </div>
+                          ) : (
+                            items.map((opp) => renderDesktopKanbanLucidCard(opp))
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            </div>
             ) : (
               <SalesPipelineTablePanel
                 allOpportunities={allOpportunities}
@@ -1483,56 +1433,56 @@ export default function SalesPipeline() {
               />
             )}
 
-          {/* Drop Zones — Won / Lost / 보류 */}
-          {pipelineViewMode === 'kanban' ? (
-            <div className="sp-dropzones-section">
-              <div className="sp-dropzones">
-                {Object.entries(DROP_ZONE_CONFIG).map(([stage, cfg]) => {
-                  const items = grouped[stage] || [];
-                  const dzFp = stageForecastPercent[stage];
-                  const dzForecastSum =
-                    canViewAdminContent && Number.isFinite(dzFp) ? sumForecastExpectedAmount(items, dzFp) : null;
-                  const dzCurrency = firstOppCurrency(items);
-                  return (
-                    <div key={stage} className="sp-dz-wrapper">
-                      <div
-                        className={`sp-dropzone ${cfg.colorClass}`}
-                        onDragOver={handleDragOver}
-                        onDragLeave={handleDragLeave}
-                        onDrop={(e) => handleDrop(e, stage)}
-                        onClick={() => items.length > 0 && setDropZoneListStage(stage)}
-                        style={{ cursor: items.length > 0 ? 'pointer' : 'default' }}
-                      >
-                        <span className="material-symbols-outlined sp-dz-icon sp-dz-icon--fill">{cfg.icon}</span>
-                        <span className="sp-dz-label-wrap">
-                          <span className="sp-dz-label">{cfg.label}</span>
-                          {Number.isFinite(stageForecastPercent[stage]) ? (
-                            <span className="sp-dz-forecast" title="Forecast (expected probability)">
-                              Forecast {stageForecastPercent[stage]}%
-                            </span>
-                          ) : null}
-                          {dzForecastSum != null ? (
-                            <span className="sp-dz-forecast-expected" title={`금액 합 × Forecast ${dzFp}%`}>
-                              예상 {formatCurrency(dzForecastSum, dzCurrency)}
-                            </span>
-                          ) : null}
-                        </span>
-                        {items.length > 0 && (
-                          <span className="sp-dz-count">
-                            {items.length}건
-                            <span className="material-symbols-outlined sp-dz-chevron" aria-hidden>
-                              chevron_right
-                            </span>
+            {/* Drop Zones — Won / Lost / 보류 */}
+            {pipelineViewMode === 'kanban' ? (
+              <div className="sp-dropzones-section">
+                <div className="sp-dropzones">
+                  {Object.entries(DROP_ZONE_CONFIG).map(([stage, cfg]) => {
+                    const items = grouped[stage] || [];
+                    const dzFp = stageForecastPercent[stage];
+                    const dzForecastSum =
+                      canViewAdminContent && Number.isFinite(dzFp) ? sumForecastExpectedAmount(items, dzFp) : null;
+                    const dzCurrency = firstOppCurrency(items);
+                    return (
+                      <div key={stage} className="sp-dz-wrapper">
+                        <div
+                          className={`sp-dropzone ${cfg.colorClass}`}
+                          onDragOver={handleDragOver}
+                          onDragLeave={handleDragLeave}
+                          onDrop={(e) => handleDrop(e, stage)}
+                          onClick={() => items.length > 0 && setDropZoneListStage(stage)}
+                          style={{ cursor: items.length > 0 ? 'pointer' : 'default' }}
+                        >
+                          <span className="material-symbols-outlined sp-dz-icon sp-dz-icon--fill">{cfg.icon}</span>
+                          <span className="sp-dz-label-wrap">
+                            <span className="sp-dz-label">{cfg.label}</span>
+                            {Number.isFinite(stageForecastPercent[stage]) ? (
+                              <span className="sp-dz-forecast" title="Forecast (expected probability)">
+                                Forecast {stageForecastPercent[stage]}%
+                              </span>
+                            ) : null}
+                            {dzForecastSum != null ? (
+                              <span className="sp-dz-forecast-expected" title={`금액 합 × Forecast ${dzFp}%`}>
+                                예상 {formatCurrency(dzForecastSum, dzCurrency)}
+                              </span>
+                            ) : null}
                           </span>
-                        )}
+                          {items.length > 0 && (
+                            <span className="sp-dz-count">
+                              {items.length}건
+                              <span className="material-symbols-outlined sp-dz-chevron" aria-hidden>
+                                chevron_right
+                              </span>
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ) : null}
-        </div>
+            ) : null}
+          </div>
         </>
       )}
 
@@ -1561,6 +1511,7 @@ export default function SalesPipeline() {
           )}
           onClose={closeModal}
           onSaved={handleOpportunitySaved}
+          onSwitchToEditAfterCreate={openEditModal}
         />
       )}
       {/* 단계 관리 모달 */}

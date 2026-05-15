@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { API_BASE } from '@/config';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { dispatchSalesOpportunityScheduleDefsChanged } from '@/lib/sales-opportunity-schedule-labels';
+import { dispatchSalesOpportunityFinanceDefsChanged } from '@/lib/sales-opportunity-finance-labels';
 import './custom-fields-manage-modal.css';
 
 const FIELD_TYPES = [
@@ -114,6 +115,7 @@ export default function CustomFieldsManageModal({
       setScheduleEditableBeforeWon(false);
       onFieldAdded?.();
       if (entityType === 'salesOpportunitySchedule') dispatchSalesOpportunityScheduleDefsChanged();
+      if (entityType === 'salesOpportunityFinance') dispatchSalesOpportunityFinanceDefsChanged();
       onClose();
     } catch (_) {
       alert('서버에 연결할 수 없습니다.');
@@ -135,6 +137,7 @@ export default function CustomFieldsManageModal({
         fetchDefinitions();
         onDefinitionsUpdated?.();
         if (entityType === 'salesOpportunitySchedule') dispatchSalesOpportunityScheduleDefsChanged();
+        if (entityType === 'salesOpportunityFinance') dispatchSalesOpportunityFinanceDefsChanged();
       }
       else {
         const data = await res.json().catch(() => ({}));

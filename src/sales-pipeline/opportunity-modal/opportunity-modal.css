@@ -7,12 +7,15 @@
   background: rgba(15, 23, 42, 0.5);
   backdrop-filter: blur(4px);
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  padding: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
-/* ========== Modal (sample: max-w-2xl, rounded-lg, shadow-2xl) ========== */
+/* ========== Modal — 전체 화면 (여백·max-width 없음) ========== */
 .opp-modal {
   --opp-f-body: 0.875rem;
   --opp-f-sm: 0.8125rem;
@@ -20,18 +23,23 @@
   --opp-f-lg: 1.125rem;
   --opp-f-xl: 1.375rem;
   --opp-f-2xl: 1.5rem;
+  /* 모달 내부 전역: 테두리 대비 + 얕은 깊이(파스텔 톤 유지) */
+  --card-border: #b0c0d4;
+  --opp-shade-sm: 0 1px 2px rgba(15, 23, 42, 0.07), 0 2px 8px rgba(15, 23, 42, 0.045);
+  --opp-shade-md: 0 2px 6px rgba(15, 23, 42, 0.08), 0 4px 18px rgba(15, 23, 42, 0.055);
   background: var(--card, #fff);
-  border-radius: 8px;
+  border-radius: 0;
   width: 100%;
-  /* 전체 화면 다음으로 큰 작업 영역 (여백만 두고 거의 꽉 참) */
-  max-width: min(1320px, calc(100vw - 40px));
-  max-height: 94vh;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-width: none;
+  max-height: none;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   position: relative;
   z-index: 1401;
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  box-shadow: none;
 }
 
 .opp-modal-header {
@@ -40,7 +48,8 @@
   justify-content: space-between;
   gap: 12px;
   padding: 16px 24px;
-  border-bottom: 1px solid var(--card-border, #e2e8f0);
+  border-bottom: 1px solid #9eb0c4;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
   flex-shrink: 0;
   overflow: visible;
   z-index: 2;
@@ -93,7 +102,8 @@
   padding: 4px 8px 4px 10px;
   border-radius: 8px;
   background: #f1f5f9;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #b0c0d4;
+  box-shadow: var(--opp-shade-sm, 0 1px 2px rgba(15, 23, 42, 0.07), 0 2px 8px rgba(15, 23, 42, 0.045));
   font-size: 0.8125rem;
   line-height: 1.35;
 }
@@ -183,7 +193,7 @@
   padding: 10px 12px 11px;
   border-radius: 10px;
   background: #fff;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #b0c0d4;
   box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
   font-size: 0.75rem;
   line-height: 1.45;
@@ -286,7 +296,7 @@
 }
 
 .opp-modal-sale-date-input {
-  border: 1px solid var(--card-border, #e2e8f0);
+  border: 1px solid #a8b8cc;
   border-radius: 8px;
   padding: 6px 10px;
   font-size: 0.8125rem;
@@ -294,6 +304,7 @@
   color: var(--text);
   background: var(--bg-light, #f8fafc);
   min-height: 36px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
 }
 
 .opp-modal-sale-date-input:focus {
@@ -332,10 +343,11 @@
 
 /* ========== Form body (scrollable, sample: p-6 space-y-6) ========== */
 /* 본문 기본 글자 크기·줄간격 (헤더·푸터 폰트 규칙은 변경하지 않음) */
+/* 스크롤바는 모달 오른쪽에 붙이고, 실제 폼 너비는 .opp-modal-form-layout 에서 제한 */
 .opp-modal-form {
   flex: 1;
   overflow-y: auto;
-  padding: 18px 20px;
+  padding: 18px 0;
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -343,6 +355,10 @@
   font-size: var(--opp-f-body);
   line-height: 1.45;
   min-height: 0;
+  width: 100%;
+  max-width: none;
+  align-self: stretch;
+  box-sizing: border-box;
 }
 
 /* 본문 2열: 왼쪽 기회 폼 · 오른쪽 일정 + 계약·계산서·수금 */
@@ -353,7 +369,12 @@
   gap: 14px;
   flex: 1;
   min-height: 0;
-  width: 100%;
+  width: 95%;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding: 0 20px;
+  box-sizing: border-box;
 }
 
 .opp-modal-form-main {
@@ -362,6 +383,425 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+/* Sample Design opportunity-modal.html — 섹션 탭 (파스텔 톤·그라데이션 없음) */
+.opp-modal-form-main--section-tabs {
+  gap: 0;
+}
+
+/* 요약 4칸 + 섹션 탭 — 본문 스크롤 시 함께 움직임(헤더처럼 고정하지 않음) */
+.opp-modal-section-tabs-head {
+  position: static;
+  z-index: auto;
+  background: #f1f4f8;
+  margin: 0 0 12px;
+  padding: 10px 12px 12px;
+  border-radius: 8px;
+  border: 1px solid #a8b8cc;
+  box-shadow: var(--opp-shade-sm, 0 1px 2px rgba(15, 23, 42, 0.07), 0 2px 8px rgba(15, 23, 42, 0.045));
+}
+
+.opp-modal-summary-dash {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 10px;
+}
+
+.opp-modal-summary-dash-card {
+  border-radius: 8px;
+  padding: 12px 14px;
+  min-width: 0;
+  border: 1px solid transparent;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 2px 8px rgba(15, 23, 42, 0.04);
+}
+
+.opp-modal-summary-dash-card--order {
+  background: #e8f4fc;
+  border-color: #a8d4ec;
+}
+
+.opp-modal-summary-dash-card--margin {
+  background: #fdeef0;
+  border-color: #eab6bf;
+}
+
+.opp-modal-summary-dash-card--forecast {
+  background: #f3ebf8;
+  border-color: #d4c0e8;
+}
+
+.opp-modal-summary-dash-card--stage {
+  background: #e8f8f0;
+  border-color: #a8dcc0;
+}
+
+.opp-modal-summary-dash-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #475569;
+  margin-bottom: 0.35rem;
+  letter-spacing: -0.01em;
+}
+
+.opp-modal-summary-dash-card--order .opp-modal-summary-dash-label {
+  color: #1e5a82;
+}
+
+.opp-modal-summary-dash-card--margin .opp-modal-summary-dash-label {
+  color: #9b2c3a;
+}
+
+.opp-modal-summary-dash-card--forecast .opp-modal-summary-dash-label {
+  color: #5b3d8a;
+}
+
+.opp-modal-summary-dash-card--stage .opp-modal-summary-dash-label {
+  color: #1d6b4a;
+}
+
+.opp-modal-summary-dash-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #1e293b;
+  line-height: 1.25;
+  word-break: break-all;
+}
+
+.opp-modal-summary-dash-value--forecast {
+  color: #2c6485;
+}
+
+.opp-modal-summary-dash-value--stage {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.opp-modal-summary-dash-meta {
+  margin-top: 0.28rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+@media (max-width: 960px) {
+  .opp-modal-summary-dash {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 440px) {
+  .opp-modal-summary-dash {
+    grid-template-columns: 1fr;
+  }
+}
+
+.opp-error--form-top {
+  margin: 0 0 12px;
+}
+
+.opp-modal-section-tabs-head .opp-modal-tabs-bar {
+  margin-bottom: 0;
+}
+
+.opp-modal-section-tabs-head .opp-modal-tabs {
+  margin-bottom: 0;
+}
+
+.opp-modal-tabs-bar {
+  margin: 6px 0 14px;
+}
+
+.opp-modal-tabs-bar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 6px;
+}
+
+.opp-modal-tabs-bar-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #1e293b;
+}
+
+.opp-modal-tabs-bar-label::before {
+  content: '';
+  display: inline-block;
+  width: 4px;
+  height: 1rem;
+  border-radius: 2px;
+  background: #7eb0d4;
+}
+
+.opp-modal-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px;
+  margin: 0;
+  flex-shrink: 0;
+  background: #dce6f0;
+  border: 1px solid #8fa9c4;
+  border-radius: 10px;
+  box-shadow: var(--opp-shade-md, 0 2px 6px rgba(15, 23, 42, 0.08), 0 4px 18px rgba(15, 23, 42, 0.055));
+}
+
+.opp-modal-tab {
+  flex: 1 1 auto;
+  min-width: 5.25rem;
+  padding: 10px 14px;
+  border: 1px solid #9eb4cc;
+  border-radius: 8px;
+  background: #eef2f7;
+  font-size: var(--opp-f-sm);
+  font-weight: 700;
+  color: #475569;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+
+.opp-modal-tab:hover {
+  color: #1e3a5f;
+  background: #e8eef5;
+  border-color: #9eb4cc;
+}
+
+.opp-modal-tab:focus {
+  outline: none;
+}
+
+.opp-modal-tab:focus-visible {
+  outline: 2px solid #4a8ab8;
+  outline-offset: 2px;
+  border-color: #7eb0d4;
+}
+
+.opp-modal-tab--active {
+  color: #0f3d5c;
+  border-color: #4a8ab8;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.1), 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.opp-modal-tab-panels {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 0;
+}
+
+.opp-tab-panel {
+  display: none;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.opp-tab-panel--active {
+  display: flex;
+}
+
+/* 일정 탭: 일정·계약 블록이 모달 폭을 쓰도록 (사이드바 전용 좁은 열 스타일 무효) */
+.opp-tab-panel--schedule-only {
+  width: 100%;
+  min-width: 0;
+  align-items: stretch;
+}
+
+.opp-tab-panel--schedule-only.opp-tab-panel--active {
+  gap: 0.65rem;
+}
+
+/* 일정 탭: 왼쪽 일정 폼 + 오른쪽 월 달력(calendar.css) */
+.opp-schedule-dates-and-cal {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.opp-embed-calendar-root.calendar-page--embedded {
+  min-width: 0;
+  min-height: 0;
+}
+
+.opp-embed-calendar-root .calendar-shell {
+  max-width: none;
+  margin: 0;
+}
+
+.opp-modal .opp-embed-calendar-root.calendar-page--embedded {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.opp-embed-calendar-root .calendar-hero {
+  margin-bottom: 0.45rem;
+}
+
+.opp-embed-calendar-root .calendar-month-headline {
+  font-size: clamp(1.05rem, 2.5vw, 1.35rem);
+}
+
+.opp-modal-form-finance.opp-modal-form-finance--full-width {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  align-self: stretch;
+  position: static;
+  margin-left: 0;
+  margin-top: 0;
+  padding-left: 0;
+  padding-right: 0;
+  padding-top: 0;
+  border-left: none;
+  box-shadow: none;
+  gap: 0.5rem;
+}
+
+@media (min-width: 880px) {
+  .opp-modal-form-finance--full-width .opp-schedule-dates-and-cal {
+    display: grid;
+    /* 왼쪽(일정·계약·수금) 축소, 오른쪽(월 달력) 확대 */
+    grid-template-columns: minmax(300px, 0.7fr) minmax(300px, 1fr);
+    gap: 10rem 10;
+    align-items: start;
+  }
+
+  .opp-modal-form-finance--full-width .opp-schedule-dates-and-cal > .opp-embed-calendar-root.calendar-page--embedded {
+    border-left: 1px solid #9eb0c4;
+    padding-left: 1rem;
+    min-width: 0;
+  }
+}
+
+.opp-modal-form-finance--full-width .opp-form-dates-sidebar-head {
+  grid-column: 1 / -1;
+}
+
+.opp-modal-form-finance--full-width .opp-form-dates-top--sidebar {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+  gap: 0.38rem 0.75rem;
+  padding: 0.25rem 2px 0.45rem;
+}
+
+.opp-modal-form-finance--full-width .opp-form-dates-top--sidebar .opp-form-dates-row {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 0.38rem 0.55rem;
+  align-items: end;
+}
+
+.opp-modal-form-finance--full-width .opp-form-dates-top--sidebar .opp-form-dates-row--triple {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.opp-modal-form-finance--full-width .opp-form-dates-top--sidebar .opp-form-dates-row--pair {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
+.opp-modal-form-finance--full-width .opp-form-dates-top--sidebar .opp-form-dates-row--pair .opp-form-dates-top-hint {
+  margin-top: 0.06rem;
+}
+
+.opp-modal-form-finance--full-width .opp-form-dates-top--sidebar .opp-finance-section {
+  grid-column: 1 / -1;
+}
+
+.opp-modal-form-finance--full-width .opp-form-dates-top-field--block {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 640px) {
+  .opp-modal-form-finance--full-width .opp-form-dates-top--sidebar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .opp-modal-form-finance--full-width .opp-form-dates-top--sidebar .opp-form-dates-row--triple,
+  .opp-modal-form-finance--full-width .opp-form-dates-top--sidebar .opp-form-dates-row--pair {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 넓은 일정 패널: 계약·수금은 모달 폭 전체(일정+달력 아래) */
+.opp-modal-form-finance--full-width .opp-finance-section {
+  width: 100%;
+  max-width: none;
+  flex: 0 0 auto;
+  margin-top: 0.35rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #b0c0d4;
+  margin-bottom: 0.45rem;
+}
+
+.opp-modal-form-finance--full-width .opp-finance-heading {
+  margin-bottom: 0.22rem;
+}
+
+.opp-modal-form-finance--full-width .opp-finance-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.opp-modal-form-finance--full-width .opp-finance-card {
+  padding: 0.06rem 0;
+}
+
+.opp-modal-form-finance--full-width .opp-finance-card-title {
+  margin-bottom: 0.18rem;
+}
+
+.opp-modal-form-finance--full-width .opp-finance-grid {
+  gap: 0.32rem 0.4rem;
+}
+
+.opp-modal-form-finance--full-width .opp-finance-collection-head {
+  margin-bottom: 0.16rem;
+}
+
+.opp-modal-form-finance--full-width .opp-finance-collection-list {
+  gap: 0.28rem;
+}
+
+.opp-modal-form-finance--full-width .opp-finance-collection-row {
+  gap: 0.3rem 0.38rem;
+  padding: 0.08rem 0;
+}
+
+.opp-modal-form-finance--full-width .opp-finance-cards-row--collection .opp-finance-card {
+  padding-top: 0.18rem;
+  margin-top: 0;
+}
+
+.opp-modal-form-finance--full-width .opp-finance-card--extra-fields .custom-fields-value-row {
+  margin-top: 0.28rem;
+}
+
+.opp-modal-form-finance--full-width .opp-finance-card--extra-fields .custom-fields-multiselect-trigger {
+  background: #fff;
+}
+
+.opp-modal-form-finance--full-width .opp-finance-card--extra-fields {
+  width: 100%;
+}
+
+.opp-modal-form-finance--aside-tab-hidden {
+  display: none !important;
 }
 
 .opp-modal-form-finance {
@@ -376,18 +816,19 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  max-height: min(92vh, 900px);
-  overflow-y: auto;
+  max-height: none;
+  overflow-y: visible;
   padding-left: 14px;
   margin-left: 2px;
-  border-left: 1px solid var(--card-border, #d8e0ea);
+  border-left: 1px solid #b0c0d4;
+  box-shadow: -4px 0 14px rgba(15, 23, 42, 0.04);
 }
 
 .opp-modal-form-finance .opp-finance-section {
   margin-top: 0;
   margin-bottom: 0;
-  flex: 1;
-  min-height: 0;
+  flex: 0 0 auto;
+  min-height: auto;
   max-height: none;
   overflow-y: visible;
 }
@@ -405,7 +846,6 @@
 }
 
 .opp-form-dates-top--sidebar .opp-form-dates-top-field {
-  grid-column: 1 / -1;
   width: 100%;
   min-width: 0;
   gap: 0.12rem;
@@ -439,12 +879,13 @@
   width: 1.65rem;
   height: 1.65rem;
   padding: 0;
-  border: 1px solid #cbd5e1;
+  border: 1px solid #b0c0d4;
   border-radius: 0.4rem;
   background: #f8fafc;
   color: #64748b;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
 }
 
 .opp-form-dates-sidebar-add-def:hover {
@@ -465,8 +906,9 @@
   line-height: 1.35;
   color: #64748b;
   background: #f8fafc;
-  border: 1px solid #e8eef3;
+  border: 1px solid #b0c0d4;
   border-radius: 0.4rem;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
 }
 
 .opp-input--date:disabled {
@@ -600,22 +1042,26 @@
 .opp-input,
 .opp-select,
 .opp-textarea {
-  border: 1px solid var(--card-border, #e2e8f0);
+  border: 1px solid var(--card-border, #b0c0d4);
   border-radius: 8px;
   padding: 10px 12px;
   font-size: var(--opp-f-body);
-  background: var(--bg-light, #fff);
+  background: #fff;
   color: var(--text);
   outline: none;
   transition: border-color 0.2s, box-shadow 0.2s;
   font-family: inherit;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.07), 0 2px 8px rgba(15, 23, 42, 0.045);
 }
 
 .opp-input:focus,
 .opp-select:focus,
 .opp-textarea:focus {
   border-color: var(--primary, #1d283a);
-  box-shadow: 0 0 0 3px rgba(29, 41, 58, 0.1);
+  box-shadow:
+    0 0 0 3px rgba(29, 41, 58, 0.1),
+    0 1px 2px rgba(15, 23, 42, 0.07),
+    0 2px 8px rgba(15, 23, 42, 0.045);
 }
 
 .opp-textarea {
@@ -656,12 +1102,13 @@
   align-items: flex-start;
   gap: 0.15rem;
   padding: 0.55rem 0.85rem;
-  border: 1px solid var(--card-border, #e2e8f0);
+  border: 1px solid #a8b8cc;
   border-radius: 8px;
   background: var(--bg-light, #fff);
   cursor: pointer;
   text-align: left;
-  transition: border-color 0.15s, background 0.15s;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
 }
 
 .opp-price-basis-btn:hover {
@@ -698,7 +1145,7 @@
   border-radius: 0 8px 8px 0;
   border-left: none;
   width: 90px;
-  background: var(--bg-light, #f8fafc);
+  background: #fff;
   color: var(--text-muted, #64748b);
   font-size: var(--opp-f-sm);
 }
@@ -707,11 +1154,12 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  border: 1px solid var(--card-border, #e2e8f0);
+  border: 1px solid #a8b8cc;
   border-radius: 8px;
   padding: 8px 12px;
   background: var(--bg-light, #fff);
   min-height: 42px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 2px 8px rgba(15, 23, 42, 0.04);
 }
 
 .opp-company-display {
@@ -843,9 +1291,10 @@
   padding: 4px 8px 4px 10px;
   font-size: var(--opp-f-cap);
   background: #f1f5f9;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #b0c0d4;
   border-radius: 999px;
   max-width: 100%;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
 }
 
 .opp-channel-distributor-chip-text {
@@ -1044,22 +1493,30 @@
   font-size: var(--opp-f-cap);
   font-weight: 600;
   border-radius: 8px;
-  border: 1px solid transparent;
+  border: 2px solid transparent;
   background: var(--bg-light, #f1f5f9);
   color: var(--text-muted, #64748b);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 
-.opp-stage-btn:hover {
+.opp-stage-btn:hover:not(.opp-stage-btn--selected) {
   background: #e2e8f0;
   color: var(--text, #334155);
 }
 
 .opp-stage-btn--selected {
-  background: rgba(29, 41, 58, 0.1);
-  color: var(--primary, #1d283a);
-  border-color: rgba(29, 41, 58, 0.2);
+  background: #d1e9f8;
+  color: #0c4a6e;
+  border-color: #5b9fd4;
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(12, 74, 110, 0.12);
+}
+
+.opp-stage-btn--selected:hover {
+  background: #c2e0f4;
+  color: #0a3d5c;
+  border-color: #4a93ce;
 }
 
 /* ========== Financial grid (sample: 2x2 / 4 cols) ========== */
@@ -1128,8 +1585,9 @@
 .opp-modal-footer {
   flex-shrink: 0;
   padding: 16px 24px;
-  border-top: 1px solid var(--card-border, #e2e8f0);
+  border-top: 1px solid #9eb0c4;
   background: var(--bg-light, #f8fafc);
+  box-shadow: 0 -2px 12px rgba(15, 23, 42, 0.05);
   display: flex;
   gap: 12px;
   justify-content: flex-end;
@@ -1150,6 +1608,27 @@
 
 .opp-modal-footer .opp-save-btn:hover {
   opacity: 0.9;
+}
+
+.opp-modal-footer .opp-apply-btn {
+  padding: 10px 22px;
+  border-radius: 8px;
+  font-weight: 600;
+  border: 1px solid #93c5d8;
+  background: #e0f2fe;
+  color: #0c4a6e;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.opp-modal-footer .opp-apply-btn:hover:not(:disabled) {
+  background: #bae6fd;
+  border-color: #7eb0d4;
+}
+
+.opp-modal-footer .opp-apply-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .opp-modal-footer .opp-delete-btn {
@@ -1222,11 +1701,12 @@
 .opp-line-block {
   padding: 14px 16px;
   background: rgba(248, 250, 252, 0.95);
-  border: 1px solid var(--card-border, #e2e8f0);
+  border: 1px solid #9eb0c4;
   border-radius: 10px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  box-shadow: var(--opp-shade-sm, 0 1px 2px rgba(15, 23, 42, 0.07), 0 2px 8px rgba(15, 23, 42, 0.045));
 }
 
 .opp-line-block-head {
@@ -1235,13 +1715,300 @@
   justify-content: space-between;
   gap: 8px;
   padding-bottom: 4px;
-  border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.55);
 }
 
 .opp-line-block-title {
   font-size: var(--opp-f-body);
   font-weight: 700;
   color: var(--text, #334155);
+}
+
+/* 제품 행 — merge 시트와 유사한 엑셀형 표 */
+.opp-line-sheet-outer {
+  margin-top: 0.65rem;
+}
+
+.opp-line-sheet-intro {
+  margin: 0 0 0.5rem;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: #64748b;
+}
+
+.opp-line-sheet-scroll {
+  overflow: auto;
+  max-height: min(55vh, 26rem);
+  border-radius: 0.4rem;
+  border: 1px solid #8fa9c0;
+  background: #fff;
+  box-shadow: var(--opp-shade-sm, 0 1px 2px rgba(15, 23, 42, 0.07), 0 2px 8px rgba(15, 23, 42, 0.045));
+}
+
+.opp-line-sheet-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.opp-line-sheet-scroll::-webkit-scrollbar-thumb {
+  background: #c5d4e4;
+  border-radius: 6px;
+}
+
+.opp-line-sheet-scroll::-webkit-scrollbar-thumb:hover {
+  background: #a8bdd4;
+}
+
+.opp-line-sheet-table-wrap {
+  display: inline-block;
+  min-width: 100%;
+  box-sizing: border-box;
+  vertical-align: top;
+}
+
+.opp-line-sheet {
+  border-collapse: collapse;
+  table-layout: auto;
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+  font-size: 0.8125rem;
+  font-family: ui-sans-serif, system-ui, 'Segoe UI', 'Malgun Gothic', sans-serif;
+  background: #fff;
+}
+
+.opp-line-sheet-caption {
+  caption-side: top;
+  text-align: left;
+  padding: 0 0 0.35rem;
+  font-size: 0.7rem;
+  color: #64748b;
+  line-height: 1.35;
+}
+
+.opp-line-sheet-th {
+  text-align: center;
+  vertical-align: middle;
+  white-space: nowrap;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid #9db8cf;
+  background: #e9f2fb;
+  color: #1e3a5f;
+  font-weight: 700;
+  font-size: 0.74rem;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  box-shadow: inset 0 -1px 0 #9db8cf;
+}
+
+.opp-line-sheet-th--product {
+  min-width: 7.5rem;
+  text-align: left;
+}
+
+.opp-line-sheet-th--basis {
+  min-width: 6.5rem;
+}
+
+.opp-line-sheet-th--channel {
+  min-width: 10rem;
+}
+
+.opp-line-sheet-th--misc {
+  min-width: 4rem;
+  max-width: 5.25rem;
+}
+
+.opp-line-sheet-td {
+  text-align: center;
+  vertical-align: middle;
+  padding: 0.25rem 0.35rem;
+  border: 1px solid #b8cad8;
+  box-sizing: border-box;
+  background: #fff;
+}
+
+.opp-line-sheet tbody tr.opp-line-sheet-group--stripe-a .opp-line-sheet-td {
+  background: #f6f9fc;
+}
+
+.opp-line-sheet tbody tr.opp-line-sheet-group--stripe-b .opp-line-sheet-td {
+  background: #fff;
+}
+
+.opp-line-sheet-td--product {
+  text-align: left;
+  vertical-align: middle;
+}
+
+.opp-line-sheet-product-name {
+  font-weight: 600;
+  color: #1e293b;
+  line-height: 1.3;
+  display: block;
+  max-width: 14rem;
+}
+
+.opp-line-sheet-td--basis .opp-line-sheet-select {
+  width: 100%;
+  min-width: 5.5rem;
+  font-size: 0.78rem;
+}
+
+.opp-line-sheet-td--channel {
+  text-align: left;
+}
+
+.opp-line-sheet-channel-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 8rem;
+}
+
+.opp-line-sheet-na {
+  color: #94a3b8;
+  font-size: 0.85rem;
+}
+
+.opp-line-sheet-input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  font-size: 0.78rem;
+  padding: 0.28rem 0.4rem;
+  background: #fff;
+}
+
+.opp-line-sheet .opp-line-sheet-select {
+  background: #fff;
+}
+
+.opp-line-sheet-td .opp-input {
+  margin: 0;
+}
+
+.opp-line-sheet-tr-main + .opp-line-sheet-tr-comm-data .opp-line-sheet-td {
+  border-top: 1px dashed #c5d4e4;
+}
+
+.opp-line-sheet-tr-comm-data .opp-line-sheet-td {
+  vertical-align: top;
+}
+
+.opp-line-sheet-td--comm-actions {
+  vertical-align: middle;
+}
+
+.opp-line-sheet-comm-actions-only {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  min-width: 0;
+}
+
+.opp-line-sheet-comm-actions-only .opp-line-sheet-comm-remove {
+  flex-shrink: 0;
+  margin: 0;
+}
+
+.opp-line-sheet-comm-field-label {
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.opp-line-sheet-comm-remove {
+  margin: 0 auto;
+}
+
+.opp-line-sheet-global-chips-wrap {
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.45rem;
+  border-radius: 0.4rem;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.opp-line-sheet-global-chips-label {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 0.3rem;
+}
+
+.opp-line-sheet-global-chips {
+  margin: 0;
+}
+
+@media (max-width: 960px) {
+  .opp-line-sheet-scroll {
+    max-height: none;
+  }
+
+  .opp-line-sheet thead {
+    display: none;
+  }
+
+  .opp-line-sheet tbody,
+  .opp-line-sheet tr,
+  .opp-line-sheet td {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .opp-line-sheet-tr-main .opp-line-sheet-td {
+    text-align: left;
+    border-bottom: none;
+  }
+
+  .opp-line-sheet-tr-main .opp-line-sheet-td::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: #475569;
+    margin-bottom: 0.2rem;
+  }
+
+  .opp-line-sheet-tr-main .opp-line-sheet-td:last-child {
+    border-bottom: 1px solid #b8cad8;
+  }
+
+  .opp-line-sheet-tr-comm .opp-line-sheet-td--comm-skip {
+    display: none !important;
+  }
+
+  .opp-line-sheet-tr-comm .opp-line-sheet-td::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: #475569;
+    margin-bottom: 0.2rem;
+  }
+
+  .opp-line-sheet-tr-comm .opp-line-sheet-td:not([data-label])::before,
+  .opp-line-sheet-tr-comm .opp-line-sheet-td[data-label='']::before {
+    display: none;
+  }
+
+  .opp-line-sheet-tr-comm .opp-line-sheet-td:last-child {
+    border-bottom: 1px solid #b8cad8;
+  }
+
+  .opp-line-sheet tbody tr.opp-line-sheet-group--stripe-a .opp-line-sheet-td,
+  .opp-line-sheet tbody tr.opp-line-sheet-group--stripe-b .opp-line-sheet-td {
+    background: #fff;
+  }
+
+  .opp-line-sheet-product-name {
+    max-width: none;
+  }
 }
 
 /* 요약: 제품별 행 */
@@ -1411,7 +2178,7 @@
 /* ========== Comments (기회 코멘트) ========== */
 .opp-comments-section {
   padding-top: 8px;
-  border-top: 1px dashed var(--card-border, #e2e8f0);
+  border-top: 1px dashed #a8b8cc;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -1477,7 +2244,8 @@
   padding: 12px 14px;
   border-radius: 10px;
   background: rgba(224, 231, 255, 0.35);
-  border: 1px solid rgba(199, 210, 254, 0.7);
+  border: 1px solid rgba(165, 180, 252, 0.85);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
 }
 
 .opp-comment-reply-hint {
@@ -1708,9 +2476,30 @@
 }
 
 .opp-finance-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.opp-finance-cards-row {
   display: grid;
+  gap: 0.42rem 0.65rem;
+  min-width: 0;
+}
+
+.opp-finance-cards-row--contract-invoice {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.opp-finance-cards-row--collection {
   grid-template-columns: minmax(0, 1fr);
-  gap: 0.42rem;
+}
+
+.opp-finance-cards-row--collection .opp-finance-card {
+  width: 100%;
+  padding-top: 0.35rem;
+  margin-top: 0.1rem;
+  border-top: 1px solid #b8c8d8;
 }
 
 .opp-finance-card {
@@ -1819,6 +2608,59 @@
   line-height: 1.35;
 }
 
+/* 계약·수금 「추가 필드」: CustomFieldsSection 컨트롤을 주변 opp-input·수금 행과 동일 톤으로 */
+.opp-finance-card--extra-fields .custom-fields-value-row {
+  margin-top: 0.42rem;
+}
+
+.opp-finance-card--extra-fields .opp-finance-collection-head + .custom-fields-value-row {
+  margin-top: 0.28rem;
+}
+
+.opp-finance-card--extra-fields .custom-fields-value-input-wrap > label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--text-muted, #64748b);
+}
+
+.opp-finance-card--extra-fields .custom-fields-value-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--text-muted, #64748b);
+  margin-bottom: 0.12rem;
+}
+
+.opp-finance-card--extra-fields .custom-fields-multiselect-trigger {
+  border: 1px solid var(--card-border, #b0c0d4);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: var(--opp-f-body);
+  background: var(--bg-light, #fff);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  font-family: inherit;
+  box-sizing: border-box;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+.opp-finance-card--extra-fields .custom-fields-multiselect-trigger:hover {
+  border-color: #cbd5e1;
+}
+
+.opp-finance-card--extra-fields .custom-fields-multiselect-trigger:focus,
+.opp-finance-card--extra-fields .custom-fields-multiselect-trigger:focus-visible {
+  outline: none;
+  border-color: var(--primary, #1d283a);
+  box-shadow: 0 0 0 3px rgba(29, 41, 58, 0.1);
+}
+
+.opp-finance-card--extra-fields .custom-fields-multiselect-dropdown {
+  border: 1px solid var(--card-border, #e2e8f0);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+}
+
 .opp-form-dates-top-hint {
   margin: 0;
   font-size: 0.58rem;
@@ -1827,7 +2669,11 @@
 }
 
 .opp-form-dates-top-field--block {
-  margin-top: 0.15rem;
+  margin-top: 0;
+}
+
+.opp-modal-form-finance--full-width .opp-form-dates-top--sidebar .opp-form-dates-top-field--block {
+  margin-top: 0.05rem;
 }
 
 .opp-commission-section {
@@ -1835,7 +2681,8 @@
   padding: 0.65rem 0.75rem;
   border-radius: 10px;
   background: #f8fafc;
-  border: 1px solid #e8edf4;
+  border: 1px solid #b8c8d8;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
 }
 
 .opp-line-block .opp-commission-section {
@@ -1981,7 +2828,7 @@
 }
 
 .opp-btn-light {
-  border: 1px solid var(--card-border, #d1d5db);
+  border: 1px solid #a8b8cc;
   background: #fff;
   color: var(--text-muted, #475569);
   border-radius: 8px;
@@ -1989,10 +2836,12 @@
   font-size: 0.76rem;
   font-weight: 600;
   cursor: pointer;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
 }
 
 .opp-btn-light:hover:not(:disabled) {
   background: #f8fafc;
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.08);
 }
 
 .opp-btn-light:disabled {
@@ -2090,10 +2939,6 @@
 
 /* ========== Responsive ========== */
 @media (max-width: 640px) {
-  .opp-modal {
-    max-width: 100%;
-  }
-
   .opp-form-grid-2 {
     grid-template-columns: 1fr;
   }
@@ -2135,7 +2980,7 @@
     grid-template-columns: 1fr;
   }
 
-  .opp-finance-cards {
+  .opp-finance-cards-row--contract-invoice {
     grid-template-columns: 1fr;
   }
 }
@@ -2318,4 +3163,473 @@
 .opp-renewal-won-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* —— 문서 메일머지(헤더: opp-save-btn · 계약·수금 영역 메일) —— */
+.opp-modal-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.opp-finance-card--doc-mail {
+  border-color: rgba(125, 184, 214, 0.35);
+}
+
+/* 기본 정보 탭 하단: 문서 메일 블록 */
+.opp-basic-doc-mail-wrap {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--card-border, #e2e8f0);
+}
+
+.opp-basic-doc-mail-wrap .opp-finance-card--doc-mail {
+  padding-top: 0.15rem;
+}
+
+.opp-basic-doc-mail-wrap .opp-doc-mail-grid {
+  max-width: none;
+}
+
+.opp-doc-mail-hint {
+  margin: 0 0 0.65rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: #64748b;
+}
+
+.opp-doc-mail-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  width: 100%;
+}
+
+.opp-doc-mail-book-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+  min-height: 2.35rem;
+}
+
+.opp-doc-mail-book-toolbar-anchor {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  max-width: min(22rem, 100%);
+}
+
+.opp-doc-mail-book-dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  padding: 0.35rem 0.55rem;
+  border-radius: 0.45rem;
+  border: 1px solid #c5d4e4;
+  background: #f8fafc;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #334155;
+  cursor: pointer;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.opp-doc-mail-book-dropdown-trigger:disabled {
+  opacity: 0.8;
+  cursor: wait;
+}
+
+.opp-doc-mail-book-dropdown-trigger-label {
+  color: #1e3a5f;
+}
+
+.opp-doc-mail-book-dropdown-trigger-count,
+.opp-doc-mail-book-dropdown-trigger-sub {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.opp-doc-mail-book-dropdown-chevron {
+  font-size: 1.15rem;
+  line-height: 1;
+  color: #64748b;
+  transition: transform 0.15s ease;
+}
+
+.opp-doc-mail-book-dropdown-trigger--open .opp-doc-mail-book-dropdown-chevron {
+  transform: rotate(180deg);
+}
+
+.opp-doc-mail-book-dropdown-panel {
+  z-index: 2000;
+  overflow: auto;
+  padding: 0.5rem 0.55rem;
+  border-radius: 0.45rem;
+  border: 1px solid #c5d4e4;
+  background: #fff;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.12);
+  text-align: left;
+  box-sizing: border-box;
+}
+
+.opp-doc-mail-book-dropdown-panel .opp-doc-mail-addressbook-note,
+.opp-doc-mail-book-dropdown-panel .opp-doc-mail-addressbook-error {
+  margin: 0 0 0.35rem;
+}
+
+.opp-doc-mail-book-dropdown-panel .opp-doc-mail-book-checklist {
+  max-height: 9rem;
+}
+
+.opp-doc-mail-addressbook-empty--toolbar,
+.opp-doc-mail-addressbook-hint-multi--toolbar {
+  text-align: left;
+}
+
+.opp-doc-mail-addressbook-hint-multi--toolbar {
+  margin: 0 0 0.35rem;
+  font-size: 0.68rem;
+  line-height: 1.4;
+  color: #64748b;
+}
+
+.opp-doc-mail-book-checklist {
+  max-height: 9.5rem;
+  overflow: auto;
+  margin-top: 0.15rem;
+  padding: 0.28rem 0.25rem;
+  border-radius: 0.35rem;
+  background: #fff;
+  border: 1px solid #e8edf2;
+}
+
+.opp-doc-mail-book-group {
+  margin-top: 0.4rem;
+}
+
+.opp-doc-mail-book-group:first-child {
+  margin-top: 0;
+}
+
+.opp-doc-mail-book-group-label {
+  display: block;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #64748b;
+  margin-bottom: 0.18rem;
+}
+
+.opp-doc-mail-book-checklist-ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.opp-doc-mail-book-checkitem {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  padding: 0.22rem 0.18rem;
+  border-radius: 0.3rem;
+  cursor: pointer;
+  font-size: 0.74rem;
+  color: #334155;
+}
+
+.opp-doc-mail-book-checkitem:hover {
+  background: #f1f5f9;
+}
+
+.opp-doc-mail-book-checkitem input {
+  margin-top: 0.1rem;
+  flex-shrink: 0;
+}
+
+.opp-doc-mail-book-checkitem-text {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.opp-doc-mail-addressbook-actions--toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+}
+
+.opp-doc-mail-to-cc-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem 1rem;
+  width: 100%;
+}
+
+@media (max-width: 720px) {
+  .opp-doc-mail-to-cc-row {
+    grid-template-columns: 1fr;
+  }
+
+  .opp-doc-mail-book-toolbar-anchor {
+    max-width: 100%;
+  }
+}
+
+.opp-doc-mail-bundle-row {
+  margin-top: 0.65rem;
+}
+
+.opp-doc-mail-bundle-save-btn {
+  font-size: 0.8rem;
+}
+
+.opp-doc-mail-addressbook {
+  margin-top: 0.75rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.45rem;
+  border: 1px solid #e2e8f0;
+  background: #fafbfc;
+}
+
+.opp-doc-mail-addressbook-head {
+  margin-bottom: 0.2rem;
+}
+
+.opp-doc-mail-addressbook-title {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #334155;
+}
+
+.opp-doc-mail-addressbook-hint-multi {
+  margin: 0 0 0.45rem;
+  font-size: 0.7rem;
+  line-height: 1.45;
+  color: #64748b;
+}
+
+.opp-doc-mail-addressbook-hint-multi strong {
+  color: #475569;
+  font-weight: 700;
+}
+
+.opp-doc-mail-addressbook-note,
+.opp-doc-mail-addressbook-empty {
+  margin: 0.45rem 0 0;
+  font-size: 0.74rem;
+  color: #64748b;
+}
+
+.opp-doc-mail-addressbook-error {
+  margin: 0.35rem 0 0;
+  font-size: 0.74rem;
+  color: #b45309;
+}
+
+.opp-doc-mail-addressbook-panel {
+  margin-top: 0.35rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid #e8edf2;
+}
+
+.opp-doc-mail-addressbook-multiselect-label {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+
+.opp-doc-mail-addressbook-multiselect-caption {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 0.28rem;
+}
+
+.opp-doc-mail-addressbook-multiselect {
+  width: 100%;
+  min-width: 0;
+  min-height: 7.5rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  padding: 0.35rem 0.4rem;
+  background: #fff;
+  border-color: #c5d4e4;
+}
+
+.opp-doc-mail-addressbook-multiselect option {
+  padding: 0.2rem 0.15rem;
+}
+
+.opp-doc-mail-addressbook-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.55rem;
+}
+
+.opp-doc-mail-addressbook-apply,
+.opp-doc-mail-addressbook-delete {
+  font-size: 0.75rem;
+}
+
+.opp-doc-mail-save-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 12050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.opp-doc-mail-save-dialog {
+  width: min(22rem, 100%);
+  max-height: min(90vh, 28rem);
+  overflow: auto;
+  padding: 1rem 1.1rem;
+  border-radius: 0.55rem;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.12);
+}
+
+.opp-doc-mail-save-dialog-title {
+  margin: 0 0 0.65rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.opp-doc-mail-save-scope {
+  margin: 0.65rem 0 0;
+  padding: 0.5rem 0.55rem;
+  border-radius: 0.4rem;
+  border: 1px solid #e8edf2;
+  background: #f8fafc;
+}
+
+.opp-doc-mail-save-legend {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #475569;
+  padding: 0 0.15rem;
+}
+
+.opp-doc-mail-save-radio {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+  font-size: 0.76rem;
+  color: #334155;
+  cursor: pointer;
+}
+
+.opp-doc-mail-save-hint {
+  margin: 0.55rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: #64748b;
+}
+
+.opp-doc-mail-save-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.45rem;
+  margin-top: 0.85rem;
+}
+
+.opp-doc-slot-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.5rem 0 0.35rem;
+}
+
+.opp-doc-slot-chip {
+  border: 1px solid #cbd5e1;
+  border-radius: 0.45rem;
+  background: #f8fafc;
+  font-size: 0.72rem;
+}
+
+.opp-doc-slot-chip-summary {
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  font-weight: 600;
+  color: #334155;
+  list-style: none;
+}
+
+.opp-doc-slot-chip-summary::-webkit-details-marker {
+  display: none;
+}
+
+.opp-doc-slot-chip-body {
+  padding: 0.35rem 0.5rem 0.45rem;
+  border-top: 1px solid #e2e8f0;
+  max-width: 22rem;
+}
+
+.opp-doc-slot-chip-key {
+  display: block;
+  font-size: 0.68rem;
+  color: #64748b;
+  margin-bottom: 0.25rem;
+}
+
+.opp-doc-slot-chip-pre {
+  margin: 0;
+  font-size: 0.72rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: #0f172a;
+}
+
+.opp-doc-slot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.opp-doc-slot-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: flex-end;
+  padding: 0.45rem;
+  border-radius: 0.45rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.opp-doc-slot-field {
+  flex: 1 1 8rem;
+  min-width: 0;
+}
+
+.opp-doc-slot-field--grow {
+  flex: 3 1 12rem;
+}
+
+.opp-doc-slot-textarea {
+  min-height: 2.5rem;
+  resize: vertical;
+}
+
+.opp-doc-slot-remove {
+  flex-shrink: 0;
+  align-self: center;
 }

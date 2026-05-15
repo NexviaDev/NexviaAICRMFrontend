@@ -7,6 +7,13 @@ import './add-customer-company-employees-modal.css';
 import ContactImportPreviewModal from './contact-import-preview-modal';
 import ContactSavePregateModal from './contact-save-pregate-modal';
 import BulkContactDuplicateReviewModal from './bulk-contact-duplicate-review-modal';
+import {
+  BULK_ROW_EXCLUDE,
+  BULK_ROW_FORCE,
+  BULK_ROW_MERGE,
+  mergeImportRowIntoExistingEmployee,
+  parseBulkPerRowResolution
+} from './bulk-contact-merge-utils';
 import CustomerCompanyDetailModal from '../../customer-companies/customer-company-detail-modal/customer-company-detail-modal';
 import GoogleContactsModal from '../google-contacts-modal/google-contacts-modal';
 
@@ -66,6 +73,16 @@ function formatPhoneInput(value) {
   if (digits.length <= 3) return digits;
   if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
   return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
+}
+
+function formatBulkImportResultMessage({ success, merged, fail, skipped, total }) {
+  const created = Math.max(0, (success || 0) - (merged || 0));
+  const parts = [];
+  if (created > 0) parts.push(`등록 ${created}건`);
+  if (merged > 0) parts.push(`병합 ${merged}건`);
+  if (skipped > 0) parts.push(`제외 ${skipped}건`);
+  if (fail > 0) parts.push(`실패 ${fail}건`);
+  return `${parts.join(', ')} (총 ${total}건).`;
 }
 
 function sanitizeFolderNamePart(s, maxLen = 80) {
@@ -983,11 +1000,8 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
   const runImportRowsBulk = async (rows, preResults, forceAll) => {
     const assigneeUserIds = Array.isArray(form.assigneeUserIds) ? form.assigneeUserIds : [];
     const batchCustomerCompanyIdByNormKey = new Map();
-    const perRowDecisions =
-      forceAll && typeof forceAll === 'object' && forceAll.mode === 'perRow' && forceAll.decisions
-        ? forceAll.decisions
-        : null;
     let success = 0;
+    let merged = 0;
     let fail = 0;
     let skipped = 0;
     for (let i = 0; i < rows.length; i += 1) {
@@ -995,13 +1009,31 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
       const entry = buildBulkEntryFromImportRow(row);
       const pr = (preResults && preResults[i]) || {};
       const decisionKey = Number.isInteger(Number(pr.index)) ? String(Number(pr.index)) : String(i);
-      const rowDecision = perRowDecisions ? perRowDecisions[decisionKey] : null;
+      const { rowDecision, mergeContactId, mergeCompanyId } = parseBulkPerRowResolution(forceAll, decisionKey);
       const hold = rowNeedsImportBulkHold(pr, entry);
-      if (rowDecision === 'exclude' || (hold && rowDecision !== 'force' && forceAll !== true)) {
+      if (
+        rowDecision === BULK_ROW_EXCLUDE ||
+        (hold && rowDecision !== BULK_ROW_FORCE && rowDecision !== BULK_ROW_MERGE && forceAll !== true)
+      ) {
         skipped += 1;
         continue;
       }
       try {
+        if (rowDecision === BULK_ROW_MERGE && mergeContactId) {
+          const mergeResult = await mergeImportRowIntoExistingEmployee({
+            employeeId: mergeContactId,
+            importRow: row,
+            getAuthHeader,
+            formatPhoneInput,
+            mergeCompanyId
+          });
+          if (mergeResult.ok) {
+            merged += 1;
+            success += 1;
+          } else fail += 1;
+          continue;
+        }
+
         const payload = {
           name: String(row.name || '').replace(/\s/g, '').trim(),
           email: (row.email || '').trim(),
@@ -1023,6 +1055,10 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
             payload.companyName = cnLink;
             const gkLink = normalizeBulkImportCompanyGroupKey(cnLink);
             if (gkLink) batchCustomerCompanyIdByNormKey.set(gkLink, linkedRaw);
+          } else if (rowDecision === BULK_ROW_MERGE && mergeCompanyId) {
+            const cn = (row.companyName || '').trim();
+            payload.customerCompanyId = mergeCompanyId;
+            if (cn) payload.companyName = cn;
           } else {
             const cn = (row.companyName || '').trim();
             if (cn) {
@@ -1050,7 +1086,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
           fail += 1;
           continue;
         }
-        if (hold && (forceAll === true || rowDecision === 'force')) {
+        if (hold && (forceAll === true || rowDecision === BULK_ROW_FORCE)) {
           if ((pr.contactCandidates || []).length) payload.forceCreateDespiteContactDuplicate = true;
         }
         const res = await fetch(`${API_BASE}/customer-company-employees`, {
@@ -1075,7 +1111,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
         fail += 1;
       }
     }
-    return { success, fail, skipped, total: rows.length };
+    return { success, merged, fail, skipped, total: rows.length };
   };
 
   const confirmBulkContactImport = async (rowsArg) => {
@@ -1114,12 +1150,11 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
         });
         return;
       }
-      const { success, fail, skipped, total } = await runImportRowsBulk(rows, preResults, false);
+      const { success, merged, fail, skipped, total } = await runImportRowsBulk(rows, preResults, false);
       setShowImportPreview(false);
       setImportPreviewItems([]);
       if (success > 0) {
-        const msg = `등록 ${success}건${skipped ? `, 제외 ${skipped}건` : ''}${fail ? `, 실패 ${fail}건` : ''} (총 ${total}건).`;
-        window.alert(msg);
+        window.alert(formatBulkImportResultMessage({ success, merged, fail, skipped, total }));
         onSaved?.();
         onClose?.();
       } else {
@@ -1380,13 +1415,11 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
     setBulkPreReview(null);
     setImportBulkSaving(true);
     try {
-      const { success, fail, skipped, total } = await runImportRowsBulk(b.importRows, b.preResults, forceAll);
+      const { success, merged, fail, skipped, total } = await runImportRowsBulk(b.importRows, b.preResults, forceAll);
       setShowImportPreview(false);
       setImportPreviewItems([]);
       if (success > 0) {
-        window.alert(
-          `등록 ${success}건${skipped ? `, 제외 ${skipped}건` : ''}${fail ? `, 실패 ${fail}건` : ''} (총 ${total}건).`
-        );
+        window.alert(formatBulkImportResultMessage({ success, merged, fail, skipped, total }));
         onSaved?.();
         onClose?.();
       } else {

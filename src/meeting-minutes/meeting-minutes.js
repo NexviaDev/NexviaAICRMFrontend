@@ -230,7 +230,8 @@ export default function MeetingMinutes() {
           </p>
         </div>
       ) : (
-        <header className="page-header">
+        <header className="page-header meeting-minutes-header">
+          <h1 className="page-title">회의 일지</h1>
           <div className="header-search">
             <form onSubmit={handleSearch} className="header-search-form">
               <button type="submit" className="header-search-icon-btn" aria-label="검색">
@@ -245,29 +246,17 @@ export default function MeetingMinutes() {
               />
             </form>
           </div>
-          <div className="header-actions">
+          <div className="meeting-minutes-header-tools">
             <button type="button" className="btn-primary" onClick={openAddModal}>
               <span className="material-symbols-outlined">add</span>
               새 회의 일지
             </button>
-            <PageHeaderNotifyChat noWrapper buttonClassName="icon-btn" />
+            <PageHeaderNotifyChat />
           </div>
         </header>
       )}
 
       <div className={`page-content${isMobile ? ' meeting-minutes-page-content--mobile' : ''}`}>
-        {!isMobile ? (
-          <div className="meeting-minutes-top">
-            <div>
-              <h2 className="meeting-minutes-title">회의 일지</h2>
-              <p className="page-desc">
-                참석자로 지정되었거나 내가 작성한 회의만 목록에 표시됩니다. {pagination.total}건 (총{' '}
-                {pagination.totalPages}페이지)
-              </p>
-            </div>
-          </div>
-        ) : null}
-
         {isMobile ? (
           <section className="meeting-minutes-m-list" aria-label="회의 목록">
             {loading ? (

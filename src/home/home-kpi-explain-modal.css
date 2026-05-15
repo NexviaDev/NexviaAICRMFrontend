@@ -91,6 +91,32 @@
   font-weight: 800;
 }
 
+.home-kpi-explain-goal-footnote-scroll {
+  margin-bottom: 0;
+}
+
+.home-kpi-explain-won-table.home-kpi-explain-goal-footnote-table {
+  min-width: 14rem;
+}
+
+.home-kpi-explain-goal-footnote-kind {
+  white-space: nowrap;
+  font-weight: 700;
+  color: #64748b;
+  width: 3.25rem;
+}
+
+.home-kpi-explain-dialog .home-kpi-footnote-num {
+  color: #b85555;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.home-kpi-explain-collected-table .home-kpi-explain-collected-anomaly-value {
+  color: #7f1d1d;
+  font-weight: 800;
+}
+
 .home-kpi-explain-section {
   margin-bottom: 1rem;
 }
@@ -301,4 +327,26 @@
 .home-kpi-explain-won-basis {
   font-weight: 500;
   color: #94a3b8;
+}
+
+/* 수금 KPI 모달 표 — Won 표와 동일 톤 */
+.home-kpi-explain-collected-wrap {
+  margin-top: 0.35rem;
+}
+
+.home-kpi-explain-collected-table {
+  min-width: 26rem;
+}
+
+.home-kpi-explain-row-clickable {
+  cursor: pointer;
+}
+
+.home-kpi-explain-row-clickable:hover td {
+  background: #eef4f9;
+}
+
+.home-kpi-explain-row-clickable:focus-visible {
+  outline: 2px solid #9db8d4;
+  outline-offset: -2px;
 }

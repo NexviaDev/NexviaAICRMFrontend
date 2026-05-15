@@ -6,37 +6,19 @@
 
 .bulk-contact-review-quick-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 0.45rem;
+  gap: 0.5rem;
   margin: 0 0 0.65rem;
-}
-
-.bulk-contact-review-quick-actions button {
-  padding: 0.42rem 0.7rem;
-  border: 1px solid rgba(167, 139, 200, 0.45);
-  border-radius: 999px;
-  background: #f0ebf8;
-  color: #4a3f55;
-  font-size: 0.78rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.bulk-contact-review-quick-actions button:hover:not(:disabled) {
-  background: #e6def3;
-}
-
-.bulk-contact-review-quick-actions button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
 }
 
 .bulk-contact-review-table-wrap {
   max-height: min(52vh, 30rem);
   overflow: auto;
-  border: 1px solid rgba(200, 190, 220, 0.55);
-  border-radius: 0.55rem;
+  border: 1px solid var(--card-border, #e2e8f0);
+  border-radius: 0.5rem;
   background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .bulk-contact-review-table {
@@ -50,7 +32,7 @@
 .bulk-contact-review-table th,
 .bulk-contact-review-table td {
   padding: 0.55rem 0.7rem;
-  border-bottom: 1px solid rgba(220, 215, 235, 0.72);
+  border-bottom: 1px solid var(--card-border, #e8eaf6);
   vertical-align: middle;
   text-align: left;
 }
@@ -59,11 +41,12 @@
   position: sticky;
   top: 0;
   z-index: 2;
-  background: #f6f2fa;
-  color: #5c5466;
-  font-size: 0.72rem;
-  font-weight: 800;
+  background: var(--primary-pastel, #e8eaf6);
+  color: var(--text, #334155);
+  font-size: 0.875rem;
+  font-weight: 500;
   white-space: nowrap;
+  border-bottom: 1px solid rgba(92, 107, 192, 0.22);
 }
 
 .bulk-contact-review-table tbody tr:last-child td {
@@ -71,14 +54,14 @@
 }
 
 .bulk-contact-review-table tbody tr:hover {
-  background: #faf8fd;
+  background: var(--bg-light, #f8fafc);
 }
 
 .bulk-contact-review-row-no {
   width: 3.25rem;
   text-align: center;
-  color: #8b7fa3;
-  font-weight: 800;
+  color: var(--text-muted, #64748b);
+  font-weight: 500;
 }
 
 .bulk-contact-review-target,
@@ -95,14 +78,14 @@
 
 .bulk-contact-review-target strong,
 .bulk-contact-review-existing-item strong {
-  color: #3d3650;
-  font-weight: 800;
+  color: var(--text, #334155);
+  font-weight: 600;
 }
 
 .bulk-contact-review-target span,
 .bulk-contact-review-existing-item span,
 .bulk-contact-review-more {
-  color: #6b6478;
+  color: var(--text-muted, #64748b);
   font-size: 0.78rem;
   line-height: 1.35;
 }
@@ -118,20 +101,29 @@
   display: inline-flex;
   align-items: center;
   padding: 0.2rem 0.45rem;
-  border-radius: 999px;
+  border-radius: 0.5rem;
   font-size: 0.72rem;
-  font-weight: 800;
+  font-weight: 600;
   white-space: nowrap;
 }
 
 .bulk-contact-review-badge.danger {
-  background: #f8e7eb;
-  color: #8a3f4b;
+  background: #fce8ec;
+  color: #9f4a57;
 }
 
 .bulk-contact-review-badge.soft {
-  background: #e8eef8;
-  color: #4b5f86;
+  background: var(--primary-pastel, #e8eaf6);
+  color: var(--primary, #5c6bc0);
+}
+
+.bulk-contact-review-badge.merge {
+  background: #e8f4ec;
+  color: #4a7c59;
+}
+
+.bulk-contact-review-row--merge {
+  background: #fafcff;
 }
 
 .bulk-contact-review-existing {
@@ -139,10 +131,44 @@
   max-width: 26rem;
 }
 
+.bulk-contact-review-pick {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.bulk-contact-review-pick:hover:not(:disabled) {
+  border-color: rgba(92, 107, 192, 0.45);
+  background: var(--primary-pastel, #e8eaf6);
+}
+
+.bulk-contact-review-pick--selected {
+  border-color: rgba(92, 107, 192, 0.55) !important;
+  background: var(--primary-pastel, #e8eaf6) !important;
+  box-shadow: inset 0 0 0 1px rgba(92, 107, 192, 0.18);
+}
+
+.bulk-contact-review-pick--company.bulk-contact-review-pick--selected {
+  border-color: rgba(74, 124, 89, 0.45) !important;
+  background: #e8f4ec !important;
+  box-shadow: inset 0 0 0 1px rgba(74, 124, 89, 0.16);
+}
+
+.bulk-contact-review-pick-mark {
+  color: var(--primary, #5c6bc0);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.bulk-contact-review-pick--company .bulk-contact-review-pick-mark {
+  color: #4a7c59;
+}
+
 .bulk-contact-review-existing-item {
   padding: 0.32rem 0.42rem;
-  border: 1px solid rgba(220, 215, 235, 0.7);
-  border-radius: 0.35rem;
+  border: 1px solid var(--card-border, #e8eaf6);
+  border-radius: 0.5rem;
   background: #fdfcff;
 }
 
@@ -150,43 +176,28 @@
   display: inline-flex;
   align-self: flex-start;
   padding: 0.15rem 0.4rem;
-  border-radius: 999px;
-  background: #f0ebf8;
-  font-weight: 700;
+  border-radius: 0.5rem;
+  background: var(--primary-pastel, #e8eaf6);
+  color: var(--primary, #5c6bc0);
+  font-weight: 500;
 }
 
 .bulk-contact-review-choice {
   display: inline-flex;
-  gap: 0.25rem;
-  padding: 0.18rem;
-  border: 1px solid rgba(200, 190, 220, 0.72);
-  border-radius: 999px;
-  background: #f8f5fb;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   white-space: nowrap;
 }
 
-.bulk-contact-review-choice button {
-  padding: 0.35rem 0.6rem;
-  border: none;
-  border-radius: 999px;
-  background: transparent;
-  color: #6b6478;
-  font-size: 0.78rem;
-  font-weight: 800;
-  cursor: pointer;
+/* 선택됨: add-contact-modal-save 와 동일(상위 CSS). 미선택: 같은 radius·호버 톤의 아웃라인 */
+.bulk-contact-review-choice-btn--idle {
+  color: var(--primary, #5c6bc0) !important;
+  background: #fff !important;
+  border: 1px solid rgba(92, 107, 192, 0.38) !important;
+  box-shadow: none !important;
 }
 
-.bulk-contact-review-choice button.active.force {
-  background: #e6e2f5;
-  color: #4a3f55;
-}
-
-.bulk-contact-review-choice button.active.exclude {
-  background: #f6e7ea;
-  color: #8a3f4b;
-}
-
-.bulk-contact-review-choice button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
+.bulk-contact-review-choice-btn--idle:hover:not(:disabled) {
+  opacity: 1 !important;
+  background: var(--primary-pastel, #e8eaf6) !important;
 }

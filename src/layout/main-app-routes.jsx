@@ -20,6 +20,7 @@ const Map = lazy(() => import('../map/map'));
 const TodoList = lazy(() => import('../todo-list/todo-list'));
 const LeadCapture = lazy(() => import('../lead-capture/lead-capture'));
 const Subscription = lazy(() => import('../subscription/subscription'));
+const QuotationDocMerge = lazy(() => import('../quotation-doc-merge/quotation-doc-merge'));
 const NotificationPage = lazy(() => import('../notification/notification'));
 const Messenger = lazy(() => import('../messenger/messenger'));
 const BusinessRegistryPage = lazy(() => import('../business-registry/business-registry'));
@@ -73,6 +74,14 @@ export default function MainAppRoutes({ includeHomeIndex = true } = {}) {
       <Route path="reports/performance" element={<PendingRestrictedRoute><EmployeePerformance /></PendingRestrictedRoute>} />
       <Route path="reports/work-report/:employeeId?" element={<PendingRestrictedRoute><EmployeeWorkReport /></PendingRestrictedRoute>} />
       <Route path="subscription" element={<PendingRestrictedRoute><Subscription /></PendingRestrictedRoute>} />
+      <Route
+        path="quotation-doc-merge"
+        element={
+          <PendingRestrictedRoute>
+            <QuotationDocMerge />
+          </PendingRestrictedRoute>
+        }
+      />
     </Routes>
   );
 }

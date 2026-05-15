@@ -1,9 +1,13 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import CustomerCompanySearchModal from '../../customer-companies/customer-company-search-modal/customer-company-search-modal';
 import CustomerCompanyEmployeesSearchModal from '../../customer-company-employees/customer-company-employees-search-modal/customer-company-employees-search-modal';
 import ProductSearchModal from '../product-search-modal/product-search-modal';
 import ParticipantModal from '@/shared/participant-modal/participant-modal';
 import CustomFieldsManageModal from '@/shared/custom-fields-manage-modal/custom-fields-manage-modal';
+import CustomFieldsSection from '@/shared/custom-fields-section';
+import OpportunityMergeFromOpportunity from './opportunity-merge-from-opportunity';
+import { OpportunityModalFormSectionTabs } from './opportunity-modal-form-section-tabs';
+import { OpportunityModalScheduleCalendar } from './opportunity-modal-schedule-calendar';
 import '../../customer-companies/customer-company-detail-modal/customer-company-detail-modal.css';
 import './opportunity-modal.css';
 import { RegisterSaleDocsCrmTable, formatDriveFileDate } from '@/shared/register-sale-docs-drive';
@@ -17,6 +21,12 @@ import {
   sanitizeDriveFolderWebViewLink
 } from '@/lib/google-drive-url';
 import { pingBackendHealth } from '@/lib/backend-wake';
+import {
+  fetchCompanyDocMailAddressBook,
+  putCompanyDocMailAddressBook,
+  fetchUserDocMailAddressBook,
+  putUserDocMailAddressBook
+} from '@/lib/opportunity-doc-mail-address-book-api';
 import { pruneDriveUploadedFilesIndex, syncDriveUploadedFilesIndex } from '@/lib/drive-uploaded-files-prune';
 import { pollJournalFromAudioJob } from '@/lib/journal-from-audio-poll';
 import { suggestedPriceFromProduct, OPPORTUNITY_PRICE_BASIS_OPTIONS } from '@/lib/product-price-utils';
@@ -25,8 +35,6 @@ import {
   parseNumber,
   formatNumberInput,
   priceBasisLabelsForValue,
-  newCommissionRecipientId,
-  createEmptyCommissionRow,
   buildLineFromProduct,
   buildLineItemsPayloadFromClientLines
 } from '@/lib/sales-opportunity-form-shared';
@@ -34,346 +42,56 @@ import { getUserVisibleApiError } from '@/lib/api-error';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { buildStageForecastPercentMap } from '../pipeline-forecast-utils';
 import { resolveDepartmentDisplayFromChart } from '@/lib/org-chart-tree-utils';
+import {
+  getAuthHeader,
+  newDocMailAddressBookId,
+  mergeEmailListStrings,
+  normalizeMongoIdCandidate,
+  isLikelyMongoObjectId,
+  PRODUCT_BILLING_LABELS,
+  getInitialInternalAssignee,
+  fullCollectionDateFromCumulativeEntries,
+  newCollectionEntryId,
+  emptyCommissionRowForLine,
+  mapServerCommissionRowsToClient,
+  clientLineCommissionHasData,
+  computeLineFinalAmount,
+  computeLineDeduction,
+  getCurrentUserId,
+  formatCommentDate,
+  toDatetimeLocalValue,
+  toDateInputValue,
+  todayDateInputValue,
+  localMidnightFromYyyyMmDd,
+  isYyyyMmDdStrictlyAfterToday,
+  isCommentAuthor,
+  sanitizeFolderNamePart,
+  getDriveFolderIdFromLink,
+  DRIVE_FOLDER_MIME,
+  resolveCustomerCompanyByAffiliationName,
+  fetchRegisteredDriveParentId,
+  buildContactBaseFolderName,
+  buildPersonalContactFolderName,
+  ensureOppContactDriveRoot,
+  fileToBase64,
+  organizeComments
+} from './opportunity-modal-helpers';
 
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
-const PRODUCT_BILLING_LABELS = { Monthly: '월간', Annual: '연간', Perpetual: '영구' };
-
-function getInitialInternalAssignee() {
-  try {
-    const u = getStoredCrmUser();
-    return {
-      assignedToUserId: u?._id ? String(u._id) : '',
-      assignedToName: (u?.name && String(u.name).trim()) || ''
-    };
-  } catch (_) {
-    return { assignedToUserId: '', assignedToName: '' };
+/** 서버 lineItems 합계 — 칸반 드롭 후 URL stage=Won 일 때 handleStageButtonClick 과 동일 */
+function sumLineFinalFromServerLineItems(lineItemsRaw) {
+  if (!Array.isArray(lineItemsRaw) || lineItemsRaw.length === 0) return 0;
+  let sum = 0;
+  for (const li of lineItemsRaw) {
+    const qty = Math.max(0, Number(li?.quantity) || 0);
+    const unit = Math.max(0, Number(li?.unitPrice) || 0);
+    const dr = Math.max(0, Math.min(100, Number(li?.discountRate) || 0));
+    const da = Math.max(0, Number(li?.discountAmount) || 0);
+    let subtotal = qty * unit;
+    if (dr > 0) subtotal *= 1 - dr / 100;
+    subtotal = Math.max(0, subtotal - da);
+    sum += Math.round(subtotal);
   }
-}
-
-/**
- * 수금 행을 날짜 오름차순으로 누적했을 때, 누적액이 계약금 이상이 되는 **그날**(그 행의 날짜).
- * 같은 날짜에 여러 행이 있으면 그날 누적이 넘는 첫 행 기준(날짜 문자열은 동일).
- */
-function fullCollectionDateFromCumulativeEntries(collectionEntries, contractTarget) {
-  const target = Math.max(0, contractTarget);
-  if (target <= 0) return '';
-
-  const rows = (collectionEntries || [])
-    .map((e) => ({
-      amt: Math.max(0, parseNumber(e?.amount)),
-      d: String(e?.date || '').trim()
-    }))
-    .filter((r) => r.amt > 0 && /^\d{4}-\d{2}-\d{2}$/.test(r.d))
-    .sort((a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0));
-
-  let cum = 0;
-  for (const r of rows) {
-    cum += r.amt;
-    if (cum >= target) return r.d;
-  }
-  return '';
-}
-
-function newCollectionEntryId() {
-  return `collection-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-}
-
-/** 행에 commissionRecipients가 아직 없을 때(레거시·예외) 안정적인 단일 빈 행 id */
-function emptyCommissionRowForLine(lineId) {
-  return { id: `comm-blank-${lineId}`, remarks: '', commissionAmount: '' };
-}
-
-function legacyCommissionRemarksFromServerRow(r) {
-  const rem = String(r?.remarks || '').trim();
-  if (rem) return rem;
-  const name = String(r?.recipientName || '').trim();
-  const phone = String(r?.recipientPhone || '').trim();
-  if (!name && !phone) return '';
-  return [name, phone].filter(Boolean).join(' · ');
-}
-
-function mapServerCommissionRowsToClient(raw) {
-  const arr = Array.isArray(raw) ? raw : [];
-  if (arr.length === 0) return [createEmptyCommissionRow()];
-  return arr.map((r) => ({
-    id: newCommissionRecipientId(),
-    remarks: legacyCommissionRemarksFromServerRow(r).slice(0, 2000),
-    commissionAmount: Number(r?.commissionAmount) > 0 ? Number(r.commissionAmount).toLocaleString() : ''
-  }));
-}
-
-function clientLineCommissionHasData(rows) {
-  if (!Array.isArray(rows)) return false;
-  return rows.some(
-    (r) => String(r?.remarks || '').trim() || parseNumber(r?.commissionAmount) > 0
-  );
-}
-
-function computeLineFinalAmount(line) {
-  const qty = Math.max(0, Number(line.quantity) || 1);
-  const unit = parseNumber(line.unitPrice) || 0;
-  let subtotal = qty * unit;
-  const dRate = Math.max(0, Math.min(100, Number(line.discountRate) || 0));
-  const dAmount = parseNumber(line.discountAmount) || 0;
-  if (dRate > 0) subtotal = subtotal * (1 - dRate / 100);
-  subtotal = Math.max(0, subtotal - dAmount);
-  return Math.round(subtotal);
-}
-
-function computeLineDeduction(line) {
-  const qty = Math.max(0, Number(line.quantity) || 1);
-  const unit = parseNumber(line.unitPrice) || 0;
-  const subtotal = qty * unit;
-  return Math.max(0, subtotal - computeLineFinalAmount(line));
-}
-
-function getCurrentUserId() {
-  try {
-    const raw = localStorage.getItem('crm_user');
-    const u = raw ? JSON.parse(raw) : null;
-    return u?._id || u?.id || null;
-  } catch {
-    return null;
-  }
-}
-
-function formatCommentDate(iso) {
-  if (!iso) return '';
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' });
-  } catch {
-    return '';
-  }
-}
-
-/** customer-company-detail-modal.js `toDatetimeLocalValue` 와 동일 */
-function toDatetimeLocalValue(date) {
-  if (!date) return '';
-  const d = new Date(date);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  const h = String(d.getHours()).padStart(2, '0');
-  const min = String(d.getMinutes()).padStart(2, '0');
-  return `${y}-${m}-${day}T${h}:${min}`;
-}
-
-/** `<input type="date" />` 용 (로컬 날짜) */
-function toDateInputValue(date) {
-  if (!date) return '';
-  const d = new Date(date);
-  if (Number.isNaN(d.getTime())) return '';
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-/** 날짜 입력 기본값: 오늘(로컬) */
-function todayDateInputValue() {
-  return toDateInputValue(new Date());
-}
-
-/** `YYYY-MM-DD` 문자열을 로컬 자정으로 파싱. 형식 불일치 시 null */
-function localMidnightFromYyyyMmDd(s) {
-  const m = String(s || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return null;
-  const y = Number(m[1]);
-  const mo = Number(m[2]);
-  const d = Number(m[3]);
-  const dt = new Date(y, mo - 1, d);
-  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
-  dt.setHours(0, 0, 0, 0);
-  return dt;
-}
-
-/** 수주일이 «오늘»보다 미래인지(갱신 사전 알림일 등). 비교는 로컬 달력 기준 */
-function isYyyyMmDdStrictlyAfterToday(dateStr) {
-  const d = localMidnightFromYyyyMmDd(dateStr);
-  if (!d) return false;
-  const t = new Date();
-  t.setHours(0, 0, 0, 0);
-  return d > t;
-}
-
-function isCommentAuthor(comment, userId) {
-  if (userId == null || !comment?.userId) return false;
-  return String(comment.userId) === String(userId);
-}
-
-function sanitizeFolderNamePart(s, maxLen) {
-  const t = String(s ?? '')
-    .replace(/[/\\*?:<>"|]/g, '_')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (maxLen == null || maxLen <= 0) return t;
-  return t.length > maxLen ? t.slice(0, maxLen) : t;
-}
-
-function getDriveFolderIdFromLink(url) {
-  if (!url || typeof url !== 'string') return null;
-  const s = url.trim();
-  const m = s.match(/\/folders\/([a-zA-Z0-9_-]+)/);
-  if (m) return m[1];
-  try {
-    const u = new URL(s);
-    const id = u.searchParams.get('id');
-    if (id && /^[a-zA-Z0-9_-]+$/.test(id) && id.length >= 10 && id.length <= 128) return id;
-  } catch (_) {
-    /* ignore */
-  }
-  return null;
-}
-
-/** Drive API listFiles — 폴더 항목 제외용 */
-const DRIVE_FOLDER_MIME = 'application/vnd.google-apps.folder';
-
-/** 담당자의 소속사 문자열로 고객사 DB에서 한 건 매칭 (정확 일치 우선) */
-async function resolveCustomerCompanyByAffiliationName(nameTrim) {
-  if (!nameTrim) return null;
-  const res = await fetch(`${API_BASE}/customer-companies?search=${encodeURIComponent(nameTrim)}&limit=40`, { headers: getAuthHeader() });
-  const data = await res.json().catch(() => ({}));
-  const items = Array.isArray(data.items) ? data.items : [];
-  const lower = nameTrim.toLowerCase();
-  const exact = items.find((c) => (c.name || '').trim().toLowerCase() === lower);
-  return exact || items[0] || null;
-}
-
-async function fetchRegisteredDriveParentId() {
-  const rootRes = await fetch(`${API_BASE}/custom-field-definitions/drive-root`, { headers: getAuthHeader() });
-  const rootJson = await rootRes.json().catch(() => ({}));
-  const driveRootUrl = (rootJson.driveRootUrl != null && String(rootJson.driveRootUrl).trim()) ? String(rootJson.driveRootUrl).trim() : '';
-  return getDriveFolderIdFromLink(driveRootUrl);
-}
-
-/** customer-company-employees-detail-modal Drive 로직과 동일한 기본 폴더명 */
-async function buildContactBaseFolderName(contact) {
-  const ccId = contact.customerCompanyId?._id ?? contact.customerCompanyId ?? null;
-  if (ccId) {
-    let ccName = contact.customerCompanyId?.name || contact.company || '';
-    let ccBn = contact.customerCompanyId?.businessNumber || '';
-    if (!ccName || !ccBn) {
-      try {
-        const ccRes = await fetch(`${API_BASE}/customer-companies/${ccId}`, { headers: getAuthHeader() });
-        const ccData = await ccRes.json().catch(() => ({}));
-        if (ccRes.ok && ccData._id) {
-          ccName = ccData.name || ccName;
-          ccBn = ccData.businessNumber || ccBn;
-        }
-      } catch (_) { /* ignore */ }
-    }
-    const bnPart = String(ccBn || '').replace(/\D/g, '') || '미등록';
-    return `${sanitizeFolderNamePart(ccName || '미소속', 80)}_${sanitizeFolderNamePart(bnPart, 20)}`;
-  }
-  const namePart = sanitizeFolderNamePart(contact.name || '이름없음', 80);
-  const contactPart = sanitizeFolderNamePart(contact.phone || contact.email || '미등록', 40);
-  return `${namePart}_${contactPart}`;
-}
-
-/** 개인 구매 등: 항상 [이름]_[연락처] 폴더명 (고객사 소속이 있어도 동일 규칙으로 강제) */
-function buildPersonalContactFolderName(contact) {
-  const namePart = sanitizeFolderNamePart(contact?.name || '이름없음', 80);
-  const contactPart = sanitizeFolderNamePart(contact?.phone || contact?.email || '미등록', 40);
-  return `${namePart}_${contactPart}`;
-}
-
-/**
- * 연락처 증서·자료 루트만 ensure — 제품별 하위 폴더는 만들지 않음. 고객사 DB 확정이면 고객사 폴더와 동일.
- * @param {{ forcePersonalFolder?: boolean }} [opts] — true면 고객사가 있어도 개인 폴더 규칙으로만 생성
- */
-async function ensureOppContactDriveRoot(contact, opts = {}) {
-  const forcePersonal = opts.forcePersonalFolder === true;
-  const ccRaw = contact.customerCompanyId;
-  const ccId = ccRaw?._id ?? ccRaw ?? null;
-  const bn =
-    typeof ccRaw === 'object' && ccRaw != null && ccRaw.businessNumber != null
-      ? String(ccRaw.businessNumber).trim()
-      : '';
-  const hasConfirmedCompany = ccId && bn;
-
-  if (hasConfirmedCompany && !forcePersonal) {
-    const folderName = await buildContactBaseFolderName(contact);
-    const r = await fetch(`${API_BASE}/drive/folders/ensure`, {
-      method: 'POST',
-      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ folderName, customerCompanyId: String(ccId) })
-    });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok || !data.id) {
-      return { ok: false, error: data.error || '폴더를 준비할 수 없습니다.', id: null, webViewLink: '' };
-    }
-    const webViewLink =
-      sanitizeDriveFolderWebViewLink(data.webViewLink, data.id) || `https://drive.google.com/drive/folders/${data.id}`;
-    return { ok: true, id: data.id, webViewLink, error: '' };
-  }
-
-  const registeredFolderId = await fetchRegisteredDriveParentId();
-  if (!registeredFolderId) {
-    return { ok: false, error: 'Google Drive 등록 폴더를 찾을 수 없습니다.', id: null, webViewLink: '' };
-  }
-  const baseFolderName = forcePersonal ? buildPersonalContactFolderName(contact) : await buildContactBaseFolderName(contact);
-  const r = await fetch(`${API_BASE}/drive/folders/ensure`, {
-    method: 'POST',
-    headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-    credentials: 'include',
-    body: JSON.stringify({
-      folderName: baseFolderName,
-      parentFolderId: registeredFolderId,
-      customerCompanyEmployeeId: String(contact._id)
-    })
-  });
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok || !data.id) {
-    return { ok: false, error: data.error || '연락처 폴더를 준비할 수 없습니다.', id: null, webViewLink: '' };
-  }
-  const webViewLink =
-    sanitizeDriveFolderWebViewLink(data.webViewLink, data.id) || `https://drive.google.com/drive/folders/${data.id}`;
-  return { ok: true, id: data.id, webViewLink, error: '' };
-}
-
-function fileToBase64(file) {
-  return file.arrayBuffer().then((buf) => {
-    const bytes = new Uint8Array(buf);
-    let binary = '';
-    const chunk = 8192;
-    for (let i = 0; i < bytes.length; i += chunk) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-    }
-    return btoa(binary);
-  });
-}
-
-/** 평면 코멘트 배열 → 루트 목록 + 부모 id → 자식 배열 맵 */
-function organizeComments(comments) {
-  const list = Array.isArray(comments) ? [...comments] : [];
-  const byId = new Map();
-  list.forEach((c) => {
-    const id = c?._id != null ? String(c._id) : c?.id != null ? String(c.id) : '';
-    if (id) byId.set(id, c);
-  });
-  const sortByDate = (a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0);
-  const childrenMap = new Map();
-  const roots = [];
-  list.forEach((c) => {
-    const id = c?._id != null ? String(c._id) : c?.id != null ? String(c.id) : '';
-    if (!id) return;
-    const pid = c.parentCommentId != null ? String(c.parentCommentId) : '';
-    if (!pid || !byId.has(pid)) {
-      roots.push(c);
-    } else {
-      if (!childrenMap.has(pid)) childrenMap.set(pid, []);
-      childrenMap.get(pid).push(c);
-    }
-  });
-  roots.sort(sortByDate);
-  childrenMap.forEach((arr) => arr.sort(sortByDate));
-  return { roots, childrenMap };
+  return sum;
 }
 
 export default function OpportunityModal({
@@ -382,8 +100,10 @@ export default function OpportunityModal({
   defaultStage,
   stageOptions,
   onClose,
-  /** 저장·삭제 성공 시 API 응답 본문 또는 `{ deletedId }` — 상위에서 부분 갱신에 사용 */
+  /** 저장·삭제 성공 시 API 응답 본문 또는 `{ deletedId }` — 상위에서 부분 갱신에 사용. 두 번째 인자 `{ keepOpen }`은 적용(저장 후 창 유지)일 때 true */
   onSaved,
+  /** 신규 저장 후 창을 유지하면서 편집 모드로 전환(URL 등) — 적용 버튼·저장 후 닫기 아님 흐름에서 POST 직후 호출 */
+  onSwitchToEditAfterCreate,
   initialCustomerCompany = null,
   initialContact = null,
   initialPersonalPurchase = false
@@ -500,6 +220,34 @@ export default function OpportunityModal({
   const [scheduleFieldDefs, setScheduleFieldDefs] = useState([]);
   const [scheduleCustomDates, setScheduleCustomDates] = useState({});
   const [showScheduleFieldsManageModal, setShowScheduleFieldsManageModal] = useState(false);
+  const [financeFieldDefs, setFinanceFieldDefs] = useState([]);
+  const [financeCustomFieldValues, setFinanceCustomFieldValues] = useState({});
+  const [showFinanceFieldsManageModal, setShowFinanceFieldsManageModal] = useState(false);
+
+  const [oppDocMergeOpen, setOppDocMergeOpen] = useState(false);
+  /** 본문 섹션 탭 — Sample Design opportunity-modal.html 과 동일 구획 */
+  const [oppFormSectionTab, setOppFormSectionTab] = useState('basic');
+  const [quoteDocRecipientEmail, setQuoteDocRecipientEmail] = useState('');
+  const [quoteDocCcEmail, setQuoteDocCcEmail] = useState('');
+  const [purchaseOrderDocRecipientEmail, setPurchaseOrderDocRecipientEmail] = useState('');
+  const [purchaseOrderDocCcEmail, setPurchaseOrderDocCcEmail] = useState('');
+  const [docEmailReferenceSlots, setDocEmailReferenceSlots] = useState([]);
+  const [docMailCompanyBook, setDocMailCompanyBook] = useState([]);
+  const [docMailUserBook, setDocMailUserBook] = useState([]);
+  const [docMailBookLoading, setDocMailBookLoading] = useState(false);
+  const [docMailBookError, setDocMailBookError] = useState('');
+  const [docMailBookMultiKeys, setDocMailBookMultiKeys] = useState([]);
+  const [docMailSaveOpen, setDocMailSaveOpen] = useState(false);
+  const [docMailSaveTitle, setDocMailSaveTitle] = useState('');
+  const [docMailSaveScope, setDocMailSaveScope] = useState('company');
+  const [docMailSaveBusy, setDocMailSaveBusy] = useState(false);
+  const [docMailBookBusy, setDocMailBookBusy] = useState(false);
+
+  const toggleDocMailBookMultiKey = (key) => {
+    setDocMailBookMultiKeys((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
+    );
+  };
 
   /** ParticipantModal directory용 — overview 직원 id → _id */
   const teamMembersForParticipantModal = useMemo(
@@ -551,10 +299,96 @@ export default function OpportunityModal({
   const canManageScheduleFieldDefs = useMemo(() => isAdminOrAboveRole(getStoredCrmUser()?.role), []);
   const wonOnlyScheduleEditable = form.stage === 'Won';
 
+  const scheduleCalendarMarks = useMemo(() => {
+    const marks = [];
+    const coerceYmd = (v) => {
+      const t = String(v || '').trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+      const m = t.match(/^(\d{4}-\d{2}-\d{2})/);
+      return m ? m[1] : '';
+    };
+    const push = (ymd, title) => {
+      const s = coerceYmd(ymd);
+      if (!s) return;
+      marks.push({ ymd: s, title: String(title || '').trim() || '일정' });
+    };
+    push(form.startDate, '시작일');
+    push(form.targetDate, '구매 예정');
+    push(form.saleDate, '계약일');
+    const contractAmt = String(form.contractAmount || '').trim();
+    if (contractAmt) {
+      const saleY = coerceYmd(form.saleDate);
+      if (saleY) push(saleY, `계약금액 · ${contractAmt}원`);
+      else {
+        const pickFirstYmdContract = (...candidates) => {
+          for (const c of candidates) {
+            const y = coerceYmd(c);
+            if (y) return y;
+          }
+          return '';
+        };
+        const anchor = pickFirstYmdContract(form.targetDate, form.startDate, form.invoiceAmountDate);
+        if (anchor) push(anchor, `계약금액 · ${contractAmt}원 (계약일 미입력)`);
+      }
+    }
+    push(form.fullCollectionCompleteDate, '전체 완료');
+    push(form.licenseCertificateDeliveredDate, '증서 전달');
+    const invDateRaw = coerceYmd(form.invoiceAmountDate);
+    const invAmt = String(form.invoiceAmount || '').trim();
+    if (invDateRaw) {
+      if (invAmt) push(invDateRaw, `계산서 · ${invAmt}원`);
+      else push(invDateRaw, '계산서');
+    } else if (invAmt) {
+      const pickFirstYmd = (...candidates) => {
+        for (const c of candidates) {
+          const y = coerceYmd(c);
+          if (y) return y;
+        }
+        return '';
+      };
+      const anchor = pickFirstYmd(form.saleDate, form.targetDate, form.startDate);
+      if (anchor) push(anchor, `계산서 금액 · ${invAmt}원 (계산서일 미입력)`);
+    }
+    for (const def of scheduleFieldDefs) {
+      if (def.type !== 'date') continue;
+      push(scheduleCustomDates[def.key], def.label || def.key);
+    }
+    collectionEntries.forEach((entry, index) => {
+      const amt = String(entry?.amount || '').trim();
+      const title = amt ? `수금 ${index + 1} · ${amt}원` : `수금 ${index + 1}`;
+      push(entry?.date, title);
+    });
+    for (const def of financeFieldDefs) {
+      if (def.type !== 'date') continue;
+      push(financeCustomFieldValues[def.key], def.label || def.key);
+    }
+    for (const def of financeFieldDefs) {
+      if (def.type === 'date' || def.type === 'checkbox' || def.type === 'multiselect') continue;
+      const raw = financeCustomFieldValues[def.key];
+      if (raw === undefined || raw === null || raw === '') continue;
+      const s = String(raw).trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) push(s, def.label || def.key);
+    }
+    return marks;
+  }, [
+    form.startDate,
+    form.targetDate,
+    form.saleDate,
+    form.fullCollectionCompleteDate,
+    form.licenseCertificateDeliveredDate,
+    form.invoiceAmountDate,
+    form.contractAmount,
+    form.invoiceAmount,
+    scheduleFieldDefs,
+    scheduleCustomDates,
+    collectionEntries,
+    financeFieldDefs,
+    financeCustomFieldValues
+  ]);
+
   const [saving, setSaving] = useState(false);
   const [loadingOpp, setLoadingOpp] = useState(false);
   const [error, setError] = useState('');
-  const [showProductFields, setShowProductFields] = useState(false);
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
   const [journalDateTime, setJournalDateTime] = useState(() => toDatetimeLocalValue(new Date()));
@@ -579,6 +413,137 @@ export default function OpportunityModal({
   /** 편집 시 GET 기회의 value(제품 행 없을 때 수주 시 계약금 자동 기입용) */
   const opportunityValueRef = useRef(0);
 
+  useEffect(() => {
+    const valid = new Set([
+      ...docMailCompanyBook.map((x) => `c:${x.id}`),
+      ...docMailUserBook.map((x) => `u:${x.id}`)
+    ]);
+    setDocMailBookMultiKeys((prev) => prev.filter((k) => valid.has(k)));
+  }, [docMailCompanyBook, docMailUserBook]);
+
+  const docMailBookDropdownRef = useRef(null);
+  const [docMailBookDropdownOpen, setDocMailBookDropdownOpen] = useState(false);
+  const [docMailBookDropFixedStyle, setDocMailBookDropFixedStyle] = useState(null);
+
+  useLayoutEffect(() => {
+    if (!docMailBookDropdownOpen) {
+      setDocMailBookDropFixedStyle(null);
+      return;
+    }
+    const maxPanelHeightPx = () => Math.min(window.innerHeight * 0.52, 18 * 16);
+
+    const collectScrollRoots = (anchorEl) => {
+      const roots = [];
+      const seen = new Set();
+      let p = anchorEl?.parentElement;
+      while (p) {
+        const st = window.getComputedStyle(p);
+        const oy = st.overflowY;
+        const scrollableY =
+          (oy === 'auto' || oy === 'scroll' || oy === 'overlay') && p.scrollHeight > p.clientHeight + 2;
+        if (scrollableY && !seen.has(p)) {
+          seen.add(p);
+          roots.push(p);
+        }
+        p = p.parentElement;
+      }
+      roots.push(window);
+      return roots;
+    };
+
+    const measure = () => {
+      const el = docMailBookDropdownRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      const w = Math.min(320, Math.max(r.width, 200), window.innerWidth - 24);
+      const gap = 2;
+      const maxH = maxPanelHeightPx();
+      let top = Math.round(r.bottom + gap);
+      const maxTop = Math.max(8, window.innerHeight - 8 - maxH);
+      if (top > maxTop) top = maxTop;
+      setDocMailBookDropFixedStyle({
+        position: 'fixed',
+        top,
+        right: Math.round(window.innerWidth - r.right),
+        width: Math.round(w),
+        maxHeight: 'min(18rem, 52vh)'
+      });
+    };
+
+    measure();
+    let rafOuter = 0;
+    let rafInner = 0;
+    rafOuter = requestAnimationFrame(() => {
+      measure();
+      rafInner = requestAnimationFrame(measure);
+    });
+
+    const el0 = docMailBookDropdownRef.current;
+    const scrollRoots = collectScrollRoots(el0);
+    scrollRoots.forEach((root) => {
+      if (root === window) window.addEventListener('scroll', measure, true);
+      else root.addEventListener('scroll', measure, true);
+    });
+    window.addEventListener('resize', measure);
+
+    return () => {
+      cancelAnimationFrame(rafOuter);
+      cancelAnimationFrame(rafInner);
+      scrollRoots.forEach((root) => {
+        if (root === window) window.removeEventListener('scroll', measure, true);
+        else root.removeEventListener('scroll', measure, true);
+      });
+      window.removeEventListener('resize', measure);
+    };
+  }, [docMailBookDropdownOpen, docMailBookLoading, docMailCompanyBook.length, docMailUserBook.length]);
+
+  useEffect(() => {
+    if (!docMailBookDropdownOpen) return;
+    const onPointerDown = (e) => {
+      if (docMailBookDropdownRef.current && !docMailBookDropdownRef.current.contains(e.target)) {
+        setDocMailBookDropdownOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => document.removeEventListener('pointerdown', onPointerDown, true);
+  }, [docMailBookDropdownOpen]);
+
+  const loadDocMailBooks = useCallback(async () => {
+    setDocMailBookLoading(true);
+    setDocMailBookError('');
+    try {
+      await pingBackendHealth(getAuthHeader);
+      const results = await Promise.allSettled([
+        fetchCompanyDocMailAddressBook(getAuthHeader),
+        fetchUserDocMailAddressBook(getAuthHeader)
+      ]);
+      const c = results[0].status === 'fulfilled' ? results[0].value : [];
+      const u = results[1].status === 'fulfilled' ? results[1].value : [];
+      if (results[0].status === 'rejected') {
+        setDocMailBookError(String(results[0].reason?.message || '회사 주소록을 불러오지 못했습니다.'));
+      }
+      if (results[1].status === 'rejected') {
+        setDocMailBookError((prev) =>
+          prev ? `${prev} / 개인 주소록 오류` : String(results[1].reason?.message || '개인 주소록을 불러오지 못했습니다.')
+        );
+      }
+      setDocMailCompanyBook(Array.isArray(c) ? c : []);
+      setDocMailUserBook(Array.isArray(u) ? u : []);
+    } catch (e) {
+      setDocMailBookError(String(e?.message || '주소록을 불러오지 못했습니다.'));
+    } finally {
+      setDocMailBookLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadDocMailBooks();
+  }, [loadDocMailBooks]);
+
+  useEffect(() => {
+    setOppFormSectionTab('basic');
+  }, [mode, oppId]);
+
   const fetchScheduleFieldDefs = useCallback(async () => {
     try {
       const res = await fetch(
@@ -597,9 +562,45 @@ export default function OpportunityModal({
     void fetchScheduleFieldDefs();
   }, [fetchScheduleFieldDefs]);
 
+  const fetchFinanceFieldDefs = useCallback(async () => {
+    try {
+      const res = await fetch(
+        `${API_BASE}/custom-field-definitions?entityType=salesOpportunityFinance`,
+        { headers: getAuthHeader() }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(data.items)) setFinanceFieldDefs(data.items);
+      else setFinanceFieldDefs([]);
+    } catch {
+      setFinanceFieldDefs([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchFinanceFieldDefs();
+  }, [fetchFinanceFieldDefs]);
+
   useEffect(() => {
     if (!isEdit || !oppId) setScheduleCustomDates({});
   }, [isEdit, oppId]);
+
+  useEffect(() => {
+    if (!isEdit || !oppId) setFinanceCustomFieldValues({});
+  }, [isEdit, oppId]);
+
+  useEffect(() => {
+    setFinanceCustomFieldValues((prev) => {
+      if (!financeFieldDefs.length) return prev;
+      const next = { ...prev };
+      for (const d of financeFieldDefs) {
+        if (!(d.key in next)) next[d.key] = d.type === 'multiselect' ? [] : d.type === 'checkbox' ? false : '';
+      }
+      for (const k of Object.keys(next)) {
+        if (!financeFieldDefs.some((d) => d.key === k)) delete next[k];
+      }
+      return next;
+    });
+  }, [financeFieldDefs]);
 
   const currentUserId = useMemo(() => getCurrentUserId(), []);
   const canDeleteOpportunity = useMemo(() => isAdminOrAboveRole(getStoredCrmUser()?.role), []);
@@ -674,6 +675,28 @@ export default function OpportunityModal({
       const invoiceAmountValue = Number(data.invoiceAmount) > 0 ? Number(data.invoiceAmount).toLocaleString() : '';
       const ccIdResolved = cc == null ? '' : cc._id != null ? String(cc._id) : String(cc);
       const empIdResolved = emp == null ? '' : emp._id != null ? String(emp._id) : String(emp);
+
+      const pendingStage = String(defaultStage || '').trim();
+      const pendingAllowed =
+        Boolean(pendingStage) && stageSelectOptions.some((o) => o && String(o.value) === pendingStage);
+      let formStage = loadedStage;
+      let formSaleDate = toDateInputValue(data.saleDate) || '';
+      let formContractAmount = contractAmountValue;
+      if (pendingAllowed && pendingStage !== loadedStage) {
+        formStage = pendingStage;
+        if (pendingStage === 'Won' && loadedStage !== 'Won') {
+          const saleTrim = String(formSaleDate).trim();
+          const today = todayDateInputValue();
+          formSaleDate = saleTrim && !isYyyyMmDdStrictlyAfterToday(saleTrim) ? saleTrim : today;
+          const lineSum = sumLineFinalFromServerLineItems(data.lineItems);
+          const contractNum = Math.round(lineSum > 0 ? lineSum : valueNum);
+          let caStr = '';
+          if (contractNum > 0) caStr = contractNum.toLocaleString();
+          else if (Number(data.contractAmount) > 0) caStr = Number(data.contractAmount).toLocaleString();
+          if (caStr) formContractAmount = caStr;
+        }
+      }
+
       setForm({
         customerCompanyId: ccIdResolved,
         customerCompanyName: ccOk ? String(cc.name || '') : '',
@@ -683,13 +706,13 @@ export default function OpportunityModal({
         contactPhone: empOk ? String(emp.phone ?? '') : '',
         contactEmail: empOk ? String(emp.email ?? '') : '',
         currency: data.currency || 'KRW',
-        stage: loadedStage,
+        stage: formStage,
         description: data.description || '',
-        saleDate: toDateInputValue(data.saleDate) || '',
+        saleDate: formSaleDate,
         expectedCloseMonth: /^\d{4}-\d{2}$/.test(ym) ? ym : '',
         startDate: toDateInputValue(data.startDate) || todayDateInputValue(),
         targetDate: toDateInputValue(data.targetDate),
-        contractAmount: contractAmountValue,
+        contractAmount: formContractAmount,
         fullCollectionCompleteDate: toDateInputValue(data.fullCollectionCompleteDate),
         licenseCertificateDeliveredDate: toDateInputValue(data.licenseCertificateDeliveredDate),
         invoiceAmount: invoiceAmountValue,
@@ -703,6 +726,30 @@ export default function OpportunityModal({
         nextScheduleCustom[k] = toDateInputValue(scRaw[k]);
       }
       setScheduleCustomDates(nextScheduleCustom);
+      const fcRaw = data.financeCustomFields && typeof data.financeCustomFields === 'object' ? data.financeCustomFields : {};
+      const nextFc = {};
+      for (const [k, v] of Object.entries(fcRaw)) {
+        if (v == null) continue;
+        if (typeof v === 'boolean') nextFc[k] = v;
+        else if (Array.isArray(v)) nextFc[k] = v;
+        else if (typeof v === 'number') nextFc[k] = String(v);
+        else if (typeof v === 'string' && v && /^\d{4}-\d{2}-\d{2}/.test(v)) nextFc[k] = toDateInputValue(v);
+        else nextFc[k] = String(v);
+      }
+      setFinanceCustomFieldValues(nextFc);
+      setQuoteDocRecipientEmail(String(data.quoteDocRecipientEmail || '').trim());
+      setQuoteDocCcEmail(String(data.quoteDocCcEmail || '').trim());
+      setPurchaseOrderDocRecipientEmail(String(data.purchaseOrderDocRecipientEmail || '').trim());
+      setPurchaseOrderDocCcEmail(String(data.purchaseOrderDocCcEmail || '').trim());
+      const slotArr = Array.isArray(data.docEmailReferenceSlots) ? data.docEmailReferenceSlots : [];
+      setDocEmailReferenceSlots(
+        slotArr.map((s, i) => ({
+          id: `ref-loaded-${i}-${String(s?.key || '').slice(0, 12)}`,
+          key: String(s?.key || '').trim(),
+          alias: String(s?.alias || '').trim(),
+          addresses: String(s?.addresses || '').trim()
+        }))
+      );
       const loadedCollections = Array.isArray(data.collectionEntries) ? data.collectionEntries : [];
       setCollectionEntries(
         loadedCollections.length > 0
@@ -762,9 +809,9 @@ export default function OpportunityModal({
         for (let i = 0; i < data.lineItems.length; i++) {
           const li = data.lineItems[i];
           const pid = li.productId?._id || li.productId;
-          if (!pid || nextDocs[String(pid)]) continue;
+          if (!pid || !isLikelyMongoObjectId(pid) || nextDocs[String(pid)]) continue;
           try {
-            const pres = await fetch(`${API_BASE}/products/${pid}`, { headers: getAuthHeader() });
+            const pres = await fetch(`${API_BASE}/products/${normalizeMongoIdCandidate(pid)}`, { headers: getAuthHeader() });
             if (pres.ok) {
               const pdoc = await pres.json();
               if (pdoc?._id) nextDocs[String(pid)] = pdoc;
@@ -783,13 +830,13 @@ export default function OpportunityModal({
         const loadedProductId = product?._id || product || '';
         const snapCost = Number(data.productCostPriceSnapshot) || 0;
         const pc = snapCost > 0 && qty > 0 ? Math.round(snapCost * qty).toLocaleString() : '';
-        if (loadedProductId) {
+        if (loadedProductId && isLikelyMongoObjectId(loadedProductId)) {
           const legBasis = data.unitPriceBasis === 'channel' ? 'channel' : 'consumer';
           const legLabs = priceBasisLabelsForValue(legBasis);
           setLineItems([
             {
               lineId: `legacy-${loadedProductId}`,
-              productId: String(loadedProductId),
+              productId: String(normalizeMongoIdCandidate(loadedProductId)),
               productName: product?.name || '',
               unitPrice: unitForDisplay > 0 ? unitForDisplay.toLocaleString() : '',
               priceBasis: legBasis,
@@ -804,7 +851,7 @@ export default function OpportunityModal({
             }
           ]);
           try {
-            const pres = await fetch(`${API_BASE}/products/${loadedProductId}`, { headers: getAuthHeader() });
+            const pres = await fetch(`${API_BASE}/products/${normalizeMongoIdCandidate(loadedProductId)}`, { headers: getAuthHeader() });
             if (pres.ok) {
               const pdoc = await pres.json();
               if (pdoc?._id) setProductById({ [String(loadedProductId)]: pdoc });
@@ -834,9 +881,10 @@ export default function OpportunityModal({
         } catch (_) {
           setCrmDriveUploads([]);
         }
-      } else if (empIdLoad) {
+      } else if (empIdLoad && isLikelyMongoObjectId(empIdLoad)) {
         try {
-          const eres = await fetch(`${API_BASE}/customer-company-employees/${empIdLoad}`, { headers: getAuthHeader() });
+          const empPath = normalizeMongoIdCandidate(empIdLoad);
+          const eres = await fetch(`${API_BASE}/customer-company-employees/${empPath}`, { headers: getAuthHeader() });
           const edata = await eres.json().catch(() => ({}));
           if (eres.ok && edata?._id) {
             setCrmDriveUploads(Array.isArray(edata.driveUploadedFiles) ? edata.driveUploadedFiles : []);
@@ -850,7 +898,6 @@ export default function OpportunityModal({
       setDocumentRefs(Array.isArray(data.documentRefs)
         ? data.documentRefs.map((url) => (typeof url === 'string' ? { url, name: '파일' } : { url: url?.url, name: url?.name || '파일' })).filter((d) => d?.url)
         : []);
-      setShowProductFields(false);
       setComments(Array.isArray(data.comments) ? data.comments : []);
       setNewComment('');
       setJournalDateTime(toDatetimeLocalValue(new Date()));
@@ -866,7 +913,7 @@ export default function OpportunityModal({
     } finally {
       setLoadingOpp(false);
     }
-  }, [isEdit, oppId]);
+  }, [isEdit, oppId, defaultStage, stageSelectOptions]);
 
   useEffect(() => {
     fetchOpp();
@@ -885,7 +932,7 @@ export default function OpportunityModal({
         if (Array.isArray(data?.employees)) setCompanyEmployees(data.employees);
         setOverviewOrgChart(data?.company?.organizationChart ?? null);
       })
-      .catch(() => {});
+      .catch(() => { });
     return () => {
       cancelled = true;
     };
@@ -925,22 +972,22 @@ export default function OpportunityModal({
         customerCompanyEmployeeId: initialContact?._id || f.customerCompanyEmployeeId,
         ...(attachCompany
           ? {
-              customerCompanyId: typeof icc === 'object' ? icc._id : icc,
-              customerCompanyName: (typeof icc === 'object' ? icc.name : '') || initialContact?.customerCompanyName || '',
-              customerCompanyAddress: String(
-                (typeof icc === 'object' ? icc.address : '') || f.customerCompanyAddress || ''
-              )
-            }
+            customerCompanyId: typeof icc === 'object' ? icc._id : icc,
+            customerCompanyName: (typeof icc === 'object' ? icc.name : '') || initialContact?.customerCompanyName || '',
+            customerCompanyAddress: String(
+              (typeof icc === 'object' ? icc.address : '') || f.customerCompanyAddress || ''
+            )
+          }
           : { customerCompanyId: '', customerCompanyName: '', customerCompanyAddress: '' })
       }));
       setContactRefMissing(false);
       setBusinessNumber(
         attachCompany
           ? String(
-              initialContact?.customerCompanyBusinessNumber ??
-                (typeof icc === 'object' && icc != null ? icc.businessNumber : '') ??
-                ''
-            )
+            initialContact?.customerCompanyBusinessNumber ??
+            (typeof icc === 'object' && icc != null ? icc.businessNumber : '') ??
+            ''
+          )
           : ''
       );
     }
@@ -1032,19 +1079,6 @@ export default function OpportunityModal({
     });
   };
 
-  const addCommissionRecipientToLine = (lineId) => {
-    setLineItems((prev) =>
-      prev.map((l) => {
-        if (l.lineId !== lineId) return l;
-        const cr =
-          Array.isArray(l.commissionRecipients) && l.commissionRecipients.length > 0
-            ? l.commissionRecipients
-            : [emptyCommissionRowForLine(l.lineId)];
-        return { ...l, commissionRecipients: [...cr, createEmptyCommissionRow()] };
-      })
-    );
-  };
-
   const removeCommissionRecipientFromLine = (lineId, recipientId) => {
     setLineItems((prev) =>
       prev.map((l) => {
@@ -1086,13 +1120,18 @@ export default function OpportunityModal({
   }, [personalPurchase, hasConfirmedCompanyDrive, driveFolderName, contactFolderDisplayName]);
 
   useEffect(() => {
-    if (!personalPurchase || !form.customerCompanyEmployeeId?.trim()) {
+    if (!personalPurchase) {
+      setContactFolderDisplayName('');
+      return;
+    }
+    const empId = normalizeMongoIdCandidate(form.customerCompanyEmployeeId);
+    if (!empId || !isLikelyMongoObjectId(empId)) {
       setContactFolderDisplayName('');
       return;
     }
     let cancelled = false;
     (async () => {
-      const cr = await fetch(`${API_BASE}/customer-company-employees/${form.customerCompanyEmployeeId}`, { headers: getAuthHeader() });
+      const cr = await fetch(`${API_BASE}/customer-company-employees/${empId}`, { headers: getAuthHeader() });
       const contact = await cr.json().catch(() => ({}));
       if (cancelled || !cr.ok || !contact?._id) return;
       const name = buildPersonalContactFolderName(contact);
@@ -1348,7 +1387,11 @@ export default function OpportunityModal({
       return { id: data.id, webViewLink: folderLink };
     }
     if (isContactOnlyDrive && form.customerCompanyEmployeeId) {
-      const cr = await fetch(`${API_BASE}/customer-company-employees/${form.customerCompanyEmployeeId}`, { headers: getAuthHeader() });
+      const empId = normalizeMongoIdCandidate(form.customerCompanyEmployeeId);
+      if (!isLikelyMongoObjectId(empId)) {
+        throw new Error('담당자(연락처) ID가 올바르지 않습니다. 연락처를 다시 선택해 주세요.');
+      }
+      const cr = await fetch(`${API_BASE}/customer-company-employees/${empId}`, { headers: getAuthHeader() });
       const contact = await cr.json().catch(() => ({}));
       if (!cr.ok || !contact?._id) {
         throw new Error(contact.error || '연락처를 불러올 수 없습니다.');
@@ -1404,8 +1447,10 @@ export default function OpportunityModal({
       if (!res.ok) throw new Error(getUserVisibleApiError(d, '고객사 Drive 저장 정보를 초기화할 수 없습니다.'));
       return;
     }
-    if (isContactOnlyDrive && (form.customerCompanyEmployeeId || '').trim()) {
-      const res = await fetch(`${API_BASE}/customer-company-employees/${String(form.customerCompanyEmployeeId).trim()}`, {
+    if (isContactOnlyDrive) {
+      const empId = normalizeMongoIdCandidate(form.customerCompanyEmployeeId);
+      if (!empId || !isLikelyMongoObjectId(empId)) return;
+      const res = await fetch(`${API_BASE}/customer-company-employees/${empId}`, {
         method: 'PATCH',
         headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -1429,7 +1474,12 @@ export default function OpportunityModal({
       return;
     }
     if (isContactOnlyDrive && form.customerCompanyEmployeeId) {
-      const res = await fetch(`${API_BASE}/customer-company-employees/${form.customerCompanyEmployeeId}`, { headers: getAuthHeader() });
+      const empId = normalizeMongoIdCandidate(form.customerCompanyEmployeeId);
+      if (!isLikelyMongoObjectId(empId)) {
+        setCrmDriveUploads([]);
+        return;
+      }
+      const res = await fetch(`${API_BASE}/customer-company-employees/${empId}`, { headers: getAuthHeader() });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data?._id) {
         setCrmDriveUploads(Array.isArray(data.driveUploadedFiles) ? data.driveUploadedFiles : []);
@@ -1442,6 +1492,13 @@ export default function OpportunityModal({
       const fid = row?.driveFileId && String(row.driveFileId).trim();
       if (!fid || !isValidDriveNodeId(fid)) return;
       if (!hasConfirmedCompanyDrive && !isContactOnlyDrive) return;
+      if (
+        isContactOnlyDrive &&
+        !isLikelyMongoObjectId(normalizeMongoIdCandidate(form.customerCompanyEmployeeId))
+      ) {
+        setDriveError('연락처 ID가 올바르지 않습니다. 연락처를 다시 선택해 주세요.');
+        return;
+      }
       if (!window.confirm(`「${row.name || '파일'}」을 Drive 휴지통으로 옮기고 목록에서 제거할까요?`)) return;
       setDriveDocDeletingId(fid);
       setDriveError('');
@@ -1450,7 +1507,7 @@ export default function OpportunityModal({
         const opts =
           hasConfirmedCompanyDrive && (form.customerCompanyId || '').trim()
             ? { customerCompanyId: String(form.customerCompanyId).trim() }
-            : { customerCompanyEmployeeId: String(form.customerCompanyEmployeeId).trim() };
+            : { customerCompanyEmployeeId: normalizeMongoIdCandidate(form.customerCompanyEmployeeId) };
         const url = buildDriveFileDeleteUrl(fid, opts);
         const res = await fetch(url, { method: 'DELETE', headers: getAuthHeader(), credentials: 'include' });
         if (!res.ok) {
@@ -1833,6 +1890,45 @@ export default function OpportunityModal({
     updateLine(lineId, { purchaseCostTotal: v });
   };
 
+  /** 가격 기준(다이렉트·유통) 변경 — 드롭다운·버튼 공용 */
+  const applyLinePriceBasis = useCallback(
+    async (line, basis) => {
+      if (!line) return;
+      const opt = OPPORTUNITY_PRICE_BASIS_OPTIONS.find((o) => o.value === basis);
+      if (!opt) return;
+      setError('');
+      let product = line.productId ? productById[line.productId] : null;
+      if (!product && line.productId && isLikelyMongoObjectId(line.productId)) {
+        try {
+          const pres = await fetch(`${API_BASE}/products/${normalizeMongoIdCandidate(line.productId)}`, {
+            headers: getAuthHeader()
+          });
+          if (pres.ok) {
+            const pdoc = await pres.json();
+            if (pdoc?._id) {
+              product = pdoc;
+              setProductById((prev) => ({ ...prev, [line.productId]: pdoc }));
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      const sug = product ? suggestedPriceFromProduct(product, basis) : 0;
+      updateLine(line.lineId, {
+        priceBasis: basis,
+        priceBasisLabel: opt.label,
+        priceBasisShortLabel: opt.shortLabel != null ? String(opt.shortLabel) : '',
+        channelDistributor: basis !== 'channel' ? '' : line.channelDistributor,
+        unitPrice: product && sug > 0 ? sug.toLocaleString() : line.unitPrice
+      });
+      if (product) {
+        setForm((f) => ({ ...f, currency: product.currency || f.currency || 'KRW' }));
+      }
+    },
+    [productById, updateLine, setForm, setProductById]
+  );
+
   const removeLine = useCallback((lineId) => {
     purchaseCostEditedLineIdsRef.current.delete(lineId);
     setLineItems((rows) => {
@@ -1906,8 +2002,8 @@ export default function OpportunityModal({
     return any ? sum : null;
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (e, { closeAfter = true } = {}) => {
+    if (e && typeof e.preventDefault === 'function') e.preventDefault();
     const names = lineItems.map((l) => l.productName?.trim()).filter(Boolean);
     const titleToUse =
       (names.length ? names.join(', ') : '') ||
@@ -1996,27 +2092,27 @@ export default function OpportunityModal({
         contactName: form.contactName.trim(),
         snapshotCompanyName: ccIdPayload
           ? String(form.customerCompanyName || '').trim() ||
-            (companyRefMissing ? String(snap.snapshotCompanyName || '').trim() : '')
+          (companyRefMissing ? String(snap.snapshotCompanyName || '').trim() : '')
           : '',
         snapshotCompanyBusinessNumber: ccIdPayload
           ? String(businessNumber || '').trim() ||
-            (companyRefMissing ? String(snap.snapshotCompanyBusinessNumber || '').trim() : '')
+          (companyRefMissing ? String(snap.snapshotCompanyBusinessNumber || '').trim() : '')
           : '',
         snapshotCompanyAddress: ccIdPayload
           ? String(form.customerCompanyAddress || '').trim() ||
-            (companyRefMissing ? String(snap.snapshotCompanyAddress || '').trim() : '')
+          (companyRefMissing ? String(snap.snapshotCompanyAddress || '').trim() : '')
           : '',
         snapshotContactPhone: empIdPayload
           ? String(form.contactPhone || '').trim() ||
-            (contactRefMissing ? String(snap.snapshotContactPhone || '').trim() : '')
+          (contactRefMissing ? String(snap.snapshotContactPhone || '').trim() : '')
           : '',
         snapshotContactEmail: empIdPayload
           ? String(form.contactEmail || '').trim() ||
-            (contactRefMissing ? String(snap.snapshotContactEmail || '').trim() : '')
+          (contactRefMissing ? String(snap.snapshotContactEmail || '').trim() : '')
           : '',
         snapshotContactName: empIdPayload
           ? String(form.contactName || '').trim() ||
-            (contactRefMissing ? String(snap.snapshotContactName || '').trim() : '')
+          (contactRefMissing ? String(snap.snapshotContactName || '').trim() : '')
           : '',
         snapshotUnitPriceBasisLabel: (() => {
           const li0 = lineItems[0];
@@ -2050,8 +2146,37 @@ export default function OpportunityModal({
         licenseCertificateDeliveredDate: toIsoDate(form.licenseCertificateDeliveredDate),
         invoiceAmount: parseNumber(form.invoiceAmount) || 0,
         invoiceAmountDate: toIsoDate(form.invoiceAmountDate),
-        collectionEntries: collectionEntriesPayload
+        collectionEntries: collectionEntriesPayload,
+        quoteDocRecipientEmail: String(quoteDocRecipientEmail || '').trim(),
+        quoteDocCcEmail: String(quoteDocCcEmail || '').trim(),
+        purchaseOrderDocRecipientEmail: String(purchaseOrderDocRecipientEmail || '').trim(),
+        purchaseOrderDocCcEmail: String(purchaseOrderDocCcEmail || '').trim(),
+        docEmailReferenceSlots: docEmailReferenceSlots
+          .map((s) => ({
+            key: String(s.key || '').trim(),
+            alias: String(s.alias || '').trim(),
+            addresses: String(s.addresses || '').trim()
+          }))
+          .filter((s) => s.key)
       };
+      if (financeFieldDefs.length > 0) {
+        const fcPayload = {};
+        for (const d of financeFieldDefs) {
+          let v = financeCustomFieldValues[d.key];
+          if (v === undefined || v === null) {
+            v = d.type === 'multiselect' ? [] : d.type === 'checkbox' ? false : '';
+          }
+          if (d.type === 'checkbox') fcPayload[d.key] = !!v;
+          else if (d.type === 'multiselect') fcPayload[d.key] = Array.isArray(v) ? v : [];
+          else if (d.type === 'number') {
+            const n = parseNumber(String(v));
+            fcPayload[d.key] = String(v).trim() !== '' && !Number.isNaN(n) ? n : '';
+          } else if (d.type === 'date') {
+            fcPayload[d.key] = v ? toIsoDate(String(v)) || '' : '';
+          } else fcPayload[d.key] = String(v ?? '');
+        }
+        body.financeCustomFields = fcPayload;
+      }
       const scheduleDateDefs = scheduleFieldDefs.filter((d) => d.type === 'date');
       if (scheduleDateDefs.length > 0) {
         if (selectedStage === 'Won') {
@@ -2130,8 +2255,15 @@ export default function OpportunityModal({
           /* ignore */
         }
       }
-      onSaved?.(savedPayload);
-      onClose();
+      onSaved?.(savedPayload, { keepOpen: !closeAfter });
+      if (!closeAfter) {
+        const nextStage = String(savedPayload?.stage ?? selectedStage ?? '').trim();
+        if (nextStage) stageAtLoadRef.current = nextStage;
+        if (!isEdit && savedPayload?._id) {
+          onSwitchToEditAfterCreate?.(String(savedPayload._id));
+        }
+      }
+      if (closeAfter) onClose();
     } catch (err) {
       setError(err.message || '저장에 실패했습니다.');
     } finally {
@@ -2230,9 +2362,12 @@ export default function OpportunityModal({
       const trimmed = String(content || '').trim();
       if (!trimmed) throw new Error('내용이 비어 있습니다.');
       const companyId = form.customerCompanyId;
-      const contactEmpId = form.customerCompanyEmployeeId;
+      const contactEmpId = normalizeMongoIdCandidate(form.customerCompanyEmployeeId);
       if (!companyId && !contactEmpId) {
         throw new Error('고객사 또는 담당자(연락처)를 선택해 주세요.');
+      }
+      if (contactEmpId && !isLikelyMongoObjectId(contactEmpId)) {
+        throw new Error('담당자(연락처) ID가 올바르지 않습니다. 연락처를 다시 선택해 주세요.');
       }
       const requestBody = JSON.stringify({
         content: trimmed,
@@ -2287,7 +2422,7 @@ export default function OpportunityModal({
   const handleSaveOppJournal = async () => {
     const content = newComment.trim();
     const companyId = form.customerCompanyId;
-    const contactEmpId = form.customerCompanyEmployeeId;
+    const contactEmpId = normalizeMongoIdCandidate(form.customerCompanyEmployeeId);
     if (!content || !oppId) return;
     if (!companyId && !contactEmpId) {
       setJournalInputError('고객사 또는 담당자(연락처)를 선택해 주세요.');
@@ -2328,10 +2463,14 @@ export default function OpportunityModal({
   const uploadAudioForOpportunityJournal = useCallback(
     async (filesLike) => {
       const companyId = form.customerCompanyId;
-      const contactEmpId = form.customerCompanyEmployeeId;
+      const contactEmpId = normalizeMongoIdCandidate(form.customerCompanyEmployeeId);
       const files = Array.from(filesLike || []).filter((f) => f && f instanceof File);
       if (!files.length || savingJournal || audioUploading) return;
       if (!companyId && !contactEmpId) return;
+      if (contactEmpId && !isLikelyMongoObjectId(contactEmpId)) {
+        setJournalInputError('담당자(연락처) ID가 올바르지 않습니다. 연락처를 다시 선택해 주세요.');
+        return;
+      }
       const accept = /\.(mp3|wav|m4a|webm)$/i;
       const audioTypes = ['audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/x-m4a', 'audio/webm'];
       const file = files.find((f) => accept.test(f.name) || audioTypes.includes(f.type));
@@ -2371,8 +2510,8 @@ export default function OpportunityModal({
           });
           const pollUrl = useContactAudio
             ? `${API_BASE}/customer-company-employees/${contactEmpId}/history/from-audio/jobs/${encodeURIComponent(
-                data.jobId
-              )}`
+              data.jobId
+            )}`
             : `${API_BASE}/customer-companies/${companyId}/history/from-audio/jobs/${encodeURIComponent(data.jobId)}`;
           const result = await pollJournalFromAudioJob(pollUrl, getAuthHeader);
           setNewComment(result.content || '');
@@ -2638,6 +2777,38 @@ export default function OpportunityModal({
   const modalTitle = isWonStage
     ? (isEdit ? '계약 완료' : '새 계약 완료 추가')
     : (isEdit ? '기회 수정' : '새 영업 기회 추가');
+
+  const opportunityMergeContext = useMemo(
+    () => ({
+      form: { ...form, title: modalTitle },
+      lineItems,
+      financeCustomFieldValues,
+      scheduleCustomDates,
+      financeFieldDefs,
+      scheduleFieldDefs,
+      businessNumber,
+      quoteDocRecipientEmail,
+      quoteDocCcEmail,
+      purchaseOrderDocRecipientEmail,
+      purchaseOrderDocCcEmail,
+      docEmailReferenceSlots
+    }),
+    [
+      form,
+      modalTitle,
+      lineItems,
+      financeCustomFieldValues,
+      scheduleCustomDates,
+      financeFieldDefs,
+      scheduleFieldDefs,
+      businessNumber,
+      quoteDocRecipientEmail,
+      quoteDocCcEmail,
+      purchaseOrderDocRecipientEmail,
+      purchaseOrderDocCcEmail,
+      docEmailReferenceSlots
+    ]
+  );
   const totalCommissionAmount = lineItems.reduce(
     (sum, line) =>
       sum +
@@ -2739,6 +2910,19 @@ export default function OpportunityModal({
               </div>
             </div>
           </div>
+          <div className="opp-modal-header-actions" role="group" aria-label="문서 메일머지">
+            <button
+              type="button"
+              className="opp-save-btn"
+              title="견적서·발주서·계약서 등 문서 메일머지 후 발송"
+              onClick={() => {
+                void pingBackendHealth(getAuthHeader);
+                setOppDocMergeOpen(true);
+              }}
+            >
+              문서 발송
+            </button>
+          </div>
           <button type="button" className="opp-modal-close" onClick={onClose}>
             <span className="material-symbols-outlined">close</span>
           </button>
@@ -2751,7 +2935,7 @@ export default function OpportunityModal({
             <div className="opp-modal-form">
               <div className="opp-modal-form-layout">
                 <form
-                  className="opp-modal-form-main"
+                  className="opp-modal-form-main opp-modal-form-main--section-tabs"
                   id="opp-form"
                   onSubmit={(e) => {
                     const sub = e.nativeEvent?.submitter;
@@ -2759,986 +2943,1593 @@ export default function OpportunityModal({
                       e.preventDefault();
                       return;
                     }
-                    void handleSubmit(e);
+                    void handleSubmit(e, { closeAfter: true });
                   }}
                 >
-              {/* 고객사 / 구매 담당자 2열 — 하단에 사업자번호·주소 / 연락처·이메일(읽기 전용) */}
-              <div className="opp-form-grid-2 opp-form-grid-2--company-contact">
-                <div className="opp-label opp-label--company-contact-col">
-                  <div className="opp-label-top">
-                    <span>고객사</span>
-                  </div>
-                  <div className={'opp-company-wrap' + (personalPurchase ? ' opp-company-wrap--disabled' : '')}>
-                    <span className="opp-company-display">
-                      {companyRefMissing ? '—' : form.customerCompanyName || '고객사 선택'}
-                    </span>
-                    <button
-                      type="button"
-                      className="opp-company-search-btn"
-                      disabled={personalPurchase}
-                      onClick={() => { if (!personalPurchase) setShowCompanySearchModal(true); }}
-                    >
-                      <span className="material-symbols-outlined">search</span>
-                      검색
-                    </button>
-                  </div>
-                  <div className="opp-company-subrow" aria-label="고객사 사업자번호 및 주소(검색으로만 갱신)">
-                    <label className="opp-inline-snap">
-                      <span>사업자번호</span>
-                      {personalPurchase ? (
-                        <div className="opp-snap-fallback opp-snap-fallback--readonly" title="개인 구매 시 고객사 없음">—</div>
-                      ) : companyRefMissing ? (
-                        <div className="opp-snap-fallback opp-snap-fallback--readonly" title="연결된 고객사 문서를 찾을 수 없습니다">—</div>
-                      ) : (
-                        <input
-                          type="text"
-                          className="opp-input opp-input--snap-readonly"
-                          value={businessNumber}
-                          readOnly
-                          disabled
-                          tabIndex={-1}
-                          autoComplete="off"
-                          aria-readonly="true"
-                        />
-                      )}
-                    </label>
-                    <label className="opp-inline-snap">
-                      <span>주소</span>
-                      {personalPurchase ? (
-                        <div className="opp-snap-fallback opp-snap-fallback--readonly" title="개인 구매 시 고객사 없음">—</div>
-                      ) : companyRefMissing ? (
-                        <div className="opp-snap-fallback opp-snap-fallback--readonly" title="연결된 고객사 문서를 찾을 수 없습니다">—</div>
-                      ) : (
-                        <input
-                          type="text"
-                          className="opp-input opp-input--snap-readonly"
-                          value={form.customerCompanyAddress}
-                          readOnly
-                          disabled
-                          tabIndex={-1}
-                          autoComplete="street-address"
-                          aria-readonly="true"
-                        />
-                      )}
-                    </label>
-                  </div>
-                </div>
-                <div className="opp-label opp-label--company-contact-col">
-                  <div className="opp-label-top opp-label-top--with-personal-btn">
-                    <span>구매 담당자</span>
-                    <label className="opp-personal-purchase-check">
-                      <span className="opp-personal-purchase-check-text">개인구매</span>
-                      <input
-                        type="checkbox"
-                        checked={personalPurchase}
-                        onChange={(e) => {
-                          const next = e.target.checked;
-                          setPersonalPurchase(next);
-                          if (next) {
-                            setForm((f) => ({
-                              ...f,
-                              customerCompanyId: '',
-                              customerCompanyName: '',
-                              customerCompanyAddress: ''
-                            }));
-                            setBusinessNumber('');
-                            setCompanyRefMissing(false);
-                          }
-                        }}
-                      />
-                    </label>
-                  </div>
-                  <div className="opp-company-wrap">
-                    <span className="opp-company-display">
-                      {contactRefMissing ? '—' : form.contactName || '담당자 선택'}
-                    </span>
-                    <button type="button" className="opp-company-search-btn" onClick={() => setShowContactSearchModal(true)}>
-                      <span className="material-symbols-outlined">search</span>
-                      검색
-                    </button>
-                  </div>
-                  <div className="opp-buyer-subrow" aria-label="구매 담당자 연락처 및 이메일(검색으로만 갱신)">
-                    <label className="opp-inline-snap">
-                      <span>연락처</span>
-                      {contactRefMissing ? (
-                        <div className="opp-snap-fallback opp-snap-fallback--readonly" title="연결된 연락처 문서를 찾을 수 없습니다">—</div>
-                      ) : (
-                        <input
-                          type="text"
-                          className="opp-input opp-input--snap-readonly"
-                          value={form.contactPhone}
-                          readOnly
-                          disabled
-                          tabIndex={-1}
-                          autoComplete="tel"
-                          aria-readonly="true"
-                        />
-                      )}
-                    </label>
-                    <label className="opp-inline-snap">
-                      <span>이메일</span>
-                      {contactRefMissing ? (
-                        <div className="opp-snap-fallback opp-snap-fallback--readonly" title="연결된 연락처 문서를 찾을 수 없습니다">—</div>
-                      ) : (
-                        <input
-                          type="email"
-                          className="opp-input opp-input--snap-readonly"
-                          value={form.contactEmail}
-                          readOnly
-                          disabled
-                          tabIndex={-1}
-                          autoComplete="email"
-                          aria-readonly="true"
-                        />
-                      )}
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              <label className="opp-label">
-                <span>추가 설명</span>
-                <p className="opp-price-basis-hint">
-                  프로모션·특가·거래 조건 등 참고용 메모를 적을 수 있습니다. 저장 시 기회와 연동된 수주 이력에도 반영됩니다.
-                </p>
-                <textarea
-                  className="opp-textarea"
-                  rows={4}
-                  maxLength={8000}
-                  value={form.description}
-                  onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                  placeholder="예: 연말 프로모션 10% 추가 할인, 계약 기간·옵션 조건"
-                  aria-label="추가 설명"
-                />
-              </label>
-
-              {/* 제품 - 다중 선택 + 제품 추가 */}
-              <div className="opp-label">
-                <span>제품</span>
-                <div className="opp-product-pills">
-                  {lineItems.map((line) => (
-                    <span key={line.lineId} className="opp-product-pill">
-                      {line.productName || '제품'}
-                      <button type="button" onClick={() => removeLine(line.lineId)} aria-label="제거">
-                        <span className="material-symbols-outlined">close</span>
-                      </button>
-                    </span>
-                  ))}
-                  <button type="button" className="opp-product-add-btn" onClick={() => setShowProductSearchModal(true)}>
-                    <span className="material-symbols-outlined">add</span>
-                    제품 추가
-                  </button>
-                </div>
-              </div>
-
-              {lineItems.length > 0 && Object.keys(productById).length > 0 ? (
-                <>
-                  <label className="opp-label opp-checkbox-wrap">
-                    <input type="checkbox" checked={showProductFields} onChange={(e) => setShowProductFields(e.target.checked)} />
-                    <span>제품 관련 필드 표시</span>
-                  </label>
-                  {showProductFields && (
-                    <div className="opp-product-fields">
-                      {lineItems.map((line) => {
-                        const selectedProduct = line.productId ? productById[line.productId] : null;
-                        if (!selectedProduct) return null;
-                        return (
-                          <div key={line.lineId} className="opp-product-fields-block">
-                            <div className="opp-product-fields-title">{selectedProduct.name || line.productName}</div>
-                            <dl className="opp-product-fields-list">
-                              {selectedProduct.code != null && selectedProduct.code !== '' && <><dt>코드</dt><dd>{selectedProduct.code}</dd></>}
-                              {selectedProduct.category != null && selectedProduct.category !== '' && <><dt>카테고리</dt><dd>{selectedProduct.category}</dd></>}
-                              {selectedProduct.version != null && selectedProduct.version !== '' && <><dt>버전</dt><dd>{selectedProduct.version}</dd></>}
-                              {selectedProduct.billingType != null && selectedProduct.billingType !== '' && <><dt>결제 유형</dt><dd>{PRODUCT_BILLING_LABELS[selectedProduct.billingType] ?? selectedProduct.billingType}</dd></>}
-                              {selectedProduct.status != null && selectedProduct.status !== '' && <><dt>상태</dt><dd>{selectedProduct.status}</dd></>}
-                              {selectedProduct.customFields && typeof selectedProduct.customFields === 'object' && Object.entries(selectedProduct.customFields).filter(([, v]) => v != null && v !== '').map(([k, v]) => (
-                                <React.Fragment key={k}><dt>{k}</dt><dd>{String(v)}</dd></React.Fragment>
-                              ))}
-                            </dl>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </>
-              ) : null}
-
-              {/* 단계 - 버튼 그룹 */}
-              <div className="opp-label">
-                <span>단계</span>
-                <div className="opp-stage-group">
-                  {stageSelectOptions.map((s) => (
-                    <button
-                      key={s.value}
-                      type="button"
-                      className={'opp-stage-btn' + (form.stage === s.value ? ' opp-stage-btn--selected' : '')}
-                      onClick={() => handleStageButtonClick(s.value)}
-                    >
-                      {s.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* 제품별 가격 기준 · 유통 · 단가 */}
-              {lineItems.map((line) => (
-                <section key={line.lineId} className="opp-line-block">
-                  <div className="opp-line-block-head">
-                    <span className="opp-line-block-title">{line.productName || '제품'}</span>
-                  </div>
-                  <div className="opp-label">
-                    <span>가격 기준</span>
-                    <p className="opp-price-basis-hint">제품 목록의 다이렉트 세일즈·유통 세일즈와 같은 가격 축을 선택합니다. 선택 시 해당 행 단가가 자동 채워집니다.</p>
-                    <div className="opp-price-basis-group" role="group" aria-label={`가격 기준 ${line.productName || ''}`}>
-                      {OPPORTUNITY_PRICE_BASIS_OPTIONS.map((opt) => (
-                        <button
-                          key={opt.value}
-                          type="button"
-                          className={'opp-price-basis-btn' + (line.priceBasis === opt.value ? ' opp-price-basis-btn--selected' : '')}
-                          onClick={async () => {
-                            const basis = opt.value;
-                            setError('');
-                            let product = line.productId ? productById[line.productId] : null;
-                            if (!product && line.productId) {
-                              try {
-                                const pres = await fetch(`${API_BASE}/products/${line.productId}`, { headers: getAuthHeader() });
-                                if (pres.ok) {
-                                  const pdoc = await pres.json();
-                                  if (pdoc?._id) {
-                                    product = pdoc;
-                                    setProductById((prev) => ({ ...prev, [line.productId]: pdoc }));
-                                  }
-                                }
-                              } catch {
-                                /* ignore */
-                              }
-                            }
-                            const sug = product ? suggestedPriceFromProduct(product, basis) : 0;
-                            updateLine(line.lineId, {
-                              priceBasis: basis,
-                              priceBasisLabel: opt.label,
-                              priceBasisShortLabel: opt.shortLabel != null ? String(opt.shortLabel) : '',
-                              channelDistributor: basis !== 'channel' ? '' : line.channelDistributor,
-                              unitPrice: product && sug > 0 ? sug.toLocaleString() : line.unitPrice
-                            });
-                            if (product) {
-                              setForm((f) => ({ ...f, currency: product.currency || f.currency || 'KRW' }));
-                            }
-                          }}
-                          title={opt.desc}
-                        >
-                          <span className="opp-price-basis-btn-label">{opt.label}</span>
-                          <span className="opp-price-basis-btn-sub">{opt.shortLabel}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {line.priceBasis === 'channel' ? (
-                    <div className="opp-label opp-channel-distributor-block">
-                      <span>유통사</span>
-                      <p className="opp-price-basis-hint">저장 시 목록에 없는 이름은 회사 템플릿에 자동 등록됩니다. Admin 이상만 목록에서 제거할 수 있습니다.</p>
-                      <div className="opp-channel-distributor-row">
-                        <input
-                          type="text"
-                          className="opp-input opp-channel-distributor-input"
-                          list={`opp-ch-dl-${line.lineId}`}
-                          value={line.channelDistributor}
-                          onChange={(e) => updateLine(line.lineId, { channelDistributor: e.target.value })}
-                          placeholder="유통사명 입력 또는 선택"
-                          maxLength={200}
-                        />
-                        <datalist id={`opp-ch-dl-${line.lineId}`}>
-                          {channelDistributorList.map((x) => (
-                            <option key={x} value={x} />
-                          ))}
-                        </datalist>
-                        <select
-                          className="opp-select opp-channel-distributor-select"
-                          defaultValue=""
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            if (v) updateLine(line.lineId, { channelDistributor: v });
-                          }}
-                          aria-label="등록된 유통사 목록에서 선택"
-                        >
-                          <option value="">목록에서 선택</option>
-                          {channelDistributorList.map((x) => (
-                            <option key={x} value={x}>{x}</option>
-                          ))}
-                        </select>
-                      </div>
-                      {channelDistributorList.length > 0 ? (
-                        <ul className="opp-channel-distributor-chips" aria-label="등록된 유통사">
-                          {channelDistributorList.map((x) => (
-                            <li key={x} className="opp-channel-distributor-chip">
-                              <span className="opp-channel-distributor-chip-text">{x}</span>
-                              {canRemoveChannelDistributor ? (
-                                <button
-                                  type="button"
-                                  className="opp-channel-distributor-chip-remove"
-                                  onClick={() => void removeChannelDistributor(x)}
-                                  aria-label={`${x} 목록에서 제거`}
-                                  title="목록에서 제거 (Admin 이상)"
-                                >
-                                  ×
-                                </button>
-                              ) : null}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                    </div>
-                  ) : null}
-
-                  <div className="opp-financial-grid">
-                    <div className="opp-label">
-                      <span>단가</span>
-                      <input
-                        type="text"
-                        className="opp-input"
-                        value={line.unitPrice}
-                        onChange={(e) => handleLineUnitPriceChange(line.lineId, e)}
-                        placeholder="0"
-                        inputMode="numeric"
-                      />
-                    </div>
-                    <label className="opp-label">
-                      <span>수량</span>
-                      <input
-                        type="number"
-                        className="opp-input"
-                        min={1}
-                        value={line.quantity}
-                        onChange={(e) => updateLine(line.lineId, { quantity: e.target.value })}
-                        placeholder="1"
-                      />
-                    </label>
-                    <div className="opp-label opp-label--span2 opp-discount-purchase-split">
-                      <div className="opp-discount-purchase-split-inner">
-                        <label className="opp-label opp-label--nested">
-                          <span>할인율 (%)</span>
-                          <input
-                            type="text"
-                            className="opp-input"
-                            value={line.discountRate}
-                            onChange={(e) => handleLineDiscountRateChange(line.lineId, e)}
-                            placeholder="0"
-                            inputMode="decimal"
-                          />
-                        </label>
-                        <label className="opp-label opp-label--nested">
-                          <span>매입 원가</span>
-                          <input
-                            type="text"
-                            className="opp-input"
-                            value={line.purchaseCostTotal}
-                            onChange={(e) => handleLinePurchaseCostChange(line.lineId, e)}
-                            placeholder="0"
-                            inputMode="numeric"
-                            title="직접 입력 가능. 제품을 선택하면 원가×수량이 한 번 채워지며 이후에도 수정할 수 있습니다."
-                          />
-                        </label>
-                      </div>
-                    </div>
-                    <label className="opp-label opp-label--span2">
-                      <span>차감금액</span>
-                      <input
-                        type="text"
-                        className="opp-input"
-                        value={line.discountAmount}
-                        onChange={(e) => handleLineDiscountAmountChange(line.lineId, e)}
-                        placeholder="0"
-                        inputMode="numeric"
-                      />
-                    </label>
-                  </div>
-
-                  <section
-                    className="opp-commission-section"
-                    aria-label={`${line.productName || '제품'} 기타 금액`}
-                  >
-                    <div className="opp-commission-head">
-                      <span className="opp-commission-title">기타 금액</span>
-                      <button
-                        type="button"
-                        className="opp-commission-add"
-                        onClick={() => addCommissionRecipientToLine(line.lineId)}
-                        aria-label={`${line.productName || '제품'} 기타 금액 행 추가`}
-                        title="행 추가"
-                      >
-                        <span className="material-symbols-outlined" aria-hidden>add</span>
-                      </button>
-                    </div>
-                    <p className="opp-commission-hint">
-                      이 제품 행에 반영할 기타 금액입니다. 비고는 선택이며, 순마진 계산에서 기타 금액 합만큼 차감됩니다.
-                    </p>
-                    {(() => {
-                      const commRows =
-                        Array.isArray(line.commissionRecipients) && line.commissionRecipients.length > 0
-                          ? line.commissionRecipients
-                          : [emptyCommissionRowForLine(line.lineId)];
-                      return commRows.map((row, idx) => (
-                      <div key={row.id} className="opp-commission-row">
-                        <label className="opp-label opp-commission-field opp-commission-field--remarks">
-                          <span>비고</span>
-                          <textarea
-                            className="opp-input opp-textarea opp-commission-remarks"
-                            value={row.remarks}
-                            onChange={(e) =>
-                              updateCommissionRecipientOnLine(line.lineId, row.id, { remarks: e.target.value })
-                            }
-                            placeholder="필요 시만 입력"
-                            maxLength={2000}
-                            rows={2}
-                            spellCheck={false}
-                          />
-                        </label>
-                        <label className="opp-label opp-commission-field opp-commission-field--amount">
-                          <span>금액</span>
-                          <input
-                            type="text"
-                            className="opp-input"
-                            inputMode="numeric"
-                            value={row.commissionAmount}
-                            onChange={(e) =>
-                              updateCommissionRecipientOnLine(line.lineId, row.id, {
-                                commissionAmount: formatNumberInput(e.target.value)
-                              })
-                            }
-                            placeholder="0"
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          className="opp-commission-remove"
-                          onClick={() => removeCommissionRecipientFromLine(line.lineId, row.id)}
-                          disabled={commRows.length <= 1}
-                          aria-label={`${line.productName || '제품'} 기타 금액 행 ${idx + 1} 제거`}
-                          title="행 제거"
-                        >
-                          <span className="material-symbols-outlined" aria-hidden>delete</span>
-                        </button>
-                      </div>
-                      ));
-                    })()}
-                  </section>
-                </section>
-              ))}
-
-              {/* 계산 요약: 제품별 + 전체 합계 — 제품 행이 있을 때만 표시 */}
-              {lineItems.length > 0 ? (
-                <div className="opp-summary-box">
-                  {lineItems.map((line) => {
-                    const lineFinal = computeLineFinalAmount(line);
-                    const lineComm = (Array.isArray(line.commissionRecipients) ? line.commissionRecipients : []).reduce(
-                      (s, r) => s + parseNumber(r.commissionAmount),
-                      0
-                    );
-                    const lineNet = computeLineNetMargin(line);
-                    const lineNetShown = lineNet != null ? lineNet - lineComm : null;
-                    return (
-                    <div key={line.lineId} className="opp-summary-per-line">
-                      <div className="opp-summary-per-line-title">{line.productName || '제품'}</div>
-                      <div className="opp-summary-line-metrics" role="group" aria-label={`${line.productName || '제품'} 요약`}>
-                        <div className="opp-summary-line-metric">
-                          <span className="opp-summary-line-label">차감</span>
-                          <span className="opp-summary-line-val">- {formatCurrencyDisplay(computeLineDeduction(line), form.currency)}</span>
-                        </div>
-                        <div className="opp-summary-line-metric opp-summary-line-metric--main">
-                          <span className="opp-summary-line-label">최종</span>
-                          <span className="opp-summary-line-val opp-summary-line-val--main">{formatCurrencyDisplay(lineFinal, form.currency)}</span>
-                        </div>
-                        <div className="opp-summary-line-metric opp-summary-line-metric--margin">
-                          <span className="opp-summary-line-label">순마진</span>
-                          <span className="opp-summary-line-val opp-summary-line-val--margin">
-                            {line.productId && productById[line.productId] && lineNetShown != null
-                              ? formatCurrencyDisplay(lineNetShown, form.currency)
-                              : '—'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    );
-                  })}
-                  <div className="opp-summary-divider" aria-hidden />
-                  <div className="opp-summary-total-block">
-                    <div className="opp-summary-total-grid">
-                      <div className="opp-summary-total-stack">
-                        <div className="opp-summary-total-pill opp-summary-total-pill--deduct">
-                          <span className="opp-summary-total-pill-label">전체 차감</span>
-                          <span className="opp-summary-total-pill-val">- {formatCurrencyDisplay(computeTotalDeduction(), form.currency)}</span>
-                        </div>
-                        <div className="opp-summary-total-pill opp-summary-total-pill--margin" aria-label="마진 합계">
-                          <span className="opp-summary-total-pill-label">마진 합계</span>
-                          <span className="opp-summary-total-pill-val opp-summary-total-pill-val--margin">
-                            {netMarginAfterCommission != null ? formatCurrencyDisplay(netMarginAfterCommission, form.currency) : '—'}
-                          </span>
-                        </div>
-                        {forecastExpectedRevenue != null ? (
-                          <div
-                            className="opp-summary-total-pill opp-summary-total-pill--forecast"
-                            aria-label="Forecast 예상 매출"
-                            title={`전체 최종 금액 × 단계 Forecast (${forecastPctForStage}%)`}
-                          >
-                            <span className="opp-summary-total-pill-label">Forecast</span>
-                            <span className="opp-summary-total-pill-meta">{forecastStageLabel} · {forecastPctForStage}%</span>
-                            <span className="opp-summary-total-pill-val opp-summary-total-pill-val--forecast">
-                              {formatCurrencyDisplay(forecastExpectedRevenue, form.currency)}
-                            </span>
-                          </div>
-                        ) : null}
-                      </div>
-                      <div className="opp-summary-total-hero" aria-label="전체 최종 금액">
-                        <span className="opp-summary-total-hero-label">전체 최종</span>
-                        <span className="opp-summary-total-hero-val">
-                          {formatCurrencyDisplay(computeTotalFinalAmount(), form.currency)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
-              {/* 증서 · 자료 — 저장된 기회(수정)에서만. Drive 테이블은 shared/register-sale-docs-drive.js */}
-              {isEdit ? (
-                <section className="customer-company-detail-section register-sale-docs opp-modal-register-sale-docs">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    style={{ display: 'none' }}
-                    onChange={(e) => { handleDirectFileUpload(e.target.files); e.target.value = ''; }}
-                    disabled={!canDocsUpload}
-                    aria-hidden="true"
-                  />
-                  <div className="customer-company-detail-section-head">
-                    <h3 className="customer-company-detail-section-title">
-                      <span className="material-symbols-outlined">folder</span>
-                      증서 · 자료
-                    </h3>
-                    <button
-                      type="button"
-                      className="customer-company-detail-btn-all"
-                      onClick={() => { if (canDocsUpload && fileInputRef.current) fileInputRef.current.click(); }}
-                      disabled={!canDocsUpload}
-                      title={
-                        canDocsUpload
-                          ? '파일 추가'
-                          : driveUploading
-                            ? '업로드 중'
-                            : '고객사(사업자번호 포함) 또는 담당자 선택 후 업로드 가능'
-                      }
-                      aria-label="파일 추가"
-                    >
-                      <span className="material-symbols-outlined">add</span>
-                    </button>
-                  </div>
-                  
-                  <div
-                    className={`register-sale-docs-crm-uploads ${crmListDropActive ? 'register-sale-docs-crm-uploads--drop-active' : ''} ${driveUploading || !canDocsUpload ? 'register-sale-docs-crm-uploads--disabled' : ''}`}
-                    onDragEnter={handleDocsDragEnter}
-                    onDragOver={handleDocsDragOver}
-                    onDragLeave={handleDocsDragLeave}
-                    onDrop={handleDocsDrop}>
-                    <div className="opp-register-sale-docs-crm-title-row">
-                      <h4 className="register-sale-docs-crm-uploads-title">
-                        <span className="material-symbols-outlined">history_edu</span>
-                        리스트
-                      </h4>
-                      {effectiveDriveFolderIdForList ? (
-                        <button
-                          type="button"
-                          className="opp-register-sale-docs-crm-refresh"
-                          onClick={() => void handleRefreshDriveDocList()}
-                          disabled={driveUploading || loadingDriveFolderList || driveIndexSyncing}
-                          title="Drive 폴더와 CRM 저장 목록을 맞춘 뒤, 화면을 새로고침합니다"
-                        >
-                          <span className="material-symbols-outlined" aria-hidden="true">
-                            refresh
-                          </span>
-                          목록 새로고침
-                        </button>
-                      ) : null}
-                    </div>
-                    <p className="register-sale-docs-crm-uploads-hint">
-                      CRM에 기록된 파일과, 같은 폴더를 Drive API로 조회한 항목을 합쳐 표시합니다. Drive 웹에서만 올린 파일을 CRM 저장 목록(MongoDB)에도 넣으려면 「목록 새로고침」으로 동기화하세요. 제품별 하위 폴더는 만들지 않습니다. 이 창에서 파일을 올리면 완료 후 「라이선스 증서 전달 날짜」를 오늘로 기록할지 묻습니다.
-                    </p>
-                    {driveListError ? (
-                      <p className="register-sale-docs-error" role="alert">
-                        {driveListError}
-                      </p>
-                    ) : null}
-                    {mergedDriveDocsSorted.length === 0 ? (
+                  {error ? <p className="opp-error opp-error--form-top" role="alert">{error}</p> : null}
+                  <div className="opp-modal-section-tabs-head">
+                    <section className="opp-modal-summary-dash" aria-label="기회 금액·상태 요약">
                       <div
-                        className={`register-sale-docs-crm-empty ${crmListDropActive ? 'register-sale-docs-crm-empty--active' : ''}`}
-                        onClick={() => {
-                          if (canDocsUpload && fileInputRef.current) fileInputRef.current.click();
-                        }}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if ((e.key === 'Enter' || e.key === ' ') && canDocsUpload && fileInputRef.current) {
-                            e.preventDefault();
-                            fileInputRef.current.click();
-                          }
-                        }}
+                        className="opp-modal-summary-dash-card opp-modal-summary-dash-card--order"
+                        title="제품 행 합계(할인·금액 차감 반영)"
                       >
-                        <span className="material-symbols-outlined register-sale-docs-crm-empty-icon">inbox</span>
-                        <span className="register-sale-docs-crm-empty-text">
-                          {driveUploading
-                            ? '업로드 중…'
-                            : loadingDriveFolderList
-                              ? '폴더 목록을 불러오는 중…'
-                              : '등록된 항목이 없습니다. 파일을 여기에 놓거나 위쪽 추가 버튼으로 올리세요. Drive 웹에서만 올린 뒤에는 「목록 새로고침」을 눌러 주세요.'}
-                        </span>
+                        <span className="opp-modal-summary-dash-label">수주금액</span>
+                        <div className="opp-modal-summary-dash-value">
+                          {lineItems.length > 0
+                            ? formatCurrencyDisplay(computeTotalFinalAmount(), form.currency)
+                            : '—'}
+                        </div>
                       </div>
-                    ) : (
-                      <RegisterSaleDocsCrmTable
-                        rows={mergedDriveDocsSorted}
-                        formatDriveFileDate={formatDriveFileDate}
-                        driveUploading={driveUploading}
-                        crmDriveDeletingId={driveDocDeletingId}
-                        onDeleteRow={handleDeleteMergedDriveDoc}
-                      />
-                    )}
+                      <div
+                        className="opp-modal-summary-dash-card opp-modal-summary-dash-card--margin"
+                        title="제품 행별 순마진(원가 반영)을 합산한 뒤, 기타 금액 합을 뺀 값입니다. 제품·원가가 없으면 표시할 수 없습니다."
+                      >
+                        <span className="opp-modal-summary-dash-label">마진 합계</span>
+                        <div className="opp-modal-summary-dash-value">
+                          {lineItems.length > 0 && netMarginAfterCommission != null
+                            ? formatCurrencyDisplay(netMarginAfterCommission, form.currency)
+                            : '—'}
+                        </div>
+                      </div>
+                      <div
+                        className="opp-modal-summary-dash-card opp-modal-summary-dash-card--forecast"
+                        title={
+                          forecastExpectedRevenue != null && Number.isFinite(forecastPctForStage)
+                            ? `전체 최종 금액 × 단계 Forecast (${forecastPctForStage}%)`
+                            : '제품 행과 단계 Forecast 비율이 있을 때 표시됩니다'
+                        }
+                      >
+                        <span className="opp-modal-summary-dash-label">예상매출</span>
+                        {forecastExpectedRevenue != null && Number.isFinite(forecastPctForStage) ? (
+                          <>
+                            <div className="opp-modal-summary-dash-value opp-modal-summary-dash-value--forecast">
+                              {formatCurrencyDisplay(forecastExpectedRevenue, form.currency)}
+                            </div>
+                            <div className="opp-modal-summary-dash-meta">
+                              {forecastStageLabel} · {forecastPctForStage}%
+                            </div>
+                          </>
+                        ) : (
+                          <div className="opp-modal-summary-dash-value">—</div>
+                        )}
+                      </div>
+                      <div className="opp-modal-summary-dash-card opp-modal-summary-dash-card--stage">
+                        <span className="opp-modal-summary-dash-label">현재 상태</span>
+                        <div className="opp-modal-summary-dash-value opp-modal-summary-dash-value--stage">
+                          {forecastStageLabel || '—'}
+                        </div>
+                      </div>
+                    </section>
+                    <OpportunityModalFormSectionTabs
+                      activeTab={oppFormSectionTab}
+                      onTabChange={setOppFormSectionTab}
+                    />
                   </div>
-                  {driveError ? <p className="register-sale-docs-error">{driveError}</p> : null}
-                  {driveUploadNotice && !driveError ? (
-                    <p className="register-sale-docs-success" role="status">
-                      {driveUploadNotice}
-                    </p>
-                  ) : null}
-                </section>
-              ) : null}
-
-              {isEdit && oppId ? (
-                <div className="opp-comments-section">
-                  <div className="opp-comments-heading">코멘트</div>
-
-                  <ul className="opp-comments-list">
-                    {roots.map((c) => renderCommentItem(c))}
-                  </ul>
-                  <div className="customer-company-detail-journal-input-wrap opp-modal-journal-like-company-detail">
-                    <p className="opp-comments-hint opp-modal-journal-hint">
-                      루트 메모는 고객사 상세의 「지원 및 업무 기록」 또는 연락처 상세의 「업무 기록」과 동일하게 등록됩니다. (등록일시·음성 → 메모 저장)
-                    </p>
-                    {!form.customerCompanyId && !form.customerCompanyEmployeeId ? (
-                      <p className="customer-company-detail-journal-error">고객사 또는 담당자(연락처)를 선택한 뒤 업무 기록을 등록할 수 있습니다.</p>
-                    ) : (
-                      <>
-                        {journalInputError ? (
-                          <p className="customer-company-detail-journal-error">{journalInputError}</p>
-                        ) : null}
-                        <div className="customer-company-detail-journal-datetime-row">
-                          <label htmlFor="opp-modal-journal-datetime" className="customer-company-detail-journal-datetime-label">
-                            등록일시
-                          </label>
-                          <input
-                            id="opp-modal-journal-datetime"
-                            type="datetime-local"
-                            className="customer-company-detail-journal-datetime"
-                            value={journalDateTime}
-                            onChange={(e) => setJournalDateTime(e.target.value)}
-                            disabled={savingJournal || audioUploading}
-                            aria-label="업무 기록 등록일시"
-                          />
-                        </div>
-                        <textarea
-                          className="customer-company-detail-journal-input"
-                          placeholder="회사 단위 메모 또는 업무 기록 (여러 직원 미팅 등)..."
-                          rows={3}
-                          maxLength={5000}
-                          value={newComment}
-                          onChange={(e) => setNewComment(e.target.value)}
-                          disabled={savingJournal || audioUploading || commentBusy}
-                        />
-                        <input
-                          ref={oppJournalAudioInputRef}
-                          type="file"
-                          accept="audio/*,.mp3,.wav,.m4a,.webm"
-                          className="customer-company-detail-audio-input-hidden"
-                          onChange={(e) => {
-                            if (e.target.files?.length) uploadAudioForOpportunityJournal(e.target.files);
-                            e.target.value = '';
-                          }}
-                          aria-hidden="true"
-                        />
-                        <div
-                          className={`customer-company-detail-journal-audio-drop ${audioDropActive ? 'is-dragover' : ''} ${audioUploading ? 'is-uploading' : ''}`}
-                          onDragOver={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            if (!audioUploading && !savingJournal) setAudioDropActive(true);
-                          }}
-                          onDragLeave={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            if (!e.currentTarget.contains(e.relatedTarget)) setAudioDropActive(false);
-                          }}
-                          onDrop={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setAudioDropActive(false);
-                            if (!audioUploading && !savingJournal && e.dataTransfer?.files?.length) {
-                              uploadAudioForOpportunityJournal(e.dataTransfer.files);
-                            }
-                          }}
-                        >
-                          <span className="material-symbols-outlined">audio_file</span>
-                          <span>
-                            {audioUploading
-                              ? '음성 처리 중… 전사·요약이 끝나면 AssemblyAI에 올린 음성 원본은 서버에서 자동 삭제됩니다.'
-                              : '음성 파일 드래그앤드롭 또는 선택 (MP3/WAV/M4A/WebM). 처리가 끝나면 AssemblyAI 쪽 음성·전사 원본은 삭제됩니다.'}
-                          </span>
-                          <button
-                            type="button"
-                            className="customer-company-detail-journal-audio-btn"
-                            onClick={() => oppJournalAudioInputRef.current?.click()}
-                            disabled={audioUploading || savingJournal}
-                          >
-                            파일 선택
-                          </button>
-                        </div>
-                        <div className="customer-company-detail-journal-actions">
-                          <button
-                            type="button"
-                            className="customer-company-detail-journal-save"
-                            onClick={handleSaveOppJournal}
-                            disabled={
-                              savingJournal ||
-                              audioUploading ||
-                              !newComment.trim() ||
-                              (!form.customerCompanyId && !form.customerCompanyEmployeeId)
-                            }
-                          >
-                            {savingJournal ? '저장 중...' : '메모 저장'}
-                          </button>
-                        </div>
-                        {journalSummaryNotice?.text ? (
-                          <p
-                            className={`customer-company-detail-summary-notice is-${journalSummaryNotice.type || 'info'}`}
-                          >
-                            {journalSummaryNotice.text}
-                          </p>
-                        ) : null}
-                      </>
-                    )}
-                  </div>
-                  {commentError ? <p className="opp-comment-error">{commentError}</p> : null}
-                </div>
-              ) : null}
-
-              {error && <p className="opp-error">{error}</p>}
-                </form>
-                <aside className="opp-modal-form-finance" aria-label="기회 일정 및 계약·계산서·수금">
-                  <div className="opp-form-dates-top opp-form-dates-top--sidebar" aria-label="기회 일정">
-                    <div className="opp-form-dates-sidebar-head">
-                      <span className="opp-form-dates-sidebar-head-title">기회 일정</span>
-                      {canManageScheduleFieldDefs ? (
-                        <button
-                          type="button"
-                          className="opp-form-dates-sidebar-add-def"
-                          title="회사별 추가 일정 항목 정의"
-                          aria-label="회사별 추가 일정 항목 정의"
-                          onClick={() => setShowScheduleFieldsManageModal(true)}
-                        >
-                          <span className="material-symbols-outlined" aria-hidden>
-                            add
-                          </span>
-                        </button>
-                      ) : null}
-                    </div>
-                    <div className="opp-form-dates-top-field">
-                      <span className="opp-form-dates-top-label">시작일</span>
-                      <input
-                        type="date"
-                        className="opp-input opp-input--date"
-                        value={form.startDate}
-                        onChange={(e) => handleChange('startDate', e.target.value)}
-                      />
-                    </div>
-                    <div className="opp-form-dates-top-field">
-                      <span className="opp-form-dates-top-label">구매 예정 날짜</span>
-                      <input
-                        type="date"
-                        className="opp-input opp-input--date"
-                        value={form.targetDate}
-                        onChange={(e) => handleChange('targetDate', e.target.value)}
-                      />
-                    </div>
-                    {!wonOnlyScheduleEditable ? (
-                      <p className="opp-form-dates-won-banner">
-                        계약일·전체 완료·증서 전달은 <strong>수주 성공(Won)</strong> 단계에서만 편집할 수 있습니다. 회사 맞춤 일정은 정의에서 &quot;수주 전&quot;으로 설정한 항목만 지금 단계에서 편집할 수 있습니다.
-                      </p>
-                    ) : null}
-                    <div className="opp-form-dates-top-field">
-                      <span className="opp-form-dates-top-label">계약일</span>
-                      <input
-                        type="date"
-                        className="opp-input opp-input--date"
-                        value={form.saleDate}
-                        onChange={(e) => handleChange('saleDate', e.target.value)}
-                        aria-label="계약일"
-                        disabled={!wonOnlyScheduleEditable}
-                      />
-                    </div>
-                    <div className="opp-form-dates-top-field opp-form-dates-top-field--block">
-                      <span className="opp-form-dates-top-label">전체 완료 날짜</span>
-                      <input
-                        type="date"
-                        className="opp-input opp-input--date"
-                        value={form.fullCollectionCompleteDate}
-                        onChange={(e) => {
-                          fullCollectionDateTouchedRef.current = true;
-                          handleChange('fullCollectionCompleteDate', e.target.value);
-                        }}
-                        aria-label="전체 완료 날짜"
-                        disabled={!wonOnlyScheduleEditable}
-                      />
-                      <p className="opp-form-dates-top-hint">
-                        수금 누적이 계약 금액 이상이 되면, 수금일 중 가장 늦은 날짜로 자동 채워집니다.
-                        {wonOnlyScheduleEditable ? ' 필요 시 수정할 수 있습니다.' : ''}
-                      </p>
-                    </div>
-                    <div className="opp-form-dates-top-field opp-form-dates-top-field--block">
-                      <span className="opp-form-dates-top-label">라이선스 증서 전달 날짜</span>
-                      <input
-                        type="date"
-                        className="opp-input opp-input--date"
-                        value={form.licenseCertificateDeliveredDate}
-                        onChange={(e) => handleChange('licenseCertificateDeliveredDate', e.target.value)}
-                        aria-label="라이선스 증서 전달 날짜"
-                        disabled={!wonOnlyScheduleEditable}
-                      />
-                      <p className="opp-form-dates-top-hint">
-                        증서를 고객에게 넘긴 날을 기록합니다.
-                        {wonOnlyScheduleEditable
-                          ? ' 문서 영역에서 파일을 올리면 오늘 날짜로 채울지 확인 창이 뜹니다.'
-                          : ' 수주 성공 후에는 문서 업로드 시 오늘 날짜 반영 여부를 묻습니다.'}
-                      </p>
-                    </div>
-                    {scheduleFieldDefs.filter((d) => d.type === 'date').map((def) => {
-                      const scheduleFieldEditable =
-                        wonOnlyScheduleEditable || Boolean(def.options?.editableBeforeWon);
-                      return (
-                      <div key={def._id || def.key} className="opp-form-dates-top-field opp-form-dates-top-field--block">
-                        <span className="opp-form-dates-top-label">{def.label || def.key}</span>
-                        <input
-                          type="date"
-                          className="opp-input opp-input--date"
-                          value={scheduleCustomDates[def.key] || ''}
-                          onChange={(e) => handleScheduleCustomDateChange(def.key, e.target.value)}
-                          aria-label={def.label || def.key}
-                          disabled={!scheduleFieldEditable}
-                        />
-                      </div>
-                      );
-                    })}
-                  </div>
-                  <section className="opp-finance-section">
-                    <div className="opp-finance-heading">계약·계산서·수금 관리</div>
-                    <div className="opp-finance-cards">
-                      <div className="opp-finance-card">
-                        <div className="opp-finance-card-title">계약금액</div>
-                        <div className="opp-finance-grid opp-finance-grid--single">
-                          <label className="opp-label">
-                            <span>금액</span>
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              pattern="[0-9,]*"
-                              className="opp-input"
-                              placeholder="숫자만 입력"
-                              value={form.contractAmount}
-                              onChange={(e) => handleChange('contractAmount', formatNumberInput(e.target.value))}
-                            />
-                          </label>
-                        </div>
-                        <p className="opp-finance-card-hint">계약일은 위쪽 「계약일」과 동일합니다.</p>
-                      </div>
-
-                      <div className="opp-finance-card">
-                        <div className="opp-finance-card-title">계산서 금액</div>
-                        <div className="opp-finance-grid">
-                          <label className="opp-label">
-                            <span>금액</span>
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              pattern="[0-9,]*"
-                              className="opp-input"
-                              placeholder="숫자만 입력"
-                              value={form.invoiceAmount}
-                              onChange={(e) => handleChange('invoiceAmount', formatNumberInput(e.target.value))}
-                            />
-                          </label>
-                          <label className="opp-label">
-                            <span>날짜</span>
-                            <input
-                              type="date"
-                              className="opp-input opp-input--date"
-                              value={form.invoiceAmountDate}
-                              onChange={(e) => handleChange('invoiceAmountDate', e.target.value)}
-                            />
-                          </label>
-                        </div>
-                      </div>
-
-                      <div className="opp-finance-card">
-                        <div className="opp-finance-collection-head">
-                          <span className="opp-finance-subheading">수금 완료금액 (누적)</span>
-                          <button
-                            type="button"
-                            className="opp-btn-light opp-btn-icon"
-                            onClick={addCollectionEntry}
-                            aria-label="수금 항목 추가"
-                            title="수금 항목 추가"
-                          >
-                            <span className="material-symbols-outlined" aria-hidden="true">add</span>
-                          </button>
-                        </div>
-                        <div className="opp-finance-collection-list">
-                          {collectionEntries.map((entry, index) => (
-                            <div key={entry.id} className="opp-finance-collection-row">
-                              <label className="opp-label">
-                                <span>{`수금 ${index + 1} 금액`}</span>
+                  <div className="opp-modal-tab-panels">
+                    <div
+                      className={`opp-tab-panel${oppFormSectionTab === 'basic' ? ' opp-tab-panel--active' : ''}`}
+                      role="tabpanel"
+                      id="opp-section-tab-panel-basic"
+                      aria-labelledby="opp-section-tab-btn-basic"
+                      hidden={oppFormSectionTab !== 'basic'}
+                    >
+                      {/* 고객사 / 구매 담당자 2열 — 하단에 사업자번호·주소 / 연락처·이메일(읽기 전용) */}
+                      <div className="opp-form-grid-2 opp-form-grid-2--company-contact">
+                        <div className="opp-label opp-label--company-contact-col">
+                          <div className="opp-label-top">
+                            <span>고객사</span>
+                          </div>
+                          <div className={'opp-company-wrap' + (personalPurchase ? ' opp-company-wrap--disabled' : '')}>
+                            <span className="opp-company-display">
+                              {companyRefMissing ? '—' : form.customerCompanyName || '고객사 선택'}
+                            </span>
+                            <button
+                              type="button"
+                              className="opp-company-search-btn"
+                              disabled={personalPurchase}
+                              onClick={() => { if (!personalPurchase) setShowCompanySearchModal(true); }}
+                            >
+                              <span className="material-symbols-outlined">search</span>
+                              검색
+                            </button>
+                          </div>
+                          <div className="opp-company-subrow" aria-label="고객사 사업자번호 및 주소(검색으로만 갱신)">
+                            <label className="opp-inline-snap">
+                              <span>사업자번호</span>
+                              {personalPurchase ? (
+                                <div className="opp-snap-fallback opp-snap-fallback--readonly" title="개인 구매 시 고객사 없음">—</div>
+                              ) : companyRefMissing ? (
+                                <div className="opp-snap-fallback opp-snap-fallback--readonly" title="연결된 고객사 문서를 찾을 수 없습니다">—</div>
+                              ) : (
                                 <input
                                   type="text"
-                                  inputMode="numeric"
-                                  pattern="[0-9,]*"
+                                  className="opp-input opp-input--snap-readonly"
+                                  value={businessNumber}
+                                  readOnly
+                                  disabled
+                                  tabIndex={-1}
+                                  autoComplete="off"
+                                  aria-readonly="true"
+                                />
+                              )}
+                            </label>
+                            <label className="opp-inline-snap">
+                              <span>주소</span>
+                              {personalPurchase ? (
+                                <div className="opp-snap-fallback opp-snap-fallback--readonly" title="개인 구매 시 고객사 없음">—</div>
+                              ) : companyRefMissing ? (
+                                <div className="opp-snap-fallback opp-snap-fallback--readonly" title="연결된 고객사 문서를 찾을 수 없습니다">—</div>
+                              ) : (
+                                <input
+                                  type="text"
+                                  className="opp-input opp-input--snap-readonly"
+                                  value={form.customerCompanyAddress}
+                                  readOnly
+                                  disabled
+                                  tabIndex={-1}
+                                  autoComplete="street-address"
+                                  aria-readonly="true"
+                                />
+                              )}
+                            </label>
+                          </div>
+                        </div>
+                        <div className="opp-label opp-label--company-contact-col">
+                          <div className="opp-label-top opp-label-top--with-personal-btn">
+                            <span>구매 담당자</span>
+                            <label className="opp-personal-purchase-check">
+                              <span className="opp-personal-purchase-check-text">개인구매</span>
+                              <input
+                                type="checkbox"
+                                checked={personalPurchase}
+                                onChange={(e) => {
+                                  const next = e.target.checked;
+                                  setPersonalPurchase(next);
+                                  if (next) {
+                                    setForm((f) => ({
+                                      ...f,
+                                      customerCompanyId: '',
+                                      customerCompanyName: '',
+                                      customerCompanyAddress: ''
+                                    }));
+                                    setBusinessNumber('');
+                                    setCompanyRefMissing(false);
+                                  }
+                                }}
+                              />
+                            </label>
+                          </div>
+                          <div className="opp-company-wrap">
+                            <span className="opp-company-display">
+                              {contactRefMissing ? '—' : form.contactName || '담당자 선택'}
+                            </span>
+                            <button type="button" className="opp-company-search-btn" onClick={() => setShowContactSearchModal(true)}>
+                              <span className="material-symbols-outlined">search</span>
+                              검색
+                            </button>
+                          </div>
+                          <div className="opp-buyer-subrow" aria-label="구매 담당자 연락처 및 이메일(검색으로만 갱신)">
+                            <label className="opp-inline-snap">
+                              <span>연락처</span>
+                              {contactRefMissing ? (
+                                <div className="opp-snap-fallback opp-snap-fallback--readonly" title="연결된 연락처 문서를 찾을 수 없습니다">—</div>
+                              ) : (
+                                <input
+                                  type="text"
+                                  className="opp-input opp-input--snap-readonly"
+                                  value={form.contactPhone}
+                                  readOnly
+                                  disabled
+                                  tabIndex={-1}
+                                  autoComplete="tel"
+                                  aria-readonly="true"
+                                />
+                              )}
+                            </label>
+                            <label className="opp-inline-snap">
+                              <span>이메일</span>
+                              {contactRefMissing ? (
+                                <div className="opp-snap-fallback opp-snap-fallback--readonly" title="연결된 연락처 문서를 찾을 수 없습니다">—</div>
+                              ) : (
+                                <input
+                                  type="email"
+                                  className="opp-input opp-input--snap-readonly"
+                                  value={form.contactEmail}
+                                  readOnly
+                                  disabled
+                                  tabIndex={-1}
+                                  autoComplete="email"
+                                  aria-readonly="true"
+                                />
+                              )}
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+
+                      <label className="opp-label">
+                        <span>추가 설명</span>
+                        <p className="opp-price-basis-hint">
+                          프로모션·특가·거래 조건 등 참고용 메모를 적을 수 있습니다. 저장 시 기회와 연동된 수주 이력에도 반영됩니다.
+                        </p>
+                        <textarea
+                          className="opp-textarea"
+                          rows={4}
+                          maxLength={8000}
+                          value={form.description}
+                          onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                          placeholder="예: 연말 프로모션 10% 추가 할인, 계약 기간·옵션 조건"
+                          aria-label="추가 설명"
+                        />
+                      </label>
+
+                      {/* 단계 — 기본 정보 탭 (Sample Design: 기본 정보 + 파이프라인 단계) */}
+                      <div className="opp-label">
+                        <span>단계</span>
+                        <div className="opp-stage-group">
+                          {stageSelectOptions.map((s) => (
+                            <button
+                              key={s.value}
+                              type="button"
+                              className={'opp-stage-btn' + (form.stage === s.value ? ' opp-stage-btn--selected' : '')}
+                              onClick={() => handleStageButtonClick(s.value)}
+                            >
+                              {s.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <section className="opp-basic-doc-mail-wrap" aria-label="문서 메일 메일머지">
+                        <div className="opp-finance-card opp-finance-card--doc-mail">
+                          <div className="opp-finance-collection-head">
+                            <span className="opp-finance-subheading">문서 메일 (메일머지)</span>
+                          </div>
+                          <p className="opp-doc-mail-hint">
+                            헤더의「문서 발송」으로 시트를 열면, 여기 적은 주소가 받는 사람(To)·참조(CC)에 자동으로 들어갑니다. 견적·발주 문서에 같은 값이 쓰입니다. 아래 슬롯은 매핑 단계에서 키로 선택할 수 있습니다.
+                          </p>
+                          <div className="opp-doc-mail-grid">
+                            <div className="opp-doc-mail-book-toolbar">
+                              <div className="opp-doc-mail-book-toolbar-anchor" ref={docMailBookDropdownRef}>
+                                <button
+                                  type="button"
+                                  className={
+                                    'opp-doc-mail-book-dropdown-trigger' +
+                                    (docMailBookDropdownOpen ? ' opp-doc-mail-book-dropdown-trigger--open' : '')
+                                  }
+                                  aria-expanded={docMailBookDropdownOpen}
+                                  aria-haspopup="dialog"
+                                  onClick={() => setDocMailBookDropdownOpen((o) => !o)}
+                                >
+                                  <span className="opp-doc-mail-book-dropdown-trigger-label">저장된 주소록</span>
+                                  {docMailBookLoading ? (
+                                    <span className="opp-doc-mail-book-dropdown-trigger-sub">불러오는 중…</span>
+                                  ) : (
+                                    <span className="opp-doc-mail-book-dropdown-trigger-count">
+                                      {docMailCompanyBook.length + docMailUserBook.length}건
+                                    </span>
+                                  )}
+                                  <span className="material-symbols-outlined opp-doc-mail-book-dropdown-chevron" aria-hidden>
+                                    expand_more
+                                  </span>
+                                </button>
+                                {docMailBookDropdownOpen ? (
+                                  <div
+                                    className="opp-doc-mail-book-dropdown-panel"
+                                    style={docMailBookDropFixedStyle || undefined}
+                                    role="dialog"
+                                    aria-label="저장된 주소록에서 항목 선택"
+                                  >
+                                    {docMailBookLoading ? (
+                                      <p className="opp-doc-mail-addressbook-note">불러오는 중…</p>
+                                    ) : null}
+                                    {docMailBookError ? (
+                                      <p className="opp-doc-mail-addressbook-error" role="alert">
+                                        {docMailBookError}
+                                      </p>
+                                    ) : null}
+                                    {!docMailBookLoading &&
+                                      docMailCompanyBook.length === 0 &&
+                                      docMailUserBook.length === 0 ? (
+                                      <p className="opp-doc-mail-addressbook-empty opp-doc-mail-addressbook-empty--toolbar">
+                                        저장된 항목이 없습니다. 아래「묶음 저장」으로 추가하세요.
+                                      </p>
+                                    ) : null}
+                                    {!docMailBookLoading &&
+                                      (docMailCompanyBook.length > 0 || docMailUserBook.length > 0) ? (
+                                      <>
+                                        <p className="opp-doc-mail-addressbook-hint-multi opp-doc-mail-addressbook-hint-multi--toolbar">
+                                          항목을 체크한 뒤 <strong>확인</strong>을 누르면 받는 사람(To)·참조(CC)에{' '}
+                                          <strong>쉼표로 이어 붙입니다</strong>.
+                                        </p>
+                                        <div className="opp-doc-mail-book-checklist" role="group" aria-label="주소록 항목 선택">
+                                          {docMailCompanyBook.length > 0 ? (
+                                            <div className="opp-doc-mail-book-group">
+                                              <span className="opp-doc-mail-book-group-label" id="opp-doc-mail-book-co">
+                                                회사 템플릿
+                                              </span>
+                                              <ul className="opp-doc-mail-book-checklist-ul" aria-labelledby="opp-doc-mail-book-co">
+                                                {docMailCompanyBook.map((row) => {
+                                                  const key = `c:${row.id}`;
+                                                  const title = String(row.title || '').trim() || '(제목 없음)';
+                                                  const tip = `To: ${String(row.to || '').trim() || '—'} / CC: ${String(row.cc || '').trim() || '—'}`;
+                                                  return (
+                                                    <li key={key}>
+                                                      <label className="opp-doc-mail-book-checkitem">
+                                                        <input
+                                                          type="checkbox"
+                                                          checked={docMailBookMultiKeys.includes(key)}
+                                                          onChange={() => toggleDocMailBookMultiKey(key)}
+                                                          aria-label={`회사 템플릿: ${title}`}
+                                                        />
+                                                        <span className="opp-doc-mail-book-checkitem-text" title={tip}>
+                                                          {title}
+                                                        </span>
+                                                      </label>
+                                                    </li>
+                                                  );
+                                                })}
+                                              </ul>
+                                            </div>
+                                          ) : null}
+                                          {docMailUserBook.length > 0 ? (
+                                            <div className="opp-doc-mail-book-group">
+                                              <span className="opp-doc-mail-book-group-label" id="opp-doc-mail-book-us">
+                                                개인 템플릿
+                                              </span>
+                                              <ul className="opp-doc-mail-book-checklist-ul" aria-labelledby="opp-doc-mail-book-us">
+                                                {docMailUserBook.map((row) => {
+                                                  const key = `u:${row.id}`;
+                                                  const title = String(row.title || '').trim() || '(제목 없음)';
+                                                  const tip = `To: ${String(row.to || '').trim() || '—'} / CC: ${String(row.cc || '').trim() || '—'}`;
+                                                  return (
+                                                    <li key={key}>
+                                                      <label className="opp-doc-mail-book-checkitem">
+                                                        <input
+                                                          type="checkbox"
+                                                          checked={docMailBookMultiKeys.includes(key)}
+                                                          onChange={() => toggleDocMailBookMultiKey(key)}
+                                                          aria-label={`개인 템플릿: ${title}`}
+                                                        />
+                                                        <span className="opp-doc-mail-book-checkitem-text" title={tip}>
+                                                          {title}
+                                                        </span>
+                                                      </label>
+                                                    </li>
+                                                  );
+                                                })}
+                                              </ul>
+                                            </div>
+                                          ) : null}
+                                        </div>
+                                        <div className="opp-doc-mail-addressbook-actions opp-doc-mail-addressbook-actions--toolbar">
+                                          <button
+                                            type="button"
+                                            className="opp-btn-light opp-doc-mail-addressbook-apply"
+                                            disabled={docMailBookBusy}
+                                            onClick={() => {
+                                              if (docMailBookMultiKeys.length === 0) {
+                                                window.alert('불러올 항목을 하나 이상 선택하세요.');
+                                                return;
+                                              }
+                                              const rows = [];
+                                              for (const k of docMailBookMultiKeys) {
+                                                if (k.startsWith('c:')) {
+                                                  const id = k.slice(2);
+                                                  const row = docMailCompanyBook.find((x) => x.id === id);
+                                                  if (row) rows.push(row);
+                                                } else if (k.startsWith('u:')) {
+                                                  const id = k.slice(2);
+                                                  const row = docMailUserBook.find((x) => x.id === id);
+                                                  if (row) rows.push(row);
+                                                }
+                                              }
+                                              if (rows.length === 0) {
+                                                window.alert('선택한 항목을 찾을 수 없습니다.');
+                                                return;
+                                              }
+                                              const qTo = String(quoteDocRecipientEmail || '').trim();
+                                              const pTo = String(purchaseOrderDocRecipientEmail || '').trim();
+                                              const curTo = qTo && pTo && qTo !== pTo ? qTo : qTo || pTo;
+                                              const qCc = String(quoteDocCcEmail || '').trim();
+                                              const pCc = String(purchaseOrderDocCcEmail || '').trim();
+                                              const curCc = qCc && pCc && qCc !== pCc ? qCc : qCc || pCc;
+                                              const toMerged = mergeEmailListStrings(curTo, ...rows.map((r) => r.to));
+                                              const ccMerged = mergeEmailListStrings(curCc, ...rows.map((r) => r.cc));
+                                              setQuoteDocRecipientEmail(toMerged);
+                                              setPurchaseOrderDocRecipientEmail(toMerged);
+                                              setQuoteDocCcEmail(ccMerged);
+                                              setPurchaseOrderDocCcEmail(ccMerged);
+                                              setDocMailBookMultiKeys([]);
+                                              setDocMailBookDropdownOpen(false);
+                                            }}
+                                          >
+                                            확인
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="opp-btn-light opp-btn-light--danger opp-doc-mail-addressbook-delete"
+                                            disabled={docMailBookBusy}
+                                            onClick={async () => {
+                                              if (docMailBookMultiKeys.length === 0) {
+                                                window.alert('삭제할 항목을 선택하세요.');
+                                                return;
+                                              }
+                                              if (
+                                                !window.confirm(
+                                                  `선택한 ${docMailBookMultiKeys.length}개 항목을 주소록에서 삭제할까요?`
+                                                )
+                                              )
+                                                return;
+                                              setDocMailBookBusy(true);
+                                              setDocMailBookError('');
+                                              try {
+                                                await pingBackendHealth(getAuthHeader);
+                                                const companyIds = new Set(
+                                                  docMailBookMultiKeys.filter((k) => k.startsWith('c:')).map((k) => k.slice(2))
+                                                );
+                                                const userIds = new Set(
+                                                  docMailBookMultiKeys.filter((k) => k.startsWith('u:')).map((k) => k.slice(2))
+                                                );
+                                                if (companyIds.size > 0) {
+                                                  const nextCompany = docMailCompanyBook.filter((x) => !companyIds.has(x.id));
+                                                  const saved = await putCompanyDocMailAddressBook(getAuthHeader, nextCompany);
+                                                  setDocMailCompanyBook(saved);
+                                                }
+                                                if (userIds.size > 0) {
+                                                  const nextUser = docMailUserBook.filter((x) => !userIds.has(x.id));
+                                                  const saved = await putUserDocMailAddressBook(getAuthHeader, nextUser);
+                                                  setDocMailUserBook(saved);
+                                                }
+                                                setDocMailBookMultiKeys([]);
+                                                setDocMailBookDropdownOpen(false);
+                                              } catch (e) {
+                                                setDocMailBookError(String(e?.message || '삭제에 실패했습니다.'));
+                                              } finally {
+                                                setDocMailBookBusy(false);
+                                              }
+                                            }}
+                                          >
+                                            삭제
+                                          </button>
+                                        </div>
+                                      </>
+                                    ) : null}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+
+                            <div className="opp-doc-mail-to-cc-row">
+                              <label className="opp-label">
+                                <span>받는 메일 주소</span>
+                                <input
+                                  type="email"
                                   className="opp-input"
-                                  placeholder="숫자만 입력"
-                                  value={entry.amount}
-                                  onChange={(e) => handleCollectionAmountChange(entry.id, e.target.value)}
+                                  autoComplete="email"
+                                  placeholder="example@company.com"
+                                  value={(() => {
+                                    const q = String(quoteDocRecipientEmail || '').trim();
+                                    const p = String(purchaseOrderDocRecipientEmail || '').trim();
+                                    if (q && p && q !== p) return q;
+                                    return q || p;
+                                  })()}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    setQuoteDocRecipientEmail(v);
+                                    setPurchaseOrderDocRecipientEmail(v);
+                                  }}
+                                  aria-label="받는 메일 주소 문서 메일"
                                 />
                               </label>
                               <label className="opp-label">
-                                <span>{`수금 ${index + 1} 날짜`}</span>
+                                <span>참조 메일 주소 (CC)</span>
+                                <input
+                                  type="text"
+                                  className="opp-input"
+                                  placeholder="쉼표로 여러 주소"
+                                  value={(() => {
+                                    const q = String(quoteDocCcEmail || '').trim();
+                                    const p = String(purchaseOrderDocCcEmail || '').trim();
+                                    if (q && p && q !== p) return q;
+                                    return q || p;
+                                  })()}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    setQuoteDocCcEmail(v);
+                                    setPurchaseOrderDocCcEmail(v);
+                                  }}
+                                  aria-label="참조 메일 주소 CC"
+                                />
+                              </label>
+                            </div>
+                          </div>
+                          <div className="opp-doc-mail-bundle-row">
+                            <button
+                              type="button"
+                              className="opp-btn-light opp-doc-mail-bundle-save-btn"
+                              onClick={() => {
+                                setDocMailSaveTitle('');
+                                setDocMailSaveScope('company');
+                                setDocMailSaveOpen(true);
+                              }}
+                            >
+                              묶음 저장…
+                            </button>
+                          </div>
+
+                          {docMailSaveOpen ? (
+                            <div
+                              className="opp-doc-mail-save-overlay"
+                              role="presentation"
+                              onMouseDown={(e) => {
+                                if (e.target === e.currentTarget) e.preventDefault();
+                              }}
+                            >
+                              <div
+                                className="opp-doc-mail-save-dialog"
+                                role="dialog"
+                                aria-modal="true"
+                                aria-labelledby="opp-doc-mail-save-title"
+                                onMouseDown={(e) => e.stopPropagation()}
+                              >
+                                <h4 id="opp-doc-mail-save-title" className="opp-doc-mail-save-dialog-title">
+                                  주소록 묶음 저장
+                                </h4>
+                                <label className="opp-label">
+                                  <span>제목</span>
+                                  <input
+                                    type="text"
+                                    className="opp-input"
+                                    maxLength={120}
+                                    value={docMailSaveTitle}
+                                    onChange={(e) => setDocMailSaveTitle(e.target.value)}
+                                    placeholder="예: OO거래처 기본 메일"
+                                    autoFocus
+                                  />
+                                </label>
+                                <fieldset className="opp-doc-mail-save-scope">
+                                  <legend className="opp-doc-mail-save-legend">저장 위치</legend>
+                                  <label className="opp-doc-mail-save-radio">
+                                    <input
+                                      type="radio"
+                                      name="opp-doc-mail-save-scope"
+                                      checked={docMailSaveScope === 'company'}
+                                      onChange={() => setDocMailSaveScope('company')}
+                                    />
+                                    <span>회사 템플릿 (소속 직원 공유)</span>
+                                  </label>
+                                  <label className="opp-doc-mail-save-radio">
+                                    <input
+                                      type="radio"
+                                      name="opp-doc-mail-save-scope"
+                                      checked={docMailSaveScope === 'user'}
+                                      onChange={() => setDocMailSaveScope('user')}
+                                    />
+                                    <span>개인 템플릿 (내 계정만)</span>
+                                  </label>
+                                </fieldset>
+                                <p className="opp-doc-mail-save-hint">
+                                  현재 입력된 받는 사람·참조(CC) 값이 이 제목으로 묶여 저장됩니다.
+                                </p>
+                                <div className="opp-doc-mail-save-actions">
+                                  <button
+                                    type="button"
+                                    className="opp-cancel-btn"
+                                    disabled={docMailSaveBusy}
+                                    onClick={() => setDocMailSaveOpen(false)}
+                                  >
+                                    취소
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="opp-save-btn"
+                                    disabled={docMailSaveBusy}
+                                    onClick={async () => {
+                                      const title = String(docMailSaveTitle || '').trim();
+                                      if (!title) {
+                                        window.alert('제목을 입력하세요.');
+                                        return;
+                                      }
+                                      const qTo = String(quoteDocRecipientEmail || '').trim();
+                                      const pTo = String(purchaseOrderDocRecipientEmail || '').trim();
+                                      const toVal = qTo && pTo && qTo !== pTo ? qTo : qTo || pTo;
+                                      const qCc = String(quoteDocCcEmail || '').trim();
+                                      const pCc = String(purchaseOrderDocCcEmail || '').trim();
+                                      const ccVal = qCc && pCc && qCc !== pCc ? qCc : qCc || pCc;
+                                      setDocMailSaveBusy(true);
+                                      setDocMailBookError('');
+                                      try {
+                                        await pingBackendHealth(getAuthHeader);
+                                        const entry = {
+                                          id: newDocMailAddressBookId(),
+                                          title,
+                                          to: toVal,
+                                          cc: ccVal,
+                                          createdAt: new Date().toISOString()
+                                        };
+                                        if (docMailSaveScope === 'company') {
+                                          const next = [...docMailCompanyBook, entry];
+                                          const saved = await putCompanyDocMailAddressBook(getAuthHeader, next);
+                                          setDocMailCompanyBook(saved);
+                                        } else {
+                                          const next = [...docMailUserBook, entry];
+                                          const saved = await putUserDocMailAddressBook(getAuthHeader, next);
+                                          setDocMailUserBook(saved);
+                                        }
+                                        setDocMailSaveOpen(false);
+                                        setDocMailSaveTitle('');
+                                      } catch (e) {
+                                        window.alert(String(e?.message || '저장에 실패했습니다.'));
+                                      } finally {
+                                        setDocMailSaveBusy(false);
+                                      }
+                                    }}
+                                  >
+                                    {docMailSaveBusy ? '저장 중…' : '저장'}
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ) : null}
+
+                          {docEmailReferenceSlots.length > 0 ? (
+                            <div className="opp-doc-slot-chips" aria-label="별칭으로 주소 보기">
+                              {docEmailReferenceSlots.map((s) => {
+                                const label = String(s.alias || '').trim() || String(s.key || '').trim() || '슬롯';
+                                const addr = String(s.addresses || '').trim();
+                                if (!label && !addr) return null;
+                                return (
+                                  <details key={s.id} className="opp-doc-slot-chip">
+                                    <summary className="opp-doc-slot-chip-summary">{label}</summary>
+                                    <div className="opp-doc-slot-chip-body">
+                                      <span className="opp-doc-slot-chip-key">키: {String(s.key || '').trim() || '—'}</span>
+                                      <pre className="opp-doc-slot-chip-pre">{addr || '(주소 없음)'}</pre>
+                                    </div>
+                                  </details>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+                          <div className="opp-doc-slot-list">
+                            {docEmailReferenceSlots.map((s) => (
+                              <div key={s.id} className="opp-doc-slot-row">
+                                <label className="opp-label opp-doc-slot-field">
+                                  <span>키 (영문·숫자·_)</span>
+                                  <input
+                                    type="text"
+                                    className="opp-input"
+                                    spellCheck={false}
+                                    placeholder="예: billing_cc"
+                                    value={s.key}
+                                    onChange={(e) =>
+                                      setDocEmailReferenceSlots((prev) =>
+                                        prev.map((x) => (x.id === s.id ? { ...x, key: e.target.value } : x))
+                                      )
+                                    }
+                                  />
+                                </label>
+                                <label className="opp-label opp-doc-slot-field">
+                                  <span>별칭</span>
+                                  <input
+                                    type="text"
+                                    className="opp-input"
+                                    placeholder="표시 이름"
+                                    value={s.alias}
+                                    onChange={(e) =>
+                                      setDocEmailReferenceSlots((prev) =>
+                                        prev.map((x) => (x.id === s.id ? { ...x, alias: e.target.value } : x))
+                                      )
+                                    }
+                                  />
+                                </label>
+                                <label className="opp-label opp-doc-slot-field opp-doc-slot-field--grow">
+                                  <span>주소 목록</span>
+                                  <textarea
+                                    className="opp-textarea opp-doc-slot-textarea"
+                                    rows={2}
+                                    placeholder="세미콜론 또는 줄바꿈으로 여러 주소"
+                                    value={s.addresses}
+                                    onChange={(e) =>
+                                      setDocEmailReferenceSlots((prev) =>
+                                        prev.map((x) => (x.id === s.id ? { ...x, addresses: e.target.value } : x))
+                                      )
+                                    }
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  className="opp-btn-light opp-btn-light--danger opp-btn-icon opp-doc-slot-remove"
+                                  onClick={() =>
+                                    setDocEmailReferenceSlots((prev) => prev.filter((x) => x.id !== s.id))
+                                  }
+                                  aria-label="슬롯 삭제"
+                                  title="삭제"
+                                >
+                                  <span className="material-symbols-outlined" aria-hidden="true">delete</span>
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </section>
+
+                    </div>
+                    <div
+                      className={`opp-tab-panel${oppFormSectionTab === 'products' ? ' opp-tab-panel--active' : ''}`}
+                      role="tabpanel"
+                      id="opp-section-tab-panel-products"
+                      aria-labelledby="opp-section-tab-btn-products"
+                      hidden={oppFormSectionTab !== 'products'}
+                    >
+
+                      {/* 제품 - 다중 선택 + 제품 추가 */}
+                      <div className="opp-label">
+                        <span>제품</span>
+                        <div className="opp-product-pills">
+                          {lineItems.map((line) => (
+                            <span key={line.lineId} className="opp-product-pill">
+                              {line.productName || '제품'}
+                              <button type="button" onClick={() => removeLine(line.lineId)} aria-label="제거">
+                                <span className="material-symbols-outlined">close</span>
+                              </button>
+                            </span>
+                          ))}
+                          <button type="button" className="opp-product-add-btn" onClick={() => setShowProductSearchModal(true)}>
+                            <span className="material-symbols-outlined">add</span>
+                            제품 추가
+                          </button>
+                        </div>
+                      </div>
+
+
+
+                      {/* 제품별 가격 — 시트형 표 (merge-data-sheet 스타일 유사) */}
+                      {lineItems.length > 0 ? (
+                        <div className="opp-line-sheet-outer" aria-label="제품별 가격 입력">
+                          <p className="opp-line-sheet-intro">
+                            가격 기준은 한 행당 하나만 선택됩니다. 유통을 고르면 유통사를 적습니다. 저장 시 목록에 없는 유통사명은 회사 템플릿에 자동 등록됩니다. 기타 금액은 위 열에 입력하고, 추가 금액이 있으면 아래 행에서 나누어 적습니다. 순마진에서는 기타 금액 합만큼 차감됩니다.
+                          </p>
+                          <div className="opp-line-sheet-scroll">
+                            <div className="opp-line-sheet-table-wrap">
+                              <table className="opp-line-sheet">
+
+                                <thead>
+                                  <tr>
+                                    <th scope="col" className="opp-line-sheet-th opp-line-sheet-th--product">제품</th>
+                                    <th scope="col" className="opp-line-sheet-th opp-line-sheet-th--basis">가격 기준</th>
+                                    <th scope="col" className="opp-line-sheet-th opp-line-sheet-th--channel">유통사</th>
+                                    <th scope="col" className="opp-line-sheet-th">단가</th>
+                                    <th scope="col" className="opp-line-sheet-th">수량</th>
+                                    <th scope="col" className="opp-line-sheet-th">할인율(%)</th>
+                                    <th scope="col" className="opp-line-sheet-th">매입 원가</th>
+                                    <th scope="col" className="opp-line-sheet-th">차감금액</th>
+                                    <th scope="col" className="opp-line-sheet-th opp-line-sheet-th--misc">기타금액</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {lineItems.map((line, lineIdx) => {
+                                    const basisVal =
+                                      line.priceBasis === 'channel' ? 'channel' : 'consumer';
+                                    const stripeClass =
+                                      lineIdx % 2 === 0 ? 'opp-line-sheet-group--stripe-a' : 'opp-line-sheet-group--stripe-b';
+                                    const commRows =
+                                      Array.isArray(line.commissionRecipients) && line.commissionRecipients.length > 0
+                                        ? line.commissionRecipients
+                                        : [emptyCommissionRowForLine(line.lineId)];
+                                    return (
+                                      <React.Fragment key={line.lineId}>
+                                        <tr className={`opp-line-sheet-tr-main ${stripeClass}`}>
+                                          <td className="opp-line-sheet-td opp-line-sheet-td--product" data-label="제품">
+                                            <span className="opp-line-sheet-product-name">{line.productName || '제품'}</span>
+                                          </td>
+                                          <td className="opp-line-sheet-td opp-line-sheet-td--basis" data-label="가격 기준">
+                                            <select
+                                              className="opp-select opp-line-sheet-select"
+                                              value={basisVal}
+                                              onChange={(e) => void applyLinePriceBasis(line, e.target.value)}
+                                              aria-label={`${line.productName || '제품'} 가격 기준`}
+                                              title={OPPORTUNITY_PRICE_BASIS_OPTIONS.find((o) => o.value === basisVal)?.desc}
+                                            >
+                                              {OPPORTUNITY_PRICE_BASIS_OPTIONS.map((opt) => (
+                                                <option key={opt.value} value={opt.value}>
+                                                  {opt.label}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </td>
+                                          <td className="opp-line-sheet-td opp-line-sheet-td--channel" data-label="유통사">
+                                            {line.priceBasis === 'channel' ? (
+                                              <div className="opp-line-sheet-channel-cell">
+                                                <input
+                                                  type="text"
+                                                  className="opp-input opp-line-sheet-input"
+                                                  list={`opp-ch-dl-${line.lineId}`}
+                                                  value={line.channelDistributor}
+                                                  onChange={(e) => updateLine(line.lineId, { channelDistributor: e.target.value })}
+                                                  placeholder="유통사명 (목록에서 선택 가능)"
+                                                  maxLength={200}
+                                                  aria-label={`${line.productName || '제품'} 유통사`}
+                                                  title="등록된 유통사는 입력 시 제안 목록에서 고를 수 있고, 없는 이름은 직접 입력할 수 있습니다."
+                                                />
+                                                <datalist id={`opp-ch-dl-${line.lineId}`}>
+                                                  {channelDistributorList.map((x) => (
+                                                    <option key={x} value={x} />
+                                                  ))}
+                                                </datalist>
+                                              </div>
+                                            ) : (
+                                              <span className="opp-line-sheet-na">—</span>
+                                            )}
+                                          </td>
+                                          <td className="opp-line-sheet-td" data-label="단가">
+                                            <input
+                                              type="text"
+                                              className="opp-input opp-line-sheet-input"
+                                              value={line.unitPrice}
+                                              onChange={(e) => handleLineUnitPriceChange(line.lineId, e)}
+                                              placeholder="0"
+                                              inputMode="numeric"
+                                              aria-label={`${line.productName || '제품'} 단가`}
+                                            />
+                                          </td>
+                                          <td className="opp-line-sheet-td" data-label="수량">
+                                            <input
+                                              type="number"
+                                              className="opp-input opp-line-sheet-input"
+                                              min={1}
+                                              value={line.quantity}
+                                              onChange={(e) => updateLine(line.lineId, { quantity: e.target.value })}
+                                              placeholder="1"
+                                              aria-label={`${line.productName || '제품'} 수량`}
+                                            />
+                                          </td>
+                                          <td className="opp-line-sheet-td" data-label="할인율">
+                                            <input
+                                              type="text"
+                                              className="opp-input opp-line-sheet-input"
+                                              value={line.discountRate}
+                                              onChange={(e) => handleLineDiscountRateChange(line.lineId, e)}
+                                              placeholder="0"
+                                              inputMode="decimal"
+                                              aria-label={`${line.productName || '제품'} 할인율`}
+                                            />
+                                          </td>
+                                          <td className="opp-line-sheet-td" data-label="매입 원가">
+                                            <input
+                                              type="text"
+                                              className="opp-input opp-line-sheet-input"
+                                              value={line.purchaseCostTotal}
+                                              onChange={(e) => handleLinePurchaseCostChange(line.lineId, e)}
+                                              placeholder="0"
+                                              inputMode="numeric"
+                                              title="직접 입력 가능. 제품을 선택하면 원가×수량이 한 번 채워지며 이후에도 수정할 수 있습니다."
+                                              aria-label={`${line.productName || '제품'} 매입 원가`}
+                                            />
+                                          </td>
+                                          <td className="opp-line-sheet-td" data-label="차감금액">
+                                            <input
+                                              type="text"
+                                              className="opp-input opp-line-sheet-input"
+                                              value={line.discountAmount}
+                                              onChange={(e) => handleLineDiscountAmountChange(line.lineId, e)}
+                                              placeholder="0"
+                                              inputMode="numeric"
+                                              aria-label={`${line.productName || '제품'} 차감금액`}
+                                            />
+                                          </td>
+                                          <td className="opp-line-sheet-td" data-label="기타금액">
+                                            <input
+                                              type="text"
+                                              className="opp-input opp-line-sheet-input"
+                                              inputMode="numeric"
+                                              value={commRows[0]?.commissionAmount ?? ''}
+                                              onChange={(e) =>
+                                                updateCommissionRecipientOnLine(line.lineId, commRows[0].id, {
+                                                  commissionAmount: formatNumberInput(e.target.value)
+                                                })
+                                              }
+                                              placeholder="0"
+                                              aria-label={`${line.productName || '제품'} 기타금액`}
+                                              title="첫 번째 기타 금액 행과 동일합니다. 추가 금액이 있으면 아래 행에서 입력합니다."
+                                            />
+                                          </td>
+                                        </tr>
+                                        {commRows.length > 1
+                                          ? commRows.map((row, idx) => (
+                                            <tr
+                                              key={row.id}
+                                              className={`opp-line-sheet-tr-comm opp-line-sheet-tr-comm-data ${stripeClass}`}
+                                            >
+                                              <td
+                                                className="opp-line-sheet-td opp-line-sheet-td--product opp-line-sheet-td--comm-actions"
+                                                data-label=""
+                                              >
+                                                <div className="opp-line-sheet-comm-actions-only">
+                                                  <button
+                                                    type="button"
+                                                    className="opp-commission-remove opp-line-sheet-comm-remove"
+                                                    onClick={() => removeCommissionRecipientFromLine(line.lineId, row.id)}
+                                                    disabled={commRows.length <= 1}
+                                                    aria-label={`${line.productName || '제품'} 기타 금액 행 ${idx + 1} 제거`}
+                                                    title="행 제거"
+                                                  >
+                                                    <span className="material-symbols-outlined" aria-hidden>
+                                                      delete
+                                                    </span>
+                                                  </button>
+                                                </div>
+                                              </td>
+                                              <td className="opp-line-sheet-td opp-line-sheet-td--comm-skip" aria-hidden="true">
+                                                <span className="opp-line-sheet-na">—</span>
+                                              </td>
+                                              <td className="opp-line-sheet-td opp-line-sheet-td--comm-skip" aria-hidden="true">
+                                                <span className="opp-line-sheet-na">—</span>
+                                              </td>
+                                              <td className="opp-line-sheet-td opp-line-sheet-td--comm-skip" aria-hidden="true">
+                                                <span className="opp-line-sheet-na">—</span>
+                                              </td>
+                                              <td className="opp-line-sheet-td opp-line-sheet-td--comm-skip" aria-hidden="true">
+                                                <span className="opp-line-sheet-na">—</span>
+                                              </td>
+                                              <td className="opp-line-sheet-td opp-line-sheet-td--comm-skip" aria-hidden="true">
+                                                <span className="opp-line-sheet-na">—</span>
+                                              </td>
+                                              <td className="opp-line-sheet-td opp-line-sheet-td--comm-skip" aria-hidden="true">
+                                                <span className="opp-line-sheet-na">—</span>
+                                              </td>
+                                              <td className="opp-line-sheet-td opp-line-sheet-td--comm-skip" aria-hidden="true">
+                                                <span className="opp-line-sheet-na">—</span>
+                                              </td>
+                                              {idx === 0 ? (
+                                                <td
+                                                  className="opp-line-sheet-td opp-line-sheet-td--comm-skip"
+                                                  aria-hidden="true"
+                                                  data-label=""
+                                                >
+                                                  <span className="opp-line-sheet-na">—</span>
+                                                </td>
+                                              ) : (
+                                                <td className="opp-line-sheet-td" data-label="기타 금액">
+                                                  <label className="opp-line-sheet-comm-field">
+                                                    <span className="opp-line-sheet-comm-field-label">금액</span>
+                                                    <input
+                                                      type="text"
+                                                      className="opp-input opp-line-sheet-input"
+                                                      inputMode="numeric"
+                                                      value={row.commissionAmount}
+                                                      onChange={(e) =>
+                                                        updateCommissionRecipientOnLine(line.lineId, row.id, {
+                                                          commissionAmount: formatNumberInput(e.target.value)
+                                                        })
+                                                      }
+                                                      placeholder="0"
+                                                    />
+                                                  </label>
+                                                </td>
+                                              )}
+                                            </tr>
+                                          ))
+                                          : null}
+                                      </React.Fragment>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                          {channelDistributorList.length > 0 && lineItems.some((l) => l.priceBasis === 'channel') ? (
+                            <div className="opp-line-sheet-global-chips-wrap">
+                              <span className="opp-line-sheet-global-chips-label">등록된 유통사</span>
+                              <ul className="opp-channel-distributor-chips opp-line-sheet-global-chips" aria-label="등록된 유통사">
+                                {channelDistributorList.map((x) => (
+                                  <li key={x} className="opp-channel-distributor-chip">
+                                    <span className="opp-channel-distributor-chip-text">{x}</span>
+                                    {canRemoveChannelDistributor ? (
+                                      <button
+                                        type="button"
+                                        className="opp-channel-distributor-chip-remove"
+                                        onClick={() => void removeChannelDistributor(x)}
+                                        aria-label={`${x} 목록에서 제거`}
+                                        title="목록에서 제거 (Admin 이상)"
+                                      >
+                                        ×
+                                      </button>
+                                    ) : null}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                      {/* 계산 요약: 제품별 + 전체 합계 — 제품 행이 있을 때만 표시 */}
+                      {lineItems.length > 0 ? (
+                        <div className="opp-summary-box">
+                          {lineItems.map((line) => {
+                            const lineFinal = computeLineFinalAmount(line);
+                            const lineComm = (Array.isArray(line.commissionRecipients) ? line.commissionRecipients : []).reduce(
+                              (s, r) => s + parseNumber(r.commissionAmount),
+                              0
+                            );
+                            const lineNet = computeLineNetMargin(line);
+                            const lineNetShown = lineNet != null ? lineNet - lineComm : null;
+                            return (
+                              <div key={line.lineId} className="opp-summary-per-line">
+                                <div className="opp-summary-per-line-title">{line.productName || '제품'}</div>
+                                <div className="opp-summary-line-metrics" role="group" aria-label={`${line.productName || '제품'} 요약`}>
+                                  <div className="opp-summary-line-metric">
+                                    <span className="opp-summary-line-label">차감</span>
+                                    <span className="opp-summary-line-val">- {formatCurrencyDisplay(computeLineDeduction(line), form.currency)}</span>
+                                  </div>
+                                  <div className="opp-summary-line-metric opp-summary-line-metric--main">
+                                    <span className="opp-summary-line-label">최종</span>
+                                    <span className="opp-summary-line-val opp-summary-line-val--main">{formatCurrencyDisplay(lineFinal, form.currency)}</span>
+                                  </div>
+                                  <div className="opp-summary-line-metric opp-summary-line-metric--margin">
+                                    <span className="opp-summary-line-label">순마진</span>
+                                    <span className="opp-summary-line-val opp-summary-line-val--margin">
+                                      {line.productId && productById[line.productId] && lineNetShown != null
+                                        ? formatCurrencyDisplay(lineNetShown, form.currency)
+                                        : '—'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                          <div className="opp-summary-divider" aria-hidden />
+                          <div className="opp-summary-total-block">
+                            <div className="opp-summary-total-grid">
+                              <div className="opp-summary-total-stack">
+                                <div className="opp-summary-total-pill opp-summary-total-pill--deduct">
+                                  <span className="opp-summary-total-pill-label">전체 차감</span>
+                                  <span className="opp-summary-total-pill-val">- {formatCurrencyDisplay(computeTotalDeduction(), form.currency)}</span>
+                                </div>
+                                <div className="opp-summary-total-pill opp-summary-total-pill--margin" aria-label="마진 합계">
+                                  <span className="opp-summary-total-pill-label">마진 합계</span>
+                                  <span className="opp-summary-total-pill-val opp-summary-total-pill-val--margin">
+                                    {netMarginAfterCommission != null ? formatCurrencyDisplay(netMarginAfterCommission, form.currency) : '—'}
+                                  </span>
+                                </div>
+                                {forecastExpectedRevenue != null ? (
+                                  <div
+                                    className="opp-summary-total-pill opp-summary-total-pill--forecast"
+                                    aria-label="Forecast 예상 매출"
+                                    title={`전체 최종 금액 × 단계 Forecast (${forecastPctForStage}%)`}
+                                  >
+                                    <span className="opp-summary-total-pill-label">Forecast</span>
+                                    <span className="opp-summary-total-pill-meta">{forecastStageLabel} · {forecastPctForStage}%</span>
+                                    <span className="opp-summary-total-pill-val opp-summary-total-pill-val--forecast">
+                                      {formatCurrencyDisplay(forecastExpectedRevenue, form.currency)}
+                                    </span>
+                                  </div>
+                                ) : null}
+                              </div>
+                              <div className="opp-summary-total-hero" aria-label="전체 최종 금액">
+                                <span className="opp-summary-total-hero-label">전체 최종</span>
+                                <span className="opp-summary-total-hero-val">
+                                  {formatCurrencyDisplay(computeTotalFinalAmount(), form.currency)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+
+                    </div>
+                    <div
+                      className={`opp-tab-panel opp-tab-panel--schedule-only${oppFormSectionTab === 'schedule' ? ' opp-tab-panel--active' : ''}`}
+                      role="tabpanel"
+                      id="opp-section-tab-panel-schedule"
+                      aria-labelledby="opp-section-tab-btn-schedule"
+                      hidden={oppFormSectionTab !== 'schedule'}
+                    >
+                      <aside className="opp-modal-form-finance opp-modal-form-finance--full-width" aria-label="기회 일정 및 계약·계산서·수금">
+                        <div className="opp-schedule-dates-and-cal">
+                          <div className="opp-form-dates-top opp-form-dates-top--sidebar" aria-label="기회 일정">
+                            <div className="opp-form-dates-sidebar-head">
+                              <span className="opp-form-dates-sidebar-head-title">기회 일정</span>
+                              {canManageScheduleFieldDefs ? (
+                                <button
+                                  type="button"
+                                  className="opp-form-dates-sidebar-add-def"
+                                  title="회사별 추가 일정 항목 정의"
+                                  aria-label="회사별 추가 일정 항목 정의"
+                                  onClick={() => setShowScheduleFieldsManageModal(true)}
+                                >
+                                  <span className="material-symbols-outlined" aria-hidden>
+                                    add
+                                  </span>
+                                </button>
+                              ) : null}
+                            </div>
+                            {!wonOnlyScheduleEditable ? (
+                              <p className="opp-form-dates-won-banner">
+                                계약일·전체 완료·증서 전달은 <strong>수주 성공(Won)</strong> 단계에서만 편집할 수 있습니다. 회사 맞춤 일정은 정의에서 &quot;수주 전&quot;으로 설정한 항목만 지금 단계에서 편집할 수 있습니다.
+                              </p>
+                            ) : null}
+                            <div className="opp-form-dates-row opp-form-dates-row--triple">
+                              <div className="opp-form-dates-top-field">
+                                <span className="opp-form-dates-top-label">시작일</span>
                                 <input
                                   type="date"
                                   className="opp-input opp-input--date"
-                                  value={entry.date}
-                                  onChange={(e) => handleCollectionDateChange(entry.id, e.target.value)}
+                                  value={form.startDate}
+                                  onChange={(e) => handleChange('startDate', e.target.value)}
                                 />
-                              </label>
-                              <button
-                                type="button"
-                                className="opp-btn-light opp-btn-light--danger opp-btn-icon"
-                                onClick={() => removeCollectionEntry(entry.id)}
-                                disabled={collectionEntries.length <= 1}
-                                aria-label={`수금 ${index + 1} 항목 삭제`}
-                                title="수금 항목 삭제"
-                              >
-                                <span className="material-symbols-outlined" aria-hidden="true">delete</span>
-                              </button>
+                              </div>
+                              <div className="opp-form-dates-top-field">
+                                <span className="opp-form-dates-top-label">구매 예정 날짜</span>
+                                <input
+                                  type="date"
+                                  className="opp-input opp-input--date"
+                                  value={form.targetDate}
+                                  onChange={(e) => handleChange('targetDate', e.target.value)}
+                                />
+                              </div>
+                              <div className="opp-form-dates-top-field">
+                                <span className="opp-form-dates-top-label">계약일</span>
+                                <input
+                                  type="date"
+                                  className="opp-input opp-input--date"
+                                  value={form.saleDate}
+                                  onChange={(e) => handleChange('saleDate', e.target.value)}
+                                  aria-label="계약일"
+                                  disabled={!wonOnlyScheduleEditable}
+                                />
+                              </div>
                             </div>
-                          ))}
+                            <div className="opp-form-dates-row opp-form-dates-row--pair">
+                              <div className="opp-form-dates-top-field">
+                                <span className="opp-form-dates-top-label">전체 완료 날짜</span>
+                                <input
+                                  type="date"
+                                  className="opp-input opp-input--date"
+                                  value={form.fullCollectionCompleteDate}
+                                  onChange={(e) => {
+                                    fullCollectionDateTouchedRef.current = true;
+                                    handleChange('fullCollectionCompleteDate', e.target.value);
+                                  }}
+                                  aria-label="전체 완료 날짜"
+                                  disabled={!wonOnlyScheduleEditable}
+                                />
+                                <p className="opp-form-dates-top-hint">
+                                  수금 누적이 계약 금액 이상이 되면, 수금일 중 가장 늦은 날짜로 자동 채워집니다.
+                                  {wonOnlyScheduleEditable ? ' 필요 시 수정할 수 있습니다.' : ''}
+                                </p>
+                              </div>
+                              <div className="opp-form-dates-top-field">
+                                <span className="opp-form-dates-top-label">라이선스 증서 전달 날짜</span>
+                                <input
+                                  type="date"
+                                  className="opp-input opp-input--date"
+                                  value={form.licenseCertificateDeliveredDate}
+                                  onChange={(e) => handleChange('licenseCertificateDeliveredDate', e.target.value)}
+                                  aria-label="라이선스 증서 전달 날짜"
+                                  disabled={!wonOnlyScheduleEditable}
+                                />
+                                <p className="opp-form-dates-top-hint">
+                                  증서를 고객에게 넘긴 날을 기록합니다.
+                                  {wonOnlyScheduleEditable
+                                    ? ' 문서 영역에서 파일을 올리면 오늘 날짜로 채울지 확인 창이 뜹니다.'
+                                    : ' 수주 성공 후에는 문서 업로드 시 오늘 날짜 반영 여부를 묻습니다.'}
+                                </p>
+                              </div>
+                            </div>
+                            <section className="opp-finance-section">
+                              <div className="opp-finance-heading">계약·계산서·수금 관리</div>
+                              <div className="opp-finance-cards">
+                                <div className="opp-finance-cards-row opp-finance-cards-row--contract-invoice">
+                                  <div className="opp-finance-card">
+                                    <div className="opp-finance-card-title">계약금액</div>
+                                    <div className="opp-finance-grid">
+                                      <label className="opp-label">
+                                        <span>금액</span>
+                                        <input
+                                          type="text"
+                                          inputMode="numeric"
+                                          pattern="[0-9,]*"
+                                          className="opp-input"
+                                          placeholder="숫자만 입력"
+                                          value={form.contractAmount}
+                                          onChange={(e) => handleChange('contractAmount', formatNumberInput(e.target.value))}
+                                        />
+                                      </label>
+                                      <label className="opp-label">
+                                        <span>날짜</span>
+                                        <input
+                                          type="date"
+                                          className="opp-input opp-input--date"
+                                          value={form.saleDate}
+                                          onChange={(e) => handleChange('saleDate', e.target.value)}
+                                          aria-label="계약일"
+                                          disabled={!wonOnlyScheduleEditable}
+                                        />
+                                      </label>
+                                    </div>
+                                  </div>
+
+                                  <div className="opp-finance-card">
+                                    <div className="opp-finance-card-title">계산서 금액</div>
+                                    <div className="opp-finance-grid">
+                                      <label className="opp-label">
+                                        <span>금액</span>
+                                        <input
+                                          type="text"
+                                          inputMode="numeric"
+                                          pattern="[0-9,]*"
+                                          className="opp-input"
+                                          placeholder="숫자만 입력"
+                                          value={form.invoiceAmount}
+                                          onChange={(e) => handleChange('invoiceAmount', formatNumberInput(e.target.value))}
+                                        />
+                                      </label>
+                                      <label className="opp-label">
+                                        <span>날짜</span>
+                                        <input
+                                          type="date"
+                                          className="opp-input opp-input--date"
+                                          value={form.invoiceAmountDate}
+                                          onChange={(e) => handleChange('invoiceAmountDate', e.target.value)}
+                                        />
+                                      </label>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="opp-finance-cards-row opp-finance-cards-row--collection">
+                                  <div className="opp-finance-card">
+                                    <div className="opp-finance-collection-head">
+                                      <span className="opp-finance-subheading">수금 완료금액 (누적)</span>
+                                      <button
+                                        type="button"
+                                        className="opp-btn-light opp-btn-icon"
+                                        onClick={addCollectionEntry}
+                                        aria-label="수금 항목 추가"
+                                        title="수금 항목 추가"
+                                      >
+                                        <span className="material-symbols-outlined" aria-hidden="true">add</span>
+                                      </button>
+                                    </div>
+                                    <div className="opp-finance-collection-list">
+                                      {collectionEntries.map((entry, index) => (
+                                        <div key={entry.id} className="opp-finance-collection-row">
+                                          <label className="opp-label">
+                                            <span>{`수금 ${index + 1} 금액`}</span>
+                                            <input
+                                              type="text"
+                                              inputMode="numeric"
+                                              pattern="[0-9,]*"
+                                              className="opp-input"
+                                              placeholder="숫자만 입력"
+                                              value={entry.amount}
+                                              onChange={(e) => handleCollectionAmountChange(entry.id, e.target.value)}
+                                            />
+                                          </label>
+                                          <label className="opp-label">
+                                            <span>{`수금 ${index + 1} 날짜`}</span>
+                                            <input
+                                              type="date"
+                                              className="opp-input opp-input--date"
+                                              value={entry.date}
+                                              onChange={(e) => handleCollectionDateChange(entry.id, e.target.value)}
+                                            />
+                                          </label>
+                                          <button
+                                            type="button"
+                                            className="opp-btn-light opp-btn-light--danger opp-btn-icon"
+                                            onClick={() => removeCollectionEntry(entry.id)}
+                                            disabled={collectionEntries.length <= 1}
+                                            aria-label={`수금 ${index + 1} 항목 삭제`}
+                                            title="수금 항목 삭제"
+                                          >
+                                            <span className="material-symbols-outlined" aria-hidden="true">delete</span>
+                                          </button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {(canManageScheduleFieldDefs || financeFieldDefs.length > 0) ? (
+                                  <div className="opp-finance-card opp-finance-card--extra-fields">
+                                    <div className="opp-finance-collection-head">
+                                      <span className="opp-finance-subheading">추가 필드</span>
+                                      {canManageScheduleFieldDefs ? (
+                                        <button
+                                          type="button"
+                                          className="opp-btn-light opp-btn-icon"
+                                          title="회사별 계약·수금 추가 필드 정의"
+                                          aria-label="회사별 계약·수금 추가 필드 정의"
+                                          onClick={() => setShowFinanceFieldsManageModal(true)}
+                                        >
+                                          <span className="material-symbols-outlined" aria-hidden="true">add</span>
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                    <CustomFieldsSection
+                                      hideTitle
+                                      definitions={financeFieldDefs}
+                                      values={financeCustomFieldValues}
+                                      onChangeValues={(key, v) =>
+                                        setFinanceCustomFieldValues((prev) => ({
+                                          ...prev,
+                                          [key]: v
+                                        }))
+                                      }
+                                      fieldClassName="opp-label"
+                                      inputClassName="opp-input"
+                                    />
+                                  </div>
+                                ) : null}
+                              </div>
+                            </section>
+                            {scheduleFieldDefs.filter((d) => d.type === 'date').map((def) => {
+                              const scheduleFieldEditable =
+                                wonOnlyScheduleEditable || Boolean(def.options?.editableBeforeWon);
+                              return (
+                                <div key={def._id || def.key} className="opp-form-dates-top-field">
+                                  <span className="opp-form-dates-top-label">{def.label || def.key}</span>
+                                  <input
+                                    type="date"
+                                    className="opp-input opp-input--date"
+                                    value={scheduleCustomDates[def.key] || ''}
+                                    onChange={(e) => handleScheduleCustomDateChange(def.key, e.target.value)}
+                                    aria-label={def.label || def.key}
+                                    disabled={!scheduleFieldEditable}
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <OpportunityModalScheduleCalendar
+                            marks={scheduleCalendarMarks}
+                            resetKey={isEdit ? String(oppId || '') : 'create'}
+                          />
                         </div>
-                      </div>
+                      </aside>
                     </div>
-                  </section>
-                </aside>
+                    <div
+                      className={`opp-tab-panel${oppFormSectionTab === 'records' ? ' opp-tab-panel--active' : ''}`}
+                      role="tabpanel"
+                      id="opp-section-tab-panel-records"
+                      aria-labelledby="opp-section-tab-btn-records"
+                      hidden={oppFormSectionTab !== 'records'}
+                    >
+
+                      {/* 증서 · 자료 — 저장된 기회(수정)에서만. Drive 테이블은 shared/register-sale-docs-drive.js */}
+                      {isEdit ? (
+                        <section className="customer-company-detail-section register-sale-docs opp-modal-register-sale-docs">
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            multiple
+                            style={{ display: 'none' }}
+                            onChange={(e) => { handleDirectFileUpload(e.target.files); e.target.value = ''; }}
+                            disabled={!canDocsUpload}
+                            aria-hidden="true"
+                          />
+                          <div className="customer-company-detail-section-head">
+                            <h3 className="customer-company-detail-section-title">
+                              <span className="material-symbols-outlined">folder</span>
+                              증서 · 자료
+                            </h3>
+                            <button
+                              type="button"
+                              className="customer-company-detail-btn-all"
+                              onClick={() => { if (canDocsUpload && fileInputRef.current) fileInputRef.current.click(); }}
+                              disabled={!canDocsUpload}
+                              title={
+                                canDocsUpload
+                                  ? '파일 추가'
+                                  : driveUploading
+                                    ? '업로드 중'
+                                    : '고객사(사업자번호 포함) 또는 담당자 선택 후 업로드 가능'
+                              }
+                              aria-label="파일 추가"
+                            >
+                              <span className="material-symbols-outlined">add</span>
+                            </button>
+                          </div>
+
+                          <div
+                            className={`register-sale-docs-crm-uploads ${crmListDropActive ? 'register-sale-docs-crm-uploads--drop-active' : ''} ${driveUploading || !canDocsUpload ? 'register-sale-docs-crm-uploads--disabled' : ''}`}
+                            onDragEnter={handleDocsDragEnter}
+                            onDragOver={handleDocsDragOver}
+                            onDragLeave={handleDocsDragLeave}
+                            onDrop={handleDocsDrop}>
+                            <div className="opp-register-sale-docs-crm-title-row">
+                              <h4 className="register-sale-docs-crm-uploads-title">
+                                <span className="material-symbols-outlined">history_edu</span>
+                                리스트
+                              </h4>
+                              {effectiveDriveFolderIdForList ? (
+                                <button
+                                  type="button"
+                                  className="opp-register-sale-docs-crm-refresh"
+                                  onClick={() => void handleRefreshDriveDocList()}
+                                  disabled={driveUploading || loadingDriveFolderList || driveIndexSyncing}
+                                  title="Drive 폴더와 CRM 저장 목록을 맞춘 뒤, 화면을 새로고침합니다"
+                                >
+                                  <span className="material-symbols-outlined" aria-hidden="true">
+                                    refresh
+                                  </span>
+                                  목록 새로고침
+                                </button>
+                              ) : null}
+                            </div>
+                            <p className="register-sale-docs-crm-uploads-hint">
+                              CRM에 기록된 파일과, 같은 폴더를 Drive API로 조회한 항목을 합쳐 표시합니다. Drive 웹에서만 올린 파일을 CRM 저장 목록(MongoDB)에도 넣으려면 「목록 새로고침」으로 동기화하세요. 제품별 하위 폴더는 만들지 않습니다. 이 창에서 파일을 올리면 완료 후 「라이선스 증서 전달 날짜」를 오늘로 기록할지 묻습니다.
+                            </p>
+                            {driveListError ? (
+                              <p className="register-sale-docs-error" role="alert">
+                                {driveListError}
+                              </p>
+                            ) : null}
+                            {mergedDriveDocsSorted.length === 0 ? (
+                              <div
+                                className={`register-sale-docs-crm-empty ${crmListDropActive ? 'register-sale-docs-crm-empty--active' : ''}`}
+                                onClick={() => {
+                                  if (canDocsUpload && fileInputRef.current) fileInputRef.current.click();
+                                }}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={(e) => {
+                                  if ((e.key === 'Enter' || e.key === ' ') && canDocsUpload && fileInputRef.current) {
+                                    e.preventDefault();
+                                    fileInputRef.current.click();
+                                  }
+                                }}
+                              >
+                                <span className="material-symbols-outlined register-sale-docs-crm-empty-icon">inbox</span>
+                                <span className="register-sale-docs-crm-empty-text">
+                                  {driveUploading
+                                    ? '업로드 중…'
+                                    : loadingDriveFolderList
+                                      ? '폴더 목록을 불러오는 중…'
+                                      : '등록된 항목이 없습니다. 파일을 여기에 놓거나 위쪽 추가 버튼으로 올리세요. Drive 웹에서만 올린 뒤에는 「목록 새로고침」을 눌러 주세요.'}
+                                </span>
+                              </div>
+                            ) : (
+                              <RegisterSaleDocsCrmTable
+                                rows={mergedDriveDocsSorted}
+                                formatDriveFileDate={formatDriveFileDate}
+                                driveUploading={driveUploading}
+                                crmDriveDeletingId={driveDocDeletingId}
+                                onDeleteRow={handleDeleteMergedDriveDoc}
+                              />
+                            )}
+                          </div>
+                          {driveError ? <p className="register-sale-docs-error">{driveError}</p> : null}
+                          {driveUploadNotice && !driveError ? (
+                            <p className="register-sale-docs-success" role="status">
+                              {driveUploadNotice}
+                            </p>
+                          ) : null}
+                        </section>
+                      ) : null}
+
+                      {isEdit && oppId ? (
+                        <div className="opp-comments-section">
+                          <div className="opp-comments-heading">코멘트</div>
+
+                          <ul className="opp-comments-list">
+                            {roots.map((c) => renderCommentItem(c))}
+                          </ul>
+                          <div className="customer-company-detail-journal-input-wrap opp-modal-journal-like-company-detail">
+                            <p className="opp-comments-hint opp-modal-journal-hint">
+                              루트 메모는 고객사 상세의 「지원 및 업무 기록」 또는 연락처 상세의 「업무 기록」과 동일하게 등록됩니다. (등록일시·음성 → 메모 저장)
+                            </p>
+                            {!form.customerCompanyId && !form.customerCompanyEmployeeId ? (
+                              <p className="customer-company-detail-journal-error">고객사 또는 담당자(연락처)를 선택한 뒤 업무 기록을 등록할 수 있습니다.</p>
+                            ) : (
+                              <>
+                                {journalInputError ? (
+                                  <p className="customer-company-detail-journal-error">{journalInputError}</p>
+                                ) : null}
+                                <div className="customer-company-detail-journal-datetime-row">
+                                  <label htmlFor="opp-modal-journal-datetime" className="customer-company-detail-journal-datetime-label">
+                                    등록일시
+                                  </label>
+                                  <input
+                                    id="opp-modal-journal-datetime"
+                                    type="datetime-local"
+                                    className="customer-company-detail-journal-datetime"
+                                    value={journalDateTime}
+                                    onChange={(e) => setJournalDateTime(e.target.value)}
+                                    disabled={savingJournal || audioUploading}
+                                    aria-label="업무 기록 등록일시"
+                                  />
+                                </div>
+                                <textarea
+                                  className="customer-company-detail-journal-input"
+                                  placeholder="회사 단위 메모 또는 업무 기록 (여러 직원 미팅 등)..."
+                                  rows={3}
+                                  maxLength={5000}
+                                  value={newComment}
+                                  onChange={(e) => setNewComment(e.target.value)}
+                                  disabled={savingJournal || audioUploading || commentBusy}
+                                />
+                                <input
+                                  ref={oppJournalAudioInputRef}
+                                  type="file"
+                                  accept="audio/*,.mp3,.wav,.m4a,.webm"
+                                  className="customer-company-detail-audio-input-hidden"
+                                  onChange={(e) => {
+                                    if (e.target.files?.length) uploadAudioForOpportunityJournal(e.target.files);
+                                    e.target.value = '';
+                                  }}
+                                  aria-hidden="true"
+                                />
+                                <div
+                                  className={`customer-company-detail-journal-audio-drop ${audioDropActive ? 'is-dragover' : ''} ${audioUploading ? 'is-uploading' : ''}`}
+                                  onDragOver={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    if (!audioUploading && !savingJournal) setAudioDropActive(true);
+                                  }}
+                                  onDragLeave={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    if (!e.currentTarget.contains(e.relatedTarget)) setAudioDropActive(false);
+                                  }}
+                                  onDrop={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setAudioDropActive(false);
+                                    if (!audioUploading && !savingJournal && e.dataTransfer?.files?.length) {
+                                      uploadAudioForOpportunityJournal(e.dataTransfer.files);
+                                    }
+                                  }}
+                                >
+                                  <span className="material-symbols-outlined">audio_file</span>
+                                  <span>
+                                    {audioUploading
+                                      ? '음성 처리 중… 전사·요약이 끝나면 AssemblyAI에 올린 음성 원본은 서버에서 자동 삭제됩니다.'
+                                      : '음성 파일 드래그앤드롭 또는 선택 (MP3/WAV/M4A/WebM). 처리가 끝나면 AssemblyAI 쪽 음성·전사 원본은 삭제됩니다.'}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    className="customer-company-detail-journal-audio-btn"
+                                    onClick={() => oppJournalAudioInputRef.current?.click()}
+                                    disabled={audioUploading || savingJournal}
+                                  >
+                                    파일 선택
+                                  </button>
+                                </div>
+                                <div className="customer-company-detail-journal-actions">
+                                  <button
+                                    type="button"
+                                    className="customer-company-detail-journal-save"
+                                    onClick={handleSaveOppJournal}
+                                    disabled={
+                                      savingJournal ||
+                                      audioUploading ||
+                                      !newComment.trim() ||
+                                      (!form.customerCompanyId && !form.customerCompanyEmployeeId)
+                                    }
+                                  >
+                                    {savingJournal ? '저장 중...' : '메모 저장'}
+                                  </button>
+                                </div>
+                                {journalSummaryNotice?.text ? (
+                                  <p
+                                    className={`customer-company-detail-summary-notice is-${journalSummaryNotice.type || 'info'}`}
+                                  >
+                                    {journalSummaryNotice.text}
+                                  </p>
+                                ) : null}
+                              </>
+                            )}
+                          </div>
+                          {commentError ? <p className="opp-comment-error">{commentError}</p> : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </form>
               </div>
             </div>
 
@@ -3750,7 +4541,25 @@ export default function OpportunityModal({
                 </button>
               ) : null}
               <button type="button" className="opp-cancel-btn" onClick={onClose}>취소</button>
-              <button type="submit" form="opp-form" className="opp-save-btn" disabled={saving}>
+              {isEdit || typeof onSwitchToEditAfterCreate === 'function' ? (
+                <button
+                  type="button"
+                  className="opp-apply-btn"
+                  disabled={saving}
+                  onClick={() => void handleSubmit(null, { closeAfter: false })}
+                  title="서버에 반영하고 이 창은 열어 둡니다."
+                  aria-label="적용: 저장 후 창 유지"
+                >
+                  {saving ? '저장 중...' : '적용'}
+                </button>
+              ) : null}
+              <button
+                type="submit"
+                form="opp-form"
+                className="opp-save-btn"
+                disabled={saving}
+                title={isEdit ? '저장한 뒤 이 창을 닫습니다.' : '등록한 뒤 이 창을 닫습니다.'}
+              >
                 {saving ? '저장 중...' : isEdit ? '수정' : '추가'}
               </button>
             </div>
@@ -3767,6 +4576,18 @@ export default function OpportunityModal({
             onFieldAdded={() => void fetchScheduleFieldDefs()}
             onDefinitionsUpdated={() => void fetchScheduleFieldDefs()}
             deleteConfirmMessage="이 일정 항목 정의를 삭제할까요? 이미 기회에 저장된 값은 DB에 남을 수 있습니다."
+          />
+        ) : null}
+        {showFinanceFieldsManageModal ? (
+          <CustomFieldsManageModal
+            entityType="salesOpportunityFinance"
+            title="계약·수금 — 회사 맞춤 필드"
+            description="글자·숫자·날짜·선택·체크박스 등 추가 항목을 정의합니다. 필드 키는 자동으로 부여됩니다."
+            getAuthHeader={getAuthHeader}
+            onClose={() => setShowFinanceFieldsManageModal(false)}
+            onFieldAdded={() => void fetchFinanceFieldDefs()}
+            onDefinitionsUpdated={() => void fetchFinanceFieldDefs()}
+            deleteConfirmMessage="이 필드 정의를 삭제할까요? 이미 기회에 저장된 값은 DB에 남을 수 있습니다."
           />
         ) : null}
         {showCompanySearchModal && (
@@ -3841,10 +4662,10 @@ export default function OpportunityModal({
                   ? {}
                   : nextCcId
                     ? {
-                        customerCompanyId: nextCcId,
-                        customerCompanyName: nextCcName,
-                        customerCompanyAddress: nextAddr
-                      }
+                      customerCompanyId: nextCcId,
+                      customerCompanyName: nextCcName,
+                      customerCompanyAddress: nextAddr
+                    }
                     : { customerCompanyId: '', customerCompanyName: '', customerCompanyAddress: '' })
               }));
               if (!personalPurchase) {
@@ -3873,7 +4694,6 @@ export default function OpportunityModal({
                 ...f,
                 currency: list[0]?.currency || f.currency || 'KRW'
               }));
-              setShowProductFields(false);
               setShowProductSearchModal(false);
             }}
           />
@@ -4000,6 +4820,14 @@ export default function OpportunityModal({
           </div>
         ) : null}
       </div>
+      {oppDocMergeOpen ? (
+        <OpportunityMergeFromOpportunity
+          open={oppDocMergeOpen}
+          onClose={() => setOppDocMergeOpen(false)}
+          getAuthHeader={getAuthHeader}
+          mergeContext={opportunityMergeContext}
+        />
+      ) : null}
     </div>
   );
 }

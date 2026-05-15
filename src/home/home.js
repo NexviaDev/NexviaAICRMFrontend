@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import './home.css';
 import { HomeContributionCalcModal } from './home-contribution-calc-modal';
 import HomeKpiExplainModal, { makeHomeKpiExplainSpec } from './home-kpi-explain-modal';
@@ -23,6 +23,17 @@ import OpportunityModal from '@/sales-pipeline/opportunity-modal/opportunity-mod
 import '@/sales-pipeline/opportunity-modal/opportunity-modal.css';
 import HomeLeadDetailModal from './home-lead-detail-modal';
 import HomeFullViewModal from './home-full-view-modal';
+import ProjectFormModal from '@/project/project-form-modal';
+import '@/project/project-form-modal.css';
+import { buildParticipantDirectoryFromOverview } from '@/lib/participant-directory-merge';
+
+/** 프로젝트 KPI에서 편집 모달 열 때 단계 옵션(프로젝트 칸반 기본과 동일) */
+const HOME_PROJECT_KPI_STAGE_OPTIONS = [
+  { value: 'todo', label: '해야 할 일' },
+  { value: 'progress', label: '진행 중' },
+  { value: 'review', label: '검토' },
+  { value: 'done', label: '완료' }
+];
 
 /** 인사이트 권한 확인·차트 로딩 — 파스텔 링 스피너 (그라데이션 없음) */
 function HomePastelSpinner({ size = 'md', label, reducedMotion, className = '' }) {
@@ -48,6 +59,42 @@ function getGreetingForHome() {
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+/**
+ * 수금 KPI 참고·특이 — 카드·설명 모달에서 동일 모델 사용.
+ * 숫자는 `.home-kpi-footnote-num`(적붉은 파스텔)으로 감싸 렌더합니다.
+ */
+function buildGoalKpiFootnoteModel(stats) {
+  const kpi = stats?.kpiSummary;
+  const goal = kpi?.goal;
+  const m = stats?.taskCompletionMeta || {};
+  const tot = Number(m?.totalOpportunities);
+  const won = Number(m?.wonCount) || 0;
+  const inProg = Number(m?.inProgressDealCount);
+  const prog = Number.isFinite(inProg) ? inProg : 0;
+  const an = goal?.collectedKpiAnomalies;
+  const partial = Number(an?.partialByCollectionDateInWindowCount) || 0;
+  const straddle = Number(an?.fullSumIncludesRowsOutsideWindowCount) || 0;
+  const crossYear = Number(an?.contractYearVsCollectionClosedYearMismatchCount) || 0;
+  const reference = Number.isFinite(tot) && tot > 0 ? { tot, won, prog } : null;
+  const anomalies = [];
+  if (partial > 0) {
+    anomalies.push({ kind: 'partial', count: partial, desc: '수금일만 KPI에 맞춰 합산' });
+  }
+  if (straddle > 0) {
+    anomalies.push({ kind: 'straddle', count: straddle, desc: '당기 포함 건·수금 전액 합산' });
+  }
+  if (crossYear > 0) {
+    anomalies.push({ kind: 'crossYear', count: crossYear, desc: '계약연·완납 연도 다름' });
+  }
+  if (!reference && anomalies.length === 0) return null;
+  return { reference, anomalies };
+}
+
+/** @deprecated buildGoalKpiFootnoteModel — HMR·구 호출 호환 */
+function buildGoalKpiCardFootnoteLines(stats) {
+  return buildGoalKpiFootnoteModel(stats);
 }
 
 /**
@@ -1247,14 +1294,27 @@ async function fetchHomeKpiYearMatrix(year, scopeType, scopeId = '') {
   return json;
 }
 
+/** buildHomeKpiOrgAdjustedTargetResolver 가 짧은 간격으로 여러 번 불릴 때 overview 중복 호출 완화 */
+let homeKpiOverviewCache = { at: 0, employees: null };
+const HOME_KPI_OVERVIEW_TTL_MS = 12000;
+
 async function fetchHomeKpiCurrentEmployees() {
+  const now = Date.now();
+  if (
+    Array.isArray(homeKpiOverviewCache.employees) &&
+    now - homeKpiOverviewCache.at < HOME_KPI_OVERVIEW_TTL_MS
+  ) {
+    return homeKpiOverviewCache.employees;
+  }
   const res = await fetch(`${API_BASE}/companies/overview`, {
     headers: getAuthHeader(),
     credentials: 'include'
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json?.error || '회사 직원 목록을 불러오지 못했습니다.');
-  return Array.isArray(json?.employees) ? json.employees : [];
+  const list = Array.isArray(json?.employees) ? json.employees : [];
+  homeKpiOverviewCache = { at: now, employees: list };
+  return list;
 }
 
 async function buildHomeKpiOrgAdjustedTargetResolver({ period, filterUsers = [], filterDepartments = [] }) {
@@ -1334,6 +1394,33 @@ const DASHBOARD_RESPONSE_META_KEYS = new Set([
   'dashboardFingerprint'
 ]);
 
+/** stale 캐시 응답이면 정밀 재조회 생략 가능(구형 필드 누락 시 false) */
+function isHomeStaleDashboardPayloadComplete(j1) {
+  if (!j1 || typeof j1 !== 'object') return false;
+  const fr = j1.forecastPipelineRows;
+  const forecastMetaOk =
+    !Array.isArray(fr) ||
+    fr.length === 0 ||
+    (fr[0] && Object.prototype.hasOwnProperty.call(fr[0], 'forecastProductNames'));
+  const ps = j1.productSalesGraphs;
+  const productSalesQtyOk =
+    ps != null && typeof ps === 'object' && Array.isArray(ps.quantityByProduct);
+  /** 구형 회사 캐시는 kpiCollectedExplain 없이도 “완전”으로 판정되어 정밀 재조회가 끊기면 수금 모달 목록이 비게 됨 */
+  const collectedExplainOk =
+    j1.kpiCollectedExplain != null &&
+    typeof j1.kpiCollectedExplain === 'object' &&
+    Object.prototype.hasOwnProperty.call(j1.kpiCollectedExplain, 'rows');
+  return (
+    j1.dashboardCacheHit &&
+    !j1.dashboardStale &&
+    j1.productSalesGraphs != null &&
+    typeof j1.productSalesGraphs === 'object' &&
+    productSalesQtyOk &&
+    forecastMetaOk &&
+    collectedExplainOk
+  );
+}
+
 /** 정밀 조회 결과에서 이전과 다른 최상위 키만 병합(불필요한 전체 리렌더 완화) */
 function homeDashboardPayloadDiffPatch(prev, next) {
   if (!next) return prev;
@@ -1359,6 +1446,22 @@ function homeDashboardPayloadDiffPatch(prev, next) {
 
 export default function Home() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const homeProjectCurrentUser = useMemo(() => {
+    try {
+      const raw = localStorage.getItem('crm_user');
+      const user = raw ? JSON.parse(raw) : null;
+      if (!user) return null;
+      return {
+        _id: user.id || user._id,
+        name: user.name,
+        email: user.email,
+        avatar: user.avatar || ''
+      };
+    } catch {
+      return null;
+    }
+  }, []);
   const [data, setData] = useState(null);
   const dataRef = useRef(null);
   dataRef.current = data;
@@ -1372,7 +1475,6 @@ export default function Home() {
   const [totals, setTotals] = useState({});
   const [stageDefinitions, setStageDefinitions] = useState([]);
   const [pipelineLoading, setPipelineLoading] = useState(true);
-  const [healthPinged, setHealthPinged] = useState(false);
   /** 인사이트 그래프: 막대 | 꺾은선 — User.listTemplates.homeDashboard 와 동기 */
   const savedHomeDashInit = getSavedHomeDashboardTemplate();
   const [consumerChartMode, setConsumerChartMode] = useState(() =>
@@ -1410,8 +1512,19 @@ export default function Home() {
   const [leadDetailOpen, setLeadDetailOpen] = useState(false);
   const [leadDetailContext, setLeadDetailContext] = useState(null);
   const pipelineMounted = useRef(true);
-  /** 인사이트 그래프: 서버 /auth/me 기준 (localStorage만 쓰면 DB 역할 변경·오래된 캐시와 어긋날 수 있음) */
-  const [insightAccess, setInsightAccess] = useState({ checked: false, seniorPlus: false });
+  /**
+   * 인사이트 영역: 토큰·로컬 crm_user 로 즉시 checked 해제해 대시보드 요청을 앞당김.
+   * seniorPlus 는 /auth/me 수신 시 서버 역할로 다시 맞춤(역할 변경·만료 토큰은 서버가 권한).
+   */
+  const [insightAccess, setInsightAccess] = useState(() => {
+    try {
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('crm_token') : '';
+      if (!token) return { checked: true, seniorPlus: false };
+      return { checked: true, seniorPlus: isAdminOrAboveRole(getStoredCrmUser()?.role) };
+    } catch {
+      return { checked: true, seniorPlus: false };
+    }
+  });
   const insightDeptQ = String(searchParams.get(HOME_INSIGHT_DEPT_PARAM) || '').trim();
   const insightUserQ = String(searchParams.get(HOME_INSIGHT_USER_PARAM) || '').trim();
   const kpiPeriod = normalizeHomeKpiPeriod(searchParams.get(HOME_KPI_PERIOD_PARAM));
@@ -1439,6 +1552,131 @@ export default function Home() {
   });
   /** 대시보드 /reports/dashboard 재조회(기회 저장 등) */
   const [dashboardRefreshTick, setDashboardRefreshTick] = useState(0);
+  const openSalesOpportunityFromKpiExplain = useCallback(
+    (oppId) => {
+      const id = String(oppId || '').trim();
+      if (!id) return;
+      setHomeKpiExplainSpec(null);
+      navigate(`/sales-pipeline?oppModal=edit&oppId=${encodeURIComponent(id)}`);
+    },
+    [navigate]
+  );
+  const [homeProjectModalOpen, setHomeProjectModalOpen] = useState(false);
+  const [homeProjectModalLoading, setHomeProjectModalLoading] = useState(false);
+  const [homeProjectEditing, setHomeProjectEditing] = useState(null);
+  const [homeProjectSaving, setHomeProjectSaving] = useState(false);
+  const [homeProjectTeamMembers, setHomeProjectTeamMembers] = useState([]);
+  const [homeProjectCompanyContext, setHomeProjectCompanyContext] = useState({
+    name: '',
+    businessNumber: '',
+    driveRootUrl: ''
+  });
+
+  const fetchHomeProjectParticipantContext = useCallback(async () => {
+    try {
+      const headers = getAuthHeader();
+      const [teamRes, overviewRes] = await Promise.all([
+        fetch(`${API_BASE}/calendar-events/team-members`, { headers }),
+        fetch(`${API_BASE}/companies/overview`, { headers })
+      ]);
+      const teamData = await teamRes.json().catch(() => ({}));
+      const overviewData = await overviewRes.json().catch(() => ({}));
+      const merged = buildParticipantDirectoryFromOverview(
+        Array.isArray(teamData?.members) ? teamData.members : [],
+        overviewData && typeof overviewData === 'object' ? overviewData : null
+      );
+      setHomeProjectTeamMembers(merged);
+      setHomeProjectCompanyContext({
+        name: String(overviewData?.company?.name || '').trim(),
+        businessNumber: String(overviewData?.company?.businessNumber || '').trim(),
+        driveRootUrl: String(overviewData?.company?.driveRootUrl || '').trim()
+      });
+    } catch {
+      setHomeProjectTeamMembers([]);
+      setHomeProjectCompanyContext({ name: '', businessNumber: '', driveRootUrl: '' });
+    }
+  }, []);
+
+  const openProjectFromKpiExplain = useCallback(
+    async (projectId) => {
+      const id = String(projectId || '').trim();
+      if (!id) return;
+      setHomeKpiExplainSpec(null);
+      setHomeProjectModalOpen(true);
+      setHomeProjectModalLoading(true);
+      setHomeProjectEditing(null);
+      pingBackendHealth(getAuthHeader).catch(() => {});
+      try {
+        const [boardRes] = await Promise.all([
+          fetch(`${API_BASE}/projects/board?projectId=${encodeURIComponent(id)}`, { headers: getAuthHeader() }),
+          fetchHomeProjectParticipantContext()
+        ]);
+        const data = await boardRes.json().catch(() => ({}));
+        if (!boardRes.ok) throw new Error(data.error || '프로젝트를 불러오지 못했습니다.');
+        let item = null;
+        for (const col of data.kanban?.columns || []) {
+          for (const it of col.items || []) {
+            if (String(it?._id || '') === id) {
+              item = it;
+              break;
+            }
+          }
+          if (item) break;
+        }
+        if (!item) throw new Error('프로젝트를 찾을 수 없습니다.');
+        setHomeProjectEditing(item);
+      } catch (e) {
+        window.alert(e.message || '프로젝트를 불러오지 못했습니다.');
+        setHomeProjectModalOpen(false);
+      } finally {
+        setHomeProjectModalLoading(false);
+      }
+    },
+    [fetchHomeProjectParticipantContext]
+  );
+
+  const closeHomeProjectModal = useCallback(() => {
+    if (homeProjectSaving) return;
+    setHomeProjectModalOpen(false);
+    setHomeProjectModalLoading(false);
+    setHomeProjectEditing(null);
+  }, [homeProjectSaving]);
+
+  const handleSaveHomeProject = useCallback(
+    async (payload) => {
+      const proj = homeProjectEditing;
+      if (!proj?._id) return;
+      setHomeProjectSaving(true);
+      try {
+        const isLegacyTask = proj?.entityType === 'legacyTask' && proj?.sourceProjectId;
+        let path = `${API_BASE}/projects`;
+        let method = 'POST';
+        if (isLegacyTask) {
+          path = `${API_BASE}/projects/${encodeURIComponent(proj.sourceProjectId)}/tasks/${encodeURIComponent(proj._id)}`;
+          method = 'PATCH';
+        } else {
+          path = `${API_BASE}/projects/${encodeURIComponent(proj._id)}`;
+          method = 'PATCH';
+        }
+        const res = await fetch(path, {
+          method,
+          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || '프로젝트 저장에 실패했습니다.');
+        setHomeProjectModalOpen(false);
+        setHomeProjectEditing(null);
+        setDashboardRefreshTick((t) => t + 1);
+      } catch (err) {
+        window.alert(err.message || '프로젝트 저장에 실패했습니다.');
+      } finally {
+        setHomeProjectSaving(false);
+      }
+    },
+    [homeProjectEditing]
+  );
+
   /** 틱이 막 올랐을 때만 스테일 1단계 생략(틱>0 고정이면 필터 변경 시에도 스테일이 막히는 문제 방지) */
   const lastHandledDashboardRefreshTickRef = useRef(0);
   const [homeForecastActiveFilters, setHomeForecastActiveFilters] = useState({
@@ -1787,64 +2025,121 @@ export default function Home() {
 
       const skipStaleFirst = dashboardRefreshTick > lastHandledDashboardRefreshTickRef.current;
       let appliedStale = false;
+      let freshAppliedOk = false;
+      const cancelFreshIfStaleDone = new AbortController();
+      const freshSignal =
+        typeof AbortSignal !== 'undefined' && typeof AbortSignal.any === 'function'
+          ? AbortSignal.any([ac.signal, cancelFreshIfStaleDone.signal])
+          : ac.signal;
+
+      const tryCancelFreshOnly = () => {
+        try {
+          cancelFreshIfStaleDone.abort();
+        } catch (_) {
+          /* ignore */
+        }
+      };
+
+      const applyStalePayload = (j1) => {
+        if (cancelled || freshAppliedOk || !j1 || typeof j1 !== 'object') return;
+        setData(j1);
+        appliedStale = true;
+        if (!isRefetch) setLoading(false);
+        if (isHomeStaleDashboardPayloadComplete(j1)) {
+          if (!cancelled) setDashboardDataBusy(false);
+          tryCancelFreshOnly();
+        }
+      };
+
+      const applyFreshPayload = (j2) => {
+        if (cancelled || !j2 || typeof j2 !== 'object') return;
+        freshAppliedOk = true;
+        setData((prev) => {
+          if (skipStaleFirst || !appliedStale) return j2;
+          const prevKey = prev && typeof prev === 'object' ? String(prev.dashboardCacheKey || '') : '';
+          const nextKey = String(j2.dashboardCacheKey || '');
+          if (prevKey && nextKey && prevKey !== nextKey) return j2;
+          return homeDashboardPayloadDiffPatch(prev, j2);
+        });
+        if (!isRefetch) setLoading(false);
+      };
 
       try {
+        const freshUrl = `${API_BASE}/reports/dashboard?${q}`;
+        const tasks = [];
+
         if (!skipStaleFirst) {
           const qs = new URLSearchParams(q);
           qs.set('allowStaleCache', '1');
-          const r1 = await fetch(`${API_BASE}/reports/dashboard?${qs}`, {
-            headers: getAuthHeader(),
-            signal: ac.signal
-          });
-          if (!cancelled && r1.status === 204) {
-            /* 회사 캐시 없음 — 정밀만 */
-          } else if (!cancelled && r1.ok) {
-            const j1 = await r1.json().catch(() => null);
-            if (j1 && typeof j1 === 'object') {
-              setData(j1);
-              appliedStale = true;
-              if (!isRefetch) setLoading(false);
-              /** 구형 회사 캐시: productSalesGraphs·Forecast 제품 분배 필드 누락 시 정밀 조회 필요 */
-              const fr = j1.forecastPipelineRows;
-              const forecastMetaOk =
-                !Array.isArray(fr) ||
-                fr.length === 0 ||
-                (fr[0] && Object.prototype.hasOwnProperty.call(fr[0], 'forecastProductNames'));
-              const ps = j1.productSalesGraphs;
-              const productSalesQtyOk =
-                ps != null &&
-                typeof ps === 'object' &&
-                Array.isArray(ps.quantityByProduct);
-              const stalePayloadComplete =
-                j1.dashboardCacheHit &&
-                !j1.dashboardStale &&
-                j1.productSalesGraphs != null &&
-                typeof j1.productSalesGraphs === 'object' &&
-                productSalesQtyOk &&
-                forecastMetaOk;
-              if (stalePayloadComplete) {
-                if (!cancelled) setDashboardDataBusy(false);
-                return;
-              }
-            }
-          }
+          tasks.push(
+            fetch(`${API_BASE}/reports/dashboard?${qs}`, {
+              headers: getAuthHeader(),
+              signal: ac.signal
+            })
+              .then(async (r1) => {
+                if (cancelled) return;
+                if (r1.status === 204) {
+                  /* 회사 캐시 없음 — 정밀만 */
+                  return;
+                }
+                if (!r1.ok) return;
+                const j1 = await r1.json().catch(() => null);
+                applyStalePayload(j1);
+              })
+              .catch((e) => {
+                if (e?.name === 'AbortError') return;
+              })
+          );
         }
 
-        const r2 = await fetch(`${API_BASE}/reports/dashboard?${q}`, {
-          headers: getAuthHeader(),
-          signal: ac.signal
-        });
-        if (!cancelled && r2.ok) {
-          const j2 = await r2.json().catch(() => null);
-          if (j2 && typeof j2 === 'object') {
-            setData((prev) => {
-              if (skipStaleFirst || !appliedStale) return j2;
-              const prevKey = prev && typeof prev === 'object' ? String(prev.dashboardCacheKey || '') : '';
-              const nextKey = String(j2.dashboardCacheKey || '');
-              if (prevKey && nextKey && prevKey !== nextKey) return j2;
-              return homeDashboardPayloadDiffPatch(prev, j2);
-            });
-          }
+        tasks.push(
+          fetch(freshUrl, { headers: getAuthHeader(), signal: freshSignal })
+            .then(async (r2) => {
+              if (cancelled) return;
+              if (!r2.ok) return;
+              const j2 = await r2.json().catch(() => null);
+              applyFreshPayload(j2);
+            })
+            .catch((e) => {
+              if (e?.name === 'AbortError') return;
+            })
+        );
+
+        await Promise.allSettled(tasks);
+        if (!cancelled && !appliedStale && !freshAppliedOk) {
+          setData({
+            wonRevenue: { KRW: 0, USD: 0 },
+            salesGraphs: {
+              currencies: ['KRW'],
+              chartMeta: {
+                kpiPeriod: 'half',
+                title: '올해 반기(1~6월·7~12월) · 전년 동반기',
+                legendCurrent: '올해(반기)',
+                legendPrev: '전년 동반기',
+                granularity: 'half'
+              },
+              consumerByCurrency: { KRW: [] },
+              consumerPrevYearByCurrency: { KRW: [] },
+              netMarginByCurrency: { KRW: [] },
+              netMarginPrevYearByCurrency: { KRW: [] },
+              wonValueByCurrency: { KRW: [] },
+              wonValuePrevYearByCurrency: { KRW: [] }
+            },
+            activeDeals: 128,
+            newLeads: 45,
+            taskCompletion: 0,
+            taskCompletionMeta: {
+              totalOpportunities: 0,
+              wonCount: 0,
+              inProgressDealCount: 0,
+              collectedAmount: 0,
+              collectedTotalsByCurrency: {}
+            },
+            kpiSummary: null,
+            pipelineKpi: null,
+            forecastPipelineRows: [],
+            forecastPipelineMeta: { maxRows: 0, returnedRows: 0, capped: false }
+          });
         }
       } catch (err) {
         if (err?.name === 'AbortError') return;
@@ -1870,7 +2165,13 @@ export default function Home() {
             activeDeals: 128,
             newLeads: 45,
             taskCompletion: 0,
-            taskCompletionMeta: { totalOpportunities: 0, wonCount: 0, inProgressDealCount: 0 },
+            taskCompletionMeta: {
+              totalOpportunities: 0,
+              wonCount: 0,
+              inProgressDealCount: 0,
+              collectedAmount: 0,
+              collectedTotalsByCurrency: {}
+            },
             kpiSummary: null,
             pipelineKpi: null,
             forecastPipelineRows: [],
@@ -2199,13 +2500,11 @@ export default function Home() {
     return () => window.removeEventListener('nexvia-pipeline-stages-updated', onStagesUpdated);
   }, [fetchStageDefinitions]);
 
+  /** 슬립 깨우기와 파이프라인 로드를 순차 대기하지 않음(이전: /health 완료 후에만 fetchPipeline → 체감 지연 가중) */
   useEffect(() => {
-    if (!healthPinged) {
-      fetch(`${API_BASE}/health`).finally(() => setHealthPinged(true));
-      return;
-    }
+    pingBackendHealth(getAuthHeader).catch(() => {});
     fetchPipeline();
-  }, [fetchPipeline, healthPinged]);
+  }, [fetchPipeline]);
 
   useEffect(() => {
     if (!insightAccess.checked) return undefined;
@@ -2299,11 +2598,14 @@ export default function Home() {
     [setSearchParams]
   );
 
-  const handleHomeOppSaved = useCallback(() => {
-    closeHomeOppModal();
-    setDashboardRefreshTick((t) => t + 1);
-    fetchPipeline();
-  }, [closeHomeOppModal, fetchPipeline]);
+  const handleHomeOppSaved = useCallback(
+    (payload, meta) => {
+      if (!meta?.keepOpen) closeHomeOppModal();
+      setDashboardRefreshTick((t) => t + 1);
+      fetchPipeline();
+    },
+    [closeHomeOppModal, fetchPipeline]
+  );
 
   const homeUserDisplay = useMemo(() => {
     const u = getStoredCrmUser();
@@ -2491,7 +2793,8 @@ export default function Home() {
       0
     ) || 0;
   const gmRateNum = kpiAnimSrc?.grossMargin?.ratePct ?? 0;
-  const goalNum = kpiAnimSrc?.goal?.taskCompletion ?? 0;
+  const goalNum = Number(kpiAnimSrc?.goal?.collectedAmount) || 0;
+  const goalCompletionNum = Number(kpiAnimSrc?.goal?.taskCompletion) || 0;
   const leadNum = kpiAnimSrc?.newLeads?.count ?? kpiAnimSrc?.newLeads?.count30d ?? 0;
   const revFcRaw = kpiAnimSrc?.revenue?.forecastVsPct;
   const gmFcRaw = kpiAnimSrc?.grossMargin?.forecastVsPP;
@@ -2503,6 +2806,7 @@ export default function Home() {
   const revAnim = useAnimatedScalar(revNum, insightAnimEpoch, insightAnimMs);
   const gmRateAnim = useAnimatedScalar(gmRateNum, insightAnimEpoch, insightAnimMs);
   const goalAnim = useAnimatedScalar(goalNum, insightAnimEpoch, insightAnimMs);
+  const goalCompletionAnim = useAnimatedScalar(goalCompletionNum, insightAnimEpoch, insightAnimMs);
   const leadAnim = useAnimatedScalar(leadNum, insightAnimEpoch, insightAnimMs);
   const revFcAnim = useAnimatedScalar(revFcRaw != null ? Number(revFcRaw) : 0, insightAnimEpoch, insightAnimMs);
   const gmFcAnim = useAnimatedScalar(gmFcRaw != null ? Number(gmFcRaw) : 0, insightAnimEpoch, insightAnimMs);
@@ -2608,20 +2912,11 @@ export default function Home() {
       },
       {
         key: 'goal',
-        title: '세일즈 현황 완료율',
-        hint: (() => {
-          const m = stats.taskCompletionMeta;
-          const won = Number(m?.wonCount) || 0;
-          const inProg = Number(m?.inProgressDealCount);
-          const prog = Number.isFinite(inProg) ? inProg : 0;
-          const tot = Number(m?.totalOpportunities);
-          if (Number.isFinite(tot) && tot > 0) {
-            return `수주 성공 ${won}건 + 진행 중 ${prog}건 · 전체 기회 ${tot}건 대비`;
-          }
-          return '수주 성공·진행 중 기회 합계를 전체 기회 대비로 표시합니다.';
-        })(),
-        value: `${goal?.taskCompletion ?? 0}%`,
-        icon: 'flag',
+        title: '수금 완료 · 세일즈 완료율',
+        hint: '',
+        goalFootnoteModel: buildGoalKpiFootnoteModel(stats),
+        value: formatCurrency(Number(goal?.collectedAmount) || 0, cur),
+        icon: 'account_balance_wallet',
         showForecast: false,
         showPeriod: false
       },
@@ -2644,8 +2939,8 @@ export default function Home() {
         key: 'project',
         title: '프로젝트',
         hint: isCompanyWideInsight
-          ? '전체 프로젝트 대비 완료 비율입니다. 막대는 완료(왼쪽)·진행(오른쪽) 비중입니다.'
-          : '건수는 회사 전체 프로젝트 목록 기준입니다. 위 매출·리드·완료율 카드는 팀·개인 조회 범위와 다를 수 있습니다.',
+          ? ''
+          : '',
         value:
           homeProjectCounts.total > 0
             ? `${Math.round((100 * homeProjectCounts.done) / homeProjectCounts.total)}%`
@@ -3779,7 +4074,8 @@ export default function Home() {
                   if (!dashboardShellBlocking) {
                     if (card.key === 'rev') displayMain = formatCurrency(Math.round(revAnim), curD);
                     else if (card.key === 'gm') displayMain = `${gmRateAnim.toFixed(1)}%`;
-                    else if (card.key === 'goal') displayMain = `${Math.round(goalAnim)}%`;
+                    else if (card.key === 'goal')
+                      displayMain = formatCurrency(Math.round(goalAnim), curD);
                     else if (card.key === 'lead') displayMain = `${Math.round(leadAnim)}건`;
                     else if (card.key === 'project') {
                       displayMain = homeProjectPreviewLoading
@@ -3888,14 +4184,19 @@ export default function Home() {
                         gmNonMarginAmount,
                         curD,
                         goalTaskCompletion: stats.kpiSummary?.goal?.taskCompletion,
-                        taskCompletionMeta: stats.taskCompletionMeta,
                         leadCount: leadNum,
                         projectDone: projectDoneCount,
                         projectActive: projectActiveCount,
                         projectTotal: projectTotalCount,
                         loading: dashboardShellBlocking,
                         dashboardMeta: stats.dashboardMeta || null,
-                        kpiWonExplain: stats.kpiWonExplain || null
+                        kpiWonExplain: stats.kpiWonExplain || null,
+                        kpiCollectedExplain: stats.kpiCollectedExplain || null,
+                        forecastPipelineRows: stats.forecastPipelineRows || [],
+                        forecastPipelineMeta: stats.forecastPipelineMeta || null,
+                        homeProjectPreview,
+                        homeProjectPreviewLoading,
+                        goalFootnoteModel: buildGoalKpiFootnoteModel(stats)
                       })
                     );
                   };
@@ -3991,6 +4292,19 @@ export default function Home() {
                         </span>
                       </div>
                       <p className="home-kpi-card-value home-kpi-card-value--insight-anim">{dashboardShellBlocking ? '—' : displayMain}</p>
+                      {card.key === 'goal' ? (
+                        <>
+                          <p className="home-kpi-card-target-amount">
+                            {dashboardShellBlocking ? '—' : `세일즈 현황 완료율 ${Math.round(goalCompletionAnim)}%`}
+                          </p>
+                          <div className="home-kpi-goal-bar" aria-hidden>
+                            <div
+                              className="home-kpi-goal-fill home-kpi-goal-fill--insight-anim"
+                              style={{ width: `${Math.min(100, Math.max(0, goalCompletionAnim))}%` }}
+                            />
+                          </div>
+                        </>
+                      ) : null}
                       {card.key === 'rev' ? (
                         <p className="home-kpi-card-target-amount">{dashboardShellBlocking ? '—' : (targetAmountUnderValue || '목표 미설정')}</p>
                       ) : null}
@@ -4008,14 +4322,27 @@ export default function Home() {
                             )}`}
                         </p>
                       ) : null}
-                      <p className="home-kpi-card-hint">{card.hint}</p>
-                      {card.key === 'goal' ? (
-                        <div className="home-kpi-goal-bar" aria-hidden>
-                          <div
-                            className="home-kpi-goal-fill home-kpi-goal-fill--insight-anim"
-                            style={{ width: `${Math.min(100, Math.max(0, goalAnim))}%` }}
-                          />
+                      {card.key === 'goal' && card.goalFootnoteModel ? (
+                        <div className="home-kpi-goal-footnotes" role="note">
+                          {card.goalFootnoteModel.reference ? (
+                            <p className="home-kpi-card-hint home-kpi-card-hint--goal-foot">
+                              참고: 전체{' '}
+                              <span className="home-kpi-footnote-num">{card.goalFootnoteModel.reference.tot}</span>
+                              {' · '}수주{' '}
+                              <span className="home-kpi-footnote-num">{card.goalFootnoteModel.reference.won}</span>
+                              {' · '}진행{' '}
+                              <span className="home-kpi-footnote-num">{card.goalFootnoteModel.reference.prog}</span>
+                            </p>
+                          ) : null}
+                          {(card.goalFootnoteModel.anomalies || []).map((a) => (
+                            <p key={a.kind} className="home-kpi-card-hint home-kpi-card-hint--goal-foot">
+                              특이: {a.desc}{' '}
+                              <span className="home-kpi-footnote-num">{a.count}</span>건
+                            </p>
+                          ))}
                         </div>
+                      ) : card.key !== 'goal' ? (
+                        <p className="home-kpi-card-hint">{card.hint}</p>
                       ) : null}
                       {showForecast || showPeriod || showTargetLine ? (
                         <div className="home-kpi-card-metrics">
@@ -4869,7 +5196,30 @@ export default function Home() {
       </div>
 
       {homeKpiExplainSpec ? (
-        <HomeKpiExplainModal spec={homeKpiExplainSpec} onClose={() => setHomeKpiExplainSpec(null)} />
+        <HomeKpiExplainModal
+          spec={homeKpiExplainSpec}
+          onClose={() => setHomeKpiExplainSpec(null)}
+          onOpenSalesOpportunity={openSalesOpportunityFromKpiExplain}
+          onOpenProject={openProjectFromKpiExplain}
+        />
+      ) : null}
+      {homeProjectModalLoading ? (
+        <div className="home-project-fetch-overlay" role="status" aria-live="polite" aria-busy="true">
+          <HomePastelSpinner size="kpi" label="프로젝트 불러오는 중…" reducedMotion={prefersReducedMotion} />
+        </div>
+      ) : null}
+      {homeProjectModalOpen && homeProjectEditing ? (
+        <ProjectFormModal
+          mode="edit"
+          companyContext={homeProjectCompanyContext}
+          teamMembers={homeProjectTeamMembers}
+          currentUser={homeProjectCurrentUser}
+          stageOptions={HOME_PROJECT_KPI_STAGE_OPTIONS}
+          initialProject={homeProjectEditing}
+          saving={homeProjectSaving}
+          onSubmit={handleSaveHomeProject}
+          onClose={closeHomeProjectModal}
+        />
       ) : null}
       {homeContributionCalcModal ? (
         <HomeContributionCalcModal
@@ -5194,6 +5544,7 @@ export default function Home() {
           stageOptions={homeOpportunityStageOptions}
           onClose={closeHomeOppModal}
           onSaved={handleHomeOppSaved}
+          onSwitchToEditAfterCreate={openHomeEditOpportunity}
         />
       ) : null}
 

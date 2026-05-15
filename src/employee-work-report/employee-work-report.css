@@ -269,25 +269,6 @@
   font-size: 0.75rem;
 }
 
-.insights-grid {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 1.5rem;
-  margin-top: 0.25rem;
-}
-
-@media (max-width: 1024px) {
-  .insights-grid { grid-template-columns: 1fr; }
-}
-
-.workload-panel h4 {
-  margin: 0;
-  font-size: 1.05rem;
-  font-weight: 700;
-  color: var(--primary);
-}
-.text-muted { color: var(--text-muted); }
-
 .work-report-timeline-head {
   display: flex;
   align-items: center;
@@ -322,38 +303,3 @@
     padding: 0.4rem 0.65rem;
   }
 }
-
-.workload-bars { padding: 1.5rem; }
-.workload-item { margin-bottom: 1rem; }
-.workload-item:last-child { margin-bottom: 0; }
-.workload-label { display: flex; justify-content: space-between; font-size: 0.875rem; margin-bottom: 0.35rem; }
-.workload-bar-wrap { height: 8px; background: var(--bg-light); border-radius: 9999px; overflow: hidden; }
-.workload-bar { height: 100%; border-radius: 9999px; transition: width 0.3s; }
-.workload-bar.primary { background: var(--primary); }
-.workload-bar.blue { background: #60a5fa; }
-.workload-bar.gray { background: var(--text-muted); }
-
-.rating-panel {
-  background: var(--primary);
-  color: #fff;
-  padding: 1.5rem;
-  display: flex;
-  flex-direction: column;
-}
-
-.rating-panel h4 { margin: 0 0 0.5rem; }
-.rating-desc { margin: 0; font-size: 0.875rem; opacity: 0.9; }
-.rating-value { margin: 1rem 0 0; font-size: 3rem; font-weight: 700; letter-spacing: -0.02em; }
-.rating-badge { margin: 0.25rem 0 0; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; color: var(--pastel-mint); }
-.rating-btn {
-  margin-top: auto;
-  padding: 0.6rem 1rem;
-  background: rgba(255,255,255,0.1);
-  color: #fff;
-  border: none;
-  border-radius: 0.5rem;
-  font-size: 0.875rem;
-  font-weight: 700;
-  transition: background 0.2s;
-}
-.rating-btn:hover { background: rgba(255,255,255,0.2); }
