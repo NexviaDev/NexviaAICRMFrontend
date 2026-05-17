@@ -79,6 +79,19 @@
   border-radius: 2px;
 }
 
+.merge-data-sheet-modal-footer-path {
+  display: inline-block;
+  margin: 0.15rem 0;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.68rem;
+  font-family: ui-monospace, Consolas, 'Courier New', monospace;
+  color: #1e3a5f;
+  background: #eef4fb;
+  border: 1px solid #c5d9ef;
+  border-radius: 0.25rem;
+  word-break: break-all;
+}
+
 .merge-data-sheet-modal-head {
   flex-shrink: 0;
   display: flex;
