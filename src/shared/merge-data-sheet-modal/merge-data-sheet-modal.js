@@ -983,6 +983,7 @@ export default function MergeDataSheetModal({
             있어야 합니다.{' '}
             <code className="merge-data-sheet-modal-footer-path">C:\Program Files\LibreOffice\program\soffice.exe</code>
             {' '}
+            (다른 폴더에 설치했다면 backend <code className="merge-data-sheet-modal-footer-path">.env</code>에{' '}
             <code className="merge-data-sheet-modal-footer-path">LIBREOFFICE_SOFFICE=전체경로</code> 지정) ·{' '}
             <a
               href="https://www.libreoffice.org/download/"
