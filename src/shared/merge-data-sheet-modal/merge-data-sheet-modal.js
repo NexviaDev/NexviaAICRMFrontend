@@ -978,8 +978,13 @@ export default function MergeDataSheetModal({
         )}
         <footer className="merge-data-sheet-modal-footer" role="note">
           <p className="merge-data-sheet-modal-footer-text">
-            <strong>PDF 추가 추출</strong>·<strong>PDF 만 추출</strong>을 쓰면 서버에서 문서 변환 시{' '}
-            <strong>LibreOffice</strong>가 필요합니다. 로컬 설치가 필요할 때는{' '}
+            <strong>PDF 추가 추출</strong>·<strong>PDF 만 추출</strong>은 PC가 아니라 <strong>백엔드 서버</strong>에서
+            LibreOffice로 변환합니다. Windows에서 백엔드를 돌릴 때는 설치 시 기본 위치를 유지해, 반드시 아래 파일이
+            있어야 합니다.{' '}
+            <code className="merge-data-sheet-modal-footer-path">C:\Program Files\LibreOffice\program\soffice.exe</code>
+            {' '}
+            (다른 폴더에 설치했다면 backend <code className="merge-data-sheet-modal-footer-path">.env</code>에{' '}
+            <code className="merge-data-sheet-modal-footer-path">LIBREOFFICE_SOFFICE=전체경로</code> 지정) ·{' '}
             <a
               href="https://www.libreoffice.org/download/"
               target="_blank"
@@ -988,7 +993,7 @@ export default function MergeDataSheetModal({
             >
               LibreOffice 공식 다운로드
             </a>
-            페이지를 참고하세요.
+            . 운영 사이트(Railway 등 Linux)는 서버에 LibreOffice 패키지 설치가 필요합니다.
           </p>
         </footer>
       </div>
