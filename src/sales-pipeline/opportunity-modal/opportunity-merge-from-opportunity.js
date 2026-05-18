@@ -4,10 +4,27 @@ import { useSearchParams } from 'react-router-dom';
 import { API_BASE } from '@/config';
 import { pingBackendHealth } from '@/lib/backend-wake';
 import { getUserVisibleApiError } from '@/lib/api-error';
+import {
+  loadMergePdfExportOptions,
+  normalizeMergePdfExportOptions,
+  saveMergePdfExportOptions
+} from '@/lib/merge-pdf-export-options';
+import { fetchMergePdfPreviewBlob } from '@/lib/merge-pdf-preview-api';
+import {
+  mergeExportAddonWantsPdf,
+  resolveMergeExportAddonForRow
+} from '@/lib/merge-export-addon';
 import { buildMailtoWithFields } from '@/lib/email-client-links';
 import { getStoredCrmUser, isManagerOrAboveRole } from '@/lib/crm-role-utils';
 import {
+  buildOpportunityMergeMailFallback,
   buildOpportunityMergeSourceOptions,
+  groupOpportunityMergeSourceOptions,
+  normalizeOpportunityMergeSourceId,
+  opportunityMappingUsesDocCc,
+  opportunityMappingUsesDocRecipient,
+  resolveOpportunityDocCcEmail,
+  resolveOpportunityDocRecipientEmail,
   resolveOpportunityMergeSourceValue
 } from '@/lib/opportunity-merge-sources';
 import {
@@ -17,6 +34,18 @@ import {
   putOpportunityMergeMappingPresets
 } from '@/lib/opportunity-merge-mapping-storage';
 import MergeDataSheetModal, { MERGE_SHEET_FIELD_START, MERGE_SHEET_PREFIX_COL_COUNT } from '@/shared/merge-data-sheet-modal/merge-data-sheet-modal';
+import {
+  fetchMergeTemplateProfiles,
+  resolvePdfExportOptionsForRow
+} from '@/lib/merge-template-profiles-storage';
+import {
+  clearMergeRowMailFields,
+  hydrateMergeRowMailFromProfiles,
+  mergeRowHasFieldData,
+  mailDefaultsForRow,
+  refreshMailTokensFromProfile,
+  resolveMergeRowMailFields
+} from '@/lib/merge-template-mail-defaults';
 import MergeFieldEditorModal from '@/shared/merge-field-editor-modal/merge-field-editor-modal';
 import {
   mergeFieldsWithoutRowIndex,
@@ -62,16 +91,10 @@ function getRowTemplateIds(row, fallbackTid) {
   return fb ? [fb] : [];
 }
 
-function normalizeMergeRowExportAddon(v) {
-  const s = String(v || '').trim();
-  if (s === 'pdfOnly') return 'pdfOnly';
-  if (s === 'pdfAddon' || s === 'preferPdf') return 'pdfAddon';
-  return 'same';
-}
-
-function rowWantsPdfExportIntent(row) {
-  const m = normalizeMergeRowExportAddon(row?._exportAddon);
-  return m === 'pdfAddon' || m === 'pdfOnly';
+function rowWantsPdfExportIntent(row, templateProfilesById, globalPdfOpts, fallbackTid) {
+  const tids = getRowTemplateIds(row, fallbackTid);
+  const mode = resolveMergeExportAddonForRow(row, templateProfilesById, globalPdfOpts, tids);
+  return mergeExportAddonWantsPdf(mode);
 }
 
 function createMergeRowState(fields, templateId, include = true, templateIds = null) {
@@ -92,7 +115,8 @@ function createMergeRowState(fields, templateId, include = true, templateIds = n
     _mailTo: '',
     _mailCc: '',
     _mailSubject: '',
-    _mailBody: ''
+    _mailBody: '',
+    _pdfExportOptions: null
   };
 }
 
@@ -189,17 +213,6 @@ function companyToMergeRow(c) {
 
 const MERGE_SHEET_MAIL_ROW_KEYS = ['_mailTo', '_mailCc', '_mailSubject', '_mailBody'];
 
-function parseExportAddonFromPaste(raw) {
-  const s = String(raw ?? '').trim().toLowerCase();
-  if (!s) return 'same';
-  if (s === 'pdfonly' || s === 'pdf_only') return 'pdfOnly';
-  if (s === 'pdfaddon' || s === 'pdf_addon' || s === 'preferpdf') return 'pdfAddon';
-  if (s === 'same') return 'same';
-  if (s.includes('만') && s.includes('pdf')) return 'pdfOnly';
-  if (s.includes('추가') && s.includes('pdf')) return 'pdfAddon';
-  return 'same';
-}
-
 function parseTemplateIdsFromPaste(raw, templates, fallbackTid) {
   const list = Array.isArray(templates) ? templates : [];
   const s = String(raw ?? '').trim();
@@ -246,13 +259,18 @@ function fieldSignature(fields) {
 function parseSavedCellMapping(raw) {
   if (raw == null) return { sourceType: 'field', sourceKey: '', constantValue: '' };
   if (typeof raw === 'object' && (raw.sourceType || raw.sourceKey !== undefined || raw.constantValue !== undefined)) {
+    const sourceKey = normalizeOpportunityMergeSourceId(raw.sourceKey);
     return {
       sourceType: raw.sourceType === 'constant' ? 'constant' : 'field',
-      sourceKey: String(raw.sourceKey || ''),
+      sourceKey,
       constantValue: String(raw.constantValue ?? '')
     };
   }
-  return { sourceType: 'field', sourceKey: String(raw || ''), constantValue: '' };
+  return {
+    sourceType: 'field',
+    sourceKey: normalizeOpportunityMergeSourceId(raw),
+    constantValue: ''
+  };
 }
 
 function previewOpportunityMappedValue(ctx, row) {
@@ -302,13 +320,23 @@ function opportunityMergeRowStatus(row, preview) {
   return { type: 'ok', label: 'VALID' };
 }
 
-function buildRowJobsForSheetRow({ row, rowIndex, mergeFieldsSheet, templates, fallbackTid, prof }) {
+function buildRowJobsForSheetRow({
+  row,
+  rowIndex,
+  mergeFieldsSheet,
+  templates,
+  fallbackTid,
+  prof,
+  templateProfilesById,
+  globalPdfOpts
+}) {
   if (!row || !Array.isArray(mergeFieldsSheet)) return { rowJobs: [], anyPreferPdf: false, error: '데이터를 확인해 주세요.' };
   if (!rowHasMergeFieldContent(row, mergeFieldsSheet)) {
     return { rowJobs: [], anyPreferPdf: false, error: '치환할 값이 있는지 확인해 주세요.' };
   }
-  const anyPreferPdf = rowWantsPdfExportIntent(row);
   const tids = getRowTemplateIds(row, fallbackTid).filter((id) => templates.some((t) => String(t._id) === id));
+  const exportAddon = resolveMergeExportAddonForRow(row, templateProfilesById, globalPdfOpts, tids);
+  const anyPreferPdf = mergeExportAddonWantsPdf(exportAddon);
   if (!tids.length) return { rowJobs: [], anyPreferPdf: false, error: '사용할 양식을 선택해 주세요.' };
   const rowJobs = [];
   const baseStem =
@@ -330,7 +358,8 @@ function buildRowJobsForSheetRow({ row, rowIndex, mergeFieldsSheet, templates, f
     rowJobs.push({
       templateId: tid,
       row: apiRow,
-      exportAddon: normalizeMergeRowExportAddon(row._exportAddon)
+      exportAddon,
+      sourceRowIndex: rowIndex
     });
   }
   return { rowJobs, anyPreferPdf, error: null };
@@ -358,6 +387,14 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
   const [mergeRows, setMergeRows] = useState([]);
   const [mergeRunning, setMergeRunning] = useState(false);
   const [mergeMessage, setMergeMessage] = useState('');
+  const [pdfExportOptions, setPdfExportOptions] = useState(() => loadMergePdfExportOptions());
+  const [templateProfilesById, setTemplateProfilesById] = useState({});
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const [pdfPreviewObjectUrl, setPdfPreviewObjectUrl] = useState('');
+  const [pdfPreviewLoading, setPdfPreviewLoading] = useState(false);
+  const [pdfPreviewError, setPdfPreviewError] = useState('');
+  const [pdfPreviewCaption, setPdfPreviewCaption] = useState('');
+  const pdfPreviewUrlRef = useRef('');
   const [companyPickOpen, setCompanyPickOpen] = useState(false);
   const [mappingRows, setMappingRows] = useState([]);
   const [mappingHydrateNonce, setMappingHydrateNonce] = useState(0);
@@ -379,6 +416,10 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
   const mergeFieldsSheet = useMemo(() => mergeFieldsWithoutRowIndex(fieldGuide?.fields), [fieldGuide]);
   const fieldSig = useMemo(() => fieldSignature(mergeFieldsSheet), [mergeFieldsSheet]);
   const sourceOptions = useMemo(() => buildOpportunityMergeSourceOptions(mergeContext || {}), [mergeContext]);
+  const sourceOptionGroups = useMemo(
+    () => groupOpportunityMergeSourceOptions(sourceOptions),
+    [sourceOptions]
+  );
 
   /** mergeKey → 행. 예전 `mappingByFieldKey` 이름·패턴과 호환되도록 유지(시트 열기 버튼 등에서 사용). */
   const mappingByFieldKey = useMemo(
@@ -458,6 +499,20 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
     }
   }, [getAuthHeader]);
 
+  const loadTemplateProfiles = useCallback(async () => {
+    try {
+      const map = await fetchMergeTemplateProfiles(getAuthHeader);
+      setTemplateProfilesById(map);
+    } catch (_) {
+      setTemplateProfilesById({});
+    }
+  }, [getAuthHeader]);
+
+  const mergeMailFallback = useMemo(
+    () => buildOpportunityMergeMailFallback(mergeContext || {}, mappingRows),
+    [mergeContext, mappingRows]
+  );
+
   useEffect(() => {
     if (!open) return;
     setPhase('setup');
@@ -475,6 +530,7 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
     setFieldPresetNameDraft('');
     void loadFieldPresets();
     void loadTemplates();
+    void loadTemplateProfiles();
     void loadFieldGuide('');
     /* loadFieldGuide 는 selectedFieldPresetId 에 의존해 참조가 바뀜 → deps 에 넣으면 프리셋 변경 때마다 이 effect 가 재실행되어 회사 기본으로 초기화됨. 모달 열릴 때만 초기화하려면 open 만으로 충분하고, 빈 preset 으로 가이드는 위에서 한 번 호출. */
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 의도적으로 loadFieldGuide 제외(상술)
@@ -548,7 +604,16 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
         for (const f of fields) {
           next[f.key] = row[f.key] != null ? String(row[f.key]) : '';
         }
-        next._exportAddon = normalizeMergeRowExportAddon(row._exportAddon);
+        const profForRow = firstTid ? templateProfilesById[String(firstTid)] : null;
+        if (profForRow?.pdfExportOptions) {
+          next._pdfExportOptions = normalizeMergePdfExportOptions(profForRow.pdfExportOptions);
+        }
+        next._exportAddon = resolveMergeExportAddonForRow(
+          next,
+          templateProfilesById,
+          pdfExportOptions,
+          nextIds
+        );
         next._mailTo = row._mailTo != null ? String(row._mailTo) : '';
         next._mailCc = row._mailCc != null ? String(row._mailCc) : '';
         next._mailSubject = row._mailSubject != null ? String(row._mailSubject) : '';
@@ -556,7 +621,7 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
         return next;
       });
     });
-  }, [fieldSig, fieldGuide, selectedTemplateId, templates]);
+  }, [fieldSig, fieldGuide, selectedTemplateId, templates, templateProfilesById, pdfExportOptions]);
 
   useEffect(() => {
     if (!open || phase !== 'setup') return;
@@ -597,9 +662,29 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
     });
   }, [open, phase, fieldSig, mappingHydrateNonce, mergeFieldsSheet]);
 
-  const updateRow = (index, key, value) => {
-    setMergeRows((rows) => rows.map((r, i) => (i === index ? { ...r, [key]: value } : r)));
-  };
+  const updateRow = useCallback(
+    (index, key, value) => {
+      setMergeRows((rows) =>
+        rows.map((r, i) => {
+          if (i !== index) return r;
+          let next = { ...r, [key]: value };
+          const isMergeField =
+            key &&
+            !String(key).startsWith('_') &&
+            (mergeFieldsSheet || []).some((f) => f.key === key);
+          if (isMergeField) {
+            const profMail = mailDefaultsForRow(next, templateProfilesById);
+            next = refreshMailTokensFromProfile(next, profMail, mergeFieldsSheet, {
+              templateProfilesById,
+              pageMailFallback: mergeMailFallback
+            });
+          }
+          return next;
+        })
+      );
+    },
+    [mergeFieldsSheet, templateProfilesById, mergeMailFallback]
+  );
 
   const updateRowTemplates = useCallback(
     (index, templateIds) => {
@@ -613,11 +698,32 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
       ];
       if (!clean.length && def) clean = [String(def)];
       const first = clean[0] || '';
+      const primaryId = clean[0] || '';
+      const prof = primaryId ? templateProfilesById[String(primaryId)] : null;
       setMergeRows((rows) =>
-        rows.map((r, i) => (i === index ? { ...r, _templateIds: clean, _templateId: first } : r))
+        rows.map((r, i) => {
+          if (i !== index) return r;
+          let next = { ...r, _templateIds: clean, _templateId: first };
+          next._pdfExportOptions = prof?.pdfExportOptions
+            ? normalizeMergePdfExportOptions(prof.pdfExportOptions)
+            : null;
+          next = hydrateMergeRowMailFromProfiles(
+            next,
+            templateProfilesById,
+            mergeFieldsSheet,
+            mergeMailFallback
+          );
+          next._exportAddon = resolveMergeExportAddonForRow(
+            next,
+            templateProfilesById,
+            pdfExportOptions,
+            clean
+          );
+          return next;
+        })
       );
     },
-    [templates, selectedTemplateId]
+    [templates, selectedTemplateId, templateProfilesById, mergeMailFallback, mergeFieldsSheet, pdfExportOptions]
   );
 
   const applyMergeGridPatch = useCallback(
@@ -643,8 +749,6 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
                 const ids = parseTemplateIdsFromPaste(grid[r][c], templates, tid);
                 const first = ids[0] || '';
                 next[ri] = { ...next[ri], _templateIds: ids, _templateId: first };
-              } else if (sheetCol === 1) {
-                next[ri] = { ...next[ri], _exportAddon: parseExportAddonFromPaste(grid[r][c]) };
               }
               continue;
             }
@@ -787,12 +891,116 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
     [mergeRows, mergeSheetNavKeyDown]
   );
 
+  const handleChangePdfExportOptions = useCallback((next) => {
+    const norm = saveMergePdfExportOptions(next);
+    setPdfExportOptions(norm);
+  }, []);
+
+  const closePdfPreview = useCallback(() => {
+    setPdfPreviewOpen(false);
+    if (pdfPreviewUrlRef.current) {
+      URL.revokeObjectURL(pdfPreviewUrlRef.current);
+      pdfPreviewUrlRef.current = '';
+    }
+    setPdfPreviewObjectUrl('');
+    setPdfPreviewError('');
+    setPdfPreviewCaption('');
+  }, []);
+
+  const requestPdfPreview = useCallback(
+    async (pdfOpts, explicitRowIndex) => {
+      const fallbackTid = selectedTemplateId || defaultTemplateIdFromList(templates);
+      const prof = profileTagForMergeZip(selectedFieldPresetId, fieldGuide, fieldPresets);
+      const fieldPresetIdParam = isMergeFieldPresetMongoId(selectedFieldPresetId)
+        ? String(selectedFieldPresetId).trim()
+        : undefined;
+      let previewRowIndex = -1;
+      if (
+        typeof explicitRowIndex === 'number' &&
+        explicitRowIndex >= 0 &&
+        explicitRowIndex < mergeRows.length
+      ) {
+        const row = mergeRows[explicitRowIndex];
+        if (!rowWantsPdfExportIntent(row, templateProfilesById, pdfExportOptions, fallbackTid)) {
+          throw new Error(
+            'PDF 미리보기: 이 행의 양식·PDF 설정에서 PDF 추가 추출 또는 PDF 만 추출이 켜져 있어야 합니다.'
+          );
+        }
+        if (!rowHasMergeFieldContent(row, mergeFieldsSheet)) {
+          throw new Error('PDF 미리보기: 이 행에 치환 데이터를 입력해 주세요.');
+        }
+        previewRowIndex = explicitRowIndex;
+      } else {
+        for (let i = 0; i < mergeRows.length; i += 1) {
+          if (
+            rowWantsPdfExportIntent(mergeRows[i], templateProfilesById, pdfExportOptions, fallbackTid) &&
+            rowHasMergeFieldContent(mergeRows[i], mergeFieldsSheet)
+          ) {
+            previewRowIndex = i;
+            break;
+          }
+        }
+        if (previewRowIndex < 0) {
+          throw new Error('PDF 미리보기: PDF 추출이 켜지고 치환 데이터가 있는 행이 없습니다.');
+        }
+      }
+      const built = buildRowJobsForSheetRow({
+        row: mergeRows[previewRowIndex],
+        rowIndex: previewRowIndex,
+        mergeFieldsSheet,
+        templates,
+        fallbackTid,
+        prof,
+        templateProfilesById,
+        globalPdfOpts: pdfExportOptions
+      });
+      if (built.error) throw new Error(built.error);
+      if (pdfPreviewUrlRef.current) {
+        URL.revokeObjectURL(pdfPreviewUrlRef.current);
+        pdfPreviewUrlRef.current = '';
+      }
+      setPdfPreviewObjectUrl('');
+      setPdfPreviewError('');
+      setPdfPreviewCaption(`${previewRowIndex + 1}행 기준 · 현재 설정으로 서버 PDF 생성`);
+      setPdfPreviewOpen(true);
+      setPdfPreviewLoading(true);
+      try {
+        const blob = await fetchMergePdfPreviewBlob({
+          apiBase: API_BASE,
+          getAuthHeader,
+          rowJobs: built.rowJobs,
+          fieldPresetId: fieldPresetIdParam,
+          pdfExportOptions: pdfOpts
+        });
+        const url = URL.createObjectURL(blob);
+        pdfPreviewUrlRef.current = url;
+        setPdfPreviewObjectUrl(url);
+      } catch (e) {
+        setPdfPreviewError(e?.message || 'PDF 미리보기에 실패했습니다.');
+      } finally {
+        setPdfPreviewLoading(false);
+      }
+    },
+    [
+      mergeRows,
+      mergeFieldsSheet,
+      templates,
+      selectedTemplateId,
+      templateProfilesById,
+      pdfExportOptions,
+      fieldGuide,
+      fieldPresets,
+      selectedFieldPresetId
+    ]
+  );
+
   const downloadMergeOutputsAsSeparateFiles = useCallback(
-    async (rowJobs, fieldPresetId) => {
+    async (rowJobs, fieldPresetId, pdfOpts) => {
       const planBody = { rowJobs };
       if (fieldPresetId && isMergeFieldPresetMongoId(fieldPresetId)) {
         planBody.fieldPresetId = String(fieldPresetId).trim();
       }
+      const pdfExportOptionsBody = normalizeMergePdfExportOptions(pdfOpts);
       const planRes = await fetch(`${API_BASE}/quotation-merge/plan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
@@ -813,7 +1021,8 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
           rowJobs,
           zipCollisionPolicy: 'rename',
           asZip: false,
-          singleOutputIndex: i
+          singleOutputIndex: i,
+          pdfExportOptions: pdfExportOptionsBody
         };
         if (planBody.fieldPresetId) body.fieldPresetId = planBody.fieldPresetId;
         const res = await fetch(`${API_BASE}/quotation-merge/run`, {
@@ -867,6 +1076,7 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
         window.alert(`${i + 1}행: 사용할 양식을 선택해 주세요.`);
         return;
       }
+      const exportAddon = resolveMergeExportAddonForRow(r, templateProfilesById, pdfExportOptions, tids);
       const baseStem =
         String(r.fileLabel || '').trim() ||
         String(r.companyName || '').trim() ||
@@ -886,7 +1096,8 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
         rowJobs.push({
           templateId: tid,
           row: apiRow,
-          exportAddon: normalizeMergeRowExportAddon(r._exportAddon)
+          exportAddon,
+          sourceRowIndex: i
         });
       }
     }
@@ -898,11 +1109,12 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
     setMergeMessage('');
     try {
       await pingBackendHealth();
-      const n = await downloadMergeOutputsAsSeparateFiles(rowJobs, fieldPresetIdParam);
-      const anyPdf = rowJobs.some((j) => {
-        const ea = normalizeMergeRowExportAddon(j.exportAddon);
-        return ea === 'pdfAddon' || ea === 'pdfOnly';
-      });
+      const n = await downloadMergeOutputsAsSeparateFiles(
+        rowJobs,
+        fieldPresetIdParam,
+        pdfExportOptions
+      );
+      const anyPdf = rowJobs.some((j) => mergeExportAddonWantsPdf(j.exportAddon));
       setMergeMessage(n > 0 ? `파일 ${n}개를 받았습니다.${anyPdf ? ' (PDF 포함)' : ''}` : '');
     } catch (e) {
       window.alert(e.message || '파일 생성을 시작하지 못했습니다.');
@@ -911,7 +1123,7 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
     }
   };
 
-  const runSheetMailHandoffForRow = useCallback(
+  const runSheetDownloadForRow = useCallback(
     async (rowIndex) => {
       if (!templates.length || !mergeFieldsSheet?.length) return;
       const ri = Number(rowIndex);
@@ -924,21 +1136,10 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
       const prof = profileTagForMergeZip(selectedFieldPresetId, fieldGuide, fieldPresets);
 
       const row = mergeRows[ri];
-      if (!row || !String(row._mailTo || '').trim()) {
-        window.alert(`${ri + 1}행: 받는 사람 이메일을 입력해 주세요.`);
-        return;
-      }
-      if (!rowHasMergeFieldContent(row, mergeFieldsSheet)) {
+      if (!row || !rowHasMergeFieldContent(row, mergeFieldsSheet)) {
         window.alert(`${ri + 1}행: 치환할 데이터가 없습니다.`);
         return;
       }
-
-      const ok = window.confirm(
-        `${ri + 1}행: 파일을 저장한 뒤 PC 메일(Outlook 등) 작성 창을 엽니다.\n\n` +
-          '※ mailto로는 첨부가 전달되지 않습니다. 받은 파일을 메일에 직접 첨부해 주세요.\n\n' +
-          '계속할까요?'
-      );
-      if (!ok) return;
 
       const built = buildRowJobsForSheetRow({
         row,
@@ -946,7 +1147,9 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
         mergeFieldsSheet,
         templates,
         fallbackTid,
-        prof
+        prof,
+        templateProfilesById,
+        globalPdfOpts: pdfExportOptions
       });
       if (built.error) {
         window.alert(`${ri + 1}행: ${built.error}`);
@@ -958,15 +1161,66 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
       setMergeMessage('');
       try {
         await pingBackendHealth();
-        const n = await downloadMergeOutputsAsSeparateFiles(rowJobs, fieldPresetIdParam);
+        const n = await downloadMergeOutputsAsSeparateFiles(
+          rowJobs,
+          fieldPresetIdParam,
+          pdfExportOptions
+        );
+        setMergeMessage(n > 0 ? `${ri + 1}행: 파일 ${n}개를 받았습니다.` : '');
+      } catch (e) {
+        window.alert(e.message || '파일 받기에 실패했습니다.');
+      } finally {
+        setMergeRunning(false);
+      }
+    },
+    [
+      templates,
+      mergeFieldsSheet,
+      selectedFieldPresetId,
+      selectedTemplateId,
+      fieldGuide,
+      fieldPresets,
+      mergeRows,
+      pdfExportOptions,
+      downloadMergeOutputsAsSeparateFiles
+    ]
+  );
 
-        const userBody = String(row._mailBody || '').trim();
-        const bodyPlain = userBody || '';
+  const runSheetMailHandoffForRow = useCallback(
+    async (rowIndex) => {
+      if (!templates.length || !mergeFieldsSheet?.length) return;
+      const ri = Number(rowIndex);
+      if (!Number.isFinite(ri) || ri < 0 || ri >= mergeRows.length) return;
+
+      const row = mergeRows[ri];
+      const mail = resolveMergeRowMailFields(
+        row,
+        templateProfilesById,
+        mergeFieldsSheet,
+        mergeMailFallback
+      );
+      if (!row || !mail.mailTo) {
+        window.alert(
+          `${ri + 1}행: 받는 사람 이메일이 없습니다. 시트에 입력하거나, 사용 양식·기회에 등록한 메일 기본값을 확인해 주세요.`
+        );
+        return;
+      }
+
+      const ok = window.confirm(
+        `${ri + 1}행: PC 메일(Outlook 등) 작성 창을 엽니다.\n\n` +
+          '※ 파일은 보내지 않습니다. 왼쪽「받기」로 먼저 받은 뒤 메일에 직접 첨부해 주세요.\n\n' +
+          '계속할까요?'
+      );
+      if (!ok) return;
+
+      setMergeMessage('');
+      try {
+        const bodyPlain = mail.mailBody;
 
         const { href, note, clipboardPlain } = buildMailtoWithFields({
-          to: String(row._mailTo || '').trim(),
-          cc: String(row._mailCc || '').trim(),
-          subject: String(row._mailSubject || '').trim() || '(제목 없음)',
+          to: mail.mailTo,
+          cc: mail.mailCc,
+          subject: mail.mailSubject || '(제목 없음)',
           body: bodyPlain
         });
         if (!href) {
@@ -986,25 +1240,12 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
         if (!w) {
           window.location.assign(href);
         }
-        setMergeMessage(
-          n > 0 ? `${ri + 1}행: 파일 ${n}개를 받았고, 메일 작성 창을 열었습니다. 첨부는 직접 넣어 주세요.` : ''
-        );
+        setMergeMessage(`${ri + 1}행: 메일 작성 창을 열었습니다.`);
       } catch (e) {
         window.alert(e.message || '메일 준비에 실패했습니다.');
-      } finally {
-        setMergeRunning(false);
       }
     },
-    [
-      templates,
-      mergeFieldsSheet,
-      selectedFieldPresetId,
-      selectedTemplateId,
-      fieldGuide,
-      fieldPresets,
-      mergeRows,
-      downloadMergeOutputsAsSeparateFiles
-    ]
+    [templates, mergeFieldsSheet, mergeRows, templateProfilesById, mergeMailFallback]
   );
 
   const appendRowsFromCompanies = (rows) => {
@@ -1141,21 +1382,24 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
     }
   };
 
-  const applyMappingToFirstRow = () => {
+  const applyMappingToFirstRow = useCallback(() => {
     const fields = mergeFieldsSheet;
     if (!fields.length) return;
     const ctx = mergeContext || {};
     const defTid = selectedTemplateId || defaultTemplateIdFromList(templates);
-    const mailTo =
-      String(ctx.quoteDocRecipientEmail || '').trim() ||
-      String(ctx.purchaseOrderDocRecipientEmail || '').trim();
-    const mailCc =
-      String(ctx.quoteDocCcEmail || '').trim() || String(ctx.purchaseOrderDocCcEmail || '').trim();
+    const usesDocTo = opportunityMappingUsesDocRecipient(mappingRows);
+    const usesDocCc = opportunityMappingUsesDocCc(mappingRows);
+    const mailTo = usesDocTo ? resolveOpportunityDocRecipientEmail(ctx) : '';
+    const mailCc = usesDocCc ? resolveOpportunityDocCcEmail(ctx) : '';
+    const pageMailFallback = buildOpportunityMergeMailFallback(ctx, mappingRows);
 
-    setMergeRows((rows) => {
-      const next = rows.map((r, i) => {
-        if (i !== 0) return r;
-        const base = createMergeRowState(fields, defTid, true, defTid ? [defTid] : []);
+    setMergeRows((rows) =>
+      rows.map((r, i) => {
+        if (i !== 0) {
+          if (!mergeRowHasFieldData(r, fields)) return clearMergeRowMailFields(r);
+          return r;
+        }
+        let base = createMergeRowState(fields, defTid, true, defTid ? [defTid] : []);
         for (const rmap of mappingRows) {
           if (rmap.sourceType === 'constant') {
             base[rmap.mergeKey] = String(rmap.constantValue ?? '').trim();
@@ -1165,13 +1409,24 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
               : '';
           }
         }
-        base._mailTo = mailTo || base._mailTo;
-        base._mailCc = mailCc || base._mailCc;
-        return base;
-      });
-      return next;
-    });
-  };
+        if (usesDocTo && !String(base._mailTo || '').trim() && mailTo) base._mailTo = mailTo;
+        if (usesDocCc && !String(base._mailCc || '').trim() && mailCc) base._mailCc = mailCc;
+        return hydrateMergeRowMailFromProfiles(
+          base,
+          templateProfilesById,
+          fields,
+          pageMailFallback
+        );
+      })
+    );
+  }, [
+    mergeFieldsSheet,
+    mergeContext,
+    selectedTemplateId,
+    templates,
+    mappingRows,
+    templateProfilesById
+  ]);
 
   const closeFieldEditor = useCallback(() => {
     setFieldDraft(null);
@@ -1711,10 +1966,14 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
                                 disabled={disabled}
                               >
                                 <option value="">소스 선택…</option>
-                                {sourceOptions.map((source) => (
-                                  <option key={source.id} value={source.id}>
-                                    {source.label}
-                                  </option>
+                                {sourceOptionGroups.map((group) => (
+                                  <optgroup key={group.label} label={group.label}>
+                                    {group.items.map((source) => (
+                                      <option key={source.id} value={source.id}>
+                                        {source.label}
+                                      </option>
+                                    ))}
+                                  </optgroup>
                                 ))}
                               </select>
                               <p className="lc-crm-map-source-meta">{opportunitySourceMeta(row.sourceKey)}</p>
@@ -1830,6 +2089,19 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
           onUpdateRow={updateRow}
           onUpdateRowTemplates={updateRowTemplates}
           onRunMerge={runMerge}
+          templateProfilesById={templateProfilesById}
+          mergeMailFallback={mergeMailFallback}
+          pdfExportOptions={pdfExportOptions}
+          onRequestPdfPreview={requestPdfPreview}
+          pdfPreviewOpen={pdfPreviewOpen}
+          pdfPreviewObjectUrl={pdfPreviewObjectUrl}
+          pdfPreviewLoading={pdfPreviewLoading}
+          pdfPreviewError={pdfPreviewError}
+          pdfPreviewCaption={pdfPreviewCaption}
+          onClosePdfPreview={closePdfPreview}
+          apiBase={API_BASE}
+          getAuthHeader={getAuthHeader}
+          onDownloadRow={runSheetDownloadForRow}
           onMailtoHandoffRow={runSheetMailHandoffForRow}
           onMergeSheetGridPaste={({ r, c }, grid) => applyMergeGridPatch(r, c, grid)}
           onMailCellPaste={handleMergeSheetCellPaste}

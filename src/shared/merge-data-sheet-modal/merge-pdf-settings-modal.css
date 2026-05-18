@@ -1,0 +1,479 @@
+.merge-pdf-settings-root {
+  position: fixed;
+  inset: 0;
+  z-index: 2300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+
+.merge-pdf-settings-backdrop {
+  position: absolute;
+  inset: 0;
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: rgba(30, 41, 59, 0.42);
+  cursor: pointer;
+}
+
+.merge-pdf-settings-panel {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 460px;
+  max-height: 92vh;
+  overflow-y: auto;
+  background: #f8fafc;
+  border: 1px solid #d5dfec;
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.14);
+  box-sizing: border-box;
+}
+
+.merge-pdf-settings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem 0.35rem;
+}
+
+.merge-pdf-settings-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.merge-pdf-settings-desc {
+  margin: 0;
+  padding: 0 1rem 0.65rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: #64748b;
+}
+
+.merge-pdf-settings-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0 1rem 0.5rem;
+}
+
+.merge-pdf-settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.merge-pdf-settings-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.merge-pdf-settings-select {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.merge-pdf-settings-fieldset {
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.merge-pdf-settings-fieldset .merge-pdf-settings-label {
+  padding: 0 0.2rem;
+}
+
+.merge-pdf-settings-radio,
+.merge-pdf-settings-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  margin-top: 0.35rem;
+  font-size: 0.82rem;
+  color: #334155;
+  cursor: pointer;
+}
+
+.merge-pdf-settings-radio input,
+.merge-pdf-settings-check input {
+  margin-top: 0.15rem;
+  flex-shrink: 0;
+}
+
+.merge-pdf-settings-preview {
+  margin: 0;
+  padding: 0.45rem 1rem 0.65rem;
+  font-size: 0.76rem;
+  color: #64748b;
+  text-align: center;
+}
+
+.merge-pdf-settings-preview strong {
+  color: #2563a8;
+  font-weight: 600;
+}
+
+.merge-pdf-settings-field-hint--fieldset {
+  margin: 0 0 10px;
+  padding: 0;
+}
+
+.merge-pdf-settings-print-area-actions {
+  margin-top: 6px;
+}
+
+.merge-pdf-settings-check--indent {
+  margin: 8px 0 0;
+  padding-left: 0;
+}
+
+.merge-pdf-settings-pick-btn {
+  font-size: 0.82rem;
+}
+
+.merge-pdf-settings-sheet-name {
+  margin: 0 0 6px;
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.merge-pdf-settings-sheet-pick {
+  margin-top: 6px;
+}
+
+.merge-pdf-settings-field--flat {
+  margin-bottom: 0;
+}
+
+.merge-pdf-settings-sheet-select {
+  width: 100%;
+  font-size: 0.85rem;
+}
+
+.merge-pdf-settings-busy {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 0 1rem 0.5rem;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+  font-size: 0.85rem;
+}
+
+.merge-pdf-spinner {
+  width: 1.1rem;
+  height: 1.1rem;
+  border: 2px solid #bfdbfe;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: merge-pdf-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+.merge-pdf-settings-btn-spinner {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+@keyframes merge-pdf-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.merge-pdf-settings-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.55rem 1rem 0.85rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.merge-pdf-settings-preview-hint {
+  margin: 0;
+  padding: 0 1rem 0.35rem;
+  font-size: 0.74rem;
+  color: #64748b;
+  text-align: center;
+}
+
+.merge-pdf-settings-field--indent {
+  margin-top: 0.35rem;
+  padding-left: 0.35rem;
+}
+
+.merge-pdf-settings-input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 2rem;
+}
+
+.merge-pdf-settings-input--areas {
+  font-family: ui-monospace, monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  resize: vertical;
+  color: #334155;
+  background: #f8fafc;
+}
+
+.merge-pdf-settings-field-hint {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  line-height: 1.35;
+}
+
+.merge-pdf-settings-field-error {
+  font-size: 0.72rem;
+  color: #b91c1c;
+}
+
+.merge-pdf-settings-presets-section {
+  margin: 0 1rem 0.75rem;
+}
+
+.merge-pdf-settings-presets-label {
+  margin: 0 0 0.4rem;
+  font-size: 0.82rem;
+  color: #475569;
+}
+
+.merge-pdf-settings-presets-sublabel {
+  margin-left: 6px;
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+.merge-pdf-settings-presets-loading {
+  margin: 0.35rem 0 0;
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.merge-pdf-saved-dropdown {
+  position: relative;
+}
+
+.merge-pdf-saved-dropdown-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.65rem;
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #334155;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  text-align: left;
+  box-sizing: border-box;
+}
+
+.merge-pdf-saved-dropdown-trigger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.merge-pdf-saved-dropdown-trigger-text {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.merge-pdf-saved-dropdown-chevron {
+  flex-shrink: 0;
+  font-size: 1.25rem;
+  color: #64748b;
+  transition: transform 0.15s ease;
+}
+
+.merge-pdf-saved-dropdown-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.merge-pdf-saved-dropdown-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 60;
+  margin-top: 4px;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.5rem;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.1);
+  max-height: min(20rem, 55vh);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.merge-pdf-saved-dropdown-empty {
+  margin: 0;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.78rem;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+.merge-pdf-saved-dropdown-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.merge-pdf-saved-dropdown-row {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid #e8eef4;
+}
+
+.merge-pdf-saved-dropdown-row:last-of-type {
+  border-bottom: none;
+}
+
+.merge-pdf-saved-dropdown-option {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0.45rem 0.6rem;
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #334155;
+  background: #fafbfc;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.merge-pdf-saved-dropdown-option:hover:not(:disabled) {
+  background: #eef2f7;
+}
+
+.merge-pdf-saved-dropdown-option.is-active {
+  background: #e0effc;
+  color: #1e3a5f;
+}
+
+.merge-pdf-saved-scope {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.merge-pdf-saved-scope--company {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.merge-pdf-saved-scope--personal {
+  background: #f3e8ff;
+  color: #6b21a8;
+}
+
+.merge-pdf-saved-dropdown-del {
+  flex-shrink: 0;
+  width: 2.25rem;
+  border: none;
+  background: #fafbfc;
+  color: #94a3b8;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.merge-pdf-saved-dropdown-del:hover:not(:disabled) {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.merge-pdf-saved-dropdown-footer {
+  padding: 0.5rem 0.6rem 0.6rem;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.merge-pdf-saved-dropdown-footer-input {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 6px;
+  min-height: 2rem;
+  font-size: 0.82rem;
+}
+
+.merge-pdf-saved-dropdown-register-row {
+  display: flex;
+  gap: 6px;
+}
+
+.merge-pdf-saved-register-btn {
+  flex: 1 1 50%;
+  font-size: 0.78rem;
+  justify-content: center;
+}
+
+.merge-pdf-saved-register-btn--company {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.merge-pdf-settings-sheet-checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 10rem;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.merge-pdf-settings-sheet-checklist li {
+  border-bottom: 1px solid #eef2f6;
+}
+
+.merge-pdf-settings-sheet-checklist li:last-child {
+  border-bottom: none;
+}
+
+.merge-pdf-settings-sheet-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  color: #334155;
+  cursor: pointer;
+}
+
+.merge-pdf-settings-sheet-check input {
+  flex-shrink: 0;
+}

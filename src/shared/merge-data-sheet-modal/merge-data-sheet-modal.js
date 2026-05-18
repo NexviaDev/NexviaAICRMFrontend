@@ -1,14 +1,30 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { formatMergePdfExportOptionsSummary } from '@/lib/merge-pdf-export-options';
+import {
+  resolvePdfPrintAreaXlsxTemplate,
+  resolvePdfPrintAreaXlsxTemplateForRow
+} from '@/lib/merge-pdf-print-area-template';
 import { parseTsvGrid, quoteTsvField } from '@/lib/tsv-grid';
+import {
+  applyMailDefaultsToMergeRow,
+  refreshMailTokensFromProfile
+} from '@/lib/merge-template-mail-defaults';
+import { normalizeMergePdfExportOptions } from '@/lib/merge-pdf-export-options';
+import {
+  fetchXlsxSheetNamesFromMergeTemplate,
+  pdfExportOptionsWithSheetNames
+} from '@/lib/merge-pdf-sync-from-template';
+import { mergeRowsIncludePdfExport, resolveMergeExportAddonForRow } from '@/lib/merge-export-addon';
+import MergePdfPreviewModal from './merge-pdf-preview-modal';
 import './merge-data-sheet-modal.css';
 
 /** 안내 문구용(quotation-doc-merge.js 의 MERGE_SHEET_* 과 동일하게 유지) */
 const MERGE_SHEET_HINT_INITIAL = 200;
 const MERGE_SHEET_HINT_MAX = 1000;
 
-/** 시트 앞쪽 고정 열: [0] 양식(id 쉼표), [1] 추가추출(same|pdfAddon|pdfOnly), [2] 메일 보내기(복사·붙여넣기 빈칸) */
-export const MERGE_SHEET_PREFIX_COL_COUNT = 3;
-/** 받는 사람·참조(CC)·제목·본문 — PREFIX 뒤 4열(시트 열 인덱스 3..6) */
+/** 시트 앞쪽 고정 열: [0] 양식(id 쉼표), [1] 받기·메일(추가 추출은 quotation-doc-merge·양식 PDF 설정) */
+export const MERGE_SHEET_PREFIX_COL_COUNT = 2;
+/** 받는 사람·참조(CC)·제목·본문 — PREFIX 뒤 4열(시트 열 인덱스 2..5) */
 export const MERGE_SHEET_MAIL_INPUT_COL_COUNT = 4;
 /** 치환 필드 열 시작 인덱스 */
 export const MERGE_SHEET_FIELD_START = MERGE_SHEET_PREFIX_COL_COUNT + MERGE_SHEET_MAIL_INPUT_COL_COUNT;
@@ -39,10 +55,6 @@ function serializeRange(mergeRows, fields, rect, templates, selectedTemplateId) 
       if (row && c >= 0 && c < nCols) {
         if (c === 0) {
           v = rowTemplateIdsForSelect(row, selectedTemplateId, templates || []).join(',');
-        } else if (c === 1) {
-          v = normalizeRowExportAddonMode(row);
-        } else if (c === 2) {
-          v = '';
         } else if (c < fieldStart) {
           const mk = MAIL_SERIAL_KEYS[c - MERGE_SHEET_PREFIX_COL_COUNT];
           v = mk && row[mk] != null ? String(row[mk]) : '';
@@ -71,18 +83,11 @@ function rowTemplateIdsForSelect(row, selectedTemplateId, templates) {
   return raw.filter((id) => templates.some((t) => String(t._id) === String(id)));
 }
 
-function normalizeRowExportAddonMode(row) {
-  const s = String(row?._exportAddon || '').trim();
-  if (s === 'pdfOnly') return 'pdfOnly';
-  if (s === 'pdfAddon' || s === 'preferPdf') return 'pdfAddon';
-  return 'same';
-}
-
-function exportAddonSummaryText(row) {
-  const m = normalizeRowExportAddonMode(row);
-  if (m === 'pdfOnly') return 'PDF 만 추출';
-  if (m === 'pdfAddon') return 'PDF 추가 추출';
-  return '양식에 맞게만';
+function isXlsxMergeTemplate(t) {
+  if (!t) return false;
+  if (String(t.fileType || '').toLowerCase() === 'xlsx') return true;
+  const n = String(t.fileName || t.name || '');
+  return /\.xlsx$/i.test(n);
 }
 
 /** 접힌 드롭다운에만 표시: 1개면 파일명만, 2개 이상이면 개수만 */
@@ -121,6 +126,19 @@ export default function MergeDataSheetModal({
   onUpdateRow,
   onUpdateRowTemplates,
   onRunMerge,
+  pdfExportOptions,
+  templateProfilesById = {},
+  mergeMailFallback = null,
+  onRequestPdfPreview,
+  pdfPreviewOpen,
+  pdfPreviewObjectUrl,
+  pdfPreviewLoading,
+  pdfPreviewError,
+  pdfPreviewCaption,
+  onClosePdfPreview,
+  apiBase,
+  getAuthHeader,
+  onDownloadRow,
   onMailtoHandoffRow,
   onMergeSheetGridPaste,
   onMailCellPaste,
@@ -138,6 +156,35 @@ export default function MergeDataSheetModal({
   const mergeSheetScrollRef = useRef(null);
   const mergeModalRootRef = useRef(null);
   const selectionDragActiveRef = useRef(false);
+  const [pdfFocusRowIndex, setPdfFocusRowIndex] = useState(null);
+  const pdfExportOptionsRef = useRef(pdfExportOptions);
+  const sheetUsesPdf = useMemo(
+    () =>
+      mergeRowsIncludePdfExport(
+        mergeRows,
+        templateProfilesById,
+        pdfExportOptions,
+        templates,
+        selectedTemplateId
+      ),
+    [mergeRows, templateProfilesById, pdfExportOptions, templates, selectedTemplateId]
+  );
+  const printAreaXlsxTemplate = useMemo(() => {
+    if (
+      pdfFocusRowIndex != null &&
+      pdfFocusRowIndex >= 0 &&
+      mergeRows[pdfFocusRowIndex]
+    ) {
+      const rowHit = resolvePdfPrintAreaXlsxTemplateForRow(
+        mergeRows[pdfFocusRowIndex],
+        templates,
+        selectedTemplateId,
+        templateListFileName
+      );
+      if (rowHit) return rowHit;
+    }
+    return resolvePdfPrintAreaXlsxTemplate(mergeRows, templates, selectedTemplateId, templateListFileName);
+  }, [pdfFocusRowIndex, mergeRows, templates, selectedTemplateId, templateListFileName]);
 
   useEffect(() => {
     mergeRowsRef.current = mergeRows;
@@ -151,15 +198,78 @@ export default function MergeDataSheetModal({
   useEffect(() => {
     selectedTemplateIdRef.current = selectedTemplateId;
   }, [selectedTemplateId]);
+  useEffect(() => {
+    pdfExportOptionsRef.current = pdfExportOptions;
+  }, [pdfExportOptions]);
 
   useEffect(() => {
     if (!open) {
       setSelAnchor(null);
       setSelEnd(null);
+      setPdfFocusRowIndex(null);
     }
   }, [open]);
 
-  /** 펼친 사용 양식·추가 추출(details) — 모달 안 다른 곳을 누르면 닫음 */
+  const applyTemplateProfileForRow = useCallback(
+    (rowIdx, templateIds) => {
+      if (typeof onUpdateRow !== 'function' && typeof onUpdateRowTemplates !== 'function') return;
+      const primaryId = (templateIds || [])[0];
+      const prof = primaryId ? templateProfilesById[String(primaryId)] : null;
+      const row = mergeRowsRef.current[rowIdx];
+      if (!row) return;
+      if (prof?.pdfExportOptions && typeof onUpdateRow === 'function') {
+        onUpdateRow(rowIdx, '_pdfExportOptions', normalizeMergePdfExportOptions(prof.pdfExportOptions));
+      }
+      const mailResolveCtx = { templateProfilesById, pageMailFallback: mergeMailFallback };
+      let withMail = applyMailDefaultsToMergeRow(
+        row,
+        prof?.mailDefaults,
+        mergeMailFallback,
+        fieldsRef.current,
+        mailResolveCtx
+      );
+      withMail = refreshMailTokensFromProfile(withMail, prof?.mailDefaults, fieldsRef.current, mailResolveCtx);
+      if (typeof onUpdateRow === 'function') {
+        for (const key of ['_mailTo', '_mailCc', '_mailSubject', '_mailBody']) {
+          if (withMail[key] !== row[key]) onUpdateRow(rowIdx, key, withMail[key]);
+        }
+        const addon = resolveMergeExportAddonForRow(
+          { ...row, ...withMail, _pdfExportOptions: prof?.pdfExportOptions ? normalizeMergePdfExportOptions(prof.pdfExportOptions) : row._pdfExportOptions },
+          templateProfilesById,
+          pdfExportOptionsRef.current,
+          templateIds || []
+        );
+        onUpdateRow(rowIdx, '_exportAddon', addon);
+      }
+      setPdfFocusRowIndex(rowIdx);
+    },
+    [templateProfilesById, mergeMailFallback, onUpdateRow]
+  );
+
+  const syncPdfOptionsFromTemplateIds = useCallback(
+    async (rowIdx, templateIds) => {
+      const ids = (templateIds || []).map(String).filter(Boolean);
+      applyTemplateProfileForRow(rowIdx, ids);
+      if (!apiBase || !getAuthHeader || typeof onUpdateRow !== 'function' || !ids.length) return;
+      const xlsxId = ids.find((id) => {
+        const t = templatesRef.current.find((x) => String(x._id) === id);
+        return t?.fileType === 'xlsx';
+      });
+      if (!xlsxId) return;
+      try {
+        const names = await fetchXlsxSheetNamesFromMergeTemplate(apiBase, getAuthHeader, xlsxId);
+        if (!names.length) return;
+        const row = mergeRowsRef.current[rowIdx];
+        const base = row?._pdfExportOptions || pdfExportOptionsRef.current;
+        onUpdateRow(rowIdx, '_pdfExportOptions', pdfExportOptionsWithSheetNames(base, names));
+      } catch (_) {
+        /* 프로필 PDF 설정은 이미 적용됨 — 시트명 자동 맞춤만 생략 */
+      }
+    },
+    [applyTemplateProfileForRow, apiBase, getAuthHeader, onUpdateRow]
+  );
+
+  /** 펼친 사용 양식(details) — 모달 안 다른 곳을 누르면 닫음 */
   useEffect(() => {
     if (!open || mergeRunning) return;
     const onPointerDown = (e) => {
@@ -418,10 +528,6 @@ export default function MergeDataSheetModal({
             if (typeof onUpdateRowTemplates === 'function') {
               onUpdateRowTemplates(row, defTid ? [defTid] : []);
             }
-          } else if (col === 1) {
-            onUpdateRow(row, '_exportAddon', 'same');
-          } else if (col === 2) {
-            /* 메일 보내기 열 — 값 없음 */
           } else if (col < fieldStart) {
             const mk = mailKeys[col - MERGE_SHEET_PREFIX_COL_COUNT];
             if (mk) onUpdateRow(row, mk, '');
@@ -529,6 +635,19 @@ export default function MergeDataSheetModal({
       setSelEnd({ r: rowIdx, c: sheetCol });
     },
     [mergeRunning, selAnchor]
+  );
+
+  const onTemplatePresetCellClick = useCallback(
+    (e, rowIdx) => {
+      if (!e.target.closest('input')) {
+        setPdfFocusRowIndex(rowIdx);
+        const row = mergeRowsRef.current[rowIdx];
+        const ids = rowTemplateIdsForSelect(row, selectedTemplateIdRef.current, templatesRef.current);
+        void syncPdfOptionsFromTemplateIds(rowIdx, ids);
+      }
+      onSheetCellClick(e, rowIdx, 0);
+    },
+    [onSheetCellClick, syncPdfOptionsFromTemplateIds]
   );
 
   if (!open) return null;
@@ -640,32 +759,26 @@ export default function MergeDataSheetModal({
                     <tr>
                       <th
                         className="qdm-sheet-th qdm-sheet-th--preset qdm-sheet-th--template"
-                        title="Alt+드래그로 범위 선택·복사(Ctrl+C)·TSV 붙여넣기. 양식 열 값은 등록 양식의 MongoDB id를 쉼표로 구분합니다."
+                        title="양식을 선택하면 등록 시 저장한 PDF·메일 기본값이 행에 적용됩니다. Alt+드래그로 범위 선택·복사·붙여넣기."
                       >
                         사용 양식
                       </th>
                       <th
-                        className="qdm-sheet-th qdm-sheet-th--preset qdm-sheet-th--export-merge"
-                        title="Alt+드래그로 범위 선택·복사·붙여넣기. 값: same | pdfAddon | pdfOnly (영문 키)"
-                      >
-                        추가 추출
-                      </th>
-                      <th
                         className="qdm-sheet-th qdm-sheet-th--preset qdm-sheet-th--mail-col qdm-sheet-th--mail-check"
-                        title="이 행만 견적 파일을 만든 뒤 PC 메일(Outlook 등) 작성 창을 엽니다. 받는 사람·참조(CC)·제목·본문은 아래 칸을 사용합니다."
+                        title="왼쪽: 이 행만 Word/Excel·PDF 파일 받기. 오른쪽: 파일 없이 메일 작성 창만 엽니다. 추가 추출은 양식·PDF 설정에서 결정됩니다."
                       >
-                        <span className="qdm-th-label">메일</span>
+                        <span className="qdm-th-label">받기·메일</span>
                       </th>
                       <th
                         className="qdm-sheet-th qdm-sheet-th--preset qdm-sheet-th--mail-col qdm-sheet-th--mail-to"
-                        title="받는 사람 이메일 — 메일로 보내기 시 수신 주소"
+                        title="최우선: 이 칸 입력값. 비어 있으면 사용 양식·문서 메일머지에 등록한 받는 사람 기본값이 적용됩니다."
                       >
                         <span className="qdm-th-label">받는 사람</span>
                         <code className="qdm-th-code">{`{{mailTo}}`}</code>
                       </th>
                       <th
                         className="qdm-sheet-th qdm-sheet-th--preset qdm-sheet-th--mail-col qdm-sheet-th--mail-cc"
-                        title="참조(CC) — 메일 작성 시 참조란(여러 주소는 쉼표·세미콜론으로 구분)"
+                        title="최우선: 이 칸 입력값. 비어 있으면 사용 양식·문서 메일머지에 등록한 참조(CC) 기본값이 적용됩니다."
                       >
                         <span className="qdm-th-label">참조(CC)</span>
                         <code className="qdm-th-code">{`{{mailCc}}`}</code>
@@ -679,7 +792,7 @@ export default function MergeDataSheetModal({
                       </th>
                       <th
                         className="qdm-sheet-th qdm-sheet-th--preset qdm-sheet-th--preset-end qdm-sheet-th--mail-col qdm-sheet-th--mail-body"
-                        title="메일 본문(평문). mailto 한도로 일부만 넘어갈 수 있습니다."
+                        title="메일 본문. {{치환자}}에 들어가는 동적 값의 줄바꿈만 쉼표(,)로 바뀝니다. Excel/PDF 치환 열의 줄바꿈은 그대로 반영됩니다. mailto 한도로 일부만 넘어갈 수 있습니다."
                       >
                         <span className="qdm-th-label">메일 본문</span>
                         <code className="qdm-th-code">{`{{mailBody}}`}</code>
@@ -708,7 +821,7 @@ export default function MergeDataSheetModal({
                             data-merge-sheet-row={idx}
                             data-merge-sheet-col={0}
                             onMouseEnter={() => onSheetCellMouseEnter(idx, 0)}
-                            onClick={(e) => onSheetCellClick(e, idx, 0)}
+                            onClick={(e) => onTemplatePresetCellClick(e, idx)}
                           >
                             {!templates.length ? (
                               <span className="qdm-sheet-template-checkboxes-empty">—</span>
@@ -758,6 +871,7 @@ export default function MergeDataSheetModal({
                                                 .map((x) => String(x._id))
                                                 .filter((tid) => next.has(tid));
                                               onUpdateRowTemplates?.(idx, ordered);
+                                              applyTemplateProfileForRow(idx, ordered);
                                             }}
                                           />
                                           <span className="qdm-sheet-template-checkbox-text">
@@ -773,90 +887,50 @@ export default function MergeDataSheetModal({
                             )}
                           </td>
                           <td
-                            className={`qdm-sheet-td qdm-sheet-td--preset qdm-sheet-td--export-merge qdm-sheet-td--template-dropdown qdm-sheet-td--merge-select${isCellSelected(idx, 1) ? ' qdm-sheet-td--selected' : ''
+                            className={`qdm-sheet-td qdm-sheet-td--preset qdm-sheet-td--mail-col qdm-sheet-td--mail-check qdm-sheet-td--merge-select${isCellSelected(idx, 1) ? ' qdm-sheet-td--selected' : ''
                               }`}
                             data-merge-sheet-row={idx}
                             data-merge-sheet-col={1}
                             onMouseEnter={() => onSheetCellMouseEnter(idx, 1)}
                             onClick={(e) => onSheetCellClick(e, idx, 1)}
                           >
-                            {mergeRunning ? (
-                              <div
-                                className="qdm-sheet-template-dropdown-summary qdm-sheet-template-dropdown-summary--static"
-                                title="생성 중에는 바꿀 수 없습니다."
+                            <div className="qdm-sheet-mail-actions-wrap">
+                              <button
+                                type="button"
+                                className="qdm-btn qdm-btn-ghost qdm-btn-small qdm-sheet-mail-download-btn"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void onDownloadRow?.(idx);
+                                }}
+                                disabled={
+                                  mergeRunning ||
+                                  !templates.length ||
+                                  !fields.length ||
+                                  typeof onDownloadRow !== 'function'
+                                }
+                                title="이 행의「사용 양식」과 양식에 저장된 PDF·추가 추출 설정대로 Word/Excel·PDF 파일만 받습니다."
+                                aria-label={`${idx + 1}행 파일 받기`}
                               >
-                                <span className="qdm-sheet-template-dropdown-summary-text">
-                                  {exportAddonSummaryText(row)}
+                                <span className="material-symbols-outlined" aria-hidden>
+                                  download
                                 </span>
-                              </div>
-                            ) : (
-                              <details className="qdm-sheet-template-dropdown qdm-sheet-export-addon-dropdown" title="펼쳐서 PDF 추출 방식을 고릅니다.">
-                                <summary
-                                  className="qdm-sheet-template-dropdown-summary"
-                                  aria-label={`${idx + 1}행 추가 추출, 펼치기`}
-                                >
-                                  <span className="qdm-sheet-template-dropdown-summary-text">
-                                    {exportAddonSummaryText(row)}
-                                  </span>
-                                  <span className="material-symbols-outlined qdm-sheet-template-dropdown-chevron" aria-hidden>
-                                    expand_more
-                                  </span>
-                                </summary>
-                                <div
-                                  className="qdm-sheet-template-dropdown-panel"
-                                  role="group"
-                                  aria-label={`${idx + 1}행 PDF 추출(둘 다 해제 시 양식에 맞게만)`}
-                                >
-                                  <div className="qdm-sheet-template-checkboxes-scroll qdm-sheet-export-addon-check-scroll">
-                                    <label className="qdm-sheet-template-checkbox-row">
-                                      <input
-                                        type="checkbox"
-                                        className="qdm-sheet-template-checkbox"
-                                        checked={normalizeRowExportAddonMode(row) === 'pdfAddon'}
-                                        onChange={(e) => {
-                                          if (e.target.checked) onUpdateRow?.(idx, '_exportAddon', 'pdfAddon');
-                                          else onUpdateRow?.(idx, '_exportAddon', 'same');
-                                        }}
-                                      />
-                                      <span className="qdm-sheet-template-checkbox-text">PDF 추가 추출</span>
-                                    </label>
-                                    <label className="qdm-sheet-template-checkbox-row">
-                                      <input
-                                        type="checkbox"
-                                        className="qdm-sheet-template-checkbox"
-                                        checked={normalizeRowExportAddonMode(row) === 'pdfOnly'}
-                                        onChange={(e) => {
-                                          if (e.target.checked) onUpdateRow?.(idx, '_exportAddon', 'pdfOnly');
-                                          else onUpdateRow?.(idx, '_exportAddon', 'same');
-                                        }}
-                                      />
-                                      <span className="qdm-sheet-template-checkbox-text">PDF 만 추출</span>
-                                    </label>
-                                  </div>
-                                </div>
-                              </details>
-                            )}
-                          </td>
-                          <td
-                            className={`qdm-sheet-td qdm-sheet-td--preset qdm-sheet-td--mail-col qdm-sheet-td--mail-check qdm-sheet-td--merge-select${isCellSelected(idx, 2) ? ' qdm-sheet-td--selected' : ''
-                              }`}
-                            data-merge-sheet-row={idx}
-                            data-merge-sheet-col={2}
-                            onMouseEnter={() => onSheetCellMouseEnter(idx, 2)}
-                            onClick={(e) => onSheetCellClick(e, idx, 2)}
-                          >
-                            <div className="qdm-sheet-mail-send-wrap">
+                                받기
+                              </button>
                               <button
                                 type="button"
                                 className="qdm-btn qdm-btn-ghost qdm-btn-small qdm-sheet-mail-send-btn"
-                                onClick={() => void onMailtoHandoffRow?.(idx)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void onMailtoHandoffRow?.(idx);
+                                }}
                                 disabled={
                                   mergeRunning ||
                                   !templates.length ||
                                   !fields.length ||
                                   typeof onMailtoHandoffRow !== 'function'
                                 }
-                                title="이 행의「추가 추출」설정대로 파일을 받은 뒤, 받는 사람·참조(CC)·제목·본문으로 메일 작성 창을 엽니다."
+                                title="파일은 보내지 않고, 받는 사람·참조(CC)·제목·본문으로 PC 메일 작성 창만 엽니다."
+                                aria-label={`${idx + 1}행 메일 보내기`}
                               >
                                 <span className="material-symbols-outlined" aria-hidden>
                                   outgoing_mail
@@ -866,7 +940,29 @@ export default function MergeDataSheetModal({
                             </div>
                           </td>
                           <td
-                            className={`qdm-sheet-td qdm-sheet-td--preset qdm-sheet-td--mail-col qdm-sheet-td--mail-to qdm-sheet-td--mail-input qdm-sheet-td--merge-select${isCellSelected(idx, 3) ? ' qdm-sheet-td--selected' : ''
+                            className={`qdm-sheet-td qdm-sheet-td--preset qdm-sheet-td--mail-col qdm-sheet-td--mail-to qdm-sheet-td--mail-input qdm-sheet-td--merge-select${isCellSelected(idx, 2) ? ' qdm-sheet-td--selected' : ''
+                              }`}
+                            data-merge-sheet-row={idx}
+                            data-merge-sheet-col={2}
+                            onMouseEnter={() => onSheetCellMouseEnter(idx, 2)}
+                            onClick={(e) => onSheetCellClick(e, idx, 2)}
+                          >
+                            <textarea
+                              className="qdm-cell qdm-cell--sheet qdm-cell-sheet-single"
+                              rows={1}
+                              value={String(row._mailTo ?? '')}
+                              onChange={(e) => onUpdateRow?.(idx, '_mailTo', e.target.value)}
+                              onPaste={(e) => onMailCellPaste?.(e, idx, 2)}
+                              onKeyDown={(e) => onMailCellKeyDown?.(e, idx, 2)}
+                              disabled={mergeRunning}
+                              placeholder=""
+                              autoComplete="off"
+                              spellCheck={false}
+                              aria-label={`${idx + 1}행 받는 사람`}
+                            />
+                          </td>
+                          <td
+                            className={`qdm-sheet-td qdm-sheet-td--preset qdm-sheet-td--mail-col qdm-sheet-td--mail-cc qdm-sheet-td--mail-input qdm-sheet-td--merge-select${isCellSelected(idx, 3) ? ' qdm-sheet-td--selected' : ''
                               }`}
                             data-merge-sheet-row={idx}
                             data-merge-sheet-col={3}
@@ -876,19 +972,19 @@ export default function MergeDataSheetModal({
                             <textarea
                               className="qdm-cell qdm-cell--sheet qdm-cell-sheet-single"
                               rows={1}
-                              value={String(row._mailTo ?? '')}
-                              onChange={(e) => onUpdateRow?.(idx, '_mailTo', e.target.value)}
+                              value={String(row._mailCc ?? '')}
+                              onChange={(e) => onUpdateRow?.(idx, '_mailCc', e.target.value)}
                               onPaste={(e) => onMailCellPaste?.(e, idx, 3)}
                               onKeyDown={(e) => onMailCellKeyDown?.(e, idx, 3)}
                               disabled={mergeRunning}
                               placeholder=""
                               autoComplete="off"
                               spellCheck={false}
-                              aria-label={`${idx + 1}행 받는 사람`}
+                              aria-label={`${idx + 1}행 참조 CC`}
                             />
                           </td>
                           <td
-                            className={`qdm-sheet-td qdm-sheet-td--preset qdm-sheet-td--mail-col qdm-sheet-td--mail-cc qdm-sheet-td--mail-input qdm-sheet-td--merge-select${isCellSelected(idx, 4) ? ' qdm-sheet-td--selected' : ''
+                            className={`qdm-sheet-td qdm-sheet-td--preset qdm-sheet-td--mail-col qdm-sheet-td--mail-subj qdm-sheet-td--mail-input qdm-sheet-td--merge-select${isCellSelected(idx, 4) ? ' qdm-sheet-td--selected' : ''
                               }`}
                             data-merge-sheet-row={idx}
                             data-merge-sheet-col={4}
@@ -898,32 +994,10 @@ export default function MergeDataSheetModal({
                             <textarea
                               className="qdm-cell qdm-cell--sheet qdm-cell-sheet-single"
                               rows={1}
-                              value={String(row._mailCc ?? '')}
-                              onChange={(e) => onUpdateRow?.(idx, '_mailCc', e.target.value)}
-                              onPaste={(e) => onMailCellPaste?.(e, idx, 4)}
-                              onKeyDown={(e) => onMailCellKeyDown?.(e, idx, 4)}
-                              disabled={mergeRunning}
-                              placeholder=""
-                              autoComplete="off"
-                              spellCheck={false}
-                              aria-label={`${idx + 1}행 참조 CC`}
-                            />
-                          </td>
-                          <td
-                            className={`qdm-sheet-td qdm-sheet-td--preset qdm-sheet-td--mail-col qdm-sheet-td--mail-subj qdm-sheet-td--mail-input qdm-sheet-td--merge-select${isCellSelected(idx, 5) ? ' qdm-sheet-td--selected' : ''
-                              }`}
-                            data-merge-sheet-row={idx}
-                            data-merge-sheet-col={5}
-                            onMouseEnter={() => onSheetCellMouseEnter(idx, 5)}
-                            onClick={(e) => onSheetCellClick(e, idx, 5)}
-                          >
-                            <textarea
-                              className="qdm-cell qdm-cell--sheet qdm-cell-sheet-single"
-                              rows={1}
                               value={String(row._mailSubject ?? '')}
                               onChange={(e) => onUpdateRow?.(idx, '_mailSubject', e.target.value)}
-                              onPaste={(e) => onMailCellPaste?.(e, idx, 5)}
-                              onKeyDown={(e) => onMailCellKeyDown?.(e, idx, 5)}
+                              onPaste={(e) => onMailCellPaste?.(e, idx, 4)}
+                              onKeyDown={(e) => onMailCellKeyDown?.(e, idx, 4)}
                               disabled={mergeRunning}
                               placeholder=""
                               spellCheck={false}
@@ -931,20 +1005,20 @@ export default function MergeDataSheetModal({
                             />
                           </td>
                           <td
-                            className={`qdm-sheet-td qdm-sheet-td--preset qdm-sheet-td--preset-end qdm-sheet-td--mail-col qdm-sheet-td--mail-body qdm-sheet-td--mail-input qdm-sheet-td--merge-select${isCellSelected(idx, 6) ? ' qdm-sheet-td--selected' : ''
+                            className={`qdm-sheet-td qdm-sheet-td--preset qdm-sheet-td--preset-end qdm-sheet-td--mail-col qdm-sheet-td--mail-body qdm-sheet-td--mail-input qdm-sheet-td--merge-select${isCellSelected(idx, 5) ? ' qdm-sheet-td--selected' : ''
                               }`}
                             data-merge-sheet-row={idx}
-                            data-merge-sheet-col={6}
-                            onMouseEnter={() => onSheetCellMouseEnter(idx, 6)}
-                            onClick={(e) => onSheetCellClick(e, idx, 6)}
+                            data-merge-sheet-col={5}
+                            onMouseEnter={() => onSheetCellMouseEnter(idx, 5)}
+                            onClick={(e) => onSheetCellClick(e, idx, 5)}
                           >
                             <textarea
                               className="qdm-cell qdm-cell--sheet qdm-cell-tall"
                               rows={2}
                               value={String(row._mailBody ?? '')}
                               onChange={(e) => onUpdateRow?.(idx, '_mailBody', e.target.value)}
-                              onPaste={(e) => onMailCellPaste?.(e, idx, 6)}
-                              onKeyDown={(e) => onMailCellKeyDown?.(e, idx, 6)}
+                              onPaste={(e) => onMailCellPaste?.(e, idx, 5)}
+                              onKeyDown={(e) => onMailCellKeyDown?.(e, idx, 5)}
                               disabled={mergeRunning}
                               placeholder=""
                               spellCheck={false}
@@ -978,23 +1052,31 @@ export default function MergeDataSheetModal({
         )}
         <footer className="merge-data-sheet-modal-footer" role="note">
           <p className="merge-data-sheet-modal-footer-text">
-            <strong>PDF 추가 추출</strong>·<strong>PDF 만 추출</strong>은 PC가 아니라 <strong>백엔드 서버</strong>에서
-            LibreOffice로 변환합니다. Windows에서 백엔드를 돌릴 때는 설치 시 기본 위치를 유지해, 반드시 아래 파일이
-            있어야 합니다.{' '}
-            <code className="merge-data-sheet-modal-footer-path">C:\Program Files\LibreOffice\program\soffice.exe</code>
-            {' '}
-            <code className="merge-data-sheet-modal-footer-path">LIBREOFFICE_SOFFICE=전체경로</code> 지정) ·{' '}
-            <a
-              href="https://www.libreoffice.org/download/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="merge-data-sheet-modal-footer-link"
-            >
-              LibreOffice 공식 다운로드
-            </a>
-            . 운영 사이트(Railway 등 Linux)는 서버에 LibreOffice 패키지 설치가 필요합니다.
+            <strong>PDF 추가 추출</strong>·<strong>PDF 만 추출</strong>은 <strong>백엔드</strong>에서 LibreOffice로
+            변환합니다.
+            {sheetUsesPdf && pdfExportOptions ? (
+              <>
+                {' '}
+                현재 PDF 설정: <strong>{formatMergePdfExportOptionsSummary(pdfExportOptions)}</strong>
+                {' '}
+              </>
+            ) : (
+              <>
+                {' '}
+                PDF 추가·만 추출은 <strong>양식 등록 시 PDF 설정</strong>·문서 메일머지 페이지 PDF 설정에서 정합니다. PDF·메일은{' '}
+                <strong>사용 양식</strong>에 등록된 설정이 적용됩니다.
+              </>
+            )}
           </p>
         </footer>
+        <MergePdfPreviewModal
+          open={!!pdfPreviewOpen}
+          onClose={onClosePdfPreview}
+          pdfObjectUrl={pdfPreviewObjectUrl}
+          loading={pdfPreviewLoading}
+          error={pdfPreviewError}
+          caption={pdfPreviewCaption}
+        />
       </div>
     </div>
   );

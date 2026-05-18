@@ -94,6 +94,66 @@ function sumLineFinalFromServerLineItems(lineItemsRaw) {
   return sum;
 }
 
+/** 편집 로드 시 제품 상세 — 행마다 await 하지 않고 병렬 조회 */
+async function fetchProductDocMapByIds(productIds) {
+  const unique = [
+    ...new Set(
+      (productIds || [])
+        .map((id) => normalizeMongoIdCandidate(id))
+        .filter((id) => id && isLikelyMongoObjectId(id))
+    )
+  ];
+  if (!unique.length) return {};
+  const results = await Promise.all(
+    unique.map(async (pid) => {
+      try {
+        const pres = await fetch(`${API_BASE}/products/${pid}`, { headers: getAuthHeader() });
+        if (!pres.ok) return null;
+        const pdoc = await pres.json();
+        return pdoc?._id ? [String(pid), pdoc] : null;
+      } catch {
+        return null;
+      }
+    })
+  );
+  const nextDocs = {};
+  for (const entry of results) {
+    if (entry) nextDocs[entry[0]] = entry[1];
+  }
+  return nextDocs;
+}
+
+async function fetchCrmDriveUploadsForOppLoad(ccIdLoad, bnLoad, empIdLoad) {
+  if (ccIdLoad && bnLoad) {
+    try {
+      const cres = await fetch(`${API_BASE}/customer-companies/${ccIdLoad}`, { headers: getAuthHeader() });
+      const cdata = await cres.json().catch(() => ({}));
+      if (cres.ok && cdata?._id) {
+        return Array.isArray(cdata.driveUploadedFiles) ? cdata.driveUploadedFiles : [];
+      }
+    } catch {
+      /* ignore */
+    }
+    return [];
+  }
+  if (empIdLoad && isLikelyMongoObjectId(empIdLoad)) {
+    try {
+      const empPath = normalizeMongoIdCandidate(empIdLoad);
+      const eres = await fetch(`${API_BASE}/customer-company-employees/${empPath}`, {
+        headers: getAuthHeader()
+      });
+      const edata = await eres.json().catch(() => ({}));
+      if (eres.ok && edata?._id) {
+        return Array.isArray(edata.driveUploadedFiles) ? edata.driveUploadedFiles : [];
+      }
+    } catch {
+      /* ignore */
+    }
+    return [];
+  }
+  return [];
+}
+
 export default function OpportunityModal({
   mode,
   oppId,
@@ -422,6 +482,7 @@ export default function OpportunityModal({
   }, [docMailCompanyBook, docMailUserBook]);
 
   const docMailBookDropdownRef = useRef(null);
+  const docMailBooksLoadedRef = useRef(false);
   const [docMailBookDropdownOpen, setDocMailBookDropdownOpen] = useState(false);
   const [docMailBookDropFixedStyle, setDocMailBookDropFixedStyle] = useState(null);
 
@@ -536,9 +597,12 @@ export default function OpportunityModal({
     }
   }, []);
 
+  /** 문서 메일 주소록 — 모달 열 때가 아니라 주소록 패널을 처음 열 때만 로드 */
   useEffect(() => {
+    if (!docMailBookDropdownOpen || docMailBooksLoadedRef.current) return;
+    docMailBooksLoadedRef.current = true;
     void loadDocMailBooks();
-  }, [loadDocMailBooks]);
+  }, [docMailBookDropdownOpen, loadDocMailBooks]);
 
   useEffect(() => {
     setOppFormSectionTab('basic');
@@ -794,6 +858,11 @@ export default function OpportunityModal({
         };
       };
 
+      const ccIdLoad = ccIdResolved || '';
+      const empIdLoad = empIdResolved || '';
+      const bnLoad = ccOk ? String(cc.businessNumber ?? '').trim() : '';
+      let productIdsToLoad = [];
+
       if (Array.isArray(data.lineItems) && data.lineItems.length > 0) {
         let clientLines = data.lineItems.map(mapServerLineToClient);
         if (
@@ -805,22 +874,9 @@ export default function OpportunityModal({
           );
         }
         setLineItems(clientLines);
-        const nextDocs = {};
-        for (let i = 0; i < data.lineItems.length; i++) {
-          const li = data.lineItems[i];
-          const pid = li.productId?._id || li.productId;
-          if (!pid || !isLikelyMongoObjectId(pid) || nextDocs[String(pid)]) continue;
-          try {
-            const pres = await fetch(`${API_BASE}/products/${normalizeMongoIdCandidate(pid)}`, { headers: getAuthHeader() });
-            if (pres.ok) {
-              const pdoc = await pres.json();
-              if (pdoc?._id) nextDocs[String(pid)] = pdoc;
-            }
-          } catch {
-            /* ignore */
-          }
-        }
-        setProductById(nextDocs);
+        productIdsToLoad = data.lineItems
+          .map((li) => li.productId?._id || li.productId)
+          .filter(Boolean);
       } else {
         const qty = data.quantity ?? 1;
         const unit = data.unitPrice ?? 0;
@@ -850,16 +906,7 @@ export default function OpportunityModal({
               commissionRecipients: mapServerCommissionRowsToClient(loadedComm)
             }
           ]);
-          try {
-            const pres = await fetch(`${API_BASE}/products/${normalizeMongoIdCandidate(loadedProductId)}`, { headers: getAuthHeader() });
-            if (pres.ok) {
-              const pdoc = await pres.json();
-              if (pdoc?._id) setProductById({ [String(loadedProductId)]: pdoc });
-              else setProductById({});
-            } else setProductById({});
-          } catch {
-            setProductById({});
-          }
+          productIdsToLoad = [loadedProductId];
         } else {
           setLineItems([]);
           setProductById({});
@@ -868,33 +915,6 @@ export default function OpportunityModal({
       setBusinessNumber(ccOk ? String(cc.businessNumber ?? '') : '');
       setDriveFolderLink(String(data.driveFolderLink || ''));
       setDriveFolderId(getDriveFolderIdFromLink(String(data.driveFolderLink || '')));
-      const ccIdLoad = ccIdResolved || '';
-      const empIdLoad = empIdResolved || '';
-      const bnLoad = ccOk ? String(cc.businessNumber ?? '').trim() : '';
-      if (ccIdLoad && bnLoad) {
-        try {
-          const cres = await fetch(`${API_BASE}/customer-companies/${ccIdLoad}`, { headers: getAuthHeader() });
-          const cdata = await cres.json().catch(() => ({}));
-          if (cres.ok && cdata?._id) {
-            setCrmDriveUploads(Array.isArray(cdata.driveUploadedFiles) ? cdata.driveUploadedFiles : []);
-          }
-        } catch (_) {
-          setCrmDriveUploads([]);
-        }
-      } else if (empIdLoad && isLikelyMongoObjectId(empIdLoad)) {
-        try {
-          const empPath = normalizeMongoIdCandidate(empIdLoad);
-          const eres = await fetch(`${API_BASE}/customer-company-employees/${empPath}`, { headers: getAuthHeader() });
-          const edata = await eres.json().catch(() => ({}));
-          if (eres.ok && edata?._id) {
-            setCrmDriveUploads(Array.isArray(edata.driveUploadedFiles) ? edata.driveUploadedFiles : []);
-          }
-        } catch (_) {
-          setCrmDriveUploads([]);
-        }
-      } else {
-        setCrmDriveUploads([]);
-      }
       setDocumentRefs(Array.isArray(data.documentRefs)
         ? data.documentRefs.map((url) => (typeof url === 'string' ? { url, name: '파일' } : { url: url?.url, name: url?.name || '파일' })).filter((d) => d?.url)
         : []);
@@ -908,6 +928,15 @@ export default function OpportunityModal({
       setEditDraft('');
       setReplyingToId(null);
       setReplyText('');
+
+      setLoadingOpp(false);
+
+      const [nextDocs, crmUploads] = await Promise.all([
+        fetchProductDocMapByIds(productIdsToLoad),
+        fetchCrmDriveUploadsForOppLoad(ccIdLoad, bnLoad, empIdLoad)
+      ]);
+      setProductById(nextDocs);
+      setCrmDriveUploads(crmUploads);
     } catch {
       setError('기회 정보를 불러올 수 없습니다.');
     } finally {
