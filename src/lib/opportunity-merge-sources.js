@@ -162,38 +162,12 @@ export function buildOpportunityDocMailFallback(ctx) {
   return { mailTo, mailCc, mailSubject: '', mailBody: '' };
 }
 
-/** 치환 매핑에서「받는 메일 주소(기회 문서 메일)」소스를 쓰는지 */
-export function opportunityMappingUsesDocRecipient(mappingRows) {
-  return (mappingRows || []).some((r) => {
-    if (r?.sourceType === 'constant') return false;
-    return normalizeOpportunityMergeSourceId(r?.sourceKey) === 'fixed.docRecipientEmail';
-  });
-}
-
-/** 치환 매핑에서「참조 CC(기회 문서 메일)」소스를 쓰는지 */
-export function opportunityMappingUsesDocCc(mappingRows) {
-  return (mappingRows || []).some((r) => {
-    if (r?.sourceType === 'constant') return false;
-    return normalizeOpportunityMergeSourceId(r?.sourceKey) === 'fixed.docCcEmail';
-  });
-}
-
-/**
- * 기회 문서 메일 fallback — 매핑에 명시한 칸만 기회 모달 값 허용.
- * 받는 사람·CC를 매핑하지 않았으면 양식 등록(quotation-doc-merge) mailDefaults가 우선.
- */
-export function buildOpportunityMergeMailFallback(ctx, mappingRows) {
-  const full = buildOpportunityDocMailFallback(ctx);
-  if (!full) return null;
-  const usesTo = opportunityMappingUsesDocRecipient(mappingRows);
-  const usesCc = opportunityMappingUsesDocCc(mappingRows);
-  if (!usesTo && !usesCc) return null;
-  return {
-    mailTo: usesTo ? full.mailTo : '',
-    mailCc: usesCc ? full.mailCc : '',
-    mailSubject: '',
-    mailBody: ''
-  };
+/** 매핑 행(기회 필드·시트 메일) → 저장/시트 반영용 문자열 */
+export function resolveOpportunityMappingRowValue(row, ctx) {
+  if (!row) return '';
+  if (row.sourceType === 'constant') return String(row.constantValue ?? '').trim();
+  if (!row.sourceKey) return '';
+  return String(resolveOpportunityMergeSourceValue(row.sourceKey, ctx) ?? '').trim();
 }
 
 const MERGE_SOURCE_GROUP_ORDER = [

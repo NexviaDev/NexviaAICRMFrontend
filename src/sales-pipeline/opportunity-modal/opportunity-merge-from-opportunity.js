@@ -17,14 +17,10 @@ import {
 import { buildMailtoWithFields } from '@/lib/email-client-links';
 import { getStoredCrmUser, isManagerOrAboveRole } from '@/lib/crm-role-utils';
 import {
-  buildOpportunityMergeMailFallback,
   buildOpportunityMergeSourceOptions,
   groupOpportunityMergeSourceOptions,
   normalizeOpportunityMergeSourceId,
-  opportunityMappingUsesDocCc,
-  opportunityMappingUsesDocRecipient,
-  resolveOpportunityDocCcEmail,
-  resolveOpportunityDocRecipientEmail,
+  resolveOpportunityMappingRowValue,
   resolveOpportunityMergeSourceValue
 } from '@/lib/opportunity-merge-sources';
 import {
@@ -44,6 +40,7 @@ import {
   mergeRowHasFieldData,
   mailDefaultsForRow,
   refreshMailTokensFromProfile,
+  resolveMergeRowMailField,
   resolveMergeRowMailFields
 } from '@/lib/merge-template-mail-defaults';
 import MergeFieldEditorModal from '@/shared/merge-field-editor-modal/merge-field-editor-modal';
@@ -213,6 +210,41 @@ function companyToMergeRow(c) {
 
 const MERGE_SHEET_MAIL_ROW_KEYS = ['_mailTo', '_mailCc', '_mailSubject', '_mailBody'];
 
+/** 데이터 시트 메일 칸 — 문서 치환 필드와 별도 매핑(모든 소스 선택 가능) */
+const SHEET_MAIL_MAPPING_SPECS = [
+  { mergeKey: '_mailTo', targetLabel: '받는 사람', token: 'mailTo' },
+  { mergeKey: '_mailCc', targetLabel: '참조 (CC)', token: 'mailCc' }
+];
+
+function createDefaultSheetMailMappingRows() {
+  return SHEET_MAIL_MAPPING_SPECS.map((spec) => ({
+    id: `sheet-mail-${spec.token}`,
+    mergeKey: spec.mergeKey,
+    targetLabel: spec.targetLabel,
+    targetToken: spec.token,
+    sourceType: 'field',
+    sourceKey: spec.mergeKey === '_mailTo' ? 'fixed.docRecipientEmail' : 'fixed.docCcEmail',
+    constantValue: ''
+  }));
+}
+
+function mappingRowToSavedPayload(row) {
+  return row.sourceType === 'constant'
+    ? { sourceType: 'constant', sourceKey: '', constantValue: String(row.constantValue ?? '') }
+    : { sourceType: 'field', sourceKey: String(row.sourceKey || ''), constantValue: '' };
+}
+
+function splitPresetMappings(all) {
+  const raw = all && typeof all === 'object' ? all : {};
+  const fieldMappings = {};
+  const mailMappings = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (k === '_mailTo' || k === '_mailCc') mailMappings[k] = v;
+    else fieldMappings[k] = v;
+  }
+  return { fieldMappings, mailMappings };
+}
+
 function parseTemplateIdsFromPaste(raw, templates, fallbackTid) {
   const list = Array.isArray(templates) ? templates : [];
   const s = String(raw ?? '').trim();
@@ -273,13 +305,9 @@ function parseSavedCellMapping(raw) {
   };
 }
 
-function previewOpportunityMappedValue(ctx, row) {
-  if (!row) return '';
-  if (row.sourceType === 'constant') return String(row.constantValue ?? '').trim();
-  if (!row.sourceKey) return '';
-  const s = resolveOpportunityMergeSourceValue(row.sourceKey, ctx);
-  if (!s) return '';
-  const t = String(s).trim();
+function formatMappingPreviewText(raw) {
+  if (raw == null || raw === '') return '';
+  const t = String(raw).trim();
   if (!t) return '';
   if (t.includes('\n')) {
     const lines = t.split('\n').map((x) => x.trim()).filter((x) => x.length > 0);
@@ -292,6 +320,43 @@ function previewOpportunityMappedValue(ctx, row) {
   }
   if (t.length > 80) return `${t.slice(0, 77)}…`;
   return t;
+}
+
+function previewOpportunityMappedValue(ctx, row) {
+  if (!row) return '';
+  if (row.sourceType === 'constant') return formatMappingPreviewText(row.constantValue);
+  if (!row.sourceKey) return '';
+  return formatMappingPreviewText(resolveOpportunityMergeSourceValue(row.sourceKey, ctx));
+}
+
+/** 시트 메일(받는 사람·CC) — 소스 선택 시 시트와 동일: 소스 값 → 없으면 양식 등록 mailDefaults */
+function previewOpportunitySheetMailValue(row, ctx, previewCtx) {
+  if (!row) return '';
+  if (row.sourceType === 'constant') return formatMappingPreviewText(row.constantValue);
+  const fields = previewCtx?.mergeFieldsSheet || [];
+  if (!fields.length) return previewOpportunityMappedValue(ctx, row);
+  const defTid =
+    previewCtx?.selectedTemplateId || defaultTemplateIdFromList(previewCtx?.templates || []);
+  let base = createMergeRowState(fields, defTid, true, defTid ? [defTid] : []);
+  const mappingRows = previewCtx?.mappingRows || [];
+  for (const rmap of mappingRows) {
+    if (rmap.sourceType === 'constant') {
+      base[rmap.mergeKey] = String(rmap.constantValue ?? '').trim();
+    } else {
+      base[rmap.mergeKey] = rmap.sourceKey ? resolveOpportunityMergeSourceValue(rmap.sourceKey, ctx) : '';
+    }
+  }
+  const v = resolveOpportunityMappingRowValue(row, ctx);
+  if (row.mergeKey === '_mailTo' && v) base._mailTo = v;
+  if (row.mergeKey === '_mailCc' && v) base._mailCc = v;
+  const resolved = resolveMergeRowMailField(
+    base,
+    row.mergeKey,
+    previewCtx?.templateProfilesById || {},
+    fields,
+    null
+  );
+  return formatMappingPreviewText(resolved);
 }
 
 function opportunitySourceMeta(sourceKey) {
@@ -397,8 +462,10 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
   const pdfPreviewUrlRef = useRef('');
   const [companyPickOpen, setCompanyPickOpen] = useState(false);
   const [mappingRows, setMappingRows] = useState([]);
+  const [sheetMailMappingRows, setSheetMailMappingRows] = useState(createDefaultSheetMailMappingRows);
   const [mappingHydrateNonce, setMappingHydrateNonce] = useState(0);
   const pendingHydrateMappingsRef = useRef(null);
+  const pendingMailMappingsHydrateRef = useRef(null);
   const [savedMappingNameDraft, setSavedMappingNameDraft] = useState('');
   const [savedMappingPickId, setSavedMappingPickId] = useState('');
   const [savedMappingPresetsFromServer, setSavedMappingPresetsFromServer] = useState([]);
@@ -427,6 +494,26 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
     [mappingRows]
   );
 
+  /** 문서 치환 필드 + 데이터 시트 메일(받는 사람·CC) — 동일 테이블 UI */
+  const mappingTableRows = useMemo(
+    () => [
+      ...mappingRows.map((r) => ({ ...r, isSheetMail: false })),
+      ...sheetMailMappingRows.map((r) => ({ ...r, isSheetMail: true }))
+    ],
+    [mappingRows, sheetMailMappingRows]
+  );
+
+  const sheetMailPreviewCtx = useMemo(
+    () => ({
+      mappingRows,
+      mergeFieldsSheet,
+      selectedTemplateId,
+      templates,
+      templateProfilesById
+    }),
+    [mappingRows, mergeFieldsSheet, selectedTemplateId, templates, templateProfilesById]
+  );
+
   const sheetFromUrl = isMergeDataSheetUrlOpen(searchParams, OPPORTUNITY_MERGE_SHEET_URL_PARAM);
 
   const stripOppMergeSheetUrlParam = useCallback(() => {
@@ -439,6 +526,34 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
   const updateMappingRow = useCallback((rowId, patch) => {
     setMappingRows((rows) => rows.map((x) => (x.id === rowId ? { ...x, ...patch } : x)));
   }, []);
+
+  const updateSheetMailMappingRow = useCallback((rowId, patch) => {
+    setSheetMailMappingRows((rows) => rows.map((x) => (x.id === rowId ? { ...x, ...patch } : x)));
+  }, []);
+
+  useEffect(() => {
+    if (!open || phase !== 'setup') return;
+    const hydrate = pendingMailMappingsHydrateRef.current;
+    pendingMailMappingsHydrateRef.current = null;
+    setSheetMailMappingRows(
+      SHEET_MAIL_MAPPING_SPECS.map((spec) => {
+        let base = {
+          id: `sheet-mail-${spec.token}`,
+          mergeKey: spec.mergeKey,
+          targetLabel: spec.targetLabel,
+          targetToken: spec.token,
+          sourceType: 'field',
+          sourceKey: spec.mergeKey === '_mailTo' ? 'fixed.docRecipientEmail' : 'fixed.docCcEmail',
+          constantValue: ''
+        };
+        if (hydrate && Object.prototype.hasOwnProperty.call(hydrate, spec.mergeKey)) {
+          const parsed = parseSavedCellMapping(hydrate[spec.mergeKey]);
+          base = { ...base, ...parsed };
+        }
+        return base;
+      })
+    );
+  }, [open, phase, mappingHydrateNonce]);
 
   const loadFieldGuide = useCallback(
     async (presetIdOverride) => {
@@ -508,17 +623,17 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
     }
   }, [getAuthHeader]);
 
-  const mergeMailFallback = useMemo(
-    () => buildOpportunityMergeMailFallback(mergeContext || {}, mappingRows),
-    [mergeContext, mappingRows]
-  );
+  /** 기회 병합 시트: 빈 메일 칸은 양식 등록(quotation-doc-merge) mailDefaults만 fallback */
+  const mergeMailFallback = null;
 
   useEffect(() => {
     if (!open) return;
     setPhase('setup');
     setSelectedFieldPresetId('');
     pendingHydrateMappingsRef.current = null;
+    pendingMailMappingsHydrateRef.current = null;
     setMappingRows([]);
+    setSheetMailMappingRows(createDefaultSheetMailMappingRows());
     setMappingHydrateNonce(0);
     setSavedMappingPickId('');
     setSavedMappingNameDraft('');
@@ -1315,7 +1430,9 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
   const applySavedPresetById = (id) => {
     const p = savedMappingPresetsFromServer.find((x) => x.id === id);
     if (!p) return;
-    pendingHydrateMappingsRef.current = p.mappings || {};
+    const { fieldMappings, mailMappings } = splitPresetMappings(p.mappings);
+    pendingHydrateMappingsRef.current = fieldMappings;
+    pendingMailMappingsHydrateRef.current = mailMappings;
     if (p.presetId && isMergeFieldPresetMongoId(p.presetId)) {
       setSelectedFieldPresetId(String(p.presetId));
     } else {
@@ -1332,14 +1449,10 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
     setSavedMappingPresetSaving(true);
     try {
       await pingBackendHealth();
-      const mappings = Object.fromEntries(
-        mappingRows.map((r) => [
-          r.mergeKey,
-          r.sourceType === 'constant'
-            ? { sourceType: 'constant', sourceKey: '', constantValue: r.constantValue }
-            : { sourceType: 'field', sourceKey: r.sourceKey, constantValue: '' }
-        ])
-      );
+      const mappings = {
+        ...Object.fromEntries(mappingRows.map((r) => [r.mergeKey, mappingRowToSavedPayload(r)])),
+        ...Object.fromEntries(sheetMailMappingRows.map((r) => [r.mergeKey, mappingRowToSavedPayload(r)]))
+      };
       const item = {
         id: newMappingPresetId(),
         name: name.slice(0, 80),
@@ -1387,11 +1500,6 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
     if (!fields.length) return;
     const ctx = mergeContext || {};
     const defTid = selectedTemplateId || defaultTemplateIdFromList(templates);
-    const usesDocTo = opportunityMappingUsesDocRecipient(mappingRows);
-    const usesDocCc = opportunityMappingUsesDocCc(mappingRows);
-    const mailTo = usesDocTo ? resolveOpportunityDocRecipientEmail(ctx) : '';
-    const mailCc = usesDocCc ? resolveOpportunityDocCcEmail(ctx) : '';
-    const pageMailFallback = buildOpportunityMergeMailFallback(ctx, mappingRows);
 
     setMergeRows((rows) =>
       rows.map((r, i) => {
@@ -1409,14 +1517,12 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
               : '';
           }
         }
-        if (usesDocTo && !String(base._mailTo || '').trim() && mailTo) base._mailTo = mailTo;
-        if (usesDocCc && !String(base._mailCc || '').trim() && mailCc) base._mailCc = mailCc;
-        return hydrateMergeRowMailFromProfiles(
-          base,
-          templateProfilesById,
-          fields,
-          pageMailFallback
-        );
+        for (const mailRow of sheetMailMappingRows) {
+          const v = resolveOpportunityMappingRowValue(mailRow, ctx);
+          if (mailRow.mergeKey === '_mailTo' && v) base._mailTo = v;
+          if (mailRow.mergeKey === '_mailCc' && v) base._mailCc = v;
+        }
+        return hydrateMergeRowMailFromProfiles(base, templateProfilesById, fields, null);
       })
     );
   }, [
@@ -1425,6 +1531,7 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
     selectedTemplateId,
     templates,
     mappingRows,
+    sheetMailMappingRows,
     templateProfilesById
   ]);
 
@@ -1906,35 +2013,57 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
 
               <p className="lc-crm-map-target-desc" style={{ marginBottom: '1rem' }}>
                 미리보기는 <strong>현재 기회 입력값</strong> 기준입니다. <strong>데이터 시트 열기</strong>를 누르면 아래 매핑이 첫 행에 반영됩니다.
+                맨 아래 <strong>받는 사람·참조(CC)</strong>는 데이터 시트 메일 칸이며, 값이 없으면{' '}
+                <strong>양식에 등록한 메일 기본값</strong>(문서 메일머지)이 적용됩니다.
               </p>
 
               <div className="lc-crm-map-table-head">
                 <div>소스 (기회 값)</div>
                 <div />
-                <div>대상 (문서 치환)</div>
+                <div>대상 (치환 · 시트 메일)</div>
                 <div>미리보기</div>
                 <div style={{ textAlign: 'right' }}>상태</div>
               </div>
 
               <div className="lc-crm-map-rows">
-                {mappingRows.map((row) => {
-                  const preview = previewOpportunityMappedValue(ctx, row);
+                {mappingTableRows.map((row, rowIdx) => {
+                  const preview =
+                    row.isSheetMail && row.sourceType === 'field'
+                      ? previewOpportunitySheetMailValue(row, ctx, sheetMailPreviewCtx)
+                      : previewOpportunityMappedValue(ctx, row);
                   const status = opportunityMergeRowStatus(row, preview);
                   const isConst = row.sourceType === 'constant';
+                  const isSheetMail = row.isSheetMail;
+                  const patchRow = isSheetMail ? updateSheetMailMappingRow : updateMappingRow;
+                  const targetCode = row.targetToken || row.mergeKey;
+                  const isFirstSheetMail = isSheetMail && rowIdx === mappingRows.length;
+                  const rowClass = [
+                    'lc-crm-map-row',
+                    isConst ? 'is-constant' : '',
+                    isSheetMail ? 'lc-crm-map-row--sheet-mail' : '',
+                    isFirstSheetMail ? 'lc-crm-map-row--sheet-mail-first' : ''
+                  ]
+                    .filter(Boolean)
+                    .join(' ');
+                  const sourceIcon = isSheetMail ? 'mail' : isConst ? 'add_circle' : 'input';
+                  const constPlaceholder = isSheetMail ? '이메일 주소 등 고정값…' : '값 입력…';
+                  const sourceAria = isSheetMail
+                    ? `${row.targetLabel} 소스: 기회 필드 또는 고정값`
+                    : '소스: 기회 필드 또는 고정값';
                   return (
-                    <div key={row.id} className={`lc-crm-map-row ${isConst ? 'is-constant' : ''}`}>
+                    <div key={row.id} className={rowClass}>
                       <div className="lc-crm-map-source-cell">
                         <div className="lc-crm-map-icon-box">
                           <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>
-                            {isConst ? 'add_circle' : 'input'}
+                            {sourceIcon}
                           </span>
                         </div>
                         <div style={{ minWidth: 0, flex: 1 }}>
-                          <div className="lc-crm-map-source-mode-toggle" role="group" aria-label="소스: 기회 필드 또는 고정값">
+                          <div className="lc-crm-map-source-mode-toggle" role="group" aria-label={sourceAria}>
                             <button
                               type="button"
                               className={!isConst ? 'is-active' : ''}
-                              onClick={() => updateMappingRow(row.id, { sourceType: 'field' })}
+                              onClick={() => patchRow(row.id, { sourceType: 'field' })}
                               disabled={disabled}
                             >
                               기회 필드
@@ -1942,7 +2071,7 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
                             <button
                               type="button"
                               className={isConst ? 'is-active' : ''}
-                              onClick={() => updateMappingRow(row.id, { sourceType: 'constant' })}
+                              onClick={() => patchRow(row.id, { sourceType: 'constant' })}
                               disabled={disabled}
                             >
                               고정값
@@ -1952,9 +2081,9 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
                             <input
                               className="lc-crm-map-input"
                               style={{ marginTop: '0.35rem' }}
-                              placeholder="값 입력…"
+                              placeholder={constPlaceholder}
                               value={row.constantValue}
-                              onChange={(e) => updateMappingRow(row.id, { constantValue: e.target.value })}
+                              onChange={(e) => patchRow(row.id, { constantValue: e.target.value })}
                               disabled={disabled}
                             />
                           ) : (
@@ -1962,7 +2091,7 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
                               <select
                                 className="lc-crm-map-select"
                                 value={row.sourceKey}
-                                onChange={(e) => updateMappingRow(row.id, { sourceKey: e.target.value })}
+                                onChange={(e) => patchRow(row.id, { sourceKey: e.target.value })}
                                 disabled={disabled}
                               >
                                 <option value="">소스 선택…</option>
@@ -1998,10 +2127,10 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
                             cursor: 'default'
                           }}
                         >
-                          {row.targetLabel || row.mergeKey}
+                          {row.targetLabel || targetCode}
                           <code style={{ display: 'block', fontSize: '0.72rem', fontWeight: 500, marginTop: '0.2rem' }}>
                             {'{{'}
-                            {row.mergeKey}
+                            {targetCode}
                             {'}}'}
                           </code>
                         </div>

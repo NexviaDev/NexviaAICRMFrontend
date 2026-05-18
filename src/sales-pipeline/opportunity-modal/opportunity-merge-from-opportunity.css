@@ -365,3 +365,16 @@
   padding-top: 12px;
   border-top: 1px solid #e2e8f0;
 }
+
+/* 데이터 시트 메일 행 — 문서 치환 매핑 테이블 맨 아래 */
+.lc-crm-map-row--sheet-mail-first {
+  border-top: 2px solid #e2e8f0;
+  margin-top: 0.35rem;
+  padding-top: 0.65rem;
+}
+
+.lc-crm-map-row--sheet-mail .lc-crm-map-icon-box {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+  color: #4f46e5;
+}
