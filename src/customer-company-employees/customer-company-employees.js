@@ -980,10 +980,10 @@ export default function CustomerCompanyEmployees() {
 
         </div>
         <div className="header-search">
-          <button type="submit" form="customer-company-employees-search-form" className="header-search-icon-btn" aria-label="검색">
-            <span className="material-symbols-outlined">search</span>
-          </button>
           <form id="customer-company-employees-search-form" onSubmit={onSearch} className="header-search-form">
+            <button type="submit" className="header-search-icon-btn" aria-label="검색">
+              <span className="material-symbols-outlined">search</span>
+            </button>
             <input
               type="text"
               placeholder={searchFieldDraft ? `${SEARCH_FIELD_OPTIONS.find((o) => o.key === searchFieldDraft)?.label || searchFieldDraft} 검색...` : '모든 필드 검색 (이름, 회사, 이메일, 전화, 직책, 유입 경로, 메모, 커스텀 필드 등)...'}
@@ -1055,12 +1055,12 @@ export default function CustomerCompanyEmployees() {
               title="연락처에 쓸 사용자 정의 필드를 추가합니다"
             >
               <span className="material-symbols-outlined">playlist_add</span>
-              필드 추가
+              <span className="cce-header-btn-label">필드 추가</span>
             </button>
           ) : null}
-          <button type="button" className="btn-primary" onClick={openAddModal}>
+          <button type="button" className="btn-primary cce-header-add-btn" onClick={openAddModal}>
             <span className="material-symbols-outlined">add</span>
-            새 연락처
+            <span className="cce-header-btn-label">새 연락처</span>
           </button>
           <button
             type="button"

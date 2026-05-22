@@ -5707,11 +5707,7 @@ export default function Dashboard() {
         />
       ) : null}
 
-      <Link to="/lead-capture" className="home-mobile-fab" title="리드 캡처" aria-label="리드 캡처로 이동">
-        <span className="material-symbols-outlined" aria-hidden>
-          add
-        </span>
-      </Link>
+    
     </div>
   );
 }

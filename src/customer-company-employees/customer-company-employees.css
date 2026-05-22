@@ -48,45 +48,13 @@
   overflow: visible;
 }
 
-.customer-company-employees-page .header-search .material-symbols-outlined {
-  position: absolute;
-  left: 0.75rem;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--text-muted);
-  font-size: 1.25rem;
-}
-
-.header-search-icon-btn {
-  position: absolute;
-  left: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 2.5rem;
-  height: 2.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: none;
-  background: none;
-  color: inherit;
-  cursor: pointer;
-  border-radius: 0.5rem;
-  z-index: 1;
-  transition: color 0.2s, background 0.2s;
-}
-
-.header-search-icon-btn:hover {
-  color: var(--text);
-  background: var(--bg-light);
-}
-
-.header-search form {
+.customer-company-employees-page .header-search-form {
+  position: relative;
   flex: 1;
   min-width: 0;
 }
-.header-search form input {
+
+.customer-company-employees-page .header-search-form input {
   width: 100%;
   padding: 0.5rem 1rem 0.5rem 2.5rem;
   border: none;

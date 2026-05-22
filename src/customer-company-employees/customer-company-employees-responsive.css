@@ -30,6 +30,7 @@
   }
 
   .customer-company-employees-page .header-search-form {
+    position: relative;
     flex: 1 1 100%;
     min-width: 0;
   }
@@ -80,6 +81,52 @@
     font-weight: 800;
     letter-spacing: -0.02em;
     color: #006c53;
+  }
+
+  .customer-company-employees-page .customer-company-employees-header-main {
+    display: none;
+  }
+
+  .customer-company-employees-page .customer-company-employees-header-tools {
+    order: 2;
+    flex: 1 1 100%;
+    margin-left: 0;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    justify-content: flex-start;
+  }
+
+  .customer-company-employees-page .customer-company-employees-header-tools .cce-filter-label,
+  .customer-company-employees-page .customer-company-employees-header-tools .cce-header-btn-label {
+    display: none !important;
+  }
+
+  .customer-company-employees-page .customer-company-employees-header-tools .cce-assignee-filter-btn,
+  .customer-company-employees-page .customer-company-employees-header-tools .icon-btn {
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .customer-company-employees-page .customer-company-employees-header-tools .btn-outline,
+  .customer-company-employees-page .customer-company-employees-header-tools .btn-primary.cce-header-add-btn {
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
+    justify-content: center;
+    gap: 0;
+    flex: 0 0 auto;
+  }
+
+  .customer-company-employees-page .customer-company-employees-header-tools .btn-outline .material-symbols-outlined,
+  .customer-company-employees-page .customer-company-employees-header-tools .btn-primary .material-symbols-outlined {
+    font-size: 1.2rem;
+    margin: 0;
+  }
+
+  .customer-company-employees-page .customer-company-employees-header-tools .btn-primary.cce-header-add-btn {
+    display: none;
   }
 
   /* 데스크톱과 동일 버튼 숨기고 FAB 사용 */
@@ -189,6 +236,11 @@
   }
 
   /* 플로팅 추가 버튼 */
+  .customer-company-employees-page .page-header.customer-company-employees-header {
+    position: relative;
+    z-index: 1;
+  }
+
   .customer-company-employees-page .cce-mobile-fab {
     display: flex;
     align-items: center;
@@ -196,7 +248,7 @@
     position: fixed;
     right: 1.25rem;
     bottom: calc(1.25rem + env(safe-area-inset-bottom, 0));
-    z-index: 35;
+    z-index: 20;
     width: 3.5rem;
     height: 3.5rem;
     padding: 0;
@@ -624,16 +676,6 @@
 }
 
 @media (max-width: 480px) {
-  .customer-company-employees-page .customer-company-employees-actions {
-    width: 100%;
-  }
-
-  .customer-company-employees-page .customer-company-employees-actions .btn-primary,
-  .customer-company-employees-page .customer-company-employees-actions .btn-outline {
-    flex: 1;
-    justify-content: center;
-  }
-
   .customer-company-employees-page .cce-action-bar-google span:not(.cce-action-google-icon) {
     max-width: 100%;
     overflow: hidden;

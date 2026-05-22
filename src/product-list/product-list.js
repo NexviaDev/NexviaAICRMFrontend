@@ -775,14 +775,16 @@ export default function ProductList({
               aria-label={`${row.name || '제품'} 선택`}
             />
           </div>
-          <div className="pl-mcard-id">
-            <ProductListAvatar row={row} idx={idx} />
-            <div className="pl-mcard-text">
-              <h3 className="pl-mcard-name">{row.name || '—'}</h3>
-              <p className="pl-mcard-sub">{sub}</p>
+          <div className="pl-mcard-head-row">
+            <div className="pl-mcard-id">
+              <ProductListAvatar row={row} idx={idx} />
+              <div className="pl-mcard-text">
+                <h3 className="pl-mcard-name">{row.name || '—'}</h3>
+                <p className="pl-mcard-sub">{sub}</p>
+              </div>
             </div>
+            <span className={`pl-mcard-badge ${badgeClass}`}>{STATUS_LABELS[row.status] || row.status || '—'}</span>
           </div>
-          <span className={`pl-mcard-badge ${badgeClass}`}>{STATUS_LABELS[row.status] || row.status || '—'}</span>
         </div>
         <div className={`pl-mcard-grid ${isEol ? 'pl-mcard-grid--muted' : ''}`}>
           <div className="pl-mcard-metric">
@@ -814,10 +816,10 @@ export default function ProductList({
           </div>
         ) : null}
         <div className="header-search">
-          <button type="submit" form="product-list-search-form" className="header-search-icon-btn" aria-label="검색">
-            <span className="material-symbols-outlined">search</span>
-          </button>
           <form id="product-list-search-form" onSubmit={runSearch} className="header-search-form">
+            <button type="submit" className="header-search-icon-btn" aria-label="검색">
+              <span className="material-symbols-outlined">search</span>
+            </button>
             <input
               type="text"
               placeholder={searchFieldPlaceholderHint}

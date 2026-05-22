@@ -756,10 +756,10 @@ export default function CustomerCompanies({
           </div>
         ) : null}
         <div className="header-search">
-          <button type="submit" form="customer-companies-search-form" className="header-search-icon-btn" aria-label="검색">
-            <span className="material-symbols-outlined">search</span>
-          </button>
           <form id="customer-companies-search-form" onSubmit={runSearch} className="header-search-form">
+            <button type="submit" className="header-search-icon-btn" aria-label="검색">
+              <span className="material-symbols-outlined">search</span>
+            </button>
             <input
               type="text"
               placeholder={
@@ -850,10 +850,13 @@ export default function CustomerCompanies({
                   title="고객사에 쓸 사용자 정의 필드를 추가합니다"
                 >
                   <span className="material-symbols-outlined">playlist_add</span>
-                  필드 추가
+                  <span className="cc-header-btn-label">필드 추가</span>
                 </button>
               ) : null}
-              <button type="button" className="btn-primary" onClick={openAddModal}><span className="material-symbols-outlined">add</span> 기업 추가</button>
+              <button type="button" className="btn-primary cc-header-add-btn" onClick={openAddModal}>
+                <span className="material-symbols-outlined">add</span>
+                <span className="cc-header-btn-label">기업 추가</span>
+              </button>
             </>
           ) : null}
           <button type="button" className="icon-btn" aria-label="리스트 열 설정" onClick={() => { setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), customFieldColumns)); setSettingsOpen(true); }} title="리스트 열 설정">
@@ -972,7 +975,61 @@ export default function CustomerCompanies({
             ) : sortedItems.length === 0 ? (
               <p className="customer-companies-mobile-cards-message">등록된 고객사가 없습니다.</p>
             ) : (
-              <div className="customer-companies-mobile-cards-list">
+              <>
+                {!isSearchModal ? (
+                  <div className="cc-mobile-filter-chips" role="tablist" aria-label="목록 필터">
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={!assigneeMeOnly}
+                      className={`cc-mobile-chip ${!assigneeMeOnly ? 'is-active' : ''}`}
+                      onClick={() => {
+                        if (assigneeMeOnly) {
+                          setSelectedCompanyIds(new Set());
+                          setSelectedCompanyMap({});
+                          setAssigneeMeOnly(false);
+                          patchListTemplate(LIST_ID, { assigneeMeOnly: false }).catch((err) => {
+                            alert(err?.message || '저장에 실패했습니다.');
+                            setAssigneeMeOnly(true);
+                          });
+                        }
+                      }}
+                    >
+                      전체
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={assigneeMeOnly}
+                      className={`cc-mobile-chip ${assigneeMeOnly ? 'is-active' : ''}`}
+                      onClick={() => {
+                        if (!assigneeMeOnly) {
+                          setSelectedCompanyIds(new Set());
+                          setSelectedCompanyMap({});
+                          setAssigneeMeOnly(true);
+                          patchListTemplate(LIST_ID, { assigneeMeOnly: true }).catch((err) => {
+                            alert(err?.message || '저장에 실패했습니다.');
+                            setAssigneeMeOnly(false);
+                          });
+                        }
+                      }}
+                    >
+                      내 담당
+                    </button>
+                  </div>
+                ) : null}
+                {!isSearchModal ? (
+                <div className="cc-mobile-activity-bento">
+                  <div className="cc-mobile-activity-card cc-mobile-activity-card--lavender">
+                    <span className="material-symbols-outlined cc-mobile-activity-icon" aria-hidden>domain</span>
+                    <div>
+                      <p className="cc-mobile-activity-value">{pagination.total ?? 0}</p>
+                      <p className="cc-mobile-activity-label">전체 고객사</p>
+                    </div>
+                  </div>
+                </div>
+                ) : null}
+                <div className="customer-companies-mobile-cards-list">
                 {sortedItems.map((row, idx) => (
                   <div
                     key={row._id}
@@ -1034,7 +1091,8 @@ export default function CustomerCompanies({
                     </div>
                   </div>
                 ))}
-              </div>
+                </div>
+              </>
             )}
           </div>
           <div className="table-wrap">
@@ -1323,6 +1381,11 @@ export default function CustomerCompanies({
             setSelectedCompanyMap({});
           }}
         />
+      ) : null}
+      {!isSearchModal ? (
+        <button type="button" className="cc-mobile-fab" onClick={openAddModal} aria-label="기업 추가">
+          <span className="material-symbols-outlined">add</span>
+        </button>
       ) : null}
     </div>
   );

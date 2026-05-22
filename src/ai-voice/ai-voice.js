@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import CustomerCompanySearchModal from '../customer-companies/customer-company-search-modal/customer-company-search-modal';
 import CustomerCompanyEmployeesSearchModal from '../customer-company-employees/customer-company-employees-search-modal/customer-company-employees-search-modal';
 import './ai-voice.css';
+import './ai-voice-responsive.css';
 
 import { API_BASE } from '@/config';
 import { getUserVisibleApiError } from '@/lib/api-error';
@@ -551,7 +552,7 @@ export default function AiVoice() {
             disabled={uploading || uploadQuotaExceeded}
           >
             <span className="material-symbols-outlined">add</span>
-            <span>
+            <span className="ai-voice-btn-label">
               {uploading ? uploadSplitStatus || '업로드 중…' : uploadQuotaExceeded ? '한도 도달' : '새 녹음'}
             </span>
           </button>
@@ -707,7 +708,7 @@ export default function AiVoice() {
           {!selectedId ? (
             <div className="ai-voice-detail-empty">
               <span className="material-symbols-outlined">mic</span>
-              <p>왼쪽에서 녹음을 선택하거나 새로 업로드하세요.</p>
+              <p>아래 목록에서 녹음을 선택하거나 업로드하세요.</p>
             </div>
           ) : loadingDetail && !selectedDetail ? (
             <div className="ai-voice-detail-loading">불러오는 중…</div>
@@ -850,6 +851,17 @@ export default function AiVoice() {
           )}
         </main>
       </div>
+
+      <button
+        type="button"
+        className="ai-voice-mobile-fab"
+        title={uploadQuotaExceeded ? '이번 달 전사 한도(40시간) 초과' : '새 녹음 업로드'}
+        aria-label={uploadQuotaExceeded ? '이번 달 전사 한도 도달' : '새 녹음 업로드'}
+        onClick={handleUploadClick}
+        disabled={uploading || uploadQuotaExceeded}
+      >
+        <span className="material-symbols-outlined">add</span>
+      </button>
 
       {showSendToCompany && (
         <CustomerCompanySearchModal

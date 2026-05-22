@@ -38,6 +38,7 @@
   }
 
   .product-list-page .header-search-form {
+    position: relative;
     flex: 1 1 100%;
     min-width: 0;
   }
@@ -215,13 +216,13 @@
     font-size: 0.875rem;
   }
 
-  /* 제품 카드 */
+  /* 제품 카드 — Sample Design product-list.html */
   .product-list-page .pl-mcard {
     background: #fff;
     border-radius: 0.75rem;
-    padding: 1.15rem;
-    border: none;
-    box-shadow: 0 4px 24px rgba(44, 52, 53, 0.04);
+    padding: 1.05rem 1.1rem;
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.06);
     cursor: pointer;
     text-align: left;
     width: 100%;
@@ -236,58 +237,80 @@
   }
 
   .product-list-page .pl-mcard--eol {
-    background: #eaefef;
-    opacity: 0.92;
+    background: #f0f4f4;
+    opacity: 0.95;
   }
 
   .product-list-page .pl-mcard-top {
     display: flex;
     align-items: flex-start;
-    justify-content: space-between;
-    gap: 0.75rem;
+    gap: 0.5rem;
+    min-width: 0;
   }
 
   .product-list-page .pl-mcard-checkbox-wrap {
     flex-shrink: 0;
-    padding-top: 0.2rem;
+    display: flex;
+    align-items: center;
+    align-self: stretch;
+    padding-top: 0.65rem;
   }
 
   .product-list-page .pl-mcard-row-cb {
-    width: 1.15rem;
-    height: 1.15rem;
+    width: 1.05rem;
+    height: 1.05rem;
+    margin: 0;
     cursor: pointer;
-    accent-color: #3d8b7a;
+    accent-color: #006c53;
+  }
+
+  /* 아이콘+제목(좌) · 상태 배지(우) — 체크박스는 별도 열 */
+  .product-list-page .pl-mcard-head-row {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
   }
 
   .product-list-page .pl-mcard-id {
-    display: flex;
-    gap: 0.75rem;
-    align-items: center;
+    flex: 1;
     min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    justify-content: flex-start;
+    text-align: left;
   }
 
   /* pl-mcard-icon: 공통 스타일은 product-list.css */
 
   .product-list-page .pl-mcard-text {
+    flex: 1;
     min-width: 0;
+    text-align: left;
   }
 
   .product-list-page .pl-mcard-name {
     margin: 0;
     font-family: 'Manrope', 'Inter', system-ui, sans-serif;
-    font-size: 1.05rem;
+    font-size: 1rem;
     font-weight: 700;
+    line-height: 1.25;
     color: #2c3435;
+    text-align: left;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .product-list-page .pl-mcard-sub {
-    margin: 0.2rem 0 0;
+    margin: 0.15rem 0 0;
     font-size: 0.75rem;
     font-weight: 500;
     color: #596061;
+    text-align: left;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -295,12 +318,15 @@
 
   .product-list-page .pl-mcard-badge {
     flex-shrink: 0;
+    align-self: flex-start;
+    margin-top: 0.1rem;
     font-size: 0.625rem;
     font-weight: 800;
     letter-spacing: 0.06em;
     text-transform: uppercase;
     padding: 0.3rem 0.55rem;
     border-radius: 9999px;
+    white-space: nowrap;
   }
 
   .product-list-page .pl-mcard-badge--active {
@@ -321,8 +347,13 @@
   .product-list-page .pl-mcard-grid {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
-    gap: 0.5rem;
-    padding-top: 0.15rem;
+    gap: 0.35rem 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid rgba(44, 52, 53, 0.06);
+  }
+
+  .product-list-page .pl-mcard-metric {
+    min-width: 0;
   }
 
   .product-list-page .pl-mcard-grid--muted {
