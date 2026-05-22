@@ -15,7 +15,23 @@ function formatDt(iso) {
   }
 }
 
+/** 목록·푸시 미리보기용 — HTML 제거 후 짧은 요약 */
+function plainExcerpt(html, maxLen = 120) {
+  const text = String(html || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!text) return '';
+  return text.length > maxLen ? `${text.slice(0, maxLen - 1)}…` : text;
+}
+
 const PAGE_SIZE = 20;
+
+/** 사내 공지(회사 companyId) — CRM 글쓰기·수정·삭제 대상. 전체 공지(companyId 없음)는 열람만 */
+function isCompanyNotice(item) {
+  const cid = item?.companyId;
+  return cid != null && String(cid).trim() !== '';
+}
 
 export default function NotificationPage() {
   const [rows, setRows] = useState([]);
@@ -28,7 +44,6 @@ export default function NotificationPage() {
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ title: '', content: '' });
-
   /** 대표(Owner)·관리자(Admin)만 등록·수정·삭제 — 백엔드 requireOwnerOrAdmin 과 동일 */
   const canManage = useMemo(() => isAdminOrAboveRole(getStoredCrmUser()?.role), []);
 
@@ -97,7 +112,7 @@ export default function NotificationPage() {
   };
 
   const openEdit = (row) => {
-    if (!canManage) return;
+    if (!canManage || !isCompanyNotice(row)) return;
     setEditingId(row?._id || null);
     setForm({ title: row?.title || '', content: row?.content || '' });
     setPreviewOn(false);
@@ -141,8 +156,9 @@ export default function NotificationPage() {
     }
   };
 
-  const remove = async (id) => {
+  const remove = async (id, row) => {
     if (!canManage) return;
+    if (row && !isCompanyNotice(row)) return;
     const token = localStorage.getItem('crm_token');
     if (!token || !id) return;
     if (!window.confirm('이 공지사항을 삭제할까요? 삭제 후에는 복구되지 않습니다.')) return;
@@ -167,13 +183,16 @@ export default function NotificationPage() {
     <div className="page notification-page">
       <header className="page-header notification-header">
         <div>
-          <h1 className="notification-title">공지사항</h1>
+          <h1 className="notification-title">사내 공지사항</h1>
+          <p className="notification-lead">
+            우리 회사 공지는 대표·관리자가 등록합니다. Nexvia 전체 공지는 열람만 가능합니다.
+          </p>
         </div>
         <div className="notification-header-actions">
           {canManage ? (
             <button type="button" className="notification-write-btn" onClick={openNew} disabled={saving}>
               <span className="material-symbols-outlined" aria-hidden>edit</span>
-              글쓰기
+              사내 공지 작성
             </button>
           ) : null}
           <PageHeaderNotifyChat buttonClassName="notification-header-icon-btn" wrapperClassName="notification-header-actions-inner" />
@@ -183,10 +202,15 @@ export default function NotificationPage() {
       <div className="page-content">
         {error && <div className="notification-feedback notification-feedback--error">{error}</div>}
 
+        <p className="notification-push-sidebar-hint">
+          스마트폰·PWA 푸시는 왼쪽 사이드바 하단 <strong>알림 아이콘</strong>으로 켜고 끌 수 있습니다. 켜 두면 새 공지·일정
+          알림이 기기 알림창에 표시됩니다.
+        </p>
+
         {editorOpen && canManage ? (
-          <section className="notification-editor" aria-label={editingId ? '공지 수정' : '공지 작성'}>
+          <section className="notification-editor" aria-label={editingId ? '사내 공지 수정' : '사내 공지 작성'}>
             <div className="notification-editor-head">
-              <h2 className="notification-editor-title">{editingId ? '공지 수정' : '새 공지 작성'}</h2>
+              <h2 className="notification-editor-title">{editingId ? '사내 공지 수정' : '사내 공지 작성'}</h2>
               <div className="notification-editor-actions">
                 <button
                   type="button"
@@ -233,6 +257,10 @@ export default function NotificationPage() {
                     placeholder={`예)\n<p>문단</p>\n<b>굵게</b>\n<br />\n😀`}
                   />
                 </label>
+                <p className="notification-editor-push-hint">
+                  사내 공지 등록·수정 저장 시, 사이드바에서 푸시 알림을 켠 같은 회사 소속에게 제목·내용 요약이 푸시로
+                  자동 발송됩니다.
+                </p>
                 <div className="notification-editor-submit-row">
                   <button type="button" className="notification-editor-submit" onClick={submit} disabled={saving}>
                     {saving ? '저장 중…' : editingId ? '수정 저장' : '등록'}
@@ -243,7 +271,7 @@ export default function NotificationPage() {
               <div className="notification-editor-preview">
                 <div className="notification-card">
                   <div className="notification-card-meta">
-                    <span className="notification-card-badge">공지</span>
+                    <span className="notification-card-badge">사내 공지</span>
                     <span>미리보기</span>
                   </div>
                   <h2 className="notification-card-title">{form.title || '제목 없음'}</h2>
@@ -264,29 +292,39 @@ export default function NotificationPage() {
             <div className="notification-empty">현재 등록된 공지사항이 없습니다.</div>
           ) : (
             <>
-            {rows.map((item) => (
+            {rows.map((item) => {
+              const companyNotice = isCompanyNotice(item);
+              return (
               <article key={item._id} className="notification-card">
                 <div className="notification-card-meta">
-                  <span className="notification-card-badge">공지</span>
+                  <span
+                    className={`notification-card-badge ${companyNotice ? '' : 'notification-card-badge--global'}`}
+                  >
+                    {companyNotice ? '사내 공지' : '전체 공지'}
+                  </span>
                   <span>{formatDt(item.publishedAt || item.createdAt)}</span>
-                  {canManage ? (
+                  {canManage && companyNotice ? (
                     <span className="notification-card-actions">
                       <button type="button" className="notification-card-action-btn" onClick={() => openEdit(item)} disabled={saving}>
                         수정
                       </button>
-                      <button type="button" className="notification-card-action-btn danger" onClick={() => remove(item._id)} disabled={saving}>
+                      <button type="button" className="notification-card-action-btn danger" onClick={() => remove(item._id, item)} disabled={saving}>
                         삭제
                       </button>
                     </span>
                   ) : null}
                 </div>
                 <h2 className="notification-card-title">{item.title}</h2>
+                {plainExcerpt(item.content) ? (
+                  <p className="notification-card-excerpt">{plainExcerpt(item.content)}</p>
+                ) : null}
                 <div
                   className="notification-card-content"
                   dangerouslySetInnerHTML={{ __html: sanitizeHtml(item.content) }}
                 />
               </article>
-            ))}
+              );
+            })}
             {pagination.totalPages > 1 ? (
               <div className="notification-pagination">
                 <button

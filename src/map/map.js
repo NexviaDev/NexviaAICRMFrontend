@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import CustomerCompanyDetailModal from '../customer-companies/customer-company-detail-modal/customer-company-detail-modal';
 import MapCompanyPickerModal from './map-company-picker-modal';
+import { looksLikeGoogleMapsShare, parseGoogleMapsCoords } from '@/lib/parse-google-maps-share';
+import { resolveGoogleMapsShare } from '@/lib/resolve-google-maps-share';
 import './map.css';
 
 import { API_BASE } from '@/config';
@@ -542,6 +544,7 @@ export default function Map({
   const orientationHandlerRef = useRef(null);
   const [myLocation, setMyLocation] = useState(null);
   const [liveLocationOn, setLiveLocationOn] = useState(false);
+  const [myLocationBusy, setMyLocationBusy] = useState(false);
   const watchIdRef = useRef(null);
   const gpsRefineTimeoutRef = useRef(null);
   const gpsRefineLateTimeoutRef = useRef(null);
@@ -703,7 +706,7 @@ export default function Map({
     setLiveLocationOn(true);
   }, []);
 
-  const stopLiveLocation = useCallback(() => {
+  const stopLiveLocation = useCallback(({ keepPin = false } = {}) => {
     if (gpsRefineTimeoutRef.current != null) {
       clearTimeout(gpsRefineTimeoutRef.current);
       gpsRefineTimeoutRef.current = null;
@@ -717,15 +720,115 @@ export default function Map({
       watchIdRef.current = null;
     }
     locationSamplesRef.current = [];
-    lastRefinedLocationRef.current = null;
+    if (!keepPin) lastRefinedLocationRef.current = null;
     setLiveLocationOn(false);
-    setMyLocation(null);
-    const circle = myLocationAccuracyCircleRef.current;
-    if (circle) {
-      circle.setMap(null);
-      myLocationAccuracyCircleRef.current = null;
+    if (!keepPin) {
+      setMyLocation(null);
+      const circle = myLocationAccuracyCircleRef.current;
+      if (circle) {
+        circle.setMap(null);
+        myLocationAccuracyCircleRef.current = null;
+      }
     }
   }, []);
+
+  const applyGoogleMapsShare = useCallback(
+    (result) => {
+      const lat = Number(result?.lat);
+      const lng = Number(result?.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+      stopLiveLocation({ keepPin: true });
+      const accuracy = 12;
+      const loc = { lat, lng, accuracy };
+      lastRefinedLocationRef.current = { lat, lng, accuracy };
+      locationSamplesRef.current = [];
+      setMyLocation(loc);
+
+      const map = mapInstanceRef.current;
+      if (map && mapReady) {
+        map.panTo({ lat, lng });
+        const z = map.getZoom();
+        map.setZoom(Number.isFinite(z) ? Math.max(z, 16) : 16);
+        initialViewAppliedRef.current = true;
+      }
+    },
+    [mapReady, stopLiveLocation]
+  );
+
+  /** 구글맵 공유 링크·좌표 — 클립보드/공유 URL에서 자동 적용 (모달 없음) */
+  const tryAutoApplyGoogleMapsShare = useCallback(
+    async (raw) => {
+      const value = String(raw || '').trim();
+      if (!value || !looksLikeGoogleMapsShare(value)) return false;
+      const direct = parseGoogleMapsCoords(value);
+      if (direct) {
+        applyGoogleMapsShare({ lat: direct.lat, lng: direct.lng });
+        return true;
+      }
+      try {
+        const result = await resolveGoogleMapsShare(value);
+        applyGoogleMapsShare(result);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [applyGoogleMapsShare]
+  );
+
+  const readClipboardText = useCallback(async () => {
+    if (!navigator.clipboard?.readText) return '';
+    try {
+      return (await navigator.clipboard.readText()).trim();
+    } catch {
+      return '';
+    }
+  }, []);
+
+  /** 내 위치: 클립보드 구글맵 공유 자동 적용 → 없으면 실시간 GPS (버튼 1개) */
+  const handleMyLocationClick = useCallback(async () => {
+    if (liveLocationOn || myLocation) {
+      stopLiveLocation();
+      return;
+    }
+    setMyLocationBusy(true);
+    try {
+      const clip = await readClipboardText();
+      if (clip && (await tryAutoApplyGoogleMapsShare(clip))) return;
+      startLiveLocation();
+    } finally {
+      setMyLocationBusy(false);
+    }
+  }, [liveLocationOn, myLocation, stopLiveLocation, readClipboardText, tryAutoApplyGoogleMapsShare, startLiveLocation]);
+
+  useEffect(() => {
+    if (embedded || !mapReady) return undefined;
+    const chunks = [
+      searchParams.get('url'),
+      searchParams.get('text'),
+      searchParams.get('title'),
+      searchParams.get('link')
+    ]
+      .filter(Boolean)
+      .join('\n')
+      .trim();
+    if (!chunks || !looksLikeGoogleMapsShare(chunks)) return undefined;
+    void tryAutoApplyGoogleMapsShare(chunks);
+    return undefined;
+  }, [embedded, mapReady, searchParams, tryAutoApplyGoogleMapsShare]);
+
+  useEffect(() => {
+    if (!mapReady || !shouldTryGpsRefinement()) return undefined;
+    const onVisibility = async () => {
+      if (document.visibilityState !== 'visible') return;
+      const clip = await readClipboardText();
+      if (!clip) return;
+      await tryAutoApplyGoogleMapsShare(clip);
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [mapReady, readClipboardText, tryAutoApplyGoogleMapsShare]);
 
   useEffect(() => {
     if (!liveLocationOn) return;
@@ -1469,12 +1572,27 @@ export default function Map({
               </div>
               <button
                 type="button"
-                className={`map-ctrl-btn map-ctrl-btn-circle ${liveLocationOn ? 'active' : ''}`}
-                onClick={liveLocationOn ? stopLiveLocation : startLiveLocation}
-                aria-label={liveLocationOn ? '실시간 위치 끄기' : '실시간 내 위치 켜기 (버튼을 눌렀을 때만)'}
-                title={liveLocationOn ? '실시간 위치 끄기' : '실시간 내 위치 켜기 — 페이지 로드 시에는 실행되지 않습니다'}
+                className={`map-ctrl-btn map-ctrl-btn-circle ${liveLocationOn || myLocation ? 'active' : ''}`}
+                onClick={() => void handleMyLocationClick()}
+                disabled={myLocationBusy}
+                aria-label={
+                  liveLocationOn || myLocation
+                    ? '내 위치 끄기'
+                    : myLocationBusy
+                      ? '위치 확인 중'
+                      : '내 위치 — 구글맵 공유 링크 자동 적용, 없으면 GPS'
+                }
+                title={
+                  liveLocationOn || myLocation
+                    ? '내 위치 끄기'
+                    : myLocationBusy
+                      ? '클립보드·링크 확인 중…'
+                      : '구글맵에서 공유한 링크가 클립보드에 있으면 자동 적용, 없으면 실시간 GPS'
+                }
               >
-                <span className="material-symbols-outlined">my_location</span>
+                <span className={`material-symbols-outlined${myLocationBusy ? ' map-search-go-spin' : ''}`}>
+                  {myLocationBusy ? 'progress_activity' : 'my_location'}
+                </span>
               </button>
               <button
                 type="button"

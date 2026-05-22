@@ -8,7 +8,7 @@ import LeadCaptureLeadsModal from './lead-capture-leads-modal/lead-capture-leads
 import LeadCaptureCrmMappingModal from './lead-capture-crm-mapping/lead-capture-crm-mapping-modal';
 import CustomFieldsManageModal from '../shared/custom-fields-manage-modal/custom-fields-manage-modal';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
-import HomeLeadDetailModal from '@/home/home-lead-detail-modal';
+import HomeLeadDetailModal from '@/dashboard/home-lead-detail-modal';
 import { buildLeadCaptureEmbedSnippet } from '@/lead-capture-shared/lead-capture-embed-snippet';
 import './lead-capture.css';
 

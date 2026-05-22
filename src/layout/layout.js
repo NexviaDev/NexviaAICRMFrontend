@@ -3,7 +3,14 @@ import { Outlet, useLocation, useNavigate, Link, useSearchParams } from 'react-r
 import { API_BASE } from '@/config';
 import { getPendingExcelImportJobs, removePendingExcelImportJob } from '@/lib/cc-excel-import-jobs';
 import { LAYOUT_EXCEL_IMPORT_POLL_MS } from '@/lib/polling-intervals';
+import {
+  bindPushForegroundNotifications,
+  enablePushNotifications,
+  getStoredPushToken,
+  showWebPushNotification
+} from '@/lib/push-notifications';
 import Sidebar from './sidebar';
+import { ensureUserSidebarDefaultTemplate } from '@/lib/list-templates';
 import './layout.css';
 
 /** 사이드바 상단과 동일 로고 (sidebar.js NEXVIA_LOGO_CDN_URL) */
@@ -23,7 +30,7 @@ function clearLegacySplitSession() {
   }
 }
 
-export default function Layout() {
+export default function Layout({ embeddedContent = null }) {
   const [sidebarDrawerOpen, setSidebarDrawerOpen] = useState(false);
   const [importBanner, setImportBanner] = useState(null);
   /** Google 주소록 등 OAuth 연동 콜백 후 ?google_link / ?google_link_error 표시 */
@@ -44,6 +51,37 @@ export default function Layout() {
     clearLegacySplitSession();
   }, []);
 
+  /** 로그인 후 모든 화면에서 포그라운드 푸시 수신(공지 페이지만이 아님) */
+  useEffect(() => {
+    const crmToken = localStorage.getItem('crm_token');
+    if (!crmToken) return undefined;
+    let cleanup = null;
+    bindPushForegroundNotifications((payload) => {
+      const data = payload?.data || {};
+      const url =
+        data.url ||
+        (data.type === 'calendar-reminder'
+          ? data.eventId
+            ? `/calendar?modal=event&eventId=${encodeURIComponent(data.eventId)}`
+            : '/calendar'
+          : '/notification');
+      showWebPushNotification(payload, { url });
+    }).then((unsub) => {
+      cleanup = unsub;
+    });
+    return () => {
+      if (typeof cleanup === 'function') cleanup();
+    };
+  }, []);
+
+  /** 이미 허용·등록된 기기는 SW(Firebase)·토큰 갱신(배포·PWA 재설치 후) */
+  useEffect(() => {
+    const crmToken = localStorage.getItem('crm_token');
+    if (!crmToken || typeof Notification === 'undefined') return;
+    if (Notification.permission !== 'granted') return;
+    void enablePushNotifications().catch(() => {});
+  }, []);
+
   const isSalesPipeline = location.pathname === '/sales-pipeline';
   const isMessenger = location.pathname === '/messenger';
   const isProductList = location.pathname === '/product-list';
@@ -61,8 +99,9 @@ export default function Layout() {
       .then((res) => res.json().catch(() => ({})))
       .then((data) => {
         if (cancelled || !data?.user) return;
-        localStorage.setItem('crm_user', JSON.stringify(data.user));
-        setCurrentUser(data.user);
+        const { user: next } = ensureUserSidebarDefaultTemplate(data.user);
+        localStorage.setItem('crm_user', JSON.stringify(next));
+        setCurrentUser(next);
       })
       .catch(() => {});
     return () => {
@@ -197,9 +236,9 @@ export default function Layout() {
         )}
         <header className="app-main-header">
           <Link
-            to="/"
+            to="/dashboard"
             className="app-main-header-logo"
-            aria-label="대시보드(홈)으로 이동"
+            aria-label="대시보드로 이동"
             onClick={() => setSidebarDrawerOpen(false)}
           >
             <img src={NEXVIA_LOGO_CDN_URL} alt="" decoding="async" />
@@ -215,7 +254,7 @@ export default function Layout() {
         </header>
         <div className={mainContentClassName}>
           <div className="app-main-outlet">
-            <Outlet />
+            {embeddedContent ?? <Outlet />}
           </div>
         </div>
       </main>

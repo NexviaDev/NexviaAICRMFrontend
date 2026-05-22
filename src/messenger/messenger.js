@@ -1178,7 +1178,7 @@ export default function Messenger() {
             type="button"
             className="messenger-mobile-appbar-btn"
             aria-label="홈으로"
-            onClick={() => navigate('/')}
+            onClick={() => navigate('/dashboard')}
           >
             <span className="material-symbols-outlined">menu</span>
           </button>

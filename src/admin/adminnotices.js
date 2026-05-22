@@ -145,8 +145,11 @@ export default function AdminNotices() {
     <div className="admin-sub-page">
       <header className="admin-sub-header">
         <div>
-          <h1 className="admin-sub-title">공지 사항</h1>
-          <p className="admin-sub-sub">일반 사용자 화면은 열람만 가능하고, 등록·수정·삭제는 관리자만 처리합니다.</p>
+          <h1 className="admin-sub-title">전체 공지 사항</h1>
+          <p className="admin-sub-sub">
+            모든 회사·사용자에게 노출되는 Nexvia 전체 공지입니다. 사내 공지는 CRM 공지사항 메뉴에서 회사별로
+            등록합니다.
+          </p>
         </div>
       </header>
 
@@ -160,7 +163,7 @@ export default function AdminNotices() {
 
           <div className="admin-notice-grid">
             <section className="admin-sub-card admin-notice-editor">
-              <h2 className="admin-notice-section-title">{editingId ? '공지 수정' : '공지 등록'}</h2>
+              <h2 className="admin-notice-section-title">{editingId ? '전체 공지 수정' : '전체 공지 등록'}</h2>
               <form className="admin-sub-form" onSubmit={handleSubmit}>
                 <label className="admin-sub-label">
                   제목
@@ -191,15 +194,15 @@ export default function AdminNotices() {
                     checked={draft.isPublished}
                     onChange={(e) => setDraft((prev) => ({ ...prev, isPublished: e.target.checked }))}
                   />
-                  <span>즉시 사용자 화면에 노출</span>
+                  <span>즉시 전체 사용자 공지 화면에 노출</span>
                 </label>
 
                 <div className="admin-notice-form-actions">
                   <button type="submit" className="admin-sub-btn admin-sub-btn-primary" disabled={saving}>
-                    {saving ? '저장 중…' : editingId ? '수정 저장' : '공지 등록'}
+                    {saving ? '저장 중…' : editingId ? '수정 저장' : '전체 공지 등록'}
                   </button>
                   <button type="button" className="admin-sub-btn admin-sub-btn-ghost" onClick={resetDraft} disabled={saving}>
-                    새 공지 작성
+                    새 전체 공지 작성
                   </button>
                 </div>
               </form>
@@ -207,7 +210,7 @@ export default function AdminNotices() {
 
             <section className="admin-sub-card admin-notice-list-card">
               <div className="admin-notice-list-head">
-                <h2 className="admin-notice-section-title">등록된 공지</h2>
+                <h2 className="admin-notice-section-title">등록된 전체 공지</h2>
                 <span className="admin-notice-count">{rows.length}건</span>
               </div>
 

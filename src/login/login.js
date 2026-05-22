@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { notifyCrmAuthChanged } from '@/lib/use-crm-token';
 import { API_BASE } from '@/config';
 import { pingBackendHealth } from '@/lib/backend-wake';
+import { storeUserWithDefaultSidebarTemplate } from '@/lib/list-templates';
 import FindIdModal from './find-id-modal';
 import './login.css';
 
@@ -55,6 +57,7 @@ export default function Login() {
     const needsRegister = searchParams.get('needsRegister') === '1';
     if (token) {
       localStorage.setItem('crm_token', token);
+      notifyCrmAuthChanged();
       if (needsRegister) {
         navigate('/register?token=' + encodeURIComponent(token) + '&needsRegister=1', { replace: true });
         return;
@@ -63,8 +66,9 @@ export default function Login() {
         .then((res) => res.json())
         .then((data) => {
           if (data.user) {
-            localStorage.setItem('crm_user', JSON.stringify(data.user));
-            navigate(data.user.role === 'pending' ? '/company-overview' : '/', { replace: true });
+            void storeUserWithDefaultSidebarTemplate(data.user).then((user) => {
+              navigate(user.role === 'pending' ? '/company-overview' : '/dashboard', { replace: true });
+            });
           }
         })
         .catch(() => setError('로그인 정보를 불러오지 못했습니다.'));
@@ -139,8 +143,13 @@ export default function Login() {
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.token) {
         localStorage.setItem('crm_token', data.token);
-        if (data.user) localStorage.setItem('crm_user', JSON.stringify(data.user));
-        navigate(data.user?.role === 'pending' ? '/company-overview' : '/', { replace: true });
+        notifyCrmAuthChanged();
+        if (data.user) {
+          const user = await storeUserWithDefaultSidebarTemplate(data.user);
+          navigate(user?.role === 'pending' ? '/company-overview' : '/dashboard', { replace: true });
+        } else {
+          navigate('/dashboard', { replace: true });
+        }
         return;
       }
       setError(data.error || '로그인에 실패했습니다.');

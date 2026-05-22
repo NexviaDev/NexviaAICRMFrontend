@@ -79,11 +79,155 @@
   color: #0f172a;
 }
 
+.notification-push-panel {
+  margin-bottom: 1.25rem;
+  padding: 1rem 1.1rem;
+  border-radius: 0.85rem;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.notification-push-panel-head {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  margin-bottom: 0.85rem;
+}
+
+.notification-push-panel-icon {
+  font-size: 1.5rem;
+  color: #5b7c99;
+  flex-shrink: 0;
+}
+
+.notification-push-panel-title {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #334155;
+}
+
+.notification-push-panel-desc {
+  margin: 0 0 0.35rem;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: #64748b;
+}
+
+.notification-push-panel-desc--warn {
+  color: #9a6b3a;
+  font-size: 0.78rem;
+}
+
+.notification-push-android-guide {
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.notification-push-android-guide summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #475569;
+}
+
+.notification-push-android-guide ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  line-height: 1.55;
+}
+
+.notification-push-android-guide li + li {
+  margin-top: 0.35rem;
+}
+
+.notification-push-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
+.notification-push-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.55rem 0.85rem;
+  border-radius: 0.75rem;
+  border: 1px solid #c7d8e8;
+  background: #eef5ff;
+  color: #3d5a73;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.notification-push-btn.is-on {
+  background: #e8f5e9;
+  border-color: #b8dfc0;
+  color: #2e6b3a;
+}
+
+.notification-push-btn--muted {
+  background: #fff;
+  border-color: #e2e8f0;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.notification-push-btn:hover:not(:disabled) {
+  filter: brightness(0.98);
+}
+
+.notification-push-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.notification-push-hints {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.78rem;
+  line-height: 1.55;
+  color: #64748b;
+}
+
+.notification-push-message {
+  margin: 0.65rem 0 0;
+  font-size: 0.8rem;
+  color: #475569;
+}
+
 .notification-title {
   margin: 0;
   font-size: 1.7rem;
   font-weight: 800;
   color: #1e3a4c;
+}
+
+.notification-lead {
+  margin: 8px 0 0;
+  max-width: 36rem;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  color: #64748b;
+}
+
+.notification-push-sidebar-hint {
+  margin: 0 0 1.25rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.65rem;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: #475569;
+}
+
+.notification-push-sidebar-hint strong {
+  color: #1e3a4c;
+  font-weight: 600;
 }
 
 .notification-subtitle {
@@ -147,11 +291,23 @@
   font-weight: 700;
 }
 
+.notification-card-badge--global {
+  background: #f3e8ff;
+  color: #6b21a8;
+}
+
 .notification-card-title {
   margin: 14px 0 10px;
   font-size: 1.1rem;
   font-weight: 800;
   color: #0f172a;
+}
+
+.notification-card-excerpt {
+  margin: 0 0 12px;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: #64748b;
 }
 
 .notification-card-content {
@@ -290,6 +446,13 @@
   outline: none;
   resize: vertical;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.notification-editor-push-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-muted, #64748b);
 }
 
 .notification-editor-submit-row {

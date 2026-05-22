@@ -377,6 +377,183 @@
   text-align: right;
 }
 
+/* 일정 FCM 푸시 — notification.js 패널과 동일 톤 */
+.calendar-push-panel {
+  margin-bottom: 1rem;
+  padding: 1rem 1.1rem;
+  border-radius: 0.85rem;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.calendar-push-panel-head {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  margin-bottom: 0.85rem;
+}
+
+.calendar-push-panel-icon {
+  font-size: 1.5rem;
+  color: #5b7c99;
+  flex-shrink: 0;
+}
+
+.calendar-push-panel-title {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #334155;
+}
+
+.calendar-push-panel-desc {
+  margin: 0 0 0.35rem;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: #64748b;
+}
+
+.calendar-push-panel-desc--warn {
+  color: #9a6b3a;
+  font-size: 0.78rem;
+}
+
+.calendar-push-android-guide {
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.calendar-push-android-guide summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #475569;
+}
+
+.calendar-push-android-guide ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  line-height: 1.55;
+}
+
+.calendar-push-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
+.calendar-push-panel-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.55rem 0.85rem;
+  border-radius: 0.75rem;
+  border: 1px solid #c7d8e8;
+  background: #eef5ff;
+  color: #3d5a73;
+  font-size: 0.84rem;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.calendar-push-panel-btn.is-on {
+  background: #e8f5e9;
+  border-color: #b8dfc0;
+  color: #2e6b3a;
+}
+
+.calendar-push-panel-btn--muted {
+  background: #fff;
+  border-color: #e2e8f0;
+  color: #64748b;
+}
+
+.calendar-push-panel-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.calendar-push-panel-message {
+  margin: 0 0 0.75rem;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: #475569;
+}
+
+.calendar-push-panel-link {
+  color: #3b82f6;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.calendar-push-panel-link:hover {
+  text-decoration: underline;
+}
+
+.calendar-reminder-list-wrap {
+  padding-top: 0.5rem;
+  border-top: 1px dashed #e2e8f0;
+}
+
+.calendar-reminder-list-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #334155;
+}
+
+.calendar-reminder-list-empty {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: #64748b;
+}
+
+.calendar-reminder-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.calendar-reminder-list-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.55rem;
+  background: #fff;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.calendar-reminder-list-item:hover {
+  background: #f0f9ff;
+  border-color: #bae6fd;
+}
+
+.calendar-reminder-list-item-title {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.calendar-reminder-list-item-meta {
+  font-size: 0.75rem;
+  color: #64748b;
+  line-height: 1.4;
+}
+
 .calendar-google-cal-dropdown {
   position: relative;
   flex-shrink: 0;

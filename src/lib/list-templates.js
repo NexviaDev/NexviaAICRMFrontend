@@ -7,6 +7,7 @@
  */
 
 import { API_BASE } from '@/config';
+import { buildDefaultSidebar2LevelTemplate } from '@/layout/sidebar-menu-config';
 import {
   AI_GUIDED_AUDIENCES,
   AI_GUIDED_DEFAULTS,
@@ -658,7 +659,7 @@ export async function patchListTemplate(listId, fields = {}) {
  * (신규 메뉴 누락·PWA 구버전 번들 이슈 완화)
  */
 /** 사이드바 기본 순서·구조를 다시 적용할 때마다 1 올림(저장된 순서 무시 = 초기화) */
-export const SIDEBAR_MENU_EPOCH = 6;
+export const SIDEBAR_MENU_EPOCH = 7;
 
 function dedupeRoutesPreserveOrder(paths) {
   const seen = new Set();
@@ -717,6 +718,54 @@ export function normalizeSidebar2LevelConfig(categories, itemsByCategory, saved)
     : categoryOrder[0] || null;
 
   return { categoryOrder, itemOrdersByCategory, activeCategory };
+}
+
+/** 로그인·가입 직후 listTemplates.sidebar 기본 템플릿(고정 순서) 적용 */
+export function ensureUserSidebarDefaultTemplate(user) {
+  if (!user || typeof user !== 'object') return { user, applied: false };
+  const sidebar = user.listTemplates?.sidebar;
+  const epochOk = sidebar?.menuEpoch === SIDEBAR_MENU_EPOCH;
+  const hasOrders =
+    sidebar?.itemOrdersByCategory &&
+    typeof sidebar.itemOrdersByCategory === 'object' &&
+    Object.keys(sidebar.itemOrdersByCategory).length > 0;
+  if (epochOk && hasOrders) {
+    return { user, applied: false };
+  }
+  const def = buildDefaultSidebar2LevelTemplate(SIDEBAR_MENU_EPOCH);
+  const next = {
+    ...user,
+    listTemplates: {
+      ...(user.listTemplates && typeof user.listTemplates === 'object' ? user.listTemplates : {}),
+      sidebar: {
+        ...(sidebar && typeof sidebar === 'object' ? sidebar : {}),
+        ...def
+      }
+    }
+  };
+  return { user: next, applied: true };
+}
+
+/** crm_user 저장 + 필요 시 서버에 기본 사이드바 동기화 */
+export async function storeUserWithDefaultSidebarTemplate(user) {
+  const { user: next, applied } = ensureUserSidebarDefaultTemplate(user);
+  localStorage.setItem('crm_user', JSON.stringify(next));
+  if (applied) {
+    const def = buildDefaultSidebar2LevelTemplate(SIDEBAR_MENU_EPOCH);
+    try {
+      await patchSidebarLayout({
+        categoryOrder: def.categoryOrder,
+        itemOrdersByCategory: def.itemOrdersByCategory,
+        activeCategory: def.activeCategory,
+        order: def.order,
+        overflow: def.overflow,
+        menuEpoch: def.menuEpoch
+      });
+    } catch {
+      /* 오프라인·슬립 복구 후 Sidebar 마운트 시 재시도 */
+    }
+  }
+  return next;
 }
 
 /** 현재 유저의 listTemplates.sidebar.order 가져오기 (사이드바 메뉴 순서) */

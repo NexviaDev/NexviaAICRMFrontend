@@ -933,6 +933,10 @@
   background-color: #fffbe6;
 }
 
+.kpi-target-bulk-root {
+  display: contents;
+}
+
 .kpi-target-bulk-menu {
   position: fixed;
   z-index: 10050;

@@ -1,7 +1,6 @@
 import { lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 
-const Home = lazy(() => import('../home/home'));
 const CustomerCompanies = lazy(() => import('../customer-companies/customer-companies'));
 const CustomerCompanyEmployees = lazy(() => import('../customer-company-employees/customer-company-employees'));
 const Calendar = lazy(() => import('../calendar/calendar'));
@@ -45,14 +44,10 @@ export function PendingRestrictedRoute({ children }) {
 
 /**
  * 메인 앱(로그인 후) 화면 라우트 — 브라우저 라우터의 Outlet과 분할 패널용 MemoryRouter에서 동일하게 사용합니다.
- * @param {{ includeHomeIndex?: boolean }} props — app.js에서 Layout 자식으로 `index`를 쓸 때는 false(홈 중복·매칭 충돌 방지)
  */
-export default function MainAppRoutes({ includeHomeIndex = true } = {}) {
+export default function MainAppRoutes() {
   return (
     <Routes>
-      {includeHomeIndex ? (
-        <Route index element={<PendingRestrictedRoute><Home /></PendingRestrictedRoute>} />
-      ) : null}
       <Route path="company-overview" element={<CompanyOverview />} />
       <Route path="customer-companies" element={<PendingRestrictedRoute><CustomerCompanies /></PendingRestrictedRoute>} />
       <Route path="customer-company-employees" element={<PendingRestrictedRoute><CustomerCompanyEmployees /></PendingRestrictedRoute>} />

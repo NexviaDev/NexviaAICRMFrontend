@@ -1,6 +1,8 @@
 /* 데스크톱: 브라우저 창 높이 100% 고정, 콘텐츠 스크롤 시에도 고정 */
 /* 사이드바 배경 (더보기 패널 등과 공통) */
+/* z-index: 화면 모달(최소 50~)보다 항상 아래 — 오버레이가 사이드바를 덮도록 */
 .sidebar {
+  --sidebar-z: 30;
   --sidebar-bg: #1a365d;
   --sidebar-total-width: 16rem;
   position: fixed;
@@ -21,7 +23,7 @@
   overflow-x: hidden;
   /* 펼친 더보기가 길어지면 푸터·로그아웃까지 아래로 밀리고, 필요 시 사이드바 전체 스크롤 */
   overflow-y: auto;
-  z-index: 999;
+  z-index: var(--sidebar-z);
 }
 
 .sidebar-header {
@@ -506,6 +508,64 @@
   flex-shrink: 0;
 }
 
+.sidebar-user-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.sidebar-user-row .sidebar-user {
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar-push-alarm {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.35rem;
+  height: 2.35rem;
+  padding: 0;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.42);
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+
+.sidebar-push-alarm .material-symbols-outlined {
+  font-size: 1.35rem;
+  font-variation-settings: 'FILL' 0, 'wght' 300;
+}
+
+.sidebar-push-alarm:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.sidebar-push-alarm:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.sidebar-push-alarm--on {
+  border-color: rgba(186, 230, 253, 0.55);
+  background: #bae6fd;
+  color: #0c4a6e;
+}
+
+.sidebar-push-alarm--on .material-symbols-outlined {
+  font-variation-settings: 'FILL' 1, 'wght' 500;
+}
+
+.sidebar-push-alarm--on:hover:not(:disabled) {
+  background: #7dd3fc;
+  border-color: rgba(125, 211, 252, 0.85);
+  color: #082f49;
+}
+
 .sidebar-user {
   display: flex;
   align-items: center;
@@ -625,7 +685,7 @@
     width: var(--sidebar-total-width);
     height: 100vh;
     max-height: 100dvh;
-    z-index: 1001;
+    z-index: var(--sidebar-z);
     transform: translateX(100%);
     transition: transform 0.25s ease-out;
     box-shadow: -4px 0 20px rgba(0, 0, 0, 0.15);

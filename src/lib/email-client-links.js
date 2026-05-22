@@ -189,3 +189,95 @@ export function triggerMailtoHref(href) {
   if (!href) return;
   window.location.assign(href);
 }
+
+/** 클립보드 HTML — 스크립트 등 제거(붙여넣기용) */
+export function sanitizeHtmlForEmailClipboard(html) {
+  if (!html || typeof html !== 'string') return '';
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    doc.querySelectorAll('script,style,iframe,object,embed,link,meta').forEach((el) => el.remove());
+    doc.querySelectorAll('*').forEach((el) => {
+      [...el.attributes].forEach((attr) => {
+        const n = attr.name.toLowerCase();
+        if (
+          n.startsWith('on') ||
+          n === 'srcdoc' ||
+          (n === 'href' && /^\s*javascript:/i.test(attr.value))
+        ) {
+          el.removeAttribute(attr.name);
+        }
+      });
+    });
+    return doc.body ? doc.body.innerHTML : '';
+  } catch {
+    return String(html);
+  }
+}
+
+/**
+ * mailto 본문에는 평문만 들어가 서식이 사라짐 — 표·굵게·색·명함 등이 있으면 true
+ * @param {string} html
+ */
+export function htmlBodyAppearsFormatted(html) {
+  const s = String(html || '').trim();
+  if (!s) return false;
+  if (/<table[\s>]/i.test(s)) return true;
+  if (/<(b|strong|i|em|u|h[1-6]|ul|ol|li)\b/i.test(s)) return true;
+  if (/<a\s[^>]*href/i.test(s)) return true;
+  if (/<span[^>]*\sstyle\s*=/i.test(s)) return true;
+  if (/<font\b/i.test(s)) return true;
+  if (/nexvia-email-signature|email-reply-quote-block|email-compose-drive-link/i.test(s)) return true;
+  try {
+    const doc = new DOMParser().parseFromString(s, 'text/html');
+    if (doc.body?.querySelector('b,strong,i,em,u,table,a[href],span[style],font,h1,h2,h3,ul,ol,li')) {
+      return true;
+    }
+  } catch {
+    /* ignore */
+  }
+  return false;
+}
+
+/**
+ * Outlook 등 — text/html + text/plain 동시 복사(붙여넣기 시 서식 유지)
+ * @param {{ html?: string, plain?: string }} payload
+ * @returns {Promise<boolean>}
+ */
+export async function writeEmailBodyToClipboard(payload) {
+  const htmlRaw = sanitizeHtmlForEmailClipboard(payload?.html || '');
+  const html = htmlRaw.trim();
+  const plain = String(payload?.plain ?? '').trim() || (html ? htmlToPlainFallback(html) : '');
+  if (!html && !plain) return true;
+
+  try {
+    if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+      /** @type {Record<string, Blob>} */
+      const blobMap = {};
+      if (plain) blobMap['text/plain'] = new Blob([plain], { type: 'text/plain' });
+      if (html) blobMap['text/html'] = new Blob([html], { type: 'text/html' });
+      if (Object.keys(blobMap).length === 0) return false;
+      await navigator.clipboard.write([new ClipboardItem(blobMap)]);
+      return true;
+    }
+    if (plain && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(plain);
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function htmlToPlainFallback(html) {
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    return (doc.body?.textContent || '').replace(/\r\n/g, '\n').trim();
+  } catch {
+    return String(html).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+}
+
+/** 서식 본문용 — mailto URL에 body를 넣지 않을 때 안내 문구 */
+export const MAILTO_RICH_BODY_CLIPBOARD_NOTE =
+  '서식(HTML) 본문은 클립보드에 복사했습니다. Outlook(또는 메일 앱) 본문 칸을 클릭한 뒤 Ctrl+V로 붙여 넣어 주세요. 받는 사람·제목·참조는 메일 앱에 이미 채워져 있습니다.';

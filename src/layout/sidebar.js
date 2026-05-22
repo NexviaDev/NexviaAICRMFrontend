@@ -1,16 +1,26 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { NavLink, useNavigate, Link, useLocation } from 'react-router-dom';
+import { notifyCrmAuthChanged } from '@/lib/use-crm-token';
 import {
   getSavedSidebar2LevelConfig,
   getSavedSidebarConfig,
   patchSidebarLayout,
   setSavedSidebar2LevelConfigLocally,
   normalizeSidebar2LevelConfig,
+  ensureUserSidebarDefaultTemplate,
   SIDEBAR_MENU_EPOCH
 } from '@/lib/list-templates';
+import {
+  SIDEBAR_CATEGORY_ITEMS as CATEGORY_ITEMS,
+  SIDEBAR_SUBMENU_ITEMS as SUBMENU_ITEMS,
+  SIDEBAR_SUBMENU_BY_CATEGORY as SUBMENU_BY_CATEGORY
+} from './sidebar-menu-config';
 import { API_BASE } from '@/config';
 import { resolveDepartmentDisplayFromChart } from '@/lib/org-chart-tree-utils';
+import { useSidebarPush } from './use-sidebar-push';
 import './sidebar.css';
+
+/** stacking: sidebar.css `--sidebar-z`(30) — 페이지 모달 오버레이(≥50)보다 항상 아래 */
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -20,43 +30,12 @@ function getAuthHeader() {
 const NEXVIA_LOGO_CDN_URL =
   'https://res.cloudinary.com/djcsvvhly/image/upload/v1774253552/NexviaLogo_pid8kz.png';
 
-const CATEGORY_ITEMS = [
-  { key: 'inhouse', label: '사내 업무', icon: 'arrow_circle_left' },
-  { key: 'outside', label: '사외 업무', icon: 'globe' },
-  { key: 'schedule', label: '일정', icon: 'event' },
-  { key: 'etc', label: '기타', icon: 'more_horiz' }
-];
-
-const SUBMENU_ITEMS = [
-  { to: '/', icon: 'dashboard', label: '대시보드', category: 'inhouse' },
-  { to: '/company-overview', icon: 'domain', label: '사내 현황', category: 'inhouse' },
-  { to: '/meeting-minutes', icon: 'event_note', label: '회의 일지', category: 'inhouse' },
-  { to: '/reports/work-report', icon: 'assignment', label: '직원 업무 보고', category: 'inhouse' },
-  { to: '/product-list', icon: 'inventory_2', label: '제품 리스트', category: 'inhouse' },
-  { to: '/kpi', icon: 'analytics', label: '성과분석', category: 'inhouse' },
-  { to: '/customer-company-employees', icon: 'group', label: '연락처 리스트', category: 'outside' },
-  { to: '/customer-companies', icon: 'business', label: '기업 리스트', category: 'outside' },
-  { to: '/sales-pipeline', icon: 'view_kanban', label: '세일즈 현황', category: 'outside' },
-  { to: '/map', icon: 'map', label: '지도', category: 'outside' },
-  { to: '/lead-capture', icon: 'ads_click', label: '리드 캡처', category: 'outside' },
-  { to: '/calendar', icon: 'calendar_month', label: '캘린더', category: 'schedule' },
-  { to: '/project', icon: 'folder', label: '프로젝트', category: 'schedule' },
-  { to: '/todo-list', icon: 'checklist', label: 'Todo List', category: 'schedule' },
-  { to: '/ai-voice', icon: 'mic', label: 'AI 음성 기록', category: 'etc' },
-  { to: '/quotation-doc-merge', icon: 'merge_type', label: '문서 메일머지', category: 'etc' },
-  { to: '/subscription', icon: 'subscriptions', label: '구독관리', category: 'etc' }
-];
-
 const SUBMENU_BY_TO = Object.fromEntries(SUBMENU_ITEMS.map((item) => [item.to, item]));
-const SUBMENU_BY_CATEGORY = CATEGORY_ITEMS.reduce((acc, category) => {
-  acc[category.key] = SUBMENU_ITEMS.filter((item) => item.category === category.key);
-  return acc;
-}, {});
 
 const SUBMENU_DROP_ZONE = 'submenu';
 
 function pathMatchesMenuItem(to, pathname) {
-  if (to === '/') return pathname === '/';
+  if (to === '/dashboard') return pathname === '/dashboard';
   return pathname === to || pathname.startsWith(`${to}/`);
 }
 
@@ -131,6 +110,20 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
   }, []);
   const user = currentUser || storedUser;
   const userSyncKey = user?._id || user?.id || user?.email || '';
+
+  /** 로고 → 대시보드 (로그인 후 CRM 홈) */
+  const goHomeScreen = useCallback(
+    (e) => {
+      e.preventDefault();
+      onCloseDrawer?.();
+      if (user?.role === 'pending') {
+        navigate('/company-overview', { replace: true });
+        return;
+      }
+      navigate('/dashboard', { replace: true });
+    },
+    [navigate, onCloseDrawer, user?.role]
+  );
   const [organizationChart, setOrganizationChart] = useState(null);
   const [savingOrder, setSavingOrder] = useState(false);
 
@@ -180,6 +173,8 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
     [user, organizationChart]
   );
 
+  const { pushStatus, busy: pushBusy, togglePush, alarmTitle } = useSidebarPush(userSyncKey);
+
   const persistSidebarLayout = useCallback((nextCategoryOrder, nextItemOrdersByCategory, nextActiveCategory) => {
     const payload = {
       categoryOrder: nextCategoryOrder,
@@ -195,6 +190,16 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
   }, []);
 
   useEffect(() => {
+    try {
+      const raw = localStorage.getItem('crm_user');
+      const parsed = raw ? JSON.parse(raw) : null;
+      const { user: withDefault, applied } = ensureUserSidebarDefaultTemplate(parsed);
+      if (applied && withDefault) {
+        localStorage.setItem('crm_user', JSON.stringify(withDefault));
+      }
+    } catch {
+      /* noop */
+    }
     const modern = getSavedSidebar2LevelConfig();
     const legacy = getSavedSidebarConfig();
     const normalized = normalizeFromAnySavedConfig(modern || legacy);
@@ -308,10 +313,10 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
       <div className="sidebar-header">
         <div className="sidebar-header-logo">
           <Link
-            to="/"
+            to="/dashboard"
             className="sidebar-header-logo-link"
-            onClick={() => onCloseDrawer?.()}
-            aria-label="홈(대시보드)으로 이동"
+            onClick={goHomeScreen}
+            aria-label="홈으로 이동"
           >
             <img src={NEXVIA_LOGO_CDN_URL} alt="Nexvia CRM" decoding="async" />
           </Link>
@@ -457,7 +462,8 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
       )}
 
       <div className="sidebar-footer">
-        <Link to="/register?edit=1" className="sidebar-user sidebar-user-clickable">
+        <div className="sidebar-user-row">
+          <Link to="/register?edit=1" className="sidebar-user sidebar-user-clickable">
           {user?.avatar ? (
             <img src={user.avatar} alt="" className="sidebar-avatar sidebar-avatar-img" />
           ) : (
@@ -469,13 +475,28 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
             <p className="sidebar-user-name">{user?.name || '사용자'}</p>
             <p className="sidebar-user-role">{departmentLabel}</p>
           </div>
-        </Link>
+          </Link>
+          <button
+            type="button"
+            className={`sidebar-push-alarm${pushStatus.registered ? ' sidebar-push-alarm--on' : ''}`}
+            onClick={() => void togglePush()}
+            disabled={pushBusy || !pushStatus.supported || pushStatus.permission === 'denied'}
+            title={alarmTitle}
+            aria-label={alarmTitle}
+            aria-pressed={pushStatus.registered}
+          >
+            <span className="material-symbols-outlined" aria-hidden>
+              notifications
+            </span>
+          </button>
+        </div>
         <button
           type="button"
           className="sidebar-logout"
           onClick={() => {
             localStorage.removeItem('crm_token');
             localStorage.removeItem('crm_user');
+            notifyCrmAuthChanged();
             navigate('/login', { replace: true });
           }}
         >

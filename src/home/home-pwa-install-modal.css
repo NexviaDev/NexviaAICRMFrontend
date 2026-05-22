@@ -1,0 +1,212 @@
+.nexvia-home-pwa-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0.75rem 0.75rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  background: rgba(26, 40, 56, 0.42);
+}
+
+.nexvia-home-pwa-modal__panel {
+  width: 100%;
+  max-width: 26rem;
+  max-height: min(88vh, 34rem);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #d6e8f8;
+  border-radius: 1.25rem 1.25rem 1rem 1rem;
+  background: #ffffff;
+  box-shadow: 0 22px 50px rgba(44, 100, 133, 0.18);
+}
+
+.nexvia-home-pwa-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1rem 0.65rem 1.15rem;
+  border-bottom: 1px solid #eef2f6;
+}
+
+.nexvia-home-pwa-modal__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #1a2838;
+}
+
+.nexvia-home-pwa-modal__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: none;
+  border-radius: 0.55rem;
+  background: #f4f9ff;
+  color: #5f6b7a;
+  cursor: pointer;
+}
+
+.nexvia-home-pwa-modal__close:hover {
+  background: #e8f4fc;
+  color: #2c6485;
+}
+
+.nexvia-home-pwa-modal__body {
+  padding: 1rem 1.15rem 1.15rem;
+  overflow-y: auto;
+}
+
+.nexvia-home-pwa-modal__lead {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+  line-height: 1.65;
+  color: #5f6b7a;
+}
+
+.nexvia-home-pwa-modal__steps {
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.65rem;
+}
+
+.nexvia-home-pwa-modal__steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.72rem 0.8rem;
+  border: 1px solid #e4edf5;
+  border-radius: 0.85rem;
+  background: #f7fbff;
+  font-size: 0.86rem;
+  line-height: 1.55;
+  color: #1a2838;
+}
+
+.nexvia-home-pwa-modal__steps li .material-symbols-outlined {
+  flex-shrink: 0;
+  margin-top: 0.05rem;
+  font-size: 1.2rem;
+  color: #2c6485;
+}
+
+.nexvia-home-pwa-modal__install {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  width: 100%;
+  margin-bottom: 0.55rem;
+  padding: 0.78rem 1rem;
+  border: none;
+  border-radius: 0.75rem;
+  background: #2c6485;
+  color: #f5f9ff;
+  font-size: 0.95rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.nexvia-home-pwa-modal__install:hover:not(:disabled) {
+  filter: brightness(1.05);
+}
+
+.nexvia-home-pwa-modal__install:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+.nexvia-home-pwa-modal__waiting {
+  margin: 0 0 0.85rem;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: #5f6b7a;
+  text-align: center;
+}
+
+.nexvia-home-pwa-modal__hint {
+  margin: 0 0 0.85rem;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: #5f6b7a;
+}
+
+.nexvia-home-pwa-modal__hint--warn {
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #e4edf5;
+  border-radius: 0.75rem;
+  background: #f7fbff;
+}
+
+.nexvia-home-pwa-modal__chrome {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  width: 100%;
+  margin-bottom: 0.55rem;
+  padding: 0.78rem 1rem;
+  border: 1px solid #d6e8f8;
+  border-radius: 0.75rem;
+  background: #f4f9ff;
+  color: #2c6485;
+  font-size: 0.95rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.nexvia-home-pwa-modal__chrome:hover {
+  background: #e8f4fc;
+}
+
+.nexvia-home-pwa-modal__manual {
+  margin-bottom: 0.75rem;
+  font-size: 0.84rem;
+  color: #5f6b7a;
+}
+
+.nexvia-home-pwa-modal__manual summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #2c6485;
+  list-style: none;
+}
+
+.nexvia-home-pwa-modal__manual summary::-webkit-details-marker {
+  display: none;
+}
+
+.nexvia-home-pwa-modal__manual .nexvia-home-pwa-modal__steps {
+  margin-top: 0.65rem;
+}
+
+.nexvia-home-pwa-modal__later {
+  display: block;
+  width: 100%;
+  padding: 0.7rem 1rem;
+  border: 1px solid #d6e8f8;
+  border-radius: 0.75rem;
+  background: #ffffff;
+  color: #5f6b7a;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.nexvia-home-pwa-modal__later:hover {
+  background: #f4f9ff;
+  color: #2c6485;
+}
+
+@media (min-width: 1024px) {
+  .nexvia-home-pwa-modal {
+    display: none;
+  }
+}

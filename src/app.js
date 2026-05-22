@@ -1,13 +1,17 @@
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import MainAppRoutes, { PendingRestrictedRoute } from './layout/main-app-routes';
+import { useGuestOnlyRedirect } from './lib/use-crm-token';
 
 const Layout = lazy(() => import('./layout/layout'));
+const Dashboard = lazy(() => import('./dashboard/dashboard'));
+/** 마케팅 홈 — 비로그인 공개 / 만 */
 const Home = lazy(() => import('./home/home'));
 const Login = lazy(() => import('./login/login'));
 const Register = lazy(() => import('./register/register'));
 const LeadCapturePublic = lazy(() => import('./lead-capture-public/lead-capture-public'));
 const LegalPublicPage = lazy(() => import('./legal/LegalPublicPage'));
+const PwaInstallRedirect = lazy(() => import('./pwa-install-redirect/pwa-install-redirect'));
 const AdminSubscription = lazy(() => import('./admin/adminsubscription'));
 const AdminLayout = lazy(() => import('./admin/adminlayout'));
 const AdminNotices = lazy(() => import('./admin/adminnotices'));
@@ -19,6 +23,19 @@ function ProtectedRoute({ children }) {
   const token = localStorage.getItem('crm_token');
   if (!token) return <Navigate to="/login" replace />;
   return children;
+}
+
+/** 로그인 시 / · /login 등 → /dashboard */
+function GuestOnlyRoute({ children }) {
+  const redirectTo = useGuestOnlyRedirect();
+  if (redirectTo) return <Navigate to={redirectTo} replace />;
+  return children;
+}
+
+/** 알 수 없는 경로 — 비로그인은 /, 로그인은 /dashboard */
+function AppFallbackRedirect() {
+  const token = localStorage.getItem('crm_token');
+  return <Navigate to={token ? '/dashboard' : '/'} replace />;
 }
 
 /** 라우트 청크 로딩 중 (FCP 이후 짧은 표시) */
@@ -47,9 +64,13 @@ function App() {
   return (
     <Suspense fallback={<RouteChunkFallback />}>
       <Routes>
-        <Route path="/login" element={<Login />} />
+        <Route path="/home" element={<Navigate to="/" replace />} />
+        <Route path="/landing" element={<Navigate to="/" replace />} />
+        <Route path="/" element={<GuestOnlyRoute><Home /></GuestOnlyRoute>} />
+        <Route path="/login" element={<GuestOnlyRoute><Login /></GuestOnlyRoute>} />
         <Route path="/register" element={<Register />} />
         <Route path="/legal/:doc" element={<LegalPublicPage />} />
+        <Route path="/install" element={<PwaInstallRedirect />} />
         <Route path="/lead-form/:secret" element={<LeadCapturePublic />} />
         <Route path="/admin" element={<ProtectedRoute><AdminLayout /></ProtectedRoute>}>
           <Route index element={<Navigate to="subscription" replace />} />
@@ -58,12 +79,11 @@ function App() {
           <Route path="users" element={<AdminUsers />} />
           <Route path="companies" element={<AdminCompanies />} />
         </Route>
-        <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-          {/* `/`는 index로 매칭 — 부모만 path="*"일 때 내부 Routes의 index가 비는 문제 방지 */}
-          <Route index element={<PendingRestrictedRoute><Home /></PendingRestrictedRoute>} />
-          <Route path="*" element={<MainAppRoutes includeHomeIndex={false} />} />
+        <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+          <Route path="dashboard" element={<PendingRestrictedRoute><Dashboard /></PendingRestrictedRoute>} />
+          <Route path="*" element={<MainAppRoutes />} />
         </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<AppFallbackRedirect />} />
       </Routes>
     </Suspense>
   );

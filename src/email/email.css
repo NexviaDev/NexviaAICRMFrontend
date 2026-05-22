@@ -218,6 +218,98 @@
   font-size: 1.25rem;
 }
 
+/* 보내기(mailto) — Windows 기본 메일 앱 안내 */
+.email-handoff-banner {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0.75rem 1.25rem;
+  background: #f0f7ff;
+  border-bottom: 1px solid #dbeafe;
+}
+
+.email-handoff-guide--compact {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: #334155;
+}
+
+.email-handoff-guide {
+  margin-top: 1.25rem;
+  padding: 1rem 1.1rem;
+  max-width: 42rem;
+  text-align: left;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+}
+
+.email-handoff-guide-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.65rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #1e3a4c;
+}
+
+.email-handoff-guide-title .material-symbols-outlined {
+  font-size: 1.2rem;
+  color: #3b82f6;
+}
+
+.email-handoff-guide-lead,
+.email-handoff-guide-foot {
+  margin: 0 0 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: #475569;
+}
+
+.email-handoff-guide-foot {
+  margin-bottom: 0;
+  padding-top: 0.5rem;
+  border-top: 1px dashed #e2e8f0;
+}
+
+.email-handoff-guide-steps {
+  margin: 0;
+  padding-left: 1.2rem;
+  font-size: 0.84rem;
+  line-height: 1.65;
+  color: #475569;
+}
+
+.email-handoff-guide-steps li {
+  margin-bottom: 0.65rem;
+}
+
+.email-handoff-guide-steps li:last-child {
+  margin-bottom: 0;
+}
+
+.email-handoff-guide kbd {
+  display: inline-block;
+  padding: 0.1rem 0.35rem;
+  font-size: 0.78rem;
+  font-family: inherit;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.25rem;
+}
+
+.email-detail-empty--with-guide {
+  align-items: stretch;
+  justify-content: flex-start;
+  padding: 1.5rem 1.25rem;
+  overflow-y: auto;
+}
+
+.email-detail-empty--with-guide > p:first-of-type {
+  margin-bottom: 0.25rem;
+}
+
 .email-folders {
   display: flex;
   flex-direction: column;

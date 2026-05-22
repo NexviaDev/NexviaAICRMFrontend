@@ -26,7 +26,7 @@ import {
   pushStaffSumIntoDeptCascadeAndUp,
   rollupDeptCascadeFromStaffAndChildren
 } from './kpi-target-cascade-utils';
-import '../home/home.css';
+import '../dashboard/dashboard.css';
 import './kpi.css';
 
 const PERIODS = [

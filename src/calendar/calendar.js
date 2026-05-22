@@ -8,11 +8,6 @@ import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-head
 import { API_BASE } from '@/config';
 import { getSavedCalendarViewMode, patchCalendarViewTemplate } from '@/lib/list-templates';
 import {
-  bindCalendarForegroundNotifications,
-  enableCalendarPushNotifications,
-  getCalendarPushStatus
-} from '@/lib/push-notifications';
-import {
   formatDateInSeoulYmd,
   ymdAddOneDay,
   crmAllDayInclusiveEndYmd
@@ -367,9 +362,6 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
   const [weekDragRange, setWeekDragRange] = useState(null);
   const weekDragActiveRef = useRef(false);
   const [currentUser, setCurrentUser] = useState(null);
-  const [pushStatus, setPushStatus] = useState({ supported: false, permission: 'default', registered: false });
-  const [pushBusy, setPushBusy] = useState(false);
-  const [pushMessage, setPushMessage] = useState('');
   const [googleCalendarList, setGoogleCalendarList] = useState([]);
   const [googleCalDropdownOpen, setGoogleCalDropdownOpen] = useState(false);
   const googleCalDropdownRef = useRef(null);
@@ -539,63 +531,6 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    getCalendarPushStatus()
-      .then((status) => {
-        if (!cancelled) setPushStatus(status);
-      })
-      .catch(() => {
-        if (!cancelled) setPushStatus({ supported: false, permission: 'unsupported', registered: false });
-      });
-    return () => { cancelled = true; };
-  }, [currentUser?._id]);
-
-  useEffect(() => {
-    let cleanup = null;
-    bindCalendarForegroundNotifications((payload) => {
-      const data = payload?.data || {};
-      const notification = payload?.notification || {};
-      if (Notification.permission === 'granted') {
-        const title = notification.title || '일정 알림';
-        const body = notification.body || data.title || '';
-        const n = new Notification(title, {
-          body,
-          icon: '/nexvia-app-icon.png',
-          tag: data.eventId ? `calendar-reminder-${data.eventId}` : undefined,
-          data
-        });
-        n.onclick = () => {
-          window.focus();
-          if (data.url) window.location.assign(data.url);
-        };
-      }
-    }).then((unsub) => { cleanup = unsub; });
-    return () => {
-      if (typeof cleanup === 'function') cleanup();
-    };
-  }, [currentUser?._id]);
-
-  const handleEnablePush = async () => {
-    setPushBusy(true);
-    setPushMessage('');
-    try {
-      const result = await enableCalendarPushNotifications();
-      const permission = result.permission || (typeof Notification !== 'undefined' ? Notification.permission : 'unsupported');
-      setPushStatus((prev) => ({
-        ...prev,
-        supported: true,
-        permission,
-        registered: !!result.ok
-      }));
-      setPushMessage(result.ok ? '캘린더 알림이 켜졌습니다.' : (result.error || '알림 설정을 완료하지 못했습니다.'));
-    } catch (err) {
-      setPushMessage(err?.message || '알림 설정 중 오류가 발생했습니다.');
-    } finally {
-      setPushBusy(false);
-    }
-  };
 
   const applyCalendarViewMode = useCallback(
     (mode) => {
@@ -1072,12 +1007,6 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
   const monthTitle = `${current.year}년 ${current.month + 1}월`;
   const dayTitle = formatDayViewTitle(current.year, current.month, selectedDay);
   const weekTitle = formatWeekRangeTitle(weekViewStart);
-  const pushButtonLabel = !pushStatus.supported
-    ? '알림 미지원'
-    : pushStatus.registered || pushStatus.permission === 'granted'
-      ? '알림 켜짐'
-      : '알림 켜기';
-
   return (
     <div className={`page calendar-page${embedded ? ' calendar-page--embedded' : ''}`}>
       {!embedded && (
@@ -1149,23 +1078,6 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
               </div>
             </div>
             <div className="calendar-hero-aside">
-              {false && (
-                <div className="calendar-push-control">
-                  <button
-                    type="button"
-                    className={`calendar-push-btn ${pushStatus.permission === 'granted' ? 'active' : ''}`}
-                    onClick={handleEnablePush}
-                    disabled={pushBusy || !pushStatus.supported}
-                    title="캘린더 CRM 일정 푸시 알림을 휴대폰/PWA에 등록합니다."
-                  >
-                    <span className="material-symbols-outlined" aria-hidden>
-                      {pushStatus.permission === 'granted' ? 'notifications_active' : 'notifications'}
-                    </span>
-                    {pushBusy ? '알림 설정 중…' : pushButtonLabel}
-                  </button>
-                  {pushMessage && <span className="calendar-push-message" role="status">{pushMessage}</span>}
-                </div>
-              )}
               <div className="calendar-view-tabs" role="tablist" aria-label="보기 방식">
                 {VIEW_OPTIONS.map((opt) => (
                   <button

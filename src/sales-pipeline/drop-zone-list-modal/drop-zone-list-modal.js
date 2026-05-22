@@ -674,6 +674,36 @@ function formatLineItemField(colKey, line) {
   return String(val);
 }
 
+/** 다중 제품명 — 수량 등과 같이 ` | ` 로 구분 (줄바꿈·쉼표 집계 문자열 포함) */
+function formatProductNamesForDisplay(opp) {
+  const lines = opp?.lineItems;
+  if (Array.isArray(lines) && lines.length > 0) {
+    const parts = lines
+      .map((l) => formatLineItemField('productName', l))
+      .filter((s) => s != null && String(s).trim() !== '');
+    if (parts.length) return parts.join(' | ');
+  }
+  const raw = opp?.productName;
+  if (raw == null || raw === '') return '';
+  const s = String(raw).trim();
+  if (!s) return '';
+  if (s.includes('\n')) {
+    return s
+      .split(/\n+/)
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .join(' | ');
+  }
+  if (s.includes(',')) {
+    return s
+      .split(/,\s*/)
+      .map((x) => x.trim())
+      .filter(Boolean)
+      .join(' | ');
+  }
+  return s;
+}
+
 /** 제품 행 열: 줄마다 한 줄 요약 (제품명·수량·단가·할인 등, 줄별 배경으로 구분) */
 function formatLineItemRowSummary(line) {
   if (!line || typeof line !== 'object') return '—';
@@ -944,6 +974,10 @@ function formatCellValue(key, opp, forecastPercent) {
     return formatFinanceCustomFieldDisplay(raw);
   }
 
+  if (key === 'productName') {
+    return formatProductNamesForDisplay(opp);
+  }
+
   if (key === 'lineItems') {
     const li = opp.lineItems;
     if (!Array.isArray(li) || li.length === 0) return '';
@@ -953,8 +987,7 @@ function formatCellValue(key, opp, forecastPercent) {
 
   if (shouldStackLineItemColumn(key, opp)) {
     const parts = opp.lineItems.map((line) => formatLineItemField(key, line));
-    const sep = key === 'productName' ? '\n' : ' | ';
-    return parts.join(sep);
+    return parts.join(' | ');
   }
 
   val = opp[key];

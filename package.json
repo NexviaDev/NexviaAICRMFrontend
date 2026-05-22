@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/inject-fcm-sw-config.cjs",
     "preview": "vite preview",
     "start": "vite",
     "cap:sync": "npm run build && npx cap sync",

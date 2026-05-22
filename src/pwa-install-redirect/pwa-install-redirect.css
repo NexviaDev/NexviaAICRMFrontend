@@ -1,0 +1,27 @@
+.pwa-install-redirect {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1.5rem;
+  background: #ffffff;
+  color: #1a2838;
+  font-family: Manrope, Inter, sans-serif;
+  text-align: center;
+}
+
+.pwa-install-redirect p {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.pwa-install-redirect__sub {
+  font-size: 0.85rem;
+  color: #5f6b7a;
+}
+
+.pwa-install-redirect__sub strong {
+  color: #2c6485;
+}

@@ -79,7 +79,7 @@ export default function AdminSidebar({ drawerOpen, onCloseDrawer }) {
           className="sidebar-logout"
           onClick={() => {
             onCloseDrawer?.();
-            navigate('/', { replace: true });
+            navigate('/dashboard', { replace: true });
           }}
         >
           <span className="material-symbols-outlined">switch_account</span>

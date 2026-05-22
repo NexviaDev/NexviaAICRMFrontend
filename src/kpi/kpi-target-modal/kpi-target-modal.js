@@ -106,6 +106,28 @@ function inferBulkRowKey(label) {
   return text;
 }
 
+function resolveBulkCellFromTarget(target, registry) {
+  if (!target || typeof target.closest !== 'function') return null;
+  const marked = target.closest('[data-kpi-bulk-cell]');
+  if (marked) {
+    const cellKey = normalizeBulkKey(marked.getAttribute('data-kpi-bulk-cell'));
+    if (cellKey) {
+      return {
+        cellKey,
+        rowKey: normalizeBulkKey(marked.getAttribute('data-kpi-bulk-row'))
+      };
+    }
+  }
+  let hit = null;
+  registry.forEach((meta, key) => {
+    if (hit || meta?.disabled) return;
+    const el = meta?.element;
+    if (!el || (el !== target && !el.contains(target))) return;
+    hit = { cellKey: key, rowKey: normalizeBulkKey(meta?.rowKey) };
+  });
+  return hit;
+}
+
 function normalizeRoundPlace(value) {
   const n = Math.max(1, Math.round(Number(String(value ?? '').replace(/\D/g, '')) || 1));
   return n;
@@ -251,9 +273,15 @@ function KpiTargetExprInput({
       value={displayValue}
       placeholder={placeholder}
       pattern={pattern}
-      title="예: *1.2, +1000, =10+20*2 (Enter 또는 다른 칸으로 이동 시 확정)"
+      title="예: *1.2, +1000, =10+20*2 (Enter 또는 다른 칸으로 이동 시 확정). Alt+드래그·우클릭 드래그로 범위 선택 후 우클릭하면 반올림 메뉴."
       disabled={disabled}
       aria-label={ariaLabel}
+      {...(bulk && cellKey
+        ? {
+            'data-kpi-bulk-cell': cellKey,
+            'data-kpi-bulk-row': rowKey || ''
+          }
+        : {})}
       onFocus={() => {
         baseRef.current = rounded;
         setFocused(true);
@@ -264,10 +292,12 @@ function KpiTargetExprInput({
       onMouseDown={(e) => {
         if (e.button !== 2 || disabled || !bulk) return;
         e.preventDefault();
+        if (bulk.preserveBulkSelectionForCell(cellKey)) return;
         bulk.beginRightDrag(cellKey, rowKey);
       }}
       onMouseEnter={(e) => {
         if (disabled || !bulk || !(e.buttons & 2)) return;
+        if (bulk.preserveBulkSelectionForCell(cellKey)) return;
         bulk.extendRightDrag(cellKey, rowKey);
       }}
       onContextMenu={(e) => {
@@ -276,6 +306,11 @@ function KpiTargetExprInput({
         bulk.openMenu(e, cellKey, rowKey);
       }}
       onKeyDown={(e) => {
+        if (e.key === 'Escape' && bulk) {
+          e.preventDefault();
+          bulk.clearBulkSelection();
+          return;
+        }
         if (e.key === 'Enter' || e.key === 'NumpadEnter') {
           e.preventDefault();
           commit();
@@ -290,7 +325,9 @@ function KpiTargetExprInput({
 
 function KpiTargetBulkProvider({ children }) {
   const registryRef = useRef(new Map());
+  const bulkRootRef = useRef(null);
   const dragRef = useRef(false);
+  const altDragActiveRef = useRef(false);
   const dragStartKeyRef = useRef('');
   const selectedKeysRef = useRef(new Set());
   const [selectedKeys, setSelectedKeys] = useState(() => new Set());
@@ -346,6 +383,7 @@ function KpiTargetBulkProvider({ children }) {
 
   const beginRightDrag = useCallback((cellKey, rowKey) => {
     if (!cellKey) return;
+    altDragActiveRef.current = false;
     dragRef.current = true;
     dragStartKeyRef.current = cellKey;
     setActiveRowKey(rowKey || '');
@@ -353,22 +391,53 @@ function KpiTargetBulkProvider({ children }) {
     updateSelectedKeys(new Set([cellKey]));
   }, [updateSelectedKeys]);
 
+  const beginAltDrag = useCallback(
+    (cellKey, rowKey) => {
+      if (!cellKey) return;
+      dragRef.current = false;
+      altDragActiveRef.current = true;
+      dragStartKeyRef.current = cellKey;
+      setActiveRowKey(rowKey || '');
+      setMenu(null);
+      updateSelectedKeys(new Set([cellKey]));
+    },
+    [updateSelectedKeys]
+  );
+
   const extendRightDrag = useCallback((cellKey, rowKey) => {
     if (!dragRef.current || !cellKey) return;
     setActiveRowKey((cur) => cur || rowKey || '');
     updateSelectedKeys(selectRectBetween(dragStartKeyRef.current || cellKey, cellKey));
   }, [selectRectBetween, updateSelectedKeys]);
 
+  const extendAltDrag = useCallback(
+    (cellKey, rowKey) => {
+      if (!altDragActiveRef.current || !cellKey) return;
+      setActiveRowKey((cur) => cur || rowKey || '');
+      updateSelectedKeys(selectRectBetween(dragStartKeyRef.current || cellKey, cellKey));
+    },
+    [selectRectBetween, updateSelectedKeys]
+  );
+
+  const preserveBulkSelectionForCell = useCallback((cellKey) => {
+    if (!cellKey) return false;
+    return selectedKeysRef.current.has(cellKey) && selectedKeysRef.current.size > 1;
+  }, []);
+
   const openMenu = useCallback((event, cellKey, rowKey) => {
+    const existing = selectedKeysRef.current;
+    const preserveMulti = existing.size > 1 && existing.has(cellKey);
+    const wasRightDrag = dragRef.current;
     dragRef.current = false;
+    altDragActiveRef.current = false;
     const dragStartKey = dragStartKeyRef.current || cellKey;
     dragStartKeyRef.current = '';
-    const dragSelection = selectRectBetween(dragStartKey, cellKey);
-    const selectedAlready = dragSelection.has(cellKey) || selectedKeysRef.current.has(cellKey);
-    if (!selectedAlready) {
-      updateSelectedKeys(new Set([cellKey]));
-    } else {
-      updateSelectedKeys(dragSelection);
+    if (!preserveMulti) {
+      if (wasRightDrag) {
+        updateSelectedKeys(selectRectBetween(dragStartKey, cellKey));
+      } else if (!existing.has(cellKey)) {
+        updateSelectedKeys(new Set([cellKey]));
+      }
     }
     setActiveRowKey(rowKey || '');
     setMenu({
@@ -395,6 +464,7 @@ function KpiTargetBulkProvider({ children }) {
   const clearSelection = useCallback(() => {
     selectedKeysRef.current = new Set();
     dragRef.current = false;
+    altDragActiveRef.current = false;
     dragStartKeyRef.current = '';
     setSelectedKeys(new Set());
     setActiveRowKey('');
@@ -416,16 +486,75 @@ function KpiTargetBulkProvider({ children }) {
   useEffect(() => {
     const stopDrag = () => {
       dragRef.current = false;
+      altDragActiveRef.current = false;
     };
     window.addEventListener('mouseup', stopDrag);
     return () => window.removeEventListener('mouseup', stopDrag);
   }, []);
 
+  /** Alt 키를 누르는 순간 이전 범위 선택 해제(merge-data-sheet-modal 과 동일) */
+  useEffect(() => {
+    const onKey = (e) => {
+      if (!e.altKey || e.repeat) return;
+      if (e.code !== 'AltLeft' && e.code !== 'AltRight') return;
+      const root = bulkRootRef.current;
+      const t = e.target;
+      if (!root || !t || typeof t.closest !== 'function' || !root.contains(t)) return;
+      altDragActiveRef.current = false;
+      dragRef.current = false;
+      dragStartKeyRef.current = '';
+      updateSelectedKeys(new Set());
+      setMenu(null);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [updateSelectedKeys]);
+
+  /** Alt+드래그: input 위에서도 캡처 단계에서 범위 선택 */
+  useLayoutEffect(() => {
+    const el = bulkRootRef.current;
+    if (!el) return undefined;
+
+    const onDownCap = (e) => {
+      if (e.button !== 0 || !e.altKey) return;
+      if (!el.contains(e.target)) return;
+      const hit = resolveBulkCellFromTarget(e.target, registryRef.current);
+      if (!hit?.cellKey) return;
+      const meta = registryRef.current.get(hit.cellKey);
+      if (meta?.disabled) return;
+      if (e.target.closest?.('input,textarea')) e.preventDefault();
+      e.preventDefault();
+
+      beginAltDrag(hit.cellKey, hit.rowKey);
+
+      const onMove = (ev) => {
+        if (!altDragActiveRef.current) return;
+        const moveHit = resolveBulkCellFromTarget(
+          document.elementFromPoint(ev.clientX, ev.clientY),
+          registryRef.current
+        );
+        if (!moveHit?.cellKey) return;
+        extendAltDrag(moveHit.cellKey, moveHit.rowKey);
+      };
+      const onUp = () => {
+        altDragActiveRef.current = false;
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+      };
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    };
+
+    el.addEventListener('mousedown', onDownCap, true);
+    return () => el.removeEventListener('mousedown', onDownCap, true);
+  }, [beginAltDrag, extendAltDrag]);
+
   useEffect(() => {
     const closeOnEscape = (event) => {
       if (event.key !== 'Escape') return;
-      if (!menu && selectedKeysRef.current.size === 0 && !dragRef.current) return;
+      if (!menu && selectedKeysRef.current.size === 0) return;
       event.preventDefault();
+      event.stopPropagation();
       clearSelection();
     };
     window.addEventListener('keydown', closeOnEscape, true);
@@ -438,9 +567,19 @@ function KpiTargetBulkProvider({ children }) {
       isSelected,
       beginRightDrag,
       extendRightDrag,
-      openMenu
+      openMenu,
+      preserveBulkSelectionForCell,
+      clearBulkSelection: clearSelection
     }),
-    [beginRightDrag, extendRightDrag, isSelected, openMenu, registerCell]
+    [
+      beginRightDrag,
+      clearSelection,
+      extendRightDrag,
+      isSelected,
+      openMenu,
+      preserveBulkSelectionForCell,
+      registerCell
+    ]
   );
 
   const selectedCount = selectedKeys.size;
@@ -455,7 +594,9 @@ function KpiTargetBulkProvider({ children }) {
 
   return (
     <KpiTargetBulkContext.Provider value={contextValue}>
-      {children}
+      <div ref={bulkRootRef} className="kpi-target-bulk-root">
+        {children}
+      </div>
       {menu ? (
         <div
           className="kpi-target-bulk-menu"
@@ -465,7 +606,8 @@ function KpiTargetBulkProvider({ children }) {
         >
           <div className="kpi-target-bulk-menu-title">선택 셀 반올림</div>
           <p className="kpi-target-bulk-menu-help">
-            우클릭 드래그로 시작 셀과 현재 셀 사이의 사각 영역을 선택한 뒤 자리수와 방식을 적용합니다.
+            Alt+드래그 또는 우클릭 드래그로 시작 셀과 현재 셀 사이의 사각 영역을 선택한 뒤, 우클릭으로 이
+            메뉴를 열고 자리수와 방식을 적용합니다.
           </p>
           <label className="kpi-target-bulk-menu-field">
             <span>자리수</span>

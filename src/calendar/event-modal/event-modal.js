@@ -15,6 +15,16 @@ import {
   ymdMinusOneDay,
   crmAllDayInclusiveEndYmd
 } from '../calendar-date-utils';
+import {
+  buildReminderPayloadFromForm,
+  formatReminderFirePreview,
+  formatReminderSummaryForEvent,
+  getClientTimeZoneLabel,
+  getReminderPushAudienceLabel,
+  getReminderOptions,
+  isGoogleCalendarAllDayStart,
+  normalizeReminderMinutes
+} from '../calendar-reminder-utils';
 
 const PRESET_COLORS = [
   { hex: '#7986cb', label: '라벤더' },
@@ -30,19 +40,29 @@ const PRESET_COLORS = [
 ];
 
 const VISIBILITY_OPTIONS = [
-  { value: 'company', label: '회사 전체', icon: 'groups', desc: '같은 회사 모든 직원이 볼 수 있습니다' },
-  { value: 'team', label: '참여자만', icon: 'group', desc: '선택한 참여자만 볼 수 있습니다' },
-  { value: 'private', label: '나만 보기', icon: 'lock', desc: '본인만 볼 수 있습니다' }
+  {
+    value: 'company',
+    label: '회사 전체',
+    icon: 'groups',
+    desc: '같은 회사 모든 직원이 볼 수 있습니다',
+    reminderPush: '알림: 회사 전체(푸시 등록한 직원)'
+  },
+  {
+    value: 'team',
+    label: '참여자만',
+    icon: 'group',
+    desc: '선택한 참여자만 볼 수 있습니다',
+    reminderPush: '알림: 작성자 + 선택한 참여자'
+  },
+  {
+    value: 'private',
+    label: '나만 보기',
+    icon: 'lock',
+    desc: '본인만 볼 수 있습니다',
+    reminderPush: '알림: 작성자 본인만'
+  }
 ];
 
-const REMINDER_OPTIONS = [
-  { value: 0, label: '정시' },
-  { value: 5, label: '5분 전' },
-  { value: 10, label: '10분 전' },
-  { value: 30, label: '30분 전' },
-  { value: 60, label: '1시간 전' },
-  { value: 1440, label: '1일 전' }
-];
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -102,7 +122,7 @@ function isCrmProductRenewalAutoEvent(description) {
 function googleEventToForm(ev, titleMeta = {}) {
   const start = ev.start || {};
   const end = ev.end || {};
-  const allDay = !!start.date && !start.dateTime;
+  const allDay = isGoogleCalendarAllDayStart(start);
   const displayTitle = googleEventDisplayTitle(ev, titleMeta) || '';
 
   if (allDay) {
@@ -162,8 +182,8 @@ function crmEventToForm(ev) {
       participants: ev.participants || [],
       relatedCustomerCompany,
       relatedContactPerson,
-      reminderEnabled: !!ev.reminderEnabled,
-      reminderMinutesBefore: Number.isFinite(Number(ev.reminderMinutesBefore)) ? Number(ev.reminderMinutesBefore) : 10
+      reminderEnabled: true,
+      reminderMinutesBefore: normalizeReminderMinutes(true, ev.reminderMinutesBefore)
     };
   }
 
@@ -180,8 +200,8 @@ function crmEventToForm(ev) {
     participants: ev.participants || [],
     relatedCustomerCompany,
     relatedContactPerson,
-    reminderEnabled: !!ev.reminderEnabled,
-    reminderMinutesBefore: Number.isFinite(Number(ev.reminderMinutesBefore)) ? Number(ev.reminderMinutesBefore) : 10
+    reminderEnabled: true,
+    reminderMinutesBefore: normalizeReminderMinutes(false, ev.reminderMinutesBefore)
   };
 }
 
@@ -221,8 +241,7 @@ function formToCrmBody(form) {
     participants: form.participants || [],
     relatedCustomerCompanyId: form.relatedCustomerCompany?._id || null,
     relatedCustomerCompanyEmployeeId: form.relatedContactPerson?._id || null,
-    reminderEnabled: !!form.reminderEnabled,
-    reminderMinutesBefore: Number.isFinite(Number(form.reminderMinutesBefore)) ? Number(form.reminderMinutesBefore) : 10
+    ...buildReminderPayloadFromForm(form, { forceEnable: true })
   };
 }
 
@@ -276,13 +295,6 @@ function formatEventWhen(ev, source) {
   return s.toLocaleString('ko-KR', opts) + (e ? ' ~ ' + e.toLocaleString('ko-KR', opts) : '');
 }
 
-function formatReminderSummary(ev) {
-  if (!ev?.reminderEnabled) return '사용 안 함';
-  const minutes = Number(ev.reminderMinutesBefore);
-  const opt = REMINDER_OPTIONS.find((item) => item.value === minutes);
-  return opt?.label || `${minutes}분 전`;
-}
-
 function googleCalendarQuery(calendarId) {
   if (!calendarId) return '';
   return `?calendarId=${encodeURIComponent(calendarId)}`;
@@ -311,7 +323,6 @@ export default function EventModal({
   const isPersonal = calendarType === 'personal';
   const isGoogle = !isAdd && isGoogleEventId(eventId);
   const realId = isGoogle ? extractGoogleId(eventId) : eventId;
-
   const [mode, setMode] = useState(isAdd ? 'add' : (isEdit ? 'edit' : 'view'));
   const [event, setEvent] = useState(null);
   const [form, setForm] = useState(() => ({
@@ -321,7 +332,7 @@ export default function EventModal({
     visibility: 'company', participants: [],
     relatedCustomerCompany: null,
     relatedContactPerson: null,
-    reminderEnabled: false,
+    reminderEnabled: true,
     reminderMinutesBefore: 10
   }));
   const [loading, setLoading] = useState(!isAdd);
@@ -575,9 +586,21 @@ export default function EventModal({
     setShowEmployeePicker(true);
   }, []);
 
+  const reminderOptions = useMemo(() => getReminderOptions(!!form.allDay), [form.allDay]);
+  const reminderPushAudience = useMemo(
+    () => getReminderPushAudienceLabel(form.visibility, form.participants?.length ?? 0),
+    [form.visibility, form.participants]
+  );
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setForm((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+    setForm((prev) => {
+      const next = { ...prev, [name]: type === 'checkbox' ? checked : value };
+      if (name === 'allDay') {
+        next.reminderMinutesBefore = normalizeReminderMinutes(!!checked, prev.reminderMinutesBefore);
+      }
+      return next;
+    });
     setError('');
   };
 
@@ -729,7 +752,26 @@ export default function EventModal({
                     </span>
                   </dd>
                   <dt>알림</dt>
-                  <dd>{formatReminderSummary(event)}</dd>
+                  <dd
+                    className={
+                      isOwner && !event.reminderEnabled
+                        ? 'event-modal-reminder-view event-modal-reminder-view--off'
+                        : 'event-modal-reminder-view'
+                    }
+                  >
+                    {formatReminderSummaryForEvent(event)}
+                    {isOwner && !event.reminderEnabled ? (
+                      <p className="event-modal-reminder-owner-hint">
+                        이전에 저장된 일정이라 푸시 예약이 비어 있습니다. <strong>수정</strong> 후 저장하면 알림이 자동으로
+                        켜집니다.
+                      </p>
+                    ) : null}
+                    {isOwner && event.reminderEnabled && event.reminderLastError ? (
+                      <p className="event-modal-reminder-owner-hint event-modal-reminder-owner-hint--warn">
+                        마지막 발송 시도: {event.reminderLastError}
+                      </p>
+                    ) : null}
+                  </dd>
                 </>
               )}
               {!isGoogle && event.participants?.length > 0 && (
@@ -857,44 +899,6 @@ export default function EventModal({
                   )}
                 </section>
 
-                {!isGoogle && !isPersonal && (
-                  <section className="event-modal-modern-card">
-                    <h3 className="event-modal-modern-side-title">
-                      <span className="material-symbols-outlined">notifications_active</span>
-                      알림 설정
-                    </h3>
-                    <label className="event-modal-reminder-toggle">
-                      <span>
-                        <strong>휴대폰 푸시 알림</strong>
-                        <small>PWA/TWA에서 알림 권한을 허용한 사용자에게 전송됩니다.</small>
-                      </span>
-                      <input
-                        type="checkbox"
-                        name="reminderEnabled"
-                        checked={!!form.reminderEnabled}
-                        onChange={handleChange}
-                      />
-                    </label>
-                    <div className="event-modal-field">
-                      <label htmlFor="event-reminder-before">알림 시간</label>
-                      <select
-                        id="event-reminder-before"
-                        name="reminderMinutesBefore"
-                        value={form.reminderMinutesBefore}
-                        onChange={handleChange}
-                        disabled={!form.reminderEnabled}
-                      >
-                        {REMINDER_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>{opt.label}</option>
-                        ))}
-                      </select>
-                      <p className="event-modal-related-company-hint">
-                        종일 일정은 시작일 오전 9시 기준으로 계산합니다.
-                      </p>
-                    </div>
-                  </section>
-                )}
-
                 <section className="event-modal-modern-card">
                   <div className="event-modal-field">
                     <label htmlFor="event-description">상세 설명</label>
@@ -913,10 +917,62 @@ export default function EventModal({
                           <span className="event-modal-vis-option-main">
                             <span className="event-modal-vis-label">{opt.label}</span>
                             <span className="event-modal-vis-sub">{opt.desc}</span>
+                            <span className="event-modal-vis-reminder">{opt.reminderPush}</span>
                           </span>
                           <span className="material-symbols-outlined">{opt.icon}</span>
                         </button>
                       ))}
+                    </div>
+                  </section>
+                )}
+
+                {!isGoogle && !isPersonal && (
+                  <section className="event-modal-modern-card">
+                    <h3 className="event-modal-modern-side-title">
+                      <span className="material-symbols-outlined">notifications_active</span>
+                      알림 설정
+                    </h3>
+                    <p className="event-modal-reminder-audience-banner">
+                      공개범위에 따라 푸시 수신: <strong>{reminderPushAudience}</strong>
+                    </p>
+                    <p className="event-modal-reminder-forced-banner" role="status">
+                      <span className="material-symbols-outlined" aria-hidden>notifications_active</span>
+                      <span>
+                        <strong>휴대폰 푸시 알림</strong>은 회사 일정에 <strong>항상 적용</strong>됩니다. 공개범위에 따라
+                        수신 대상이 정해지며, 수신자는 사이드바 알림 아이콘을 켜 두어야 받을 수 있습니다.
+                      </span>
+                    </p>
+                    <div className="event-modal-field">
+                      <label htmlFor="event-reminder-before">알림 시간</label>
+                      <select
+                        id="event-reminder-before"
+                        name="reminderMinutesBefore"
+                        value={form.reminderMinutesBefore}
+                        onChange={handleChange}
+                      >
+                        {reminderOptions.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                      <p className="event-modal-related-company-hint">
+                        {form.allDay ? (
+                          <>
+                            종일 일정(Google과 동일): <strong>시작일 오전 9시</strong>를 기준으로 알림 시각을
+                            계산합니다. (기기 로컬 시간대: {getClientTimeZoneLabel()})
+                          </>
+                        ) : (
+                          <>
+                            시간 일정: <strong>시작 일시</strong>를 기준으로 몇 분·시간 전에 알림을 보냅니다.
+                            (로컬: {getClientTimeZoneLabel()})
+                          </>
+                        )}
+                        {formatReminderFirePreview({ ...form, reminderEnabled: true }) ? (
+                          <>
+                            {' '}
+                            예상 알림: <strong>{formatReminderFirePreview({ ...form, reminderEnabled: true })}</strong>
+                          </>
+                        ) : null}
+                      </p>
                     </div>
                   </section>
                 )}

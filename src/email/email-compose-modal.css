@@ -895,6 +895,27 @@
   color: var(--danger);
 }
 
+.email-compose-handoff-hint {
+  margin: 0 1rem 0.5rem;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: #475569;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+}
+
+.email-compose-handoff-hint kbd {
+  display: inline-block;
+  padding: 0.05rem 0.3rem;
+  font-size: 0.75rem;
+  font-family: inherit;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.2rem;
+}
+
 .email-compose-footer {
   display: flex;
   flex-wrap: wrap;

@@ -82,6 +82,14 @@
   flex-direction: column;
 }
 
+/* /home 마케팅 페이지 — 메인 영역 높이 100%, 스크롤 없음 */
+.app-main-outlet .nexvia-home-root {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
 .app-main-content--fullheight .app-main-outlet {
   flex: 1;
   min-height: 0;
@@ -120,13 +128,13 @@
   font-size: 1.5rem;
 }
 
-/* 드로어 열릴 때 배경 딤 */
+/* 드로어 열릴 때 배경 딤 (사이드바·모달보다 아래 — sidebar.css --sidebar-z 참고) */
 .sidebar-backdrop {
   display: none;
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.4);
-  z-index: 1000;
+  z-index: 29;
 }
 
 @media (max-width: 768px) {

@@ -852,6 +852,84 @@
   line-height: 1.35;
 }
 
+.event-modal-reminder-view {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.event-modal-reminder-view--off {
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.65rem;
+  border: 1px solid #fcd34d;
+  background: #fffbeb;
+  color: #78350f;
+}
+
+.event-modal-reminder-owner-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: #92400e;
+}
+
+.event-modal-reminder-owner-hint--warn {
+  color: #b45309;
+}
+
+.event-modal-vis-reminder {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: #2f6789;
+  line-height: 1.3;
+}
+
+.event-modal-vis-option.active .event-modal-vis-reminder {
+  color: #1e4d6b;
+}
+
+.event-modal-reminder-audience-banner {
+  margin: 0 0 0.75rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.6rem;
+  border: 1px solid rgba(47, 103, 137, 0.18);
+  background: #f0f9ff;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: #334155;
+}
+
+.event-modal-reminder-audience-banner strong {
+  color: #0c4a6e;
+}
+
+.event-modal-reminder-forced-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  margin: 0 0 0.75rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.6rem;
+  border: 1px solid rgba(34, 139, 120, 0.2);
+  background: #f0fdf8;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: #334155;
+}
+
+.event-modal-reminder-forced-banner .material-symbols-outlined {
+  font-size: 1.1rem;
+  color: #2a8f7a;
+  flex-shrink: 0;
+  margin-top: 0.05rem;
+}
+
+.event-modal-reminder-forced-banner strong {
+  color: #166534;
+}
+
 .event-modal-modern-actions {
   display: flex;
   flex-direction: column;

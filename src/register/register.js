@@ -10,6 +10,7 @@ import GoogleApiTermsModal from '../login/legal-modals/GoogleApiTermsModal';
 
 import { API_BASE } from '@/config';
 import { pingBackendHealth } from '@/lib/backend-wake';
+import { storeUserWithDefaultSidebarTemplate } from '@/lib/list-templates';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -498,20 +499,20 @@ export default function Register() {
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.token) {
         localStorage.setItem('crm_token', data.token);
-        if (data.user) localStorage.setItem('crm_user', JSON.stringify(data.user));
+        let storedUser = data.user ? await storeUserWithDefaultSidebarTemplate(data.user) : null;
         if (avatarFile) {
           try {
             const up = await tryUploadProfilePhoto(data.token, avatarFile);
-            if (up?.user) localStorage.setItem('crm_user', JSON.stringify(up.user));
-            else if (up?.avatar) {
-              const prev = data.user ? { ...data.user, avatar: up.avatar } : { avatar: up.avatar };
-              localStorage.setItem('crm_user', JSON.stringify(prev));
+            if (up?.user) {
+              storedUser = await storeUserWithDefaultSidebarTemplate(up.user);
+            } else if (up?.avatar && storedUser) {
+              storedUser = await storeUserWithDefaultSidebarTemplate({ ...storedUser, avatar: up.avatar });
             }
           } catch (upErr) {
             console.warn('[register] profile photo:', upErr.message || upErr);
           }
         }
-        navigate('/', { replace: true });
+        navigate('/dashboard', { replace: true });
         return;
       }
       setError(data.error || '회원가입에 실패했습니다.');
@@ -600,20 +601,20 @@ export default function Register() {
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.token) {
         localStorage.setItem('crm_token', data.token);
-        if (data.user) localStorage.setItem('crm_user', JSON.stringify(data.user));
+        let storedUser = data.user ? await storeUserWithDefaultSidebarTemplate(data.user) : null;
         if (avatarFile) {
           try {
             const up = await tryUploadProfilePhoto(data.token, avatarFile);
-            if (up?.user) localStorage.setItem('crm_user', JSON.stringify(up.user));
-            else if (up?.avatar) {
-              const prev = data.user ? { ...data.user, avatar: up.avatar } : { avatar: up.avatar };
-              localStorage.setItem('crm_user', JSON.stringify(prev));
+            if (up?.user) {
+              storedUser = await storeUserWithDefaultSidebarTemplate(up.user);
+            } else if (up?.avatar && storedUser) {
+              storedUser = await storeUserWithDefaultSidebarTemplate({ ...storedUser, avatar: up.avatar });
             }
           } catch (upErr) {
             console.warn('[register] profile photo:', upErr.message || upErr);
           }
         }
-        navigate('/', { replace: true });
+        navigate('/dashboard', { replace: true });
         return;
       }
       setError(data.error || '정보 저장에 실패했습니다.');
@@ -795,7 +796,7 @@ export default function Register() {
               </form>
             </div>
             <div className="register-footer">
-              {isEditMode ? <p><Link to="/">메인으로 돌아가기</Link></p> : <p>이미 계정이 있으신가요? <Link to="/login">로그인</Link></p>}
+              {isEditMode ? <p><Link to="/dashboard">메인으로 돌아가기</Link></p> : <p>이미 계정이 있으신가요? <Link to="/login">로그인</Link></p>}
             </div>
           </div>
         </div>

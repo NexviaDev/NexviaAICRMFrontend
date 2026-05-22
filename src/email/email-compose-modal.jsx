@@ -2,7 +2,13 @@ import { useRef, useEffect, useState, useMemo, useCallback } from 'react';
 import { API_BASE, MAX_DRIVE_JSON_UPLOAD_BYTES } from '@/config';
 import { buildParticipantDirectoryFromOverview } from '@/lib/participant-directory-merge';
 import ParticipantModal from '@/shared/participant-modal/participant-modal';
-import { buildMailtoWithFields, triggerMailtoHref } from '@/lib/email-client-links';
+import {
+  buildMailtoWithFields,
+  htmlBodyAppearsFormatted,
+  MAILTO_RICH_BODY_CLIPBOARD_NOTE,
+  triggerMailtoHref,
+  writeEmailBodyToClipboard
+} from '@/lib/email-client-links';
 import {
   getEmailComposeModalGuidedFromUser,
   getEmailSignatureHtmlFromUser,
@@ -1229,6 +1235,8 @@ export default function EmailComposeModal({
 
   const getEditorPlainBody = () => String(editorRef.current?.innerText ?? '').trim();
 
+  const getEditorHtmlBody = () => String(editorRef.current?.innerHTML ?? '').trim();
+
   const requireToForHandoff = () => {
     if (!to.trim()) {
       setError('받는 사람을 입력해 주세요.');
@@ -1238,32 +1246,46 @@ export default function EmailComposeModal({
     return true;
   };
 
-  /** PC 기본 메일(mailto). 성공 시 true */
+  /** PC 기본 메일(mailto). 성공 시 true — HTML 서식은 클립보드(text/html), mailto는 평문만 */
   const runPcMailtoHandoff = async () => {
     if (!requireToForHandoff()) return false;
     const plain = getEditorPlainBody();
+    const html = getEditorHtmlBody();
+    const useRichClipboard = htmlBodyAppearsFormatted(html);
+
     const { href, note, clipboardPlain } = buildMailtoWithFields({
       to: to.trim(),
       cc: cc.trim(),
       subject: subject.trim() || '(제목 없음)',
-      body: plain
+      body: useRichClipboard ? '' : plain
     });
     if (!href) {
       setError('메일 주소를 확인해 주세요.');
       return false;
     }
-    if (clipboardPlain != null) {
-      try {
-        await navigator.clipboard.writeText(clipboardPlain);
-      } catch {
+
+    const clipboardHtml = useRichClipboard ? html : null;
+    const clipboardPlainText =
+      clipboardPlain != null ? clipboardPlain : useRichClipboard && plain ? plain : null;
+
+    if (clipboardHtml || clipboardPlainText) {
+      const copied = await writeEmailBodyToClipboard({
+        html: clipboardHtml || undefined,
+        plain: clipboardPlainText || undefined
+      });
+      if (!copied) {
         setError(
-          '본문이 길어 메일 앱으로 넘기려면 클립보드에 전체를 담아야 하는데 복사에 실패했습니다. 브라우저 권한을 확인해 주세요.'
+          '본문(서식 포함)을 클립보드에 담지 못했습니다. 브라우저에서 클립보드 권한을 허용한 뒤 다시 시도해 주세요.'
         );
         return false;
       }
     }
+
     setError('');
-    if (note) window.alert(note);
+    const notes = [];
+    if (note) notes.push(note);
+    if (useRichClipboard && plain) notes.push(MAILTO_RICH_BODY_CLIPBOARD_NOTE);
+    if (notes.length) window.alert(notes.join('\n\n'));
     triggerMailtoHref(href);
     return true;
   };
@@ -1597,6 +1619,10 @@ export default function EmailComposeModal({
             data-placeholder="내용을 입력하세요. 파일을 여기에 끌어다 놓으면 첨부됩니다. HTML 붙여넣기 시 서식 유지."
           />
         {error && <p className="email-compose-error">{error}</p>}
+        <p className="email-compose-handoff-hint">
+          굵게·표·색상·명함 등 HTML 서식이 있으면 「보내기」 후 Outlook 본문에서 <kbd>Ctrl</kbd>+<kbd>V</kbd>로
+          붙여 넣어 주세요. (mailto는 평문만 넘길 수 있어 서식은 클립보드로 전달합니다.)
+        </p>
         <footer className="email-compose-footer">
           <div className="email-compose-footer-actions">
             <button

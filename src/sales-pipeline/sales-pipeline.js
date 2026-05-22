@@ -66,6 +66,19 @@ const DROP_ZONE_CONFIG = {
   Abandoned: { icon: 'pause_circle', label: '이월 (On Hold)', colorClass: 'dz-blue' }
 };
 
+/** 칸반 카드 헤더 파스텔 톤 — 기회 _id 기준 고정(순서·추가와 무관) */
+const KANBAN_CARD_HEAD_TONE_COUNT = 8;
+
+function kanbanCardHeadToneClass(oppId) {
+  const s = String(oppId ?? '');
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) {
+    h = Math.imul(31, h) + s.charCodeAt(i);
+    h >>>= 0;
+  }
+  return `sp-kanban-card-head-tone-${h % KANBAN_CARD_HEAD_TONE_COUNT}`;
+}
+
 /** 표 `sales-pipeline-table-panel` 과 동일 — 비관리자 마스킹 */
 const PIPELINE_KANBAN_ADMIN_ONLY_KEYS = new Set([
   'value',
@@ -136,6 +149,15 @@ function groupedHasOpportunityId(grouped, oppId) {
   return Object.values(grouped || {}).some((arr) =>
     (arr || []).some((o) => String(o?._id) === id)
   );
+}
+
+function findOpportunityInGrouped(grouped, oppId) {
+  const id = String(oppId);
+  for (const items of Object.values(grouped || {})) {
+    const found = (items || []).find((o) => String(o?._id) === id);
+    if (found) return found;
+  }
+  return null;
 }
 
 /** 단계 이동·필드 수정 반영: 동일 단계면 원래 위치 유지, 바뀌면 대상 단계 맨 앞 */
@@ -322,6 +344,8 @@ export default function SalesPipeline() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [dragId, setDragId] = useState(null);
+  /** 칸반 드래그로 단계 PATCH 중인 기회 id (중복 드롭 방지) */
+  const [stagePatchingId, setStagePatchingId] = useState(null);
   /** Won / Lost / Abandoned 결과 구역 클릭 시 목록 모달 (인라인 펼침 대신) */
   const [dropZoneListStage, setDropZoneListStage] = useState(null);
   const searchTimer = useRef(null);
@@ -794,15 +818,14 @@ export default function SalesPipeline() {
     e.currentTarget.classList.remove('sp-drop-hover');
   };
 
-  const handleDrop = (e, targetStage) => {
+  /** 칸반 드롭: 모달 없이 단계만 저장 (백엔드 updateStage = 모달 Won 전환·저장과 동일 서버 처리) */
+  const handleDrop = async (e, targetStage) => {
     e.preventDefault();
     e.currentTarget.classList.remove('sp-drop-hover');
     const rawId = e.dataTransfer.getData('text/plain') || dragId;
     const id = rawId != null ? String(rawId) : '';
-    if (!id) {
-      setDragId(null);
-      return;
-    }
+    setDragId(null);
+    if (!id || stagePatchingId) return;
 
     let fromStage = null;
     for (const [stage, items] of Object.entries(grouped || {})) {
@@ -811,18 +834,48 @@ export default function SalesPipeline() {
         break;
       }
     }
-    if (fromStage == null) {
-      setDragId(null);
-      return;
-    }
-    if (String(fromStage) === String(targetStage)) {
-      setDragId(null);
-      return;
-    }
+    if (fromStage == null) return;
+    if (String(fromStage) === String(targetStage)) return;
+
+    const opp = findOpportunityInGrouped(grouped, id);
+    if (!opp) return;
 
     setDropZoneListStage(null);
-    openEditModal(id, targetStage);
-    setDragId(null);
+    const prevGrouped = grouped;
+    const prevTotals = totals;
+    const optimisticOpp = { ...opp, stage: targetStage };
+
+    setStagePatchingId(id);
+    setGrouped((prev) => {
+      const next = upsertOpportunityInGrouped(prev, optimisticOpp);
+      queueMicrotask(() => setTotals(recalcTotalsFromGrouped(next)));
+      return next;
+    });
+
+    try {
+      const res = await fetch(
+        `${API_BASE}/sales-opportunities/${encodeURIComponent(id)}/stage`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+          body: JSON.stringify({ stage: targetStage })
+        }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || '단계 변경에 실패했습니다.');
+
+      if (data.renewalCalendar || data.renewalCalendarRemoved) {
+        window.dispatchEvent(new CustomEvent('nexvia-crm-calendar-refresh'));
+      }
+      handleOpportunitySaved(data);
+    } catch (err) {
+      setGrouped(prevGrouped);
+      setTotals(prevTotals);
+      window.alert(err?.message || '단계 변경에 실패했습니다.');
+      fetchData({ silent: true });
+    } finally {
+      setStagePatchingId(null);
+    }
   };
 
   const handleDelete = async (id) => {
@@ -936,11 +989,14 @@ export default function SalesPipeline() {
 
   const renderDesktopKanbanLucidCard = (opp) => {
     const fp = stageForecastPercent[opp.stage];
+    const patching = String(stagePatchingId) === String(opp._id);
+    const colKeys = pipelineDisplayColumnKeys;
+    const headToneClass = kanbanCardHeadToneClass(opp._id);
     return (
       <div
         key={opp._id}
-        className="sp-card sp-card--lucid"
-        draggable
+        className={`sp-card sp-card--lucid${patching ? ' sp-card--stage-patching' : ''}`}
+        draggable={!patching}
         onDragStart={(e) => handleDragStart(e, opp._id)}
         onDragEnd={handleDragEnd}
         onClick={() => openEditModal(opp._id)}
@@ -958,16 +1014,27 @@ export default function SalesPipeline() {
             <span className="material-symbols-outlined">delete</span>
           </button>
         ) : null}
-        {pipelineDisplayColumnKeys.map((colKey, idx, keys) => {
+        {colKeys.map((colKey, idx, keys) => {
           const text = pipelineKanbanOppCellText(colKey, opp, fp, stageLabels, canViewAdminContent);
           const rowSpanFull = keys.length % 2 === 1 && idx === keys.length - 1;
           const kStyle = listColumnValueInlineStyle(pipelineListTemplate.columnCellStyles, colKey);
+          const isProductNameCol = colKey === 'productName';
           return (
             <div
               key={colKey}
-              className={rowSpanFull ? 'sp-kanban-card-field sp-kanban-card-field--full' : 'sp-kanban-card-field'}
+              className={
+                rowSpanFull
+                  ? `sp-kanban-card-field sp-kanban-card-field--full${isProductNameCol ? ' sp-kanban-card-field--product-name' : ''}`
+                  : idx === 0
+                    ? `sp-kanban-card-field sp-kanban-card-field--head ${headToneClass}${isProductNameCol ? ' sp-kanban-card-field--product-name' : ''}`
+                    : isProductNameCol
+                      ? 'sp-kanban-card-field sp-kanban-card-field--product-name'
+                      : 'sp-kanban-card-field'
+              }
             >
-              <div className="sp-kanban-card-field-label">{columnHeaderLabel(colKey, scheduleFieldLabelByKey, financeFieldLabelByKey)}</div>
+              <div className="sp-kanban-card-field-label">
+                {columnHeaderLabel(colKey, scheduleFieldLabelByKey, financeFieldLabelByKey)}
+              </div>
               <div className="sp-kanban-card-field-val" title={text === '' ? undefined : text}>
                 <span className="sp-kanban-card-field-val-inner" style={kStyle || undefined}>
                   {text === '' ? '\u00A0' : text}
@@ -1277,7 +1344,7 @@ export default function SalesPipeline() {
                 {mobileStageItems.length === 0 ? (
                   <p className="sp-mobile-empty">이 단계에 표시할 기회가 없습니다.</p>
                 ) : (
-                  <div className="sp-mobile-deals-list">
+                  <div className="sp-mobile-deals-list sp-mobile-deals-list--table">
                     {mobileStageItems.map((opp, i) => {
                       const pillClass = `sp-mobile-deal-pill--${i % 3}`;
                       const pillText = (opp.productName && String(opp.productName).trim()) || '기회';
@@ -1295,8 +1362,8 @@ export default function SalesPipeline() {
                       return (
                         <div
                           key={opp._id}
-                          className="sp-card sp-mobile-deal-card"
-                          draggable
+                          className={`sp-card sp-mobile-deal-card${String(stagePatchingId) === String(opp._id) ? ' sp-card--stage-patching' : ''}`}
+                          draggable={String(stagePatchingId) !== String(opp._id)}
                           onDragStart={(e) => handleDragStart(e, opp._id)}
                           onDragEnd={handleDragEnd}
                           onClick={() => openEditModal(opp._id)}
@@ -1404,14 +1471,16 @@ export default function SalesPipeline() {
                             ) : null}
                           </div>
                         ) : null}
-                        <div className="sp-kanban-cards">
-                          {items.length === 0 ? (
-                            <div className="sp-kanban-empty" aria-hidden>
-                              카드를 여기로 드래그하세요
-                            </div>
-                          ) : (
-                            items.map((opp) => renderDesktopKanbanLucidCard(opp))
-                          )}
+                        <div className="sp-kanban-list-panel">
+                          <div className="sp-kanban-cards" role="list">
+                            {items.length === 0 ? (
+                              <div className="sp-kanban-empty" aria-hidden>
+                                카드를 여기로 드래그하세요
+                              </div>
+                            ) : (
+                              items.map((opp) => renderDesktopKanbanLucidCard(opp))
+                            )}
+                          </div>
                         </div>
                       </div>
                     );

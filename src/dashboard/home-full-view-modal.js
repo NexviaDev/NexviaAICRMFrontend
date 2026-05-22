@@ -3,7 +3,7 @@ import './home-full-view-modal.css';
 
 /**
  * 홈 모바일: 중첩 스크롤 대신 「전체 보기」 단일 스크롤 모달
- * URL: ?homeView=todo|leads|calendar|channels (home.js에서 동기화)
+ * URL: ?homeView=todo|leads|calendar|channels (dashboard.js에서 동기화)
  */
 export default function HomeFullViewModal({ open, title, onClose, children }) {
   useEffect(() => {

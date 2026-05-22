@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Link, useSearchParams, useNavigate } from 'react-router-dom';
-import './home.css';
+import { Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
+import './dashboard.css';
 import { HomeContributionCalcModal } from './home-contribution-calc-modal';
 import HomeKpiExplainModal, { makeHomeKpiExplainSpec } from './home-kpi-explain-modal';
 
@@ -1294,9 +1294,69 @@ async function fetchHomeKpiYearMatrix(year, scopeType, scopeId = '') {
   return json;
 }
 
+const HOME_KPI_YEAR_MATRIX_TTL_MS = 60000;
+const homeKpiYearMatrixCache = new Map();
+
+async function fetchHomeKpiYearMatrixCached(year, scopeType, scopeId = '') {
+  const key = `${year}|${scopeType}|${scopeId}`;
+  const now = Date.now();
+  const hit = homeKpiYearMatrixCache.get(key);
+  if (hit?.data && now - hit.at < HOME_KPI_YEAR_MATRIX_TTL_MS) return hit.data;
+  if (hit?.inflight) return hit.inflight;
+  const inflight = fetchHomeKpiYearMatrix(year, scopeType, scopeId)
+    .then((data) => {
+      homeKpiYearMatrixCache.set(key, { at: Date.now(), data, inflight: null });
+      return data;
+    })
+    .catch((err) => {
+      homeKpiYearMatrixCache.delete(key);
+      throw err;
+    });
+  homeKpiYearMatrixCache.set(key, { at: now, data: null, inflight });
+  return inflight;
+}
+
 /** buildHomeKpiOrgAdjustedTargetResolver 가 짧은 간격으로 여러 번 불릴 때 overview 중복 호출 완화 */
 let homeKpiOverviewCache = { at: 0, employees: null };
 const HOME_KPI_OVERVIEW_TTL_MS = 12000;
+
+const HOME_KPI_RESOLVER_TTL_MS = 15000;
+let homeKpiResolverCache = { key: '', at: 0, resolver: null, inflight: null };
+
+function homeKpiResolverCacheKey(period, filterUsers, filterDepartments) {
+  const userIds = (Array.isArray(filterUsers) ? filterUsers : [])
+    .map((u) => normalizeHomeKpiUserId(u))
+    .filter(Boolean)
+    .sort()
+    .join(',');
+  const deptIds = (Array.isArray(filterDepartments) ? filterDepartments : [])
+    .map((d) => String(d?.id || '').trim())
+    .filter(Boolean)
+    .sort()
+    .join(',');
+  return `${period.year}|${period.periodType}|${period.periodValue}|${userIds}|${deptIds}`;
+}
+
+async function getHomeKpiOrgAdjustedTargetResolver(params) {
+  const key = homeKpiResolverCacheKey(params.period, params.filterUsers, params.filterDepartments);
+  const now = Date.now();
+  if (
+    homeKpiResolverCache.key === key &&
+    homeKpiResolverCache.resolver &&
+    now - homeKpiResolverCache.at < HOME_KPI_RESOLVER_TTL_MS
+  ) {
+    return homeKpiResolverCache.resolver;
+  }
+  if (homeKpiResolverCache.key === key && homeKpiResolverCache.inflight) {
+    return homeKpiResolverCache.inflight;
+  }
+  const inflight = buildHomeKpiOrgAdjustedTargetResolver(params).then((resolver) => {
+    homeKpiResolverCache = { key, at: Date.now(), resolver, inflight: null };
+    return resolver;
+  });
+  homeKpiResolverCache = { key, at: now, resolver: null, inflight };
+  return inflight;
+}
 
 async function fetchHomeKpiCurrentEmployees() {
   const now = Date.now();
@@ -1342,16 +1402,26 @@ async function buildHomeKpiOrgAdjustedTargetResolver({ period, filterUsers = [],
     const id = String(deptId || '').trim();
     if (!id) return { annual: 0, semi: [0, 0], quarter: [0, 0, 0, 0], month: Array(12).fill(0) };
     if (!teamMatrixCache.has(id)) {
-      teamMatrixCache.set(id, fetchHomeKpiYearMatrix(period.year, 'team', id).then(homeKpiBlockFromYearMatrix));
+      teamMatrixCache.set(
+        id,
+        fetchHomeKpiYearMatrixCached(period.year, 'team', id).then(homeKpiBlockFromYearMatrix)
+      );
     }
     return teamMatrixCache.get(id);
+  };
+  let companyBlockPromise = null;
+  const getCompanyBlock = async () => {
+    if (!companyBlockPromise) {
+      companyBlockPromise = fetchHomeKpiYearMatrixCached(period.year, 'company', '').then(homeKpiBlockFromYearMatrix);
+    }
+    return companyBlockPromise;
   };
   const getUserBlock = async (userId) => {
     const id = String(userId || '').trim();
     if (!id) return { annual: 0, semi: [0, 0], quarter: [0, 0, 0, 0], month: Array(12).fill(0) };
     if (!userMatrixCache.has(id)) {
       userMatrixCache.set(id, (async () => {
-        const stored = homeKpiBlockFromYearMatrix(await fetchHomeKpiYearMatrix(period.year, 'user', id));
+        const stored = homeKpiBlockFromYearMatrix(await fetchHomeKpiYearMatrixCached(period.year, 'user', id));
         if (homeKpiBlockHasStoredTarget(stored)) return stored;
         const deptId = normalizeHomeKpiUserDept(userById.get(id));
         if (!deptId) return stored;
@@ -1364,15 +1434,25 @@ async function buildHomeKpiOrgAdjustedTargetResolver({ period, filterUsers = [],
   };
   const getUserTarget = async (userId) => homeKpiTargetValueFromBlock(await getUserBlock(userId), period);
   const getTeamTarget = async (deptId) => {
+    const teamBlock = await getTeamBlock(deptId);
+    if (homeKpiBlockHasStoredTarget(teamBlock)) {
+      return homeKpiTargetValueFromBlock(teamBlock, period);
+    }
     const members = deptMemberIds(deptId);
     if (members.length > 0) {
       const values = await Promise.all(members.map((uid) => getUserTarget(uid).catch(() => 0)));
       return values.reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0);
     }
-    return homeKpiTargetValueFromBlock(await getTeamBlock(deptId), period);
+    return homeKpiTargetValueFromBlock(teamBlock, period);
   };
   const getCompanyTarget = async (preferredDeptIds = []) => {
-    const ids = Array.from(new Set((preferredDeptIds.length ? preferredDeptIds : deptIds).map((id) => String(id || '').trim()).filter(Boolean)));
+    const companyBlock = await getCompanyBlock();
+    if (homeKpiBlockHasStoredTarget(companyBlock)) {
+      return homeKpiTargetValueFromBlock(companyBlock, period);
+    }
+    const ids = Array.from(
+      new Set((preferredDeptIds.length ? preferredDeptIds : deptIds).map((id) => String(id || '').trim()).filter(Boolean))
+    );
     if (!ids.length) return 0;
     const values = await Promise.all(ids.map((id) => getTeamTarget(id).catch(() => 0)));
     return values.reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0);
@@ -1444,9 +1524,10 @@ function homeDashboardPayloadDiffPatch(prev, next) {
   return { ...prev, ...patch, ...meta };
 }
 
-export default function Home() {
+export default function Dashboard() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const homeProjectCurrentUser = useMemo(() => {
     try {
       const raw = localStorage.getItem('crm_user');
@@ -1932,10 +2013,21 @@ export default function Home() {
     patchHomeDashboardTemplate({ quantityChartMode: next }).catch(() => { });
   }, []);
 
+  /** 사이드바 로고 클릭 — URL·모달 초기화 후 저장된 홈 대시보드 템플릿으로 복원 */
+  useEffect(() => {
+    if (!location.state?.sidebarHome) return;
+    setHomeInsightToolbarTemplateReady(false);
+    setHomeKpiExplainSpec(null);
+    setHomeContributionCalcModal(null);
+    setHomeProjectModalOpen(false);
+    setHomeProjectEditing(null);
+    setSearchParams({}, { replace: true });
+    navigate('/dashboard', { replace: true, state: {} });
+  }, [location.state?.sidebarHome, navigate, setSearchParams]);
+
   /**
    * URL에 인사이트·기간 쿼리가 없으면 listTemplates.homeDashboard 로 URL 복원.
-   * 사이드바 로고(Link to="/")는 같은 라우트에서 쿼리만 비우므로 Home이 언마운트되지 않음 —
-   * 이전에는 homeInsightToolbarTemplateReady 가 true로 남아 복원이 영구 스킵됐음(새로고침만 정상).
+   * 사이드바 로고는 state.sidebarHome 으로 쿼리를 비운 뒤 이 effect가 다시 적용됩니다.
    * 빈 URL로 복원할 때는 persist 가 기본값으로 DB를 덮지 않도록 ready 를 false 로 둠.
    */
   useEffect(() => {
@@ -2205,30 +2297,77 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false;
-    const fetchHomeTargetSnapshot = async () => {
+    const runHomeKpiTargetWork = async () => {
       const period = resolveHomeKpiTargetPeriod(kpiPeriod, new Date());
       const base = { loading: false, periodLabel: period.periodLabel, reason: '', target: null };
       const leaderScope = Boolean(data?.insightScope?.leaderSubtree);
       const filterUsers = Array.isArray(data?.insightLeaderFilters?.users) ? data.insightLeaderFilters.users : [];
-      const filterDepartments = Array.isArray(data?.insightLeaderFilters?.departments) ? data.insightLeaderFilters.departments : [];
+      const filterDepartments = Array.isArray(data?.insightLeaderFilters?.departments)
+        ? data.insightLeaderFilters.departments
+        : [];
+      const baseBar = data?.homeContributionBar;
+      const segments = Array.isArray(baseBar?.segments) ? baseBar.segments : [];
+      let resolver = null;
+      const ensureResolver = async () => {
+        if (!resolver) {
+          resolver = await getHomeKpiOrgAdjustedTargetResolver({ period, filterUsers, filterDepartments });
+        }
+        return resolver;
+      };
+
+      const applyContributionBar = async () => {
+        if (!baseBar || segments.length === 0) {
+          if (!cancelled) setHomeTargetContributionBar(null);
+          return;
+        }
+        try {
+          const r = await ensureResolver();
+          const resolved = await Promise.all(
+            segments.map(async (seg) => {
+              try {
+                const targetRevenue =
+                  baseBar.mode === 'team'
+                    ? Math.max(0, Number(await r.getTeamTarget(seg.id)) || 0)
+                    : Math.max(0, Number(await r.getUserTarget(seg.id)) || 0);
+                const amount = Math.max(0, Number(seg.amount || 0));
+                const achievement =
+                  targetRevenue > 0 ? Number(((amount / targetRevenue) * 100).toFixed(1)) : null;
+                return { ...seg, achievement, targetRevenue };
+              } catch {
+                return { ...seg, achievement: null, targetRevenue: 0 };
+              }
+            })
+          );
+          if (cancelled) return;
+          setHomeTargetContributionBar({
+            mode: baseBar.mode === 'team' ? 'team' : 'user',
+            title: baseBar.mode === 'team' ? '팀별 목표대비 달성률' : '개인별 목표대비 달성률',
+            sublabel:
+              baseBar.mode === 'team'
+                ? `${period.periodLabel} 팀별 달성 현황`
+                : `${period.periodLabel} 개인별 달성 현황`,
+            segments: resolved
+          });
+        } catch {
+          if (!cancelled) setHomeTargetContributionBar(null);
+        }
+      };
+
       if (!isCompanyWideInsight) {
         if (leaderScope && leaderInsightViewKind === 'team') {
           if (!insightDeptQ) {
             const userIds = Array.from(
-              new Set(
-                filterUsers
-                  .map((u) => normalizeHomeKpiUserId(u))
-                  .filter(Boolean)
-              )
+              new Set(filterUsers.map((u) => normalizeHomeKpiUserId(u)).filter(Boolean))
             );
             if (userIds.length === 0) {
               if (!cancelled) setHomeKpiTargetSnapshot(base);
+              await applyContributionBar();
               return;
             }
             if (!cancelled) setHomeKpiTargetSnapshot((prev) => ({ ...prev, loading: true, periodLabel: period.periodLabel, reason: '' }));
             try {
-              const resolver = await buildHomeKpiOrgAdjustedTargetResolver({ period, filterUsers, filterDepartments });
-              const values = await Promise.all(userIds.map((uid) => resolver.getUserTarget(uid).catch(() => 0)));
+              const r = await ensureResolver();
+              const values = await Promise.all(userIds.map((uid) => r.getUserTarget(uid).catch(() => 0)));
               const targetRevenue = values.reduce((sum, value) => sum + Math.max(0, Number(value) || 0), 0);
               if (!cancelled) {
                 setHomeKpiTargetSnapshot({
@@ -2248,12 +2387,13 @@ export default function Home() {
                 });
               }
             }
+            await applyContributionBar();
             return;
           }
           if (!cancelled) setHomeKpiTargetSnapshot((prev) => ({ ...prev, loading: true, periodLabel: period.periodLabel, reason: '' }));
           try {
-            const resolver = await buildHomeKpiOrgAdjustedTargetResolver({ period, filterUsers, filterDepartments });
-            const targetRevenue = await resolver.getTeamTarget(insightDeptQ);
+            const r = await ensureResolver();
+            const targetRevenue = await r.getTeamTarget(insightDeptQ);
             if (!cancelled) {
               setHomeKpiTargetSnapshot({
                 loading: false,
@@ -2272,48 +2412,61 @@ export default function Home() {
               });
             }
           }
-          return;
-        } else {
-          const uid = String((leaderInsightViewKind === 'personal' ? insightUserQ : '') || myCrmUserId || '').trim();
-          if (!uid) {
-            if (!cancelled) {
-              setHomeKpiTargetSnapshot(base);
-            }
-            return;
-          }
-          if (!cancelled) setHomeKpiTargetSnapshot((prev) => ({ ...prev, loading: true, periodLabel: period.periodLabel, reason: '' }));
-          try {
-            const resolver = await buildHomeKpiOrgAdjustedTargetResolver({ period, filterUsers, filterDepartments });
-            const targetRevenue = await resolver.getUserTarget(uid);
-            if (!cancelled) {
-              setHomeKpiTargetSnapshot({
-                loading: false,
-                periodLabel: period.periodLabel,
-                reason: '',
-                target: { targetRevenue }
-              });
-            }
-          } catch (err) {
-            if (!cancelled) {
-              setHomeKpiTargetSnapshot({
-                loading: false,
-                periodLabel: period.periodLabel,
-                reason: err.message || '목표 정보를 불러오지 못했습니다.',
-                target: null
-              });
-            }
-          }
+          await applyContributionBar();
           return;
         }
+        const uid = String((leaderInsightViewKind === 'personal' ? insightUserQ : '') || myCrmUserId || '').trim();
+        if (!uid) {
+          if (!cancelled) setHomeKpiTargetSnapshot(base);
+          await applyContributionBar();
+          return;
+        }
+        if (!cancelled) setHomeKpiTargetSnapshot((prev) => ({ ...prev, loading: true, periodLabel: period.periodLabel, reason: '' }));
+        try {
+          const r = await ensureResolver();
+          const targetRevenue = await r.getUserTarget(uid);
+          if (!cancelled) {
+            setHomeKpiTargetSnapshot({
+              loading: false,
+              periodLabel: period.periodLabel,
+              reason: '',
+              target: { targetRevenue }
+            });
+          }
+        } catch (err) {
+          if (!cancelled) {
+            setHomeKpiTargetSnapshot({
+              loading: false,
+              periodLabel: period.periodLabel,
+              reason: err.message || '목표 정보를 불러오지 못했습니다.',
+              target: null
+            });
+          }
+        }
+        await applyContributionBar();
+        return;
       }
+
       if (!cancelled) setHomeKpiTargetSnapshot((prev) => ({ ...prev, loading: true, periodLabel: period.periodLabel, reason: '' }));
       try {
-        const resolver = await buildHomeKpiOrgAdjustedTargetResolver({ period, filterUsers, filterDepartments });
-        const targetRevenue = await resolver.getCompanyTarget();
+        let targetRevenue = 0;
+        try {
+          const matrix = await fetchHomeKpiYearMatrixCached(period.year, 'company', '');
+          const block = homeKpiBlockFromYearMatrix(matrix);
+          if (homeKpiBlockHasStoredTarget(block)) {
+            targetRevenue = homeKpiTargetValueFromBlock(block, period);
+          }
+        } catch (_) {
+          /* 회사 단일 매트릭스 실패 시 resolver 합산으로 폴백 */
+        }
+        if (targetRevenue <= 0) {
+          const r = await ensureResolver();
+          targetRevenue = await r.getCompanyTarget();
+        }
         if (!cancelled) {
           setHomeKpiTargetSnapshot({
             loading: false,
-            periodLabel: `${period.periodLabel}`,
+            periodLabel: period.periodLabel,
             reason: '',
             target: { targetRevenue }
           });
@@ -2328,8 +2481,9 @@ export default function Home() {
           });
         }
       }
+      await applyContributionBar();
     };
-    fetchHomeTargetSnapshot();
+    runHomeKpiTargetWork();
     return () => {
       cancelled = true;
     };
@@ -2346,57 +2500,6 @@ export default function Home() {
     data?.homeContributionBar,
     dashboardRefreshTick
   ]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const buildTargetContribution = async () => {
-      const baseBar = data?.homeContributionBar;
-      const segments = Array.isArray(baseBar?.segments) ? baseBar.segments : [];
-      if (!baseBar || segments.length === 0) {
-        if (!cancelled) setHomeTargetContributionBar(null);
-        return;
-      }
-      const period = resolveHomeKpiTargetPeriod(kpiPeriod, new Date());
-      const filterUsers = Array.isArray(data?.insightLeaderFilters?.users) ? data.insightLeaderFilters.users : [];
-      const filterDepartments = Array.isArray(data?.insightLeaderFilters?.departments) ? data.insightLeaderFilters.departments : [];
-      let resolver = null;
-      try {
-        resolver = await buildHomeKpiOrgAdjustedTargetResolver({ period, filterUsers, filterDepartments });
-      } catch {
-        resolver = null;
-      }
-      const resolved = await Promise.all(
-        segments.map(async (seg) => {
-          try {
-            if (!resolver) return { ...seg, achievement: null, targetRevenue: 0 };
-            const targetRevenue =
-              baseBar.mode === 'team'
-                ? Math.max(0, Number(await resolver.getTeamTarget(seg.id)) || 0)
-                : Math.max(0, Number(await resolver.getUserTarget(seg.id)) || 0);
-            const amount = Math.max(0, Number(seg.amount || 0));
-            const achievement = targetRevenue > 0 ? Number(((amount / targetRevenue) * 100).toFixed(1)) : null;
-            return { ...seg, achievement, targetRevenue };
-          } catch {
-            return { ...seg, achievement: null, targetRevenue: 0 };
-          }
-        })
-      );
-      if (cancelled) return;
-      setHomeTargetContributionBar({
-        mode: baseBar.mode === 'team' ? 'team' : 'user',
-        title: baseBar.mode === 'team' ? '팀별 목표대비 달성률' : '개인별 목표대비 달성률',
-        sublabel:
-          baseBar.mode === 'team'
-            ? `${period.periodLabel} 팀별 달성 현황`
-            : `${period.periodLabel} 개인별 달성 현황`,
-        segments: resolved
-      });
-    };
-    buildTargetContribution();
-    return () => {
-      cancelled = true;
-    };
-  }, [data?.homeContributionBar, data?.insightLeaderFilters?.users, data?.insightLeaderFilters?.departments, kpiPeriod]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2802,11 +2905,13 @@ export default function Home() {
   const revYoyRaw = kpiAnimSrc?.revenue?.yoyPct;
   const gmYoyRaw = kpiAnimSrc?.grossMargin?.yoyPP;
   const leadYoyRaw = kpiAnimSrc?.newLeads?.yoyPct;
+  const goalYoyRaw = kpiAnimSrc?.goal?.yoyPct;
 
   const revAnim = useAnimatedScalar(revNum, insightAnimEpoch, insightAnimMs);
   const gmRateAnim = useAnimatedScalar(gmRateNum, insightAnimEpoch, insightAnimMs);
   const goalAnim = useAnimatedScalar(goalNum, insightAnimEpoch, insightAnimMs);
   const goalCompletionAnim = useAnimatedScalar(goalCompletionNum, insightAnimEpoch, insightAnimMs);
+  const goalYoyAnim = useAnimatedScalar(goalYoyRaw, insightAnimEpoch, insightAnimMs);
   const leadAnim = useAnimatedScalar(leadNum, insightAnimEpoch, insightAnimMs);
   const revFcAnim = useAnimatedScalar(revFcRaw != null ? Number(revFcRaw) : 0, insightAnimEpoch, insightAnimMs);
   const gmFcAnim = useAnimatedScalar(gmFcRaw != null ? Number(gmFcRaw) : 0, insightAnimEpoch, insightAnimMs);
@@ -2917,8 +3022,14 @@ export default function Home() {
         goalFootnoteModel: buildGoalKpiFootnoteModel(stats),
         value: formatCurrency(Number(goal?.collectedAmount) || 0, cur),
         icon: 'account_balance_wallet',
-        showForecast: false,
-        showPeriod: false
+        showForecast: true,
+        showPeriod: true,
+        forecastMetricLabel: '세일즈 완료율',
+        forecast: goal?.taskCompletion,
+        forecastMode: 'rawPct',
+        period: goal?.yoyPct,
+        periodLabel: revenueYoyLabel,
+        periodMode: 'deltaPct'
       },
       {
         key: 'lead',
@@ -2946,8 +3057,17 @@ export default function Home() {
             ? `${Math.round((100 * homeProjectCounts.done) / homeProjectCounts.total)}%`
             : '—',
         icon: 'folder_special',
-        showForecast: false,
-        showPeriod: false
+        showForecast: true,
+        showPeriod: true,
+        forecastMetricLabel: '완료 비중',
+        forecast:
+          homeProjectCounts.total > 0
+            ? (100 * homeProjectCounts.done) / homeProjectCounts.total
+            : null,
+        forecastMode: 'rawPct',
+        period: null,
+        periodLabel: '진행·완료 추이',
+        periodMode: 'deltaPct'
       }
     ];
   }, [stats.kpiSummary, stats.taskCompletionMeta, selectedGraphCurrency, homeProjectCounts, isCompanyWideInsight]);
@@ -4087,7 +4207,18 @@ export default function Home() {
                   }
                   let forecastText = '—';
                   if (!dashboardShellBlocking && showForecast) {
-                    if (card.forecastMode === 'pp' && card.key === 'gm') {
+                    if (card.forecastMode === 'rawPct') {
+                      if (card.key === 'goal') {
+                        forecastText = `${Math.round(goalCompletionAnim)}%`;
+                      } else if (card.key === 'project') {
+                        forecastText =
+                          projectTotalCount > 0 && !homeProjectPreviewLoading
+                            ? `${Math.round(projectAchieveAnim)}%`
+                            : '—';
+                      } else if (homeKpiComparisonRawIsPresent(card.forecast)) {
+                        forecastText = `${Number(card.forecast).toFixed(1)}%`;
+                      }
+                    } else if (card.forecastMode === 'pp' && card.key === 'gm') {
                       forecastText = !homeKpiComparisonRawIsPresent(gmFcRaw)
                         ? '—'
                         : formatHomeKpiForecastPP(gmFcAnim);
@@ -4122,6 +4253,10 @@ export default function Home() {
                       delta = !homeKpiComparisonRawIsPresent(leadYoyRaw)
                         ? formatHomeKpiDeltaPct(null, periodIsPP)
                         : formatHomeKpiDeltaPct(leadYoyAnim, periodIsPP);
+                    } else if (card.key === 'goal') {
+                      delta = !homeKpiComparisonRawIsPresent(goalYoyRaw)
+                        ? formatHomeKpiDeltaPct(null, periodIsPP)
+                        : formatHomeKpiDeltaPct(goalYoyAnim, periodIsPP);
                     } else {
                       delta = !homeKpiComparisonRawIsPresent(card.period)
                         ? formatHomeKpiDeltaPct(null, periodIsPP)
@@ -4270,6 +4405,30 @@ export default function Home() {
                                 진행 {activeW}%
                               </span>
                             </div>
+                          </div>
+                        ) : null}
+                        {showForecast || showPeriod ? (
+                          <div className="home-kpi-card-metrics">
+                            {showForecast ? (
+                              <div className="home-kpi-metric-line">
+                                <span className="home-kpi-dot home-kpi-dot--forecast" aria-hidden />
+                                <span className="home-kpi-metric-label">
+                                  {card.forecastMetricLabel || '완료 비중'}
+                                </span>
+                                <span className="home-kpi-metric-val home-kpi-metric-val--insight-anim">
+                                  {dashboardShellBlocking || homeProjectPreviewLoading ? '—' : forecastText}
+                                </span>
+                              </div>
+                            ) : null}
+                            {showPeriod ? (
+                              <div className="home-kpi-metric-line">
+                                <span className="home-kpi-dot home-kpi-dot--period" aria-hidden />
+                                <span className="home-kpi-metric-label">{card.periodLabel}</span>
+                                <span className="home-kpi-metric-trend home-kpi-metric-trend--insight-anim">
+                                  —
+                                </span>
+                              </div>
+                            ) : null}
                           </div>
                         ) : null}
                       </article>
