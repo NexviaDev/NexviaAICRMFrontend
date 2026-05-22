@@ -15,10 +15,13 @@ function getAuthHeader() {
 
 /**
  * 구글맵 공유 텍스트 → { lat, lng, resolvedUrl? }
+ * @param {{ timeoutMs?: number }} [options] — 지도 버튼 등: 짧은 타임아웃(기본 25초)
  */
-export async function resolveGoogleMapsShare(text) {
+export async function resolveGoogleMapsShare(text, options = {}) {
   const raw = String(text || '').trim();
   if (!raw) throw new Error('공유 내용이 비어 있습니다.');
+
+  const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : 25000;
 
   const mapsUrl = extractMapsShareUrl(raw);
   const direct =
@@ -41,23 +44,41 @@ export async function resolveGoogleMapsShare(text) {
     );
   }
 
-  await pingBackendHealth();
+  await Promise.race([
+    pingBackendHealth(getAuthHeader),
+    new Promise((resolve) => {
+      window.setTimeout(resolve, Math.min(2500, timeoutMs));
+    })
+  ]);
 
-  const res = await fetch(`${API_BASE}/api/maps-share/resolve`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeader()
-    },
-    body: JSON.stringify({ text: raw })
-  });
+  const controller = new AbortController();
+  const abortId = window.setTimeout(() => controller.abort(), timeoutMs);
 
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data.error || '위치를 가져오지 못했습니다.');
+  try {
+    const res = await fetch(`${API_BASE}/api/maps-share/resolve`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeader()
+      },
+      body: JSON.stringify({ text: raw }),
+      signal: controller.signal
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || '위치를 가져오지 못했습니다.');
+    }
+    if (!Number.isFinite(data.lat) || !Number.isFinite(data.lng)) {
+      throw new Error('좌표 형식이 올바르지 않습니다.');
+    }
+    return data;
+  } catch (err) {
+    if (err?.name === 'AbortError') {
+      throw new Error('위치 확인 시간이 초과되었습니다. 네트워크를 확인한 뒤 다시 시도해 주세요.');
+    }
+    throw err;
+  } finally {
+    window.clearTimeout(abortId);
   }
-  if (!Number.isFinite(data.lat) || !Number.isFinite(data.lng)) {
-    throw new Error('좌표 형식이 올바르지 않습니다.');
-  }
-  return data;
 }

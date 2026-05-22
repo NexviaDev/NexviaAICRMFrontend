@@ -2,7 +2,12 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import CustomerCompanyDetailModal from '../customer-companies/customer-company-detail-modal/customer-company-detail-modal';
 import MapCompanyPickerModal from './map-company-picker-modal';
-import { looksLikeGoogleMapsShare, parseGoogleMapsCoords } from '@/lib/parse-google-maps-share';
+import {
+  extractMapsShareUrl,
+  looksLikeGoogleMapsShare,
+  needsMapsUrlExpand,
+  parseGoogleMapsCoords
+} from '@/lib/parse-google-maps-share';
 import { resolveGoogleMapsShare } from '@/lib/resolve-google-maps-share';
 import './map.css';
 
@@ -90,8 +95,8 @@ function getGeolocationWatchOptions() {
   if (shouldTryGpsRefinement()) {
     return {
       enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: 30000
+      maximumAge: 5000,
+      timeout: 15000
     };
   }
   return GEOLOCATION_OPTIONS_WATCH;
@@ -103,6 +108,26 @@ const GEOLOCATION_OPTIONS_GPS_REFINE = {
   maximumAge: 0,
   timeout: 30000
 };
+
+/** 모바일: 캐시된 GPS 먼저 표시(최대 2분) — 콜드 GPS만 기다리지 않음 */
+const GEOLOCATION_OPTIONS_MOBILE_QUICK = {
+  enableHighAccuracy: true,
+  maximumAge: 120000,
+  timeout: 6000
+};
+
+const CLIPBOARD_READ_TIMEOUT_MS = 700;
+const MAPS_SHARE_RESOLVE_TIMEOUT_MS = 7000;
+const MY_LOCATION_BUSY_MAX_MS = 20000;
+
+function withTimeout(promise, ms, fallback) {
+  return Promise.race([
+    promise,
+    new Promise((resolve) => {
+      window.setTimeout(() => resolve(fallback), ms);
+    })
+  ]);
+}
 
 function shouldTryGpsRefinement() {
   if (typeof navigator === 'undefined' || typeof window === 'undefined') return false;
@@ -664,20 +689,32 @@ export default function Map({
     };
 
     const noop = () => {};
-
-    /** 캐시 없음·타임아웃 시에만 네트워크 신규 좌표 1회 (watch와 병행) */
-    const onCacheMiss = () => {
-      try {
-        geo.getCurrentPosition(applyPos, noop, GEOLOCATION_OPTIONS_FRESH_NETWORK);
-      } catch {
-        /* 동기 throw */
+    const onGeoError = (err) => {
+      if (err?.code === 1) {
+        window.alert('위치 권한이 필요합니다. 브라우저·앱 설정에서 위치 접근을 허용해 주세요.');
       }
     };
 
-    try {
-      geo.getCurrentPosition(applyPos, onCacheMiss, GEOLOCATION_OPTIONS_CACHE_FIRST);
-    } catch {
-      /* 일부 환경에서 동기 throw */
+    if (shouldTryGpsRefinement()) {
+      try {
+        geo.getCurrentPosition(applyPos, onGeoError, GEOLOCATION_OPTIONS_MOBILE_QUICK);
+      } catch {
+        /* 동기 throw */
+      }
+    } else {
+      /** 캐시 없음·타임아웃 시에만 네트워크 신규 좌표 1회 (watch와 병행) */
+      const onCacheMiss = () => {
+        try {
+          geo.getCurrentPosition(applyPos, noop, GEOLOCATION_OPTIONS_FRESH_NETWORK);
+        } catch {
+          /* 동기 throw */
+        }
+      };
+      try {
+        geo.getCurrentPosition(applyPos, onCacheMiss, GEOLOCATION_OPTIONS_CACHE_FIRST);
+      } catch {
+        /* 일부 환경에서 동기 throw */
+      }
     }
 
     const watchId = geo.watchPosition(applyPos, noop, getGeolocationWatchOptions());
@@ -756,9 +793,9 @@ export default function Map({
     [mapReady, stopLiveLocation]
   );
 
-  /** 구글맵 공유 링크·좌표 — 클립보드/공유 URL에서 자동 적용 (모달 없음) */
+  /** 구글맵 공유 — 로컬 파싱 우선, 단축 URL만 제한 시간 내 서버 resolve */
   const tryAutoApplyGoogleMapsShare = useCallback(
-    async (raw) => {
+    async (raw, { resolveTimeoutMs = MAPS_SHARE_RESOLVE_TIMEOUT_MS } = {}) => {
       const value = String(raw || '').trim();
       if (!value || !looksLikeGoogleMapsShare(value)) return false;
       const direct = parseGoogleMapsCoords(value);
@@ -766,13 +803,30 @@ export default function Map({
         applyGoogleMapsShare({ lat: direct.lat, lng: direct.lng });
         return true;
       }
-      try {
-        const result = await resolveGoogleMapsShare(value);
-        applyGoogleMapsShare(result);
-        return true;
-      } catch {
-        return false;
+      const mapsUrl = extractMapsShareUrl(value);
+      if (mapsUrl && !needsMapsUrlExpand(mapsUrl)) {
+        const fromUrl = parseGoogleMapsCoords(mapsUrl);
+        if (fromUrl) {
+          applyGoogleMapsShare({ lat: fromUrl.lat, lng: fromUrl.lng });
+          return true;
+        }
       }
+      const expandTarget = mapsUrl || value;
+      if (!needsMapsUrlExpand(expandTarget)) return false;
+      try {
+        const result = await withTimeout(
+          resolveGoogleMapsShare(value, { timeoutMs: resolveTimeoutMs }),
+          resolveTimeoutMs + 500,
+          null
+        );
+        if (result && Number.isFinite(result.lat) && Number.isFinite(result.lng)) {
+          applyGoogleMapsShare(result);
+          return true;
+        }
+      } catch {
+        /* timeout·네트워크 — GPS 경로 유지 */
+      }
+      return false;
     },
     [applyGoogleMapsShare]
   );
@@ -786,21 +840,37 @@ export default function Map({
     }
   }, []);
 
-  /** 내 위치: 클립보드 구글맵 공유 자동 적용 → 없으면 실시간 GPS (버튼 1개) */
+  /** 내 위치: GPS 즉시 시작 + 클립보드 구글맵은 짧은 타임아웃으로 병렬 시도 */
   const handleMyLocationClick = useCallback(async () => {
     if (liveLocationOn || myLocation) {
       stopLiveLocation();
+      setMyLocationBusy(false);
       return;
     }
     setMyLocationBusy(true);
-    try {
-      const clip = await readClipboardText();
-      if (clip && (await tryAutoApplyGoogleMapsShare(clip))) return;
-      startLiveLocation();
-    } finally {
-      setMyLocationBusy(false);
+    startLiveLocation();
+    const clip = await withTimeout(readClipboardText(), CLIPBOARD_READ_TIMEOUT_MS, '');
+    if (clip) {
+      await tryAutoApplyGoogleMapsShare(clip);
     }
   }, [liveLocationOn, myLocation, stopLiveLocation, readClipboardText, tryAutoApplyGoogleMapsShare, startLiveLocation]);
+
+  useEffect(() => {
+    if (myLocation && myLocationBusy) setMyLocationBusy(false);
+  }, [myLocation, myLocationBusy]);
+
+  useEffect(() => {
+    if (!myLocationBusy) return undefined;
+    const t = window.setTimeout(() => {
+      if (!myLocation) {
+        setMyLocationBusy(false);
+        window.alert(
+          '위치를 가져오지 못했습니다. 위치 권한을 확인하거나, 구글맵에서 링크를 복사한 뒤 다시 시도해 주세요.'
+        );
+      }
+    }, MY_LOCATION_BUSY_MAX_MS);
+    return () => window.clearTimeout(t);
+  }, [myLocationBusy, myLocation]);
 
   useEffect(() => {
     if (embedded || !mapReady) return undefined;
@@ -1586,8 +1656,8 @@ export default function Map({
                   liveLocationOn || myLocation
                     ? '내 위치 끄기'
                     : myLocationBusy
-                      ? '클립보드·링크 확인 중…'
-                      : '구글맵에서 공유한 링크가 클립보드에 있으면 자동 적용, 없으면 실시간 GPS'
+                      ? 'GPS·위치 확인 중…'
+                      : '실시간 GPS (구글맵 링크가 클립보드에 있으면 잠시 후 더 정확히 반영)'
                 }
               >
                 <span className={`material-symbols-outlined${myLocationBusy ? ' map-search-go-spin' : ''}`}>
