@@ -5,9 +5,9 @@ import { getPendingExcelImportJobs, removePendingExcelImportJob } from '@/lib/cc
 import { LAYOUT_EXCEL_IMPORT_POLL_MS } from '@/lib/polling-intervals';
 import {
   bindPushForegroundNotifications,
-  enablePushNotifications,
-  getStoredPushToken,
-  showWebPushNotification
+  refreshPushTokenIfGranted,
+  showWebPushNotification,
+  startPushPermissionWatcher
 } from '@/lib/push-notifications';
 import Sidebar from './sidebar';
 import { ensureUserSidebarDefaultTemplate } from '@/lib/list-templates';
@@ -74,12 +74,23 @@ export default function Layout({ embeddedContent = null }) {
     };
   }, []);
 
-  /** 이미 허용·등록된 기기는 SW(Firebase)·토큰 갱신(배포·PWA 재설치 후) */
+  /** 허용된 기기·OS 설정에서 알림 재허용·앱 복귀 시 FCM 토큰 갱신 */
   useEffect(() => {
     const crmToken = localStorage.getItem('crm_token');
-    if (!crmToken || typeof Notification === 'undefined') return;
-    if (Notification.permission !== 'granted') return;
-    void enablePushNotifications().catch(() => {});
+    if (!crmToken || typeof Notification === 'undefined') return undefined;
+    const onResume = () => {
+      if (document.visibilityState !== 'visible') return;
+      void refreshPushTokenIfGranted().catch(() => {});
+    };
+    void refreshPushTokenIfGranted().catch(() => {});
+    const stopPermissionWatch = startPushPermissionWatcher();
+    document.addEventListener('visibilitychange', onResume);
+    window.addEventListener('focus', onResume);
+    return () => {
+      stopPermissionWatch();
+      document.removeEventListener('visibilitychange', onResume);
+      window.removeEventListener('focus', onResume);
+    };
   }, []);
 
   const isSalesPipeline = location.pathname === '/sales-pipeline';

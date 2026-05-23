@@ -25,6 +25,10 @@ import {
   isGoogleCalendarAllDayStart,
   normalizeReminderMinutes
 } from '../calendar-reminder-utils';
+import {
+  CRM_PUSH_STATUS_EVENT,
+  getPushNotificationStatus
+} from '@/lib/push-notifications';
 
 const PRESET_COLORS = [
   { hex: '#7986cb', label: '라벤더' },
@@ -349,6 +353,8 @@ export default function EventModal({
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [employeeSearchResults, setEmployeeSearchResults] = useState([]);
   const [employeeSearchLoading, setEmployeeSearchLoading] = useState(false);
+  /** 회사 일정 푸시: null=확인 중, true/false=사이드바 알림(종) 등록 여부 */
+  const [pushAlarmRegistered, setPushAlarmRegistered] = useState(null);
 
   const isOwner = isGoogle
     ? true
@@ -433,6 +439,32 @@ export default function EventModal({
   }, [isAdd, isGoogle, realId, googleCalendarId, googleCalendarAccessRole]);
 
   useEffect(() => { fetchEvent(); }, [fetchEvent]);
+
+  const refreshPushAlarmStatus = useCallback(async () => {
+    if (isPersonal || isGoogle) {
+      setPushAlarmRegistered(null);
+      return;
+    }
+    try {
+      const status = await getPushNotificationStatus();
+      setPushAlarmRegistered(Boolean(status.registered));
+    } catch {
+      setPushAlarmRegistered(false);
+    }
+  }, [isPersonal, isGoogle]);
+
+  useEffect(() => {
+    void refreshPushAlarmStatus();
+  }, [refreshPushAlarmStatus]);
+
+  useEffect(() => {
+    if (isPersonal || isGoogle) return undefined;
+    const onPushStatus = () => {
+      void refreshPushAlarmStatus();
+    };
+    window.addEventListener(CRM_PUSH_STATUS_EVENT, onPushStatus);
+    return () => window.removeEventListener(CRM_PUSH_STATUS_EVENT, onPushStatus);
+  }, [isPersonal, isGoogle, refreshPushAlarmStatus]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -609,6 +641,27 @@ export default function EventModal({
     setShowParticipantModal(false);
   }, []);
 
+  const confirmSaveWithoutPushAlarm = useCallback(async () => {
+    if (isPersonal || isGoogle) return true;
+    let registered = pushAlarmRegistered;
+    if (registered === null) {
+      try {
+        const status = await getPushNotificationStatus();
+        registered = Boolean(status.registered);
+        setPushAlarmRegistered(registered);
+      } catch {
+        registered = false;
+        setPushAlarmRegistered(false);
+      }
+    }
+    if (registered) return true;
+    return window.confirm(
+      '일정 알림은 서버에서 푸시로 보냅니다. 지금은 사이드바 알림(종) 아이콘이 꺼져 있어 이 기기로는 푸시를 받을 수 없습니다.\n\n' +
+        '푸시를 받으려면 저장 전에 왼쪽 사이드바 하단의 알림(종) 아이콘을 눌러 켜 주세요.\n\n' +
+        '그래도 일정만 저장할까요?'
+    );
+  }, [isPersonal, isGoogle, pushAlarmRegistered]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -627,6 +680,7 @@ export default function EventModal({
           onSaved?.();
           onClose?.();
         } else {
+          if (!(await confirmSaveWithoutPushAlarm())) return;
           const body = formToCrmBody(form);
           const res = await fetch(`${API_BASE}/calendar-events`, {
             method: 'POST',
@@ -655,6 +709,7 @@ export default function EventModal({
         setForm(googleEventToForm(data, { accessRole: googleCalendarAccessRole || '' }));
         onSaved?.();
       } else {
+        if (!(await confirmSaveWithoutPushAlarm())) return;
         const body = formToCrmBody(form);
         const res = await fetch(`${API_BASE}/calendar-events/${encodeURIComponent(realId)}`, {
           method: 'PATCH',
@@ -939,9 +994,18 @@ export default function EventModal({
                       <span className="material-symbols-outlined" aria-hidden>notifications_active</span>
                       <span>
                         <strong>휴대폰 푸시 알림</strong>은 회사 일정에 <strong>항상 적용</strong>됩니다. 공개범위에 따라
-                        수신 대상이 정해지며, 수신자는 사이드바 알림 아이콘을 켜 두어야 받을 수 있습니다.
+                        수신 대상이 정해지며, 받으려면 왼쪽 사이드바 하단 <strong>알림(종) 아이콘</strong>을 켜 두어야 합니다.
                       </span>
                     </p>
+                    {pushAlarmRegistered === false ? (
+                      <p className="event-modal-reminder-push-off-warn" role="alert">
+                        <span className="material-symbols-outlined" aria-hidden>warning</span>
+                        <span>
+                          지금 이 기기에서는 <strong>알림(종)이 꺼져 있어</strong> 일정 푸시를 받을 수 없습니다. 저장 전에
+                          사이드바에서 알림(종) 아이콘을 눌러 켜 주세요.
+                        </span>
+                      </p>
+                    ) : null}
                     <div className="event-modal-field">
                       <label htmlFor="event-reminder-before">알림 시간</label>
                       <select

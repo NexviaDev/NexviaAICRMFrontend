@@ -5,6 +5,8 @@ let firebaseSdkPromise = null;
 
 /** 로컬에 저장된 FCM 토큰 — 알림 해제·상태 표시용 */
 export const CRM_PUSH_TOKEN_KEY = 'crm_fcm_push_token';
+/** 브라우저·PWA 기기별 토큰 교체(폰 알림 재허용 시 갱신) */
+export const CRM_PUSH_DEVICE_ID_KEY = 'crm_push_device_id';
 
 /** 사이드바 알람 아이콘 등 UI 동기화 */
 export const CRM_PUSH_STATUS_EVENT = 'crm-push-status-changed';
@@ -61,11 +63,28 @@ async function fetchFirebaseWebConfig() {
   return { config, vapidKey };
 }
 
+export function getOrCreatePushDeviceId() {
+  try {
+    let id = String(localStorage.getItem(CRM_PUSH_DEVICE_ID_KEY) || '').trim();
+    if (!id) {
+      id =
+        typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : `d-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+      localStorage.setItem(CRM_PUSH_DEVICE_ID_KEY, id);
+    }
+    return id;
+  } catch {
+    return `d-${Date.now()}`;
+  }
+}
+
 async function registerTokenWithBackend(token) {
+  const deviceId = getOrCreatePushDeviceId();
   const res = await fetch(`${API_BASE}/push-notifications/register-token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-    body: JSON.stringify({ token, platform: 'web' })
+    body: JSON.stringify({ token, platform: 'web', deviceId })
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || '푸시 토큰 등록에 실패했습니다.');
@@ -230,6 +249,47 @@ function getOrCreateFirebaseApp(sdk, config) {
   return getApps().length ? getApp() : initializeApp(config);
 }
 
+async function getFirebaseMessagingContext() {
+  const { config, vapidKey } = await fetchFirebaseWebConfig();
+  const sdk = await loadFirebaseMessagingSdk();
+  const { getMessaging, isSupported } = sdk;
+  const supported = await isSupported().catch(() => false);
+  if (!supported) return { supported: false };
+  const app = getOrCreateFirebaseApp(sdk, config);
+  const messaging = getMessaging(app);
+  const registration = await ensurePushServiceWorkerRegistration().catch(() => null);
+  if (registration) {
+    await initFirebaseInServiceWorker(registration, config).catch(() => {});
+  }
+  return { supported: true, sdk, messaging, config, vapidKey, registration };
+}
+
+/** FCM·백엔드·로컬 저장 토큰 제거(재허용 시 새 토큰 발급용) */
+export async function clearLocalPushRegistration() {
+  const stored = getStoredPushToken();
+  const { supported, sdk, messaging } = await getFirebaseMessagingContext().catch(() => ({
+    supported: false
+  }));
+  if (supported && messaging && sdk?.deleteToken) {
+    try {
+      await sdk.deleteToken(messaging);
+    } catch {
+      /* ignore */
+    }
+  }
+  if (stored) {
+    try {
+      await unregisterTokenWithBackend(stored);
+    } catch {
+      /* ignore */
+    }
+  }
+  setStoredPushToken('');
+}
+
+let lastTokenRefreshAt = 0;
+const TOKEN_REFRESH_DEBOUNCE_MS = 8000;
+
 export async function getPushNotificationStatus() {
   if (!canUsePushNotifications()) {
     return { supported: false, permission: 'unsupported', registered: false };
@@ -238,6 +298,9 @@ export async function getPushNotificationStatus() {
   const supported = await isSupported().catch(() => false);
   const permission = Notification.permission;
   const stored = getStoredPushToken();
+  if (permission !== 'granted' && stored) {
+    setStoredPushToken('');
+  }
   return {
     supported,
     permission,
@@ -245,12 +308,64 @@ export async function getPushNotificationStatus() {
   };
 }
 
+/** OS·브라우저에서 알림을 다시 허용했거나 앱 복귀 시 토큰 갱신 */
+export async function refreshPushTokenIfGranted(options = {}) {
+  if (!canUsePushNotifications()) return { ok: false, skipped: true };
+  if (Notification.permission !== 'granted') return { ok: false, skipped: true };
+  const forceRefresh = Boolean(options.forceRefresh);
+  const now = Date.now();
+  if (!forceRefresh && now - lastTokenRefreshAt < TOKEN_REFRESH_DEBOUNCE_MS) {
+    return { ok: true, skipped: true };
+  }
+  lastTokenRefreshAt = now;
+  return enablePushNotifications({ forceRefresh });
+}
+
 /** @deprecated use getPushNotificationStatus */
 export const getCalendarPushStatus = getPushNotificationStatus;
 
-export async function enablePushNotifications() {
+/** 브라우저 알림 권한 변경(설정에서 끄기/다시 허용) 감지 */
+export function startPushPermissionWatcher() {
+  if (typeof window === 'undefined' || !('permissions' in navigator)) {
+    return () => {};
+  }
+  let permissionStatus = null;
+  let cancelled = false;
+  const onChange = () => {
+    if (cancelled) return;
+    if (Notification.permission === 'granted') {
+      void refreshPushTokenIfGranted({ forceRefresh: true });
+    } else if (Notification.permission === 'denied' || Notification.permission === 'default') {
+      void clearLocalPushRegistration().then(() => {
+        emitPushStatusChange({
+          supported: canUsePushNotifications(),
+          permission: Notification.permission,
+          registered: false
+        });
+      });
+    }
+  };
+  navigator.permissions
+    .query({ name: 'notifications' })
+    .then((status) => {
+      if (cancelled) return;
+      permissionStatus = status;
+      status.addEventListener('change', onChange);
+    })
+    .catch(() => {});
+  return () => {
+    cancelled = true;
+    permissionStatus?.removeEventListener('change', onChange);
+  };
+}
+
+export async function enablePushNotifications(options = {}) {
+  const forceRefresh = Boolean(options.forceRefresh);
   if (!canUsePushNotifications()) {
     return { ok: false, error: '이 브라우저는 푸시 알림을 지원하지 않습니다.' };
+  }
+  if (forceRefresh) {
+    await clearLocalPushRegistration().catch(() => {});
   }
   const { getMessaging, getToken, isSupported } = await withTimeout(
     loadFirebaseMessagingSdk(),
@@ -302,19 +417,8 @@ export async function enablePushNotifications() {
 export const enableCalendarPushNotifications = enablePushNotifications;
 
 export async function disablePushNotifications() {
-  const token = getStoredPushToken();
-  if (!token) {
-    setStoredPushToken('');
-    emitPushStatusChange({
-      supported: canUsePushNotifications(),
-      permission: typeof Notification !== 'undefined' ? Notification.permission : 'unsupported',
-      registered: false
-    });
-    return { ok: true };
-  }
   try {
-    await unregisterTokenWithBackend(token);
-    setStoredPushToken('');
+    await clearLocalPushRegistration();
     emitPushStatusChange({
       supported: canUsePushNotifications(),
       permission: typeof Notification !== 'undefined' ? Notification.permission : 'unsupported',

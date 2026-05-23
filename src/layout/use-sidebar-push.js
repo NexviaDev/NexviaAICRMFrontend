@@ -63,7 +63,7 @@ export function useSidebarPush(userSyncKey) {
         const result = await disablePushNotifications();
         if (!result.ok) throw new Error(result.error || '푸시 알림 해제에 실패했습니다.');
       } else {
-        const result = await enablePushNotifications();
+        const result = await enablePushNotifications({ forceRefresh: true });
         if (!result.ok) {
           throw new Error(result.error || '알림 설정을 완료하지 못했습니다.');
         }
@@ -85,8 +85,8 @@ export function useSidebarPush(userSyncKey) {
     : pushStatus.permission === 'denied'
       ? '브라우저에서 알림이 차단됨 — 사이트 설정에서 허용'
       : pushStatus.registered
-        ? '푸시 알림 켜짐 — 탭하면 끄기 (공지·일정)'
-        : '푸시 알림 꺼짐 — 탭하면 켜기 (공지·일정)';
+        ? '푸시 알림 켜짐 — 탭하면 끄기 (공지·일정·PC 등록 일정)'
+        : '푸시 알림 꺼짐 — 탭하면 켜기 (폰에서 새 토큰 등록)';
 
   return { pushStatus, busy, togglePush, alarmTitle };
 }
