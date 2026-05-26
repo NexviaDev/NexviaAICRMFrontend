@@ -21,9 +21,14 @@ export function getLastSeenPublishedAtMs() {
 /**
  * 공지 페이지를 열었을 때 호출 — 현재 목록 기준으로 모두 읽음 처리.
  * @param {unknown[]} notifications
+ * @param {{ excludeIds?: string[] }} [options] — 제외 ID(방금 등록·수정한 글 등)는 읽음 처리하지 않음
  */
-export function markNotificationsAsSeen(notifications) {
-  const max = maxPublishedAtMs(notifications);
+export function markNotificationsAsSeen(notifications, options = {}) {
+  const exclude = new Set((options.excludeIds || []).map((id) => String(id || '').trim()).filter(Boolean));
+  const list = Array.isArray(notifications)
+    ? notifications.filter((n) => !exclude.has(String(n?._id || '')))
+    : [];
+  const max = maxPublishedAtMs(list);
   const prev = getLastSeenPublishedAtMs();
   if (max == null) {
     if (prev == null) localStorage.setItem(STORAGE_KEY, new Date().toISOString());

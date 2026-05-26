@@ -9,6 +9,9 @@ import LeadCaptureCrmMappingModal from './lead-capture-crm-mapping/lead-capture-
 import CustomFieldsManageModal from '../shared/custom-fields-manage-modal/custom-fields-manage-modal';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import HomeLeadDetailModal from '@/dashboard/home-lead-detail-modal';
+import SmsDraftModal from '../customer-company-employees/sms-draft-modal/sms-draft-modal';
+import EmailComposeModal from '../email/email-compose-modal.jsx';
+import { LeadCapturePhoneCell, LeadCaptureEmailCell } from './lead-capture-contact-cell';
 import { buildLeadCaptureEmbedSnippet } from '@/lead-capture-shared/lead-capture-embed-snippet';
 import './lead-capture.css';
 
@@ -193,6 +196,8 @@ export default function LeadCapture() {
   const [previewHtml, setPreviewHtml] = useState('');
   const [showEmbedPreview, setShowEmbedPreview] = useState(false);
   const [apiKeyForPreview, setApiKeyForPreview] = useState('');
+  const [smsModal, setSmsModal] = useState(null);
+  const [emailCompose, setEmailCompose] = useState(null);
 
   const canManageCaptureChannels = isAdminOrAboveRole(getStoredCrmUser()?.role);
 
@@ -315,6 +320,14 @@ export default function LeadCapture() {
     setLastClickedLeadIndex(null);
   }, [selectedFormId]);
 
+  /** 푸시 알림 딥링크 — ?form= */
+  useEffect(() => {
+    const formParam = String(searchParams.get('form') || '').trim();
+    if (formParam && formParam !== String(selectedFormId || '')) {
+      setSelectedFormId(formParam);
+    }
+  }, [searchParams, selectedFormId]);
+
   const handleLeadCheckboxChange = useCallback((leadId, index, shiftKey) => {
     const sid = String(leadId);
     setSelectedLeadIds((prev) => {
@@ -359,6 +372,14 @@ export default function LeadCapture() {
     setLeadDetailOpen(false);
     setLeadDetailContext(null);
   }, []);
+
+  /** 푸시 알림 딥링크 — ?lead= */
+  useEffect(() => {
+    const leadParam = String(searchParams.get('lead') || '').trim();
+    if (!leadParam || !selectedFormId || channelLeadsLoading) return;
+    const lead = channelLeads.find((l) => String(l._id) === leadParam);
+    if (lead) openLeadDetail(lead);
+  }, [searchParams, channelLeads, selectedFormId, channelLeadsLoading, openLeadDetail]);
 
   const handleSaveSelectedAsContacts = useCallback(async () => {
     const ids = selectedLeadIds.map(String);
@@ -1053,6 +1074,7 @@ export default function LeadCapture() {
               <h2 className="lead-capture-card-title">수신된 리드</h2>
               <p className="lead-capture-leads-table-hint">
                 표는 최근 5건 미리보기입니다. 체크 후 「데이터 매핑」을 누르면 <strong>선택한 리드만</strong> 등록합니다. 미선택 시 전체 리드가 등록됩니다.
+                채널 <strong>담당자</strong>에게는 새 리드 수신 시 이메일·푸시(사이드바 알림 켠 경우)가 발송됩니다.
               </p>
             </div>
             <div className="lead-capture-leads-actions">
@@ -1140,8 +1162,20 @@ export default function LeadCapture() {
                           </td>
                           <td>{cf.company || '—'}</td>
                           <td className="lead-capture-cell-name">{lead.name}</td>
-                          <td>{cf.phone || '—'}</td>
-                          <td>{lead.email}</td>
+                          <td onClick={(e) => e.stopPropagation()}>
+                            <LeadCapturePhoneCell
+                              phone={cf.phone}
+                              recipientName={lead.name}
+                              companyName={cf.company}
+                              onSms={setSmsModal}
+                            />
+                          </td>
+                          <td onClick={(e) => e.stopPropagation()}>
+                            <LeadCaptureEmailCell
+                              email={lead.email}
+                              onCompose={(payload) => setEmailCompose(payload)}
+                            />
+                          </td>
                           <td onClick={(e) => e.stopPropagation()}>
                             {businessCard ? (
                               isImageUrl ? (
@@ -1243,7 +1277,25 @@ export default function LeadCapture() {
         onSelectAllLeads={handleSelectAllLeads}
         onPreviewImage={setLeadImagePreview}
         onOpenMapping={openMappingModal}
+        onSms={setSmsModal}
+        onEmailCompose={(payload) => setEmailCompose(payload)}
       />
+
+      <SmsDraftModal
+        open={!!smsModal}
+        onClose={() => setSmsModal(null)}
+        phone={smsModal?.phone}
+        recipientName={smsModal?.recipientName}
+        companyName={smsModal?.companyName}
+      />
+      {emailCompose ? (
+        <EmailComposeModal
+          key={emailCompose.initialTo}
+          initialTo={emailCompose.initialTo}
+          onClose={() => setEmailCompose(null)}
+          onSent={() => setEmailCompose(null)}
+        />
+      ) : null}
 
       <LeadCaptureCrmMappingModal
         open={mappingModalOpen}

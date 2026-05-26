@@ -22,14 +22,87 @@
 
 .work-report-header {
   flex-wrap: wrap;
-  gap: 1rem;
+  gap: 0.75rem 1rem;
+  align-items: stretch;
+  min-width: 0;
 }
 
-.work-report-header .header-search {
-  flex: 1;
+.work-report-header-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.work-report-header-row--title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.work-report-header-row--tools {
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: 0.65rem 1rem;
+  justify-content: space-between;
+}
+
+.work-report-header .work-report-header-search {
+  flex: 1 1 14rem;
   max-width: 28rem;
   min-width: 0;
   position: relative;
+}
+
+.work-report-header .work-report-header-actions {
+  flex: 0 1 auto;
+  margin-left: auto;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.work-report-date-range {
+  min-width: 0;
+}
+
+@media (min-width: 769px) {
+  .work-report-header.page-header {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    height: auto;
+    min-height: 4rem;
+  }
+
+  .work-report-header-row--title {
+    flex: 0 0 auto;
+  }
+
+  .work-report-header-row--tools {
+    flex: 1 1 24rem;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    gap: 0.75rem 1rem;
+  }
+
+  .work-report-header .work-report-header-search {
+    flex: 1 1 12rem;
+    max-width: 22rem;
+  }
+
+  .work-report-header .work-report-header-actions {
+    flex: 0 0 auto;
+  }
+
+  .work-report-page .date-picker {
+    max-width: 18rem;
+  }
+
+  .work-report-page .work-report-date-range {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 12rem;
+  }
 }
 
 .work-report-user-select-icon {
@@ -76,10 +149,6 @@
 .work-report-user-select:focus {
   border-color: #93b1df;
   box-shadow: 0 0 0 3px rgba(147, 177, 223, 0.2);
-}
-
-.work-report-header .header-actions {
-  margin-left: auto;
 }
 
 .work-report-header h2 {
@@ -297,9 +366,207 @@
   color: #6f8fc8;
 }
 
+/* ── 스마트폰·태블릿: 헤더·요약·표·페이지네이션 ── */
+@media (max-width: 768px) {
+  .work-report-page.page {
+    min-width: 0;
+    overflow-x: hidden;
+    background: #f8fafa;
+  }
+
+  .work-report-page .work-report-header.page-header {
+    height: auto;
+    min-height: 0;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 0.6rem;
+    padding: 0.65rem 1rem;
+    background: var(--card, #fff);
+    border-bottom: 1px solid var(--card-border, #e2e8f0);
+  }
+
+  .work-report-page .work-report-header-row--title {
+    width: 100%;
+  }
+
+  .work-report-page .work-report-header-row--tools {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.55rem;
+    width: 100%;
+  }
+
+  .work-report-page .work-report-header h2 {
+    flex: 0 0 auto;
+    width: 100%;
+    font-size: 1.05rem;
+    line-height: 1.3;
+  }
+
+  .work-report-page .work-report-header .work-report-header-search {
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: none;
+  }
+
+  .work-report-user-select-icon {
+    left: 0.75rem;
+    font-size: 1.1rem;
+  }
+
+  .work-report-user-select {
+    height: 2.75rem;
+    font-size: 0.875rem;
+    padding-left: 2.5rem;
+    padding-right: 2rem;
+  }
+
+  .work-report-page .work-report-header .work-report-header-actions {
+    margin-left: 0;
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .work-report-page .date-picker {
+    flex: 1 1 100%;
+    min-width: 0;
+    max-width: 100%;
+    padding: 0.45rem 0.65rem;
+    font-size: 0.8125rem;
+  }
+
+  .work-report-page .work-report-date-range {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .work-report-page .work-report-header .icon-btn {
+    flex-shrink: 0;
+  }
+
+  .work-report-page .work-report-header-actions .icon-btn:last-of-type {
+    margin-left: auto;
+  }
+
+  .work-report-page .page-content {
+    padding: 0.75rem 1rem 5rem;
+    min-width: 0;
+  }
+
+  .work-report-page .employee-summary {
+    padding: 1rem;
+    gap: 1.25rem;
+    margin-bottom: 1rem;
+  }
+
+  .work-report-page .employee-profile {
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    width: 100%;
+  }
+
+  .work-report-page .employee-avatar {
+    width: 4.75rem;
+    height: 4.75rem;
+    border-width: 3px;
+  }
+
+  .work-report-page .employee-info {
+    width: 100%;
+    text-align: center;
+  }
+
+  .work-report-page .employee-info h3 {
+    font-size: 1.25rem;
+  }
+
+  .work-report-page .employee-meta {
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  .work-report-page .employee-meta span {
+    max-width: 100%;
+    justify-content: center;
+    word-break: break-word;
+    text-align: center;
+  }
+
+  .work-report-page .employee-stats {
+    width: 100%;
+    max-width: none;
+    gap: 0.65rem;
+  }
+
+  .work-report-page .stat-box {
+    padding: 0.75rem;
+  }
+
+  .work-report-page .stat-box-value {
+    font-size: 1.25rem;
+  }
+
+  .work-report-page .panel.table-panel {
+    margin-bottom: 1rem;
+    min-width: 0;
+  }
+
+  .work-report-page .panel-head {
+    padding: 0.85rem 1rem;
+  }
+
+  .work-report-page .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 0 -0.25rem;
+    padding: 0 0.25rem;
+  }
+
+  .work-report-page .activity-table {
+    min-width: 280px;
+  }
+
+  .work-report-page .activity-table th,
+  .work-report-page .activity-table td {
+    padding: 0.65rem 0.75rem;
+  }
+
+  .work-report-page .task-title {
+    word-break: break-word;
+  }
+
+  .work-report-page .pagination-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.65rem;
+    padding: 0.75rem 1rem;
+  }
+
+  .work-report-page .pagination-info {
+    font-size: 0.8rem;
+    text-align: center;
+  }
+
+  .work-report-page .pagination-btns {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.25rem;
+  }
+}
+
 @media (max-width: 640px) {
   .work-report-timeline-title {
     font-size: 0.9rem;
     padding: 0.4rem 0.65rem;
+  }
+
+  .work-report-page .employee-stats {
+    grid-template-columns: 1fr;
   }
 }

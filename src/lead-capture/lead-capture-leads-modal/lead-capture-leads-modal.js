@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { LeadCapturePhoneCell, LeadCaptureEmailCell } from '../lead-capture-contact-cell';
 import './lead-capture-leads-modal.css';
 
 export default function LeadCaptureLeadsModal({
@@ -9,7 +10,9 @@ export default function LeadCaptureLeadsModal({
   onLeadCheckboxChange,
   onSelectAllLeads,
   onPreviewImage,
-  onOpenMapping
+  onOpenMapping,
+  onSms,
+  onEmailCompose
 }) {
   const [search, setSearch] = useState('');
 
@@ -163,8 +166,17 @@ export default function LeadCaptureLeadsModal({
                       </td>
                       <td>{cf.company || '—'}</td>
                       <td className="lead-capture-cell-name">{lead.name}</td>
-                      <td>{cf.phone || '—'}</td>
-                      <td>{lead.email}</td>
+                      <td>
+                        <LeadCapturePhoneCell
+                          phone={cf.phone}
+                          recipientName={lead.name}
+                          companyName={cf.company}
+                          onSms={onSms}
+                        />
+                      </td>
+                      <td>
+                        <LeadCaptureEmailCell email={lead.email} onCompose={onEmailCompose} />
+                      </td>
                       <td>
                         {businessCard ? (
                           isImageUrl ? (

@@ -6,8 +6,10 @@ import { LAYOUT_EXCEL_IMPORT_POLL_MS } from '@/lib/polling-intervals';
 import {
   bindPushForegroundNotifications,
   refreshPushTokenIfGranted,
+  shouldShowPushForCurrentSession,
   showWebPushNotification,
-  startPushPermissionWatcher
+  startPushPermissionWatcher,
+  syncPushRegistrationForSession
 } from '@/lib/push-notifications';
 import Sidebar from './sidebar';
 import { ensureUserSidebarDefaultTemplate } from '@/lib/list-templates';
@@ -58,9 +60,14 @@ export default function Layout({ embeddedContent = null }) {
     let cleanup = null;
     bindPushForegroundNotifications((payload) => {
       const data = payload?.data || {};
+      if (!shouldShowPushForCurrentSession(data)) return;
       const url =
         data.url ||
-        (data.type === 'calendar-reminder'
+        (data.type === 'lead-capture'
+          ? data.formId
+            ? `/lead-capture?form=${encodeURIComponent(data.formId)}${data.leadId ? `&lead=${encodeURIComponent(data.leadId)}` : ''}`
+            : '/lead-capture'
+          : data.type === 'calendar-reminder'
           ? data.eventId
             ? `/calendar?modal=event&eventId=${encodeURIComponent(data.eventId)}`
             : '/calendar'
@@ -126,6 +133,21 @@ export default function Layout({ embeddedContent = null }) {
       navigate('/company-overview', { replace: true });
     }
   }, [currentUser?.role, location.pathname, navigate]);
+
+  /** 로그인·계정 전환 시 푸시 등록을 현재 사용자와 맞춤 */
+  useEffect(() => {
+    const crmToken = localStorage.getItem('crm_token');
+    if (!crmToken || !currentUser?._id) return undefined;
+    let cancelled = false;
+    void syncPushRegistrationForSession(currentUser).catch(() => {
+      if (!cancelled) {
+        /* ignore */
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser?._id, currentUser?.companyId]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);

@@ -385,7 +385,7 @@
 .page-content {
   flex: 1;
   overflow-y: auto;
-  padding: 2rem;
+  padding: 0;
 }
 
 .panel {
@@ -832,7 +832,7 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    padding: 2rem 0 0;
+    padding: 0;
   }
 
 

@@ -470,14 +470,6 @@ export default function ProductList({
     });
   }, [items, sortKey, sortDir, getSortValue]);
 
-  /** 현재 페이지에 표시된 제품만으로 평균 순 마진율(%) — 모바일 요약 카드 */
-  const avgMarginPercent = useMemo(() => {
-    const rows = items.filter((r) => (Number(listPriceFromProduct(r)) || 0) > 0);
-    if (rows.length === 0) return null;
-    const sum = rows.reduce((acc, r) => acc + (getConsumerMarginPercent(r) || 0), 0);
-    return sum / rows.length;
-  }, [items]);
-
   const handleSortColumn = useCallback((key) => {
     setSort((prev) => {
       if (prev.key === key) {
@@ -923,24 +915,6 @@ export default function ProductList({
               </button>
             </div>
           </div>
-        ) : null}
-        {!isSearchModal ? (
-        <section className="pl-mobile-hero pl-mobile-only" aria-label="포트폴리오 요약">
-          <p className="pl-mobile-kicker">제품 개요</p>
-          <h2 className="pl-mobile-title">현재 포트폴리오</h2>
-          <div className="pl-mobile-bento">
-            <div className="pl-mobile-bento-card pl-mobile-bento-card--lavender">
-              <p className="pl-mobile-bento-label">등록 제품</p>
-              <p className="pl-mobile-bento-value">{pagination.total != null ? `${pagination.total.toLocaleString()}개` : '—'}</p>
-            </div>
-            <div className="pl-mobile-bento-card pl-mobile-bento-card--peach">
-              <p className="pl-mobile-bento-label">목록 평균 순 마진</p>
-              <p className="pl-mobile-bento-value">
-                {avgMarginPercent != null ? `${avgMarginPercent.toFixed(1)}%` : '—'}
-              </p>
-            </div>
-          </div>
-        </section>
         ) : null}
         <div className="panel table-panel">
           <div className="pl-mobile-cards-wrap">

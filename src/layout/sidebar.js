@@ -18,6 +18,7 @@ import {
 import { API_BASE } from '@/config';
 import { resolveDepartmentDisplayFromChart } from '@/lib/org-chart-tree-utils';
 import { useSidebarPush } from './use-sidebar-push';
+import { clearPushSessionOnLogout } from '@/lib/push-notifications';
 import './sidebar.css';
 
 /** stacking: sidebar.css `--sidebar-z`(30) — 페이지 모달 오버레이(≥50)보다 항상 아래 */
@@ -110,6 +111,7 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
   }, []);
   const user = currentUser || storedUser;
   const userSyncKey = user?._id || user?.id || user?.email || '';
+  const [logoutBusy, setLogoutBusy] = useState(false);
 
   /** 로고 → 대시보드 (로그인 후 CRM 홈) */
   const goHomeScreen = useCallback(
@@ -493,11 +495,23 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
         <button
           type="button"
           className="sidebar-logout"
+          disabled={logoutBusy}
           onClick={() => {
-            localStorage.removeItem('crm_token');
-            localStorage.removeItem('crm_user');
-            notifyCrmAuthChanged();
-            navigate('/login', { replace: true });
+            if (logoutBusy) return;
+            setLogoutBusy(true);
+            void (async () => {
+              try {
+                await clearPushSessionOnLogout();
+              } catch {
+                /* ignore */
+              } finally {
+                localStorage.removeItem('crm_token');
+                localStorage.removeItem('crm_user');
+                notifyCrmAuthChanged();
+                setLogoutBusy(false);
+                navigate('/', { replace: true });
+              }
+            })();
           }}
         >
           <span className="material-symbols-outlined">logout</span>

@@ -727,7 +727,7 @@ export default function MergeDataSheetModal({
                   <span className="material-symbols-outlined">download</span>
                   다운로드
                 </button>
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="시트 닫기" title="닫기">
+          <button type="button" className="icon-btn" onClick={onClose} aria-label="시트 닫기" title="닫기" disabled={mergeRunning}>
             <span className="material-symbols-outlined" aria-hidden>
               close
             </span>
@@ -1077,6 +1077,20 @@ export default function MergeDataSheetModal({
           error={pdfPreviewError}
           caption={pdfPreviewCaption}
         />
+        {mergeRunning ? (
+          <div
+            className="merge-data-sheet-modal-busy"
+            role="status"
+            aria-live="polite"
+            aria-label="Word Excel PDF 문서 생성 중"
+          >
+            <div className="merge-data-sheet-modal-busy-card">
+              <span className="merge-data-sheet-modal-spinner" aria-hidden />
+              <span className="merge-data-sheet-modal-busy-text">Word/Excel·PDF 생성 중…</span>
+              <span className="merge-data-sheet-modal-busy-hint">서버에서 변환합니다. 잠시만 기다려 주세요.</span>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

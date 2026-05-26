@@ -135,3 +135,219 @@
 .merge-field-editor-modal-banner {
   margin: 0 0 0.65rem;
 }
+
+.merge-field-editor-modal-root .icon-btn {
+  border: none;
+  border-radius: 0.55rem;
+  width: 2.25rem;
+  height: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1f5f9;
+  color: #475569;
+  cursor: pointer;
+}
+
+.merge-field-editor-modal-root .icon-btn:hover:not(:disabled) {
+  background: #e8eef7;
+  color: #1e3a5f;
+}
+
+.merge-field-editor-modal-root .icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.merge-field-editor-modal-root .qdm-btn {
+  border-radius: 0.55rem;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.merge-field-editor-modal-root .qdm-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.merge-field-editor-modal-root .qdm-btn-small {
+  padding: 0.35rem 0.55rem;
+  font-size: 0.8rem;
+}
+
+.merge-field-editor-modal-root .qdm-btn-ghost {
+  background: #fff;
+  border-color: #c9daf4;
+  color: #1e3a5f;
+}
+
+.merge-field-editor-modal-root .qdm-btn-ghost:hover:not(:disabled) {
+  background: #f0f6ff;
+}
+
+.merge-field-editor-modal-root .qdm-btn-primary {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1e40af;
+}
+
+.merge-field-editor-modal-root .qdm-btn-primary:hover:not(:disabled) {
+  background: #bfdbfe;
+}
+
+.merge-field-editor-modal-root .qdm-banner {
+  margin: 0 0 0.65rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.55rem;
+  font-size: 0.84rem;
+}
+
+.merge-field-editor-modal-root .qdm-banner-ok {
+  color: #14532d;
+  background: #ecfdf3;
+  border: 1px solid #bbf7d0;
+}
+
+.merge-field-editor-modal-root .qdm-cell {
+  width: 100%;
+  min-width: 6rem;
+  box-sizing: border-box;
+  border: 1px solid #d5dfec;
+  border-radius: 0.45rem;
+  padding: 0.35rem 0.45rem;
+  font-size: 0.82rem;
+  font-family: inherit;
+  background: #fff;
+  color: #334155;
+}
+
+.merge-field-editor-modal-root .qdm-cell:focus,
+.merge-field-editor-modal-root .qdm-field-editor-select:focus {
+  outline: none;
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 3px rgba(147, 197, 253, 0.22);
+}
+
+.merge-field-editor-modal-root .qdm-field-editor-toolbar {
+  margin-bottom: 0.5rem;
+}
+
+.merge-field-editor-modal-root .qdm-field-editor-table-wrap {
+  overflow: auto;
+  border: 1px solid #e4e9f2;
+  border-radius: 0.55rem;
+  margin-bottom: 0.65rem;
+  background: #fff;
+}
+
+.merge-field-editor-modal-root .qdm-field-editor-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.merge-field-editor-modal-root .qdm-field-editor-table th,
+.merge-field-editor-modal-root .qdm-field-editor-table td {
+  padding: 0.4rem;
+  border-bottom: 1px solid #eef2f7;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.merge-field-editor-modal-root .qdm-field-editor-table th {
+  background: #f1f5f9;
+  color: #475569;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.merge-field-editor-modal-root .qdm-field-editor-table tr:last-child td {
+  border-bottom: none;
+}
+
+.merge-field-editor-modal-root .qdm-field-editor-th-key {
+  min-width: 7.5rem;
+}
+
+.merge-field-editor-modal-root .qdm-field-editor-th-kind,
+.merge-field-editor-modal-root .qdm-field-editor-th-format {
+  min-width: 7.5rem;
+  max-width: 9.5rem;
+}
+
+.merge-field-editor-modal-root .qdm-field-editor-th-check,
+.merge-field-editor-modal-root .qdm-field-editor-th-excel {
+  max-width: 6.5rem;
+  white-space: normal;
+  line-height: 1.25;
+  font-size: 0.72rem;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.merge-field-editor-modal-root .qdm-field-editor-select {
+  width: 100%;
+  max-width: 10rem;
+  border: 1px solid #d5dfec;
+  border-radius: 0.45rem;
+  padding: 0.35rem 0.4rem;
+  font-size: 0.8rem;
+  background: #fff;
+  color: #334155;
+}
+
+.merge-field-editor-modal-root .qdm-field-editor-select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.merge-field-editor-modal-root .qdm-field-editor-td-center {
+  text-align: center;
+  vertical-align: middle;
+}
+
+.merge-field-editor-modal-root .qdm-field-editor-td-center input[type='checkbox'] {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  vertical-align: middle;
+  accent-color: #93c5fd;
+}
+
+.merge-field-editor-modal-root .qdm-icon-btn {
+  border: none;
+  background: #f1f5f9;
+  color: #64748b;
+  border-radius: 0.45rem;
+  width: 2rem;
+  height: 2rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.merge-field-editor-modal-root .qdm-icon-btn:hover:not(:disabled) {
+  background: #e2e8f0;
+  color: #b91c1c;
+}
+
+.merge-field-editor-modal-root .qdm-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.merge-field-editor-modal-root .qdm-icon-btn .material-symbols-outlined {
+  font-size: 1.15rem;
+}
+
+.merge-field-editor-modal-root .qdm-field-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  justify-content: flex-end;
+}

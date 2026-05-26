@@ -9,6 +9,59 @@ importScripts('https://www.gstatic.com/firebasejs/12.13.0/firebase-messaging-com
 const NEXVIA_PUSH_API_BASE = '/api';
 let firebaseBackgroundHandlerReady = false;
 
+const PUSH_META_DB = 'nexvia_push';
+const PUSH_META_STORE = 'meta';
+const PUSH_META_SESSION_KEY = 'session';
+let pushSessionMeta = { userId: '', companyId: '' };
+let pushSessionMetaLoaded = false;
+
+function openPushMetaDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(PUSH_META_DB, 1);
+    req.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains(PUSH_META_STORE)) {
+        db.createObjectStore(PUSH_META_STORE);
+      }
+    };
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => resolve(req.result);
+  });
+}
+
+async function ensurePushSessionMetaLoaded() {
+  if (pushSessionMetaLoaded) return pushSessionMeta;
+  try {
+    const db = await openPushMetaDb();
+    const row = await new Promise((resolve, reject) => {
+      const tx = db.transaction(PUSH_META_STORE, 'readonly');
+      const req = tx.objectStore(PUSH_META_STORE).get(PUSH_META_SESSION_KEY);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+    if (row) {
+      pushSessionMeta = {
+        userId: String(row.userId || ''),
+        companyId: String(row.companyId || '')
+      };
+    }
+  } catch (_) {
+    /* ignore */
+  }
+  pushSessionMetaLoaded = true;
+  return pushSessionMeta;
+}
+
+function shouldDeliverPushData(data) {
+  const uid = String(pushSessionMeta.userId || '').trim();
+  if (!uid) return false;
+  const recipientUserId = String(data.recipientUserId || '').trim();
+  if (recipientUserId && recipientUserId !== uid) return false;
+  const companyId = String(data.companyId || '').trim();
+  if (companyId && pushSessionMeta.companyId && companyId !== pushSessionMeta.companyId) return false;
+  return true;
+}
+
 function buildDisplayFromPayload(payload) {
   const notification = payload?.notification || {};
   const data = {
@@ -20,6 +73,7 @@ function buildDisplayFromPayload(payload) {
   if (!body) {
     if (data.type === 'announcement') body = '새 공지사항이 등록되었습니다.';
     else if (data.type === 'calendar-reminder') body = '일정 알림이 도착했습니다.';
+    else if (data.type === 'lead-capture') body = '새 리드가 수신되었습니다.';
     else body = '탭하여 내용을 확인하세요.';
   }
   const tag =
@@ -42,6 +96,13 @@ function showCrmNotification(payload) {
   });
 }
 
+async function showCrmNotificationIfAllowed(payload) {
+  await ensurePushSessionMetaLoaded();
+  const { data } = buildDisplayFromPayload(payload);
+  if (!shouldDeliverPushData(data)) return null;
+  return showCrmNotification(payload);
+}
+
 function initFirebaseWithConfig(cfg) {
   if (!cfg?.apiKey || !cfg?.projectId || !cfg?.messagingSenderId || !cfg?.appId) return false;
   if (!firebase.apps.length) {
@@ -54,7 +115,7 @@ function initFirebaseWithConfig(cfg) {
       appId: cfg.appId
     });
   }
-  firebase.messaging().onBackgroundMessage((payload) => showCrmNotification(payload));
+  firebase.messaging().onBackgroundMessage((payload) => showCrmNotificationIfAllowed(payload));
   firebaseBackgroundHandlerReady = true;
   return true;
 }
@@ -85,6 +146,14 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('message', (event) => {
   const msg = event.data;
+  if (msg?.type === 'PUSH_SESSION_META') {
+    pushSessionMeta = {
+      userId: String(msg.userId || ''),
+      companyId: String(msg.companyId || '')
+    };
+    pushSessionMetaLoaded = true;
+    return;
+  }
   if (!msg || msg.type !== 'INIT_FIREBASE' || !msg.config) return;
   event.waitUntil(Promise.resolve(initFirebaseWithConfig(msg.config)));
 });
@@ -97,7 +166,7 @@ self.addEventListener('push', (event) => {
   } catch (_) {
     payload = {};
   }
-  event.waitUntil(showCrmNotification(payload));
+  event.waitUntil(showCrmNotificationIfAllowed(payload));
 });
 
 self.addEventListener('notificationclick', (event) => {

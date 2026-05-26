@@ -41,6 +41,61 @@
   box-sizing: border-box;
 }
 
+.merge-data-sheet-modal-busy {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(238, 242, 247, 0.78);
+  pointer-events: auto;
+}
+
+.merge-data-sheet-modal-busy-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 1.35rem 1.85rem;
+  max-width: min(92vw, 22rem);
+  text-align: center;
+  background: #fff;
+  border: 1px solid #bfdbfe;
+  border-radius: 0.75rem;
+  box-shadow: 0 10px 36px rgba(15, 23, 42, 0.12);
+}
+
+.merge-data-sheet-modal-spinner {
+  width: 2.15rem;
+  height: 2.15rem;
+  border: 3px solid #bfdbfe;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: merge-data-sheet-modal-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+.merge-data-sheet-modal-busy-text {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #1e40af;
+  line-height: 1.35;
+}
+
+.merge-data-sheet-modal-busy-hint {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+@keyframes merge-data-sheet-modal-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .merge-data-sheet-modal-footer {
   flex-shrink: 0;
   padding: 0.45rem 1rem 0.55rem;

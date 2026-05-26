@@ -26,16 +26,16 @@ export function buildMergeFieldsPayload(fieldDraft) {
     }
   }
   const fields = fieldDraft.map((f) => {
-    const multiline = Boolean(f.multiline);
     const valueKind = f.valueKind === 'number' ? 'number' : 'text';
     let excelFormat = MERGE_EXCEL_FORMATS.some((x) => x.id === f.excelFormat) ? f.excelFormat : 'general';
     if (valueKind === 'text') excelFormat = 'general';
+    const multiline = valueKind === 'text';
     return {
       key: String(f.key || '').trim(),
       label: String(f.label || '').trim(),
       example: String(f.example || '').trim(),
       multiline,
-      excelSpreadLines: multiline && Boolean(f.excelSpreadLines),
+      excelSpreadLines: multiline,
       valueKind,
       excelFormat
     };
@@ -45,11 +45,12 @@ export function buildMergeFieldsPayload(fieldDraft) {
 
 export function mapApiFieldsToEditorDraft(fields) {
   if (!Array.isArray(fields)) return [];
-  return mergeFieldsWithoutRowIndex(fields).map((f) => ({
-    ...f,
-    multiline: Boolean(f.multiline),
-    excelSpreadLines: Boolean(f.excelSpreadLines),
-    valueKind: f.valueKind === 'number' ? 'number' : 'text',
-    excelFormat: MERGE_EXCEL_FORMATS.some((x) => x.id === f.excelFormat) ? f.excelFormat : 'general'
-  }));
+  return mergeFieldsWithoutRowIndex(fields).map((f) => {
+    const valueKind = f.valueKind === 'number' ? 'number' : 'text';
+    return {
+      ...f,
+      valueKind,
+      excelFormat: MERGE_EXCEL_FORMATS.some((x) => x.id === f.excelFormat) ? f.excelFormat : 'general'
+    };
+  });
 }

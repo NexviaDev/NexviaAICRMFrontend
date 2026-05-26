@@ -56,7 +56,7 @@ import {
   isMergeDataSheetUrlOpen
 } from '@/lib/merge-data-sheet-url';
 import { MERGE_EXCEL_FORMATS } from '@/lib/merge-field-editor-constants';
-import { parseTsvGrid } from '@/lib/tsv-grid';
+import { parseTsvGrid, isSingleColumnMultilinePaste } from '@/lib/tsv-grid';
 import CustomerCompanySearchModal from '@/customer-companies/customer-company-search-modal/customer-company-search-modal';
 import '@/lead-capture/lead-capture-crm-mapping/lead-capture-crm-mapping-modal.css';
 import './opportunity-merge-from-opportunity.css';
@@ -283,7 +283,7 @@ function fieldSignature(fields) {
   return fields
     .map(
       (f) =>
-        `${f.key}:${f.label}:${f.multiline ? 1 : 0}:${f.excelSpreadLines ? 1 : 0}:${f.valueKind || 'text'}:${f.excelFormat || 'general'}`
+        `${f.key}:${f.label}:${f.valueKind || 'text'}:${f.excelFormat || 'general'}`
     )
     .join('|');
 }
@@ -1396,6 +1396,11 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
       if (t == null || t === '') return;
       const grid = parseTsvGrid(t);
       if (!grid.length) return;
+      if (isSingleColumnMultilinePaste(grid)) {
+        e.preventDefault();
+        updateRow(rowIndex, key, grid.map((r) => r[0]).join('\n'));
+        return;
+      }
       const multi = grid.length > 1 || (grid[0] && grid[0].length > 1);
       if (!multi) return;
       e.preventDefault();
@@ -1406,7 +1411,7 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
       mergeSheetNavKeyDown(e, {
         rowIndex,
         sheetCol,
-        multiline: Boolean(f.multiline),
+        multiline: false,
         value: val,
         commit: (next) => updateRow(rowIndex, key, next)
       });
@@ -1414,8 +1419,8 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
 
     return (
       <textarea
-        className={`qdm-cell qdm-cell--sheet${f.multiline ? ' qdm-cell-tall' : ' qdm-cell-sheet-single'}`}
-        rows={f.multiline ? 2 : 1}
+        className="qdm-cell qdm-cell--sheet qdm-cell-sheet-single"
+        rows={1}
         value={val}
         onChange={(e) => updateRow(rowIndex, key, e.target.value)}
         onPaste={tryPasteGrid}
@@ -1667,26 +1672,16 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
     setFieldPresetsLoading(true);
     try {
       await pingBackendHealth();
-      const fieldsPayload = mergeFieldsSheet.map((f) => {
-        const multiline = Boolean(f.multiline);
-        const valueKind = f.valueKind === 'number' ? 'number' : 'text';
-        let excelFormat = MERGE_EXCEL_FORMATS.some((x) => x.id === f.excelFormat) ? f.excelFormat : 'general';
-        if (valueKind === 'text') excelFormat = 'general';
-        return {
-          key: String(f.key || '').trim(),
-          label: String(f.label || f.key || '').trim(),
-          example: String(f.example || '').trim(),
-          multiline,
-          excelSpreadLines: multiline && Boolean(f.excelSpreadLines),
-          valueKind,
-          excelFormat
-        };
-      });
+      const built = buildMergeFieldsPayload(mergeFieldsSheet);
+      if (!built.ok) {
+        window.alert(built.error);
+        return;
+      }
       const res = await fetch(`${API_BASE}/quotation-merge/field-presets`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         credentials: 'include',
-        body: JSON.stringify({ name, fields: fieldsPayload })
+        body: JSON.stringify({ name, fields: built.fields })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(getUserVisibleApiError(data, '새 구성을 만들지 못했습니다.'));
@@ -1761,15 +1756,13 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
     setSearchParams(p, { replace: false });
     applyMappingToFirstRow();
     setPhase('sheet');
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        sheetUrlTransitionRef.current = false;
-      });
-    });
   };
 
   const handleCloseAll = () => {
     closeFieldEditor();
+    if (phase === 'sheet' || sheetFromUrl) {
+      sheetUrlTransitionRef.current = true;
+    }
     setPhase('setup');
     stripOppMergeSheetUrlParam();
     onClose();
@@ -1784,9 +1777,19 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
     }
   }, [open, phase, sheetFromUrl]);
 
+  /** URL·phase 동기화가 끝날 때까지 자동 시트 진입/퇴장 effect 가 끼어들지 않게 */
+  useEffect(() => {
+    if (!sheetUrlTransitionRef.current) return;
+    if (phase === 'sheet' && sheetFromUrl) {
+      sheetUrlTransitionRef.current = false;
+    } else if (phase === 'setup' && !sheetFromUrl) {
+      sheetUrlTransitionRef.current = false;
+    }
+  }, [phase, sheetFromUrl]);
+
   /** URL에 oppDocMergeSheet=1 이 있으면 매핑이 채워진 뒤 시트로 진입(공유·앞으로가기) */
   useEffect(() => {
-    if (!open || phase === 'sheet' || !sheetFromUrl) return;
+    if (!open || phase === 'sheet' || !sheetFromUrl || sheetUrlTransitionRef.current) return;
     if (!mergeFieldsSheet.length) return;
     const incomplete = mergeFieldsSheet.some((f) => f?.key && !mappingByFieldKey[f.key]);
     if (incomplete) return;
@@ -2190,13 +2193,8 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
           onClose={() => {
             closeFieldEditor();
             sheetUrlTransitionRef.current = true;
-            stripOppMergeSheetUrlParam();
             setPhase('setup');
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                sheetUrlTransitionRef.current = false;
-              });
-            });
+            stripOppMergeSheetUrlParam();
           }}
           mergeRows={mergeRows}
           mergeFields={mergeFieldsSheet}

@@ -7,6 +7,12 @@ let firebaseSdkPromise = null;
 export const CRM_PUSH_TOKEN_KEY = 'crm_fcm_push_token';
 /** 브라우저·PWA 기기별 토큰 교체(폰 알림 재허용 시 갱신) */
 export const CRM_PUSH_DEVICE_ID_KEY = 'crm_push_device_id';
+/** 푸시 등록 시점 로그인 사용자 — 계정 전환·로그아웃 검증용 */
+export const CRM_PUSH_OWNER_USER_ID_KEY = 'crm_push_owner_user_id';
+
+const PUSH_META_DB = 'nexvia_push';
+const PUSH_META_STORE = 'meta';
+const PUSH_META_SESSION_KEY = 'session';
 
 /** 사이드바 알람 아이콘 등 UI 동기화 */
 export const CRM_PUSH_STATUS_EVENT = 'crm-push-status-changed';
@@ -109,6 +115,157 @@ export function getStoredPushToken() {
   } catch {
     return '';
   }
+}
+
+function getStoredPushOwnerUserId() {
+  try {
+    return String(localStorage.getItem(CRM_PUSH_OWNER_USER_ID_KEY) || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+function setStoredPushOwnerUserId(userId) {
+  try {
+    const id = String(userId || '').trim();
+    if (id) localStorage.setItem(CRM_PUSH_OWNER_USER_ID_KEY, id);
+    else localStorage.removeItem(CRM_PUSH_OWNER_USER_ID_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+function getCurrentCrmUserFromStorage() {
+  try {
+    const raw = localStorage.getItem('crm_user');
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function getCurrentCrmUserId() {
+  const user = getCurrentCrmUserFromStorage();
+  return String(user?._id || user?.id || '').trim();
+}
+
+function getCurrentCrmCompanyId() {
+  const user = getCurrentCrmUserFromStorage();
+  return String(user?.companyId || '').trim();
+}
+
+function isCrmSessionLoggedIn() {
+  try {
+    return Boolean(String(localStorage.getItem('crm_token') || '').trim() && getCurrentCrmUserId());
+  } catch {
+    return false;
+  }
+}
+
+function openPushMetaDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(PUSH_META_DB, 1);
+    req.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains(PUSH_META_STORE)) {
+        db.createObjectStore(PUSH_META_STORE);
+      }
+    };
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => resolve(req.result);
+  });
+}
+
+async function writePushSessionMeta(userId, companyId) {
+  const meta = {
+    userId: String(userId || '').trim(),
+    companyId: String(companyId || '').trim(),
+    updatedAt: Date.now()
+  };
+  try {
+    const db = await openPushMetaDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(PUSH_META_STORE, 'readwrite');
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      if (meta.userId) tx.objectStore(PUSH_META_STORE).put(meta, PUSH_META_SESSION_KEY);
+      else tx.objectStore(PUSH_META_STORE).delete(PUSH_META_SESSION_KEY);
+    });
+  } catch {
+    /* ignore */
+  }
+  try {
+    const reg = await navigator.serviceWorker?.ready;
+    reg?.active?.postMessage({
+      type: 'PUSH_SESSION_META',
+      userId: meta.userId,
+      companyId: meta.companyId
+    });
+  } catch {
+    /* ignore */
+  }
+}
+
+/** 포그라운드·SW와 동일 — 로그인·계정 일치 시에만 알림 표시 */
+export function shouldShowPushForCurrentSession(data = {}) {
+  if (!isCrmSessionLoggedIn()) return false;
+  const currentUserId = getCurrentCrmUserId();
+  const recipientUserId = String(data.recipientUserId || '').trim();
+  if (recipientUserId && recipientUserId !== currentUserId) return false;
+  const companyId = String(data.companyId || '').trim();
+  const currentCompanyId = getCurrentCrmCompanyId();
+  if (companyId && currentCompanyId && companyId !== currentCompanyId) return false;
+  return true;
+}
+
+/** 로그인 사용자와 푸시 등록 동기화 — 계정 전환 시 이전 계정 토큰을 현재 계정으로 이전 */
+export async function syncPushRegistrationForSession(user) {
+  const sessionUserId = String(user?._id || user?.id || '').trim();
+  const sessionCompanyId = String(user?.companyId || '').trim();
+  const crmToken = localStorage.getItem('crm_token');
+
+  if (!crmToken || !sessionUserId) {
+    await clearLocalPushRegistration();
+    return { ok: false, reason: 'not-logged-in' };
+  }
+
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') {
+    if (getStoredPushToken()) await clearLocalPushRegistration();
+    return { ok: false, reason: 'no-permission' };
+  }
+
+  const storedOwner = getStoredPushOwnerUserId();
+  const storedPush = getStoredPushToken();
+
+  if (storedPush && storedOwner && storedOwner !== sessionUserId) {
+    await enablePushNotifications({ forceRefresh: true });
+    setStoredPushOwnerUserId(sessionUserId);
+    await writePushSessionMeta(sessionUserId, sessionCompanyId);
+    emitPushStatusChange(await getPushNotificationStatus());
+    return { ok: true, switched: true };
+  }
+
+  if (storedPush && !storedOwner) {
+    await registerTokenWithBackend(storedPush);
+    setStoredPushOwnerUserId(sessionUserId);
+    await writePushSessionMeta(sessionUserId, sessionCompanyId);
+    emitPushStatusChange(await getPushNotificationStatus());
+    return { ok: true, repaired: true };
+  }
+
+  if (storedPush) {
+    await writePushSessionMeta(sessionUserId, sessionCompanyId);
+    await refreshPushTokenIfGranted();
+    return { ok: true };
+  }
+
+  await writePushSessionMeta(sessionUserId, sessionCompanyId);
+  return { ok: true, registered: false };
+}
+
+/** 로그아웃 시 — crm_token 삭제 전에 호출 */
+export async function clearPushSessionOnLogout() {
+  await clearLocalPushRegistration();
 }
 
 function setStoredPushToken(token) {
@@ -285,6 +442,8 @@ export async function clearLocalPushRegistration() {
     }
   }
   setStoredPushToken('');
+  setStoredPushOwnerUserId('');
+  await writePushSessionMeta('', '');
 }
 
 let lastTokenRefreshAt = 0;
@@ -304,7 +463,7 @@ export async function getPushNotificationStatus() {
   return {
     supported,
     permission,
-    registered: supported && permission === 'granted' && Boolean(stored)
+    registered: supported && permission === 'granted' && Boolean(stored) && isCrmSessionLoggedIn()
   };
 }
 
@@ -361,6 +520,9 @@ export function startPushPermissionWatcher() {
 
 export async function enablePushNotifications(options = {}) {
   const forceRefresh = Boolean(options.forceRefresh);
+  if (!isCrmSessionLoggedIn()) {
+    return { ok: false, error: '로그인 후 알림을 켤 수 있습니다.' };
+  }
   if (!canUsePushNotifications()) {
     return { ok: false, error: '이 브라우저는 푸시 알림을 지원하지 않습니다.' };
   }
@@ -404,7 +566,12 @@ export async function enablePushNotifications(options = {}) {
   if (!token) return { ok: false, permission, error: '푸시 토큰을 발급받지 못했습니다.' };
 
   await registerTokenWithBackend(token);
+  const ownerUserId = getCurrentCrmUserId();
   setStoredPushToken(token);
+  if (ownerUserId) {
+    setStoredPushOwnerUserId(ownerUserId);
+    await writePushSessionMeta(ownerUserId, getCurrentCrmCompanyId());
+  }
   emitPushStatusChange({
     supported: true,
     permission,
@@ -465,6 +632,7 @@ function resolvePushDisplay(payload, defaults = {}) {
   if (!body) {
     if (data.type === 'announcement') body = '새 공지사항이 등록되었습니다.';
     else if (data.type === 'calendar-reminder') body = '일정 알림이 도착했습니다.';
+    else if (data.type === 'lead-capture') body = '새 리드가 수신되었습니다.';
     else body = '탭하여 내용을 확인하세요.';
   }
   const url = data.url || defaults.url || '/notification';
@@ -479,12 +647,14 @@ function resolvePushDisplay(payload, defaults = {}) {
 /** 앱이 열려 있을 때 수신 — 브라우저 알림으로 표시 (백그라운드는 SW가 동일 형식으로 표시) */
 export function showWebPushNotification(payload, defaults = {}) {
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return null;
-  const { title, body, url, tag, data } = resolvePushDisplay(payload, defaults);
+  const data = payload?.data || {};
+  if (!shouldShowPushForCurrentSession(data)) return null;
+  const { title, body, url, tag, data: mergedData } = resolvePushDisplay(payload, defaults);
   const n = new Notification(title, {
     body,
     icon: '/nexvia-app-icon.png',
     tag,
-    data: { ...data, url }
+    data: { ...mergedData, url }
   });
   n.onclick = () => {
     window.focus();

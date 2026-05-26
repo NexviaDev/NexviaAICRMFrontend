@@ -47,7 +47,7 @@ export default function NotificationPage() {
   /** 대표(Owner)·관리자(Admin)만 등록·수정·삭제 — 백엔드 requireOwnerOrAdmin 과 동일 */
   const canManage = useMemo(() => isAdminOrAboveRole(getStoredCrmUser()?.role), []);
 
-  const loadNotifications = useCallback(async (forcedPage) => {
+  const loadNotifications = useCallback(async (forcedPage, options = {}) => {
     const token = localStorage.getItem('crm_token');
     if (!token) {
       setRows([]);
@@ -56,6 +56,9 @@ export default function NotificationPage() {
     }
 
     const pageNum = forcedPage != null ? forcedPage : page;
+    const markSeenExcludeIds = Array.isArray(options.markSeenExcludeIds)
+      ? options.markSeenExcludeIds
+      : [];
 
     setLoading(true);
     setError('');
@@ -76,7 +79,7 @@ export default function NotificationPage() {
           limit: Number(p.limit) || PAGE_SIZE
         });
       }
-      markNotificationsAsSeen(list);
+      markNotificationsAsSeen(list, { excludeIds: markSeenExcludeIds });
     } catch (err) {
       setError(err.message || '공지사항을 불러오지 못했습니다.');
     } finally {
@@ -144,11 +147,13 @@ export default function NotificationPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '저장에 실패했습니다.');
+      const saved = data.notification;
+      const savedId = saved?._id ? String(saved._id) : '';
       setEditorOpen(false);
       setEditingId(null);
       setForm({ title: '', content: '' });
       setPage(1);
-      await loadNotifications(1);
+      await loadNotifications(1, { markSeenExcludeIds: savedId ? [savedId] : [] });
     } catch (e) {
       setError(e.message || '저장에 실패했습니다.');
     } finally {
@@ -203,8 +208,8 @@ export default function NotificationPage() {
         {error && <div className="notification-feedback notification-feedback--error">{error}</div>}
 
         <p className="notification-push-sidebar-hint">
-          스마트폰·PWA 푸시는 왼쪽 사이드바 하단 <strong>알림 아이콘</strong>으로 켜고 끌 수 있습니다. 켜 두면 새 공지·일정
-          알림이 기기 알림창에 표시됩니다.
+          스마트폰·PWA 푸시는 왼쪽 사이드바 하단 <strong>알림(종) 아이콘</strong>으로 켜고 끌 수 있습니다. 로그인한
+          계정에만 알림이 가며, <strong>공지를 작성한 본인</strong>에게도 푸시·상단 알림 점이 표시됩니다.
         </p>
 
         {editorOpen && canManage ? (
@@ -258,8 +263,8 @@ export default function NotificationPage() {
                   />
                 </label>
                 <p className="notification-editor-push-hint">
-                  사내 공지 등록·수정 저장 시, 사이드바에서 푸시 알림을 켠 같은 회사 소속에게 제목·내용 요약이 푸시로
-                  자동 발송됩니다.
+                  사내 공지 등록·수정 저장 시, 사이드바에서 푸시 알림을 켠 같은 회사 소속(작성자 본인 포함)에게 제목·내용
+                  요약이 푸시로 자동 발송됩니다.
                 </p>
                 <div className="notification-editor-submit-row">
                   <button type="button" className="notification-editor-submit" onClick={submit} disabled={saving}>

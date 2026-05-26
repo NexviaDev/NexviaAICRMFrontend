@@ -10,6 +10,7 @@ import GoogleApiTermsModal from '../login/legal-modals/GoogleApiTermsModal';
 
 import { API_BASE } from '@/config';
 import { pingBackendHealth } from '@/lib/backend-wake';
+import { clearPushSessionOnLogout } from '@/lib/push-notifications';
 import { storeUserWithDefaultSidebarTemplate } from '@/lib/list-templates';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -184,6 +185,7 @@ export default function Register() {
 
   /** DB에 사용자 없음(삭제됨)·토큰 무효 시 브라우저에 남은 세션 정리 */
   const clearStoredSession = () => {
+    void clearPushSessionOnLogout().catch(() => {});
     localStorage.removeItem('crm_token');
     localStorage.removeItem('crm_user');
   };

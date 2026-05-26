@@ -27,16 +27,11 @@ export async function fetchXlsxSheetNamesFromMergeTemplate(apiBase, getAuthHeade
 }
 
 /**
- * xlsx 양식의 시트 목록을 PDF 설정(인쇄 시트)에 반영합니다.
+ * xlsx 양식 시트 목록 조회 후 호출되던 자리 — 시트 전체를 printSheetNames에 넣으면
+ * 인쇄 영역(printAreaSelections) 없을 때 LibreOffice가 모든 시트를 PDF로보냅니다.
  * @param {object} prevOpts
- * @param {string[]} sheetNames
+ * @param {string[]} _sheetNames
  */
-export function pdfExportOptionsWithSheetNames(prevOpts, sheetNames) {
-  const names = (sheetNames || []).map((s) => String(s || '').trim()).filter(Boolean);
-  if (!names.length) return normalizeMergePdfExportOptions(prevOpts);
-  return normalizeMergePdfExportOptions({
-    ...(prevOpts && typeof prevOpts === 'object' ? prevOpts : {}),
-    printSheetMode: 'named',
-    printSheetNames: names
-  });
+export function pdfExportOptionsWithSheetNames(prevOpts, _sheetNames) {
+  return normalizeMergePdfExportOptions(prevOpts);
 }

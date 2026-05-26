@@ -1155,70 +1155,12 @@ export default function CustomerCompanyEmployees() {
           <div className="cce-mobile-cards-wrap">
             {loading ? (
               <p className="cce-mobile-cards-message">불러오는 중...</p>
-            ) : sortedItems.length === 0 ? (
+             ) : sortedItems.length === 0 ? (
               <p className="cce-mobile-cards-message">등록된 연락처가 없습니다.</p>
             ) : (
               <>
-                <div className="cce-mobile-filter-chips" role="tablist" aria-label="목록 필터">
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={mobileChipFilter === 'all'}
-                    className={`cce-mobile-chip ${mobileChipFilter === 'all' ? 'is-active' : ''}`}
-                    onClick={() => {
-                      setMobileChipFilter('all');
-                      if (assigneeMeOnly) {
-                        clearSelection();
-                        setAssigneeMeOnly(false);
-                        patchListTemplate(LIST_ID, { assigneeMeOnly: false }).catch((err) => {
-                          alert(err?.message || '저장에 실패했습니다.');
-                          setAssigneeMeOnly(true);
-                          setMobileChipFilter('assignee');
-                        });
-                      }
-                    }}
-                  >
-                    전체
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={mobileChipFilter === 'favorite'}
-                    className={`cce-mobile-chip ${mobileChipFilter === 'favorite' ? 'is-active' : ''}`}
-                    onClick={() => setMobileChipFilter('favorite')}
-                  >
-                    즐겨찾기
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={mobileChipFilter === 'assignee'}
-                    className={`cce-mobile-chip ${mobileChipFilter === 'assignee' ? 'is-active' : ''}`}
-                    onClick={() => {
-                      setMobileChipFilter('assignee');
-                      if (!assigneeMeOnly) {
-                        clearSelection();
-                        setAssigneeMeOnly(true);
-                        patchListTemplate(LIST_ID, { assigneeMeOnly: true }).catch((err) => {
-                          alert(err?.message || '저장에 실패했습니다.');
-                          setAssigneeMeOnly(false);
-                          setMobileChipFilter('all');
-                        });
-                      }
-                    }}
-                  >
-                    내 담당
-                  </button>
-                </div>
-                <div className="cce-mobile-activity-bento" aria-hidden={false}>
-                  <div className="cce-mobile-activity-card cce-mobile-activity-card--lavender">
-                    <span className="material-symbols-outlined cce-mobile-activity-icon" aria-hidden>history</span>
-                    <div>
-                      <p className="cce-mobile-activity-value">{pagination.total ?? 0}</p>
-                      <p className="cce-mobile-activity-label">전체 연락처</p>
-                    </div>
-                  </div>
-                </div>
+                
+              
                 {mobileChipFilter === 'favorite' && mobileListItems.length === 0 ? (
                   <p className="cce-mobile-cards-message">즐겨찾기 연락처가 없습니다.</p>
                 ) : (

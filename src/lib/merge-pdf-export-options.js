@@ -76,6 +76,19 @@ export function normalizeMergePdfExportOptions(raw) {
     parsedArea = buildLegacyPrintAreaString(printAreaSelections) || parsedArea;
     const sheetFromSel = [...new Set(printAreaSelections.map((s) => s.sheetName).filter(Boolean))];
     if (sheetFromSel.length) printSheetNames = sheetFromSel;
+  } else if (o.printAreaMode === 'custom' && parsedArea) {
+    const legacySheet =
+      String(o.printSheetName || '').trim() ||
+      (Array.isArray(o.printSheetNames) ? String(o.printSheetNames[0] || '').trim() : '');
+    if (legacySheet) {
+      printAreaSelections = normalizePrintAreaSelections([
+        { sheetName: legacySheet, printArea: parsedArea, printPageMode: 'all' }
+      ]);
+      parsedArea = buildLegacyPrintAreaString(printAreaSelections) || parsedArea;
+      printSheetNames = [legacySheet];
+    }
+  }
+  if (printAreaSelections.length) {
     const customPages = printAreaSelections.filter((s) => s.printPageMode === 'custom');
     if (customPages.length) {
       page = {

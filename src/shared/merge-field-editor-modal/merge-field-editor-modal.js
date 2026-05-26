@@ -134,8 +134,6 @@ export default function MergeFieldEditorModal({
                       key: '',
                       label: '',
                       example: '',
-                      multiline: false,
-                      excelSpreadLines: false,
                       valueKind: 'text',
                       excelFormat: 'general'
                     }
@@ -158,10 +156,6 @@ export default function MergeFieldEditorModal({
                     </th>
                     <th className="qdm-field-editor-th-format" title="Excel만. 셀에 {{키}}만 있을 때 표시 형식">
                       Excel 표시
-                    </th>
-                    <th>여러 줄</th>
-                    <th className="qdm-field-editor-th-excel" title="Excel(.xlsx)만 적용. {{키}}가 있는 열에서 줄마다 아래 행에 값">
-                      줄→아래 셀
                     </th>
                     <th />
                   </tr>
@@ -247,38 +241,6 @@ export default function MergeFieldEditorModal({
                             </option>
                           ))}
                         </select>
-                      </td>
-                      <td className="qdm-field-editor-td-center">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(f.multiline)}
-                          disabled={fieldSaving}
-                          onChange={(e) =>
-                            setFieldDraft((d) =>
-                              d.map((x, j) =>
-                                j === i
-                                  ? {
-                                      ...x,
-                                      multiline: e.target.checked,
-                                      excelSpreadLines: e.target.checked ? x.excelSpreadLines : false
-                                    }
-                                  : x
-                              )
-                            )
-                          }
-                        />
-                      </td>
-                      <td className="qdm-field-editor-td-center">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(f.multiline) && Boolean(f.excelSpreadLines)}
-                          disabled={!f.multiline || fieldSaving}
-                          title="Excel: 줄바꿈마다 같은 열의 다음 행(B2→B3…). Word·한 셀 줄바꿈만이면 끄기"
-                          aria-label="Excel에서 줄마다 아래 셀에 채우기"
-                          onChange={(e) =>
-                            setFieldDraft((d) => d.map((x, j) => (j === i ? { ...x, excelSpreadLines: e.target.checked } : x)))
-                          }
-                        />
                       </td>
                       <td>
                         <button

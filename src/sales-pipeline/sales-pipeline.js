@@ -79,6 +79,18 @@ function kanbanCardHeadToneClass(oppId) {
   return `sp-kanban-card-head-tone-${h % KANBAN_CARD_HEAD_TONE_COUNT}`;
 }
 
+/** 긴 값은 2열 그리드에서 1행 전체(span-full) → 이후 줄바꿈 */
+function shouldKanbanFieldSpanFullRow(colKey, text) {
+  const s = String(text || '').trim();
+  if (!s || s === '—') return false;
+  if (s.includes('\n')) return true;
+  if (s.length >= 22) return true;
+  if (colKey === 'productName' && s.length >= 12) return true;
+  if (colKey === 'title' && s.length >= 14) return true;
+  if (String(colKey).startsWith('customFields.') && s.length >= 16) return true;
+  return false;
+}
+
 /** 표 `sales-pipeline-table-panel` 과 동일 — 비관리자 마스킹 */
 const PIPELINE_KANBAN_ADMIN_ONLY_KEYS = new Set([
   'value',
@@ -349,6 +361,12 @@ export default function SalesPipeline() {
   /** Won / Lost / Abandoned 결과 구역 클릭 시 목록 모달 (인라인 펼침 대신) */
   const [dropZoneListStage, setDropZoneListStage] = useState(null);
   const searchTimer = useRef(null);
+  /** 필터 피커 옵션 로드 시 fetchData 재생성·전체 스피너 깜빡임 방지 */
+  const productFilterOptionsRef = useRef([]);
+  const assigneeFilterOptionsRef = useRef([]);
+  const listLoadStartedRef = useRef(false);
+  const productOptionsPrimedRef = useRef(false);
+  const assigneeOptionsPrimedRef = useRef(false);
   const [healthPinged, setHealthPinged] = useState(false);
   const [listMeta, setListMeta] = useState(null);
   const [stageDefinitions, setStageDefinitions] = useState([]);
@@ -368,6 +386,8 @@ export default function SalesPipeline() {
   });
   const [productFilterOptions, setProductFilterOptions] = useState([]);
   const [assigneeFilterOptions, setAssigneeFilterOptions] = useState([]);
+  productFilterOptionsRef.current = productFilterOptions;
+  assigneeFilterOptionsRef.current = assigneeFilterOptions;
   /** listTemplates.salesPipeline.viewMode — 칸반 / 표 */
   const [pipelineViewMode, setPipelineViewMode] = useState(() => {
     const v = getMergedSalesPipelineTemplate().viewMode;
@@ -438,6 +458,8 @@ export default function SalesPipeline() {
        * productId / assignedTo 가 비어 있으면 API는 ‘전체’로 본다.
        * 피커에 올라온 항목만 전부 선택한 경우도 동일하게 취급한다(피커 밖 id가 빠지는 버그 방지).
        */
+      const productFilterOptions = productFilterOptionsRef.current;
+      const assigneeFilterOptions = assigneeFilterOptionsRef.current;
       let productIdsForApi = filterProductIds;
       if (productFilterOptions.length > 0 && filterProductIds.length > 0) {
         const allProductIds = new Set(productFilterOptions.map((p) => String(p._id)));
@@ -482,9 +504,7 @@ export default function SalesPipeline() {
     filterMonth,
     filterScheduleField,
     filterProductIds,
-    filterAssigneeIds,
-    productFilterOptions,
-    assigneeFilterOptions
+    filterAssigneeIds
   ]);
 
   /** 기회 모달 저장·삭제 후 전체 로딩 없이 목록만 갱신 (이미 보이는 행만 로컬 병합) */
@@ -614,11 +634,33 @@ export default function SalesPipeline() {
 
   useEffect(() => {
     if (!healthPinged) {
-      fetch(`${API_BASE}/health`).finally(() => setHealthPinged(true));
-      return;
+      let cancelled = false;
+      fetch(`${API_BASE}/health`).finally(() => {
+        if (!cancelled) setHealthPinged(true);
+      });
+      return () => {
+        cancelled = true;
+      };
     }
-    fetchData();
+    const silent = listLoadStartedRef.current;
+    listLoadStartedRef.current = true;
+    fetchData({ silent });
   }, [fetchData, healthPinged]);
+
+  /** 제품·담당자 피커 옵션 로드 후 API 파라미터 정규화만 silent 재조회 */
+  useEffect(() => {
+    if (!healthPinged || !listLoadStartedRef.current) return;
+    let needSilent = false;
+    if (productFilterOptions.length > 0 && !productOptionsPrimedRef.current) {
+      productOptionsPrimedRef.current = true;
+      needSilent = true;
+    }
+    if (assigneeFilterOptions.length > 0 && !assigneeOptionsPrimedRef.current) {
+      assigneeOptionsPrimedRef.current = true;
+      needSilent = true;
+    }
+    if (needSilent) fetchData({ silent: true });
+  }, [healthPinged, productFilterOptions, assigneeFilterOptions, fetchData]);
 
   useEffect(() => {
     const onPipelineRefresh = () => {
@@ -746,17 +788,6 @@ export default function SalesPipeline() {
     return `${filterProductIds.length}개 선택`;
   }, [filterProductIds, productFilterOptions]);
 
-  const mineAssigneeFilterActive = Boolean(
-    pipelineViewerId &&
-    filterAssigneeIds.length === 1 &&
-    filterAssigneeIds[0] === pipelineViewerId
-  );
-
-  const clearFilterAssigneeIds = useCallback(() => {
-    setFilterAssigneeIds([]);
-    persistAssigneeMeTemplate(false);
-  }, [persistAssigneeMeTemplate]);
-
   const toggleFilterAssigneeId = useCallback(
     (id) => {
       const sid = String(id).trim();
@@ -770,13 +801,6 @@ export default function SalesPipeline() {
     },
     [persistAssigneeMeTemplate]
   );
-
-  const setFilterAssigneeIdsMineOnly = useCallback(() => {
-    const myId = getPipelineViewerUserId();
-    if (!myId) return;
-    setFilterAssigneeIds([myId]);
-    persistAssigneeMeTemplate(true);
-  }, [persistAssigneeMeTemplate]);
 
   const toggleFilterProductId = useCallback((pid) => {
     const sid = String(pid).trim();
@@ -917,18 +941,6 @@ export default function SalesPipeline() {
     setMobileListStage((prev) => (prev && boardStages.includes(prev) ? prev : boardStages[0]));
   }, [boardStages]);
 
-  const totalPipelineValue = useMemo(
-    () => boardStages.reduce((sum, st) => sum + (Number(totals[st]) || 0), 0),
-    [boardStages, totals]
-  );
-
-  const winRatePercent = useMemo(() => {
-    const w = (grouped.Won || []).length;
-    const l = (grouped.Lost || []).length;
-    if (w + l === 0) return null;
-    return Math.round((100 * w) / (w + l));
-  }, [grouped]);
-
   /** 관리자·대표: 금액·단계 관리·기회 삭제 등 (Manager 제외) */
   const canViewAdminContent = isAdminOrAboveRole(getStoredCrmUser()?.role);
 
@@ -991,15 +1003,16 @@ export default function SalesPipeline() {
     const fp = stageForecastPercent[opp.stage];
     const patching = String(stagePatchingId) === String(opp._id);
     const colKeys = pipelineDisplayColumnKeys;
-    const headToneClass = kanbanCardHeadToneClass(opp._id);
+    const accentTone = stageToneByKey[opp.stage] || 'tone-0';
     return (
       <div
         key={opp._id}
-        className={`sp-card sp-card--lucid${patching ? ' sp-card--stage-patching' : ''}`}
+        className={`sp-card sp-card--lucid sp-card--lucid-accent-${accentTone}${patching ? ' sp-card--stage-patching' : ''}`}
         draggable={!patching}
         onDragStart={(e) => handleDragStart(e, opp._id)}
         onDragEnd={handleDragEnd}
         onClick={() => openEditModal(opp._id)}
+        role="listitem"
       >
         {canViewAdminContent ? (
           <button
@@ -1014,35 +1027,42 @@ export default function SalesPipeline() {
             <span className="material-symbols-outlined">delete</span>
           </button>
         ) : null}
-        {colKeys.map((colKey, idx, keys) => {
-          const text = pipelineKanbanOppCellText(colKey, opp, fp, stageLabels, canViewAdminContent);
-          const rowSpanFull = keys.length % 2 === 1 && idx === keys.length - 1;
-          const kStyle = listColumnValueInlineStyle(pipelineListTemplate.columnCellStyles, colKey);
-          const isProductNameCol = colKey === 'productName';
-          return (
-            <div
-              key={colKey}
-              className={
-                rowSpanFull
-                  ? `sp-kanban-card-field sp-kanban-card-field--full${isProductNameCol ? ' sp-kanban-card-field--product-name' : ''}`
-                  : idx === 0
-                    ? `sp-kanban-card-field sp-kanban-card-field--head ${headToneClass}${isProductNameCol ? ' sp-kanban-card-field--product-name' : ''}`
-                    : isProductNameCol
-                      ? 'sp-kanban-card-field sp-kanban-card-field--product-name'
-                      : 'sp-kanban-card-field'
-              }
-            >
-              <div className="sp-kanban-card-field-label">
-                {columnHeaderLabel(colKey, scheduleFieldLabelByKey, financeFieldLabelByKey)}
+        <div className="sp-kanban-card-grid">
+          {colKeys.map((colKey, idx, keys) => {
+            const text = pipelineKanbanOppCellText(colKey, opp, fp, stageLabels, canViewAdminContent);
+            const spanFull =
+              idx === 0 ||
+              shouldKanbanFieldSpanFullRow(colKey, text) ||
+              (keys.length % 2 === 1 && idx === keys.length - 1);
+            const kStyle = listColumnValueInlineStyle(pipelineListTemplate.columnCellStyles, colKey);
+            const isProductNameCol = colKey === 'productName';
+            const label = columnHeaderLabel(colKey, scheduleFieldLabelByKey, financeFieldLabelByKey);
+            return (
+              <div
+                key={colKey}
+                className={[
+                  'sp-kanban-card-field',
+                  idx === 0 ? `sp-kanban-card-field--head ${kanbanCardHeadToneClass(opp._id)}` : '',
+                  spanFull ? 'sp-kanban-card-field--full' : '',
+                  isProductNameCol ? 'sp-kanban-card-field--product-name' : '',
+                  spanFull ? 'sp-kanban-card-field--wrap' : ''
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+              >
+                <div className="sp-kanban-card-field-label">{label}</div>
+                <div className="sp-kanban-card-field-val" title={text === '' ? undefined : text}>
+                  <span
+                    className={`sp-kanban-card-field-val-inner${spanFull ? ' sp-kanban-card-field-val-inner--wrap' : ''}`}
+                    style={kStyle || undefined}
+                  >
+                    {text === '' ? '\u00A0' : text}
+                  </span>
+                </div>
               </div>
-              <div className="sp-kanban-card-field-val" title={text === '' ? undefined : text}>
-                <span className="sp-kanban-card-field-val-inner" style={kStyle || undefined}>
-                  {text === '' ? '\u00A0' : text}
-                </span>
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     );
   };
@@ -1254,61 +1274,6 @@ export default function SalesPipeline() {
         <>
           {pipelineViewMode === 'kanban' ? (
             <>
-              <section className="sp-mobile-hero sp-mobile-only" aria-label="파이프라인 요약">
-                <h2 className="sp-mobile-hero-title">세일즈 파이프라인</h2>
-                <p className="sp-mobile-hero-desc">진행 중인 기회를 단계별로 관리합니다</p>
-                <div className="sp-mobile-bento">
-                  <div className="sp-mobile-bento-card sp-mobile-bento-card--mint">
-                    <span className="material-symbols-outlined" aria-hidden>payments</span>
-                    <div>
-                      <p className="sp-mobile-bento-label">파이프라인 합계</p>
-                      <p className="sp-mobile-bento-value">
-                        {canViewAdminContent
-                          ? formatCurrency(totalPipelineValue, (grouped[boardStages[0]] || [])[0]?.currency || 'KRW')
-                          : '—'}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="sp-mobile-bento-card sp-mobile-bento-card--lavender">
-                    <span className="material-symbols-outlined" aria-hidden>trending_up</span>
-                    <div>
-                      <p className="sp-mobile-bento-label">수주 승률</p>
-                      <p className="sp-mobile-bento-value">
-                        {winRatePercent != null ? `${winRatePercent}%` : '—'}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              <section className="sp-mobile-mine-wrap sp-mobile-only" aria-label="내 담당 필터">
-                <div className="sp-mobile-mine-chips" role="tablist">
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={!mineAssigneeFilterActive}
-                    className={`sp-mobile-mine-chip ${!mineAssigneeFilterActive ? 'is-active' : ''}`}
-                    onClick={() => {
-                      clearFilterAssigneeIds();
-                    }}
-                  >
-                    전체
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={mineAssigneeFilterActive}
-                    className={`sp-mobile-mine-chip ${mineAssigneeFilterActive ? 'is-active' : ''}`}
-                    onClick={() => {
-                      if (!pipelineViewerId) return;
-                      setFilterAssigneeIdsMineOnly();
-                    }}
-                  >
-                    내 담당
-                  </button>
-                </div>
-              </section>
-
               <section className="sp-mobile-chips-wrap sp-mobile-only" aria-label="단계 필터">
                 <div className="sp-mobile-chips" role="tablist">
                   {boardStages.map((stage) => (
@@ -1431,46 +1396,48 @@ export default function SalesPipeline() {
                     return (
                       <div
                         key={`col-${stage}`}
-                        className="sp-kanban-col"
+                        className={`sp-kanban-col sp-kanban-col--${stageToneByKey[stage] || 'tone-0'}`}
                         onDragOver={handleDragOver}
                         onDragLeave={handleDragLeave}
                         onDrop={(e) => handleDrop(e, stage)}
                       >
                         <div className="sp-kanban-col-head">
-                          <div className="sp-kanban-col-head-main">
-                            <span className={`sp-kanban-dot ${stageToneByKey[stage] || 'tone-0'}`} aria-hidden />
-                            <h3 className="sp-kanban-col-title">{stageLabels[stage] ?? stage}</h3>
-                            <span className="sp-kanban-count">{items.length}</span>
+                          <div className="sp-kanban-col-head-row">
+                            <div className="sp-kanban-col-head-main">
+                              <span className={`sp-kanban-dot ${stageToneByKey[stage] || 'tone-0'}`} aria-hidden />
+                              <h3 className="sp-kanban-col-title">{stageLabels[stage] ?? stage}</h3>
+                              <span className="sp-kanban-count">{items.length}</span>
+                            </div>
+                            <button
+                              type="button"
+                              className="sp-kanban-add"
+                              title="이 단계에 추가"
+                              onClick={() => openAddModal(stage)}
+                              aria-label={`${stageLabels[stage] ?? stage}에 기회 추가`}
+                            >
+                              <span className="material-symbols-outlined">add</span>
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            className="sp-kanban-add"
-                            title="이 단계에 추가"
-                            onClick={() => openAddModal(stage)}
-                            aria-label={`${stageLabels[stage] ?? stage}에 기회 추가`}
-                          >
-                            <span className="material-symbols-outlined">add</span>
-                          </button>
+                          {stageForecastPercent[stage] != null || forecastExpectedSum != null ? (
+                            <div className="sp-kanban-col-head-meta">
+                              {stageForecastPercent[stage] != null ? (
+                                <span className="sp-kanban-forecast" title="Forecast (expected probability)">
+                                  Forecast {stageForecastPercent[stage]}%
+                                </span>
+                              ) : (
+                                <span className="sp-kanban-forecast-spacer" aria-hidden />
+                              )}
+                              {forecastExpectedSum != null ? (
+                                <span
+                                  className="sp-kanban-forecast-expected"
+                                  title={`이 단계 카드 금액 합 × Forecast ${fp}%`}
+                                >
+                                  예상 매출 {formatCurrency(forecastExpectedSum, colCurrency)}
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : null}
                         </div>
-                        {stageForecastPercent[stage] != null || forecastExpectedSum != null ? (
-                          <div className="sp-kanban-forecast-row">
-                            {stageForecastPercent[stage] != null ? (
-                              <p className="sp-kanban-forecast" title="Forecast (expected probability)">
-                                Forecast {stageForecastPercent[stage]}%
-                              </p>
-                            ) : (
-                              <span className="sp-kanban-forecast-spacer" aria-hidden />
-                            )}
-                            {forecastExpectedSum != null ? (
-                              <p
-                                className="sp-kanban-forecast-expected"
-                                title={`이 단계 카드 금액 합 × Forecast ${fp}%`}
-                              >
-                                예상 매출 {formatCurrency(forecastExpectedSum, colCurrency)}
-                              </p>
-                            ) : null}
-                          </div>
-                        ) : null}
                         <div className="sp-kanban-list-panel">
                           <div className="sp-kanban-cards" role="list">
                             {items.length === 0 ? (

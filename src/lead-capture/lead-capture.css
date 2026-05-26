@@ -288,6 +288,107 @@
   color: var(--text-muted);
 }
 
+/* 연락처·이메일 — customer-company-employees와 동일 톤 */
+.lc-contact-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.lc-email-cell {
+  min-width: 0;
+}
+
+.lc-contact-text {
+  min-width: 0;
+  word-break: break-all;
+}
+
+.lc-phone-action-btns {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.lc-phone-call-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: 999px;
+  background: rgba(167, 214, 220, 0.38);
+  color: #4a8a94;
+  text-decoration: none;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.lc-phone-call-btn:hover {
+  background: rgba(167, 214, 220, 0.48);
+  color: #3d737d;
+  transform: scale(1.05);
+}
+
+.lc-phone-call-btn .material-symbols-outlined {
+  font-size: 1.1rem;
+}
+
+.lc-phone-sms-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  border: none;
+  border-radius: 999px;
+  background: rgba(212, 196, 232, 0.38);
+  color: #6f5a8f;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+  padding: 0;
+}
+
+.lc-phone-sms-btn:hover {
+  background: rgba(212, 196, 232, 0.58);
+  color: #4f3d6b;
+  transform: scale(1.05);
+}
+
+.lc-phone-sms-btn .material-symbols-outlined {
+  font-size: 1.1rem;
+}
+
+.lc-email-compose-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.85rem;
+  height: 1.85rem;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: rgba(187, 210, 247, 0.45);
+  color: #4a6fa5;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+
+.lc-email-compose-btn:hover {
+  background: rgba(187, 210, 247, 0.72);
+  color: #3d5a87;
+  transform: scale(1.05);
+}
+
+.lc-email-compose-btn .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
 .lead-capture-view-image-btn {
   padding: 0.25rem 0.5rem;
   font-size: 0.8125rem;

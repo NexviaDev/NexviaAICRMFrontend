@@ -365,6 +365,9 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
   const [googleCalendarList, setGoogleCalendarList] = useState([]);
   const [googleCalDropdownOpen, setGoogleCalDropdownOpen] = useState(false);
   const googleCalDropdownRef = useRef(null);
+  const [isCompactMonth, setIsCompactMonth] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches
+  );
   const [headerSearch, setHeaderSearch] = useState('');
   const [selectedGoogleCalendarIds, setSelectedGoogleCalendarIds] = useState(() => {
     try {
@@ -576,6 +579,14 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [googleCalDropdownOpen]);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)');
+    const onChange = () => setIsCompactMonth(mq.matches);
+    onChange();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
 
   /** 개인 일정 탭: Google에 연결된 캘린더 목록(분류) — CalendarList API */
   useEffect(() => {
@@ -1007,6 +1018,7 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
   const monthTitle = `${current.year}년 ${current.month + 1}월`;
   const dayTitle = formatDayViewTitle(current.year, current.month, selectedDay);
   const weekTitle = formatWeekRangeTitle(weekViewStart);
+  const maxEventsInDayCell = isCompactMonth ? 2 : 5;
   return (
     <div className={`page calendar-page${embedded ? ' calendar-page--embedded' : ''}`}>
       {!embedded && (
@@ -1078,33 +1090,35 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
               </div>
             </div>
             <div className="calendar-hero-aside">
-              <div className="calendar-view-tabs" role="tablist" aria-label="보기 방식">
-                {VIEW_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.key}
-                    type="button"
-                    role="tab"
-                    aria-selected={viewMode === opt.key}
-                    className={`calendar-view-tab ${viewMode === opt.key ? 'active' : ''}`}
-                    onClick={() => applyCalendarViewMode(opt.key)}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-              <div className="calendar-filter-tabs" role="tablist" aria-label="일정 범위">
-                {FILTER_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.key}
-                    type="button"
-                    role="tab"
-                    aria-selected={activeFilter === opt.key}
-                    className={`calendar-filter-tab ${activeFilter === opt.key ? 'active' : ''}`}
-                    onClick={() => setActiveFilter(opt.key)}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
+              <div className="calendar-hero-tabs-row">
+                <div className="calendar-view-tabs" role="tablist" aria-label="보기 방식">
+                  {VIEW_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      role="tab"
+                      aria-selected={viewMode === opt.key}
+                      className={`calendar-view-tab ${viewMode === opt.key ? 'active' : ''}`}
+                      onClick={() => applyCalendarViewMode(opt.key)}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="calendar-filter-tabs" role="tablist" aria-label="일정 범위">
+                  {FILTER_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      role="tab"
+                      aria-selected={activeFilter === opt.key}
+                      className={`calendar-filter-tab ${activeFilter === opt.key ? 'active' : ''}`}
+                      onClick={() => setActiveFilter(opt.key)}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
               </div>
               {activeFilter === 'mine' && googleCalendarList.length > 0 && (
                 <div
@@ -1169,7 +1183,7 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
 
           <div className={`calendar-panel-card${embedded ? ' calendar-panel-card--embedded' : ''}`}>
             {viewMode === 'month' ? (
-            <div className="calendar-grid">
+            <div className={`calendar-grid${isCompactMonth ? ' calendar-grid--fit' : ''}`}>
             <div className="calendar-weekday-row">
               {WEEKDAYS.map((w) => (
                 <div key={w} className="calendar-weekday">{w}</div>
@@ -1178,7 +1192,7 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
             {weeks.map((weekDays, weekIndex) => {
               const weekSegments = segmentsByWeek[weekIndex] || [];
               const weekSegmentRows = weekSegments.reduce((max, seg) => Math.max(max, (seg.rowIndex ?? 0) + 1), 0);
-              const weekSegmentPaddingRem = weekSegmentRows > 0 ? weekSegmentRows * 1.5 : 0;
+              const weekSegmentPaddingRem = weekSegmentRows > 0 ? weekSegmentRows * (isCompactMonth ? 1.05 : 1.5) : 0;
               return (
                 <div key={`week-${weekIndex}`} className="calendar-week-row">
                   <div className="calendar-week-days">
@@ -1229,7 +1243,7 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
                           {d != null && (
                             <div className="calendar-day-body" style={weekSegmentRows > 0 ? { paddingTop: `${weekSegmentPaddingRem}rem` } : undefined}>
                               <ul className={`calendar-events ${weekSegmentRows > 0 ? 'has-segments' : ''}`}>
-                                {evs.slice(0, 5).map((entry, evIdx) => {
+                                {evs.slice(0, maxEventsInDayCell).map((entry, evIdx) => {
                                   const ev = entry.event;
                                   const style = getEventStyle(ev);
                                   const isGoogle = ev._source === 'google';
@@ -1251,16 +1265,16 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
                                     </li>
                                   );
                                 })}
-                                {evs.length > 5 && (
+                                {evs.length > maxEventsInDayCell && (
                                   <li className="calendar-more-item">
                                     <button type="button" className="calendar-more-btn" onClick={(e) => { e.stopPropagation(); openDayList(current.year, current.month, d); }}>
-                                      +{evs.length - 5} 더 보기
+                                      +{evs.length - maxEventsInDayCell} 더 보기
                                     </button>
                                   </li>
                                 )}
-                                {evs.length <= 5 &&
+                                {evs.length <= maxEventsInDayCell &&
                                   totalDayEvents.length > evs.length &&
-                                  totalDayEvents.length > 2 && (
+                                  totalDayEvents.length > (isCompactMonth ? 1 : 2) && (
                                   <li className="calendar-more-item">
                                     <button type="button" className="calendar-more-btn" onClick={(e) => { e.stopPropagation(); openDayList(current.year, current.month, d); }}>
                                       전체 {totalDayEvents.length}개 보기

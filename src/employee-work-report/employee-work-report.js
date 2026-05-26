@@ -333,33 +333,45 @@ export default function EmployeeWorkReport() {
   return (
     <div className="page work-report-page">
       <header className="page-header work-report-header">
-        <h2>직원 업무 보고</h2>
-        <div className="header-search">
-          <span className="material-symbols-outlined work-report-user-select-icon">person_search</span>
-          <select
-            className="work-report-user-select"
-            value={selectedUserId}
-            onChange={(e) => setSelectedUserId(e.target.value)}
-            aria-label="직원 선택"
-          >
-            {companyUsers.map((u) => {
-              const uid = String(u.id || u._id || '');
-              return (
-                <option key={uid} value={uid}>
-                  {u.name || u.email || uid}
-                </option>
-              );
-            })}
-          </select>
+        <div className="work-report-header-row work-report-header-row--title">
+          <h2>직원 업무 보고</h2>
         </div>
-        <div className="header-actions">
-          <div className="date-picker">
-            <span className="material-symbols-outlined">calendar_month</span>
-            <span>{rangeText}</span>
-            <span className="material-symbols-outlined">expand_more</span>
+        <div className="work-report-header-row work-report-header-row--tools">
+          <div className="header-search work-report-header-search">
+            <span className="material-symbols-outlined work-report-user-select-icon" aria-hidden>
+              person_search
+            </span>
+            <select
+              className="work-report-user-select"
+              value={selectedUserId}
+              onChange={(e) => setSelectedUserId(e.target.value)}
+              aria-label="직원 선택"
+            >
+              {companyUsers.map((u) => {
+                const uid = String(u.id || u._id || '');
+                return (
+                  <option key={uid} value={uid}>
+                    {u.name || u.email || uid}
+                  </option>
+                );
+              })}
+            </select>
           </div>
-          <button type="button" className="icon-btn"><span className="material-symbols-outlined">download</span></button>
-          <PageHeaderNotifyChat noWrapper buttonClassName="icon-btn" />
+          <div className="header-actions work-report-header-actions">
+            <div className="date-picker" title={rangeText}>
+              <span className="material-symbols-outlined" aria-hidden>
+                calendar_month
+              </span>
+              <span className="work-report-date-range">{rangeText}</span>
+              <span className="material-symbols-outlined" aria-hidden>
+                expand_more
+              </span>
+            </div>
+            <button type="button" className="icon-btn" aria-label="다운로드">
+              <span className="material-symbols-outlined">download</span>
+            </button>
+            <PageHeaderNotifyChat noWrapper buttonClassName="icon-btn" />
+          </div>
         </div>
       </header>
 

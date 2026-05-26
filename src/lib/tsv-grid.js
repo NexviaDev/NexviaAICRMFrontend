@@ -60,3 +60,8 @@ export function parseTsvGrid(text) {
   if (row.some((c) => c !== '') || row.length > 1) grid.push(row);
   return grid;
 }
+
+/** 한 열·여러 행 붙여넣기(메모장 줄 목록 등) — 시트 여러 칸이 아니라 한 칸 값의 줄바꿈 */
+export function isSingleColumnMultilinePaste(grid) {
+  return Array.isArray(grid) && grid.length > 1 && grid.every((row) => Array.isArray(row) && row.length === 1);
+}

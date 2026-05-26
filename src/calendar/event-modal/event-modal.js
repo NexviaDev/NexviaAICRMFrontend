@@ -75,10 +75,79 @@ function getAuthHeader() {
 
 function todayStr() {
   const d = new Date();
-  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  return formatLocalYmd(d);
 }
 
 function defaultTime() { return '09:00'; }
+
+function formatLocalYmd(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function formatLocalHm(d) {
+  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+}
+
+function defaultAddScheduleFromLocalNow() {
+  const start = new Date();
+  start.setSeconds(0, 0);
+  const end = new Date(start.getTime() + 60 * 60 * 1000);
+  return {
+    startDate: formatLocalYmd(start),
+    startTime: formatLocalHm(start),
+    endDate: formatLocalYmd(end),
+    endTime: formatLocalHm(end)
+  };
+}
+
+function time24ToParts(time) {
+  const m = String(time || '').match(/^(\d{1,2}):([0-5]\d)$/);
+  const hour24 = m ? Math.min(23, Math.max(0, Number(m[1]))) : 9;
+  const minute = m ? m[2] : '00';
+  const period = hour24 >= 12 ? 'PM' : 'AM';
+  const hour12 = hour24 % 12 || 12;
+  return { period, text: `${String(hour12).padStart(2, '0')}:${minute}`, hour12, minute };
+}
+
+function timePartsTo24(period, hour12, minute) {
+  const h12 = Math.min(12, Math.max(1, Number(hour12) || 12));
+  const mm = String(Math.min(59, Math.max(0, Number(minute) || 0))).padStart(2, '0');
+  let h24 = h12 % 12;
+  if (period === 'PM') h24 += 12;
+  return `${String(h24).padStart(2, '0')}:${mm}`;
+}
+
+function timeInputDigits(value) {
+  return String(value || '').replace(/\D/g, '').slice(0, 4);
+}
+
+function formatTimeDigits(digits) {
+  const safe = timeInputDigits(digits);
+  if (safe.length <= 2) return safe;
+  return `${safe.slice(0, safe.length - 2)}:${safe.slice(-2)}`;
+}
+
+function parseTimeDigitsInput(value, fallbackPeriod = 'AM') {
+  const digits = timeInputDigits(value);
+  if (!digits) return null;
+  let hourText;
+  let minute;
+  if (digits.length <= 2) {
+    hourText = digits;
+    minute = '00';
+  } else {
+    hourText = digits.slice(0, digits.length - 2);
+    minute = digits.slice(-2);
+  }
+  const hourInput = Number(hourText);
+  const minuteInput = Number(minute);
+  if (!Number.isFinite(hourInput) || !Number.isFinite(minuteInput) || minuteInput > 59) return null;
+  if (digits.length === 4 && hourInput >= 0 && hourInput <= 23) {
+    return time24ToParts(`${String(hourInput).padStart(2, '0')}:${String(minuteInput).padStart(2, '0')}`);
+  }
+  if (hourInput < 1 || hourInput > 12) return null;
+  return time24ToParts(timePartsTo24(fallbackPeriod, hourInput, minuteInput));
+}
 
 /** 설명 보기: http(s) URL을 하이퍼링크로 표시 (회의 일지 링크 등) */
 function linkifyLine(line, lineKey) {
@@ -329,16 +398,19 @@ export default function EventModal({
   const realId = isGoogle ? extractGoogleId(eventId) : eventId;
   const [mode, setMode] = useState(isAdd ? 'add' : (isEdit ? 'edit' : 'view'));
   const [event, setEvent] = useState(null);
-  const [form, setForm] = useState(() => ({
-    title: '', description: '', color: '', allDay: false,
-    startDate: todayStr(), startTime: defaultTime(),
-    endDate: todayStr(), endTime: '10:00',
-    visibility: 'company', participants: [],
-    relatedCustomerCompany: null,
-    relatedContactPerson: null,
-    reminderEnabled: true,
-    reminderMinutesBefore: 10
-  }));
+  const [form, setForm] = useState(() => {
+    const addSchedule = defaultAddScheduleFromLocalNow();
+    return {
+      title: '', description: '', color: '', allDay: false,
+      startDate: addSchedule.startDate, startTime: addSchedule.startTime,
+      endDate: addSchedule.endDate, endTime: addSchedule.endTime,
+      visibility: 'company', participants: [],
+      relatedCustomerCompany: null,
+      relatedContactPerson: null,
+      reminderEnabled: true,
+      reminderMinutesBefore: 10
+    };
+  });
   const [loading, setLoading] = useState(!isAdd);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -353,6 +425,13 @@ export default function EventModal({
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [employeeSearchResults, setEmployeeSearchResults] = useState([]);
   const [employeeSearchLoading, setEmployeeSearchLoading] = useState(false);
+  const [timeDrafts, setTimeDrafts] = useState(() => {
+    const addSchedule = defaultAddScheduleFromLocalNow();
+    return {
+      startTime: time24ToParts(addSchedule.startTime).text,
+      endTime: time24ToParts(addSchedule.endTime).text
+    };
+  });
   /** 회사 일정 푸시: null=확인 중, true/false=사이드바 알림(종) 등록 여부 */
   const [pushAlarmRegistered, setPushAlarmRegistered] = useState(null);
 
@@ -361,18 +440,12 @@ export default function EventModal({
     : event ? (currentUser && String(event.userId) === String(currentUser._id)) : true;
 
   useEffect(() => {
-    if (!isAdd || !initialDate || !/^\d{4}-\d{2}-\d{2}$/.test(initialDate)) return;
-    const endOk = initialDateEnd && /^\d{4}-\d{2}-\d{2}$/.test(initialDateEnd);
-    const endDate = endOk ? initialDateEnd : initialDate;
+    if (!isAdd || (initialAllDay !== true && initialAllDay !== false)) return;
     setForm((prev) => ({
       ...prev,
-      startDate: initialDate,
-      endDate,
-      ...(initialAllDay === true || initialAllDay === false ? { allDay: initialAllDay } : {}),
-      ...(initialStartTime && /^\d{2}:\d{2}$/.test(initialStartTime) ? { startTime: initialStartTime } : {}),
-      ...(initialEndTime && /^\d{2}:\d{2}$/.test(initialEndTime) ? { endTime: initialEndTime } : {})
+      allDay: initialAllDay
     }));
-  }, [isAdd, initialDate, initialDateEnd, initialAllDay, initialStartTime, initialEndTime]);
+  }, [isAdd, initialAllDay]);
 
   useEffect(() => {
     if (!isAdd && isGoogle) return;
@@ -465,6 +538,13 @@ export default function EventModal({
     window.addEventListener(CRM_PUSH_STATUS_EVENT, onPushStatus);
     return () => window.removeEventListener(CRM_PUSH_STATUS_EVENT, onPushStatus);
   }, [isPersonal, isGoogle, refreshPushAlarmStatus]);
+
+  useEffect(() => {
+    setTimeDrafts({
+      startTime: time24ToParts(form.startTime || defaultTime()).text,
+      endTime: time24ToParts(form.endTime || '10:00').text
+    });
+  }, [form.startTime, form.endTime]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -633,6 +713,40 @@ export default function EventModal({
       }
       return next;
     });
+    setError('');
+  };
+
+  const handleTimePeriodChange = (name, period) => {
+    setForm((prev) => {
+      const parts = time24ToParts(prev[name] || (name === 'startTime' ? defaultTime() : '10:00'));
+      return { ...prev, [name]: timePartsTo24(period, parts.hour12, parts.minute) };
+    });
+    setError('');
+  };
+
+  const handleTimeTextChange = (name, value) => {
+    const digits = timeInputDigits(value);
+    setTimeDrafts((prev) => ({ ...prev, [name]: formatTimeDigits(digits) }));
+    if (digits.length !== 4) return;
+    const currentPeriod = time24ToParts(form[name] || (name === 'startTime' ? defaultTime() : '10:00')).period;
+    const parsed = parseTimeDigitsInput(digits, currentPeriod);
+    if (!parsed) return;
+    setForm((prev) => ({ ...prev, [name]: timePartsTo24(parsed.period, parsed.hour12, parsed.minute) }));
+    setTimeDrafts((prev) => ({ ...prev, [name]: parsed.text }));
+    setError('');
+  };
+
+  const handleTimeTextBlur = (name) => {
+    const fallbackTime = name === 'startTime' ? defaultTime() : '10:00';
+    const current = form[name] || fallbackTime;
+    const currentParts = time24ToParts(current);
+    const parsed = parseTimeDigitsInput(timeDrafts[name], currentParts.period);
+    if (!parsed) {
+      setTimeDrafts((prev) => ({ ...prev, [name]: currentParts.text }));
+      return;
+    }
+    setForm((prev) => ({ ...prev, [name]: timePartsTo24(parsed.period, parsed.hour12, parsed.minute) }));
+    setTimeDrafts((prev) => ({ ...prev, [name]: parsed.text }));
     setError('');
   };
 
@@ -948,8 +1062,67 @@ export default function EventModal({
                     </div>
                   ) : (
                     <>
-                      <div className="event-modal-field"><label>시작 일시</label><div className="event-modal-row"><input type="date" name="startDate" value={form.startDate} onChange={handleChange} /><input type="time" name="startTime" value={form.startTime} onChange={handleChange} /></div></div>
-                      <div className="event-modal-field"><label>종료 일시</label><div className="event-modal-row"><input type="date" name="endDate" value={form.endDate || form.startDate} onChange={handleChange} min={form.startDate} /><input type="time" name="endTime" value={form.endTime} onChange={handleChange} /></div></div>
+                      <div className="event-modal-field">
+                        <label>시작 일시</label>
+                        <div className="event-modal-row event-modal-datetime-row">
+                          <input type="date" name="startDate" value={form.startDate} onChange={handleChange} />
+                          <div className="event-modal-time-input">
+                            <select
+                              aria-label="시작 오전/오후"
+                              value={time24ToParts(form.startTime).period}
+                              onChange={(e) => handleTimePeriodChange('startTime', e.target.value)}
+                            >
+                              <option value="AM">오전</option>
+                              <option value="PM">오후</option>
+                            </select>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]{1,2}|[0-9]{1,2}:[0-5][0-9]"
+                              title="예: 1000 또는 10:00"
+                              maxLength={5}
+                              name="startTimeText"
+                              value={timeDrafts.startTime}
+                              onChange={(e) => handleTimeTextChange('startTime', e.target.value)}
+                              onFocus={(e) => e.target.select()}
+                              onBlur={() => handleTimeTextBlur('startTime')}
+                              placeholder="예: 0200 또는 1400"
+                              aria-label="시작 시간"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="event-modal-field">
+                        <label>종료 일시</label>
+                        <div className="event-modal-row event-modal-datetime-row">
+                          <input type="date" name="endDate" value={form.endDate || form.startDate} onChange={handleChange} min={form.startDate} />
+                          <div className="event-modal-time-input">
+                            <select
+                              aria-label="종료 오전/오후"
+                              value={time24ToParts(form.endTime).period}
+                              onChange={(e) => handleTimePeriodChange('endTime', e.target.value)}
+                            >
+                              <option value="AM">오전</option>
+                              <option value="PM">오후</option>
+                            </select>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]{1,2}|[0-9]{1,2}:[0-5][0-9]"
+                              title="예: 1500 또는 03:00"
+                              maxLength={5}
+                              name="endTimeText"
+                              value={timeDrafts.endTime}
+                              onChange={(e) => handleTimeTextChange('endTime', e.target.value)}
+                              onFocus={(e) => e.target.select()}
+                              onBlur={() => handleTimeTextBlur('endTime')}
+                              placeholder="예: 0300 또는 1500"
+                              aria-label="종료 시간"
+                            />
+                          </div>
+                        </div>
+                        <p className="event-modal-time-hint">숫자만 입력하면 콜론(:)과 오전/오후가 자동으로 맞춰집니다.</p>
+                      </div>
                     </>
                   )}
                 </section>

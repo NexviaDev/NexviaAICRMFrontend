@@ -57,7 +57,7 @@ import {
   mapApiFieldsToEditorDraft,
   MERGE_FIELD_PRESET_NAME_MAX
 } from '@/lib/merge-field-guide-payload';
-import { parseTsvGrid } from '@/lib/tsv-grid';
+import { parseTsvGrid, isSingleColumnMultilinePaste } from '@/lib/tsv-grid';
 import {
   MERGE_DATA_SHEET_URL_PARAM,
   MERGE_DATA_SHEET_URL_VALUE,
@@ -381,7 +381,7 @@ function fieldSignature(fields) {
   return fields
     .map(
       (f) =>
-        `${f.key}:${f.label}:${f.multiline ? 1 : 0}:${f.excelSpreadLines ? 1 : 0}:${f.valueKind || 'text'}:${f.excelFormat || 'general'}`
+        `${f.key}:${f.label}:${f.valueKind || 'text'}:${f.excelFormat || 'general'}`
     )
     .join('|');
 }
@@ -1103,26 +1103,16 @@ export default function QuotationDocMerge() {
     setFieldPresetsLoading(true);
     try {
       await pingBackendHealth();
-      const fieldsPayload = mergeFieldsSheet.map((f) => {
-        const multiline = Boolean(f.multiline);
-        const valueKind = f.valueKind === 'number' ? 'number' : 'text';
-        let excelFormat = MERGE_EXCEL_FORMATS.some((x) => x.id === f.excelFormat) ? f.excelFormat : 'general';
-        if (valueKind === 'text') excelFormat = 'general';
-        return {
-          key: String(f.key || '').trim(),
-          label: String(f.label || f.key || '').trim(),
-          example: String(f.example || '').trim(),
-          multiline,
-          excelSpreadLines: multiline && Boolean(f.excelSpreadLines),
-          valueKind,
-          excelFormat
-        };
-      });
+      const built = buildMergeFieldsPayload(mergeFieldsSheet);
+      if (!built.ok) {
+        window.alert(built.error);
+        return;
+      }
       const res = await fetch(`${API_BASE}/quotation-merge/field-presets`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         credentials: 'include',
-        body: JSON.stringify({ name, fields: fieldsPayload })
+        body: JSON.stringify({ name, fields: built.fields })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(getUserVisibleApiError(data, '새 구성을 만들지 못했습니다.'));
@@ -2094,6 +2084,11 @@ export default function QuotationDocMerge() {
       if (t == null || t === '') return;
       const grid = parseTsvGrid(t);
       if (!grid.length) return;
+      if (isSingleColumnMultilinePaste(grid)) {
+        e.preventDefault();
+        updateRow(rowIndex, key, grid.map((r) => r[0]).join('\n'));
+        return;
+      }
       const multi = grid.length > 1 || (grid[0] && grid[0].length > 1);
       if (!multi) return;
       e.preventDefault();
@@ -2104,7 +2099,7 @@ export default function QuotationDocMerge() {
       mergeSheetNavKeyDown(e, {
         rowIndex,
         sheetCol,
-        multiline: f.multiline,
+        multiline: false,
         value: val,
         commit: (next) => updateRow(rowIndex, key, next)
       });
@@ -2117,11 +2112,9 @@ export default function QuotationDocMerge() {
 
     return (
       <textarea
-        className={['qdm-cell', 'qdm-cell--sheet', f.multiline ? 'qdm-cell-tall' : 'qdm-cell-sheet-single']
-          .filter(Boolean)
-          .join(' ')}
+        className="qdm-cell qdm-cell--sheet qdm-cell-sheet-single"
         value={val}
-        rows={f.multiline ? 2 : 1}
+        rows={1}
         onChange={(e) => updateRow(rowIndex, key, e.target.value)}
         onPaste={tryPasteGrid}
         onKeyDown={handleSheetNavKeyDown}
@@ -2591,15 +2584,12 @@ export default function QuotationDocMerge() {
                           <th>예시(참고)</th>
                           <th>값 종류</th>
                           <th>Excel 표시</th>
-                          <th>옵션</th>
                         </tr>
                       </thead>
                       <tbody>
                         {mergeFieldsSheet.map((f, i) => {
                           const key = String(f.key || '').trim();
                           const token = key ? `{{${key}}}` : '';
-                          const ml = Boolean(f.multiline);
-                          const xl = Boolean(f.excelSpreadLines);
                           return (
                             <tr key={key || `row-${i}`}>
                               <td>
@@ -2610,11 +2600,6 @@ export default function QuotationDocMerge() {
                               <td className="qdm-template-prepare-td-example">{String(f.example || '').trim()}</td>
                               <td>{mergeValueKindLabel(f.valueKind)}</td>
                               <td>{f.valueKind === 'number' ? mergeExcelFormatLabel(f.excelFormat) : '—'}</td>
-                              <td className="qdm-template-prepare-td-flags">
-                                {ml ? '여러줄 ' : ''}
-                                {ml && xl ? '줄→셀' : ''}
-                                {!ml && !xl ? '—' : ''}
-                              </td>
                             </tr>
                           );
                         })}

@@ -431,6 +431,67 @@ body:has(.nexvia-home-root--standalone),
   font-size: 0.98rem;
 }
 
+/* 우측 하단 — 법적 문서 (로그인·회원가입과 동일 모달) */
+.nexvia-home-legal-footer {
+  position: fixed;
+  right: clamp(0.65rem, 2vw, 1.35rem);
+  bottom: clamp(0.65rem, 2vh, 1.1rem);
+  z-index: 44;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.25rem 0.4rem;
+  max-width: min(22rem, calc(100vw - 1.25rem));
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.65rem;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(201, 219, 234, 0.75);
+  box-shadow: 0 8px 24px rgba(44, 100, 133, 0.08);
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+
+.nexvia-home-legal-footer__link {
+  pointer-events: auto;
+  margin: 0;
+  padding: 0.15rem 0.1rem;
+  border: none;
+  background: transparent;
+  color: #7a8fa3;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.35;
+  text-align: right;
+  cursor: pointer;
+  transition: color 0.18s ease;
+}
+
+.nexvia-home-legal-footer__link:hover {
+  color: #2c6485;
+}
+
+.nexvia-home-legal-footer__link:focus-visible {
+  outline: 2px solid rgba(44, 100, 133, 0.4);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.nexvia-home-legal-footer__sep {
+  pointer-events: none;
+  color: rgba(122, 143, 163, 0.55);
+  font-size: 0.625rem;
+  user-select: none;
+}
+
+@media (min-width: 768px) {
+  .nexvia-home-legal-footer__link {
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .nexvia-home-rotator__stage {
     transition-duration: 0.01ms !important;

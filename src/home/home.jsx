@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useHomeTailwind } from "./use-home-tailwind";
 import HomePwaInstallModal from "./home-pwa-install-modal";
+import PrivacyPolicyModal from "../login/legal-modals/PrivacyPolicyModal";
+import TermsOfServiceModal from "../login/legal-modals/TermsOfServiceModal";
+import GoogleApiTermsModal from "../login/legal-modals/GoogleApiTermsModal";
 import { openInChrome, PWA_SITE_URL, shouldOfferOpenInChrome } from "@/lib/pwa-open-in-chrome";
 import "./home.css";
 
@@ -561,6 +564,16 @@ export default function Home() {
   const [pwaInstalled, setPwaInstalled] = useState(() => isPwaStandalone());
   const [pwaModalOpen, setPwaModalOpen] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(false);
+  const [legalModal, setLegalModal] = useState(null);
+
+  useEffect(() => {
+    if (!legalModal) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape") setLegalModal(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [legalModal]);
 
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
@@ -1010,7 +1023,39 @@ export default function Home() {
         />
       </main>
 
+      <footer className="nexvia-home-legal-footer" aria-label="법적 고지">
+        <button
+          type="button"
+          className="nexvia-home-legal-footer__link"
+          onClick={() => setLegalModal("privacy")}
+        >
+          개인정보 보호정책
+        </button>
+        <span className="nexvia-home-legal-footer__sep" aria-hidden>
+          ·
+        </span>
+        <button
+          type="button"
+          className="nexvia-home-legal-footer__link"
+          onClick={() => setLegalModal("terms")}
+        >
+          이용약관
+        </button>
+        <span className="nexvia-home-legal-footer__sep" aria-hidden>
+          ·
+        </span>
+        <button
+          type="button"
+          className="nexvia-home-legal-footer__link"
+          onClick={() => setLegalModal("google")}
+        >
+          Google API 약관
+        </button>
+      </footer>
 
+      <PrivacyPolicyModal open={legalModal === "privacy"} onClose={() => setLegalModal(null)} />
+      <TermsOfServiceModal open={legalModal === "terms"} onClose={() => setLegalModal(null)} />
+      <GoogleApiTermsModal open={legalModal === "google"} onClose={() => setLegalModal(null)} />
     </div>
   );
 }

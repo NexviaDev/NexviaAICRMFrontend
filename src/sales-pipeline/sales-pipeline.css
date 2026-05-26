@@ -13,8 +13,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 5rem;
-  padding: 0 2rem;
+  min-height: 3.25rem;
+  padding: 0.35rem 1.25rem;
   background: rgba(248, 249, 251, 0.88);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -244,8 +244,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.5rem;
-  height: 2.5rem;
+  width: 2.125rem;
+  height: 2.125rem;
   padding: 0;
   border: none;
   border-radius: 0.5rem;
@@ -287,7 +287,7 @@
 
 .sp-title {
   font-family: 'Manrope', 'Inter', system-ui, sans-serif;
-  font-size: 1.25rem;
+  font-size: 1.0625rem;
   font-weight: 800;
   letter-spacing: -0.02em;
   margin: 0;
@@ -368,8 +368,8 @@
 
 .sp-search {
   width: 100%;
-  padding: 0.5rem 1rem 0.5rem 2.5rem;
-  font-size: 0.875rem;
+  padding: 0.38rem 0.85rem 0.38rem 2.25rem;
+  font-size: 0.8125rem;
   background: #f0f4f7;
   border: none;
   border-radius: 0.5rem;
@@ -390,8 +390,8 @@
   color: #f5f9ff;
   border: none;
   border-radius: 0.5rem;
-  padding: 0.5rem 1.15rem;
-  font-size: 0.875rem;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.8125rem;
   font-weight: 700;
   cursor: pointer;
   box-shadow: 0 4px 14px -4px rgba(44, 100, 133, 0.35);
@@ -436,7 +436,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 0 1.5rem;
+  padding: 0 0.75rem;
   overflow: hidden;
 }
 
@@ -531,54 +531,124 @@
   color: #2c6485;
 }
 
-/* Lucid 칸반 — 샘플 sales-pipeline22: 컬럼 헤더(도트·제목·카운트) + 카드 리스트 */
+/* Etheric Flow 칸반 — Sample sales-pipeline.js: 320px 컬럼 + 단계별 파스텔 틴트 */
 .sp-kanban {
   flex: 1;
   min-height: 0;
-  margin-top: 1rem;
+  margin-top: 0.5rem;
   display: flex;
   flex-wrap: nowrap;
   align-items: stretch;
-  gap: 1.5rem;
+  gap: 0.75rem;
   overflow-x: auto;
   overflow-y: hidden;
-  padding-bottom: 0.25rem;
+  padding: 0 0 0.35rem;
+  scroll-snap-type: x proximity;
   scrollbar-width: thin;
 }
 
 .sp-kanban-col {
-  flex: 1 1 0;
-  min-width: min(360px, 96vw);
-  max-width: 100%;
+  flex: 0 0 320px;
+  min-width: 320px;
+  max-width: 320px;
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
+  gap: 0;
   min-height: 0;
-  border-radius: 0.85rem;
-  padding: 0.65rem 0.55rem 0.7rem;
-  background: #f0f4f7;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.92) inset,
-    0 2px 10px -4px rgba(44, 80, 110, 0.06);
+  border-radius: 0.75rem;
+  padding: 0;
+  overflow: hidden;
+  scroll-snap-align: start;
+  border: 1px solid rgba(194, 198, 214, 0.45);
+  background: rgba(0, 88, 190, 0.05);
+  box-shadow: none;
+}
+
+.sp-kanban-col--tone-0 {
+  background: rgba(0, 88, 190, 0.05);
+  border-color: rgba(0, 88, 190, 0.12);
+}
+
+.sp-kanban-col--tone-1 {
+  background: rgba(107, 56, 212, 0.05);
+  border-color: rgba(107, 56, 212, 0.12);
+}
+
+.sp-kanban-col--tone-2 {
+  background: rgba(153, 65, 0, 0.05);
+  border-color: rgba(153, 65, 0, 0.12);
+}
+
+.sp-kanban-col--tone-3 {
+  background: rgba(44, 100, 133, 0.06);
+  border-color: rgba(44, 100, 133, 0.12);
+}
+
+.sp-kanban-col--tone-4 {
+  background: rgba(250, 116, 111, 0.06);
+  border-color: rgba(250, 116, 111, 0.14);
+}
+
+.sp-kanban-col--tone-5 {
+  background: rgba(160, 213, 251, 0.12);
+  border-color: rgba(44, 100, 133, 0.1);
 }
 
 .sp-kanban-col.sp-drop-hover {
-  background: #e8f0f6;
-  box-shadow:
-    0 0 0 2px rgba(44, 100, 133, 0.12),
-    0 1px 0 rgba(255, 255, 255, 0.92) inset;
+  filter: brightness(1.02);
+  box-shadow: 0 0 0 2px rgba(44, 100, 133, 0.14);
 }
 
 .sp-kanban-col-head {
   display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.75rem;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.42);
+  border-bottom: 1px solid rgba(194, 198, 214, 0.35);
+  border-radius: 0.75rem 0.75rem 0 0;
+  box-shadow: none;
+}
+
+.sp-kanban-col--tone-0 .sp-kanban-col-head {
+  border-bottom-color: rgba(0, 88, 190, 0.16);
+}
+
+.sp-kanban-col--tone-1 .sp-kanban-col-head {
+  border-bottom-color: rgba(107, 56, 212, 0.16);
+}
+
+.sp-kanban-col--tone-2 .sp-kanban-col-head {
+  border-bottom-color: rgba(153, 65, 0, 0.14);
+}
+
+.sp-kanban-col--tone-3 .sp-kanban-col-head {
+  border-bottom-color: rgba(44, 100, 133, 0.14);
+}
+
+.sp-kanban-col--tone-4 .sp-kanban-col-head {
+  border-bottom-color: rgba(250, 116, 111, 0.16);
+}
+
+.sp-kanban-col--tone-5 .sp-kanban-col-head {
+  border-bottom-color: rgba(44, 100, 133, 0.12);
+}
+
+.sp-kanban-col-head-row {
+  display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  padding: 0.45rem 0.55rem;
-  flex-shrink: 0;
-  background: #ffffff;
-  border-radius: 0.55rem;
-  box-shadow: 0 2px 8px -4px rgba(44, 100, 133, 0.08);
+  min-width: 0;
+}
+
+.sp-kanban-col-head-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 0.5rem;
+  min-width: 0;
 }
 
 .sp-kanban-col-head-main {
@@ -595,12 +665,39 @@
   flex-shrink: 0;
 }
 
-.sp-kanban-dot.tone-0 { background: #31638a; }
-.sp-kanban-dot.tone-1 { background: #92c7ed; }
-.sp-kanban-dot.tone-2 { background: #2c6485; }
-.sp-kanban-dot.tone-3 { background: #3f6750; }
+.sp-kanban-dot.tone-0 { background: #0058be; }
+.sp-kanban-dot.tone-1 { background: #6b38d4; }
+.sp-kanban-dot.tone-2 { background: #994100; }
+.sp-kanban-dot.tone-3 { background: #2c6485; }
 .sp-kanban-dot.tone-4 { background: #fa746f; }
-.sp-kanban-dot.tone-5 { background: #a0d5fb; }
+.sp-kanban-dot.tone-5 { background: #31638a; }
+
+.sp-kanban-col--tone-0 .sp-kanban-col-title,
+.sp-kanban-col--tone-0 .sp-kanban-count {
+  color: #0058be;
+}
+
+.sp-kanban-col--tone-1 .sp-kanban-col-title,
+.sp-kanban-col--tone-1 .sp-kanban-count {
+  color: #6b38d4;
+}
+
+.sp-kanban-col--tone-2 .sp-kanban-col-title {
+  color: #994100;
+}
+
+.sp-kanban-col--tone-0 .sp-kanban-count {
+  background: rgba(0, 88, 190, 0.1);
+}
+
+.sp-kanban-col--tone-1 .sp-kanban-count {
+  background: rgba(107, 56, 212, 0.1);
+}
+
+.sp-kanban-col--tone-2 .sp-kanban-count {
+  background: rgba(153, 65, 0, 0.1);
+  color: #994100;
+}
 
 .sp-kanban-col-title {
   font-family: 'Manrope', 'Inter', system-ui, sans-serif;
@@ -617,10 +714,10 @@
 .sp-kanban-count {
   font-size: 0.625rem;
   font-weight: 800;
-  padding: 0.125rem 0.5rem;
+  padding: 0.125rem 0.45rem;
   border-radius: 9999px;
-  background: #dce4e8;
-  color: #596064;
+  background: rgba(0, 88, 190, 0.1);
+  color: #0058be;
   flex-shrink: 0;
 }
 
@@ -658,6 +755,8 @@
   min-width: 0;
 }
 
+/* legacy — forecast는 col-head-meta로 이동, 하위 호환 */
+
 .sp-kanban-forecast-spacer {
   flex: 1;
   min-width: 0;
@@ -666,20 +765,20 @@
 .sp-kanban-forecast {
   margin: 0;
   padding: 0;
-  font-size: 0.65rem;
-  font-weight: 700;
-  color: #596064;
-  letter-spacing: -0.02em;
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: #727785;
+  letter-spacing: -0.01em;
   flex-shrink: 0;
 }
 
 .sp-kanban-forecast-expected {
   margin: 0;
   padding: 0;
-  font-size: 0.65rem;
-  font-weight: 600;
-  color: #2c6485;
-  letter-spacing: -0.02em;
+  font-size: 0.625rem;
+  font-weight: 700;
+  color: #0058be;
+  letter-spacing: -0.01em;
   text-align: right;
   flex-shrink: 0;
   margin-left: auto;
@@ -691,7 +790,7 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
-  padding: 0.2rem 0.05rem 0.3rem;
+  padding: 0.5rem;
 }
 
 .sp-kanban-cards {
@@ -699,10 +798,10 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.7rem;
+  gap: 0.5rem;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 0.25rem 0.15rem 0.4rem;
+  padding: 0;
   scrollbar-width: thin;
 }
 
@@ -1019,37 +1118,46 @@
   cursor: wait;
 }
 
+/* Etheric Flow 카드 — sales-pipeline.js: 흰 배경 + 좌측 액센트 + 2열 필드 그리드 */
 .sp-card--lucid {
   position: relative;
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1px;
-  align-content: start;
-  background: rgba(220, 228, 234, 0.65);
-  border: 1px solid rgba(200, 214, 224, 0.9);
-  border-radius: 0.75rem;
-  padding: 0;
+  display: block;
+  background: #ffffff;
+  border: 1px solid #c2c6d6;
+  border-left-width: 4px;
+  border-left-color: #0058be;
+  border-radius: 0.5rem;
+  padding: 0.5rem;
   overflow: hidden;
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.95) inset,
-    0 1px 3px rgba(44, 80, 110, 0.07),
-    0 4px 12px -2px rgba(44, 100, 133, 0.1),
-    0 8px 24px -6px rgba(44, 100, 133, 0.14);
+  box-shadow: 0 1px 3px rgba(25, 27, 35, 0.05);
   cursor: grab;
   flex-shrink: 0;
-  transition: box-shadow 0.18s ease, border-color 0.15s ease;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.15s ease;
+}
+
+.sp-card--lucid-accent-tone-0 { border-left-color: #0058be; }
+.sp-card--lucid-accent-tone-1 { border-left-color: #6b38d4; }
+.sp-card--lucid-accent-tone-2 { border-left-color: #994100; }
+.sp-card--lucid-accent-tone-3 { border-left-color: #2c6485; }
+.sp-card--lucid-accent-tone-4 { border-left-color: #fa746f; }
+.sp-card--lucid-accent-tone-5 { border-left-color: #31638a; }
+
+.sp-kanban-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 0.75rem;
+  row-gap: 0.5rem;
+  align-content: start;
+  min-width: 0;
 }
 
 .sp-card--lucid:hover {
-  border-color: rgba(176, 200, 218, 0.95);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.95) inset,
-    0 2px 6px rgba(44, 80, 110, 0.09),
-    0 8px 20px -4px rgba(44, 100, 133, 0.16),
-    0 14px 32px -8px rgba(44, 100, 133, 0.18);
+  transform: translateY(-2px);
+  border-color: #b8bcc8;
+  box-shadow: 0 4px 12px rgba(25, 27, 35, 0.07);
 }
 
 .sp-card--lucid:active {
@@ -1143,63 +1251,36 @@
   min-width: 0;
 }
 
-/* 칸반 카드 셀: 2열 그리드 안에서 라벨↑ 값↓ (세로 한 줄 나열 방지) */
+/* 칸반 카드 셀: 2열 그리드 — 라벨↑ 값↓ */
 .sp-kanban-card-field {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 0.14rem;
+  gap: 0.12rem;
   min-width: 0;
-  padding: 0.34rem 0.42rem 0.36rem;
-  background: #ffffff;
+  padding: 0;
+  background: transparent;
 }
 
 .sp-kanban-card-field--head {
   grid-column: 1 / -1;
-  padding: 0.45rem 0.5rem 0.4rem;
-  background: rgba(240, 247, 252, 0.92);
-  border-bottom: 1px solid rgba(220, 228, 236, 0.85);
+  padding: 0 0 0.35rem;
+  margin-bottom: 0.1rem;
+  background: transparent;
+  border-bottom: 1px solid rgba(194, 198, 214, 0.45);
 }
 
-/* 기회 _id 해시 고정 톤 — 리스트 추가·순서 변경해도 동일 기회는 동일 색 */
-.sp-kanban-card-head-tone-0 {
-  background: rgba(224, 238, 250, 0.95);
-  border-bottom-color: rgba(176, 208, 232, 0.55);
-}
-
-.sp-kanban-card-head-tone-1 {
-  background: rgba(205, 229, 255, 0.55);
-  border-bottom-color: rgba(160, 200, 240, 0.5);
-}
-
-.sp-kanban-card-head-tone-2 {
-  background: rgba(232, 245, 252, 0.98);
-  border-bottom-color: rgba(140, 190, 220, 0.45);
-}
-
-.sp-kanban-card-head-tone-3 {
-  background: rgba(225, 244, 232, 0.95);
-  border-bottom-color: rgba(160, 210, 180, 0.5);
-}
-
-.sp-kanban-card-head-tone-4 {
-  background: rgba(255, 232, 228, 0.92);
-  border-bottom-color: rgba(240, 190, 185, 0.55);
-}
-
-.sp-kanban-card-head-tone-5 {
-  background: rgba(237, 246, 253, 0.98);
-  border-bottom-color: rgba(176, 210, 235, 0.5);
-}
-
-.sp-kanban-card-head-tone-6 {
-  background: rgba(240, 234, 248, 0.95);
-  border-bottom-color: rgba(200, 185, 225, 0.5);
-}
-
+/* 기회 _id 해시 고정 톤 — 헤드 행은 얇은 하단선만 (Etheric Flow) */
+.sp-kanban-card-head-tone-0,
+.sp-kanban-card-head-tone-1,
+.sp-kanban-card-head-tone-2,
+.sp-kanban-card-head-tone-3,
+.sp-kanban-card-head-tone-4,
+.sp-kanban-card-head-tone-5,
+.sp-kanban-card-head-tone-6,
 .sp-kanban-card-head-tone-7 {
-  background: rgba(253, 244, 228, 0.95);
-  border-bottom-color: rgba(230, 205, 170, 0.5);
+  background: transparent;
+  border-bottom-color: rgba(194, 198, 214, 0.45);
 }
 
 .sp-kanban-card-field--head .sp-kanban-card-field-label {
@@ -1209,11 +1290,10 @@
 .sp-kanban-card-field--head .sp-kanban-card-field-val,
 .sp-kanban-card-field--head .sp-kanban-card-field-val-inner {
   font-family: 'Manrope', 'Inter', system-ui, sans-serif;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: -0.02em;
-  color: #2c3437;
-  -webkit-line-clamp: 2;
+  color: #191b23;
 }
 
 .sp-kanban-card-field--head.sp-kanban-card-field--product-name .sp-kanban-card-field-val-inner {
@@ -1227,40 +1307,47 @@
 }
 
 .sp-kanban-card-field-label {
-  font-size: 0.52rem;
+  font-size: 0.5625rem;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #8b9aae;
+  color: #727785;
   line-height: 1.2;
   hyphens: auto;
   word-break: break-word;
 }
 
 .sp-kanban-card-field-val {
-  font-size: 0.62rem;
+  font-size: 0.75rem;
   font-weight: 500;
-  color: #3d4549;
-  line-height: 1.3;
+  color: #424754;
+  line-height: 1.35;
   word-break: break-word;
   min-height: 1.1em;
   text-align: left;
 }
 
 .sp-kanban-card-field-val-inner {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  display: block;
   overflow: hidden;
-  white-space: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* 다중 제품명: A | B | C — 줄바꿈 없이 구분자로 표시 */
+.sp-kanban-card-field--wrap .sp-kanban-card-field-val-inner,
+.sp-kanban-card-field-val-inner--wrap {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* 다중 제품명: A | B | C */
 .sp-kanban-card-field--product-name .sp-kanban-card-field-val-inner {
   display: block;
-  -webkit-line-clamp: unset;
-  overflow: visible;
   white-space: normal;
+  overflow: visible;
   word-break: break-word;
   line-height: 1.38;
 }
@@ -1436,12 +1523,12 @@
 .sp-dropzones-section {
   flex-shrink: 0;
   box-sizing: border-box;
-  width: calc(100% + 3rem);
+  width: calc(100% + 1.5rem);
   max-width: none;
-  margin-left: -1.5rem;
-  margin-right: -1.5rem;
+  margin-left: -0.75rem;
+  margin-right: -0.75rem;
   margin-top: 0;
-  padding: 0.75rem 1.5rem 1rem;
+  padding: 0.4rem 0.75rem 0.5rem;
   border-top: 1px solid rgba(172, 179, 183, 0.2);
   background: #f0f4f7;
   backdrop-filter: blur(10px);
@@ -1468,17 +1555,17 @@
   min-width: 0;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.75rem;
+  gap: 0.5rem;
   align-items: stretch;
 }
 
 .sp-dropzone {
   box-sizing: border-box;
   width: 100%;
-  min-height: 3.75rem;
-  padding: 0.55rem 0.75rem;
-  border: 2px dashed rgba(172, 179, 183, 0.4);
-  border-radius: 0.75rem;
+  min-height: 2.65rem;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid rgba(172, 179, 183, 0.45);
+  border-radius: 0.5rem;
   display: flex;
   flex-direction: row;
   flex-wrap: nowrap;
@@ -1499,7 +1586,7 @@
 }
 
 .sp-dz-icon {
-  font-size: 1.35rem;
+  font-size: 1.15rem;
   flex-shrink: 0;
   transition: transform 0.2s;
 }
@@ -1525,7 +1612,7 @@
 
 .sp-dz-label {
   font-family: 'Manrope', 'Inter', system-ui, sans-serif;
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   font-weight: 800;
   letter-spacing: -0.01em;
   text-transform: none;
@@ -2859,31 +2946,53 @@
   }
 
   .sp-header-filters {
-    flex-shrink: 0;
-    width: auto;
+    flex-wrap: wrap;
+    flex-shrink: 1;
+    width: 100%;
+    gap: 0.4rem 0.5rem;
     justify-content: flex-start;
   }
 
   .sp-pipeline-body-filters {
-    padding: 0.35rem 16px 0.45rem;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 0.35rem 0.75rem 0.45rem;
+    overflow-x: hidden;
+  }
+
+  .sp-filter-label {
+    flex: 1 1 calc(50% - 0.35rem);
+    min-width: 0;
+    max-width: 100%;
+    font-size: 0.75rem;
+  }
+
+  .sp-filter-select,
+  .sp-filter-multi {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
   }
 
   .sp-filter-select {
-    min-width: 4.75rem;
-    max-width: 9rem;
+    min-width: 0;
+    max-width: none;
+    width: 100%;
     font-size: 0.75rem;
     padding: 0.35rem 0.45rem;
   }
 
   .sp-filter-multi-summary {
-    min-width: 4.75rem;
-    max-width: 9rem;
+    min-width: 0;
+    max-width: none;
+    width: 100%;
     font-size: 0.75rem;
     padding: 0.35rem 1.15rem 0.35rem 0.45rem;
   }
 
-  .sp-filter-label {
-    font-size: 0.75rem;
+  .sp-filter-multi-panel {
+    max-width: min(18rem, calc(100vw - 1.5rem));
   }
 
   .sp-columns {
@@ -2891,21 +3000,23 @@
   }
 
   .sp-kanban {
-    gap: 0.85rem;
+    gap: 0.65rem;
     padding-bottom: 0.35rem;
+    margin-top: 0.35rem;
   }
 
   .sp-kanban-col {
-    min-width: min(300px, 92vw);
+    flex: 0 0 min(300px, 88vw);
+    min-width: min(300px, 88vw);
+    max-width: min(300px, 88vw);
   }
 
-  .sp-card--lucid {
-    grid-template-columns: 1fr;
+  .sp-kanban-card-grid {
+    grid-template-columns: 1fr 1fr;
   }
 
   .sp-kanban-card-field--full {
-    grid-column: auto;
-    grid-template-columns: minmax(3.6rem, 34%) minmax(0, 1fr);
+    grid-column: 1 / -1;
   }
 
   .sp-column {

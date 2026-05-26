@@ -45,6 +45,22 @@ function linesLineFinalAmountsOnly(lineItems) {
   return rows.map((l) => String(computeLineFinalAmount(l))).join('\n');
 }
 
+/** 매입단가(원가)만 — 서버 snapshot 또는 클라이언트 purchaseCostTotal÷수량 */
+function linesCostPricesOnly(lineItems) {
+  const rows = Array.isArray(lineItems) ? lineItems : [];
+  if (!rows.length) return '';
+  return rows
+    .map((l) => {
+      const snap = parseNumber(l?.productCostPriceSnapshot);
+      if (snap > 0) return String(snap);
+      const qty = Math.max(1, parseNumber(l?.quantity));
+      const total = parseNumber(l?.purchaseCostTotal);
+      if (total > 0) return String(Math.round(total / qty));
+      return String(parseNumber(l?.costPrice ?? 0));
+    })
+    .join('\n');
+}
+
 /**
  * @param {{
  *   form: object,
@@ -92,6 +108,7 @@ export function buildOpportunityMergeSourceOptions(ctx) {
   add('derived.linesQuantities', '수량만 (줄마다 1행·제품명 열과 순서 동일)');
   add('derived.linesUnitPrices', '단가만 (줄마다 1행·제품명 열과 순서 동일)');
   add('derived.linesLineAmounts', '행별 금액(할인 반영, 줄마다 1행·제품명 열과 순서 동일)');
+  add('derived.linesCostPrices', '매입단가만 (줄마다 1행·제품명 열과 순서 동일)');
 
   add('fixed.docRecipientEmail', '받는 메일 주소(기회 문서 메일)');
   add('fixed.docCcEmail', '참조 메일 주소 CC(기회 문서 메일)');
@@ -232,6 +249,9 @@ export function resolveOpportunityMergeSourceValue(sourceId, ctx) {
   }
   if (sid === 'derived.linesLineAmounts') {
     return linesLineFinalAmountsOnly(ctx?.lineItems);
+  }
+  if (sid === 'derived.linesCostPrices') {
+    return linesCostPricesOnly(ctx?.lineItems);
   }
   if (sid === 'fixed.docRecipientEmail') return resolveOpportunityDocRecipientEmail(ctx);
   if (sid === 'fixed.docCcEmail') return resolveOpportunityDocCcEmail(ctx);
