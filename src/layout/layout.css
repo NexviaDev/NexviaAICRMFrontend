@@ -101,6 +101,19 @@
   min-height: 0;
 }
 
+/* 목록 full-bleed 페이지가 아닌 일반 .page — 가로 여백 유지(전역 padding:0 누수 방지) */
+.app-main-outlet > .page:not(.customer-companies-page):not(.customer-company-employees-page):not(.product-list-page) > .page-content {
+  padding-left: 2rem;
+  padding-right: 2rem;
+}
+
+@media (max-width: 767px) {
+  .app-main-outlet > .page:not(.customer-companies-page):not(.customer-company-employees-page):not(.product-list-page) > .page-content {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+}
+
 /* 우측 상단 햄버거: 작은 화면에서만 표시 */
 .app-main-header {
   display: none;

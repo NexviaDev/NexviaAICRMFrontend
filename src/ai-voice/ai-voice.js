@@ -10,6 +10,7 @@ import { getUserVisibleApiError } from '@/lib/api-error';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import { pingBackendHealth } from '@/lib/backend-wake';
 import { AI_VOICE_LIST_POLL_MS } from '@/lib/polling-intervals';
+import { splitContentIntoBlocks, formatJournalTextForDisplay } from '@/lib/journal-content-blocks';
 
 /** 백엔드 단일 POST 상한과 동일 — 초과 시 청크 API로 나눔 */
 const VOICE_DIRECT_UPLOAD_MAX_BYTES = 12 * 1024 * 1024;
@@ -95,19 +96,8 @@ export default function AiVoice() {
   const [usageError, setUsageError] = useState('');
   const fileInputRef = useRef(null);
   const pollRef = useRef(null);
+  const autoSummaryRequestedRef = useRef(new Set());
   const navigate = useNavigate();
-
-  /** 요약 텍스트를 문단·문장 단위로 나눠서 렌더용 배열로 반환 */
-  function splitSummaryIntoBlocks(summaryText) {
-    if (!summaryText || typeof summaryText !== 'string') return [];
-    const trimmed = summaryText.trim();
-    if (!trimmed) return [];
-    const paragraphs = trimmed.split(/\n\n+/).map((p) => p.trim()).filter(Boolean);
-    return paragraphs.map((para) => {
-      const sentences = para.split(/(?<=[.!?。？！])\s+/).map((s) => s.trim()).filter(Boolean);
-      return sentences.length ? sentences : [para];
-    });
-  }
 
   const fetchList = useCallback(async (opts = {}) => {
     const silent = opts.silent === true;
@@ -194,7 +184,10 @@ export default function AiVoice() {
       const res = await fetch(`${API_BASE}/voice-recordings/${id}`, { headers: getAuthHeader() });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '조회 실패');
-      setSelectedDetail(data);
+      setSelectedDetail({
+        ...data,
+        summary: data.summary ? formatJournalTextForDisplay(data.summary) : data.summary
+      });
       /** 상세에서 AssemblyAI 동기화된 status가 목록 행과 어긋나지 않도록 병합 */
       setItems((prev) =>
         prev.map((i) => (String(i._id) === String(id) ? { ...i, ...data } : i))
@@ -232,7 +225,11 @@ export default function AiVoice() {
       fetch(`${API_BASE}/voice-recordings/${id}`, { headers: getAuthHeader() })
         .then((r) => r.json())
         .then((data) => {
-          setSelectedDetail(data);
+          const detail = {
+            ...data,
+            summary: data.summary ? formatJournalTextForDisplay(data.summary) : data.summary
+          };
+          setSelectedDetail(detail);
           if (data.status === 'completed' || data.status === 'error') {
             if (pollRef.current) clearInterval(pollRef.current);
             setItems((prev) =>
@@ -247,6 +244,57 @@ export default function AiVoice() {
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, [selectedDetail?._id, selectedDetail?.status, fetchUsage]);
+
+  /** 전사 완료인데 요약이 비었을 때만 서버 /summarize (대부분 AssemblyAI 내장 요약으로 이미 채워짐) */
+  useEffect(() => {
+    const id = selectedDetail?._id;
+    if (!id) return;
+    if (selectedDetail.status !== 'completed') return;
+    if (String(selectedDetail.summary || '').trim()) return;
+    const hasTranscript = selectedDetail.transcriptText || (selectedDetail.utterances?.length > 0);
+    if (!hasTranscript) return;
+    const key = String(id);
+    if (autoSummaryRequestedRef.current.has(key)) return;
+    autoSummaryRequestedRef.current.add(key);
+    let cancelled = false;
+    (async () => {
+      setSummaryError('');
+      setSummaryLoading(true);
+      try {
+        await pingBackendHealth(getAuthHeader);
+        const res = await fetch(`${API_BASE}/voice-recordings/${id}/summarize`, {
+          method: 'POST',
+          headers: getAuthHeader()
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || '요약 생성 실패');
+        if (!cancelled) {
+          setSelectedDetail((prev) =>
+            prev ? { ...prev, summary: formatJournalTextForDisplay(data.summary || '') } : null
+          );
+          setItems((prev) =>
+            prev.map((i) => (String(i._id) === key ? { ...i, summary: data.summary } : i))
+          );
+        }
+      } catch (e) {
+        if (!cancelled) {
+          autoSummaryRequestedRef.current.delete(key);
+          setSummaryError(e.message);
+        }
+      } finally {
+        if (!cancelled) setSummaryLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    selectedDetail?._id,
+    selectedDetail?.status,
+    selectedDetail?.summary,
+    selectedDetail?.transcriptText,
+    selectedDetail?.utterances
+  ]);
 
   const uploadQuotaExceeded = useMemo(() => {
     if (!usageStats?.limitSeconds) return false;
@@ -763,18 +811,24 @@ export default function AiVoice() {
                     <span className="material-symbols-outlined ai-voice-card-icon">auto_awesome</span>
                     <h4 className="ai-voice-card-title">AI 요약</h4>
                   </div>
-                  {selectedDetail?.status === 'completed' && (selectedDetail.transcriptText || selectedDetail.utterances?.length) && (
-                    <button type="button" className="ai-voice-text-btn" onClick={handleRequestSummary} disabled={summaryLoading} title={selectedDetail.summary ? 'AI로 요약을 다시 생성합니다' : 'Gemini 2.5 Flash로 요약을 생성합니다'}>
-                      {summaryLoading ? '요약 생성 중…' : selectedDetail.summary ? '다시 요약' : '요약 생성'}
-                    </button>
-                  )}
+                  {selectedDetail?.status === 'completed' &&
+                    (selectedDetail.transcriptText || selectedDetail.utterances?.length) &&
+                    (selectedDetail.summary ? (
+                      <button type="button" className="ai-voice-text-btn" onClick={handleRequestSummary} disabled={summaryLoading} title="AI로 요약을 다시 생성합니다">
+                        {summaryLoading ? '요약 생성 중…' : '다시 요약'}
+                      </button>
+                    ) : (
+                      <span className="ai-voice-summary-auto-hint">
+                        {summaryLoading ? '요약 생성 중…' : '요약 자동 생성 대기 중…'}
+                      </span>
+                    ))}
                 </div>
                 <div className="ai-voice-card-body">
                   {summaryError && <p className="ai-voice-summary-error">{summaryError}</p>}
-                  {summaryLoading && !selectedDetail?.summary && <p className="ai-voice-summary-placeholder">Gemini 2.5 Flash로 요약을 생성하고 있습니다. 백엔드 슬립 시 첫 요청은 30초 정도 걸릴 수 있습니다…</p>}
+                  {summaryLoading && !selectedDetail?.summary && <p className="ai-voice-summary-placeholder">요약을 생성하고 있습니다…</p>}
                   {selectedDetail?.summary ? (
                     <div className="ai-voice-summary-block">
-                      {splitSummaryIntoBlocks(selectedDetail.summary).map((paragraphSentences, pIdx) => (
+                      {splitContentIntoBlocks(selectedDetail.summary).map((paragraphSentences, pIdx) => (
                         <p key={pIdx} className="ai-voice-summary-paragraph">
                           {paragraphSentences.map((sentence, sIdx) => (
                             <span key={sIdx} className="ai-voice-summary-sentence">{sentence}{sIdx < paragraphSentences.length - 1 ? ' ' : ''}</span>
@@ -784,7 +838,9 @@ export default function AiVoice() {
                     </div>
                   ) : !summaryLoading && (
                     <p className="ai-voice-summary-placeholder">
-                      {selectedDetail?.status === 'completed' ? '위 "요약 생성" 버튼을 누르면 Gemini 2.5 Flash로 요약합니다.' : '전사 완료 후 요약이 표시됩니다.'}
+                      {selectedDetail?.status === 'completed'
+                        ? '전사가 끝나면 AssemblyAI 요약이 자동으로 표시됩니다.'
+                        : '전사 완료 후 요약이 표시됩니다.'}
                     </p>
                   )}
                 </div>

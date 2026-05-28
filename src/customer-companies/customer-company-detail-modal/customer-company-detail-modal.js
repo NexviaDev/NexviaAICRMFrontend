@@ -15,8 +15,9 @@ import { API_BASE } from '@/config';
 import { getUserVisibleApiError, alertApiError } from '@/lib/api-error';
 import { getStoredCrmUser, isManagerOrAboveRole, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { pingBackendHealth, BACKEND_KEEPALIVE_INTERVAL_MS, BACKEND_KEEPALIVE_INTERVAL_ENABLED } from '@/lib/backend-wake';
-import { pollJournalFromAudioJob } from '@/lib/journal-from-audio-poll';
 import { uploadJournalAudioFromFile, JOURNAL_AUDIO_CHUNK_THRESHOLD } from '@/lib/upload-journal-audio-from-file';
+import { queueJournalAudioBackgroundJob, useJournalAudioJobWatcher } from '@/lib/journal-audio-background-upload';
+import { splitContentIntoBlocks, formatJournalTextForDisplay } from '@/lib/journal-content-blocks';
 import { pruneDriveUploadedFilesIndex, syncDriveUploadedFilesIndex } from '@/lib/drive-uploaded-files-prune';
 import { getGoogleMapsApiKey } from '@/lib/google-maps-client';
 import {
@@ -55,18 +56,6 @@ function formatCalendarVisitWhen(ev) {
   const s = new Date(ev.start);
   if (ev.allDay) return s.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
   return s.toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
-
-/** 업무 기록 내용을 문단·문장 단위로 나눠서 렌더용 배열로 반환 */
-function splitContentIntoBlocks(text) {
-  if (!text || typeof text !== 'string') return [];
-  const trimmed = text.trim();
-  if (!trimmed) return [];
-  const paragraphs = trimmed.split(/\n\n+/).map((p) => p.trim()).filter(Boolean);
-  return paragraphs.map((para) => {
-    const sentences = para.split(/(?<=[.!?。？！])\s+/).map((s) => s.trim()).filter(Boolean);
-    return sentences.length ? sentences : [para];
-  });
 }
 
 const WORK_CATEGORY_OPTIONS = [
@@ -165,6 +154,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
   const [savingNote, setSavingNote] = useState(false);
   const [audioUploading, setAudioUploading] = useState(false);
   const [audioUploadProgress, setAudioUploadProgress] = useState(null);
+  const [audioJobPollUrl, setAudioJobPollUrl] = useState(null);
   const [audioDropActive, setAudioDropActive] = useState(false);
   const [journalError, setJournalError] = useState('');
   const [summaryNotice, setSummaryNotice] = useState(null);
@@ -304,14 +294,14 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
     if (showRegisteredNamePopover) setCertificateImageError(false);
   }, [showRegisteredNamePopover]);
 
-  /** 음성 전사 등 장시간 요청 중 Railway 슬립 방지 — VITE_BACKEND_KEEPALIVE_INTERVAL_MS=0 이면 주기 핑 생략 */
+  /** 음성 업로드·서버 처리 중 Railway 슬립 방지 */
   useEffect(() => {
-    if (!audioUploading || !BACKEND_KEEPALIVE_INTERVAL_ENABLED) return;
+    if ((!audioUploading && !audioJobPollUrl) || !BACKEND_KEEPALIVE_INTERVAL_ENABLED) return;
     const id = setInterval(() => {
       pingBackendHealth(getAuthHeader);
     }, BACKEND_KEEPALIVE_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [audioUploading]);
+  }, [audioUploading, audioJobPollUrl]);
 
   const driveFolderName = (() => {
     if (!companyToShow?._id) return '미소속_미등록';
@@ -702,6 +692,31 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
     fetchCompanyDetail();
   }, [fetchCompanyDetail]);
 
+  useJournalAudioJobWatcher({
+    pollUrl: audioJobPollUrl,
+    getAuthHeader,
+    enabled: !!audioJobPollUrl,
+    onCompleted: (data) => {
+      setAudioJobPollUrl(null);
+      if (data.content && !data.autoSaved) {
+        setJournalText(formatJournalTextForDisplay(data.content || ''));
+        setJournalDateTime(toDatetimeLocalValue(new Date()));
+      }
+      setSummaryNotice({
+        type: 'info',
+        text: data.autoSaved
+          ? '음성 메모가 서버에서 자동 등록되었습니다. AssemblyAI 음성·전사 원본은 삭제되었습니다.'
+          : '요약이 입력창에 채워졌습니다. 확인 후 "메모 저장"을 눌러 주세요.'
+      });
+      void fetchHistory();
+      void fetchCompanyDetail();
+    },
+    onError: (e) => {
+      setAudioJobPollUrl(null);
+      setJournalError(e?.message || '음성 처리에 실패했습니다.');
+    }
+  });
+
   useEffect(() => {
     if (!companyId) return undefined;
     if (!['queued', 'processing'].includes(companyToShow?.summaryStatus)) return undefined;
@@ -801,47 +816,40 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
     }
     setJournalError('');
     setAudioUploadProgress(null);
+    setAudioJobPollUrl(null);
     setSummaryNotice({
       type: 'info',
       text:
         file.size > JOURNAL_AUDIO_CHUNK_THRESHOLD
-          ? '큰 음성 파일은 청크로 나누어 올린 뒤 서버에서 합쳐 전사·요약합니다. 업로드 중에도 연결이 끊기지 않도록 주기적으로 서버를 깨웁니다.'
-          : '음성 파일을 올렸습니다. 전사·요약은 서버에서 진행하며, 진행 중에도 연결이 끊기지 않도록 짧게 상태를 확인합니다.'
+          ? '큰 음성 파일을 청크로 올린 뒤 서버에서 전사·요약·메모 등록을 진행합니다.'
+          : '음성을 올리는 중입니다. 업로드 후 서버가 자동으로 처리합니다.'
     });
-    await pingBackendHealth(getAuthHeader);
     setAudioUploading(true);
     try {
-      const data = await uploadJournalAudioFromFile({
+      const { pollUrl } = await queueJournalAudioBackgroundJob({
+        uploadJournalAudioFromFile,
         collectionBasePath: `${API_BASE}/customer-companies`,
         targetId: companyId,
         file,
         getAuthHeader,
-        onProgress: ({ sent, total }) => setAudioUploadProgress({ sent, total })
+        workCategory: journalWorkCategory,
+        contactChannel: journalContactChannel,
+        onUploadProgress: ({ sent, total }) => setAudioUploadProgress({ sent, total })
       });
-      if (data.jobId) {
-        setSummaryNotice({
-          type: 'info',
-          text: 'AssemblyAI 전사 및 Gemini 요약 진행 중입니다. 잠시만 기다려 주세요…'
-        });
-        setAudioUploadProgress(null);
-        const pollUrl = `${API_BASE}/customer-companies/${companyId}/history/from-audio/jobs/${encodeURIComponent(data.jobId)}`;
-        const result = await pollJournalFromAudioJob(pollUrl, getAuthHeader);
-        setJournalText(result.content || '');
-        setJournalDateTime(toDatetimeLocalValue(new Date()));
-        setSummaryNotice({
-          type: 'info',
-          text: '요약이 입력창에 채워졌습니다. 내용 확인 후 "메모 저장"을 눌러 등록해 주세요. 개인정보 보호를 위해 AssemblyAI 전사 데이터는 삭제 요청되었습니다.'
-        });
-      } else {
-        throw new Error(getUserVisibleApiError(data, '서버 응답 형식을 알 수 없습니다.'));
-      }
+      setAudioUploadProgress(null);
+      setAudioJobPollUrl(pollUrl);
+      setSummaryNotice({
+        type: 'info',
+        text:
+          '업로드 완료. 서버에서 전사·요약 후 업무 메모로 자동 등록합니다. 다른 작업을 계속하셔도 되며, 브라우저·인터넷이 끊겨도 서버 처리는 이어집니다.'
+      });
     } catch (e) {
       setJournalError(e.message || '음성 업로드 처리에 실패했습니다.');
     } finally {
       setAudioUploading(false);
       setAudioUploadProgress(null);
     }
-  }, [audioUploading, companyId, fetchCompanyDetail, savingNote]);
+  }, [audioUploading, companyId, savingNote, journalWorkCategory, journalContactChannel]);
 
   const summaryStatusText = {
     idle: '요약 대기',
@@ -1087,7 +1095,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
               aria-hidden="true"
             />
             <div
-              className={`customer-company-detail-journal-audio-drop ${audioDropActive ? 'is-dragover' : ''} ${audioUploading ? 'is-uploading' : ''}`}
+              className={`customer-company-detail-journal-audio-drop ${audioDropActive ? 'is-dragover' : ''} ${audioUploading ? 'is-uploading' : ''} ${audioJobPollUrl ? 'is-server-processing' : ''}`}
               onDragOver={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -1111,9 +1119,11 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
               <span>
                 {audioUploading
                   ? (audioUploadProgress?.total
-                    ? `음성 업로드 ${Math.min(100, Math.round((audioUploadProgress.sent / audioUploadProgress.total) * 100))}% · 이후 전사·요약 진행(AssemblyAI 원본은 처리 후 삭제됩니다).`
-                    : '음성 처리 중… 전사·요약이 끝나면 AssemblyAI에 올린 음성 원본은 서버에서 자동 삭제됩니다.')
-                  : '음성 파일 드래그앤드롭 또는 선택 (MP3/WAV/M4A/WebM). 큰 파일은 자동으로 청크 업로드됩니다.'}
+                    ? `음성 업로드 ${Math.min(100, Math.round((audioUploadProgress.sent / audioUploadProgress.total) * 100))}%…`
+                    : '음성 업로드 중…')
+                  : audioJobPollUrl
+                    ? '서버에서 전사·요약·메모 자동 등록 중… 다른 작업을 하셔도 됩니다.'
+                    : '음성 파일 드래그앤드롭 또는 선택 (MP3/WAV/M4A/WebM). 업로드 후 서버가 전사·요약·메모 등록까지 처리합니다.'}
               </span>
               <button
                 type="button"

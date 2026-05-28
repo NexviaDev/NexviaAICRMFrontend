@@ -8,14 +8,10 @@ import ContactExcelImportMappingModal from './contact-excel-import-mapping-modal
 import ContactImportPreviewModal from '../add-customer-company-employees-modal/contact-import-preview-modal';
 import BulkContactDuplicateReviewModal from '../add-customer-company-employees-modal/bulk-contact-duplicate-review-modal';
 import {
-  BULK_ROW_EXCLUDE,
-  BULK_ROW_FORCE,
-  BULK_ROW_MERGE,
-  mergeImportRowIntoExistingEmployee,
-  parseBulkPerRowResolution
-} from '../add-customer-company-employees-modal/bulk-contact-merge-utils';
+  buildBulkImportRequestItems,
+  postBulkContactImportFromPreview
+} from '../add-customer-company-employees-modal/bulk-contact-import-api';
 import ImportResultModal from '../../customer-companies/customer-companies-excel-import-modal/import-result-modal';
-import { normalizeBulkImportCompanyGroupKey } from '@/lib/bulk-import-company-group-key';
 import '../../lead-capture/lead-capture-crm-mapping/lead-capture-crm-mapping-modal.css';
 import '../../customer-companies/customer-companies-excel-import-modal/customer-companies-excel-import-modal.css';
 import {
@@ -680,138 +676,29 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
 
   const runContactPreviewRowsImport = useCallback(
     async (rowsToImport, preResults = [], forceAll = false) => {
-      const assigneeUserIds = resolveAssigneeUserIds();
-      const batchCustomerCompanyIdByNormKey = new Map();
-      let success = 0;
-      let merged = 0;
-      let fail = 0;
-      let skipped = 0;
-
       setSaving(true);
       setSaveMsg(null);
       try {
-        for (let idx = 0; idx < rowsToImport.length; idx += 1) {
-          const row = rowsToImport[idx];
-          const preResult = preResults[idx] || {};
-          const decisionKey = Number.isInteger(Number(preResult.index)) ? String(Number(preResult.index)) : String(idx);
-          const { rowDecision, mergeContactId, mergeCompanyId } = parseBulkPerRowResolution(forceAll, decisionKey);
-          if (
-            rowDecision === BULK_ROW_EXCLUDE ||
-            (rowNeedsContactDuplicateHold(preResult) &&
-              rowDecision !== BULK_ROW_FORCE &&
-              rowDecision !== BULK_ROW_MERGE &&
-              forceAll !== true)
-          ) {
-            skipped += 1;
-            continue;
-          }
-          try {
-            if (rowDecision === BULK_ROW_MERGE && mergeContactId) {
-              const mergeResult = await mergeImportRowIntoExistingEmployee({
-                employeeId: mergeContactId,
-                importRow: row,
-                getAuthHeader,
-                formatPhoneInput,
-                mergeCompanyId
-              });
-              if (mergeResult.ok) {
-                merged += 1;
-                success += 1;
-              } else fail += 1;
-              continue;
-            }
-
-            const payload = {
-              name: String(row.name || '').replace(/\s/g, '').trim(),
-              email: (row.email || '').trim(),
-              phone: row.phone ? formatPhoneInput(String(row.phone)) : '',
-              position: (row.position || '').trim() || undefined,
-              address: (row.address || '').trim() || undefined,
-              birthDate: (row.birthDate || '').trim() || undefined,
-              memo: (row.memo || '').trim() || undefined,
-              status: row.status || 'Lead',
-              assigneeUserIds
-            };
-
-            if (row.customFields && Object.keys(row.customFields).length) {
-              payload.customFields = row.customFields;
-            }
-
-            const linkedRaw = row.customerCompanyId != null ? String(row.customerCompanyId).trim() : '';
-            const linkedOk = linkedRaw && /^[a-f\d]{24}$/i.test(linkedRaw);
-            if (linkedOk) {
-              const cnLink = (row.companyName || row.linkedCompany?.name || '').trim();
-              payload.customerCompanyId = linkedRaw;
-              payload.companyName = cnLink;
-              const gkLink = normalizeBulkImportCompanyGroupKey(cnLink);
-              if (gkLink) batchCustomerCompanyIdByNormKey.set(gkLink, linkedRaw);
-            } else if (rowDecision === BULK_ROW_MERGE && mergeCompanyId) {
-              const cn = (row.companyName || '').trim();
-              payload.customerCompanyId = mergeCompanyId;
-              if (cn) payload.companyName = cn;
-            } else {
-              const cn = (row.companyName || '').trim();
-              if (cn) {
-                const gk = normalizeBulkImportCompanyGroupKey(cn);
-                const reuseId = gk ? batchCustomerCompanyIdByNormKey.get(gk) : null;
-                if (reuseId) {
-                  payload.customerCompanyId = reuseId;
-                  payload.companyName = cn;
-                } else {
-                  payload.customerCompanyId = null;
-                  payload.companyName = cn;
-                  payload.forceCreateNewCustomerCompany = true;
-                }
-              } else {
-                payload.isIndividual = true;
-                payload.customerCompanyId = null;
-                payload.companyName = '';
-              }
-            }
-
-            if (!payload.name && !payload.email && !payload.phone) {
-              fail += 1;
-              continue;
-            }
-            if (rowNeedsContactDuplicateHold(preResult) && (forceAll === true || rowDecision === BULK_ROW_FORCE)) {
-              payload.forceCreateDespiteContactDuplicate = true;
-            }
-
-            const res = await fetch(`${API_BASE}/customer-company-employees`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-              credentials: 'include',
-              body: JSON.stringify(payload)
-            });
-            const data = await res.json().catch(() => ({}));
-            if (res.ok) {
-              success += 1;
-              const cn = (row.companyName || '').trim();
-              if (cn && data.customerCompanyId) {
-                const gk = normalizeBulkImportCompanyGroupKey(cn);
-                if (gk && !batchCustomerCompanyIdByNormKey.has(gk)) {
-                  batchCustomerCompanyIdByNormKey.set(gk, String(data.customerCompanyId));
-                }
-              }
-            } else {
-              fail += 1;
-            }
-          } catch (_) {
-            fail += 1;
-          }
-        }
+        const items = buildBulkImportRequestItems(rowsToImport, preResults, forceAll, {
+          rowNeedsHold: rowNeedsContactDuplicateHold,
+          formatPhoneInput
+        });
+        const { success, merged, fail, skipped, total, created } = await postBulkContactImportFromPreview({
+          items,
+          assigneeUserIds: resolveAssigneeUserIds(),
+          getAuthHeader
+        });
 
         setContactPreviewOpen(false);
         setContactPreviewItems([]);
-        const created = Math.max(0, success - merged);
         const parts = [];
         if (created > 0) parts.push(`등록 ${created}건`);
         if (merged > 0) parts.push(`병합 ${merged}건`);
         if (skipped > 0) parts.push(`제외 ${skipped}건`);
         if (fail > 0) parts.push(`실패 ${fail}건`);
-        window.alert(`${parts.join(', ')} (총 ${rowsToImport.length}건).`);
+        window.alert(`${parts.join(', ')} (총 ${total}건).`);
         if (success > 0) {
-          onImported?.({ summary: { total: rowsToImport.length, created: success, merged, skipped, failed: fail } });
+          onImported?.({ summary: { total, created: success, merged, skipped, failed: fail } });
           onClose?.();
         } else {
           setSaveMsg(`등록에 실패했습니다. (${fail}건${skipped ? `, 제외 ${skipped}건` : ''})`);

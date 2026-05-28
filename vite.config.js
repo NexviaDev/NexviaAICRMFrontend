@@ -21,15 +21,33 @@ function resolveAppBuildId() {
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
-// .js 파일 내 JSX — 확장자가 .js라 Vite/rollup이 loader를 js로 두면 실패하므로 loader: 'jsx'로 명시
+const SRC_ROOT = path.resolve(__dirname, 'src');
+
+/** dep-scan은 `src/foo.js` 상대 경로, transform은 절대 경로 — 둘 다 src 아래 .js 인지 판별 */
+function isAppSrcJsModule(id) {
+  const file = id.split('?')[0];
+  if (!file.endsWith('.js')) return false;
+  const normalized = file.replace(/\\/g, '/');
+  if (normalized.includes('node_modules')) return false;
+  if (normalized.startsWith('src/') || normalized.includes('/src/')) return true;
+  try {
+    const abs = path.isAbsolute(file) ? path.resolve(file) : path.resolve(__dirname, file);
+    return abs.startsWith(SRC_ROOT + path.sep) || abs === SRC_ROOT;
+  } catch {
+    return false;
+  }
+}
+
+// .js 파일 내 JSX — Vite dep-scan·import-analysis는 loader: js 기본 → jsx로 선변환
 function jsxInJs() {
   return {
     name: 'jsx-in-js',
     enforce: 'pre',
     async transform(code, id) {
-      if (!id.endsWith('.js') || id.includes('node_modules') || !id.replace(/\\/g, '/').includes('/src/')) return null;
+      if (!isAppSrcJsModule(id)) return null;
       if (!code.includes('<') || !code.includes('>')) return null;
-      return transformWithEsbuild(code, id, {
+      const file = id.split('?')[0];
+      return transformWithEsbuild(code, file, {
         loader: 'jsx',
         jsx: 'automatic'
       });
@@ -123,6 +141,13 @@ export default defineConfig(({ mode }) => {
     },
     resolve: {
       alias: { '@': path.resolve(__dirname, 'src') }
+    },
+    optimizeDeps: {
+      // dev dep-scan: src 아래 .js 파일의 JSX 파싱 (loader 기본값 js 방지)
+      esbuildOptions: {
+        loader: { '.js': 'jsx' },
+        jsx: 'automatic'
+      }
     },
     plugins: [
       jsxInJs(),

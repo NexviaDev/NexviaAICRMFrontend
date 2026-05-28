@@ -1083,7 +1083,7 @@
   color: #334155;
 }
 
-/* ---------- 데스크톱: 제품목록과 동일 — fullheight, 헤더·페이지네이션 고정, 표만 스크롤 ---------- */
+/* ---------- 데스크톱: 헤더 고정, 목록·페이지네이션은 이어 붙고 영역 전체 스크롤 ---------- */
 @media (min-width: 769px) {
   .customer-company-employees-page {
     flex: 1;
@@ -1108,7 +1108,8 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
     padding: 0;
   }
 
@@ -1120,11 +1121,10 @@
   }
 
   .customer-company-employees-page .panel.table-panel {
-    flex: 1;
-    min-height: 0;
+    flex: 0 0 auto;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow: visible;
     margin-bottom: 0;
     background: var(--card);
     border-radius: 0;
@@ -1132,16 +1132,15 @@
   }
 
   .customer-company-employees-page .table-wrap {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
+    flex: 0 0 auto;
+    overflow: visible;
     background: var(--card);
     isolation: isolate;
-    -webkit-overflow-scrolling: touch;
   }
 
   .customer-company-employees-page .pagination-bar {
     flex-shrink: 0;
+    margin-top: 0;
     background: var(--card);
   }
 

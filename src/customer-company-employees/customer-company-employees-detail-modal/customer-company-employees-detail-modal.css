@@ -1535,10 +1535,14 @@
 .contact-detail-journal-audio-drop.is-uploading {
   color: #0f172a;
   border-color: #38bdf8;
-  background: linear-gradient(120deg, rgba(186, 230, 253, 0.38), rgba(196, 181, 253, 0.3), rgba(186, 230, 253, 0.38));
-  background-size: 230% 230%;
-  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.2), 0 8px 20px rgba(56, 189, 248, 0.15);
-  animation: contactDetailAudioBarPulse 1.5s ease-in-out infinite;
+  background: rgba(186, 230, 253, 0.45);
+  box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.2), 0 8px 20px rgba(56, 189, 248, 0.12);
+}
+
+.contact-detail-journal-audio-drop.is-server-processing {
+  border-color: #a5b4fc;
+  background: rgba(224, 231, 255, 0.35);
+  color: #334155;
 }
 
 .contact-detail-journal-audio-drop.is-uploading::after {
@@ -1551,12 +1555,6 @@
   background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0));
   animation: contactDetailAudioBarShimmer 1.2s linear infinite;
   pointer-events: none;
-}
-
-@keyframes contactDetailAudioBarPulse {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
 }
 
 @keyframes contactDetailAudioBarShimmer {
@@ -1579,6 +1577,15 @@
 .contact-detail-journal-audio-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.contact-detail-timeline-paragraph {
+  white-space: pre-line;
+  line-height: 1.55;
+}
+
+.contact-detail-timeline-sentence {
+  display: inline;
 }
 
 .contact-detail-journal-error {

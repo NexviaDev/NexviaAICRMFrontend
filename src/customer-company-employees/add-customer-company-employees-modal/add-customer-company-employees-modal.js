@@ -8,17 +8,13 @@ import ContactImportPreviewModal from './contact-import-preview-modal';
 import ContactSavePregateModal from './contact-save-pregate-modal';
 import BulkContactDuplicateReviewModal from './bulk-contact-duplicate-review-modal';
 import {
-  BULK_ROW_EXCLUDE,
-  BULK_ROW_FORCE,
-  BULK_ROW_MERGE,
-  mergeImportRowIntoExistingEmployee,
-  parseBulkPerRowResolution
-} from './bulk-contact-merge-utils';
+  buildBulkImportRequestItems,
+  postBulkContactImportFromPreview
+} from './bulk-contact-import-api';
 import CustomerCompanyDetailModal from '../../customer-companies/customer-company-detail-modal/customer-company-detail-modal';
 import GoogleContactsModal from '../google-contacts-modal/google-contacts-modal';
 
 import { API_BASE } from '@/config';
-import { normalizeBulkImportCompanyGroupKey } from '@/lib/bulk-import-company-group-key';
 import { geocodeAddressForCompanySave } from '@/lib/geocode-company-address';
 import { buildDriveFileDeleteUrl, getDriveFileIdFromUrl, isValidDriveNodeId, sanitizeDriveFolderWebViewLink } from '@/lib/google-drive-url';
 import { pingBackendHealth } from '@/lib/backend-wake';
@@ -998,120 +994,19 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
   };
 
   const runImportRowsBulk = async (rows, preResults, forceAll) => {
-    const assigneeUserIds = Array.isArray(form.assigneeUserIds) ? form.assigneeUserIds : [];
-    const batchCustomerCompanyIdByNormKey = new Map();
-    let success = 0;
-    let merged = 0;
-    let fail = 0;
-    let skipped = 0;
-    for (let i = 0; i < rows.length; i += 1) {
-      const row = rows[i];
-      const entry = buildBulkEntryFromImportRow(row);
-      const pr = (preResults && preResults[i]) || {};
-      const decisionKey = Number.isInteger(Number(pr.index)) ? String(Number(pr.index)) : String(i);
-      const { rowDecision, mergeContactId, mergeCompanyId } = parseBulkPerRowResolution(forceAll, decisionKey);
-      const hold = rowNeedsImportBulkHold(pr, entry);
-      if (
-        rowDecision === BULK_ROW_EXCLUDE ||
-        (hold && rowDecision !== BULK_ROW_FORCE && rowDecision !== BULK_ROW_MERGE && forceAll !== true)
-      ) {
-        skipped += 1;
-        continue;
-      }
-      try {
-        if (rowDecision === BULK_ROW_MERGE && mergeContactId) {
-          const mergeResult = await mergeImportRowIntoExistingEmployee({
-            employeeId: mergeContactId,
-            importRow: row,
-            getAuthHeader,
-            formatPhoneInput,
-            mergeCompanyId
-          });
-          if (mergeResult.ok) {
-            merged += 1;
-            success += 1;
-          } else fail += 1;
-          continue;
-        }
-
-        const payload = {
-          name: String(row.name || '').replace(/\s/g, '').trim(),
-          email: (row.email || '').trim(),
-          phone: row.phone ? formatPhoneInput(String(row.phone)) : '',
-          position: (row.position || '').trim() || undefined,
-          address: (row.address || '').trim() || undefined,
-          status: 'Lead',
-          assigneeUserIds
-        };
-        if (fixedCompany && initialCustomerCompany?._id) {
-          payload.customerCompanyId = String(initialCustomerCompany._id);
-          if ((form.company || '').trim()) payload.companyName = (form.company || '').trim();
-        } else {
-          const linkedRaw = row.customerCompanyId != null ? String(row.customerCompanyId).trim() : '';
-          const linkedOk = linkedRaw && /^[a-f\d]{24}$/i.test(linkedRaw);
-          if (linkedOk) {
-            const cnLink = (row.companyName || row.linkedCompany?.name || '').trim();
-            payload.customerCompanyId = linkedRaw;
-            payload.companyName = cnLink;
-            const gkLink = normalizeBulkImportCompanyGroupKey(cnLink);
-            if (gkLink) batchCustomerCompanyIdByNormKey.set(gkLink, linkedRaw);
-          } else if (rowDecision === BULK_ROW_MERGE && mergeCompanyId) {
-            const cn = (row.companyName || '').trim();
-            payload.customerCompanyId = mergeCompanyId;
-            if (cn) payload.companyName = cn;
-          } else {
-            const cn = (row.companyName || '').trim();
-            if (cn) {
-              const gk = normalizeBulkImportCompanyGroupKey(cn);
-              const reuseId = gk ? batchCustomerCompanyIdByNormKey.get(gk) : null;
-              if (reuseId) {
-                payload.customerCompanyId = reuseId;
-                payload.companyName = cn;
-              } else {
-                payload.customerCompanyId = null;
-                payload.companyName = cn;
-                payload.forceCreateNewCustomerCompany = true;
-              }
-            } else {
-              payload.isIndividual = true;
-              payload.customerCompanyId = null;
-              payload.companyName = '';
-            }
-          }
-        }
-        if (form.customFields && Object.keys(form.customFields).length) {
-          payload.customFields = form.customFields;
-        }
-        if (!payload.name && !payload.email && !payload.phone) {
-          fail += 1;
-          continue;
-        }
-        if (hold && (forceAll === true || rowDecision === BULK_ROW_FORCE)) {
-          if ((pr.contactCandidates || []).length) payload.forceCreateDespiteContactDuplicate = true;
-        }
-        const res = await fetch(`${API_BASE}/customer-company-employees`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-          body: JSON.stringify(payload)
-        });
-        const data = await res.json().catch(() => ({}));
-        if (res.ok) {
-          success += 1;
-          if (!(fixedCompany && initialCustomerCompany?._id)) {
-            const cn = (row.companyName || '').trim();
-            if (cn && data.customerCompanyId) {
-              const gk = normalizeBulkImportCompanyGroupKey(cn);
-              if (gk && !batchCustomerCompanyIdByNormKey.has(gk)) {
-                batchCustomerCompanyIdByNormKey.set(gk, String(data.customerCompanyId));
-              }
-            }
-          }
-        } else fail += 1;
-      } catch {
-        fail += 1;
-      }
-    }
-    return { success, merged, fail, skipped, total: rows.length };
+    const items = buildBulkImportRequestItems(rows, preResults, forceAll, {
+      rowNeedsHold: (pr) => rowNeedsImportBulkHold(pr),
+      formatPhoneInput
+    });
+    return postBulkContactImportFromPreview({
+      items,
+      assigneeUserIds: Array.isArray(form.assigneeUserIds) ? form.assigneeUserIds : [],
+      defaultCustomFields: form.customFields,
+      fixedCustomerCompanyId:
+        fixedCompany && initialCustomerCompany?._id ? String(initialCustomerCompany._id) : undefined,
+      fixedCompanyName: fixedCompany ? (form.company || '').trim() : undefined,
+      getAuthHeader
+    });
   };
 
   const confirmBulkContactImport = async (rowsArg) => {

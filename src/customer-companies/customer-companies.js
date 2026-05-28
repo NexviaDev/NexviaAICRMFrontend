@@ -36,7 +36,7 @@ const MODAL_ADD_COMPANY = 'add-company';
 const MODAL_EXCEL_IMPORT = 'excel-import';
 const MODAL_DETAIL = 'detail';
 const DETAIL_ID_PARAM = 'id';
-const LIMIT = 10;
+const LIMIT = 13;
 const LIMIT_SEARCH_MODAL = 500;
 const EXPORT_PAGE_LIMIT = 100;
 
@@ -233,29 +233,23 @@ export default function CustomerCompanies({
     [fetchList, pagination.page, searchApplied, assigneeMeOnly, me, listPageLimit]
   );
 
-  /** 검색·필터와 동일 조건으로 전체 고객사 목록 (전체 선택용) */
-  const fetchAllCustomerCompaniesForSelection = useCallback(async () => {
-    let page = 1;
-    let totalPages = 1;
-    const all = [];
-    do {
-      const params = new URLSearchParams({ page: String(page), limit: String(EXPORT_PAGE_LIMIT) });
-      if (searchApplied) {
-        params.set('search', searchApplied);
-        if (searchField) params.set('searchField', searchField);
-      }
-      if (assigneeMeOnly) params.set('assigneeMe', '1');
-      const res = await fetch(`${API_BASE}/customer-companies?${params.toString()}`, { headers: getAuthHeader() });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || '목록을 가져오지 못했습니다.');
-      }
-      const data = await res.json();
-      all.push(...(data.items || []));
-      totalPages = Math.max(1, Number(data.pagination?.totalPages) || 1);
-      page += 1;
-    } while (page <= totalPages);
-    return all;
+  /** 검색·필터와 동일 조건 — 전체 선택용 API 1회 */
+  const fetchCustomerCompaniesForSelection = useCallback(async () => {
+    const params = new URLSearchParams();
+    if (searchApplied) {
+      params.set('search', searchApplied);
+      if (searchField) params.set('searchField', searchField);
+    }
+    if (assigneeMeOnly) params.set('assigneeMe', '1');
+    const res = await fetch(`${API_BASE}/customer-companies/for-selection?${params.toString()}`, {
+      headers: getAuthHeader()
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || '목록을 가져오지 못했습니다.');
+    }
+    const data = await res.json();
+    return data.items || [];
   }, [searchApplied, searchField, assigneeMeOnly]);
 
   useEffect(() => { fetchList(pagination.page); }, [pagination.page, fetchList]);
@@ -471,7 +465,7 @@ export default function CustomerCompanies({
     }
     setSelectAllLoading(true);
     try {
-      const rows = await fetchAllCustomerCompaniesForSelection();
+      const rows = await fetchCustomerCompaniesForSelection();
       const nextIds = new Set();
       const nextMap = {};
       for (const r of rows) {
@@ -487,7 +481,7 @@ export default function CustomerCompanies({
     } finally {
       setSelectAllLoading(false);
     }
-  }, [pagination.total, selectedCompanyIds.size, fetchAllCustomerCompaniesForSelection]);
+  }, [pagination.total, selectedCompanyIds.size, fetchCustomerCompaniesForSelection]);
 
   useEffect(() => {
     const el = headerSelectAllRef.current;
@@ -564,36 +558,33 @@ export default function CustomerCompanies({
     );
     if (!confirmed) return;
     setBulkDeleteLoading(true);
-    let ok = 0;
-    const errors = [];
     try {
-      for (const id of ids) {
-        const res = await fetch(`${API_BASE}/customer-companies/${encodeURIComponent(id)}`, {
-          method: 'DELETE',
-          headers: getAuthHeader()
-        });
-        if (res.status === 204 || res.ok) {
-          ok += 1;
-        } else {
-          const data = await res.json().catch(() => ({}));
-          errors.push({ id, error: data.error || `HTTP ${res.status}` });
-        }
+      const res = await fetch(`${API_BASE}/customer-companies/bulk-delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+        body: JSON.stringify({ ids })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        window.alert(data.error || '삭제에 실패했습니다.');
+        return;
       }
+      const deleted = Number(data.deletedCount) || 0;
+      const skipped = Number(data.skippedCount) || 0;
+      if (detailId && ids.includes(String(detailId))) {
+        closeDetailModal();
+      }
+      clearCompanySelection();
+      await fetchList(pagination.page, { silent: true });
+      if (skipped > 0) {
+        window.alert(`삭제했습니다. (${deleted}곳, 권한 없음 등으로 제외 ${skipped}곳)`);
+      } else {
+        window.alert(`삭제했습니다. (${deleted}곳)`);
+      }
+    } catch (_) {
+      window.alert('서버에 연결할 수 없습니다.');
     } finally {
       setBulkDeleteLoading(false);
-    }
-    if (detailId && ids.includes(String(detailId))) {
-      closeDetailModal();
-    }
-    clearCompanySelection();
-    await fetchList(pagination.page, { silent: true });
-    if (errors.length === 0) {
-      window.alert(`삭제했습니다. (${ok}곳)`);
-    } else {
-      const extra = errors.length > 1 ? ` 외 ${errors.length - 1}건` : '';
-      window.alert(
-        `처리 결과: 성공 ${ok}곳, 실패 ${errors.length}건.\n첫 오류: ${errors[0].error}${extra}`
-      );
     }
   }, [
     canBulkDeleteSelected,

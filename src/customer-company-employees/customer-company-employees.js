@@ -34,7 +34,7 @@ const MODAL_ADD_CONTACT = 'add-contact';
 const MODAL_EXCEL_IMPORT = 'excel-import';
 const MODAL_DETAIL = 'detail';
 const DETAIL_ID_PARAM = 'id';
-const LIMIT = 10;
+const LIMIT = 13;
 
 /** 모바일 카드 아바타 이니셜 */
 function getNameInitials(name) {
@@ -631,36 +631,33 @@ export default function CustomerCompanyEmployees() {
     );
     if (!confirmed) return;
     setBulkDeleteLoading(true);
-    let ok = 0;
-    const errors = [];
     try {
-      for (const id of ids) {
-        const res = await fetch(`${API_BASE}/customer-company-employees/${encodeURIComponent(id)}`, {
-          method: 'DELETE',
-          headers: getAuthHeader()
-        });
-        if (res.status === 204 || res.ok) {
-          ok += 1;
-        } else {
-          const data = await res.json().catch(() => ({}));
-          errors.push({ id, error: data.error || `HTTP ${res.status}` });
-        }
+      const res = await fetch(`${API_BASE}/customer-company-employees/bulk-delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+        body: JSON.stringify({ ids })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        window.alert(data.error || '삭제에 실패했습니다.');
+        return;
       }
+      const deleted = Number(data.deletedCount) || 0;
+      const skipped = Number(data.skippedCount) || 0;
+      if (detailId && ids.includes(String(detailId))) {
+        closeDetailModal();
+      }
+      clearSelection();
+      await fetchContacts(pagination.page, { silent: true });
+      if (skipped > 0) {
+        window.alert(`삭제했습니다. (${deleted}명, 권한 없음 등으로 제외 ${skipped}명)`);
+      } else {
+        window.alert(`삭제했습니다. (${deleted}명)`);
+      }
+    } catch (_) {
+      window.alert('서버에 연결할 수 없습니다.');
     } finally {
       setBulkDeleteLoading(false);
-    }
-    if (detailId && ids.includes(String(detailId))) {
-      closeDetailModal();
-    }
-    clearSelection();
-    await fetchContacts(pagination.page, { silent: true });
-    if (errors.length === 0) {
-      window.alert(`삭제했습니다. (${ok}명)`);
-    } else {
-      const extra = errors.length > 1 ? ` 외 ${errors.length - 1}건` : '';
-      window.alert(
-        `처리 결과: 성공 ${ok}명, 실패 ${errors.length}건.\n첫 오류: ${errors[0].error}${extra}`
-      );
     }
   }, [
     canBulkDeleteSelected,
@@ -671,6 +668,24 @@ export default function CustomerCompanyEmployees() {
     fetchContacts,
     pagination.page
   ]);
+
+  const fetchContactsForSelection = useCallback(async () => {
+    const params = new URLSearchParams();
+    if (appliedSearch.trim()) {
+      params.set('search', appliedSearch.trim());
+      if (appliedSearchField) params.set('searchField', appliedSearchField);
+    }
+    if (assigneeMeOnly) params.set('assigneeMe', '1');
+    const res = await fetch(`${API_BASE}/customer-company-employees/for-selection?${params}`, {
+      headers: getAuthHeader()
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || '목록을 가져오지 못했습니다.');
+    }
+    const data = await res.json();
+    return data.items || [];
+  }, [appliedSearch, appliedSearchField, assigneeMeOnly]);
 
   const fetchAllContactsForExport = useCallback(async () => {
     let page = 1;
@@ -714,7 +729,7 @@ export default function CustomerCompanyEmployees() {
 
     setSelectAllLoading(true);
     try {
-      const rows = await fetchAllContactsForExport();
+      const rows = await fetchContactsForSelection();
       const next = new Set();
       selectedRowsRef.current.clear();
       for (const r of rows) {
@@ -729,7 +744,7 @@ export default function CustomerCompanyEmployees() {
     } finally {
       setSelectAllLoading(false);
     }
-  }, [pagination.total, selected.size, fetchAllContactsForExport, clearSelection]);
+  }, [pagination.total, selected.size, fetchContactsForSelection, clearSelection]);
 
   useEffect(() => {
     const el = headerSelectAllRef.current;

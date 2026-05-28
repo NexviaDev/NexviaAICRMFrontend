@@ -842,6 +842,7 @@
   font-size: 0.875rem;
   line-height: 1.7;
   color: var(--text);
+  white-space: pre-line;
 }
 
 .ai-voice-summary-paragraph:last-child {

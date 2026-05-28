@@ -11,6 +11,12 @@ import "./home.css";
 const NEXVIA_LOGO_URL =
   "https://res.cloudinary.com/djcsvvhly/image/upload/v1774253553/NexviaLogo2_yy0myj.png";
 
+const HOME_LEGAL_FOOTER_LINKS = [
+  { modal: "privacy", ko: "개인정보 보호정책", en: "Privacy Policy" },
+  { modal: "terms", ko: "이용약관", en: "Terms of Service" },
+  { modal: "google", ko: "Google API 약관", en: "Google API Terms" },
+];
+
 /** 홈 섹션 스크린샷 — Cloudinary CDN (public/landing 로컬 PNG 미사용) */
 const LANDING_CDN = {
   sectionShotOne:
@@ -1024,33 +1030,23 @@ export default function Home() {
       </main>
 
       <footer className="nexvia-home-legal-footer" aria-label="법적 고지">
-        <button
-          type="button"
-          className="nexvia-home-legal-footer__link"
-          onClick={() => setLegalModal("privacy")}
-        >
-          개인정보 보호정책
-        </button>
-        <span className="nexvia-home-legal-footer__sep" aria-hidden>
-          ·
-        </span>
-        <button
-          type="button"
-          className="nexvia-home-legal-footer__link"
-          onClick={() => setLegalModal("terms")}
-        >
-          이용약관
-        </button>
-        <span className="nexvia-home-legal-footer__sep" aria-hidden>
-          ·
-        </span>
-        <button
-          type="button"
-          className="nexvia-home-legal-footer__link"
-          onClick={() => setLegalModal("google")}
-        >
-          Google API 약관
-        </button>
+        {HOME_LEGAL_FOOTER_LINKS.map((item, index) => (
+          <span key={item.modal} className="nexvia-home-legal-footer__group">
+            {index > 0 ? (
+              <span className="nexvia-home-legal-footer__sep" aria-hidden>
+                ·
+              </span>
+            ) : null}
+            <button
+              type="button"
+              className="nexvia-home-legal-footer__link"
+              onClick={() => setLegalModal(item.modal)}
+            >
+              <span className="nexvia-home-legal-footer__label-ko">{item.ko}</span>
+              <span className="nexvia-home-legal-footer__label-en">{item.en}</span>
+            </button>
+          </span>
+        ))}
       </footer>
 
       <PrivacyPolicyModal open={legalModal === "privacy"} onClose={() => setLegalModal(null)} />

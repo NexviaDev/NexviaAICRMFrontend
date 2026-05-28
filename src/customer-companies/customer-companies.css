@@ -382,10 +382,10 @@
   background: var(--bg-light);
 }
 
-.page-content {
+/* padding: 0 은 .customer-companies-page 스코프(데스크톱 @media)에만 — 전역 .page-content 금지(ai-voice 등에서 CSS 로드 시 대시보드·프로젝트 간격 붕괴) */
+.customer-companies-page .page-content {
   flex: 1;
   overflow-y: auto;
-  padding: 0;
 }
 
 .panel {
@@ -806,7 +806,7 @@
   color: #334155;
 }
 
-/* ---------- 데스크톱: 제품목록과 동일 — fullheight, 헤더·페이지네이션 고정, 표만 스크롤 ---------- */
+/* ---------- 데스크톱: 헤더 고정, 목록·페이지네이션은 이어 붙고 영역 전체 스크롤 ---------- */
 @media (min-width: 769px) {
   .customer-companies-page {
     flex: 1;
@@ -831,7 +831,8 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
     padding: 0;
   }
 
@@ -843,11 +844,10 @@
   }
 
   .customer-companies-page .panel.table-panel {
-    flex: 1;
-    min-height: 0;
+    flex: 0 0 auto;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow: visible;
     margin-bottom: 0;
     background: var(--card);
     border-radius: 0;
@@ -855,16 +855,15 @@
   }
 
   .customer-companies-page .table-wrap {
-    flex: 1;
-    min-height: 0;
-    overflow: auto;
+    flex: 0 0 auto;
+    overflow: visible;
     background: var(--card);
     isolation: isolate;
-    -webkit-overflow-scrolling: touch;
   }
 
   .customer-companies-page .pagination-bar {
     flex-shrink: 0;
+    margin-top: 0;
     background: var(--card);
   }
 

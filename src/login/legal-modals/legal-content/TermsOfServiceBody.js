@@ -28,7 +28,7 @@ export default function TermsOfServiceBody() {
       <h2>제4조 (서비스의 제공)</h2>
       <p>
         회사는 이메일 기반 가입·로그인, Google 또는 Microsoft 계정 연동 등 회사가 제공하는 인증 수단을 통해 서비스를
-        제공합니다. Google API·Gmail·Calendar·Drive·Contacts 등 Google 연동 기능을 사용하는 경우, Google API 서비스
+        제공합니다. Google API·Calendar·Drive·Contacts·Tasks 등 Google 연동 기능을 사용하는 경우, Google API 서비스
         이용약관·사용자 데이터 정책 및 Google 앱 검증(Verification)·OAuth 동의 화면 관련 요구사항을 준수합니다. 서비스는
         운영상·기술상의 필요에 따라 일시 중단되거나 변경될 수 있습니다.
       </p>

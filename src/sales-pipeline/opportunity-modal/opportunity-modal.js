@@ -20,7 +20,7 @@ import {
   pickDriveFolderOpenUrl,
   sanitizeDriveFolderWebViewLink
 } from '@/lib/google-drive-url';
-import { pingBackendHealth } from '@/lib/backend-wake';
+import { pingBackendHealth, BACKEND_KEEPALIVE_INTERVAL_MS, BACKEND_KEEPALIVE_INTERVAL_ENABLED } from '@/lib/backend-wake';
 import {
   fetchCompanyDocMailAddressBook,
   putCompanyDocMailAddressBook,
@@ -28,7 +28,9 @@ import {
   putUserDocMailAddressBook
 } from '@/lib/opportunity-doc-mail-address-book-api';
 import { pruneDriveUploadedFilesIndex, syncDriveUploadedFilesIndex } from '@/lib/drive-uploaded-files-prune';
-import { pollJournalFromAudioJob } from '@/lib/journal-from-audio-poll';
+import { uploadJournalAudioFromFile } from '@/lib/upload-journal-audio-from-file';
+import { queueJournalAudioBackgroundJob, useJournalAudioJobWatcher } from '@/lib/journal-audio-background-upload';
+import { formatJournalTextForDisplay } from '@/lib/journal-content-blocks';
 import { suggestedPriceFromProduct, OPPORTUNITY_PRICE_BASIS_OPTIONS } from '@/lib/product-price-utils';
 import {
   buildPipelineStageSelectOptionsFromDefinitions,
@@ -454,6 +456,8 @@ export default function OpportunityModal({
   const [journalDateTime, setJournalDateTime] = useState(() => toDatetimeLocalValue(new Date()));
   const [savingJournal, setSavingJournal] = useState(false);
   const [audioUploading, setAudioUploading] = useState(false);
+  const [audioUploadProgress, setAudioUploadProgress] = useState(null);
+  const [audioJobPollUrl, setAudioJobPollUrl] = useState(null);
   const [audioDropActive, setAudioDropActive] = useState(false);
   const [journalInputError, setJournalInputError] = useState('');
   const [journalSummaryNotice, setJournalSummaryNotice] = useState(null);
@@ -2507,60 +2511,76 @@ export default function OpportunityModal({
         setJournalInputError('MP3, WAV, M4A, WebM 파일만 업로드할 수 있습니다.');
         return;
       }
+      const useContactAudio = Boolean(contactEmpId);
+      const collectionBasePath = useContactAudio
+        ? `${API_BASE}/customer-company-employees`
+        : `${API_BASE}/customer-companies`;
+      const targetId = useContactAudio ? contactEmpId : companyId;
       setJournalInputError('');
+      setAudioJobPollUrl(null);
       setJournalSummaryNotice({
         type: 'info',
-        text:
-          '음성 파일을 올렸습니다. 전사·요약은 서버에서 진행하며, 진행 중에도 연결이 끊기지 않도록 짧게 상태를 확인합니다.'
+        text: '음성을 올리는 중입니다. 업로드 후 서버가 전사·요약·메모 등록을 이어갑니다.'
       });
-      await pingBackendHealth(getAuthHeader);
       setAudioUploading(true);
       try {
-        const fd = new FormData();
-        fd.append('audio', file);
-        const useContactAudio = Boolean(contactEmpId);
-        const res = await fetch(
-          useContactAudio
-            ? `${API_BASE}/customer-company-employees/${contactEmpId}/history/from-audio`
-            : `${API_BASE}/customer-companies/${companyId}/history/from-audio`,
-          {
-            method: 'POST',
-            headers: getAuthHeader(),
-            credentials: 'include',
-            body: fd
-          }
-        );
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || '음성 업로드 처리에 실패했습니다.');
-        if (res.status === 202 && data.jobId) {
-          setJournalSummaryNotice({
-            type: 'info',
-            text: 'AssemblyAI 전사 및 Gemini 요약 진행 중입니다. 잠시만 기다려 주세요…'
-          });
-          const pollUrl = useContactAudio
-            ? `${API_BASE}/customer-company-employees/${contactEmpId}/history/from-audio/jobs/${encodeURIComponent(
-              data.jobId
-            )}`
-            : `${API_BASE}/customer-companies/${companyId}/history/from-audio/jobs/${encodeURIComponent(data.jobId)}`;
-          const result = await pollJournalFromAudioJob(pollUrl, getAuthHeader);
-          setNewComment(result.content || '');
-          setJournalDateTime(toDatetimeLocalValue(new Date()));
-          setJournalSummaryNotice({
-            type: 'info',
-            text:
-              '요약이 입력창에 채워졌습니다. 내용 확인 후 "메모 저장"을 눌러 등록해 주세요. 개인정보 보호를 위해 AssemblyAI 전사 데이터는 삭제 요청되었습니다.'
-          });
-        } else {
-          throw new Error(data.error || '서버 응답 형식을 알 수 없습니다.');
-        }
+        const { pollUrl } = await queueJournalAudioBackgroundJob({
+          uploadJournalAudioFromFile,
+          collectionBasePath,
+          targetId,
+          file,
+          getAuthHeader,
+          workCategory: 'sales',
+          contactChannel: 'phone',
+          onUploadProgress: ({ sent, total }) => setAudioUploadProgress({ sent, total })
+        });
+        setAudioUploadProgress(null);
+        setAudioJobPollUrl(pollUrl);
+        setJournalSummaryNotice({
+          type: 'info',
+          text:
+            '업로드 완료. 서버에서 전사·요약 후 업무 메모로 자동 등록합니다. 다른 필드를 편집하셔도 되며, 인터넷이 끊겨도 서버 처리는 계속됩니다.'
+        });
       } catch (e) {
         setJournalInputError(e.message || '음성 업로드 처리에 실패했습니다.');
       } finally {
         setAudioUploading(false);
+        setAudioUploadProgress(null);
       }
     },
     [audioUploading, form.customerCompanyId, form.customerCompanyEmployeeId, savingJournal]
   );
+
+  useEffect(() => {
+    if ((!audioUploading && !audioJobPollUrl) || !BACKEND_KEEPALIVE_INTERVAL_ENABLED) return undefined;
+    const id = setInterval(() => {
+      pingBackendHealth(getAuthHeader);
+    }, BACKEND_KEEPALIVE_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [audioUploading, audioJobPollUrl]);
+
+  useJournalAudioJobWatcher({
+    pollUrl: audioJobPollUrl,
+    getAuthHeader,
+    enabled: !!audioJobPollUrl,
+    onCompleted: (data) => {
+      setAudioJobPollUrl(null);
+      if (data.content && !data.autoSaved) {
+        setNewComment(formatJournalTextForDisplay(data.content || ''));
+        setJournalDateTime(toDatetimeLocalValue(new Date()));
+      }
+      setJournalSummaryNotice({
+        type: 'info',
+        text: data.autoSaved
+          ? '음성 메모가 서버에서 자동 등록되었습니다. AssemblyAI 원본은 삭제되었습니다.'
+          : '요약이 입력창에 채워졌습니다. 확인 후 "메모 저장"을 눌러 주세요.'
+      });
+    },
+    onError: (e) => {
+      setAudioJobPollUrl(null);
+      setJournalInputError(e?.message || '음성 처리에 실패했습니다.');
+    }
+  });
 
   const { roots, childrenMap } = useMemo(() => organizeComments(comments), [comments]);
   const commentById = useMemo(() => {
@@ -4493,7 +4513,7 @@ export default function OpportunityModal({
                                   aria-hidden="true"
                                 />
                                 <div
-                                  className={`customer-company-detail-journal-audio-drop ${audioDropActive ? 'is-dragover' : ''} ${audioUploading ? 'is-uploading' : ''}`}
+                                  className={`customer-company-detail-journal-audio-drop ${audioDropActive ? 'is-dragover' : ''} ${audioUploading ? 'is-uploading' : ''} ${audioJobPollUrl ? 'is-server-processing' : ''}`}
                                   onDragOver={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
@@ -4516,8 +4536,12 @@ export default function OpportunityModal({
                                   <span className="material-symbols-outlined">audio_file</span>
                                   <span>
                                     {audioUploading
-                                      ? '음성 처리 중… 전사·요약이 끝나면 AssemblyAI에 올린 음성 원본은 서버에서 자동 삭제됩니다.'
-                                      : '음성 파일 드래그앤드롭 또는 선택 (MP3/WAV/M4A/WebM). 처리가 끝나면 AssemblyAI 쪽 음성·전사 원본은 삭제됩니다.'}
+                                      ? (audioUploadProgress?.total
+                                        ? `음성 업로드 ${Math.min(100, Math.round((audioUploadProgress.sent / audioUploadProgress.total) * 100))}%…`
+                                        : '음성 업로드 중…')
+                                      : audioJobPollUrl
+                                        ? '서버에서 전사·요약·메모 자동 등록 중… 다른 작업을 하셔도 됩니다.'
+                                        : '음성 파일 드래그앤드롭 또는 선택 (MP3/WAV/M4A/WebM). 업로드 후 서버가 전사·요약·메모 등록까지 처리합니다.'}
                                   </span>
                                   <button
                                     type="button"

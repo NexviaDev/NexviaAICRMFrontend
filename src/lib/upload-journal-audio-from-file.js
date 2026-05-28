@@ -20,7 +20,9 @@ export async function uploadJournalAudioFromFile({
   targetId,
   file,
   getAuthHeader,
-  onProgress
+  onProgress,
+  workCategory,
+  contactChannel
 }) {
   const tid = encodeURIComponent(String(targetId));
   const base = `${String(collectionBasePath).replace(/\/$/, '')}/${tid}`;
@@ -45,6 +47,8 @@ export async function uploadJournalAudioFromFile({
   if (fileByteLength <= JOURNAL_AUDIO_CHUNK_THRESHOLD) {
     const form = new FormData();
     form.append('audio', file);
+    if (workCategory) form.append('workCategory', String(workCategory));
+    if (contactChannel) form.append('contactChannel', String(contactChannel));
     const res = await fetch(`${base}/history/from-audio`, {
       method: 'POST',
       headers: getAuthHeader(),
@@ -64,7 +68,12 @@ export async function uploadJournalAudioFromFile({
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
     credentials: 'include',
-    body: JSON.stringify({ totalBytes: fileByteLength, fileName: file.name || 'audio' })
+    body: JSON.stringify({
+      totalBytes: fileByteLength,
+      fileName: file.name || 'audio',
+      ...(workCategory ? { workCategory: String(workCategory) } : {}),
+      ...(contactChannel ? { contactChannel: String(contactChannel) } : {})
+    })
   });
   const initData = await initRes.json().catch(() => ({}));
   if (!initRes.ok) throw new Error(initData.error || '업로드 준비에 실패했습니다.');
