@@ -122,18 +122,21 @@
 
 /* Left column: upload + list */
 .ai-voice-side {
-  width: 40%;
+  width: 20rem;
   max-width: 22rem;
+  min-width: 16rem;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--card-border, #e2e8f0);
   background: var(--card, #fff);
-  overflow-y: auto;
+  overflow: hidden;
+  min-height: 0;
 }
 
 /* 월별 전사 사용량(40h 한도) */
 .ai-voice-usage-section {
+  flex-shrink: 0;
   padding: 1rem 1.25rem 1.25rem;
   border-bottom: 1px solid var(--card-border, #e2e8f0);
   background: #f0f4ff;
@@ -287,6 +290,7 @@
 }
 
 .ai-voice-upload-section {
+  flex-shrink: 0;
   padding: 1.5rem;
 }
 
@@ -390,15 +394,22 @@
   color: #b91c1c;
 }
 
-/* Recordings list */
+/* Recordings list — 최대 6행 보이고 이후 스크롤 */
+.ai-voice-page {
+  --ai-voice-list-row-h: 5.375rem;
+  --ai-voice-list-visible-count:10;
+}
+
 .ai-voice-list-section {
-  flex: 1;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
 }
 
 .ai-voice-list-header {
+  flex-shrink: 0;
   padding: 0.75rem 1.5rem;
   border-top: 1px solid var(--card-border);
   border-bottom: 1px solid var(--card-border);
@@ -407,6 +418,21 @@
   justify-content: space-between;
   background: var(--bg-light, #f8fafc);
   font-size: 0.75rem;
+}
+
+.ai-voice-list-scroll {
+  flex: 0 0 auto;
+  height: calc(var(--ai-voice-list-row-h) * var(--ai-voice-list-visible-count));
+  max-height: calc(var(--ai-voice-list-row-h) * var(--ai-voice-list-visible-count));
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.ai-voice-list-scroll:not(.ai-voice-list-scroll--overflow) {
+  height: auto;
+  max-height: calc(var(--ai-voice-list-row-h) * var(--ai-voice-list-visible-count));
 }
 
 .ai-voice-list-header-label {
@@ -425,14 +451,17 @@
   list-style: none;
   margin: 0;
   padding: 0;
-  overflow-y: auto;
 }
 
 .ai-voice-list-item {
   width: 100%;
-  padding: 1rem 1.5rem;
+  height: var(--ai-voice-list-row-h);
+  min-height: var(--ai-voice-list-row-h);
+  max-height: var(--ai-voice-list-row-h);
+  box-sizing: border-box;
+  padding: 0.65rem 1.5rem;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
   border: none;
@@ -443,6 +472,7 @@
   text-align: left;
   cursor: pointer;
   transition: background 0.2s;
+  overflow: hidden;
 }
 
 .ai-voice-list-item:hover {
@@ -492,12 +522,18 @@
   font-size: 0.875rem;
   font-weight: 700;
   color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ai-voice-list-item-meta {
-  margin: 0.25rem 0 0;
+  margin: 0.15rem 0 0;
   font-size: 0.75rem;
   color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ai-voice-status {
@@ -548,7 +584,7 @@
   flex: 1;
   min-width: 0;
   overflow-y: auto;
-  padding: 2rem;
+  padding: 1.5rem 1.75rem;
   background: var(--bg-light, #f6f7f9);
 }
 
@@ -612,8 +648,9 @@
 }
 
 .ai-voice-detail {
-  max-width: 56rem;
-  margin: 0 auto;
+  width: 100%;
+  max-width: none;
+  margin: 0;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;

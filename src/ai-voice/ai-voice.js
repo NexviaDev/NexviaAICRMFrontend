@@ -11,6 +11,7 @@ import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-head
 import { pingBackendHealth } from '@/lib/backend-wake';
 import { AI_VOICE_LIST_POLL_MS } from '@/lib/polling-intervals';
 import { splitContentIntoBlocks, formatJournalTextForDisplay } from '@/lib/journal-content-blocks';
+import { getStoredCrmUser } from '@/lib/crm-role-utils';
 
 /** 백엔드 단일 POST 상한과 동일 — 초과 시 청크 API로 나눔 */
 const VOICE_DIRECT_UPLOAD_MAX_BYTES = 12 * 1024 * 1024;
@@ -72,6 +73,17 @@ const STATUS_MAP = {
   error: { label: '오류', class: 'error', icon: 'error' }
 };
 
+/** API는 본인 것만 주지만, createdBy 누락·레거시 대비 클라이언트에서도 한 번 더 거름 */
+function filterOwnVoiceRecordings(items) {
+  const uid = getStoredCrmUser()?._id ?? getStoredCrmUser()?.id;
+  if (!uid) return items || [];
+  return (items || []).filter((rec) => {
+    const owner = rec.createdBy ?? rec.createdById ?? rec.userId;
+    if (owner == null || owner === '') return false;
+    return String(owner) === String(uid);
+  });
+}
+
 export default function AiVoice() {
   const [items, setItems] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -112,11 +124,12 @@ export default function AiVoice() {
       const res = await fetch(`${API_BASE}/voice-recordings?${q}`, { headers: getAuthHeader() });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '목록 조회 실패');
-      setItems(data.items || []);
+      const ownItems = filterOwnVoiceRecordings(data.items);
+      setItems(ownItems);
       setSelectedId((prev) => {
-        if (!(data.items?.length)) return null;
-        if (!prev) return data.items[0]._id;
-        if (!data.items.find((i) => String(i._id) === String(prev))) return data.items[0]._id;
+        if (!ownItems.length) return null;
+        if (!prev) return ownItems[0]._id;
+        if (!ownItems.find((i) => String(i._id) === String(prev))) return ownItems[0]._id;
         return prev;
       });
     } catch (e) {
@@ -711,44 +724,49 @@ export default function AiVoice() {
 
           <div className="ai-voice-list-section">
             <div className="ai-voice-list-header">
-              <span className="ai-voice-list-header-label">최근 녹음</span>
+              <span className="ai-voice-list-header-label">내 녹음</span>
               <span className="ai-voice-list-header-count">{items.length}건</span>
             </div>
-            {loadingList ? (
-              <p className="ai-voice-list-loading">불러오는 중…</p>
-            ) : listError ? (
-              <p className="ai-voice-list-error">{listError}</p>
-            ) : (
-              <ul className="ai-voice-list" role="list">
-                {items.map((rec) => {
-                  const meta = formatRecordingDate(rec.createdAt);
-                  const st = STATUS_MAP[rec.status] || STATUS_MAP.queued;
-                  return (
-                    <li key={rec._id}>
-                      <button
-                        type="button"
-                        className={`ai-voice-list-item ${selectedId === rec._id ? 'active' : ''}`}
-                        onClick={() => setSelectedId(rec._id)}
-                      >
-                        <div className="ai-voice-list-item-left">
-                          <div className={`ai-voice-list-item-icon ${selectedId === rec._id ? 'active' : ''}`}>
-                            <span className="material-symbols-outlined">{st.icon}</span>
+            <div
+              className={`ai-voice-list-scroll${items.length > 6 ? ' ai-voice-list-scroll--overflow' : ''}`}
+              role="region"
+              aria-label="내 녹음 목록"
+            >
+              {loadingList ? (
+                <p className="ai-voice-list-loading">불러오는 중…</p>
+              ) : listError ? (
+                <p className="ai-voice-list-error">{listError}</p>
+              ) : items.length === 0 ? (
+                <p className="ai-voice-list-empty">내가 업로드한 녹음이 없습니다. 위에서 파일을 업로드하세요.</p>
+              ) : (
+                <ul className="ai-voice-list" role="list">
+                  {items.map((rec) => {
+                    const meta = formatRecordingDate(rec.createdAt);
+                    const st = STATUS_MAP[rec.status] || STATUS_MAP.queued;
+                    return (
+                      <li key={rec._id}>
+                        <button
+                          type="button"
+                          className={`ai-voice-list-item ${selectedId === rec._id ? 'active' : ''}`}
+                          onClick={() => setSelectedId(rec._id)}
+                        >
+                          <div className="ai-voice-list-item-left">
+                            <div className={`ai-voice-list-item-icon ${selectedId === rec._id ? 'active' : ''}`}>
+                              <span className="material-symbols-outlined">{st.icon}</span>
+                            </div>
+                            <div className="ai-voice-list-item-text">
+                              <h4 className="ai-voice-list-item-title">{rec.title || '제목 없음'}</h4>
+                              <p className="ai-voice-list-item-meta">{meta.full}</p>
+                            </div>
                           </div>
-                          <div className="ai-voice-list-item-text">
-                            <h4 className="ai-voice-list-item-title">{rec.title || '제목 없음'}</h4>
-                            <p className="ai-voice-list-item-meta">{meta.full}</p>
-                          </div>
-                        </div>
-                        <span className={`ai-voice-status ai-voice-status-${st.class}`}>{st.label}</span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-            {!loadingList && !listError && items.length === 0 && (
-              <p className="ai-voice-list-empty">등록된 녹음이 없습니다. 위에서 파일을 업로드하세요.</p>
-            )}
+                          <span className={`ai-voice-status ai-voice-status-${st.class}`}>{st.label}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
           </div>
         </aside>
 

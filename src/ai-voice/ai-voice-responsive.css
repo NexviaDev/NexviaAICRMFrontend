@@ -130,20 +130,29 @@
     font-size: 0.8125rem;
   }
 
+  .ai-voice-page {
+    --ai-voice-list-row-h: 4.75rem;
+  }
+
   .ai-voice-list-section {
     flex: none;
     min-height: 0;
-    max-height: min(42vh, 22rem);
     display: flex;
     flex-direction: column;
+    overflow: hidden;
   }
 
-  .ai-voice-list {
-    flex: 1;
-    min-height: 0;
-    max-height: min(38vh, 20rem);
+  .ai-voice-list-scroll {
+    flex: 0 0 auto;
+    height: calc(var(--ai-voice-list-row-h) * var(--ai-voice-list-visible-count, 6));
+    max-height: calc(var(--ai-voice-list-row-h) * var(--ai-voice-list-visible-count, 6));
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
+  }
+
+  .ai-voice-list-scroll:not(.ai-voice-list-scroll--overflow) {
+    height: auto;
+    max-height: calc(var(--ai-voice-list-row-h) * var(--ai-voice-list-visible-count, 6));
   }
 
   .ai-voice-list-item {
