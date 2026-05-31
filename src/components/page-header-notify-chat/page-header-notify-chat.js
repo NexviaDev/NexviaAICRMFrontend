@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { API_BASE } from '@/config';
-import { hasUnreadFromLatestPublishedAt } from '@/lib/notification-read-state';
+import { hasUnreadNotificationBadge } from '@/lib/notification-read-state';
 import { NOTIFICATION_BADGE_POLL_MS } from '@/lib/polling-intervals';
 import './page-header-notify-chat.css';
 
@@ -39,7 +39,7 @@ export default function PageHeaderNotifyChat({
         setNotifyUnread(false);
         return;
       }
-      setNotifyUnread(hasUnreadFromLatestPublishedAt(data.latestPublishedAt));
+      setNotifyUnread(hasUnreadNotificationBadge(data));
     } catch {
       setNotifyUnread(false);
     }

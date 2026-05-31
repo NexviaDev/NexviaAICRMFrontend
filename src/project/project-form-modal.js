@@ -762,8 +762,8 @@ export default function ProjectFormModal({
             </div>
 
             <section className="pfm-section">
-              <h3 className="pfm-section-title">칸반 단계</h3>
-              <p className="pfm-hint">현재 칸반 단계 중 처음에 넣을 위치를 선택합니다.</p>
+              <h3 className="pfm-section-title">단계</h3>
+              <p className="pfm-hint">현재 단계 중 처음에 넣을 위치를 선택합니다.</p>
               <div className="pfm-stage-strip" role="radiogroup" aria-label="칸반 단계">
                 {boardStages.map((item) => (
                   <span key={item.value} className="pfm-stage-strip-seg">

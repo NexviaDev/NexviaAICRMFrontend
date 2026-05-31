@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { API_BASE } from '@/config';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { markNotificationsAsSeen } from '@/lib/notification-read-state';
@@ -34,10 +35,16 @@ function isCompanyNotice(item) {
 }
 
 export default function NotificationPage() {
+  const navigate = useNavigate();
   const [rows, setRows] = useState([]);
+  const [mentionRows, setMentionRows] = useState([]);
   const [page, setPage] = useState(1);
+  const [mentionPage, setMentionPage] = useState(1);
   const [pagination, setPagination] = useState({ total: 0, totalPages: 0, limit: PAGE_SIZE });
+  const [mentionPagination, setMentionPagination] = useState({ total: 0, totalPages: 0, limit: PAGE_SIZE });
   const [loading, setLoading] = useState(true);
+  const [mentionLoading, setMentionLoading] = useState(true);
+  const [openingMentionId, setOpeningMentionId] = useState('');
   const [error, setError] = useState('');
   const [editorOpen, setEditorOpen] = useState(false);
   const [previewOn, setPreviewOn] = useState(false);
@@ -87,9 +94,46 @@ export default function NotificationPage() {
     }
   }, [page]);
 
+  const loadMentions = useCallback(async (forcedPage) => {
+    const token = localStorage.getItem('crm_token');
+    if (!token) {
+      setMentionRows([]);
+      setMentionLoading(false);
+      return;
+    }
+
+    const pageNum = forcedPage != null ? forcedPage : mentionPage;
+    setMentionLoading(true);
+    try {
+      const res = await fetch(
+        `${API_BASE}/notifications/mentions?page=${pageNum}&limit=${PAGE_SIZE}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || '프로젝트 언급 알림을 불러오지 못했습니다.');
+      setMentionRows(Array.isArray(data.mentions) ? data.mentions : []);
+      const p = data.pagination;
+      if (p && typeof p === 'object') {
+        setMentionPagination({
+          total: Number(p.total) || 0,
+          totalPages: Number(p.totalPages) || 0,
+          limit: Number(p.limit) || PAGE_SIZE
+        });
+      }
+    } catch (err) {
+      setError((prev) => prev || err.message || '프로젝트 언급 알림을 불러오지 못했습니다.');
+    } finally {
+      setMentionLoading(false);
+    }
+  }, [mentionPage]);
+
   useEffect(() => {
     void loadNotifications();
   }, [loadNotifications]);
+
+  useEffect(() => {
+    void loadMentions();
+  }, [loadMentions]);
 
   /** 현재 페이지에 글이 없으면 앞 페이지로(삭제 후 빈 페이지 방지) */
   useEffect(() => {
@@ -184,13 +228,49 @@ export default function NotificationPage() {
     }
   };
 
+  const openMentionProject = async (item) => {
+    const linkId = String(item?.linkProjectId || '').trim();
+    if (!linkId) return;
+    const mentionId = String(item?._id || '').trim();
+    setOpeningMentionId(mentionId);
+    const token = localStorage.getItem('crm_token');
+    if (token && mentionId && !item?.readAt) {
+      try {
+        const res = await fetch(`${API_BASE}/notifications/mentions/${encodeURIComponent(mentionId)}/read`, {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          setMentionRows((prev) =>
+            prev.map((row) =>
+              String(row?._id || '') === mentionId ? { ...row, readAt: new Date().toISOString() } : row
+            )
+          );
+          try {
+            window.dispatchEvent(new CustomEvent('crm-notifications-seen'));
+          } catch {
+            /* ignore */
+          }
+        }
+      } catch {
+        /* 이동은 계속 */
+      }
+    }
+    navigate(`/project?projectModal=edit&projectId=${encodeURIComponent(linkId)}`);
+    setOpeningMentionId('');
+  };
+
+  const listLoading = loading || mentionLoading;
+  const listEmpty = !listLoading && rows.length === 0 && mentionRows.length === 0;
+
   return (
     <div className="page notification-page">
       <header className="page-header notification-header">
         <div>
-          <h1 className="notification-title">사내 공지사항</h1>
+          <h1 className="notification-title">알림</h1>
           <p className="notification-lead">
-            우리 회사 공지는 대표·관리자가 등록합니다. Nexvia 전체 공지는 열람만 가능합니다.
+            프로젝트 코멘트에서 @언급되면 여기에 표시됩니다. 사내 공지는 대표·관리자가 등록하며, Nexvia 전체 공지는
+            열람만 가능합니다.
           </p>
         </div>
         <div className="notification-header-actions">
@@ -208,8 +288,8 @@ export default function NotificationPage() {
         {error && <div className="notification-feedback notification-feedback--error">{error}</div>}
 
         <p className="notification-push-sidebar-hint">
-          스마트폰·PWA 푸시는 왼쪽 사이드바 하단 <strong>알림(종) 아이콘</strong>으로 켜고 끌 수 있습니다. 로그인한
-          계정에만 알림이 가며, <strong>공지를 작성한 본인</strong>에게도 푸시·상단 알림 점이 표시됩니다.
+          스마트폰·PWA 푸시는 왼쪽 사이드바 하단 <strong>알림(종) 아이콘</strong>으로 켜고 끌 수 있습니다. 프로젝트
+          @언급·공지 모두 로그인한 계정에만 알림이 갑니다.
         </p>
 
         {editorOpen && canManage ? (
@@ -291,12 +371,72 @@ export default function NotificationPage() {
         ) : null}
 
         <section className="notification-list">
-          {loading ? (
-            <div className="notification-empty">공지사항을 불러오는 중입니다…</div>
-          ) : rows.length === 0 ? (
-            <div className="notification-empty">현재 등록된 공지사항이 없습니다.</div>
+          {listLoading ? (
+            <div className="notification-empty">알림을 불러오는 중입니다…</div>
+          ) : listEmpty ? (
+            <div className="notification-empty">현재 받은 알림이 없습니다.</div>
           ) : (
             <>
+            {mentionRows.length > 0 ? (
+              <>
+                {mentionRows.map((item) => {
+                  const authorName = String(item?.authorName || '동료').trim();
+                  const projectTitle = String(item?.projectTitle || '프로젝트').trim();
+                  const excerpt = String(item?.messageExcerpt || '').trim();
+                  const unread = !item?.readAt;
+                  const mentionId = String(item?._id || '');
+                  return (
+                    <button
+                      key={`mention-${mentionId}`}
+                      type="button"
+                      className={`notification-card notification-card--mention${unread ? ' notification-card--unread' : ''}`}
+                      onClick={() => void openMentionProject(item)}
+                      disabled={openingMentionId === mentionId}
+                    >
+                      <div className="notification-card-meta">
+                        <span className="notification-card-badge notification-card-badge--mention">프로젝트 언급</span>
+                        <span>{formatDt(item.createdAt)}</span>
+                        {unread ? <span className="notification-card-unread-dot" aria-label="읽지 않음" /> : null}
+                      </div>
+                      <h2 className="notification-card-title">
+                        {authorName}님이 프로젝트 코멘트에서 언급했습니다
+                      </h2>
+                      <p className="notification-card-excerpt">
+                        [{projectTitle}]{excerpt ? ` ${excerpt}` : ''}
+                      </p>
+                      <p className="notification-card-open-hint">탭하면 해당 프로젝트가 열립니다</p>
+                    </button>
+                  );
+                })}
+                {mentionPagination.totalPages > 1 ? (
+                  <div className="notification-pagination">
+                    <button
+                      type="button"
+                      className="notification-page-btn"
+                      disabled={mentionPage <= 1}
+                      onClick={() => setMentionPage((p) => Math.max(1, p - 1))}
+                    >
+                      이전 언급
+                    </button>
+                    <span className="notification-page-info">
+                      언급 {mentionPage} / {mentionPagination.totalPages} · 총{' '}
+                      {mentionPagination.total.toLocaleString()}건
+                    </span>
+                    <button
+                      type="button"
+                      className="notification-page-btn"
+                      disabled={mentionPage >= mentionPagination.totalPages}
+                      onClick={() => setMentionPage((p) => p + 1)}
+                    >
+                      다음 언급
+                    </button>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+            {rows.length > 0 && mentionRows.length > 0 ? (
+              <h2 className="notification-section-title">사내·전체 공지</h2>
+            ) : null}
             {rows.map((item) => {
               const companyNotice = isCompanyNotice(item);
               return (

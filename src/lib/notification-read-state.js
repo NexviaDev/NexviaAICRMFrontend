@@ -56,6 +56,16 @@ export function hasUnreadNotifications(notifications) {
 }
 
 /**
+ * GET /notifications/badge — 공지 latestPublishedAt + mentionUnreadCount
+ * @param {{ latestPublishedAt?: string | null, mentionUnreadCount?: number }} badge
+ */
+export function hasUnreadNotificationBadge(badge) {
+  const mentionUnread = Number(badge?.mentionUnreadCount) || 0;
+  if (mentionUnread > 0) return true;
+  return hasUnreadFromLatestPublishedAt(badge?.latestPublishedAt);
+}
+
+/**
  * GET /notifications/badge 의 latestPublishedAt(ISO)과 로컬 읽음 시각 비교.
  * @param {string | null | undefined} iso
  */

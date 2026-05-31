@@ -263,9 +263,42 @@ export async function syncPushRegistrationForSession(user) {
   return { ok: true, registered: false };
 }
 
-/** 로그아웃 시 — crm_token 삭제 전에 호출 */
-export async function clearPushSessionOnLogout() {
-  await clearLocalPushRegistration();
+/** 로그아웃 시 — crm_token 삭제 전에 호출. UI는 즉시 전환하고 푸시 정리는 백그라운드. */
+export function clearPushSessionOnLogout() {
+  const stored = getStoredPushToken();
+  const authHeader = getAuthHeader();
+
+  setStoredPushToken('');
+  setStoredPushOwnerUserId('');
+  void writePushSessionMeta('', '');
+
+  emitPushStatusChange({
+    supported: canUsePushNotifications(),
+    permission: typeof Notification !== 'undefined' ? Notification.permission : 'unsupported',
+    registered: false
+  });
+
+  if (stored && authHeader.Authorization) {
+    void unregisterTokenWithBackend(stored).catch(() => {});
+  }
+
+  void clearFirebasePushTokenInBackground();
+}
+
+/** 로그아웃·계정 전환용 — Firebase SDK·SW 초기화 없이 가능한 범위에서만 토큰 삭제 시도 */
+async function clearFirebasePushTokenInBackground() {
+  try {
+    const ctx = await withTimeout(
+      getFirebaseMessagingContext(),
+      '로그아웃 푸시 정리 시간 초과',
+      3500
+    );
+    if (ctx.supported && ctx.messaging && ctx.sdk?.deleteToken) {
+      await ctx.sdk.deleteToken(ctx.messaging);
+    }
+  } catch {
+    /* ignore — 로컬·서버 토큰은 이미 해제됨 */
+  }
 }
 
 function setStoredPushToken(token) {

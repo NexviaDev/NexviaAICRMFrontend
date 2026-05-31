@@ -499,19 +499,13 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
           onClick={() => {
             if (logoutBusy) return;
             setLogoutBusy(true);
-            void (async () => {
-              try {
-                await clearPushSessionOnLogout();
-              } catch {
-                /* ignore */
-              } finally {
-                localStorage.removeItem('crm_token');
-                localStorage.removeItem('crm_user');
-                notifyCrmAuthChanged();
-                setLogoutBusy(false);
-                navigate('/', { replace: true });
-              }
-            })();
+            onCloseDrawer?.();
+            clearPushSessionOnLogout();
+            localStorage.removeItem('crm_token');
+            localStorage.removeItem('crm_user');
+            notifyCrmAuthChanged();
+            setLogoutBusy(false);
+            navigate('/', { replace: true });
           }}
         >
           <span className="material-symbols-outlined">logout</span>

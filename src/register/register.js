@@ -185,7 +185,7 @@ export default function Register() {
 
   /** DB에 사용자 없음(삭제됨)·토큰 무효 시 브라우저에 남은 세션 정리 */
   const clearStoredSession = () => {
-    void clearPushSessionOnLogout().catch(() => {});
+    clearPushSessionOnLogout();
     localStorage.removeItem('crm_token');
     localStorage.removeItem('crm_user');
   };

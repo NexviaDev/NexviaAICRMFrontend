@@ -4,6 +4,7 @@ import { API_BASE } from '@/config';
 import { buildParticipantDirectoryFromOverview } from '@/lib/participant-directory-merge';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import ProjectFormModal from './project-form-modal';
+import '../calendar/calendar.css';
 import './project.css';
 
 const TABS = [
@@ -94,7 +95,8 @@ function getInitials(name = '') {
 const GANTT_DAY_WIDTH = 24;
 const GANTT_EDGE_LOAD_MONTHS = 2;
 const GANTT_SCROLL_EDGE_THRESHOLD = 96;
-const DASHBOARD_CALENDAR_WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const CALENDAR_WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
+const PROJECT_CALENDAR_MAX_EVENTS_IN_CELL = 2;
 
 function normalizeProjectCalendarItem(task) {
   if (!task || !task._id) return null;
@@ -196,6 +198,15 @@ function getDashboardCalendarEventTone(event, index) {
   return index % 2 === 0 ? 'primary' : 'secondary';
 }
 
+function projectEventPillClass(event, index) {
+  const tone = getDashboardCalendarEventTone(event, index);
+  if (tone === 'mint') return 'calendar-event-pill--mint';
+  if (tone === 'tertiary') return 'calendar-event-pill--tertiary';
+  if (tone === 'secondary') return 'calendar-event-pill--secondary';
+  if (tone === 'danger') return 'calendar-event-pill--urgent';
+  return 'calendar-event-pill--primary';
+}
+
 function startOfDay(input) {
   const date = new Date(input);
   date.setHours(0, 0, 0, 0);
@@ -252,18 +263,17 @@ function DashboardCalendar({
   const firstDay = useMemo(() => new Date(current.year, current.month, 1), [current.year, current.month]);
   const startPad = firstDay.getDay();
   const eventsByDay = useMemo(() => {
-    const map = new Map();
+    const map = {};
     for (const event of Array.isArray(events) ? events : []) {
       const days = getDashboardEventDaysInMonth(event, current.year, current.month);
       if (days.length !== 1) continue;
-      for (const day of days) {
-        if (!map.has(day)) map.set(day, []);
-        map.get(day).push(event);
-      }
+      const day = days[0];
+      if (!map[day]) map[day] = [];
+      map[day].push({ event });
     }
-    for (const [day, rows] of map.entries()) {
-      map.set(day, [...rows].sort(compareDashboardEvents));
-    }
+    Object.keys(map).forEach((day) => {
+      map[day].sort((a, b) => compareDashboardEvents(a.event, b.event));
+    });
     return map;
   }, [current.month, current.year, events]);
   const segmentsWithRow = useMemo(() => {
@@ -333,104 +343,140 @@ function DashboardCalendar({
 
   return (
     <section className="project-dashboard-calendar">
-      <div className="project-dashboard-calendar-head">
-        <div className="project-dashboard-calendar-title-wrap">
-          <div className="project-dashboard-calendar-breadcrumb">
-            <span>Workspace</span>
-            <span className="material-symbols-outlined project-dashboard-calendar-breadcrumb-chevron">chevron_right</span>
-            <span className="project-dashboard-calendar-breadcrumb-current">Calendar</span>
-          </div>
-          <div className="project-dashboard-calendar-title-row">
-            <h3>{formatDashboardCalendarTitle(current.year, current.month)}</h3>
-            <div className="project-dashboard-calendar-nav">
-              <button type="button" className="project-dashboard-calendar-nav-btn" onClick={onPrevMonth} aria-label="이전 달">
-                <span className="material-symbols-outlined">chevron_left</span>
-              </button>
-              <button type="button" className="project-dashboard-calendar-nav-btn" onClick={onNextMonth} aria-label="다음 달">
-                <span className="material-symbols-outlined">chevron_right</span>
-              </button>
-            </div>
-          </div>
-          <p className="project-dashboard-calendar-caption">프로젝트 시작일과 만료일 기준으로 표시됩니다.</p>
-        </div>
-      </div>
-
-      <div className="project-dashboard-calendar-shell">
-        <div className="project-dashboard-calendar-weekdays">
-          {DASHBOARD_CALENDAR_WEEKDAYS.map((weekday) => (
-            <div key={weekday}>{weekday}</div>
-          ))}
-        </div>
-
-        {events.length === 0 ? <p className="project-dashboard-calendar-status">표시할 프로젝트 일정이 없습니다.</p> : null}
-
-        <div className="project-dashboard-calendar-grid">
-          {weeks.map((week, weekIndex) => {
-            const segments = segmentsByWeek[weekIndex] || [];
-            const segmentRows = segmentRowCountByWeek[weekIndex] || 0;
-            const segmentBandHeight = segmentRows > 0 ? segmentRows * 24 + 8 : 0;
-            return (
-              <div key={`${current.year}-${current.month}-week-${weekIndex}`} className="project-dashboard-calendar-week-row">
-                {segments.length ? (
-                  <div className="project-dashboard-calendar-segments-overlay" style={{ height: `${segmentBandHeight}px` }}>
-                    {segments.map((segment, segmentIndex) => (
-                      <button
-                        key={`${segment.event._id}-${segment.firstDay}-${segmentIndex}`}
-                        type="button"
-                        className={`project-dashboard-calendar-segment tone-${getDashboardCalendarEventTone(segment.event, segmentIndex)}`}
-                        style={{
-                          left: `${((segment.firstDay + startPad - 1) % 7) * (100 / 7)}%`,
-                          width: `calc(${segment.span * (100 / 7)}% - 8px)`,
-                          top: `${(segment.rowIndex || 0) * 24 + 4}px`
-                        }}
-                        title={segment.event.title}
-                        onClick={() => onEventClick?.(segment.event)}
-                      >
-                        {segment.event.title}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-
-                <div className="project-dashboard-calendar-week-cells" style={{ paddingTop: segmentBandHeight ? `${segmentBandHeight}px` : undefined }}>
-                  {week.map((day, dayIndex) => {
-                    const dayEvents = day ? (eventsByDay.get(day) || []) : [];
-                    const isToday = day && isCurrentMonth && today.getDate() === day;
-                    const isSunday = dayIndex === 0;
-                    return (
-                      <div
-                        key={`${current.year}-${current.month}-${weekIndex}-${dayIndex}`}
-                        className={`project-dashboard-calendar-cell ${day ? '' : 'is-empty'} ${isToday ? 'is-today' : ''}`}
-                      >
-                        {day ? (
-                          <>
-                            <span className={`project-dashboard-calendar-day ${isSunday ? 'is-sunday' : ''} ${isToday ? 'is-today' : ''}`}>{day}</span>
-                            {isToday ? <span className="project-dashboard-calendar-today-dot" /> : null}
-                            <div className={`project-dashboard-calendar-events ${segments.length ? 'has-segments' : ''}`}>
-                              {dayEvents.slice(0, 3).map((event, eventIndex) => (
-                                <button
-                                  key={`${event._id}-${day}-${eventIndex}`}
-                                  type="button"
-                                  className={`project-dashboard-calendar-pill tone-${getDashboardCalendarEventTone(event, eventIndex)}`}
-                                  title={event.title}
-                                  onClick={() => onEventClick?.(event)}
-                                >
-                                  {event.title}
-                                </button>
-                              ))}
-                              {dayEvents.length > 3 ? (
-                                <div className="project-dashboard-calendar-more">+{dayEvents.length - 3} more</div>
-                              ) : null}
-                            </div>
-                          </>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
+      <div className="calendar-shell">
+        <div className="calendar-hero">
+          <div className="calendar-hero-main">
+            <div className="calendar-title-block">
+              <h2 className="calendar-month-headline">{formatDashboardCalendarTitle(current.year, current.month)}</h2>
+              <div className="calendar-round-nav">
+                <button type="button" className="calendar-round-nav-btn" onClick={onPrevMonth} aria-label="이전 달">
+                  <span className="material-symbols-outlined">chevron_left</span>
+                </button>
+                <button type="button" className="calendar-round-nav-btn" onClick={onNextMonth} aria-label="다음 달">
+                  <span className="material-symbols-outlined">chevron_right</span>
+                </button>
               </div>
-            );
-          })}
+            </div>
+            <p className="project-dashboard-calendar-caption">프로젝트 시작일과 만료일 기준으로 표시됩니다.</p>
+          </div>
+        </div>
+
+        {events.length === 0 ? (
+          <p className="calendar-google-hint project-dashboard-calendar-empty" role="status">
+            표시할 프로젝트 일정이 없습니다.
+          </p>
+        ) : null}
+
+        <div className="calendar-panel-card project-dashboard-calendar-panel">
+          <div className="calendar-grid calendar-grid--fit">
+            <div className="calendar-weekday-row">
+              {CALENDAR_WEEKDAYS.map((weekday) => (
+                <div key={weekday} className="calendar-weekday">{weekday}</div>
+              ))}
+            </div>
+            {weeks.map((week, weekIndex) => {
+              const weekSegments = segmentsByWeek[weekIndex] || [];
+              const weekSegmentRows = segmentRowCountByWeek[weekIndex] || 0;
+              const weekSegmentPaddingRem = weekSegmentRows > 0 ? weekSegmentRows * 1.05 : 0;
+              return (
+                <div key={`${current.year}-${current.month}-week-${weekIndex}`} className="calendar-week-row">
+                  <div className="calendar-week-days">
+                    {week.map((day, dayIndex) => {
+                      const cellIndex = weekIndex * 7 + dayIndex;
+                      const isToday = day != null && isCurrentMonth && today.getDate() === day;
+                      const isSunday = dayIndex === 0;
+                      const isSaturday = dayIndex === 6;
+                      const evs = (day != null && eventsByDay[day]) || [];
+                      return (
+                        <div
+                          key={cellIndex}
+                          className={`calendar-day ${day == null ? 'empty' : ''} ${isToday ? 'today' : ''} ${isSunday ? 'sun' : ''} ${isSaturday ? 'sat' : ''}`}
+                        >
+                          {day != null && (
+                            <span className={`calendar-day-num ${isToday ? 'calendar-day-num--today' : ''}`}>
+                              {day}
+                            </span>
+                          )}
+                          {day != null && (
+                            <div
+                              className="calendar-day-body"
+                              style={weekSegmentRows > 0 ? { paddingTop: `${weekSegmentPaddingRem}rem` } : undefined}
+                            >
+                              <ul className={`calendar-events ${weekSegmentRows > 0 ? 'has-segments' : ''}`}>
+                                {evs.slice(0, PROJECT_CALENDAR_MAX_EVENTS_IN_CELL).map((entry, evIdx) => {
+                                  const ev = entry.event;
+                                  const pillClass = projectEventPillClass(ev, evIdx);
+                                  return (
+                                    <li
+                                      key={`${ev._id}-${day}-${evIdx}`}
+                                      className={`calendar-event all-day ${pillClass}`}
+                                      title={ev.title || '(제목 없음)'}
+                                      role="button"
+                                      tabIndex={0}
+                                      onClick={() => onEventClick?.(ev)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                          e.preventDefault();
+                                          onEventClick?.(ev);
+                                        }
+                                      }}
+                                    >
+                                      {ev.title || '(제목 없음)'}
+                                    </li>
+                                  );
+                                })}
+                                {evs.length > PROJECT_CALENDAR_MAX_EVENTS_IN_CELL ? (
+                                  <li className="calendar-more-item">
+                                    <span className="calendar-more-btn" aria-hidden>
+                                      +{evs.length - PROJECT_CALENDAR_MAX_EVENTS_IN_CELL} 더 보기
+                                    </span>
+                                  </li>
+                                ) : null}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {weekSegmentRows > 0 ? (
+                    <div
+                      className="calendar-week-segments-overlay"
+                      style={{ gridTemplateRows: `repeat(${weekSegmentRows}, 1.5rem)` }}
+                      aria-hidden="true"
+                    >
+                      {weekSegments.map((seg, segIdx) => {
+                        const segPill = projectEventPillClass(seg.event, seg.rowIndex ?? segIdx);
+                        const colStart = ((startPad + seg.firstDay - 1) % 7) + 1;
+                        return (
+                          <div
+                            key={`${seg.event._id}-${seg.firstDay}-${seg.rowIndex}-${segIdx}`}
+                            className={`calendar-segment-bar ${segPill}`}
+                            style={{
+                              gridColumn: `${colStart} / span ${seg.span}`,
+                              gridRow: (seg.rowIndex ?? 0) + 1
+                            }}
+                            title={seg.event.title || '(제목 없음)'}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => onEventClick?.(seg.event)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                onEventClick?.(seg.event);
+                              }
+                            }}
+                          >
+                            {seg.event.title || '(제목 없음)'}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </section>

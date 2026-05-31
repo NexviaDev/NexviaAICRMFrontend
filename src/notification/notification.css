@@ -296,6 +296,58 @@
   color: #6b21a8;
 }
 
+.notification-card-badge--mention {
+  background: #e8f5ef;
+  color: #2e6b4a;
+}
+
+.notification-section-title {
+  margin: 0.35rem 0 0;
+  padding: 0 0.15rem;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #475569;
+}
+
+.notification-card--mention {
+  display: block;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+}
+
+.notification-card--mention:hover:not(:disabled) {
+  border-color: #b8d4c8;
+  box-shadow: 0 10px 32px rgba(46, 107, 74, 0.1);
+}
+
+.notification-card--mention:disabled {
+  opacity: 0.75;
+  cursor: wait;
+}
+
+.notification-card--unread {
+  border-color: #b8dfc8;
+  background: #f7fcf9;
+}
+
+.notification-card-unread-dot {
+  margin-left: auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #e57373;
+  flex-shrink: 0;
+}
+
+.notification-card-open-hint {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #7a9a8a;
+  font-weight: 600;
+}
+
 .notification-card-title {
   margin: 14px 0 10px;
   font-size: 1.1rem;
