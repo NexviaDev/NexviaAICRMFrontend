@@ -1,6 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { API_BASE, MAX_DRIVE_JSON_UPLOAD_BYTES } from '@/config';
 import ParticipantModal from '@/shared/participant-modal/participant-modal';
+import {
+  filterParticipantsForMention,
+  getMentionState,
+  insertMentionAt,
+  renderMessageWithMentions
+} from '@/lib/project-comment-mentions';
 import './project-form-modal.css';
 
 const STAGE_OPTIONS = [
@@ -123,6 +129,13 @@ export default function ProjectFormModal({
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState('');
   const [replyDraftByCommentId, setReplyDraftByCommentId] = useState({});
+  const [commentBusy, setCommentBusy] = useState(false);
+  const [commentError, setCommentError] = useState('');
+  const [mentionField, setMentionField] = useState('comment');
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [mentionRange, setMentionRange] = useState(null);
+  const commentTextareaRef = useRef(null);
+  const replyInputRefs = useRef({});
   const [showParticipantPicker, setShowParticipantPicker] = useState(false);
   const [attachments, setAttachments] = useState([]);
   const [pendingFiles, setPendingFiles] = useState([]);
@@ -177,6 +190,10 @@ export default function ProjectFormModal({
     setDriveUploadNotice('');
     setNewComment('');
     setReplyDraftByCommentId({});
+    setCommentError('');
+    setMentionField('comment');
+    setMentionQuery('');
+    setMentionRange(null);
   }, [initialProject, boardStages]);
 
   useEffect(() => {
@@ -195,6 +212,125 @@ export default function ProjectFormModal({
     () => selectedParticipants.map((row) => ({ userId: row.userId, name: row.name })),
     [selectedParticipants]
   );
+
+  const commentPersistTarget = useMemo(() => {
+    if (mode !== 'edit' || !initialProject?._id) return null;
+    const isLegacyTask = initialProject?.entityType === 'legacyTask' && initialProject?.sourceProjectId;
+    return {
+      projectId: String(isLegacyTask ? initialProject.sourceProjectId : initialProject._id),
+      taskId: isLegacyTask ? String(initialProject._id) : '',
+      linkProjectId: String(initialProject._id)
+    };
+  }, [mode, initialProject]);
+
+  const mentionCandidates = useMemo(
+    () => filterParticipantsForMention(selectedParticipants, mentionQuery),
+    [selectedParticipants, mentionQuery]
+  );
+
+  const syncMentionFromInput = (fieldKey, text, caretIndex) => {
+    const state = getMentionState(text, caretIndex);
+    if (!state) {
+      setMentionField('');
+      setMentionQuery('');
+      setMentionRange(null);
+      return;
+    }
+    setMentionField(fieldKey);
+    setMentionQuery(state.query);
+    setMentionRange({ startIndex: state.startIndex, endIndex: state.endIndex });
+  };
+
+  const applyMentionPick = (name) => {
+    if (!mentionRange || !mentionField) return;
+    if (mentionField === 'comment') {
+      const { text, caret } = insertMentionAt(newComment, mentionRange.startIndex, mentionRange.endIndex, name);
+      setNewComment(text);
+      requestAnimationFrame(() => {
+        const el = commentTextareaRef.current;
+        if (el) {
+          el.focus();
+          el.setSelectionRange(caret, caret);
+        }
+      });
+    } else if (mentionField.startsWith('reply:')) {
+      const commentId = mentionField.slice('reply:'.length);
+      const prev = String(replyDraftByCommentId[commentId] || '');
+      const { text, caret } = insertMentionAt(prev, mentionRange.startIndex, mentionRange.endIndex, name);
+      setReplyDraftByCommentId((prevMap) => ({ ...prevMap, [commentId]: text }));
+      requestAnimationFrame(() => {
+        const el = replyInputRefs.current[commentId];
+        if (el) {
+          el.focus();
+          el.setSelectionRange(caret, caret);
+        }
+      });
+    }
+    setMentionField('');
+    setMentionQuery('');
+    setMentionRange(null);
+  };
+
+  const renderMentionSuggest = (fieldKey) => {
+    if (mentionField !== fieldKey || !mentionRange) return null;
+    if (selectedParticipants.length === 0) {
+      return <p className="pfm-mention-hint">참여자를 먼저 추가하면 @이름 으로 언급할 수 있습니다.</p>;
+    }
+    if (mentionCandidates.length === 0) {
+      return <p className="pfm-mention-hint">일치하는 참여자가 없습니다. 등록된 이름과 동일하게 입력해 주세요.</p>;
+    }
+    return (
+      <ul className="pfm-mention-suggest" role="listbox" aria-label="참여자 멘션">
+        {mentionCandidates.map((member) => (
+          <li key={member.userId} role="option">
+            <button
+              type="button"
+              className="pfm-mention-suggest-btn"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                applyMentionPick(member.name);
+              }}
+            >
+              @{member.name}
+            </button>
+          </li>
+        ))}
+      </ul>
+    );
+  };
+
+  const postProjectComment = async (message) => {
+    if (!commentPersistTarget) return null;
+    const res = await fetch(`${API_BASE}/projects/${encodeURIComponent(commentPersistTarget.projectId)}/comments`, {
+      method: 'POST',
+      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message,
+        ...(commentPersistTarget.taskId ? { taskId: commentPersistTarget.taskId } : {})
+      })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || '코멘트 저장에 실패했습니다.');
+    return Array.isArray(data.comments) ? data.comments : null;
+  };
+
+  const postProjectCommentReply = async (commentId, message) => {
+    if (!commentPersistTarget) return null;
+    const res = await fetch(
+      `${API_BASE}/projects/${encodeURIComponent(commentPersistTarget.projectId)}/comments/${encodeURIComponent(commentId)}/replies`,
+      {
+        method: 'POST',
+        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message,
+          ...(commentPersistTarget.taskId ? { taskId: commentPersistTarget.taskId } : {})
+        })
+      }
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || '답글 저장에 실패했습니다.');
+    return Array.isArray(data.comments) ? data.comments : null;
+  };
 
   const companyFolderName = useMemo(() => {
     const companyName = sanitizeFolderNamePart(companyContext?.name || '');
@@ -271,22 +407,38 @@ export default function ProjectFormModal({
     });
   };
 
-  const addComment = () => {
+  const addComment = async () => {
     const message = String(newComment || '').trim();
-    if (!message) return;
-    setComments((prev) => [
-      ...prev,
-      {
-        _id: tempId('comment'),
-        userId: currentUser?._id || '',
-        name: currentUser?.name || '사용자',
-        avatar: currentUser?.avatar || '',
-        message,
-        createdAt: new Date().toISOString(),
-        replies: []
+    if (!message || commentBusy) return;
+    setCommentError('');
+    setCommentBusy(true);
+    try {
+      if (commentPersistTarget) {
+        const nextComments = await postProjectComment(message);
+        if (nextComments) {
+          setComments(nextComments);
+          setNewComment('');
+          return;
+        }
       }
-    ]);
-    setNewComment('');
+      setComments((prev) => [
+        ...prev,
+        {
+          _id: tempId('comment'),
+          userId: currentUser?._id || '',
+          name: currentUser?.name || '사용자',
+          avatar: currentUser?.avatar || '',
+          message,
+          createdAt: new Date().toISOString(),
+          replies: []
+        }
+      ]);
+      setNewComment('');
+    } catch (err) {
+      setCommentError(err.message || '코멘트 추가에 실패했습니다.');
+    } finally {
+      setCommentBusy(false);
+    }
   };
 
   const removeComment = (commentId) => {
@@ -299,29 +451,45 @@ export default function ProjectFormModal({
     });
   };
 
-  const addReply = (commentId) => {
+  const addReply = async (commentId) => {
     const id = String(commentId);
     const message = String(replyDraftByCommentId[id] || '').trim();
-    if (!message) return;
-    setComments((prev) => prev.map((row) => (
-      String(row?._id) !== id
-        ? row
-        : {
-          ...row,
-          replies: [
-            ...(Array.isArray(row?.replies) ? row.replies : []),
-            {
-              _id: tempId('reply'),
-              userId: currentUser?._id || '',
-              name: currentUser?.name || '사용자',
-              avatar: currentUser?.avatar || '',
-              message,
-              createdAt: new Date().toISOString()
-            }
-          ]
+    if (!message || commentBusy) return;
+    setCommentError('');
+    setCommentBusy(true);
+    try {
+      if (commentPersistTarget) {
+        const nextComments = await postProjectCommentReply(id, message);
+        if (nextComments) {
+          setComments(nextComments);
+          setReplyDraftByCommentId((prev) => ({ ...prev, [id]: '' }));
+          return;
         }
-    )));
-    setReplyDraftByCommentId((prev) => ({ ...prev, [id]: '' }));
+      }
+      setComments((prev) => prev.map((row) => (
+        String(row?._id) !== id
+          ? row
+          : {
+            ...row,
+            replies: [
+              ...(Array.isArray(row?.replies) ? row.replies : []),
+              {
+                _id: tempId('reply'),
+                userId: currentUser?._id || '',
+                name: currentUser?.name || '사용자',
+                avatar: currentUser?.avatar || '',
+                message,
+                createdAt: new Date().toISOString()
+              }
+            ]
+          }
+      )));
+      setReplyDraftByCommentId((prev) => ({ ...prev, [id]: '' }));
+    } catch (err) {
+      setCommentError(err.message || '답글 추가에 실패했습니다.');
+    } finally {
+      setCommentBusy(false);
+    }
   };
 
   const removeReply = (commentId, replyId) => {
@@ -593,6 +761,47 @@ export default function ProjectFormModal({
               />
             </div>
 
+            <section className="pfm-section">
+              <h3 className="pfm-section-title">칸반 단계</h3>
+              <p className="pfm-hint">현재 칸반 단계 중 처음에 넣을 위치를 선택합니다.</p>
+              <div className="pfm-stage-strip" role="radiogroup" aria-label="칸반 단계">
+                {boardStages.map((item) => (
+                  <span key={item.value} className="pfm-stage-strip-seg">
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={stage === item.value}
+                      className={`pfm-stage-pill ${stage === item.value ? 'is-selected' : ''}`}
+                      onClick={() => setStage(item.value)}
+                      disabled={saving}
+                    >
+                      {item.label}
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </section>
+
+            <section className="pfm-section">
+              <h3 className="pfm-section-title">중요도</h3>
+              <div className="pfm-priority-strip" role="radiogroup" aria-label="중요도">
+                {PRIORITY_OPTIONS.map((item) => (
+                  <span key={item.value} className="pfm-stage-strip-seg">
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={priority === item.value}
+                      className={`pfm-priority-pill pfm-priority-pill--${item.value === '높음' ? 'high' : item.value === '낮음' ? 'low' : 'medium'} ${priority === item.value ? 'is-selected' : ''}`}
+                      onClick={() => setPriority(item.value)}
+                      disabled={saving || driveBusy}
+                    >
+                      {item.label}
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </section>
+
             <section className="pfm-block">
               <label className="pfm-label-caps">참여자</label>
               <div className="pfm-participant-row">
@@ -770,21 +979,33 @@ export default function ProjectFormModal({
 
             <section className="pfm-section">
               <h3 className="pfm-section-title">코멘트</h3>
+              <p className="pfm-hint">
+                참여자만 @이름 형식으로 언급할 수 있습니다. 예: @강세진 — 언급된 분에게 공지와 같은 방식의 푸시 알림이 전송됩니다.
+              </p>
               <div className="pfm-comment-composer">
                 <textarea
+                  ref={commentTextareaRef}
                   className="pfm-input-surface pfm-comment-textarea"
                   rows={3}
                   value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="코멘트를 입력하세요."
+                  onChange={(e) => {
+                    setNewComment(e.target.value);
+                    syncMentionFromInput('comment', e.target.value, e.target.selectionStart);
+                  }}
+                  onClick={(e) => syncMentionFromInput('comment', e.target.value, e.target.selectionStart)}
+                  onKeyUp={(e) => syncMentionFromInput('comment', e.target.value, e.target.selectionStart)}
+                  placeholder="코멘트를 입력하세요. @참여자이름 으로 알림을 보낼 수 있습니다."
                   maxLength={2000}
+                  disabled={commentBusy}
                 />
+                {renderMentionSuggest('comment')}
                 <div className="pfm-comment-composer-actions">
-                  <button type="button" className="pfm-comment-add-btn" onClick={addComment} disabled={saving || driveBusy || !String(newComment || '').trim()}>
-                    코멘트 추가
+                  <button type="button" className="pfm-comment-add-btn" onClick={() => void addComment()} disabled={saving || driveBusy || commentBusy || !String(newComment || '').trim()}>
+                    {commentBusy ? '전송 중…' : '코멘트 추가'}
                   </button>
                 </div>
               </div>
+              {commentError ? <p className="pfm-comment-error">{commentError}</p> : null}
               <div className="pfm-comment-list">
                 {comments.length === 0 ? (
                   <p className="pfm-empty">등록된 코멘트가 없습니다.</p>
@@ -806,7 +1027,7 @@ export default function ProjectFormModal({
                         삭제
                       </button>
                     </div>
-                    <p className="pfm-comment-message">{comment.message}</p>
+                    <p className="pfm-comment-message">{renderMessageWithMentions(comment.message)}</p>
 
                     <div className="pfm-reply-list">
                       {(Array.isArray(comment.replies) ? comment.replies : []).map((reply) => (
@@ -822,7 +1043,7 @@ export default function ProjectFormModal({
                               <span>{formatCommentDate(reply.createdAt)}</span>
                             </div>
                           </div>
-                          <p className="pfm-comment-message">{reply.message}</p>
+                          <p className="pfm-comment-message">{renderMessageWithMentions(reply.message)}</p>
                           <button type="button" className="pfm-comment-remove-btn pfm-comment-remove-btn--reply" onClick={() => removeReply(comment._id, reply._id)} disabled={saving || driveBusy}>
                             답글 삭제
                           </button>
@@ -832,15 +1053,32 @@ export default function ProjectFormModal({
 
                     <div className="pfm-reply-composer">
                       <input
+                        ref={(el) => {
+                          if (el) replyInputRefs.current[String(comment._id)] = el;
+                        }}
                         className="pfm-input-surface pfm-input-surface--compact"
                         type="text"
                         value={replyDraftByCommentId[String(comment._id)] || ''}
-                        onChange={(e) => setReplyDraftByCommentId((prev) => ({ ...prev, [String(comment._id)]: e.target.value }))}
-                        placeholder="답글을 입력하세요."
+                        onChange={(e) => {
+                          const cid = String(comment._id);
+                          setReplyDraftByCommentId((prev) => ({ ...prev, [cid]: e.target.value }));
+                          syncMentionFromInput(`reply:${cid}`, e.target.value, e.target.selectionStart);
+                        }}
+                        onClick={(e) => {
+                          const cid = String(comment._id);
+                          syncMentionFromInput(`reply:${cid}`, e.target.value, e.target.selectionStart);
+                        }}
+                        onKeyUp={(e) => {
+                          const cid = String(comment._id);
+                          syncMentionFromInput(`reply:${cid}`, e.target.value, e.target.selectionStart);
+                        }}
+                        placeholder="답글을 입력하세요. @참여자이름"
                         maxLength={2000}
+                        disabled={commentBusy}
                       />
-                      <button type="button" className="pfm-comment-add-btn" onClick={() => addReply(comment._id)} disabled={saving || driveBusy || !String(replyDraftByCommentId[String(comment._id)] || '').trim()}>
-                        답글
+                      {renderMentionSuggest(`reply:${String(comment._id)}`)}
+                      <button type="button" className="pfm-comment-add-btn" onClick={() => void addReply(comment._id)} disabled={saving || driveBusy || commentBusy || !String(replyDraftByCommentId[String(comment._id)] || '').trim()}>
+                        {commentBusy ? '전송 중…' : '답글'}
                       </button>
                     </div>
                   </article>
@@ -848,46 +1086,7 @@ export default function ProjectFormModal({
               </div>
             </section>
 
-            <section className="pfm-section">
-              <h3 className="pfm-section-title">칸반 단계</h3>
-              <p className="pfm-hint">현재 칸반 단계 중 처음에 넣을 위치를 선택합니다.</p>
-              <div className="pfm-stage-strip" role="radiogroup" aria-label="칸반 단계">
-                {boardStages.map((item) => (
-                  <span key={item.value} className="pfm-stage-strip-seg">
-                    <button
-                      type="button"
-                      role="radio"
-                      aria-checked={stage === item.value}
-                      className={`pfm-stage-pill ${stage === item.value ? 'is-selected' : ''}`}
-                      onClick={() => setStage(item.value)}
-                      disabled={saving}
-                    >
-                      {item.label}
-                    </button>
-                  </span>
-                ))}
-              </div>
-            </section>
 
-            <section className="pfm-section">
-              <h3 className="pfm-section-title">중요도</h3>
-              <div className="pfm-priority-strip" role="radiogroup" aria-label="중요도">
-                {PRIORITY_OPTIONS.map((item) => (
-                  <span key={item.value} className="pfm-stage-strip-seg">
-                    <button
-                      type="button"
-                      role="radio"
-                      aria-checked={priority === item.value}
-                      className={`pfm-priority-pill pfm-priority-pill--${item.value === '높음' ? 'high' : item.value === '낮음' ? 'low' : 'medium'} ${priority === item.value ? 'is-selected' : ''}`}
-                      onClick={() => setPriority(item.value)}
-                      disabled={saving || driveBusy}
-                    >
-                      {item.label}
-                    </button>
-                  </span>
-                ))}
-              </div>
-            </section>
 
             <div className="pfm-date-grid">
               <div className="pfm-field">

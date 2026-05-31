@@ -3432,7 +3432,7 @@ export default function OpportunityModal({
                           <div className="opp-basic-split-card opp-basic-info-sheet-card opp-basic-info-sheet-card--doc-mail" aria-label="문서 메일 메일머지">
                             <div className="opp-basic-info-sheet" aria-label="문서 메일 주소">
                               <div className="opp-basic-info-sheet-head">
-                                <span className="opp-basic-info-sheet-head-title">메일 주소</span>
+                                <span className="opp-basic-info-sheet-head-title">견적, 발주 담당자 메일 주소</span>
                                 <div className="opp-basic-info-sheet-head-actions">
                                 <div className="opp-doc-mail-book-toolbar opp-doc-mail-book-toolbar--table">
                               <div className="opp-doc-mail-book-toolbar-anchor" ref={docMailBookDropdownRef}>

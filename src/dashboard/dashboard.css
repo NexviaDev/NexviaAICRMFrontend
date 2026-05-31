@@ -1778,7 +1778,12 @@
   color: #ffffff;
   background: #4e79a7;
   border-bottom: none;
+  border-right: 1px solid rgba(255, 255, 255, 0.22);
   text-align: left;
+}
+
+.home-chart-panel .home-forecast-table thead th:last-child {
+  border-right: none;
 }
 
 .home-reps-body .data-table th {
@@ -1792,6 +1797,14 @@
   border-bottom: 1px solid rgba(78, 121, 167, 0.14);
   background: #ffffff;
   text-align: left;
+}
+
+.home-chart-panel .home-forecast-table tbody td {
+  border-right: 1px solid rgba(78, 121, 167, 0.12);
+}
+
+.home-chart-panel .home-forecast-table tbody td:last-child {
+  border-right: none;
 }
 
 .home-reps-body .data-table td {

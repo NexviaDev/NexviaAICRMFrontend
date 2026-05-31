@@ -702,6 +702,58 @@
   margin-top: 0.7rem;
 }
 
+.pfm-reply-composer .pfm-mention-suggest,
+.pfm-reply-composer .pfm-mention-hint {
+  grid-column: 1 / -1;
+}
+
+.pfm-mention-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.72rem;
+  color: #64748b;
+}
+
+.pfm-mention-suggest {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0.25rem;
+  border: 1px solid rgba(78, 121, 167, 0.28);
+  border-radius: 0.5rem;
+  background: #f8fbff;
+  max-height: 9rem;
+  overflow-y: auto;
+}
+
+.pfm-mention-suggest-btn {
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 0.4rem 0.55rem;
+  border-radius: 0.35rem;
+  font-size: 0.8125rem;
+  color: #2c6485;
+  cursor: pointer;
+}
+
+.pfm-mention-suggest-btn:hover {
+  background: rgba(200, 223, 240, 0.55);
+}
+
+.pfm-mention-tag {
+  color: #2c6485;
+  font-weight: 700;
+  background: rgba(200, 223, 240, 0.45);
+  border-radius: 0.25rem;
+  padding: 0 0.15rem;
+}
+
+.pfm-comment-error {
+  margin: 0.45rem 0 0;
+  font-size: 0.8125rem;
+  color: #b45309;
+}
+
 .pfm-stage-strip {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(0, 1fr));

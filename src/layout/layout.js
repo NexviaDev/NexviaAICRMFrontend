@@ -71,6 +71,10 @@ export default function Layout({ embeddedContent = null }) {
           ? data.eventId
             ? `/calendar?modal=event&eventId=${encodeURIComponent(data.eventId)}`
             : '/calendar'
+          : data.type === 'project-comment'
+          ? data.linkProjectId
+            ? `/project?projectModal=edit&projectId=${encodeURIComponent(data.linkProjectId)}`
+            : '/project'
           : '/notification');
       showWebPushNotification(payload, { url });
     }).then((unsub) => {
