@@ -9,6 +9,7 @@ import {
   mindOrgGenerateMainBranch,
   mindOrgGenerateSubBranch,
   mindOrgFitToView,
+  mindOrgHandleWheelDelegatePageScroll,
   CO_ORG_SCALE_MIN,
   CO_ORG_SCALE_MAX,
   coOrgPn
@@ -69,6 +70,26 @@ function formatSubscriptionDate(iso) {
   }
 }
 
+/** Tableau 스타일 다채로운 팔레트 — 역할 UI·조직도 연결선 (dashboard와 동일 계열) */
+const CO_VIVID_PALETTE = [
+  '#4e79a7',
+  '#f28e2b',
+  '#e15759',
+  '#76b7b2',
+  '#59a14f',
+  '#edc948',
+  '#af7aa1',
+  '#2c7bb6',
+  '#9c755f',
+  '#ff9da7'
+];
+
+const CO_ORG_MIND_THEME = {
+  name: 'Nexvia',
+  randomColor: false,
+  palette: CO_VIVID_PALETTE
+};
+
 /** 구독 카드용 — 역할별 한 줄 요약(summary)만 표시 */
 const CRM_ROLE_PERMISSION_GUIDE = [
   {
@@ -108,12 +129,12 @@ function SubscriptionRolePermissionGuide() {
     <div className="company-subscription-role-guide" role="region" aria-label="역할별 권한 안내">
       <h3 className="company-subscription-role-guide-title">역할별로 할 수 있는 일</h3>
       <p className="company-subscription-role-guide-lead">
-        아래는 권한이 적은 순서입니다. 각 역할의 <strong>파란 한 줄</strong>은 「바로 아래 단계 + 추가로 생기는 일」을 뜻합니다.
+        아래는 권한이 적은 순서입니다. 각 역할의 <strong>색 한 줄</strong>은 「바로 아래 단계 + 추가로 생기는 일」을 뜻합니다.
         화면에 버튼이 없어도, 권한이 없으면 저장할 때 서버가 막습니다.
       </p>
       <div className="company-subscription-role-guide-list">
         {CRM_ROLE_PERMISSION_GUIDE.map((block) => (
-          <div key={block.id} className="company-subscription-role-block">
+          <div key={block.id} className={`company-subscription-role-block company-subscription-role-block--${block.id}`}>
             <div className="company-subscription-role-block-head">
               <span className="company-subscription-role-name">{block.title}</span>
               {block.usesSeat ? (
@@ -419,6 +440,7 @@ export default function CompanyOverview() {
       const mind = new MindElixir({
         el: mindContainerRef.current,
         direction: MindElixir.RIGHT,
+        theme: CO_ORG_MIND_THEME,
         editable,
         contextMenu: editable,
         toolBar: false,
@@ -435,10 +457,7 @@ export default function CompanyOverview() {
         scaleMax: CO_ORG_SCALE_MAX,
         generateMainBranch: mindOrgGenerateMainBranch,
         generateSubBranch: mindOrgGenerateSubBranch,
-        handleWheel: (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-        }
+        handleWheel: mindOrgHandleWheelDelegatePageScroll
       });
       mind.toCenter = function coOrgMindToCenter() {
         mindOrgFitToView(this);

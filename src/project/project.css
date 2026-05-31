@@ -370,7 +370,7 @@
 }
 
 .project-dashboard-calendar-breadcrumb-current {
-  color: #2c6485;
+  color: #2c7bb6;
   font-weight: 600;
 }
 
@@ -415,8 +415,8 @@
 }
 
 .project-dashboard-calendar-nav-btn:hover {
-  background: #dbeafe;
-  color: #2c6485;
+  background: #c8dff0;
+  color: #2c7bb6;
 }
 
 .project-dashboard-calendar-nav-btn:active {
@@ -426,15 +426,15 @@
 .project-dashboard-calendar-shell {
   background: #ffffff;
   border-radius: 1rem;
-  border: 1px solid rgba(172, 179, 183, 0.15);
+  border: 1px solid #e2e8f0;
   overflow: hidden;
 }
 
 .project-dashboard-calendar-weekdays {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  border-bottom: 1px solid rgba(172, 179, 183, 0.12);
-  background: #f8f9fb;
+  border-bottom: 1px solid #e2e8f0;
+  background: #dce6f2;
 }
 
 .project-dashboard-calendar-grid {
@@ -447,7 +447,7 @@
   text-align: center;
   font-size: 0.72rem;
   font-weight: 700;
-  color: rgba(89, 96, 100, 0.72);
+  color: #334155;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -465,7 +465,7 @@
 
 .project-dashboard-calendar-week-row {
   position: relative;
-  border-bottom: 1px solid rgba(172, 179, 183, 0.1);
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .project-dashboard-calendar-week-row:last-child {
@@ -497,6 +497,11 @@
   text-align: left;
   cursor: pointer;
   pointer-events: auto;
+  transition: filter 0.15s;
+}
+
+.project-dashboard-calendar-segment:hover {
+  filter: brightness(0.97);
 }
 
 .project-dashboard-calendar-week-cells {
@@ -508,17 +513,18 @@
   min-height: 148px;
   padding: 0.8rem;
   position: relative;
-  background: #ffffff;
-  border-right: 1px solid rgba(172, 179, 183, 0.08);
-  border-bottom: 1px solid rgba(172, 179, 183, 0.1);
+  background: #fafbfc;
+  border-right: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .project-dashboard-calendar-cell.is-empty {
-  background: #fbfcfd;
+  background: #f8fafc;
 }
 
 .project-dashboard-calendar-cell.is-today {
-  background: rgba(160, 213, 251, 0.08);
+  background: #dceaf7;
+  box-shadow: inset 0 0 0 2px #2c7bb6;
 }
 
 .project-dashboard-calendar-day {
@@ -533,18 +539,19 @@
 }
 
 .project-dashboard-calendar-day.is-today {
-  color: #2c6485;
+  color: #fff;
   font-weight: 800;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: #2c7bb6;
+  align-items: center;
+  justify-content: center;
 }
 
 .project-dashboard-calendar-today-dot {
-  position: absolute;
-  top: 0.9rem;
-  right: 0.9rem;
-  width: 0.45rem;
-  height: 0.45rem;
-  border-radius: 999px;
-  background: #2c6485;
+  display: none;
 }
 
 .project-dashboard-calendar-events {
@@ -572,62 +579,72 @@
   text-align: left;
   font: inherit;
   cursor: pointer;
+  transition: filter 0.15s;
+}
+
+.project-dashboard-calendar-pill:hover {
+  filter: brightness(0.96);
 }
 
 .project-dashboard-calendar-pill.tone-primary {
-  background: rgba(160, 213, 251, 0.45);
-  color: #034b6a;
+  background: #c8dff0;
+  color: #1a4971;
+  border-left: 3px solid #2c7bb6;
 }
 
 .project-dashboard-calendar-segment.tone-primary {
-  background: rgba(160, 213, 251, 0.55);
-  color: #034b6a;
+  background: #2c7bb6;
+  color: #fff;
 }
 
 .project-dashboard-calendar-pill.tone-secondary {
-  background: rgba(205, 229, 255, 0.78);
-  color: #20567c;
+  background: #f5d4ce;
+  color: #8b3a2a;
+  border-left: 3px solid #d6604d;
 }
 
 .project-dashboard-calendar-segment.tone-secondary {
-  background: rgba(205, 229, 255, 0.88);
-  color: #20567c;
+  background: #d6604d;
+  color: #fff;
 }
 
 .project-dashboard-calendar-pill.tone-tertiary {
-  background: rgba(203, 249, 219, 0.7);
-  color: #38614a;
+  background: #b8e6e6;
+  color: #0d5c5c;
+  border-left: 3px solid #008080;
 }
 
 .project-dashboard-calendar-segment.tone-tertiary {
-  background: rgba(203, 249, 219, 0.82);
-  color: #38614a;
+  background: #008080;
+  color: #fff;
 }
 
 .project-dashboard-calendar-pill.tone-mint {
-  background: rgba(220, 244, 232, 0.9);
-  color: #25624a;
+  background: #c8e6d0;
+  color: #145a32;
+  border-left: 3px solid #1a9641;
 }
 
 .project-dashboard-calendar-segment.tone-mint {
-  background: rgba(220, 244, 232, 0.98);
-  color: #25624a;
+  background: #1a9641;
+  color: #fff;
 }
 
 .project-dashboard-calendar-pill.tone-danger {
-  background: rgba(250, 116, 111, 0.2);
-  color: #a83836;
+  background: #f5c4c0;
+  color: #922b21;
+  border-left: 3px solid #c0392b;
 }
 
 .project-dashboard-calendar-segment.tone-danger {
-  background: rgba(250, 116, 111, 0.3);
-  color: #a83836;
+  background: #c0392b;
+  color: #fff;
 }
 
 .project-dashboard-calendar-more {
   font-size: 0.72rem;
   font-weight: 700;
-  color: #596064;
+  color: #2c7bb6;
   padding: 0.2rem 0.1rem 0;
 }
 

@@ -102,6 +102,13 @@
   background: #f3f5f8;
 }
 
+.home-page-content.page-content {
+  min-width: 0;
+  overflow-x: clip;
+  --home-section-shadow: 0 2px 10px rgba(45, 75, 105, 0.08), 0 1px 3px rgba(45, 75, 105, 0.05);
+  --home-section-shadow-hover: 0 5px 18px rgba(45, 75, 105, 0.11), 0 2px 6px rgba(45, 75, 105, 0.06);
+}
+
 .cards-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -129,6 +136,7 @@
   flex-direction: column;
   margin-bottom: 0;
   background: #f9fbfd;
+  box-shadow: 0 2px 10px rgba(45, 75, 105, 0.08), 0 1px 3px rgba(45, 75, 105, 0.05);
 }
 
 .home-lead-channel-body {
@@ -209,7 +217,8 @@
   border: 1px solid var(--card-border);
   border-radius: 0.75rem;
   padding: 1.5rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 2px 10px rgba(45, 75, 105, 0.08), 0 1px 3px rgba(45, 75, 105, 0.05);
+  transition: box-shadow 0.2s ease;
 }
 
 .cards-grid .stat-card:nth-child(1) { background: #d6ebfb; border-color: #cae1f3; }
@@ -277,8 +286,9 @@
   border: 1px solid var(--card-border);
   border-radius: 0.75rem;
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 2px 10px rgba(45, 75, 105, 0.08), 0 1px 3px rgba(45, 75, 105, 0.05);
   margin-bottom: 2rem;
+  transition: box-shadow 0.2s ease;
 }
 
 .home-insights-grid {
@@ -294,7 +304,10 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1.5rem;
   margin-bottom: 2rem;
-  overflow: visible;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+  overflow-y: visible;
 }
 
 .home-insights-top .home-insight-toolbar {
@@ -307,6 +320,167 @@
 
 .home-insights-top .home-contribution-panel {
   grid-column: 1 / -1;
+}
+
+/** 소비자가·순마진·제품군·제품 수량 — 4개 차트 한 줄 유지(768px 이하만 1열) */
+.home-insights-charts-grid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1.5rem;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.home-insights-charts-grid > .home-chart-panel {
+  min-width: 0;
+  max-width: 100%;
+  margin-bottom: 0;
+  overflow: hidden;
+}
+
+.home-insights-charts-grid > .home-chart-panel:hover,
+.home-insights-charts-grid > .home-chart-panel:focus-within {
+  z-index: 2;
+}
+
+.home-insights-charts-grid > .home-chart-panel > .panel-head {
+  border-bottom: 1px solid var(--card-border);
+}
+
+.home-insights-charts-grid > .home-chart-panel > .home-chart-body {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* 4열 인사이트 카드 — 막대 두께 제한·열 간격 축소·가로 스크롤은 카드 안에서만 */
+.home-insights-charts-grid .home-bar-chart-wrap,
+.home-insights-charts-grid .home-line-chart-wrap {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.home-insights-charts-grid .home-mini-chart {
+  gap: 0.35rem;
+  width: max-content;
+  min-width: 100%;
+  box-sizing: border-box;
+}
+
+.home-insights-charts-grid .home-mini-chart-bar-hit {
+  width: 100%;
+  max-width: 1.75rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.home-insights-charts-grid .home-mini-chart-bar,
+.home-insights-charts-grid .home-product-sales-stack {
+  width: 100%;
+  max-width: 1.75rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.home-insights-charts-grid .home-mini-chart-bar {
+  border-radius: 0.35rem 0.35rem 0 0;
+}
+
+.home-insights-charts-grid .home-mini-chart-track--split-axis .home-mini-chart-split-top,
+.home-insights-charts-grid .home-mini-chart-track--split-axis .home-mini-chart-split-bot {
+  align-items: center;
+}
+
+.home-insights-charts-grid .home-mini-chart-track--split-axis .home-mini-chart-bar {
+  max-width: 1.75rem;
+  border-radius: 0.35rem 0.35rem 0 0;
+}
+
+.home-insights-charts-grid .home-product-sales-stack--zero {
+  max-width: 1.75rem;
+}
+
+.home-insights-charts-grid .home-bar-chart-labels {
+  gap: 0.35rem;
+  width: max-content;
+  min-width: 100%;
+  box-sizing: border-box;
+}
+
+.home-insights-charts-grid .home-bar-chart-labels span {
+  font-size: 0.58rem;
+  line-height: 1.15;
+  word-break: keep-all;
+}
+
+.home-insights-charts-grid .home-line-chart-labels {
+  gap: 0.35rem;
+  width: max-content;
+  min-width: 100%;
+  box-sizing: border-box;
+}
+
+.home-insights-charts-grid .home-line-chart-labels span {
+  font-size: 0.58rem;
+  line-height: 1.15;
+  word-break: keep-all;
+}
+
+.home-insights-charts-grid .home-line-chart-legend {
+  flex-wrap: nowrap;
+  gap: 0.5rem 0.75rem;
+  font-size: 0.65rem;
+  margin-top: 0.15rem;
+}
+
+.home-insights-charts-grid .home-chart-subtitle {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.home-insights-charts-grid .home-chart-panel .panel-head {
+  padding: 1.1rem 1.15rem;
+}
+
+.home-insights-charts-grid .home-chart-panel .panel-head h2 {
+  font-size: 1rem;
+}
+
+.home-insights-charts-grid .home-chart-subtitle {
+  font-size: 0.75rem;
+}
+
+.home-insights-charts-grid .home-chart-body {
+  padding: 1rem 1.1rem;
+}
+
+.home-insights-charts-grid .home-mini-chart-track {
+  height: 10rem;
+  min-height: 8.5rem;
+}
+
+.home-insights-charts-grid .home-line-chart-chart-block {
+  height: 10rem;
+  min-height: 8.5rem;
+}
+
+.home-insights-charts-grid .home-product-chart-legend {
+  max-width: 100%;
+}
+
+/* 태블릿·모바일만 1열 — Ctrl+줌(뷰포트 px 축소)으로 2×2로 바뀌지 않게 4열 유지 */
+@media (max-width: 768px) {
+  .home-insights-charts-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
 }
 
 /** 필터(회사·팀·개인) 바로 아래 — 유통 CRM 스타일 요약 카드 */
@@ -340,7 +514,8 @@
   border: 1px solid #e2e8ef;
   border-radius: 0.75rem;
   padding: 1rem 1.1rem;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 2px 10px rgba(45, 75, 105, 0.08), 0 1px 3px rgba(45, 75, 105, 0.05);
+  transition: border-color 0.15s ease, box-shadow 0.2s ease;
 }
 
 .home-kpi-card--clickable {
@@ -351,7 +526,7 @@
 
 .home-kpi-card--clickable:hover {
   border-color: #c5d4e3;
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 5px 18px rgba(45, 75, 105, 0.11), 0 2px 6px rgba(45, 75, 105, 0.06);
 }
 
 .home-kpi-card--clickable:focus-visible {
@@ -462,11 +637,11 @@
 }
 
 .home-kpi-project-bar-stack-seg--done {
-  background: #9ec5b8;
+  background: #59a14f;
 }
 
 .home-kpi-project-bar-stack-seg--active {
-  background: #b8cce8;
+  background: #4e79a7;
 }
 
 .home-kpi-project-bar-stack-seg--anim {
@@ -514,7 +689,7 @@
 .home-kpi-goal-fill {
   height: 100%;
   border-radius: 999px;
-  background: #9ec5e8;
+  background: #4e79a7;
 }
 
 .home-kpi-card-metrics {
@@ -542,28 +717,28 @@
 }
 
 .home-kpi-dot--forecast {
-  background: #f0b07a;
+  background: #f28e2b;
 }
 
 .home-kpi-dot--period {
-  background: #8ebfe3;
+  background: #4e79a7;
 }
 
 .home-kpi-dot--target {
-  background: #b6a8d9;
+  background: #af7aa1;
 }
 
 /* KPI·홈 요약: 프로젝트 파이프라인(진행중 / 예정 / 전체) */
 .home-kpi-dot--pipeline-active {
-  background: #9ec5e8;
+  background: #76b7b2;
 }
 
 .home-kpi-dot--pipeline-scheduled {
-  background: #c5d9e8;
+  background: #edc948;
 }
 
 .home-kpi-dot--pipeline-total {
-  background: #b8c5d4;
+  background: #9c755f;
 }
 
 .home-kpi-metric-label {
@@ -740,6 +915,11 @@
   align-items: stretch;
   gap: 0.5rem;
   margin-bottom: 0.35rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.75rem;
+  background: #fff;
+  box-shadow: 0 2px 10px rgba(45, 75, 105, 0.08), 0 1px 3px rgba(45, 75, 105, 0.05);
 }
 
 .home-contribution-panel {
@@ -749,7 +929,8 @@
   border-radius: 1rem;
   background: #fff;
   padding: 0.85rem 0.95rem;
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 2px 10px rgba(45, 75, 105, 0.08), 0 1px 3px rgba(45, 75, 105, 0.05);
+  transition: box-shadow 0.2s ease;
 }
 
 .home-contribution-head h3 {
@@ -873,14 +1054,14 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #8fa8d8;
+  background: #4e79a7;
   color: #fff;
   border-radius: inherit;
 }
 
 .home-contribution-single-fill.is-full {
   width: 100%;
-  background: #85b7a8;
+  background: #59a14f;
 }
 
 .home-contribution-single-text {
@@ -929,8 +1110,8 @@
 
 .home-contribution-ach-over {
   min-width: 0;
-  background: #e8c4a0;
-  box-shadow: inset 0 0 0 1px rgba(200, 160, 120, 0.28);
+  background: #f28e2b;
+  box-shadow: inset 0 0 0 1px rgba(210, 120, 40, 0.35);
 }
 
 .home-contribution-split-bar {
@@ -1376,9 +1557,54 @@
   grid-column: 1 / -1;
 }
 
+/* Forecast·Todo·우수 담당자 — 그리드/스택 안에서는 바깥 margin 없음 */
+.panel.home-chart-panel.home-forecast-panel,
+.panel.home-chart-panel.home-todo-panel,
+.panel.home-chart-panel.reps-panel {
+  margin-bottom: 0;
+}
+
+/* 영업 파이프라인 — 독립 배치, 다른 .panel 과 동일 하단 간격 */
+.panel.home-chart-panel.sales-pipeline {
+  margin-bottom: 2rem;
+}
+
+.panel.home-chart-panel.home-forecast-panel .panel-head,
+.panel.home-chart-panel.home-todo-panel .panel-head,
+.panel.home-chart-panel.sales-pipeline .panel-head,
+.panel.home-chart-panel.reps-panel .panel-head {
+  padding: 1.1rem 1.15rem;
+}
+
+.panel.home-chart-panel.home-forecast-panel .panel-head h2,
+.panel.home-chart-panel.home-todo-panel .panel-head h2,
+.panel.home-chart-panel.sales-pipeline .panel-head h2,
+.panel.home-chart-panel.reps-panel .panel-head h2 {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.panel.home-chart-panel.home-forecast-panel .home-chart-body,
+.panel.home-chart-panel.home-todo-panel .home-chart-body,
+.panel.home-chart-panel.sales-pipeline .home-chart-body,
+.panel.home-chart-panel.reps-panel .home-chart-body {
+  padding: 0 1.1rem 1.1rem;
+}
+
 .home-forecast-panel {
-  padding: 1rem 1.25rem 1.25rem;
   margin-bottom: 0.35rem;
+}
+
+.home-forecast-body .home-forecast-filters {
+  margin: 0 0 0.75rem;
+}
+
+.home-forecast-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  margin-bottom: 0;
 }
 
 .home-forecast-head {
@@ -1401,7 +1627,8 @@
   white-space: nowrap;
 }
 
-.home-forecast-head-actions {
+.home-forecast-head-actions,
+.home-forecast-panel .home-chart-actions {
   display: inline-flex;
   flex-direction: column;
   align-items: flex-end;
@@ -1413,14 +1640,6 @@
   font-size: 1rem;
   font-weight: 700;
   color: var(--text-main, #1a2b3c);
-}
-
-.home-forecast-title-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.35rem 0.5rem;
-  margin-bottom: 0.25rem;
 }
 
 .home-forecast-software-lines {
@@ -1531,6 +1750,110 @@
 .home-forecast-table-wrap {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+/* Forecast·완료·우수 담당자 표 — 차트 Tableau vivid 팔레트 계열 */
+.home-chart-panel .home-forecast-table-wrap,
+.home-reps-body .table-wrap {
+  margin: 0;
+  border: 1px solid rgba(78, 121, 167, 0.38);
+  border-radius: 0.65rem;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.home-chart-panel .home-forecast-table,
+.home-reps-body .data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.home-chart-panel .home-forecast-table thead th,
+.home-reps-body .data-table th {
+  padding: 0.55rem 0.7rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: #ffffff;
+  background: #4e79a7;
+  border-bottom: none;
+  text-align: left;
+}
+
+.home-reps-body .data-table th {
+  padding: 0.55rem 1rem;
+}
+
+.home-chart-panel .home-forecast-table tbody td,
+.home-reps-body .data-table td {
+  padding: 0.55rem 0.7rem;
+  color: #1e3344;
+  border-bottom: 1px solid rgba(78, 121, 167, 0.14);
+  background: #ffffff;
+  text-align: left;
+}
+
+.home-reps-body .data-table td {
+  padding: 0.55rem 1rem;
+}
+
+.home-chart-panel .home-forecast-table tbody tr.home-forecast-data-row:nth-child(even) td,
+.home-reps-body .data-table tbody tr:nth-child(even) td {
+  background: #eef4fa;
+}
+
+.home-chart-panel .home-forecast-table th:nth-child(n + 3),
+.home-chart-panel .home-forecast-table td:nth-child(n + 3) {
+  white-space: nowrap;
+}
+
+.home-chart-panel .home-forecast-table .home-forecast-total-row td {
+  background: #e2f0e4;
+  border-top: 2px solid #59a14f;
+  border-bottom: none;
+  font-weight: 800;
+  color: #1a4d32;
+}
+
+.home-chart-panel .home-forecast-table .home-forecast-total-row td:first-child {
+  color: #145a32;
+  letter-spacing: 0.01em;
+}
+
+.home-chart-panel .home-forecast-table .home-forecast-more-row td {
+  text-align: center;
+  color: #4e79a7;
+  font-weight: 700;
+  background: rgba(78, 121, 167, 0.08);
+  padding-top: 0.6rem;
+  padding-bottom: 0.6rem;
+}
+
+.home-chart-panel .home-forecast-table tbody tr.home-forecast-data-row {
+  cursor: pointer;
+}
+
+.home-chart-panel .home-forecast-table tbody tr.home-forecast-data-row:hover td,
+.home-reps-body .data-table tbody tr:hover td {
+  background: rgba(78, 121, 167, 0.16);
+}
+
+.home-chart-panel .home-forecast-table tbody tr.home-forecast-data-row:focus-visible {
+  outline: 2px solid rgba(78, 121, 167, 0.55);
+  outline-offset: -2px;
+}
+
+.home-reps-body .data-table tbody tr:focus-within td {
+  background: rgba(78, 121, 167, 0.12);
+}
+
+.home-reps-body .quota-bar {
+  background: rgba(78, 121, 167, 0.15);
+}
+
+.home-reps-body .quota-fill {
+  background: #59a14f;
 }
 
 .home-forecast-table th:nth-child(n + 3),
@@ -1731,16 +2054,19 @@
 .panel.home-chart-panel > .panel-head {
   position: relative;
   z-index: 0;
+  border-bottom: none;
 }
 
 .panel.home-chart-panel > .home-chart-body {
   position: relative;
   z-index: 1;
+  padding-top: 0;
 }
 
 .home-chart-panel:hover,
 .home-chart-panel:focus-within {
   z-index: 80;
+  box-shadow: 0 5px 18px rgba(45, 75, 105, 0.11), 0 2px 6px rgba(45, 75, 105, 0.06);
 }
 
 .home-bar-chart-wrap {
@@ -1794,6 +2120,56 @@
   min-width: 0;
   position: relative;
   cursor: crosshair;
+}
+
+/** 차트 호버 — 커서 근처 포털 툴팁(overflow·패널 z-index에 가리지 않음) */
+.home-chart-cursor-tooltip {
+  position: fixed;
+  z-index: 12000;
+  max-width: min(24rem, calc(100vw - 1.5rem));
+  padding: 0.55rem 0.85rem 0.65rem;
+  border-radius: 0.55rem;
+  background: #f8fbfa;
+  border: 1px solid rgba(78, 121, 167, 0.38);
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.14);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #334155;
+  line-height: 1.45;
+  pointer-events: none;
+}
+
+.home-chart-cursor-tooltip__chart {
+  margin: 0 0 0.35rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.01em;
+}
+
+.home-chart-cursor-tooltip__body strong {
+  display: block;
+  margin-bottom: 0.2rem;
+  font-size: 0.78rem;
+  color: #475569;
+}
+
+.home-chart-cursor-tooltip__body div,
+.home-chart-cursor-tooltip__body span {
+  display: block;
+  margin-top: 0.12rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.home-chart-cursor-tooltip__body .home-product-sales-tooltip-sum {
+  margin-top: 0.35rem;
+  padding-top: 0.3rem;
+  border-top: 1px dashed rgba(148, 163, 184, 0.45);
+  font-weight: 700;
+  color: #1e293b;
 }
 
 .home-chart-tooltip-fly {
@@ -1923,14 +2299,14 @@
 }
 
 .home-line-legend-swatch.current {
-  background: #5a9e82;
+  background: #59a14f;
 }
 
 .home-line-legend-swatch.prev {
   background: repeating-linear-gradient(
     90deg,
-    #b8d4c8 0,
-    #b8d4c8 4px,
+    #bab0ac 0,
+    #bab0ac 4px,
     transparent 4px,
     transparent 7px
   );
@@ -1939,14 +2315,14 @@
 }
 
 .home-line-legend-swatch.current.consumer {
-  background: #5a8ec4;
+  background: #4e79a7;
 }
 
 .home-line-legend-swatch.prev.consumer {
   background: repeating-linear-gradient(
     90deg,
-    #b8d4c8 0,
-    #b8d4c8 4px,
+    #bab0ac 0,
+    #bab0ac 4px,
     transparent 4px,
     transparent 7px
   );
@@ -1962,6 +2338,52 @@
   font-weight: 600;
   color: #6b7a88;
   margin-top: 0.35rem;
+}
+
+/* 제품 범례 — 한 줄 가로 스크롤 칩 (4열 대시보드 등 좁은 카드) */
+.home-product-chart-legend {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.35rem;
+  padding: 0.15rem 0 0.2rem;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.home-product-chart-legend-chip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  max-width: 6.25rem;
+  padding: 0.12rem 0.42rem;
+  border-radius: 999px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: #475569;
+  line-height: 1.2;
+}
+
+.home-product-chart-legend-dot {
+  flex-shrink: 0;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.home-product-chart-legend-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .home-product-sales-line-legend > span,
@@ -2062,11 +2484,11 @@
 }
 
 .home-mini-chart-value.tone-consumer {
-  color: #40618a;
+  color: #2c5282;
 }
 
 .home-mini-chart-value.tone-margin {
-  color: #2b7a58;
+  color: #276749;
 }
 
 .home-mini-chart-track {
@@ -2218,12 +2640,23 @@
   color: var(--text-muted);
 }
 
-.sales-pipeline .pipeline-steps {
-  padding: 2rem;
+.sales-pipeline.home-chart-panel .pipeline-steps {
+  padding: 0.35rem 0 0.15rem;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
   gap: 1rem;
   width: 100%;
+}
+
+.sales-pipeline .pipeline-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: 1rem;
+  width: 100%;
+}
+
+.sales-pipeline:not(.home-chart-panel) .pipeline-steps {
+  padding: 2rem;
 }
 
 .pipeline-step-wrap {
@@ -2316,6 +2749,7 @@
   display: grid;
   grid-template-columns: 1fr;
   gap: 1.5rem;
+  margin-bottom: 2rem;
 }
 
 @media (max-width: 1024px) {
@@ -2336,7 +2770,8 @@
   min-height: 28rem;
 }
 
-.home-schedule-left-stack > .panel.tasks-panel {
+.home-schedule-left-stack > .panel.tasks-panel,
+.home-schedule-left-stack > .panel.home-todo-panel {
   flex: 1 1 0;
   min-height: 0;
   margin-bottom: 0;
@@ -2344,11 +2779,24 @@
   flex-direction: column;
 }
 
-.home-todo-panel,
+.home-todo-panel.home-chart-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .home-leads-panel {
   display: flex;
   flex-direction: column;
   min-height: 0;
+}
+
+.home-todo-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding-top: 0 !important;
 }
 
 .home-todo-panel .home-todo-upcoming {
@@ -2372,7 +2820,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding-top: 0.75rem;
+  padding-top: 0.35rem;
 }
 
 .home-todo-upcoming .todo-list-single {
@@ -2738,28 +3186,39 @@
 
 .home-reps-switch {
   display: inline-flex;
-  gap: 0.4rem;
+  gap: 0;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: var(--bg-light);
 }
 
 .home-reps-switch button {
   border: none;
-  border-radius: 0.45rem;
-  padding: 0.25rem 0.55rem;
-  font-size: 0.64rem;
-  font-weight: 700;
-  background: #edf2f7;
-  color: #5f7488;
+  border-radius: 0;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
-.home-reps-switch button.active {
-  background: #2e698f;
-  color: #fff;
+.home-reps-switch button:hover:not(.active):not(.is-active) {
+  background: rgba(184, 212, 240, 0.2);
+}
+
+.home-reps-switch button.active,
+.home-reps-switch button.is-active {
+  background: rgba(143, 246, 208, 0.35);
+  color: #005d47;
 }
 
 .reps-panel-head {
   flex-wrap: wrap;
   gap: 0.75rem;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .reps-panel-actions {
@@ -2767,6 +3226,14 @@
   align-items: center;
   gap: 0.75rem;
   flex-wrap: wrap;
+}
+
+.home-reps-panel-restricted .home-reps-restricted-inner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding-top: 0.25rem !important;
+  border-top: none;
 }
 
 .home-reps-source-hint {
@@ -3272,4 +3739,16 @@
   justify-content: center;
   background: rgba(248, 250, 252, 0.78);
   backdrop-filter: blur(3px);
+}
+
+/* 홈 대시보드 — 구간 카드 hover 시 shadow 살짝 강조 */
+.home-page-content .panel:hover,
+.home-page-content .stat-card:hover,
+.home-page-content .home-contribution-panel:hover {
+  box-shadow: var(--home-section-shadow-hover);
+}
+
+.home-insights-charts-grid > .home-chart-panel:hover,
+.home-insights-charts-grid > .home-chart-panel:focus-within {
+  box-shadow: var(--home-section-shadow-hover);
 }

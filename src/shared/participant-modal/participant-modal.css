@@ -177,6 +177,10 @@
   font-weight: 500;
 }
 
+.participant-modal-org-toggle--sheet {
+  color: #fff;
+}
+
 .participant-modal-org-filter-meta {
   font-size: 0.78rem;
   color: #64748b;

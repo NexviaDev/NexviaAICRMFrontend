@@ -41,6 +41,33 @@ export const CO_ORG_SCALE_MAX = 1;
 /** 좁은 화면: 가로 트리에서 vw/cw만으로 과축소되는 것을 막기 위한 하한(대략 읽기 가능한 크기) */
 export const CO_ORG_MOBILE_MIN_READABLE_SCALE = 0.38;
 
+/**
+ * Mind Elixir 기본 wheel은 preventDefault → 조직도 위에서 페이지가 안 내려감.
+ * Ctrl/Cmd+휠(확대)만 막고, 일반 세로 휠은 가장 가까운 스크롤 가능 조상으로 위임.
+ */
+export function mindOrgHandleWheelDelegatePageScroll(ev) {
+  if (!ev || typeof ev.deltaY !== 'number') return;
+  if (ev.ctrlKey || ev.metaKey) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    return;
+  }
+  let node = ev.currentTarget instanceof HTMLElement ? ev.currentTarget : null;
+  while (node && node !== document.documentElement) {
+    const { overflowY } = window.getComputedStyle(node);
+    const canScrollY =
+      (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') &&
+      node.scrollHeight > node.clientHeight + 1;
+    if (canScrollY) {
+      node.scrollTop += ev.deltaY;
+      ev.preventDefault();
+      ev.stopPropagation();
+      return;
+    }
+    node = node.parentElement;
+  }
+}
+
 function coOrgIsNarrowViewport() {
   if (typeof window === 'undefined') return false;
   return window.matchMedia('(max-width: 768px)').matches;

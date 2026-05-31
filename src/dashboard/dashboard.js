@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import './dashboard.css';
 import { HomeContributionCalcModal } from './home-contribution-calc-modal';
@@ -699,26 +700,169 @@ function prepareChartSeries(series) {
   });
 }
 
-/** 홈 인사이트 차트 — 막대·라인 구간·포인트 공용 파스텔 (단색, 그라데이션 없음) */
-const CHART_PASTEL_COLORS = [
-  '#b8d4f0',
-  '#d8c8f0',
-  '#a8e8d4',
-  '#ffe0c0',
-  '#f5c8dc',
-  '#c4e0fa'
+/** 홈 인사이트 차트 — Tableau 스타일 다채로운 단색 팔레트 (그라데이션 없음) */
+const CHART_VIVID_COLORS = [
+  '#4e79a7',
+  '#f28e2b',
+  '#e15759',
+  '#76b7b2',
+  '#59a14f',
+  '#edc948',
+  '#af7aa1',
+  '#ff9da7',
+  '#9c755f',
+  '#2c7bb6'
 ];
-const CHART_PASTEL_NEGATIVE = '#f0b8c8';
+const CHART_VIVID_NEGATIVE = '#e15759';
 
-function chartPastelAt(index) {
-  return CHART_PASTEL_COLORS[((index % CHART_PASTEL_COLORS.length) + CHART_PASTEL_COLORS.length) % CHART_PASTEL_COLORS.length];
+function chartColorAt(index) {
+  return CHART_VIVID_COLORS[((index % CHART_VIVID_COLORS.length) + CHART_VIVID_COLORS.length) % CHART_VIVID_COLORS.length];
+}
+
+/** 인사이트 4열 카드 — 막대·X축 라벨을 항상 한 줄(열 수 고정) */
+function fixedInsightChartColumnsStyle(colCount) {
+  const n = Number(colCount) || 0;
+  if (n <= 0) return undefined;
+  return { gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` };
+}
+
+function fixedInsightChartColumnsDenseClass(colCount) {
+  return Number(colCount) > 0 ? ' home-mini-chart--dense-cols' : '';
+}
+
+function fixedInsightChartLabelsDenseClass(colCount) {
+  return Number(colCount) > 0 ? ' home-bar-chart-labels--dense-cols' : '';
+}
+
+const CHART_CURSOR_TIP_GAP = 14;
+const CHART_CURSOR_TIP_MARGIN = 12;
+
+/** 마우스 근처 툴팁 — 우·하단 가장자리에서는 반대쪽으로 플립, 뷰포트 밖으로 나가지 않게 클램프 */
+function clampHomeChartCursorTip(clientX, clientY, width, height) {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const w = Math.max(0, Number(width) || 0);
+  const h = Math.max(0, Number(height) || 0);
+  const margin = CHART_CURSOR_TIP_MARGIN;
+
+  let left = clientX + CHART_CURSOR_TIP_GAP;
+  let top = clientY + CHART_CURSOR_TIP_GAP;
+
+  if (left + w + margin > vw) {
+    left = clientX - w - CHART_CURSOR_TIP_GAP;
+  }
+  if (top + h + margin > vh) {
+    top = clientY - h - CHART_CURSOR_TIP_GAP;
+  }
+
+  left = Math.max(margin, Math.min(left, Math.max(margin, vw - w - margin)));
+  top = Math.max(margin, Math.min(top, Math.max(margin, vh - h - margin)));
+
+  return { left, top };
+}
+
+/** 차트 호버 — 커서 근처 포털 툴팁(overflow·패널 z-index에 가리지 않음) */
+function HomeChartCursorTooltipPortal({ open, chartTitle, children, clientX, clientY }) {
+  const tipRef = useRef(null);
+  const [pos, setPos] = useState(() =>
+    clientX != null && clientY != null
+      ? clampHomeChartCursorTip(clientX, clientY, 240, 72)
+      : { left: -9999, top: -9999 }
+  );
+
+  useLayoutEffect(() => {
+    if (!open || clientX == null || clientY == null || !tipRef.current) return;
+    const el = tipRef.current;
+    setPos(clampHomeChartCursorTip(clientX, clientY, el.offsetWidth, el.offsetHeight));
+  }, [open, clientX, clientY, children, chartTitle]);
+
+  if (!open || clientX == null || clientY == null || typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div
+      ref={tipRef}
+      className="home-chart-cursor-tooltip"
+      style={{ left: `${pos.left}px`, top: `${pos.top}px` }}
+      role="tooltip"
+      aria-live="polite"
+    >
+      {chartTitle ? <p className="home-chart-cursor-tooltip__chart">{chartTitle}</p> : null}
+      <div className="home-chart-cursor-tooltip__body">{children}</div>
+    </div>,
+    document.body
+  );
+}
+
+function chartLineHoverZoneProps(idx, setHoverIdx, setCursor) {
+  return {
+    onMouseEnter: (e) => {
+      setHoverIdx(idx);
+      setCursor({ x: e.clientX, y: e.clientY });
+    },
+    onMouseMove: (e) => setCursor({ x: e.clientX, y: e.clientY }),
+    onMouseLeave: () => {
+      setHoverIdx(null);
+      setCursor(null);
+    }
+  };
+}
+
+function HomeChartHoverTip({ chartTitle, tip, className, children }) {
+  const [hover, setHover] = useState(false);
+  const [cursor, setCursor] = useState(null);
+  const trackCursor = useCallback((e) => {
+    setCursor({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  return (
+    <>
+      <div
+        className={className}
+        onMouseEnter={(e) => {
+          setHover(true);
+          trackCursor(e);
+        }}
+        onMouseMove={trackCursor}
+        onMouseLeave={() => {
+          setHover(false);
+          setCursor(null);
+        }}
+      >
+        {children}
+      </div>
+      <HomeChartCursorTooltipPortal
+        open={hover}
+        chartTitle={chartTitle}
+        clientX={cursor?.x}
+        clientY={cursor?.y}
+      >
+        {tip}
+      </HomeChartCursorTooltipPortal>
+    </>
+  );
+}
+
+/** 제품군·수량 차트 — 가로 스크롤 칩 범례 (좁은 4열 레이아웃용) */
+function HomeProductChartLegend({ items, colorAt = chartColorAt }) {
+  const rows = Array.isArray(items) ? items : [];
+  if (rows.length === 0) return null;
+  return (
+    <div className="home-product-chart-legend" role="list" aria-label="제품 범례">
+      {rows.map((p, pi) => (
+        <span key={String(p.key)} className="home-product-chart-legend-chip" role="listitem" title={p.label}>
+          <span className="home-product-chart-legend-dot" style={{ backgroundColor: colorAt(pi) }} aria-hidden />
+          <span className="home-product-chart-legend-label">{p.label}</span>
+        </span>
+      ))}
+    </div>
+  );
 }
 
 /** 순마진: 올해·작년 동일 Y축 스케일 */
-const MARGIN_LINE_CURRENT = '#5a9e82';
-const MARGIN_LINE_PREV = '#b8d4c8';
+const MARGIN_LINE_CURRENT = '#59a14f';
+const MARGIN_LINE_PREV = '#bab0ac';
 /** 소비자가 단일 꺾은선 */
-const CONSUMER_LINE_COLOR = '#5a8ec4';
+const CONSUMER_LINE_COLOR = '#4e79a7';
 
 function lineChartMaxAbs(seriesA, seriesB) {
   const a = Array.isArray(seriesA) ? seriesA : [];
@@ -851,6 +995,7 @@ function computeWeeklyLeadSeries(leads, numWeeks = 6) {
 /** 주간 리드 건수 단일 꺾은선 (순마진 차트와 동일 레이아웃·툴팁) */
 function WeeklyLeadCountLineChart({ series, title }) {
   const [hoverIdx, setHoverIdx] = useState(null);
+  const [cursor, setCursor] = useState(null);
   const cur = Array.isArray(series) ? series : [];
   const maxAbs = lineChartMaxAbs(cur, []);
   const getY = (v) => lineChartYFromBottom(v, maxAbs);
@@ -896,18 +1041,23 @@ function WeeklyLeadCountLineChart({ series, title }) {
           <div
             key={`${title}-lw-hz-${item.label}-${idx}`}
             className="home-line-chart-hover-zone"
-            onMouseEnter={() => setHoverIdx(idx)}
-            onMouseLeave={() => setHoverIdx(null)}
-          >
-            {hoverIdx === idx ? (
-              <div className="home-chart-tooltip-fly home-chart-tooltip-fly--line" role="tooltip">
-                <strong>{item.label}</strong>
-                <div>수신 {Number(item.value) || 0}건</div>
-              </div>
-            ) : null}
-          </div>
+            {...chartLineHoverZoneProps(idx, setHoverIdx, setCursor)}
+          />
         ))}
       </div>
+      <HomeChartCursorTooltipPortal
+        open={hoverIdx != null && cur[hoverIdx] != null}
+        chartTitle={title}
+        clientX={cursor?.x}
+        clientY={cursor?.y}
+      >
+        {hoverIdx != null && cur[hoverIdx] ? (
+          <>
+            <strong>{cur[hoverIdx].label}</strong>
+            <div>수신 {Number(cur[hoverIdx].value) || 0}건</div>
+          </>
+        ) : null}
+      </HomeChartCursorTooltipPortal>
     </div>
   );
 }
@@ -922,6 +1072,7 @@ function MarginLineChartWithTooltips({
   strokePrev = MARGIN_LINE_PREV
 }) {
   const [hoverIdx, setHoverIdx] = useState(null);
+  const [cursor, setCursor] = useState(null);
   const cur = marginLineCurrent;
   const prev = marginLinePrev;
   const extents = lineChartExtentsFromSeries(cur, prev);
@@ -990,27 +1141,28 @@ function MarginLineChartWithTooltips({
         })}
       </svg>
       <div className="home-line-chart-hover-zones" role="presentation">
-        {cur.map((item, idx) => {
-          const prevItem = prev[idx];
-          const prevVal = prevItem != null ? Number(prevItem.value) : 0;
-          return (
-            <div
-              key={`${title}-hz-${item.label}-${idx}`}
-              className="home-line-chart-hover-zone"
-              onMouseEnter={() => setHoverIdx(idx)}
-              onMouseLeave={() => setHoverIdx(null)}
-            >
-              {hoverIdx === idx ? (
-                <div className="home-chart-tooltip-fly home-chart-tooltip-fly--line" role="tooltip">
-                  <strong>{item.label}</strong>
-                  <div>올해: {formatCurrency(Number(item.value) || 0, currency)}</div>
-                  <div>전년: {formatCurrency(prevVal, currency)}</div>
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
+        {cur.map((item, idx) => (
+          <div
+            key={`${title}-hz-${item.label}-${idx}`}
+            className="home-line-chart-hover-zone"
+            {...chartLineHoverZoneProps(idx, setHoverIdx, setCursor)}
+          />
+        ))}
       </div>
+      <HomeChartCursorTooltipPortal
+        open={hoverIdx != null && cur[hoverIdx] != null}
+        chartTitle={title}
+        clientX={cursor?.x}
+        clientY={cursor?.y}
+      >
+        {hoverIdx != null && cur[hoverIdx] ? (
+          <>
+            <strong>{cur[hoverIdx].label}</strong>
+            <div>올해: {formatCurrency(Number(cur[hoverIdx].value) || 0, currency)}</div>
+            <div>전년: {formatCurrency(prev[hoverIdx] != null ? Number(prev[hoverIdx].value) : 0, currency)}</div>
+          </>
+        ) : null}
+      </HomeChartCursorTooltipPortal>
     </div>
   );
 }
@@ -1036,6 +1188,7 @@ function lineChartExtentsFromManySeries(seriesList) {
 
 function ProductSalesLinesChartWithTooltips({ products, currency, title, formatValue }) {
   const [hoverIdx, setHoverIdx] = useState(null);
+  const [cursor, setCursor] = useState(null);
   const list = Array.isArray(products) ? products : [];
   const fmt =
     typeof formatValue === 'function'
@@ -1073,7 +1226,7 @@ function ProductSalesLinesChartWithTooltips({ products, currency, title, formatV
         {list.map((p, pi) => {
           const d = buildLinePathD(p.series, getY);
           if (!d) return null;
-          const stroke = chartPastelAt(pi);
+          const stroke = chartColorAt(pi);
           return (
             <path
               key={`${title}-prod-line-${p.key || pi}`}
@@ -1092,25 +1245,30 @@ function ProductSalesLinesChartWithTooltips({ products, currency, title, formatV
           <div
             key={`${title}-prod-hz-${item.label}-${idx}`}
             className="home-line-chart-hover-zone"
-            onMouseEnter={() => setHoverIdx(idx)}
-            onMouseLeave={() => setHoverIdx(null)}
-          >
-            {hoverIdx === idx ? (
-              <div className="home-chart-tooltip-fly home-chart-tooltip-fly--line" role="tooltip">
-                <strong>{item.label}</strong>
-                {list.map((p, pi) => (
-                  <div key={`${String(p.key)}-${pi}-tip`}>
-                    {p.label}: {fmt(Number(p.series[idx]?.value) || 0)}
-                  </div>
-                ))}
-                <div className="home-product-sales-tooltip-sum">
-                  합계: {fmt(list.reduce((s, p) => s + (Number(p.series[idx]?.value) || 0), 0))}
-                </div>
-              </div>
-            ) : null}
-          </div>
+            {...chartLineHoverZoneProps(idx, setHoverIdx, setCursor)}
+          />
         ))}
       </div>
+      <HomeChartCursorTooltipPortal
+        open={hoverIdx != null && refSeries[hoverIdx] != null}
+        chartTitle={title}
+        clientX={cursor?.x}
+        clientY={cursor?.y}
+      >
+        {hoverIdx != null && refSeries[hoverIdx] ? (
+          <>
+            <strong>{refSeries[hoverIdx].label}</strong>
+            {list.map((p, pi) => (
+              <div key={`${String(p.key)}-${pi}-tip`}>
+                {p.label}: {fmt(Number(p.series[hoverIdx]?.value) || 0)}
+              </div>
+            ))}
+            <div className="home-product-sales-tooltip-sum">
+              합계: {fmt(list.reduce((s, p) => s + (Number(p.series[hoverIdx]?.value) || 0), 0))}
+            </div>
+          </>
+        ) : null}
+      </HomeChartCursorTooltipPortal>
     </div>
   );
 }
@@ -3337,25 +3495,31 @@ export default function Dashboard() {
       const spanSum = posSpan + negSpan;
       const topFr = spanSum > 0 ? posSpan : 1;
       const botFr = spanSum > 0 ? negSpan : 1;
-      /** 주간(8)·연간(다연도)·당해 월말 8개월 이상 등: minmax(4.5rem) 그리드가 두 줄로 줄바꿈 → 열 수 고정으로 한 줄·좁은 막대 */
       const barCount = barSeries.length;
-      const denseInsightBars = barCount >= 8;
-      const denseBarGridStyle = denseInsightBars
-        ? { gridTemplateColumns: `repeat(${barCount}, minmax(0, 1fr))` }
-        : undefined;
+      const barGridStyle = fixedInsightChartColumnsStyle(barCount);
 
       return (
         <div className="home-bar-chart-wrap">
           <div
-            className={`home-mini-chart${denseInsightBars ? ' home-mini-chart--dense-cols' : ''}`}
-            style={denseBarGridStyle}
+            className={`home-mini-chart${fixedInsightChartColumnsDenseClass(barCount)}`}
+            style={barGridStyle}
           >
             {barSeries.map((item, idx) => {
               const v = Number(item.value) || 0;
               if (!barHasNegative) {
                 const isZero = v === 0;
                 return (
-                  <div key={`${title}-${item.label}-${idx}`} className="home-mini-chart-col home-mini-chart-col--tip">
+                  <HomeChartHoverTip
+                    key={`${title}-${item.label}-${idx}`}
+                    className="home-mini-chart-col home-mini-chart-col--tip"
+                    chartTitle={title}
+                    tip={
+                      <>
+                        <strong>{item.label}</strong>
+                        <span>{formatCurrency(item.value, selectedGraphCurrency)}</span>
+                      </>
+                    }
+                  >
                     <div className="home-mini-chart-track">
                       <div className="home-mini-chart-bar-hit">
                         <div
@@ -3366,17 +3530,13 @@ export default function Dashboard() {
                               ? undefined
                               : {
                                 height: `${Math.max(12, item.height * 2)}%`,
-                                backgroundColor: item.value < 0 ? CHART_PASTEL_NEGATIVE : chartPastelAt(idx)
+                                backgroundColor: item.value < 0 ? CHART_VIVID_NEGATIVE : chartColorAt(idx)
                               }
                           }
                         />
-                        <div className="home-chart-tooltip-fly home-chart-tooltip-fly--bar" role="tooltip">
-                          <strong>{item.label}</strong>
-                          <span>{formatCurrency(item.value, selectedGraphCurrency)}</span>
-                        </div>
                       </div>
                     </div>
-                  </div>
+                  </HomeChartHoverTip>
                 );
               }
               const posPct =
@@ -3384,7 +3544,17 @@ export default function Dashboard() {
               const negPct =
                 v < 0 && rawMin < 0 ? Math.max(15, Math.round((Math.abs(v) / negSpan) * 100)) : v < 0 ? 100 : 0;
               return (
-                <div key={`${title}-${item.label}-${idx}`} className="home-mini-chart-col home-mini-chart-col--tip">
+                <HomeChartHoverTip
+                  key={`${title}-${item.label}-${idx}`}
+                  className="home-mini-chart-col home-mini-chart-col--tip"
+                  chartTitle={title}
+                  tip={
+                    <>
+                      <strong>{item.label}</strong>
+                      <span>{formatCurrency(item.value, selectedGraphCurrency)}</span>
+                    </>
+                  }
+                >
                   <div className="home-mini-chart-track home-mini-chart-track--split-axis">
                     <div className="home-mini-chart-bar-hit home-mini-chart-bar-hit--split">
                       <div
@@ -3396,7 +3566,7 @@ export default function Dashboard() {
                             className="home-mini-chart-bar home-mini-chart-bar--insight-anim"
                             style={{
                               height: `${posPct}%`,
-                              backgroundColor: chartPastelAt(idx)
+                              backgroundColor: chartColorAt(idx)
                             }}
                           />
                         ) : null}
@@ -3411,24 +3581,20 @@ export default function Dashboard() {
                             className="home-mini-chart-bar home-mini-chart-bar--insight-anim negative"
                             style={{
                               height: `${negPct}%`,
-                              backgroundColor: CHART_PASTEL_NEGATIVE
+                              backgroundColor: CHART_VIVID_NEGATIVE
                             }}
                           />
                         ) : null}
                       </div>
-                      <div className="home-chart-tooltip-fly home-chart-tooltip-fly--bar" role="tooltip">
-                        <strong>{item.label}</strong>
-                        <span>{formatCurrency(item.value, selectedGraphCurrency)}</span>
-                      </div>
                     </div>
                   </div>
-                </div>
+                </HomeChartHoverTip>
               );
             })}
           </div>
           <div
-            className={`home-bar-chart-labels${denseInsightBars ? ' home-bar-chart-labels--dense-cols' : ''}`}
-            style={denseBarGridStyle}
+            className={`home-bar-chart-labels${fixedInsightChartLabelsDenseClass(barCount)}`}
+            style={barGridStyle}
           >
             {barSeries.map((item) => (
               <span key={`${title}-x-${item.label}`}>{item.label}</span>
@@ -3491,7 +3657,10 @@ export default function Dashboard() {
                     <span className="home-line-legend-swatch prev" /> {insightChartLegendPrev}
                   </span>
                 </div>
-                <div className="home-line-chart-labels">
+                <div
+                  className={`home-line-chart-labels${fixedInsightChartLabelsDenseClass(marginLineCurrent.length)}`}
+                  style={fixedInsightChartColumnsStyle(marginLineCurrent.length)}
+                >
                   {marginLineCurrent.map((item) => (
                     <span key={`${title}-label-${item.label}`}>{item.label}</span>
                   ))}
@@ -3520,7 +3689,10 @@ export default function Dashboard() {
                   <span className="home-line-legend-swatch prev consumer" /> {insightChartLegendPrev}
                 </span>
               </div>
-              <div className="home-line-chart-labels">
+              <div
+                className={`home-line-chart-labels${fixedInsightChartLabelsDenseClass(consumerLineCurrent.length)}`}
+                style={fixedInsightChartColumnsStyle(consumerLineCurrent.length)}
+              >
                 {consumerLineCurrent.map((item) => (
                   <span key={`${title}-cline-${item.label}`}>{item.label}</span>
                 ))}
@@ -3537,8 +3709,7 @@ export default function Dashboard() {
   const renderProductSalesInsightPanel = () => {
     const prows = productSalesRows;
     const nCols = prows[0]?.series?.length || 0;
-    const dense = nCols >= 8;
-    const denseStyle = dense ? { gridTemplateColumns: `repeat(${nCols}, minmax(0, 1fr))` } : undefined;
+    const colGridStyle = fixedInsightChartColumnsStyle(nCols);
     const empty = productSalesInsightAllEmpty(prows);
     const emptyMsg =
       forecastCompletedRowsUnfiltered.length > 0
@@ -3586,18 +3757,11 @@ export default function Dashboard() {
                 currency={selectedGraphCurrency}
                 title="제품군 판매"
               />
-              <div className="home-product-sales-line-legend" aria-hidden>
-                {prows.map((p, pi) => (
-                  <span key={String(p.key)}>
-                    <span
-                      className="home-line-legend-swatch home-product-sales-swatch"
-                      style={{ backgroundColor: chartPastelAt(pi) }}
-                    />{' '}
-                    {p.label}
-                  </span>
-                ))}
-              </div>
-              <div className="home-line-chart-labels">
+              <HomeProductChartLegend items={prows} />
+              <div
+                className={`home-line-chart-labels${fixedInsightChartLabelsDenseClass(nCols)}`}
+                style={colGridStyle}
+              >
                 {(prows[0]?.series || []).map((item) => (
                   <span key={`제품군-x-${item.label}`}>{item.label}</span>
                 ))}
@@ -3606,14 +3770,31 @@ export default function Dashboard() {
           ) : (
             <div className="home-bar-chart-wrap">
               <div
-                className={`home-mini-chart${dense ? ' home-mini-chart--dense-cols' : ''}`}
-                style={denseStyle}
+                className={`home-mini-chart${fixedInsightChartColumnsDenseClass(nCols)}`}
+                style={colGridStyle}
               >
                 {Array.from({ length: nCols }, (_, j) => {
                   const lab = prows[0]?.series?.[j]?.label || `${j}`;
                   const total = prows.reduce((s, p) => s + (Number(p.series[j]?.value) || 0), 0);
                   return (
-                    <div key={`prod-col-${lab}-${j}`} className="home-mini-chart-col home-mini-chart-col--tip">
+                    <HomeChartHoverTip
+                      key={`prod-col-${lab}-${j}`}
+                      className="home-mini-chart-col home-mini-chart-col--tip"
+                      chartTitle="제품군 판매"
+                      tip={
+                        <>
+                          <strong>{lab}</strong>
+                          {prows.map((p) => (
+                            <div key={`tt-${String(p.key)}-${j}`}>
+                              {p.label}: {formatCurrency(Number(p.series[j]?.value) || 0, selectedGraphCurrency)}
+                            </div>
+                          ))}
+                          <div className="home-product-sales-tooltip-sum">
+                            합계: {formatCurrency(total, selectedGraphCurrency)}
+                          </div>
+                        </>
+                      }
+                    >
                       <div className="home-mini-chart-track">
                         <div className="home-mini-chart-bar-hit">
                           {total <= 0 ? (
@@ -3629,49 +3810,28 @@ export default function Dashboard() {
                                     style={{
                                       flex: v > 0 ? `${v} 1 0` : '0 1 0',
                                       minHeight: v > 0 ? 3 : 0,
-                                      backgroundColor: chartPastelAt(pi)
+                                      backgroundColor: chartColorAt(pi)
                                     }}
                                   />
                                 );
                               })}
                             </div>
                           )}
-                          <div className="home-chart-tooltip-fly home-chart-tooltip-fly--bar" role="tooltip">
-                            <strong>{lab}</strong>
-                            {prows.map((p) => (
-                              <div key={`tt-${String(p.key)}-${j}`}>
-                                {p.label}: {formatCurrency(Number(p.series[j]?.value) || 0, selectedGraphCurrency)}
-                              </div>
-                            ))}
-                            <div className="home-product-sales-tooltip-sum">
-                              합계: {formatCurrency(total, selectedGraphCurrency)}
-                            </div>
-                          </div>
                         </div>
                       </div>
-                    </div>
+                    </HomeChartHoverTip>
                   );
                 })}
               </div>
               <div
-                className={`home-bar-chart-labels${dense ? ' home-bar-chart-labels--dense-cols' : ''}`}
-                style={denseStyle}
+                className={`home-bar-chart-labels${fixedInsightChartLabelsDenseClass(nCols)}`}
+                style={colGridStyle}
               >
                 {(prows[0]?.series || []).map((item) => (
                   <span key={`prod-bar-x-${item.label}`}>{item.label}</span>
                 ))}
               </div>
-              <div className="home-product-sales-bar-legend" aria-hidden>
-                {prows.map((p, pi) => (
-                  <span key={`${String(p.key)}-bar-leg`}>
-                    <span
-                      className="home-line-legend-swatch home-product-sales-swatch"
-                      style={{ backgroundColor: chartPastelAt(pi) }}
-                    />{' '}
-                    {p.label}
-                  </span>
-                ))}
-              </div>
+              <HomeProductChartLegend items={prows} />
             </div>
           )}
         </div>
@@ -3682,8 +3842,7 @@ export default function Dashboard() {
   const renderProductQtyInsightPanel = () => {
     const qrows = productQtyRows;
     const nCols = qrows[0]?.series?.length || 0;
-    const dense = nCols >= 8;
-    const denseStyle = dense ? { gridTemplateColumns: `repeat(${nCols}, minmax(0, 1fr))` } : undefined;
+    const colGridStyle = fixedInsightChartColumnsStyle(nCols);
     const empty = productSalesInsightAllEmpty(qrows);
     const emptyMsgQty =
       forecastCompletedRowsUnfiltered.length > 0
@@ -3733,18 +3892,11 @@ export default function Dashboard() {
                 title="제품별 판매 수량"
                 formatValue={formatHomeProductQty}
               />
-              <div className="home-product-sales-line-legend" aria-hidden>
-                {qrows.map((p, pi) => (
-                  <span key={`qty-leg-${String(p.key)}`}>
-                    <span
-                      className="home-line-legend-swatch home-product-sales-swatch"
-                      style={{ backgroundColor: chartPastelAt(pi) }}
-                    />{' '}
-                    {p.label}
-                  </span>
-                ))}
-              </div>
-              <div className="home-line-chart-labels">
+              <HomeProductChartLegend items={qrows} />
+              <div
+                className={`home-line-chart-labels${fixedInsightChartLabelsDenseClass(nCols)}`}
+                style={colGridStyle}
+              >
                 {(qrows[0]?.series || []).map((item) => (
                   <span key={`제품수량-x-${item.label}`}>{item.label}</span>
                 ))}
@@ -3753,14 +3905,31 @@ export default function Dashboard() {
           ) : (
             <div className="home-bar-chart-wrap">
               <div
-                className={`home-mini-chart${dense ? ' home-mini-chart--dense-cols' : ''}`}
-                style={denseStyle}
+                className={`home-mini-chart${fixedInsightChartColumnsDenseClass(nCols)}`}
+                style={colGridStyle}
               >
                 {Array.from({ length: nCols }, (_, j) => {
                   const lab = qrows[0]?.series?.[j]?.label || `${j}`;
                   const total = qrows.reduce((s, p) => s + (Number(p.series[j]?.value) || 0), 0);
                   return (
-                    <div key={`qty-col-${lab}-${j}`} className="home-mini-chart-col home-mini-chart-col--tip">
+                    <HomeChartHoverTip
+                      key={`qty-col-${lab}-${j}`}
+                      className="home-mini-chart-col home-mini-chart-col--tip"
+                      chartTitle="제품별 판매 수량"
+                      tip={
+                        <>
+                          <strong>{lab}</strong>
+                          {qrows.map((p) => (
+                            <div key={`qty-tt-${String(p.key)}-${j}`}>
+                              {p.label}: {formatHomeProductQty(Number(p.series[j]?.value) || 0)}
+                            </div>
+                          ))}
+                          <div className="home-product-sales-tooltip-sum">
+                            합계: {formatHomeProductQty(total)}
+                          </div>
+                        </>
+                      }
+                    >
                       <div className="home-mini-chart-track">
                         <div className="home-mini-chart-bar-hit">
                           {total <= 0 ? (
@@ -3776,49 +3945,28 @@ export default function Dashboard() {
                                     style={{
                                       flex: v > 0 ? `${v} 1 0` : '0 1 0',
                                       minHeight: v > 0 ? 3 : 0,
-                                      backgroundColor: chartPastelAt(pi)
+                                      backgroundColor: chartColorAt(pi)
                                     }}
                                   />
                                 );
                               })}
                             </div>
                           )}
-                          <div className="home-chart-tooltip-fly home-chart-tooltip-fly--bar" role="tooltip">
-                            <strong>{lab}</strong>
-                            {qrows.map((p) => (
-                              <div key={`qty-tt-${String(p.key)}-${j}`}>
-                                {p.label}: {formatHomeProductQty(Number(p.series[j]?.value) || 0)}
-                              </div>
-                            ))}
-                            <div className="home-product-sales-tooltip-sum">
-                              합계: {formatHomeProductQty(total)}
-                            </div>
-                          </div>
                         </div>
                       </div>
-                    </div>
+                    </HomeChartHoverTip>
                   );
                 })}
               </div>
               <div
-                className={`home-bar-chart-labels${dense ? ' home-bar-chart-labels--dense-cols' : ''}`}
-                style={denseStyle}
+                className={`home-bar-chart-labels${fixedInsightChartLabelsDenseClass(nCols)}`}
+                style={colGridStyle}
               >
                 {(qrows[0]?.series || []).map((item) => (
                   <span key={`qty-bar-x-${item.label}`}>{item.label}</span>
                 ))}
               </div>
-              <div className="home-product-sales-bar-legend" aria-hidden>
-                {qrows.map((p, pi) => (
-                  <span key={`${String(p.key)}-qty-bar-leg`}>
-                    <span
-                      className="home-line-legend-swatch home-product-sales-swatch"
-                      style={{ backgroundColor: chartPastelAt(pi) }}
-                    />{' '}
-                    {p.label}
-                  </span>
-                ))}
-              </div>
+              <HomeProductChartLegend items={qrows} />
             </div>
           )}
         </div>
@@ -3954,6 +4102,7 @@ export default function Dashboard() {
                   </div>
                 ))}
               </div>
+              <div className="home-insights-charts-grid" aria-label="인사이트 차트">
               <div className="panel home-chart-panel home-chart-panel--access-loading" aria-busy="true">
                 <div className="panel-head home-chart-head">
                   <div>
@@ -3997,6 +4146,7 @@ export default function Dashboard() {
                 <div className="home-chart-body home-chart-body--access-loading">
                   <HomePastelSpinner label="권한 확인 중" reducedMotion={prefersReducedMotion} />
                 </div>
+              </div>
               </div>
             </>
           ) : (
@@ -4630,7 +4780,7 @@ export default function Dashboard() {
                                         className="home-contribution-split-seg home-contribution-split-seg--tooltip-host"
                                         style={{
                                           flexBasis: `${Math.max(0, widthPct)}%`,
-                                          backgroundColor: seg.color || '#8fa8d8'
+                                          backgroundColor: seg.color || chartColorAt(0)
                                         }}
                                         title={achText}
                                       >
@@ -4730,7 +4880,7 @@ export default function Dashboard() {
                                         className="home-contribution-split-seg home-contribution-split-seg--tooltip-host"
                                         style={{
                                           flexBasis: `${Math.max(0, widthPct)}%`,
-                                          backgroundColor: seg.color || '#8fa8d8'
+                                          backgroundColor: seg.color || chartColorAt(0)
                                         }}
                                         title={achText}
                                       >
@@ -4800,7 +4950,7 @@ export default function Dashboard() {
                             className="home-contribution-split-seg"
                             style={{
                               flexBasis: `${Math.max(0, Number(seg?.pct || 0))}%`,
-                              backgroundColor: seg.color || '#85b7a8'
+                              backgroundColor: seg.color || chartColorAt(4)
                             }}
                             title={`${seg.label} · 순마진 ${formatRevenueCompact(seg.amount)} · 비중 ${seg.pct}%`}
                           >
@@ -4819,7 +4969,7 @@ export default function Dashboard() {
                             className="home-contribution-split-seg"
                             style={{
                               flexBasis: `${Math.max(0, Number(seg?.pct || 0))}%`,
-                              backgroundColor: seg.color || '#85b7a8'
+                              backgroundColor: seg.color || chartColorAt(4)
                             }}
                             title={`${seg.label} · 순마진 ${formatRevenueCompact(seg.amount)} · 비중 ${seg.pct}%`}
                           >
@@ -4831,6 +4981,7 @@ export default function Dashboard() {
                   )}
                 </section>
               ) : null}
+              <div className="home-insights-charts-grid" aria-label="인사이트 차트">
               {renderChartPanel(
                 consumerChartTitle,
                 consumerInsightSubtitle,
@@ -4859,12 +5010,13 @@ export default function Dashboard() {
               )}
               {renderProductSalesInsightPanel()}
               {renderProductQtyInsightPanel()}
+              </div>
               {Array.isArray(data?.forecastPipelineRows) ? (
-                <div className="panel home-forecast-panel" aria-label="Forecast 파이프라인">
-                  <div className="home-forecast-head">
-                    <div className="home-forecast-head-text">
+                <div className="panel home-chart-panel home-forecast-panel" aria-label="Forecast 파이프라인">
+                  <div className="panel-head home-chart-head">
+                    <div>
                       <div className="home-forecast-title-row">
-                        <h3 className="home-forecast-title">Forecast</h3>
+                        <h2>Forecast</h2>
                         <button
                           type="button"
                           className="home-forecast-add-opp-btn"
@@ -4877,12 +5029,12 @@ export default function Dashboard() {
                           </span>
                         </button>
                       </div>
-                      <p className="home-forecast-sub">
+                      <p className="home-chart-subtitle">
                         진행 중 기회(수주 성공·상실·보류 제외)입니다. 위 조회 범위(회사 전체·팀·개인) 및 부서·직원 필터와 동일하게 반영됩니다.
                         {data.forecastPipelineMeta?.capped ? ' 일부만 표시됩니다.' : ''}
                       </p>
                     </div>
-                    <div className="home-forecast-head-actions">
+                    <div className="home-chart-actions">
                       <button
                         type="button"
                         className="home-pipeline-link home-pipeline-link--btn"
@@ -4901,6 +5053,7 @@ export default function Dashboard() {
                       </Link>
                     </div>
                   </div>
+                  <div className="home-chart-body home-forecast-body">
                   {renderHomeForecastFilterBar('active')}
                   <div className="home-forecast-table-wrap">
                     {forecastActiveRowsUnfiltered.length === 0 ? (
@@ -4997,20 +5150,19 @@ export default function Dashboard() {
                       </table>
                     )}
                   </div>
+                  </div>
                 </div>
               ) : null}
               {Array.isArray(data?.forecastPipelineRows) ? (
-                <div className="panel home-forecast-panel" aria-label="완료 기회 목록">
-                  <div className="home-forecast-head">
-                    <div className="home-forecast-head-text">
-                      <div className="home-forecast-title-row">
-                        <h3 className="home-forecast-title">완료</h3>
-                      </div>
-                      <p className="home-forecast-sub">
+                <div className="panel home-chart-panel home-forecast-panel" aria-label="완료 기회 목록">
+                  <div className="panel-head home-chart-head">
+                    <div>
+                      <h2>완료</h2>
+                      <p className="home-chart-subtitle">
                         확률 100% 또는 계약 완료로 판단된 항목입니다.
                       </p>
                     </div>
-                    <div className="home-forecast-head-actions">
+                    <div className="home-chart-actions">
                       <button
                         type="button"
                         className="home-pipeline-link home-pipeline-link--btn"
@@ -5020,6 +5172,7 @@ export default function Dashboard() {
                       </button>
                     </div>
                   </div>
+                  <div className="home-chart-body home-forecast-body">
                   {renderHomeForecastFilterBar('completed')}
                   <div className="home-forecast-table-wrap">
                     {forecastCompletedRowsUnfiltered.length === 0 ? (
@@ -5116,6 +5269,7 @@ export default function Dashboard() {
                       </table>
                     )}
                   </div>
+                  </div>
                 </div>
               ) : null}
               {data?.insightScope?.leaderSubtree && data?.leaderScopeBreakdown ? (
@@ -5175,14 +5329,18 @@ export default function Dashboard() {
 
         <div className="home-schedule-split">
           <div className="home-schedule-left-stack">
-            <div className="panel tasks-panel home-todo-panel">
-              <div className="panel-head home-todo-panel-head">
-                <div className="home-todo-title-row">
-                  <h2>예정 업무</h2>
-                  <time className="home-schedule-date" dateTime={new Date().toISOString().slice(0, 10)}>
-                    {scheduleTodayLabel}
-                  </time>
+            <div className="panel home-chart-panel home-todo-panel tasks-panel">
+              <div className="panel-head home-chart-head home-todo-panel-head">
+                <div>
+                  <div className="home-todo-title-row">
+                    <h2>예정 업무</h2>
+                    <time className="home-schedule-date" dateTime={new Date().toISOString().slice(0, 10)}>
+                      {scheduleTodayLabel}
+                    </time>
+                  </div>
+                  <p className="home-chart-subtitle">오늘과 예정된 할 일을 확인합니다.</p>
                 </div>
+                <div className="home-chart-actions">
                 {isMobile ? (
                   <button
                     type="button"
@@ -5196,10 +5354,13 @@ export default function Dashboard() {
                     모두 보기
                   </Link>
                 )}
+                </div>
               </div>
+              <div className="home-chart-body home-todo-body">
               <section className="home-todo-upcoming" aria-label="예정 업무">
                 <TodoList embedded previewMax={isMobile ? HOME_MOBILE_PREVIEW_TODO : null} />
               </section>
+              </div>
             </div>
           </div>
           <div className="panel home-dashboard-calendar-panel">
@@ -5224,16 +5385,20 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="panel sales-pipeline">
-          <div className="panel-head">
-            <h2>영업 파이프라인</h2>
-            <div className="panel-actions">
+        <div className="panel home-chart-panel sales-pipeline">
+          <div className="panel-head home-chart-head">
+            <div>
+              <h2>영업 파이프라인</h2>
+              <p className="home-chart-subtitle">세일즈 현황 단계별 진행 중 기회 건수입니다.</p>
+            </div>
+            <div className="home-chart-actions">
               <Link to="/sales-pipeline" className="home-pipeline-link">
                 세일즈 현황에서 관리
                 <span className="material-symbols-outlined" aria-hidden>arrow_forward</span>
               </Link>
             </div>
           </div>
+          <div className="home-chart-body home-pipeline-body">
           <div className="pipeline-steps">
             {pipelineLoading ? (
               <p className="home-pipeline-loading">파이프라인 불러오는 중…</p>
@@ -5256,26 +5421,32 @@ export default function Dashboard() {
               ))
             )}
           </div>
+          </div>
         </div>
 
         {insightAccess.checked && (
           insightAccess.seniorPlus ? (
             <div className="home-bottom">
-              <div className="panel reps-panel">
-                <div className="panel-head reps-panel-head">
-                  <h2>우수 영업 담당자</h2>
-                  <div className="panel-actions reps-panel-actions">
-                    <div className="home-reps-switch">
+              <div className="panel home-chart-panel reps-panel">
+                <div className="panel-head home-chart-head reps-panel-head">
+                  <div>
+                    <h2>우수 영업 담당자</h2>
+                    <p className="home-chart-subtitle">
+                      세일즈 현황과 동일한 데이터입니다. <strong>수주 성공(Won)</strong>만 집계합니다. 기간은 판매일(없으면 수정일) 기준 — {wonLeaderboardMode === 'week' ? '최근 7일' : '당월'}.
+                    </p>
+                  </div>
+                  <div className="home-chart-actions reps-panel-actions">
+                    <div className="home-reps-switch home-insight-mode-switch">
                       <button
                         type="button"
-                        className={wonLeaderboardMode === 'week' ? 'active' : ''}
+                        className={wonLeaderboardMode === 'week' ? 'active is-active' : ''}
                         onClick={() => setWonLeaderboardMode('week')}
                       >
                         주간
                       </button>
                       <button
                         type="button"
-                        className={wonLeaderboardMode === 'month' ? 'active' : ''}
+                        className={wonLeaderboardMode === 'month' ? 'active is-active' : ''}
                         onClick={() => setWonLeaderboardMode('month')}
                       >
                         월간
@@ -5287,9 +5458,7 @@ export default function Dashboard() {
                     </Link>
                   </div>
                 </div>
-                <p className="home-reps-source-hint">
-                  세일즈 현황과 동일한 데이터입니다. <strong>수주 성공(Won)</strong>만 집계합니다. 기간은 판매일(없으면 수정일) 기준 — {wonLeaderboardMode === 'week' ? '최근 7일' : '당월'}.
-                </p>
+                <div className="home-chart-body home-reps-body">
                 <div className="table-wrap">
                   {pipelineLoading ? (
                     <p className="home-chart-empty home-reps-loading">불러오는 중…</p>
@@ -5332,21 +5501,25 @@ export default function Dashboard() {
                     </table>
                   )}
                 </div>
+                </div>
               </div>
             </div>
           ) : (
             <div className="home-bottom">
-              <div className="panel reps-panel home-reps-panel-restricted">
-                <div className="panel-head">
-                  <h2>우수 영업 담당자</h2>
+              <div className="panel home-chart-panel reps-panel home-reps-panel-restricted">
+                <div className="panel-head home-chart-head">
+                  <div>
+                    <h2>우수 영업 담당자</h2>
+                    <p className="home-chart-subtitle">
+                      이 표는 <strong>관리자·대표</strong>만 열람할 수 있습니다. (수주 성공 실적은 세일즈 현황과 연동됩니다.)
+                    </p>
+                  </div>
                 </div>
-                <div className="home-insights-restricted-body home-reps-restricted-inner">
+                <div className="home-chart-body home-reps-body home-insights-restricted-body home-reps-restricted-inner">
                   <span className="material-symbols-outlined home-insights-restricted-icon" aria-hidden>
                     lock
                   </span>
-                  <p>
-                    이 표는 <strong>관리자·대표</strong>만 열람할 수 있습니다. (수주 성공 실적은 세일즈 현황과 연동됩니다.)
-                  </p>
+                  <p>권한이 없어 목록을 표시할 수 없습니다.</p>
                 </div>
               </div>
             </div>
@@ -5661,9 +5834,16 @@ export default function Dashboard() {
               <div className="home-bar-chart-wrap">
                 <div className="home-mini-chart">
                   {leadWeeklyBarSeries.map((item, idx) => (
-                    <div
+                    <HomeChartHoverTip
                       key={`modal-lw-bar-${item.label}-${idx}`}
                       className="home-mini-chart-col home-mini-chart-col--tip"
+                      chartTitle="주간 수신 리드"
+                      tip={
+                        <>
+                          <strong>{item.label}</strong>
+                          <span>{Number(item.value) || 0}건</span>
+                        </>
+                      }
                     >
                       <div className="home-mini-chart-track">
                         <div className="home-mini-chart-bar-hit">
@@ -5672,16 +5852,12 @@ export default function Dashboard() {
                             style={{
                               height: `${Math.max(12, item.height * 2)}%`,
                               backgroundColor:
-                                item.value < 0 ? CHART_PASTEL_NEGATIVE : chartPastelAt(idx)
+                                item.value < 0 ? CHART_VIVID_NEGATIVE : chartColorAt(idx)
                             }}
                           />
-                          <div className="home-chart-tooltip-fly home-chart-tooltip-fly--bar" role="tooltip">
-                            <strong>{item.label}</strong>
-                            <span>{Number(item.value) || 0}건</span>
-                          </div>
                         </div>
                       </div>
-                    </div>
+                    </HomeChartHoverTip>
                   ))}
                 </div>
                 <div className="home-bar-chart-labels">

@@ -23,10 +23,15 @@
   --opp-f-lg: 1.125rem;
   --opp-f-xl: 1.375rem;
   --opp-f-2xl: 1.5rem;
-  /* 모달 내부 전역: 테두리 대비 + 얕은 깊이(파스텔 톤 유지) */
-  --card-border: #b0c0d4;
-  --opp-shade-sm: 0 1px 2px rgba(15, 23, 42, 0.07), 0 2px 8px rgba(15, 23, 42, 0.045);
-  --opp-shade-md: 0 2px 6px rgba(15, 23, 42, 0.08), 0 4px 18px rgba(15, 23, 42, 0.055);
+  /* 대시보드 Tableau vivid · home-chart-panel 계열 */
+  --primary: #2c7bb6;
+  --opp-tableau-header: #4e79a7;
+  --opp-tableau-stripe: #eef4fa;
+  --opp-tableau-border: rgba(78, 121, 167, 0.22);
+  --opp-panel-bg: #f9fbfd;
+  --card-border: #dce6f2;
+  --opp-shade-sm: 0 1px 2px rgba(15, 23, 42, 0.06), 0 2px 8px rgba(15, 23, 42, 0.04);
+  --opp-shade-md: 0 2px 6px rgba(15, 23, 42, 0.07), 0 4px 18px rgba(15, 23, 42, 0.05);
   background: var(--card, #fff);
   border-radius: 0;
   width: 100%;
@@ -48,11 +53,12 @@
   justify-content: space-between;
   gap: 12px;
   padding: 16px 24px;
-  border-bottom: 1px solid #9eb0c4;
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+  border-bottom: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
   flex-shrink: 0;
   overflow: visible;
   z-index: 2;
+  background: #fff;
 }
 
 .opp-modal-header-left {
@@ -101,9 +107,9 @@
   max-width: min(380px, 46vw);
   padding: 4px 8px 4px 10px;
   border-radius: 8px;
-  background: #f1f5f9;
-  border: 1px solid #b0c0d4;
-  box-shadow: var(--opp-shade-sm, 0 1px 2px rgba(15, 23, 42, 0.07), 0 2px 8px rgba(15, 23, 42, 0.045));
+  background: #c8dff0;
+  border: 1px solid rgba(44, 123, 182, 0.28);
+  box-shadow: var(--opp-shade-sm);
   font-size: 0.8125rem;
   line-height: 1.35;
 }
@@ -125,21 +131,21 @@
   background: transparent;
   font: inherit;
   font-weight: 600;
-  color: #334155;
+  color: #1a4971;
   word-break: break-word;
   min-width: 0;
   flex: 1 1 auto;
   text-align: left;
   cursor: pointer;
   text-decoration: underline;
-  text-decoration-color: #cbd5e1;
+  text-decoration-color: rgba(44, 123, 182, 0.35);
   text-underline-offset: 2px;
 }
 
 .opp-modal-header-assignee-name:hover {
-  color: #1e293b;
-  background: rgba(148, 163, 184, 0.15);
-  text-decoration-color: #94a3b8;
+  color: #0f3d5c;
+  background: rgba(255, 255, 255, 0.45);
+  text-decoration-color: #2c7bb6;
 }
 
 .opp-modal-header-assignee-name:focus-visible {
@@ -359,6 +365,7 @@
   max-width: none;
   align-self: stretch;
   box-sizing: border-box;
+  background: #f8fafc;
 }
 
 /* 본문 2열: 왼쪽 기회 폼 · 오른쪽 일정 + 계약·계산서·수금 */
@@ -394,108 +401,173 @@
 .opp-modal-section-tabs-head {
   position: static;
   z-index: auto;
-  background: #f1f4f8;
-  margin: 0 0 12px;
-  padding: 10px 12px 12px;
-  border-radius: 8px;
-  border: 1px solid #a8b8cc;
-  box-shadow: var(--opp-shade-sm, 0 1px 2px rgba(15, 23, 42, 0.07), 0 2px 8px rgba(15, 23, 42, 0.045));
+  background: transparent;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
 }
 
-.opp-modal-summary-dash {
+.opp-modal-section-tabs-head .opp-section-nav-tabs {
+  margin-top: 0.65rem;
+  margin-bottom: 0;
+}
+
+.opp-modal-summary-dash-sheet.opp-basic-info-sheet--panel {
+  flex: none;
+  height: auto;
+  min-height: 0;
+  margin-bottom: 0.65rem;
+}
+
+.opp-modal-summary-dash-sheet .opp-basic-info-sheet-head-title {
+  font-size: 0.84rem;
+}
+
+.opp-modal-summary-dash-sheet.opp-basic-info-sheet--panel .opp-basic-info-sheet-body {
+  flex: none;
+  min-height: auto;
+  height: auto;
+  overflow: visible;
+}
+
+.opp-modal-summary-dash-body {
+  padding: 0;
+}
+
+.opp-modal-summary-dash-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin: 0 0 10px;
 }
 
-.opp-modal-summary-dash-card {
-  border-radius: 8px;
-  padding: 12px 14px;
+.opp-modal-summary-dash-cell {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
-  border: 1px solid transparent;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06), 0 2px 8px rgba(15, 23, 42, 0.04);
+  min-height: 3.75rem;
+  border-right: 2px solid var(--opp-basic-sheet-line, #6d8aad);
+  border-bottom: none;
+  background: #fff;
 }
 
-.opp-modal-summary-dash-card--order {
-  background: #e8f4fc;
-  border-color: #a8d4ec;
-}
-
-.opp-modal-summary-dash-card--margin {
-  background: #fdeef0;
-  border-color: #eab6bf;
-}
-
-.opp-modal-summary-dash-card--forecast {
-  background: #f3ebf8;
-  border-color: #d4c0e8;
-}
-
-.opp-modal-summary-dash-card--stage {
-  background: #e8f8f0;
-  border-color: #a8dcc0;
+.opp-modal-summary-dash-cell:last-child {
+  border-right: none;
 }
 
 .opp-modal-summary-dash-label {
-  display: block;
-  font-size: 0.72rem;
+  display: flex;
+  align-items: center;
+  min-height: 1.85rem;
+  padding: 0.28rem 0.5rem;
+  font-size: 0.68rem;
   font-weight: 700;
   color: #475569;
-  margin-bottom: 0.35rem;
+  background: #eef4fa;
+  border-bottom: 2px solid var(--opp-basic-sheet-line, #6d8aad);
   letter-spacing: -0.01em;
+  line-height: 1.25;
 }
 
-.opp-modal-summary-dash-card--order .opp-modal-summary-dash-label {
-  color: #1e5a82;
+.opp-modal-summary-dash-cell--order .opp-modal-summary-dash-label {
+  color: #1a4971;
 }
 
-.opp-modal-summary-dash-card--margin .opp-modal-summary-dash-label {
-  color: #9b2c3a;
+.opp-modal-summary-dash-cell--margin .opp-modal-summary-dash-label {
+  color: #8b3a2a;
 }
 
-.opp-modal-summary-dash-card--forecast .opp-modal-summary-dash-label {
-  color: #5b3d8a;
+.opp-modal-summary-dash-cell--forecast .opp-modal-summary-dash-label {
+  color: #2c6485;
 }
 
-.opp-modal-summary-dash-card--stage .opp-modal-summary-dash-label {
-  color: #1d6b4a;
+.opp-modal-summary-dash-cell--stage .opp-modal-summary-dash-label {
+  color: #145a32;
 }
 
 .opp-modal-summary-dash-value {
-  font-size: 1.15rem;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  padding: 0.38rem 0.5rem;
+  font-size: 0.92rem;
   font-weight: 700;
-  color: #1e293b;
+  color: #1e3344;
   line-height: 1.25;
   word-break: break-all;
+  background: #fff;
+}
+
+.opp-modal-summary-dash-cell--order .opp-modal-summary-dash-value {
+  color: #1a4971;
+}
+
+.opp-modal-summary-dash-cell--margin .opp-modal-summary-dash-value {
+  color: #9f1239;
 }
 
 .opp-modal-summary-dash-value--forecast {
   color: #2c6485;
+  align-items: flex-start;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.08rem;
+  padding-top: 0.32rem;
+  padding-bottom: 0.32rem;
 }
 
 .opp-modal-summary-dash-value--stage {
-  font-size: 1rem;
+  font-size: 0.82rem;
   font-weight: 700;
-  color: #0f172a;
+  color: #145a32;
+}
+
+.opp-modal-summary-dash-cell--forecast .opp-modal-summary-dash-meta {
+  padding: 0 0.5rem 0.35rem;
+  font-size: 0.58rem;
+  font-weight: 600;
+  color: #64748b;
+  line-height: 1.25;
+  background: #fff;
 }
 
 .opp-modal-summary-dash-meta {
-  margin-top: 0.28rem;
-  font-size: 0.65rem;
+  font-size: 0.58rem;
   font-weight: 600;
   color: #64748b;
+  line-height: 1.25;
 }
 
 @media (max-width: 960px) {
-  .opp-modal-summary-dash {
+  .opp-modal-summary-dash-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .opp-modal-summary-dash-cell:nth-child(2n) {
+    border-right: none;
+  }
+
+  .opp-modal-summary-dash-cell:nth-child(-n+2) {
+    border-bottom: 2px solid var(--opp-basic-sheet-line, #6d8aad);
   }
 }
 
 @media (max-width: 440px) {
-  .opp-modal-summary-dash {
+  .opp-modal-summary-dash-grid {
     grid-template-columns: 1fr;
+  }
+
+  .opp-modal-summary-dash-cell {
+    border-right: none;
+    border-bottom: 2px solid var(--opp-basic-sheet-line, #6d8aad);
+  }
+
+  .opp-modal-summary-dash-cell:last-child {
+    border-bottom: none;
+  }
+
+  .opp-modal-summary-dash-cell:nth-child(-n+2) {
+    border-bottom: 2px solid var(--opp-basic-sheet-line, #6d8aad);
   }
 }
 
@@ -505,10 +577,96 @@
 
 .opp-modal-section-tabs-head .opp-modal-tabs-bar {
   margin-bottom: 0;
+  margin-top: 0.15rem;
 }
 
 .opp-modal-section-tabs-head .opp-modal-tabs {
   margin-bottom: 0;
+}
+
+/* Bootstrap Nav tabs 느낌 — react-bootstrap 미사용, 커스텀 */
+.opp-section-nav-tabs {
+  border-bottom: 2px solid var(--opp-basic-sheet-line, #6d8aad);
+  background: #f4f8fb;
+}
+
+.opp-section-nav-tabs-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0;
+  margin: 0;
+  padding: 0 0.35rem;
+  list-style: none;
+}
+
+.opp-section-nav-tabs-item {
+  margin: 0;
+  padding: 0;
+}
+
+.opp-section-nav-tabs-link {
+  display: block;
+  margin: 0 0.12rem -2px 0;
+  padding: 0.55rem 0.95rem;
+  border: 2px solid transparent;
+  border-bottom: none;
+  border-radius: 0.35rem 0.35rem 0 0;
+  background: transparent;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #64748b;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.opp-section-nav-tabs-link:hover:not(.opp-section-nav-tabs-link--active) {
+  color: #1a4971;
+  background: #eef4fa;
+  border-color: rgba(109, 138, 173, 0.35);
+  border-bottom-color: transparent;
+}
+
+.opp-section-nav-tabs-link:focus-visible {
+  outline: 2px solid rgba(78, 121, 167, 0.55);
+  outline-offset: 1px;
+}
+
+.opp-section-nav-tabs-link--active {
+  color: #1a4971;
+  font-weight: 700;
+  background: #fff;
+  border-color: var(--opp-basic-sheet-line, #6d8aad);
+  border-bottom-color: #fff;
+  z-index: 1;
+  position: relative;
+}
+
+@media (max-width: 520px) {
+  .opp-section-nav-tabs-list {
+    padding: 0 0.2rem;
+  }
+
+  .opp-section-nav-tabs-link {
+    padding: 0.5rem 0.65rem;
+    font-size: 0.72rem;
+  }
+
+  .opp-modal-form-main--section-tabs .opp-modal-tab-panels {
+    padding: 0.65rem 0.55rem 0.5rem;
+  }
+}
+
+.opp-modal-form-main--section-tabs .opp-modal-tab-panels {
+  margin-top: 0;
+  padding: 0.85rem 0.9rem 0.65rem;
+  border: 2px solid var(--opp-basic-sheet-line, #6d8aad);
+  border-top: none;
+  background: #fff;
+  border-radius: 0 0 0 0;
 }
 
 .opp-modal-tabs-bar {
@@ -539,7 +697,7 @@
   width: 4px;
   height: 1rem;
   border-radius: 2px;
-  background: #7eb0d4;
+  background: var(--opp-tableau-header);
 }
 
 .opp-modal-tabs {
@@ -549,48 +707,44 @@
   padding: 6px;
   margin: 0;
   flex-shrink: 0;
-  background: #dce6f0;
-  border: 1px solid #8fa9c4;
+  background: var(--opp-tableau-stripe);
+  border: 1px solid var(--opp-tableau-border);
   border-radius: 10px;
-  box-shadow: var(--opp-shade-md, 0 2px 6px rgba(15, 23, 42, 0.08), 0 4px 18px rgba(15, 23, 42, 0.055));
+  box-shadow: var(--opp-shade-sm);
 }
 
 .opp-modal-tab {
   flex: 1 1 auto;
   min-width: 5.25rem;
   padding: 10px 14px;
-  border: 1px solid #9eb4cc;
+  border: 1px solid transparent;
   border-radius: 8px;
-  background: #eef2f7;
+  background: transparent;
   font-size: var(--opp-f-sm);
   font-weight: 700;
   color: #475569;
   cursor: pointer;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  box-shadow: none;
   transition: background 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 
 .opp-modal-tab:hover {
-  color: #1e3a5f;
-  background: #e8eef5;
-  border-color: #9eb4cc;
-}
-
-.opp-modal-tab:focus {
-  outline: none;
+  color: #1e3344;
+  background: rgba(78, 121, 167, 0.1);
+  border-color: rgba(78, 121, 167, 0.18);
 }
 
 .opp-modal-tab:focus-visible {
-  outline: 2px solid #4a8ab8;
+  outline: 2px solid rgba(78, 121, 167, 0.55);
   outline-offset: 2px;
-  border-color: #7eb0d4;
+  border-color: var(--opp-tableau-header);
 }
 
 .opp-modal-tab--active {
-  color: #0f3d5c;
-  border-color: #4a8ab8;
+  color: #1e3344;
+  border-color: var(--opp-tableau-header);
   background: #fff;
-  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.1), 0 1px 2px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 1px 3px rgba(78, 121, 167, 0.14);
 }
 
 .opp-modal-tab-panels {
@@ -677,14 +831,280 @@
     display: grid;
     /* 왼쪽(일정·계약·수금) 축소, 오른쪽(월 달력) 확대 */
     grid-template-columns: minmax(300px, 0.7fr) minmax(300px, 1fr);
-    gap: 10rem 10;
+    gap: 1rem 1rem;
     align-items: start;
   }
 
   .opp-modal-form-finance--full-width .opp-schedule-dates-and-cal > .opp-embed-calendar-root.calendar-page--embedded {
-    border-left: 1px solid #9eb0c4;
+    border-left: 1px solid var(--opp-tableau-border);
     padding-left: 1rem;
     min-width: 0;
+  }
+}
+
+/* 일정 탭 — 기본 정보 탭과 동일한 엑셀형 시트 레이아웃 */
+.opp-schedule-tab-aside {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+
+.opp-schedule-tab-forms {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.opp-schedule-sheet.opp-basic-info-sheet--panel {
+  flex: none;
+  height: auto;
+  min-height: 0;
+}
+
+.opp-schedule-sheet.opp-basic-info-sheet--panel .opp-basic-info-sheet-body {
+  flex: none;
+  min-height: auto;
+  overflow: visible;
+}
+
+.opp-schedule-sheet-body {
+  padding: 0;
+}
+
+.opp-schedule-won-banner {
+  margin: 0;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.68rem;
+  line-height: 1.45;
+  color: #5a6b72;
+  background: #f4f8fb;
+  border-bottom: 2px solid var(--opp-basic-sheet-line, #6d8aad);
+}
+
+.opp-schedule-won-banner strong {
+  color: #2c6485;
+  font-weight: 700;
+}
+
+.opp-schedule-sheet-hint {
+  margin: 0;
+  padding: 0.32rem 0.55rem 0.4rem;
+  font-size: 0.64rem;
+  line-height: 1.45;
+  color: #64748b;
+  background: #fafcfe;
+  border-bottom: 2px solid var(--opp-basic-sheet-line, #6d8aad);
+}
+
+.opp-schedule-finance-subhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  min-height: 1.85rem;
+  padding: 0.28rem 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #3d5a73;
+  background: #e8f0f8;
+  border-bottom: 2px solid var(--opp-basic-sheet-line, #6d8aad);
+  letter-spacing: -0.01em;
+}
+
+.opp-schedule-finance-subhead + .opp-basic-info-sheet-row {
+  border-top: none;
+}
+
+.opp-schedule-collection-entry-head {
+  padding: 0.22rem 0.5rem;
+  font-size: 0.64rem;
+  font-weight: 700;
+  color: #5a7085;
+  background: #f4f8fb;
+  border-bottom: 2px solid var(--opp-basic-sheet-line, #6d8aad);
+}
+
+.opp-schedule-finance-quad-date-cell {
+  display: flex;
+  align-items: stretch;
+  gap: 0.2rem;
+  padding-right: 0.18rem;
+  box-sizing: border-box;
+}
+
+.opp-schedule-finance-quad-date-cell .opp-basic-info-sheet-field--input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.opp-schedule-collection-delete {
+  align-self: center;
+  flex-shrink: 0;
+}
+
+.opp-schedule-inline-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.12rem;
+  height: 1.55rem;
+  padding: 0 0.38rem;
+  border: 1px solid rgba(78, 121, 167, 0.35);
+  border-radius: 0.25rem;
+  background: rgba(200, 223, 240, 0.55);
+  color: #1e4d66;
+  font-family: inherit;
+  font-size: 0.64rem;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+
+.opp-schedule-inline-btn:hover:not(:disabled) {
+  background: rgba(200, 223, 240, 0.85);
+  border-color: rgba(78, 121, 167, 0.5);
+}
+
+.opp-schedule-inline-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.opp-schedule-inline-btn .material-symbols-outlined {
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.opp-schedule-inline-btn--danger {
+  background: rgba(252, 218, 218, 0.75);
+  border-color: rgba(220, 120, 120, 0.4);
+  color: #a33;
+}
+
+.opp-schedule-inline-btn--danger:hover:not(:disabled) {
+  background: rgba(252, 200, 200, 0.9);
+  border-color: rgba(200, 90, 90, 0.55);
+}
+
+.opp-schedule-sheet-field--date {
+  color-scheme: light;
+}
+
+.opp-schedule-sheet-field--date:disabled {
+  background: #f1f5f9;
+  color: #64748b;
+  cursor: not-allowed;
+}
+
+.opp-schedule-custom-fields-body {
+  padding: 0;
+}
+
+.opp-schedule-custom-fields-body .opp-schedule-custom-field.custom-fields-value-row {
+  display: grid;
+  grid-template-columns: 5.75rem minmax(0, 1fr);
+  min-height: 2.5rem;
+  margin-top: 0;
+  border-bottom: 2px solid var(--opp-basic-sheet-line, #6d8aad);
+}
+
+.opp-schedule-custom-fields-body .opp-schedule-custom-field.custom-fields-value-row:last-child {
+  border-bottom: none;
+}
+
+.opp-schedule-custom-fields-body .opp-schedule-custom-field .custom-fields-value-input-wrap {
+  display: contents;
+}
+
+.opp-schedule-custom-fields-body .opp-schedule-custom-field label,
+.opp-schedule-custom-fields-body .opp-schedule-custom-field .custom-fields-value-label {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 0.32rem 0.45rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #475569;
+  background: #eef4fa;
+  border-right: 2px solid var(--opp-basic-sheet-line, #6d8aad);
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.opp-schedule-custom-fields-body .opp-schedule-custom-field input[type="text"],
+.opp-schedule-custom-fields-body .opp-schedule-custom-field input[type="number"],
+.opp-schedule-custom-fields-body .opp-schedule-custom-field input[type="date"],
+.opp-schedule-custom-fields-body .opp-schedule-custom-field select {
+  grid-column: 2;
+  min-width: 0;
+}
+
+.opp-schedule-custom-fields-body .opp-schedule-custom-field .custom-fields-multiselect-wrap {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 5.75rem minmax(0, 1fr);
+  align-items: stretch;
+  min-width: 0;
+  padding: 0;
+}
+
+.opp-schedule-custom-fields-body .opp-schedule-custom-field .custom-fields-multiselect-wrap .custom-fields-value-label {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 0.32rem 0.45rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #475569;
+  background: #eef4fa;
+  border-right: 2px solid var(--opp-basic-sheet-line, #6d8aad);
+}
+
+.opp-schedule-custom-fields-body .opp-schedule-custom-field .custom-fields-multiselect-wrap .custom-fields-multiselect-trigger {
+  align-self: center;
+  margin: 0.18rem 0.28rem 0.18rem 0;
+}
+
+.opp-schedule-custom-fields-body .opp-schedule-custom-field .custom-fields-checkbox-label {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.32rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: #334155;
+  background: #fff;
+}
+
+.opp-schedule-custom-fields-body .opp-schedule-custom-field select,
+.opp-schedule-custom-fields-body .opp-schedule-custom-field input:not([type="checkbox"]) {
+  width: 100%;
+  min-height: 2.5rem;
+  margin: 0;
+  padding: 0.32rem 0.5rem;
+  box-sizing: border-box;
+  border: none;
+  border-radius: 0;
+  background: #fff;
+  font-family: inherit;
+  font-size: 0.78rem;
+  color: #1e3344;
+}
+
+.opp-schedule-custom-fields-body .opp-schedule-custom-field select:focus,
+.opp-schedule-custom-fields-body .opp-schedule-custom-field input:not([type="checkbox"]):focus {
+  outline: none;
+  box-shadow: inset 0 0 0 2px rgba(44, 123, 182, 0.35);
+}
+
+@media (max-width: 879px) {
+  .opp-schedule-tab-forms {
+    gap: 0.45rem;
   }
 }
 
@@ -742,10 +1162,13 @@
   width: 100%;
   max-width: none;
   flex: 0 0 auto;
-  margin-top: 0.35rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid #b0c0d4;
-  margin-bottom: 0.45rem;
+  margin-top: 0.75rem;
+  margin-bottom: 0.65rem;
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--opp-tableau-border);
+  border-radius: 0.75rem;
+  background: var(--opp-panel-bg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .opp-modal-form-finance--full-width .opp-finance-heading {
@@ -805,7 +1228,6 @@
 }
 
 .opp-modal-form-finance {
-  /* 오른쪽(일정·금융) 열을 넉넉히 — 대략 본문 대비 2:1 전후로 보이도록 */
   flex: 0 0 clamp(280px, 42%, 520px);
   max-width: 520px;
   min-width: 260px;
@@ -815,13 +1237,15 @@
   z-index: 1;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.65rem;
   max-height: none;
   overflow-y: visible;
-  padding-left: 14px;
-  margin-left: 2px;
-  border-left: 1px solid #b0c0d4;
-  box-shadow: -4px 0 14px rgba(15, 23, 42, 0.04);
+  padding: 1rem 1.1rem;
+  margin-left: 0;
+  border: 1px solid var(--opp-tableau-border);
+  border-radius: 0.75rem;
+  background: var(--opp-panel-bg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .opp-modal-form-finance .opp-finance-section {
@@ -1057,11 +1481,11 @@
 .opp-input:focus,
 .opp-select:focus,
 .opp-textarea:focus {
-  border-color: var(--primary, #1d283a);
+  border-color: var(--primary);
   box-shadow:
-    0 0 0 3px rgba(29, 41, 58, 0.1),
-    0 1px 2px rgba(15, 23, 42, 0.07),
-    0 2px 8px rgba(15, 23, 42, 0.045);
+    0 0 0 3px rgba(44, 123, 182, 0.12),
+    0 1px 2px rgba(15, 23, 42, 0.06),
+    0 2px 8px rgba(15, 23, 42, 0.04);
 }
 
 .opp-textarea {
@@ -1116,8 +1540,8 @@
 }
 
 .opp-price-basis-btn--selected {
-  border-color: var(--primary, #1d293a);
-  background: rgba(29, 41, 58, 0.06);
+  border-color: var(--opp-tableau-header);
+  background: rgba(78, 121, 167, 0.1);
 }
 
 .opp-price-basis-btn-label {
@@ -1178,18 +1602,18 @@
   gap: 0.35rem;
   padding: 0.4rem 0.75rem;
   font-size: var(--opp-f-sm);
-  font-weight: 500;
+  font-weight: 600;
   color: #fff;
-  background: var(--primary, #1d283a);
+  background: var(--opp-tableau-header);
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  transition: opacity 0.2s;
+  transition: filter 0.15s;
   flex-shrink: 0;
 }
 
 .opp-company-search-btn:hover {
-  opacity: 0.9;
+  filter: brightness(1.05);
 }
 
 .opp-company-search-btn .material-symbols-outlined {
@@ -1463,16 +1887,17 @@
   gap: 4px;
   padding: 4px 8px;
   font-size: var(--opp-f-cap);
-  font-weight: 500;
-  color: var(--primary, #1d283a);
+  font-weight: 600;
+  color: var(--primary);
   background: none;
   border: none;
   cursor: pointer;
-  transition: opacity 0.2s;
+  transition: color 0.15s, background 0.15s;
+  border-radius: 6px;
 }
 
 .opp-product-add-btn:hover {
-  opacity: 0.8;
+  background: rgba(78, 121, 167, 0.1);
 }
 
 .opp-product-add-btn .material-symbols-outlined {
@@ -1506,17 +1931,17 @@
 }
 
 .opp-stage-btn--selected {
-  background: #d1e9f8;
-  color: #0c4a6e;
-  border-color: #5b9fd4;
+  background: #c8dff0;
+  color: #1a4971;
+  border-color: #2c7bb6;
   font-weight: 700;
-  box-shadow: 0 1px 3px rgba(12, 74, 110, 0.12);
+  box-shadow: 0 1px 3px rgba(44, 123, 182, 0.15);
 }
 
 .opp-stage-btn--selected:hover {
-  background: #c2e0f4;
-  color: #0a3d5c;
-  border-color: #4a93ce;
+  background: #b8daf0;
+  color: #0f3d5c;
+  border-color: #2c7bb6;
 }
 
 /* ========== Financial grid (sample: 2x2 / 4 cols) ========== */
@@ -1539,10 +1964,10 @@
   display: flex;
   flex-direction: column;
   gap: 0.45rem;
-  padding: 0.55rem 0.65rem;
-  border-radius: 10px;
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
+  padding: 0.75rem 0.85rem;
+  border-radius: 0.65rem;
+  background: var(--opp-tableau-stripe);
+  border: 1px solid var(--opp-tableau-border);
 }
 
 /* 레거시 클래스 — 다른 화면에서 재사용 시 대비 */
@@ -1585,9 +2010,9 @@
 .opp-modal-footer {
   flex-shrink: 0;
   padding: 16px 24px;
-  border-top: 1px solid #9eb0c4;
-  background: var(--bg-light, #f8fafc);
-  box-shadow: 0 -2px 12px rgba(15, 23, 42, 0.05);
+  border-top: 1px solid #e2e8f0;
+  background: #fff;
+  box-shadow: 0 -1px 3px rgba(15, 23, 42, 0.04);
   display: flex;
   gap: 12px;
   justify-content: flex-end;
@@ -1603,27 +2028,29 @@
 .opp-modal-footer .opp-save-btn {
   padding: 10px 32px;
   border-radius: 8px;
-  box-shadow: 0 4px 14px rgba(29, 41, 58, 0.2);
+  background: var(--primary);
+  box-shadow: 0 4px 14px rgba(44, 123, 182, 0.25);
 }
 
 .opp-modal-footer .opp-save-btn:hover {
-  opacity: 0.9;
+  filter: brightness(1.05);
+  opacity: 1;
 }
 
 .opp-modal-footer .opp-apply-btn {
   padding: 10px 22px;
   border-radius: 8px;
   font-weight: 600;
-  border: 1px solid #93c5d8;
-  background: #e0f2fe;
-  color: #0c4a6e;
+  border: 1px solid rgba(44, 123, 182, 0.35);
+  background: #c8dff0;
+  color: #1a4971;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 
 .opp-modal-footer .opp-apply-btn:hover:not(:disabled) {
-  background: #bae6fd;
-  border-color: #7eb0d4;
+  background: #b8daf0;
+  border-color: #2c7bb6;
 }
 
 .opp-modal-footer .opp-apply-btn:disabled {
@@ -1699,14 +2126,14 @@
 
 /* 제품별 가격 블록 */
 .opp-line-block {
-  padding: 14px 16px;
-  background: rgba(248, 250, 252, 0.95);
-  border: 1px solid #9eb0c4;
-  border-radius: 10px;
+  padding: 1rem 1.15rem;
+  background: var(--opp-panel-bg);
+  border: 1px solid var(--opp-tableau-border);
+  border-radius: 0.75rem;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  box-shadow: var(--opp-shade-sm, 0 1px 2px rgba(15, 23, 42, 0.07), 0 2px 8px rgba(15, 23, 42, 0.045));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .opp-line-block-head {
@@ -1714,14 +2141,14 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding-bottom: 4px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.55);
+  padding-bottom: 0.65rem;
+  border-bottom: none;
 }
 
 .opp-line-block-title {
-  font-size: var(--opp-f-body);
+  font-size: 1rem;
   font-weight: 700;
-  color: var(--text, #334155);
+  color: #1a2b3c;
 }
 
 /* 제품 행 — merge 시트와 유사한 엑셀형 표 */
@@ -1739,10 +2166,10 @@
 .opp-line-sheet-scroll {
   overflow: auto;
   max-height: min(55vh, 26rem);
-  border-radius: 0.4rem;
-  border: 1px solid #8fa9c0;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(78, 121, 167, 0.38);
   background: #fff;
-  box-shadow: var(--opp-shade-sm, 0 1px 2px rgba(15, 23, 42, 0.07), 0 2px 8px rgba(15, 23, 42, 0.045));
+  box-shadow: none;
 }
 
 .opp-line-sheet-scroll::-webkit-scrollbar {
@@ -1791,16 +2218,18 @@
   text-align: center;
   vertical-align: middle;
   white-space: nowrap;
-  padding: 0.35rem 0.45rem;
-  border: 1px solid #9db8cf;
-  background: #e9f2fb;
-  color: #1e3a5f;
+  padding: 0.55rem 0.45rem;
+  border: none;
+  border-bottom: 1px solid rgba(78, 121, 167, 0.2);
+  background: var(--opp-tableau-header);
+  color: #ffffff;
   font-weight: 700;
-  font-size: 0.74rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
   position: sticky;
   top: 0;
   z-index: 2;
-  box-shadow: inset 0 -1px 0 #9db8cf;
+  box-shadow: none;
 }
 
 .opp-line-sheet-th--product {
@@ -1824,18 +2253,24 @@
 .opp-line-sheet-td {
   text-align: center;
   vertical-align: middle;
-  padding: 0.25rem 0.35rem;
-  border: 1px solid #b8cad8;
+  padding: 0.35rem 0.45rem;
+  border: none;
+  border-bottom: 1px solid rgba(78, 121, 167, 0.14);
   box-sizing: border-box;
   background: #fff;
+  color: #1e3344;
 }
 
 .opp-line-sheet tbody tr.opp-line-sheet-group--stripe-a .opp-line-sheet-td {
-  background: #f6f9fc;
+  background: var(--opp-tableau-stripe);
 }
 
 .opp-line-sheet tbody tr.opp-line-sheet-group--stripe-b .opp-line-sheet-td {
   background: #fff;
+}
+
+.opp-line-sheet tbody tr:hover .opp-line-sheet-td {
+  background: rgba(78, 121, 167, 0.12);
 }
 
 .opp-line-sheet-td--product {
@@ -2130,7 +2565,7 @@
 }
 
 .opp-summary-total-pill-val--margin {
-  color: #9f1239;
+  color: #8b3a2a;
 }
 
 .opp-summary-total-pill--forecast .opp-summary-total-pill-meta {
@@ -2142,7 +2577,7 @@
 }
 
 .opp-summary-total-pill-val--forecast {
-  color: #1e40af;
+  color: #2c7bb6;
   font-size: 0.78rem;
 }
 
@@ -2154,8 +2589,8 @@
   gap: 0.2rem;
   padding: 0.45rem 0.5rem;
   border-radius: 8px;
-  background: #e0f2fe;
-  border: 1px solid #7dd3fc;
+  background: #c8dff0;
+  border: 1px solid rgba(44, 123, 182, 0.35);
   text-align: center;
   min-width: 0;
 }
@@ -2163,31 +2598,34 @@
 .opp-summary-total-hero-label {
   font-size: 0.6rem;
   font-weight: 700;
-  color: #0369a1;
+  color: #1a4971;
   letter-spacing: 0.03em;
 }
 
 .opp-summary-total-hero-val {
   font-size: clamp(0.85rem, 2.8vw, 1.05rem);
   font-weight: 800;
-  color: #0c4a6e;
+  color: #0f3d5c;
   line-height: 1.15;
   word-break: break-all;
 }
 
 /* ========== Comments (기회 코멘트) ========== */
 .opp-comments-section {
-  padding-top: 8px;
-  border-top: 1px dashed #a8b8cc;
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--opp-tableau-border);
+  border-radius: 0.75rem;
+  background: var(--opp-panel-bg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
 .opp-comments-heading {
-  font-size: var(--opp-f-body);
-  font-weight: 600;
-  color: var(--text-muted, #475569);
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1a2b3c;
 }
 
 .opp-comments-hint {
@@ -2234,7 +2672,7 @@
   list-style: none;
   margin: 10px 0 0 0;
   padding: 0 0 0 12px;
-  border-left: 2px solid rgba(165, 180, 252, 0.55);
+  border-left: 2px solid rgba(78, 121, 167, 0.35);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -2243,9 +2681,9 @@
 .opp-comment-item {
   padding: 12px 14px;
   border-radius: 10px;
-  background: rgba(224, 231, 255, 0.35);
-  border: 1px solid rgba(165, 180, 252, 0.85);
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  background: rgba(200, 223, 240, 0.35);
+  border: 1px solid rgba(78, 121, 167, 0.28);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
 }
 
 .opp-comment-reply-hint {
@@ -2287,9 +2725,9 @@
 }
 
 .opp-comment-action-btn {
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(165, 180, 252, 0.6);
-  color: #4f46e5;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(78, 121, 167, 0.28);
+  color: #2c7bb6;
   font-size: var(--opp-f-cap);
   font-weight: 600;
   padding: 3px 8px;
@@ -2349,7 +2787,7 @@
 }
 
 .opp-comment-save-btn {
-  background: rgba(99, 102, 241, 0.85);
+  background: var(--opp-tableau-header);
   border: none;
   color: #fff;
   padding: 6px 14px;
@@ -2367,7 +2805,7 @@
 .opp-comment-reply-compose {
   margin-top: 10px;
   padding-top: 10px;
-  border-top: 1px dashed rgba(165, 180, 252, 0.6);
+  border-top: 1px dashed rgba(78, 121, 167, 0.28);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -2409,12 +2847,12 @@
   width: 42px;
   height: 42px;
   padding: 0;
-  background: rgba(129, 140, 248, 0.9);
+  background: var(--primary);
   border: none;
   color: #fff;
   border-radius: 10px;
   cursor: pointer;
-  transition: opacity 0.15s;
+  transition: filter 0.15s;
 }
 
 .opp-comment-add-btn--inset {
@@ -2468,11 +2906,24 @@
 }
 
 .opp-finance-heading {
-  font-size: 0.72rem;
+  font-size: 0.85rem;
   font-weight: 700;
-  color: var(--text-muted, #64748b);
-  margin-bottom: 0.38rem;
+  color: #1a2b3c;
+  margin-bottom: 0.5rem;
   letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.opp-finance-heading::before {
+  content: '';
+  display: inline-block;
+  width: 4px;
+  height: 0.95rem;
+  border-radius: 2px;
+  background: var(--opp-tableau-header);
+  flex-shrink: 0;
 }
 
 .opp-finance-cards {
@@ -2925,11 +3376,11 @@
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
-  transition: opacity 0.15s;
+  transition: filter 0.15s;
 }
 
 .opp-save-btn:hover {
-  opacity: 0.85;
+  filter: brightness(1.05);
 }
 
 .opp-save-btn:disabled {
@@ -3178,15 +3629,1725 @@
   border-color: rgba(125, 184, 214, 0.35);
 }
 
-/* 기본 정보 탭 하단: 문서 메일 블록 */
-.opp-basic-doc-mail-wrap {
-  margin-top: 1rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--card-border, #e2e8f0);
+/* 기본 정보 탭 — 좌: 시트 스택 · 중: 단계+비고 · 우: 증서·자료 (3열, 동일 높이) */
+.opp-basic-tab-layout {
+  --opp-basic-sheets-stack-height: auto;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  align-items: stretch;
+  width: 100%;
+  margin-bottom: 1rem;
 }
 
-.opp-basic-doc-mail-wrap .opp-finance-card--doc-mail {
-  padding-top: 0.15rem;
+.opp-basic-tab-sheets-col,
+.opp-basic-tab-remarks,
+.opp-basic-tab-docs-col {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  align-self: stretch;
+}
+
+.opp-basic-tab-sheets-col,
+.opp-basic-tab-docs-col {
+  overflow: hidden;
+}
+
+.opp-basic-tab-remarks {
+  overflow: visible;
+}
+
+.opp-basic-tab-sheets-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: visible;
+  height: auto;
+  max-height: none;
+  box-sizing: border-box;
+}
+
+.opp-basic-tab-sheets-stack > .opp-basic-info-sheet-card {
+  flex: 0 0 auto;
+  height: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.opp-basic-tab-sheets-stack > .opp-basic-info-sheet-card + .opp-basic-info-sheet-card {
+  margin-top: 0;
+}
+
+.opp-basic-tab-layout .opp-basic-info-sheet-card--doc-mail {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.opp-basic-tab-layout .opp-basic-info-sheet-card--doc-mail > .opp-doc-slot-chips,
+.opp-basic-tab-layout .opp-basic-info-sheet-card--doc-mail > .opp-doc-slot-list {
+  position: static;
+  top: auto;
+  left: auto;
+  right: auto;
+  z-index: auto;
+  margin: 0;
+}
+
+.opp-basic-tab-layout .opp-basic-info-sheet-card--doc-mail > .opp-doc-slot-chips:empty,
+.opp-basic-tab-layout .opp-basic-info-sheet-card--doc-mail > .opp-doc-slot-list:empty {
+  display: none;
+}
+
+.opp-basic-tab-sheets-stack > .opp-basic-split-card + .opp-basic-split-card .opp-basic-info-sheet,
+.opp-basic-tab-sheets-stack > .opp-basic-info-sheet-card + .opp-basic-info-sheet-card .opp-basic-info-sheet {
+  border-top: none;
+}
+
+.opp-basic-tab-remarks-stack {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.opp-basic-tab-remarks-stack--with-stage {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0.35rem;
+  overflow: visible;
+}
+
+.opp-basic-tab-remarks-stack--with-stage .opp-basic-tab-remarks-half {
+  flex: unset;
+  min-height: 0;
+  max-height: none;
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
+}
+
+.opp-basic-tab-remarks-stack--with-stage .opp-basic-tab-stage-half {
+  flex: unset;
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+  z-index: 2;
+}
+
+.opp-basic-tab-stage-half {
+  align-self: start;
+  height: auto;
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 2;
+  overflow: visible;
+}
+
+.opp-basic-tab-stage-half:has(.opp-basic-stage-dropdown-trigger.is-open) {
+  z-index: 60;
+}
+
+.opp-basic-tab-remarks-half {
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.opp-basic-tab-stage-half {
+  display: flex;
+  flex-direction: column;
+}
+
+.opp-basic-tab-stage-half > .opp-basic-info-sheet {
+  flex: none;
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  width: 100%;
+  overflow: visible;
+}
+
+.opp-basic-tab-stage-half .opp-basic-info-sheet-body--stage {
+  overflow: visible;
+}
+
+.opp-basic-tab-docs-col > .opp-modal-register-sale-docs--basic-tab {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  margin-bottom: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.opp-basic-info-sheet-body--docs {
+  flex: 1 1 0;
+  min-height: 0;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.opp-basic-info-sheet-body--docs .register-sale-docs-crm-uploads {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: auto;
+  padding: 0.35rem 0.45rem 0.45rem;
+  border: none;
+  background: transparent;
+}
+
+.opp-basic-info-sheet-body--docs .register-sale-docs-crm-uploads-hint {
+  font-size: 0.64rem;
+  line-height: 1.45;
+  margin-bottom: 0.35rem;
+}
+
+.opp-basic-info-sheet-body--docs .register-sale-docs-crm-empty {
+  min-height: 3.5rem;
+  padding: 0.5rem;
+}
+
+.opp-basic-info-sheet-body--docs .register-sale-docs-crm-empty-text {
+  font-size: 0.68rem;
+}
+
+.opp-basic-info-sheet-body--docs .register-sale-docs-error,
+.opp-basic-info-sheet-body--docs .register-sale-docs-success {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0.25rem 0.45rem 0.35rem;
+  font-size: 0.68rem;
+}
+
+.opp-basic-info-sheet-body--docs .opp-register-sale-docs-crm-refresh {
+  padding: 0.25rem 0.45rem;
+  font-size: 0.62rem;
+}
+
+.opp-basic-tab-comments-full {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+/* 코멘트 시트 — 3열 패널용 flex(1 1 0) 규칙이 적용되면 본문 높이가 0으로 접힘 */
+.opp-basic-tab-comments-full .opp-comments-sheet.opp-basic-info-sheet--panel {
+  flex: none;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+.opp-basic-tab-comments-full .opp-comments-sheet {
+  width: 100%;
+  box-sizing: border-box;
+  height: auto;
+  flex: none;
+  min-height: 0;
+  overflow: visible;
+}
+
+.opp-comments-sheet.opp-basic-info-sheet--panel .opp-basic-info-sheet-body--comments,
+.opp-basic-tab-comments-full .opp-basic-info-sheet-body--comments {
+  flex: none;
+  flex-grow: 0;
+  flex-shrink: 0;
+  height: auto;
+  min-height: auto;
+  padding: 0;
+  gap: 0;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+}
+
+.opp-comments-list-region {
+  flex-shrink: 0;
+  max-height: min(10.5rem, 26vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  border-bottom: 2px solid var(--opp-basic-sheet-line-strong, #4e6d8f);
+  background: #fff;
+}
+
+.opp-comments-list-region:has(.opp-comments-list:empty) {
+  display: none;
+}
+
+.opp-basic-info-sheet-body--comments .opp-comments-list {
+  max-height: none;
+  margin: 0;
+  padding: 0.45rem 0.55rem;
+  gap: 0.5rem;
+  overflow: visible;
+  border-bottom: none;
+  background: transparent;
+}
+
+.opp-comments-compose-region {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+}
+
+.opp-comments-compose-head {
+  flex-shrink: 0;
+  padding: 0.38rem 0.55rem;
+  background: #eef4fa;
+  border-bottom: 1px solid var(--opp-basic-sheet-line, #6d8aad);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #475569;
+}
+
+.opp-basic-info-sheet-body--comments .customer-company-detail-journal-input-wrap {
+  flex: none;
+  min-height: auto;
+  overflow: visible;
+  padding: 0.55rem 0.55rem 0.65rem;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: #fff;
+}
+
+.opp-basic-info-sheet-body--comments .customer-company-detail-journal-datetime-row {
+  display: grid;
+  grid-template-columns: 5.25rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.45rem;
+  padding: 0.35rem 0.4rem;
+  border: 1px solid var(--opp-basic-sheet-line, #6d8aad);
+  background: #fff;
+}
+
+.opp-basic-info-sheet-body--comments .customer-company-detail-journal-datetime-label {
+  margin: 0;
+  padding: 0.25rem 0.35rem;
+  background: #eef4fa;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #475569;
+}
+
+.opp-basic-info-sheet-body--comments .customer-company-detail-journal-datetime {
+  width: 100%;
+  min-height: 2rem;
+  border: 1px solid #c5d4e4;
+  border-radius: 0.25rem;
+  padding: 0.3rem 0.4rem;
+  box-sizing: border-box;
+  background: #fff;
+}
+
+.opp-basic-info-sheet-body--comments .customer-company-detail-journal-input {
+  min-height: 4.75rem;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #a8b8cc;
+  border-radius: 0.25rem;
+  padding: 0.45rem 0.5rem;
+  background: #fff;
+  resize: vertical;
+}
+
+.opp-basic-info-sheet-body--comments .customer-company-detail-journal-audio-drop {
+  margin-top: 0.45rem;
+  min-height: 4.5rem;
+  padding: 0.65rem 0.55rem;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  background: #f4f8fc;
+  border-color: #a8b8cc;
+}
+
+.opp-basic-info-sheet-body--comments .customer-company-detail-journal-audio-drop > span:not(.material-symbols-outlined) {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.opp-basic-info-sheet-body--comments .customer-company-detail-journal-actions {
+  margin-top: 0.5rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.opp-basic-info-sheet-body--comments .customer-company-detail-journal-save {
+  min-height: 2rem;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.74rem;
+  font-weight: 600;
+  border-radius: 0.3rem;
+  border: 1px solid rgba(78, 121, 167, 0.45);
+  background: #c8dff0;
+  color: #1a4971;
+  cursor: pointer;
+}
+
+.opp-basic-info-sheet-body--comments .customer-company-detail-journal-save:hover:not(:disabled) {
+  background: #b8daf0;
+}
+
+.opp-basic-info-sheet-body--comments .customer-company-detail-journal-save:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.opp-basic-info-sheet-body--comments .opp-modal-journal-hint {
+  margin-bottom: 0.45rem;
+}
+
+.opp-basic-info-sheet-body--comments .opp-comment-error {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0.35rem 0.55rem 0.45rem;
+  border-top: 1px solid rgba(239, 68, 68, 0.25);
+  background: rgba(254, 242, 242, 0.65);
+}
+
+.opp-basic-tab-remarks-half > .opp-basic-info-sheet {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+}
+
+.opp-basic-tab-sheets-stack > .opp-basic-split-card,
+.opp-basic-tab-remarks-half > .opp-basic-info-sheet,
+.opp-basic-tab-stage-half > .opp-basic-info-sheet {
+  width: 100%;
+}
+
+/* legacy alias */
+.opp-basic-tab-split,
+.opp-basic-tab-split--triple {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  align-items: start;
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+.opp-basic-tab-split-col,
+.opp-basic-tab-split-left,
+.opp-basic-tab-split-right {
+  min-width: 0;
+  width: 100%;
+}
+
+.opp-basic-info-sheet-card--doc-mail {
+  position: relative;
+}
+
+.opp-basic-info-sheet-card--doc-mail > .opp-doc-slot-chips,
+.opp-basic-info-sheet-card--doc-mail > .opp-doc-slot-list {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 0.35rem);
+  z-index: 1;
+}
+
+.opp-basic-doc-mail-wrap {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.opp-basic-split-card {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  height: 100%;
+  min-height: 100%;
+  padding: 1.1rem 1.15rem;
+  border: 1px solid var(--opp-tableau-border);
+  border-radius: 0.75rem;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  box-sizing: border-box;
+}
+
+.opp-basic-split-card-head {
+  flex-shrink: 0;
+  margin-bottom: 0.75rem;
+}
+
+.opp-basic-split-card-head .opp-finance-subheading {
+  display: block;
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #1a2b3c;
+  line-height: 1.3;
+}
+
+.opp-basic-split-card-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: #64748b;
+  min-height: 2.1rem;
+}
+
+.opp-basic-split-card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 0;
+}
+
+.opp-basic-split-card--contact-table,
+.opp-basic-info-sheet-card {
+  padding: 0;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+}
+
+.opp-basic-info-sheet-card .opp-basic-split-card-body {
+  gap: 0;
+  flex: 1;
+}
+
+.opp-basic-info-sheet-card.opp-finance-card--doc-mail {
+  border: none;
+}
+
+/* 엑셀형 미니 시트 — 라벨 열 + 입력 셀 */
+.opp-basic-info-sheet {
+  --opp-basic-sheet-line: #6d8aad;
+  --opp-basic-sheet-line-strong: #4e6d8f;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  border: 2px solid var(--opp-basic-sheet-line-strong);
+  border-radius: 0;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: none;
+}
+
+.opp-basic-info-sheet--panel {
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.opp-basic-info-sheet--panel .opp-basic-info-sheet-head {
+  flex: 0 0 auto;
+}
+
+.opp-basic-info-sheet--panel .opp-basic-info-sheet-body {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.opp-basic-tab-stage-half .opp-basic-info-sheet--panel .opp-basic-info-sheet-body--stage {
+  flex: none;
+  min-height: auto;
+  overflow: visible;
+}
+
+.opp-basic-info-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  min-height: 2.875rem;
+  padding: 0.35rem 0.5rem;
+  box-sizing: border-box;
+  background: var(--opp-tableau-header, #4e79a7);
+  border-bottom: 2px solid var(--opp-basic-sheet-line-strong);
+  color: #fff;
+}
+
+.opp-basic-info-sheet-head-title {
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+.opp-basic-info-sheet-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex: 1;
+  min-width: 0;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+}
+
+.opp-doc-mail-bundle-save-btn--head {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.opp-basic-info-sheet-head-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  height: 1.75rem;
+  padding: 0 0.42rem;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 0.25rem;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-family: inherit;
+  font-size: 0.66rem;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.opp-basic-info-sheet-head-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.26);
+  border-color: rgba(255, 255, 255, 0.65);
+}
+
+.opp-basic-info-sheet-head-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.opp-basic-info-sheet-head-btn .material-symbols-outlined {
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.opp-basic-info-sheet-head .opp-personal-purchase-check-text {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.opp-basic-info-sheet-head .opp-personal-purchase-check--compact {
+  display: inline-flex;
+  align-items: center;
+  height: 1.75rem;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.opp-basic-info-sheet-body {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
+  min-height: 0;
+  border-top: none;
+  overflow: hidden;
+}
+
+.opp-basic-info-sheet-body--remarks,
+.opp-basic-info-sheet-body--stage {
+  padding: 0.45rem 0.55rem 0.55rem;
+  gap: 0.4rem;
+  overscroll-behavior-y: auto;
+}
+
+.opp-basic-info-sheet-body--remarks {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+  overflow-y: auto;
+}
+
+.opp-basic-info-sheet-body--stage {
+  flex: none;
+  min-height: auto;
+  overflow: visible;
+  padding: 0.35rem 0.55rem 0.45rem;
+}
+
+.opp-basic-stage-dropdown {
+  position: relative;
+  display: block;
+  flex: none;
+  width: 100%;
+}
+
+.opp-basic-stage-dropdown-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem;
+  width: 100%;
+  min-height: 2rem;
+  padding: 0.35rem 0.45rem;
+  border: 1px solid #a8b8cc;
+  border-radius: 0.3rem;
+  background: #f8fafc;
+  color: #334155;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.35;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  flex-shrink: 0;
+}
+
+.opp-basic-stage-dropdown-trigger:hover {
+  background: #eef4fa;
+  border-color: #6d8aad;
+}
+
+.opp-basic-stage-dropdown-trigger.is-open,
+.opp-basic-stage-dropdown-trigger:focus-visible {
+  outline: none;
+  border-color: #4e79a7;
+  box-shadow: 0 0 0 2px rgba(78, 121, 167, 0.22);
+  background: #fff;
+}
+
+.opp-basic-stage-dropdown-trigger.has-value .opp-basic-stage-dropdown-value {
+  color: #1a4971;
+}
+
+.opp-basic-stage-dropdown-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.opp-basic-stage-dropdown-chevron {
+  flex-shrink: 0;
+  font-size: 1.1rem;
+  color: #64748b;
+  transition: transform 0.15s ease;
+}
+
+.opp-basic-stage-dropdown-trigger.is-open .opp-basic-stage-dropdown-chevron {
+  transform: rotate(180deg);
+}
+
+.opp-basic-stage-dropdown-panel {
+  flex: none;
+  min-height: 0;
+  max-height: min(12rem, 42vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  border: 1px solid #a8b8cc;
+  border-radius: 0.3rem;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+  padding: 0.2rem;
+  box-sizing: border-box;
+}
+
+.opp-basic-stage-dropdown-panel--fixed {
+  position: fixed;
+  z-index: 1450;
+}
+
+.opp-basic-stage-dropdown-panel::-webkit-scrollbar {
+  width: 8px;
+}
+
+.opp-basic-stage-dropdown-panel::-webkit-scrollbar-thumb {
+  background: #c5d4e4;
+  border-radius: 6px;
+}
+
+.opp-basic-stage-dropdown-panel::-webkit-scrollbar-thumb:hover {
+  background: #a8bdd4;
+}
+
+.opp-basic-stage-dropdown-option {
+  display: block;
+  width: 100%;
+  padding: 0.4rem 0.45rem;
+  border: none;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: #475569;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.opp-basic-stage-dropdown-option:hover {
+  background: #eef4fa;
+  color: #1a4971;
+}
+
+.opp-basic-stage-dropdown-option.is-selected {
+  background: #c8dff0;
+  color: #1a4971;
+  font-weight: 700;
+}
+
+.opp-basic-stage-dropdown-option.is-selected:hover {
+  background: #b8daf0;
+}
+
+.opp-basic-panel-hint {
+  margin: 0;
+  font-size: 0.68rem;
+  line-height: 1.45;
+  color: #64748b;
+  flex: 0 0 auto;
+}
+
+.opp-basic-remarks-textarea {
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  margin: 0;
+  resize: none;
+  box-sizing: border-box;
+}
+
+.opp-basic-remarks-textarea.opp-textarea {
+  min-height: 0;
+}
+
+.opp-stage-group--vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+}
+
+.opp-stage-btn--vertical {
+  flex: none;
+  width: 100%;
+  text-align: left;
+  padding: 0.45rem 0.55rem;
+  border-radius: 0.35rem;
+}
+
+.opp-basic-info-sheet-row {
+  display: grid;
+  grid-template-columns: 5.75rem minmax(0, 1fr);
+  min-height: 2.5rem;
+  border-bottom: 2px solid var(--opp-basic-sheet-line);
+}
+
+.opp-basic-info-sheet-row:last-child {
+  border-bottom: none;
+}
+
+.opp-basic-info-sheet-row:hover .opp-basic-info-sheet-cell {
+  background: #f8fbff;
+}
+
+.opp-basic-info-sheet-label {
+  display: flex;
+  align-items: center;
+  padding: 0.32rem 0.45rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #475569;
+  background: #eef4fa;
+  border-right: 2px solid var(--opp-basic-sheet-line);
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+.opp-basic-info-sheet-cell {
+  display: flex;
+  align-items: stretch;
+  padding: 0;
+  min-width: 0;
+  background: #fff;
+}
+
+.opp-basic-info-sheet-cell:focus-within {
+  box-shadow: inset 0 0 0 2px rgba(44, 123, 182, 0.45);
+  background: #fff;
+  z-index: 1;
+}
+
+.opp-basic-info-sheet-field {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  min-height: 2.5rem;
+  margin: 0;
+  padding: 0.32rem 0.5rem;
+  box-sizing: border-box;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  font-family: inherit;
+  font-size: 0.78rem;
+  color: #1e3344;
+  line-height: 1.35;
+}
+
+.opp-basic-info-sheet-field--input {
+  cursor: text;
+  background: #fff;
+}
+
+.opp-basic-info-sheet-field--input::placeholder {
+  color: #94a3b8;
+}
+
+.opp-basic-info-sheet-field--input:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.opp-basic-info-sheet-field--textarea {
+  min-height: 2.5rem;
+  resize: vertical;
+  line-height: 1.35;
+  font-family: inherit;
+}
+
+.opp-basic-info-sheet-field--readonly {
+  cursor: default;
+  background: #fff;
+  color: #334155;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.opp-basic-info-sheet-field--multiline {
+  white-space: normal;
+  align-items: flex-start;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.opp-basic-info-sheet-field--picker {
+  justify-content: flex-start;
+  text-align: left;
+  cursor: pointer;
+  font-weight: 500;
+  background: #fff;
+}
+
+.opp-basic-info-sheet-field--placeholder {
+  color: #94a3b8;
+  font-weight: 400;
+}
+
+.opp-basic-info-sheet-field--empty {
+  justify-content: center;
+  color: #94a3b8;
+  background: #f8fafc;
+  cursor: default;
+}
+
+.opp-basic-info-sheet-card--doc-mail .opp-doc-slot-list:empty,
+.opp-basic-info-sheet-card--doc-mail .opp-doc-slot-chips:empty {
+  display: none;
+}
+
+.opp-basic-split-card--contact-table .opp-basic-split-card-body,
+.opp-finance-card--doc-mail .opp-basic-split-card-body {
+  gap: 0;
+}
+
+.opp-doc-mail-book-toolbar--table {
+  min-height: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.opp-doc-mail-book-toolbar--table .opp-doc-mail-book-toolbar-anchor {
+  max-width: 100%;
+}
+
+.opp-doc-mail-book-toolbar--table .opp-doc-mail-book-dropdown-trigger {
+  gap: 0.2rem;
+  height: 1.75rem;
+  padding: 0 0.42rem;
+  min-height: 0;
+  font-size: 0.66rem;
+  flex-wrap: nowrap;
+  box-sizing: border-box;
+}
+
+.opp-doc-mail-book-toolbar--table .opp-doc-mail-book-dropdown-trigger-label,
+.opp-doc-mail-book-toolbar--table .opp-doc-mail-book-dropdown-trigger-count,
+.opp-doc-mail-book-toolbar--table .opp-doc-mail-book-dropdown-trigger-sub {
+  color: #fff;
+}
+
+.opp-doc-mail-book-toolbar--table .opp-doc-mail-book-dropdown-chevron {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.opp-doc-mail-book-toolbar--table .opp-doc-mail-book-dropdown-trigger:hover,
+.opp-doc-mail-book-toolbar--table .opp-doc-mail-book-dropdown-trigger--open {
+  background: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
+/* legacy dual-table (unused in basic tab, kept for reference) */
+.opp-contact-dual-table {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto repeat(3, minmax(2.65rem, auto));
+  column-gap: 0.75rem;
+  flex: 1;
+  align-items: stretch;
+}
+
+.opp-contact-dual-table-col {
+  display: grid;
+  grid-template-rows: subgrid;
+  grid-row: 1 / -1;
+  min-width: 0;
+  border: 1px solid rgba(78, 121, 167, 0.2);
+  border-radius: 0.6rem;
+  overflow: hidden;
+  background: #fff;
+}
+
+.opp-contact-dual-table-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+  min-height: 2.35rem;
+  padding: 0.55rem 0.7rem;
+  background: #eef4fa;
+  border-bottom: 1px solid rgba(78, 121, 167, 0.16);
+}
+
+.opp-contact-dual-table-head-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #1a2b3c;
+  letter-spacing: -0.01em;
+}
+
+.opp-contact-dual-table-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.opp-personal-purchase-check--compact {
+  margin: 0;
+}
+
+.opp-personal-purchase-check--compact .opp-personal-purchase-check-text {
+  font-size: 0.68rem;
+}
+
+.opp-contact-dual-table-search-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.22rem 0.5rem;
+  border: 1px solid rgba(78, 121, 167, 0.22);
+  border-radius: 0.4rem;
+  background: #fff;
+  color: #2c7bb6;
+  font-family: inherit;
+  font-size: 0.68rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+
+.opp-contact-dual-table-search-btn:hover:not(:disabled) {
+  background: #c8dff0;
+  border-color: rgba(44, 123, 182, 0.35);
+}
+
+.opp-contact-dual-table-search-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.opp-contact-dual-table-search-btn .material-symbols-outlined {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.opp-contact-dual-table-rows {
+  display: contents;
+}
+
+.opp-contact-dual-table-row {
+  display: grid;
+  grid-template-columns: 5.25rem minmax(0, 1fr);
+  min-height: 2.65rem;
+  border-bottom: 1px solid rgba(78, 121, 167, 0.1);
+  align-self: stretch;
+}
+
+.opp-contact-dual-table-row:last-child {
+  border-bottom: none;
+}
+
+.opp-contact-dual-table-label {
+  display: flex;
+  align-items: center;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #64748b;
+  background: rgba(238, 244, 250, 0.55);
+  border-right: 1px solid rgba(78, 121, 167, 0.1);
+}
+
+.opp-contact-dual-table-value {
+  display: flex;
+  align-items: center;
+  padding: 0.4rem 0.65rem;
+  min-width: 0;
+  font-size: 0.8125rem;
+  color: #1e3344;
+}
+
+.opp-contact-dual-table-text {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.35;
+}
+
+.opp-contact-dual-table-text--wrap {
+  white-space: normal;
+  word-break: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.opp-contact-dual-table-empty {
+  color: #94a3b8;
+}
+
+.opp-contact-dual-table-value-btn {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #1e3344;
+  text-align: left;
+  cursor: pointer;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-decoration: underline;
+  text-decoration-color: rgba(44, 123, 182, 0.28);
+  text-underline-offset: 2px;
+  transition: color 0.15s;
+}
+
+.opp-contact-dual-table-value-btn:hover {
+  color: #2c7bb6;
+  text-decoration-color: rgba(44, 123, 182, 0.55);
+}
+
+/* 문서 메일 — 받는/참조 2행 라벨·입력 표 */
+.opp-doc-mail-table {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  border: 1px solid rgba(78, 121, 167, 0.2);
+  border-radius: 0.6rem;
+  overflow: hidden;
+  background: #fff;
+}
+
+.opp-doc-mail-table-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+  min-height: 2.35rem;
+  padding: 0.55rem 0.7rem;
+  background: #eef4fa;
+  border-bottom: 1px solid rgba(78, 121, 167, 0.16);
+}
+
+.opp-doc-mail-table-head-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #1a2b3c;
+  letter-spacing: -0.01em;
+  flex-shrink: 0;
+}
+
+.opp-doc-mail-book-toolbar--table {
+  min-height: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1;
+  min-width: 0;
+}
+
+.opp-doc-mail-book-toolbar--table .opp-doc-mail-book-toolbar-anchor {
+  max-width: 100%;
+}
+
+.opp-doc-mail-table-rows {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.opp-doc-mail-table-row {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+  min-height: 2.65rem;
+  border-bottom: 1px solid rgba(78, 121, 167, 0.1);
+}
+
+.opp-doc-mail-table-row:last-child {
+  border-bottom: none;
+}
+
+.opp-doc-mail-table-label {
+  display: flex;
+  align-items: center;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #64748b;
+  background: rgba(238, 244, 250, 0.55);
+  border-right: 1px solid rgba(78, 121, 167, 0.1);
+}
+
+.opp-doc-mail-table-value {
+  display: flex;
+  align-items: center;
+  padding: 0.35rem 0.65rem;
+  min-width: 0;
+}
+
+.opp-doc-mail-table-input {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0.28rem 0.45rem;
+  border: 1px solid rgba(78, 121, 167, 0.14);
+  border-radius: 0.4rem;
+  background: #fafcff;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  color: #1e3344;
+  line-height: 1.35;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+
+.opp-doc-mail-table-input::placeholder {
+  color: #94a3b8;
+}
+
+.opp-doc-mail-table-input:hover {
+  border-color: rgba(78, 121, 167, 0.28);
+  background: #fff;
+}
+
+.opp-doc-mail-table-input:focus {
+  outline: none;
+  border-color: rgba(44, 123, 182, 0.45);
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(44, 123, 182, 0.12);
+}
+
+.opp-basic-split-primary-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: end;
+}
+
+.opp-basic-split-primary-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.opp-basic-contact-detail-row {
+  display: grid;
+  grid-template-columns: minmax(5.5rem, 0.85fr) minmax(0, 1.45fr) minmax(5.5rem, 0.85fr) minmax(0, 1fr);
+  gap: 0.75rem 1rem;
+  align-items: end;
+  margin-top: auto;
+}
+
+.opp-basic-contact-detail-row .opp-inline-snap--grow {
+  min-width: 0;
+}
+
+.opp-basic-split-fields-row {
+  margin-top: auto;
+}
+
+.opp-basic-split-card-foot {
+  flex-shrink: 0;
+  margin-top: 0.75rem;
+  padding-top: 0;
+  min-height: 2.35rem;
+}
+
+.opp-basic-split-card-foot--spacer {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.opp-basic-tab-split .opp-label-top {
+  min-height: 1.3125rem;
+  margin: 0;
+}
+
+.opp-basic-tab-split .opp-label-top > span {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.opp-basic-tab-split .opp-company-wrap {
+  min-height: 42px;
+  height: 42px;
+  padding: 0 12px;
+  box-sizing: border-box;
+  border-color: #dce6f2;
+}
+
+.opp-basic-tab-split .opp-company-search-btn {
+  height: 32px;
+  padding: 0 0.65rem;
+}
+
+.opp-basic-tab-split .opp-inline-snap {
+  gap: 4px;
+}
+
+.opp-basic-tab-split .opp-inline-snap > span,
+.opp-basic-tab-split .opp-label > span {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+  line-height: 1.25;
+}
+
+.opp-basic-tab-split .opp-input,
+.opp-basic-tab-split .opp-input--snap-readonly,
+.opp-basic-tab-split .opp-snap-fallback,
+.opp-basic-tab-split .opp-snap-fallback--readonly {
+  min-height: 42px;
+  height: 42px;
+  padding: 0 12px;
+  box-sizing: border-box;
+  border-color: #dce6f2;
+}
+
+.opp-basic-tab-split .opp-snap-fallback,
+.opp-basic-tab-split .opp-snap-fallback--readonly {
+  display: flex;
+  align-items: center;
+  border-style: solid;
+}
+
+.opp-basic-tab-split .opp-doc-mail-book-toolbar:not(.opp-doc-mail-book-toolbar--table) {
+  min-height: 42px;
+  margin: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+}
+
+.opp-basic-tab-split .opp-doc-mail-bundle-row {
+  margin-top: 0;
+}
+
+.opp-basic-tab-split .opp-doc-slot-list:empty {
+  display: none;
+}
+
+@media (max-width: 1200px) {
+  .opp-basic-tab-layout,
+  .opp-basic-tab-split,
+  .opp-basic-tab-split--triple {
+    grid-template-columns: 1fr;
+  }
+
+  .opp-basic-tab-sheets-col,
+  .opp-basic-tab-sheets-stack {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible;
+  }
+
+  .opp-basic-tab-remarks,
+  .opp-basic-tab-docs-col {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible;
+  }
+
+  .opp-basic-tab-remarks-stack,
+  .opp-basic-tab-remarks-half,
+  .opp-basic-tab-stage-half {
+    height: auto;
+    max-height: none;
+  }
+
+  .opp-basic-tab-remarks-stack--with-stage {
+    display: flex;
+    flex-direction: column;
+    grid-template-rows: unset;
+  }
+
+  .opp-basic-tab-remarks-stack--with-stage .opp-basic-tab-remarks-half {
+    flex: 1 1 auto;
+    min-height: 10rem;
+  }
+
+  .opp-basic-tab-remarks-stack--with-stage .opp-basic-tab-stage-half {
+    flex: 0 0 auto;
+    min-height: 0;
+  }
+
+  .opp-basic-tab-remarks-half > .opp-basic-info-sheet,
+  .opp-basic-tab-stage-half > .opp-basic-info-sheet {
+    height: auto;
+    max-height: none;
+  }
+
+  .opp-basic-tab-docs-col > .opp-modal-register-sale-docs--basic-tab {
+    height: auto;
+    max-height: none;
+  }
+
+  .opp-basic-info-sheet-body--docs .register-sale-docs-crm-uploads {
+    overflow: visible;
+    max-height: none;
+  }
+
+  .opp-basic-info-sheet-body--remarks,
+  .opp-basic-info-sheet-body--stage {
+    overflow: visible;
+    max-height: none;
+  }
+
+  .opp-basic-info-sheet-row {
+    grid-template-columns: 6rem minmax(0, 1fr);
+  }
+
+  .opp-basic-info-sheet-card--doc-mail > .opp-doc-slot-chips,
+  .opp-basic-info-sheet-card--doc-mail > .opp-doc-slot-list {
+    position: static;
+    top: auto;
+  }
+
+  .opp-basic-remarks-textarea {
+    min-height: 6rem;
+    resize: vertical;
+  }
+}
+
+@media (max-width: 720px) {
+  .opp-basic-info-sheet-row {
+    grid-template-columns: 5rem minmax(0, 1fr);
+  }
+}
+
+/* 일정 탭 — 금액·날짜 4열 한 행 (기본 시트 2열 규칙보다 뒤에 배치) */
+.opp-basic-info-sheet-row.opp-schedule-finance-quad-row {
+  grid-template-columns: 3.25rem minmax(0, 1fr) 3.25rem minmax(0, 1fr);
+}
+
+.opp-schedule-finance-quad-row .opp-basic-info-sheet-label:nth-child(3) {
+  border-left: 2px solid var(--opp-basic-sheet-line, #6d8aad);
+}
+
+.opp-schedule-finance-quad-row .opp-basic-info-sheet-field--input {
+  min-height: 2.5rem;
+}
+
+@media (max-width: 520px) {
+  .opp-basic-info-sheet-row.opp-schedule-finance-quad-row {
+    grid-template-columns: 3rem minmax(0, 1fr);
+  }
+
+  .opp-basic-info-sheet-row.opp-schedule-finance-quad-row .opp-basic-info-sheet-label:nth-child(3),
+  .opp-basic-info-sheet-row.opp-schedule-finance-quad-row .opp-basic-info-sheet-cell:nth-child(4) {
+    grid-column: 1 / -1;
+  }
+
+  .opp-basic-info-sheet-row.opp-schedule-finance-quad-row .opp-basic-info-sheet-label:nth-child(3) {
+    border-left: none;
+    border-top: 2px solid var(--opp-basic-sheet-line, #6d8aad);
+  }
+
+  .opp-basic-info-sheet-row.opp-products-summary-hex-row {
+    grid-template-columns: 2.75rem minmax(0, 1fr);
+  }
+
+  .opp-basic-info-sheet-row.opp-products-summary-hex-row .opp-basic-info-sheet-label:nth-child(n+3),
+  .opp-basic-info-sheet-row.opp-products-summary-hex-row .opp-basic-info-sheet-cell:nth-child(n+4) {
+    grid-column: 1 / -1;
+  }
+
+  .opp-basic-info-sheet-row.opp-products-summary-hex-row .opp-basic-info-sheet-label:nth-child(3),
+  .opp-basic-info-sheet-row.opp-products-summary-hex-row .opp-basic-info-sheet-label:nth-child(5) {
+    border-left: none;
+    border-top: 2px solid var(--opp-basic-sheet-line, #6d8aad);
+  }
+}
+
+/* 제품 탭 — 제품별 가격·금액 요약 시트 */
+.opp-products-line-sheet,
+.opp-products-summary-sheet {
+  margin-top: 0.65rem;
+}
+
+.opp-products-summary-sheet {
+  margin-top: 0.5rem;
+}
+
+.opp-products-line-sheet.opp-basic-info-sheet--panel,
+.opp-products-summary-sheet.opp-basic-info-sheet--panel {
+  flex: none;
+  height: auto;
+  min-height: 0;
+}
+
+.opp-products-line-sheet.opp-basic-info-sheet--panel .opp-basic-info-sheet-body,
+.opp-products-summary-sheet.opp-basic-info-sheet--panel .opp-basic-info-sheet-body {
+  flex: none;
+  min-height: auto;
+  height: auto;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+}
+
+.opp-products-line-sheet-body,
+.opp-products-summary-body {
+  padding: 0;
+}
+
+.opp-products-line-sheet-intro {
+  margin: 0;
+}
+
+.opp-products-line-sheet .opp-line-sheet-scroll {
+  overflow: auto;
+  max-height: min(55vh, 26rem);
+  border: none;
+  border-radius: 0;
+  background: #fff;
+  box-shadow: none;
+}
+
+.opp-products-line-sheet .opp-line-sheet {
+  border-collapse: collapse;
+  background: #fff;
+}
+
+.opp-products-line-sheet .opp-line-sheet-th {
+  padding: 0.38rem 0.45rem;
+  border: none;
+  border-bottom: 2px solid var(--opp-basic-sheet-line-strong, #4e6d8f);
+  background: var(--opp-tableau-header, #4e79a7);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  box-shadow: none;
+}
+
+.opp-products-line-sheet .opp-line-sheet-td {
+  padding: 0;
+  border: none;
+  border-bottom: 2px solid var(--opp-basic-sheet-line, #6d8aad);
+  background: #fff;
+  vertical-align: middle;
+}
+
+.opp-products-line-sheet .opp-line-sheet-td--product {
+  background: #eef4fa;
+  border-right: 2px solid var(--opp-basic-sheet-line, #6d8aad);
+  padding: 0.32rem 0.45rem;
+}
+
+.opp-products-line-sheet .opp-line-sheet-product-name {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #475569;
+}
+
+.opp-products-line-sheet tbody tr.opp-line-sheet-group--stripe-a .opp-line-sheet-td,
+.opp-products-line-sheet tbody tr.opp-line-sheet-group--stripe-b .opp-line-sheet-td {
+  background: #fff;
+}
+
+.opp-products-line-sheet tbody tr.opp-line-sheet-group--stripe-a .opp-line-sheet-td--product,
+.opp-products-line-sheet tbody tr.opp-line-sheet-group--stripe-b .opp-line-sheet-td--product {
+  background: #eef4fa;
+}
+
+.opp-products-line-sheet tbody tr:hover .opp-line-sheet-td {
+  background: #f8fbff;
+}
+
+.opp-products-line-sheet tbody tr:hover .opp-line-sheet-td--product {
+  background: #e8f0f8;
+}
+
+.opp-products-line-sheet .opp-line-sheet-input,
+.opp-products-line-sheet .opp-line-sheet-select {
+  min-height: 2.5rem;
+  padding: 0.32rem 0.5rem;
+  border: none;
+  border-radius: 0;
+  background: #fff;
+  font-size: 0.78rem;
+  color: #1e3344;
+  box-shadow: none;
+}
+
+.opp-products-line-sheet .opp-line-sheet-input:focus,
+.opp-products-line-sheet .opp-line-sheet-select:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 2px rgba(44, 123, 182, 0.35);
+}
+
+.opp-products-line-sheet .opp-line-sheet-tr-main + .opp-line-sheet-tr-comm-data .opp-line-sheet-td {
+  border-top: 2px dashed rgba(109, 138, 173, 0.45);
+}
+
+.opp-products-line-sheet .opp-line-sheet-global-chips-wrap {
+  margin: 0;
+  padding: 0.45rem 0.55rem;
+  border: none;
+  border-top: 2px solid var(--opp-basic-sheet-line, #6d8aad);
+  border-radius: 0;
+  background: #f4f8fb;
+}
+
+.opp-products-line-sheet .opp-line-sheet-global-chips-label {
+  font-size: 0.64rem;
+  font-weight: 700;
+  color: #5a7085;
+}
+
+.opp-basic-info-sheet-row.opp-products-summary-hex-row {
+  grid-template-columns: 2.85rem minmax(0, 1fr) 2.85rem minmax(0, 1fr) 3.1rem minmax(0, 1fr);
+}
+
+.opp-products-summary-hex-row .opp-basic-info-sheet-label:nth-child(3),
+.opp-products-summary-hex-row .opp-basic-info-sheet-label:nth-child(5) {
+  border-left: 2px solid var(--opp-basic-sheet-line, #6d8aad);
+}
+
+.opp-products-summary-val--main {
+  color: #1a4971;
+  font-weight: 700;
+}
+
+.opp-products-summary-val--margin {
+  color: #9f1239;
+  font-weight: 700;
+}
+
+.opp-products-summary-val--forecast {
+  display: flex;
+  flex-direction: column;
+  gap: 0.08rem;
+  color: #2c6485;
+  font-weight: 700;
+  white-space: normal;
+}
+
+.opp-products-summary-forecast-meta {
+  font-size: 0.58rem;
+  font-weight: 600;
+  color: #64748b;
+  line-height: 1.25;
+}
+
+.opp-products-summary-final-row {
+  background: #e8f0f8;
+}
+
+.opp-products-summary-final-row .opp-basic-info-sheet-label {
+  background: #dce8f4;
+  color: #1a4971;
+}
+
+.opp-products-summary-val--hero {
+  color: #0f3d5c;
+  font-weight: 800;
+  font-size: 0.92rem;
 }
 
 .opp-basic-doc-mail-wrap .opp-doc-mail-grid {
@@ -3222,7 +5383,7 @@
   max-width: min(22rem, 100%);
 }
 
-.opp-doc-mail-book-dropdown-trigger {
+.opp-doc-mail-book-dropdown-trigger:not(.opp-basic-info-sheet-head-btn) {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
@@ -3240,30 +5401,45 @@
   box-sizing: border-box;
 }
 
-.opp-doc-mail-book-dropdown-trigger:disabled {
-  opacity: 0.8;
-  cursor: wait;
-}
-
-.opp-doc-mail-book-dropdown-trigger-label {
+.opp-doc-mail-book-dropdown-trigger:not(.opp-basic-info-sheet-head-btn) .opp-doc-mail-book-dropdown-trigger-label {
   color: #1e3a5f;
 }
 
-.opp-doc-mail-book-dropdown-trigger-count,
-.opp-doc-mail-book-dropdown-trigger-sub {
+.opp-doc-mail-book-dropdown-trigger:not(.opp-basic-info-sheet-head-btn) .opp-doc-mail-book-dropdown-trigger-count,
+.opp-doc-mail-book-dropdown-trigger:not(.opp-basic-info-sheet-head-btn) .opp-doc-mail-book-dropdown-trigger-sub {
   font-size: 0.68rem;
   font-weight: 600;
   color: #64748b;
 }
 
-.opp-doc-mail-book-dropdown-chevron {
+.opp-doc-mail-book-dropdown-trigger:not(.opp-basic-info-sheet-head-btn) .opp-doc-mail-book-dropdown-chevron {
   font-size: 1.15rem;
   line-height: 1;
   color: #64748b;
   transition: transform 0.15s ease;
 }
 
-.opp-doc-mail-book-dropdown-trigger--open .opp-doc-mail-book-dropdown-chevron {
+.opp-basic-info-sheet-head-btn.opp-doc-mail-book-dropdown-trigger .opp-doc-mail-book-dropdown-trigger-label,
+.opp-basic-info-sheet-head-btn.opp-doc-mail-book-dropdown-trigger .opp-doc-mail-book-dropdown-trigger-count,
+.opp-basic-info-sheet-head-btn.opp-doc-mail-book-dropdown-trigger .opp-doc-mail-book-dropdown-trigger-sub {
+  color: #fff;
+}
+
+.opp-basic-info-sheet-head-btn.opp-doc-mail-book-dropdown-trigger .opp-doc-mail-book-dropdown-chevron {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 1rem;
+}
+
+.opp-doc-mail-book-dropdown-trigger:disabled {
+  opacity: 0.8;
+  cursor: wait;
+}
+
+.opp-doc-mail-book-dropdown-trigger--open:not(.opp-basic-info-sheet-head-btn) .opp-doc-mail-book-dropdown-chevron {
+  transform: rotate(180deg);
+}
+
+.opp-basic-info-sheet-head-btn.opp-doc-mail-book-dropdown-trigger--open .opp-doc-mail-book-dropdown-chevron {
   transform: rotate(180deg);
 }
 
@@ -3632,4 +5808,33 @@
 .opp-doc-slot-remove {
   flex-shrink: 0;
   align-self: center;
+}
+
+/* ========== Dashboard home-chart-panel 영감 — 탭 본문 카드 ========== */
+.opp-tab-panel--active > .opp-label:has(.opp-stage-group) {
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--opp-tableau-border);
+  border-radius: 0.75rem;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.opp-tab-panel--active > .opp-label:has(.opp-textarea) {
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--opp-tableau-border);
+  border-radius: 0.75rem;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.opp-form-dates-sidebar-head-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #1a2b3c;
+}
+
+.opp-finance-subheading {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #1a2b3c;
 }

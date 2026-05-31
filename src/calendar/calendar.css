@@ -1,22 +1,22 @@
-/* Calender.html / 샘플 톤 — 파스텔·카드형 월간 캘린더 */
+/* 대시보드 임베드와 동일 Tableau vivid 톤 (그라데이션 없음) */
 .calendar-page {
-  --cal-primary: #6366f1;
-  --cal-primary-soft: #e0e7ff;
-  --cal-tertiary: #0d9488;
-  --cal-tertiary-soft: #ccfbf1;
-  --cal-secondary: #7c3aed;
-  --cal-secondary-soft: #ede9fe;
-  --cal-mint: #059669;
-  --cal-mint-soft: #d1fae5;
-  --cal-urgent: #dc2626;
-  --cal-urgent-soft: #fecaca;
+  --cal-primary: #2c7bb6;
+  --cal-primary-soft: #c8dff0;
+  --cal-tertiary: #008080;
+  --cal-tertiary-soft: #b8e6e6;
+  --cal-secondary: #d6604d;
+  --cal-secondary-soft: #f5d4ce;
+  --cal-mint: #1a9641;
+  --cal-mint-soft: #c8e6d0;
+  --cal-urgent: #c0392b;
+  --cal-urgent-soft: #f5c4c0;
   --cal-header-slate-100: #f1f5f9;
   --cal-header-slate-200: #e2e8f0;
   --cal-header-slate-400: #94a3b8;
   --cal-header-slate-500: #64748b;
   --cal-header-slate-700: #334155;
   --cal-header-slate-900: #0f172a;
-  --cal-header-primary: #4f46e5;
+  --cal-header-primary: #2c7bb6;
 }
 
 /* 상단 바: todo-list 헤더와 동일 구조·파스텔 톤 */
@@ -90,7 +90,7 @@
 
 .calendar-page-search-input:focus {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2);
+  box-shadow: 0 0 0 2px rgba(44, 123, 182, 0.2);
 }
 
 .calendar-page-header-right {
@@ -214,18 +214,20 @@
 
 .calendar-page--embedded .calendar-weekday {
   border-radius: 0.35rem;
-  background: #eef2f7;
+  background: #dce6f2;
+  color: #334155;
 }
 
 .calendar-page--embedded .calendar-day:not(.empty) {
   border-radius: 0.4rem;
-  background: #f8fafc;
+  background: #fafbfc;
+  border: 1px solid #e2e8f0;
 }
 
 .calendar-page--embedded .calendar-day.today:not(.empty) {
-  background: var(--cal-primary-soft);
-  border-color: rgba(99, 102, 241, 0.4);
-  box-shadow: inset 0 0 0 2px var(--primary, var(--cal-primary));
+  background: #dceaf7;
+  border-color: #2c7bb6;
+  box-shadow: inset 0 0 0 2px #2c7bb6;
 }
 
 .calendar-shell {
@@ -823,7 +825,9 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.07em;
-  color: var(--text-muted);
+  color: #334155;
+  background: #dce6f2;
+  border-radius: 0.35rem;
 }
 
 .calendar-week-row {
@@ -863,33 +867,33 @@
   cursor: pointer;
   transition: filter 0.15s;
   pointer-events: auto;
-  background: var(--cal-primary-soft);
-  color: #4338ca;
+  background: #2c7bb6;
+  color: #fff;
 }
 
 .calendar-segment-bar.calendar-event-pill--primary {
-  background: var(--cal-primary-soft);
-  color: #4338ca;
+  background: #2c7bb6;
+  color: #fff;
 }
 
 .calendar-segment-bar.calendar-event-pill--tertiary {
-  background: var(--cal-tertiary-soft);
-  color: #0f766e;
+  background: #008080;
+  color: #fff;
 }
 
 .calendar-segment-bar.calendar-event-pill--secondary {
-  background: var(--cal-secondary-soft);
-  color: #6d28d9;
+  background: #d6604d;
+  color: #fff;
 }
 
 .calendar-segment-bar.calendar-event-pill--mint {
-  background: var(--cal-mint-soft);
-  color: var(--cal-mint);
+  background: #1a9641;
+  color: #fff;
 }
 
 .calendar-segment-bar.calendar-event-pill--urgent {
-  background: var(--cal-urgent-soft);
-  color: var(--cal-urgent);
+  background: #c0392b;
+  color: #fff;
 }
 
 .calendar-segment-bar:hover {
@@ -905,14 +909,14 @@
   min-height: 8.5rem;
   min-width: 0;
   padding: var(--calendar-day-padding);
-  background: #f8fafc;
+  background: #fafbfc;
   border-radius: 0.65rem;
   font-size: 0.875rem;
   color: var(--text);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border: 1px solid rgba(0, 0, 0, 0.04);
+  border: 1px solid #e2e8f0;
   box-sizing: border-box;
 }
 
@@ -931,9 +935,9 @@
 }
 
 .calendar-day.today {
-  background: var(--cal-primary-soft);
-  border: 1px solid rgba(99, 102, 241, 0.22);
-  box-shadow: inset 0 0 0 1.5px var(--primary, var(--cal-primary));
+  background: #dceaf7;
+  border: 1px solid #2c7bb6;
+  box-shadow: inset 0 0 0 2px #2c7bb6;
 }
 
 .calendar-day.today::after {
@@ -965,7 +969,7 @@
 }
 
 .calendar-day-num:hover:not(.calendar-day-num--today) {
-  background: rgba(99, 102, 241, 0.08);
+  background: rgba(44, 123, 182, 0.1);
   color: var(--cal-primary);
 }
 
@@ -1010,8 +1014,9 @@
   margin-bottom: 0.14rem;
   margin-top: 0.35rem;
   border-radius: 0.3rem;
-  background: var(--cal-primary-soft);
-  color: #4338ca;
+  background: #c8dff0;
+  color: #1a4971;
+  border-left: 3px solid #2c7bb6;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1027,28 +1032,33 @@
 }
 
 .calendar-event.calendar-event-pill--primary {
-  background: var(--cal-primary-soft);
-  color: #4338ca;
+  background: #c8dff0;
+  color: #1a4971;
+  border-left: 3px solid #2c7bb6;
 }
 
 .calendar-event.calendar-event-pill--tertiary {
-  background: var(--cal-tertiary-soft);
-  color: #0f766e;
+  background: #b8e6e6;
+  color: #0d5c5c;
+  border-left: 3px solid #008080;
 }
 
 .calendar-event.calendar-event-pill--secondary {
-  background: var(--cal-secondary-soft);
-  color: #6d28d9;
+  background: #f5d4ce;
+  color: #8b3a2a;
+  border-left: 3px solid #d6604d;
 }
 
 .calendar-event.calendar-event-pill--mint {
-  background: var(--cal-mint-soft);
-  color: var(--cal-mint);
+  background: #c8e6d0;
+  color: #145a32;
+  border-left: 3px solid #1a9641;
 }
 
 .calendar-event.calendar-event-pill--urgent {
-  background: var(--cal-urgent-soft);
-  color: var(--cal-urgent);
+  background: #f5c4c0;
+  color: #922b21;
+  border-left: 3px solid #c0392b;
 }
 
 .calendar-event:hover {
@@ -1135,18 +1145,18 @@
   font-size: 0.8125rem;
   font-weight: 600;
   font-family: inherit;
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  border: 1px solid rgba(44, 123, 182, 0.2);
   border-radius: 0.55rem;
   background: var(--cal-primary-soft);
-  color: #4338ca;
+  color: #1a4971;
   cursor: pointer;
-  box-shadow: 0 1px 4px rgba(99, 102, 241, 0.1);
+  box-shadow: 0 1px 4px rgba(44, 123, 182, 0.1);
   transition: background 0.15s, border-color 0.15s, transform 0.12s;
 }
 
 .calendar-day-view-add-btn:hover {
-  background: #e0e7ff;
-  border-color: rgba(99, 102, 241, 0.28);
+  background: #b8daf0;
+  border-color: rgba(44, 123, 182, 0.28);
 }
 
 .calendar-day-view-add-btn .material-symbols-outlined {
@@ -1225,8 +1235,9 @@
   gap: 0.2rem;
   transition: filter 0.15s, box-shadow 0.15s;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  background: var(--cal-primary-soft);
-  color: #4338ca;
+  background: #c8dff0;
+  color: #1a4971;
+  border-left: 3px solid #2c7bb6;
 }
 
 .calendar-day-view-card:hover {
@@ -1270,28 +1281,33 @@
 }
 
 .calendar-day-view-card.calendar-event-pill--primary {
-  background: var(--cal-primary-soft);
-  color: #4338ca;
+  background: #c8dff0;
+  color: #1a4971;
+  border-left: 3px solid #2c7bb6;
 }
 
 .calendar-day-view-card.calendar-event-pill--tertiary {
-  background: var(--cal-tertiary-soft);
-  color: #0f766e;
+  background: #b8e6e6;
+  color: #0d5c5c;
+  border-left: 3px solid #008080;
 }
 
 .calendar-day-view-card.calendar-event-pill--secondary {
-  background: var(--cal-secondary-soft);
-  color: #6d28d9;
+  background: #f5d4ce;
+  color: #8b3a2a;
+  border-left: 3px solid #d6604d;
 }
 
 .calendar-day-view-card.calendar-event-pill--mint {
-  background: var(--cal-mint-soft);
-  color: var(--cal-mint);
+  background: #c8e6d0;
+  color: #145a32;
+  border-left: 3px solid #1a9641;
 }
 
 .calendar-day-view-card.calendar-event-pill--urgent {
-  background: var(--cal-urgent-soft);
-  color: var(--cal-urgent);
+  background: #f5c4c0;
+  color: #922b21;
+  border-left: 3px solid #c0392b;
 }
 
 /* 하단: 이번 달 일정 + 안내 카드 */
@@ -1412,10 +1428,10 @@
 }
 
 .calendar-ai-panel {
-  background: linear-gradient(145deg, #eef2ff 0%, #f0fdfa 100%);
+  background: #dceaf7;
   border-radius: 1rem;
   padding: 1.35rem;
-  border: 1px solid rgba(99, 102, 241, 0.12);
+  border: 1px solid rgba(44, 123, 182, 0.12);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -1453,7 +1469,7 @@
   font-size: 0.8125rem;
   font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.25);
+  box-shadow: 0 4px 14px rgba(44, 123, 182, 0.25);
   transition: filter 0.15s, transform 0.12s;
 }
 
@@ -1467,12 +1483,12 @@
 
 /* 월간: 날짜 드래그 선택 강조 */
 .calendar-day.calendar-day--drag-select {
-  background: #eef2ff;
-  box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.35);
+  background: #c8dff0;
+  box-shadow: inset 0 0 0 1px rgba(44, 123, 182, 0.35);
 }
 
 .calendar-day.calendar-day--drag-select.today {
-  background: #e0e7ff;
+  background: #dceaf7;
 }
 
 /* 주간 보기 */
@@ -1562,8 +1578,9 @@
   border: none;
   border-radius: 0.3rem;
   cursor: pointer;
-  background: var(--cal-primary-soft);
-  color: #4338ca;
+  background: #c8dff0;
+  color: #1a4971;
+  border-left: 2px solid #2c7bb6;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1632,7 +1649,7 @@
 }
 
 .calendar-week-slot:hover {
-  background: rgba(99, 102, 241, 0.07);
+  background: rgba(44, 123, 182, 0.08);
 }
 
 .calendar-week-slot--drag {
@@ -1654,8 +1671,9 @@
   font-family: inherit;
   cursor: pointer;
   line-height: 1.2;
-  background: var(--cal-primary-soft);
-  color: #4338ca;
+  background: #c8dff0;
+  color: #1a4971;
+  border-left: 2px solid #2c7bb6;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
   display: flex;
   align-items: flex-start;
