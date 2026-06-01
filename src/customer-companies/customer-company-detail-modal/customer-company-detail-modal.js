@@ -1090,9 +1090,21 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
             {isCenterPresentation ? (
               <>
                 <h3 className="ccd-journal-title-plain">지원 및 업무 기록</h3>
-                <span className="ccd-section-badge">
-                  {loadingHistory ? '…' : `${historyItems.length}건`}
-                </span>
+                <div className="ccd-journal-section-head-actions">
+                  <span className="ccd-section-badge">
+                    {loadingHistory ? '…' : `${historyItems.length}건`}
+                  </span>
+                  {!loadingHistory && historyItems.length > 0 && (
+                    <button
+                      type="button"
+                      className="customer-company-detail-btn-all customer-company-detail-btn-all--compact"
+                      onClick={() => setShowAllHistoryModal(true)}
+                    >
+                      전체 보기
+                      <span className="material-symbols-outlined">arrow_forward</span>
+                    </button>
+                  )}
+                </div>
               </>
             ) : (
               <>

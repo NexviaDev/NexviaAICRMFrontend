@@ -1637,6 +1637,94 @@ const DASHBOARD_RESPONSE_META_KEYS = new Set([
   'dashboardFingerprint'
 ]);
 
+const HOME_DASHBOARD_LOCAL_CACHE_PREFIX = `crm_home_dashboard_snapshot_v2_${String(import.meta.env.VITE_APP_BUILD_ID || 'dev')}_`;
+const HOME_DASHBOARD_LOCAL_CACHE_MAX_AGE_MS = 10 * 60 * 1000;
+
+function getHomeDashboardLocalCacheOwnerKey() {
+  try {
+    const u = getStoredCrmUser();
+    const companyId = String(u?.companyId || u?.company?._id || u?.companyName || 'global').trim();
+    const userId = String(u?._id || u?.id || u?.email || 'anonymous').trim();
+    return `${companyId || 'global'}:${userId || 'anonymous'}`;
+  } catch {
+    return 'global:anonymous';
+  }
+}
+
+function encodeHomeDashboardLocalCachePart(value) {
+  try {
+    return btoa(unescape(encodeURIComponent(String(value || '')))).replace(/=+$/g, '');
+  } catch {
+    return String(value || '').replace(/[^a-zA-Z0-9_.:-]/g, '_').slice(0, 180);
+  }
+}
+
+function buildHomeDashboardLocalCacheKey(queryString) {
+  const raw = [
+    API_BASE,
+    getHomeDashboardLocalCacheOwnerKey(),
+    String(queryString || '')
+  ].join('|');
+  return `${HOME_DASHBOARD_LOCAL_CACHE_PREFIX}${encodeHomeDashboardLocalCachePart(raw)}`;
+}
+
+function slimHomeDashboardLocalCachePayload(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  const copy = { ...payload };
+  delete copy.kpiWonExplain;
+  delete copy.kpiCollectedExplain;
+  delete copy.leaderScopeBreakdown;
+  copy.forecastPipelineRows = Array.isArray(copy.forecastPipelineRows)
+    ? copy.forecastPipelineRows.slice(0, HOME_FORECAST_PREVIEW_MAX)
+    : [];
+  copy.dashboardLocalCache = true;
+  copy.dashboardLocalCachedAt = new Date().toISOString();
+  copy.dashboardStale = true;
+  return copy;
+}
+
+function readHomeDashboardLocalCache(cacheKey) {
+  if (!cacheKey) return null;
+  try {
+    const raw = localStorage.getItem(cacheKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const cachedAt = Number(parsed?.cachedAt);
+    if (!cachedAt || Date.now() - cachedAt > HOME_DASHBOARD_LOCAL_CACHE_MAX_AGE_MS) {
+      localStorage.removeItem(cacheKey);
+      return null;
+    }
+    const payload = parsed?.payload;
+    return payload && typeof payload === 'object' ? payload : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeHomeDashboardLocalCache(cacheKey, payload) {
+  if (!cacheKey) return;
+  try {
+    const slim = slimHomeDashboardLocalCachePayload(payload);
+    if (!slim) return;
+    localStorage.setItem(cacheKey, JSON.stringify({ cachedAt: Date.now(), payload: slim }));
+  } catch (_) {
+    try {
+      localStorage.removeItem(cacheKey);
+    } catch (_) { }
+  }
+}
+
+function clearHomeDashboardLocalCaches() {
+  try {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(HOME_DASHBOARD_LOCAL_CACHE_PREFIX)) keys.push(key);
+    }
+    keys.forEach((key) => localStorage.removeItem(key));
+  } catch (_) { }
+}
+
 /** stale 캐시 응답이면 정밀 재조회 생략 가능(구형 필드 누락 시 false) */
 function isHomeStaleDashboardPayloadComplete(j1) {
   if (!j1 || typeof j1 !== 'object') return false;
@@ -1911,6 +1999,7 @@ export default function Dashboard() {
         if (!res.ok) throw new Error(data.error || '프로젝트 저장에 실패했습니다.');
         setHomeProjectModalOpen(false);
         setHomeProjectEditing(null);
+        clearHomeDashboardLocalCaches();
         setDashboardRefreshTick((t) => t + 1);
       } catch (err) {
         window.alert(err.message || '프로젝트 저장에 실패했습니다.');
@@ -2258,7 +2347,7 @@ export default function Dashboard() {
     const ac = new AbortController();
     let cancelled = false;
     const fetchData = async () => {
-      const isRefetch = dataRef.current != null;
+      let isRefetch = dataRef.current != null;
       if (!cancelled) {
         if (isRefetch) setDashboardDataBusy(true);
         else setLoading(true);
@@ -2279,6 +2368,18 @@ export default function Dashboard() {
       q.set('kpiPeriod', kpiPeriod);
 
       const skipStaleFirst = dashboardRefreshTick > lastHandledDashboardRefreshTickRef.current;
+      const dashboardQueryString = q.toString();
+      const localCacheKey = buildHomeDashboardLocalCacheKey(dashboardQueryString);
+      if (!skipStaleFirst && !isRefetch) {
+        const localCached = readHomeDashboardLocalCache(localCacheKey);
+        if (localCached) {
+          dataRef.current = localCached;
+          setData(localCached);
+          setLoading(false);
+          setDashboardDataBusy(true);
+          isRefetch = true;
+        }
+      }
       let appliedStale = false;
       let freshAppliedOk = false;
       const cancelFreshIfStaleDone = new AbortController();
@@ -2309,6 +2410,7 @@ export default function Dashboard() {
       const applyFreshPayload = (j2) => {
         if (cancelled || !j2 || typeof j2 !== 'object') return;
         freshAppliedOk = true;
+        writeHomeDashboardLocalCache(localCacheKey, j2);
         setData((prev) => {
           if (skipStaleFirst || !appliedStale) return j2;
           const prevKey = prev && typeof prev === 'object' ? String(prev.dashboardCacheKey || '') : '';
@@ -2320,7 +2422,7 @@ export default function Dashboard() {
       };
 
       try {
-        const freshUrl = `${API_BASE}/reports/dashboard?${q}`;
+        const freshUrl = `${API_BASE}/reports/dashboard?${dashboardQueryString}`;
         const tasks = [];
 
         if (!skipStaleFirst) {
@@ -2753,6 +2855,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (!insightAccess.checked) return undefined;
     const handler = () => {
+      clearHomeDashboardLocalCaches();
       setDashboardRefreshTick((t) => t + 1);
       fetchHomePipelineSummary();
     };
@@ -2845,6 +2948,7 @@ export default function Dashboard() {
   const handleHomeOppSaved = useCallback(
     (payload, meta) => {
       if (!meta?.keepOpen) closeHomeOppModal();
+      clearHomeDashboardLocalCaches();
       setDashboardRefreshTick((t) => t + 1);
       fetchHomePipelineSummary();
     },
