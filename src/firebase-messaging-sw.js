@@ -5,10 +5,27 @@
  */
 import { cleanupOutdatedCaches, precacheAndRoute } from 'workbox-precaching';
 import { clientsClaim } from 'workbox-core';
+import { registerRoute, NavigationRoute } from 'workbox-routing';
+import { NetworkFirst } from 'workbox-strategies';
 
 precacheAndRoute(self.__WB_MANIFEST);
 cleanupOutdatedCaches();
 clientsClaim();
+
+/** SPA shell·version.json은 네트워크 우선 — 오래된 화면 고착 방지 */
+registerRoute(
+  new NavigationRoute(
+    new NetworkFirst({
+      cacheName: 'nexvia-pages',
+      networkTimeoutSeconds: 8
+    })
+  )
+);
+registerRoute(
+  ({ url, request }) =>
+    request.method === 'GET' && url.pathname === '/version.json',
+  new NetworkFirst({ cacheName: 'nexvia-version', networkTimeoutSeconds: 5 })
+);
 
 /* global firebase */
 importScripts('https://www.gstatic.com/firebasejs/12.13.0/firebase-app-compat.js');

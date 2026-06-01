@@ -1,5 +1,6 @@
 /**
- * 배포 빌드 ID(VITE_APP_BUILD_ID)가 바뀌면 PWA·Workbox 캐시와 SW를 정리한 뒤 1회 새로고침.
+ * 배포 빌드 ID가 바뀌면 PWA·Workbox 캐시와 SW를 정리한 뒤 1회 새로고침.
+ * 서버 /version.json(항상 최신)과 비교 — 옛 JS 번들만 로드된 경우에도 갱신됩니다.
  * crm_token·crm_user 등 로그인 데이터는 건드리지 않습니다.
  */
 
@@ -22,12 +23,20 @@ const CRM_IN_APP_ROUTE_PREFIXES = [
   '/todo-list',
   '/ai-voice',
   '/quotation-doc-merge',
-  '/subscription'
+  '/subscription',
+  '/notification',
+  '/email',
+  '/messenger',
+  '/business-registry',
+  '/admin'
 ];
 
 export function getAppBuildId() {
   return String(import.meta.env.VITE_APP_BUILD_ID || '').trim();
 }
+
+/** index.html 인라인 부트스트랩과 동일 — vite transformIndexHtml에서 주입 */
+export const APP_BUILD_VERSION_BOOTSTRAP_SNIPPET = `(function(){try{var K='nexvia_app_build_id',G='nexvia_app_build_reload_guard';fetch('/version.json?_='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(d){var id=d&&String(d.buildId||'').trim();if(!id||sessionStorage.getItem(G)===id)return;var s=localStorage.getItem(K);if(s===id)return;sessionStorage.setItem(G,id);localStorage.setItem(K,id);var p=Promise.resolve();if('serviceWorker' in navigator)p=p.then(function(){return navigator.serviceWorker.getRegistrations()}).then(function(regs){return Promise.all(regs.map(function(r){return r.unregister()}))});if('caches' in window)p=p.then(function(){return caches.keys()}).then(function(keys){return Promise.all(keys.map(function(k){return caches.delete(k)}))});p.finally(function(){location.reload()})}).catch(function(){})}catch(e){}})();`;
 
 function shouldLeaveStaleLoginPage() {
   const path = window.location.pathname.replace(/\/+$/, '') || '/';
@@ -44,7 +53,22 @@ function shouldRefreshCrmRouteInPlace() {
   return CRM_IN_APP_ROUTE_PREFIXES.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
 }
 
-async function purgeStaticCaches() {
+export async function fetchRemoteBuildId() {
+  if (import.meta.env.DEV) return '';
+  try {
+    const res = await fetch(`/version.json?_=${Date.now()}`, {
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache' }
+    });
+    if (!res.ok) return '';
+    const data = await res.json();
+    return String(data?.buildId || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+export async function purgeStaticCaches() {
   if ('serviceWorker' in navigator) {
     const registrations = await navigator.serviceWorker.getRegistrations();
     await Promise.all(registrations.map((reg) => reg.unregister()));
@@ -61,7 +85,8 @@ async function purgeStaticCaches() {
 export async function ensureAppBuildVersion() {
   if (import.meta.env.DEV) return false;
 
-  const current = getAppBuildId();
+  const remote = await fetchRemoteBuildId();
+  const current = remote || getAppBuildId();
   if (!current) return false;
 
   const stored = localStorage.getItem(BUILD_ID_KEY);

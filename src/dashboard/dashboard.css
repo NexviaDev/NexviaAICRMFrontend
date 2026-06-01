@@ -1519,12 +1519,21 @@
 }
 
 .home-leader-breakdown-table-wrap {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
+  overflow-y: visible;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x pan-y;
+  scrollbar-width: thin;
 }
 
 .home-leader-breakdown-table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: 0.8125rem;
 }
@@ -1747,9 +1756,20 @@
   margin-bottom: 0.6rem;
 }
 
-.home-forecast-table-wrap {
+/* 홈 Forecast·팀 실적·우수 담당자 표 — 좁은 화면에서 래퍼 안 가로 스크롤 */
+.home-forecast-table-wrap,
+.home-reps-body .table-wrap,
+.home-page .table-wrap {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
+  overflow-y: visible;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x pan-y;
+  scrollbar-width: thin;
 }
 
 /* Forecast·완료·우수 담당자 표 — 차트 Tableau vivid 팔레트 계열 */
@@ -1758,13 +1778,16 @@
   margin: 0;
   border: 1px solid rgba(78, 121, 167, 0.38);
   border-radius: 0.65rem;
-  overflow: hidden;
   background: #ffffff;
 }
 
-.home-chart-panel .home-forecast-table,
-.home-reps-body .data-table {
-  width: 100%;
+.home-chart-panel .home-forecast-table-wrap .home-forecast-table,
+.home-chart-panel .home-forecast-table-wrap .home-leader-breakdown-table,
+.home-leader-breakdown-table-wrap .home-leader-breakdown-table,
+.home-reps-body .table-wrap .data-table,
+.home-reps-body .table-wrap .home-reps-table {
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: 0.8125rem;
 }
@@ -3272,9 +3295,20 @@
   border-top: 1px solid var(--card-border);
 }
 
-.table-wrap { overflow-x: auto; }
+.table-wrap {
+  display: block;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x pan-y;
+}
+
 .data-table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: 0.875rem;
 }
@@ -3399,6 +3433,24 @@
   .home-leader-breakdown-panel {
     min-width: 0;
     max-width: 100%;
+  }
+
+  .home-chart-body,
+  .home-forecast-body,
+  .home-reps-body,
+  .home-leader-breakdown-panel {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .home-forecast-table-wrap,
+  .home-leader-breakdown-table-wrap,
+  .home-reps-body .table-wrap,
+  .home-modal-forecast .home-forecast-table-wrap {
+    overflow-x: auto;
+    overflow-y: visible;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-x pan-y;
   }
 
   .home-mobile-hero {
@@ -3764,4 +3816,23 @@
 .home-insights-charts-grid > .home-chart-panel:hover,
 .home-insights-charts-grid > .home-chart-panel:focus-within {
   box-shadow: var(--home-section-shadow-hover);
+}
+
+.home-schedule-embed-host {
+  min-height: 4.5rem;
+}
+
+.home-schedule-embed-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  min-height: 5rem;
+  padding: 1rem;
+  color: #7c8aa0;
+  font-size: 0.82rem;
+}
+
+.home-schedule-embed-fallback-label {
+  font-weight: 600;
 }

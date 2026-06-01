@@ -100,6 +100,31 @@ function defaultAddScheduleFromLocalNow() {
   };
 }
 
+function isValidYmd(str) {
+  return typeof str === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(str);
+}
+
+/** 신규 일정: 더블클릭·드래그 날짜 반영, 시간은 지정 없으면 현재 시각 기준 */
+function defaultAddScheduleForNewEvent({
+  initialDate,
+  initialDateEnd,
+  initialStartTime,
+  initialEndTime
+} = {}) {
+  const now = new Date();
+  now.setSeconds(0, 0);
+  const endFromNow = new Date(now.getTime() + 60 * 60 * 1000);
+  const startDate = isValidYmd(initialDate) ? initialDate : formatLocalYmd(now);
+  const startTime = initialStartTime || formatLocalHm(now);
+  const endDate = isValidYmd(initialDateEnd)
+    ? initialDateEnd
+    : isValidYmd(initialDate)
+      ? startDate
+      : formatLocalYmd(endFromNow);
+  const endTime = initialEndTime || formatLocalHm(endFromNow);
+  return { startDate, startTime, endDate, endTime };
+}
+
 function time24ToParts(time) {
   const m = String(time || '').match(/^(\d{1,2}):([0-5]\d)$/);
   const hour24 = m ? Math.min(23, Math.max(0, Number(m[1]))) : 9;
@@ -399,9 +424,16 @@ export default function EventModal({
   const [mode, setMode] = useState(isAdd ? 'add' : (isEdit ? 'edit' : 'view'));
   const [event, setEvent] = useState(null);
   const [form, setForm] = useState(() => {
-    const addSchedule = defaultAddScheduleFromLocalNow();
+    const addSchedule = isAdd
+      ? defaultAddScheduleForNewEvent({
+          initialDate,
+          initialDateEnd,
+          initialStartTime,
+          initialEndTime
+        })
+      : defaultAddScheduleFromLocalNow();
     return {
-      title: '', description: '', color: '', allDay: false,
+      title: '', description: '', color: '', allDay: initialAllDay === true,
       startDate: addSchedule.startDate, startTime: addSchedule.startTime,
       endDate: addSchedule.endDate, endTime: addSchedule.endTime,
       visibility: 'company', participants: [],
@@ -426,7 +458,14 @@ export default function EventModal({
   const [employeeSearchResults, setEmployeeSearchResults] = useState([]);
   const [employeeSearchLoading, setEmployeeSearchLoading] = useState(false);
   const [timeDrafts, setTimeDrafts] = useState(() => {
-    const addSchedule = defaultAddScheduleFromLocalNow();
+    const addSchedule = isAdd
+      ? defaultAddScheduleForNewEvent({
+          initialDate,
+          initialDateEnd,
+          initialStartTime,
+          initialEndTime
+        })
+      : defaultAddScheduleFromLocalNow();
     return {
       startTime: time24ToParts(addSchedule.startTime).text,
       endTime: time24ToParts(addSchedule.endTime).text

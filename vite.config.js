@@ -20,6 +20,7 @@ function resolveAppBuildId() {
 }
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { APP_BUILD_VERSION_BOOTSTRAP_SNIPPET } from './src/lib/app-build-version.js';
 
 const SRC_ROOT = path.resolve(__dirname, 'src');
 
@@ -111,6 +112,37 @@ function replaceFirebaseConfigInSwRollup(env) {
   };
 }
 
+/** 배포마다 dist/version.json — 클라이언트가 네트워크로 최신 빌드 ID 조회 */
+function emitAppVersionJson(appBuildId) {
+  const source = JSON.stringify({ buildId: appBuildId, builtAt: new Date().toISOString() });
+
+  return {
+    name: 'emit-app-version-json',
+    apply: 'build',
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'version.json', source });
+    }
+  };
+}
+
+/** 옛 index.html·SW 캐시보다 먼저 /version.json 비교 (번들 JS 로드 전) */
+function injectAppBuildVersionBootstrap() {
+  const tag = `<script>${APP_BUILD_VERSION_BOOTSTRAP_SNIPPET}</script>`;
+  return {
+    name: 'inject-app-build-version-bootstrap',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html) {
+        if (html.includes('nexvia_app_build_id')) return html;
+        if (html.includes('<script type="module"')) {
+          return html.replace('<script type="module"', `${tag}\n    <script type="module"`);
+        }
+        return html.replace('</head>', `    ${tag}\n  </head>`);
+      }
+    }
+  };
+}
+
 /** PWA 서브빌드 이후 dist 파일 최종 치환 (rollup 훅이 빠진 경우 대비) */
 function injectFirebaseServiceWorkerDist(env) {
   const { apiBase, firebaseConfig } = firebaseSwBuildEnv(env);
@@ -151,8 +183,10 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       jsxInJs(),
+      injectAppBuildVersionBootstrap(),
       injectFirebaseServiceWorkerConfig(env),
       injectFirebaseServiceWorkerDist(env),
+      emitAppVersionJson(appBuildId),
       react({ include: /\.(jsx|js|tsx|ts)$/ }),
       VitePWA({
         /**
@@ -203,9 +237,9 @@ export default defineConfig(({ mode }) => {
           }
         },
         injectManifest: {
-          globPatterns: ['**/*.{js,css,html,ico,svg,png,woff2}'],
-          /** 마케팅 랜딩 스크린샷(수 MB)은 오프라인 SW precache 대상에서 제외 */
-          globIgnores: ['**/landing/**'],
+          /** index.html·version.json은 precache 제외 → 항상 네트워크에서 최신 shell 로드 */
+          globPatterns: ['assets/**/*.{js,css,woff2}', '**/*.{ico,svg,png}', 'nexvia-app-icon.png'],
+          globIgnores: ['**/landing/**', '**/index.html', '**/version.json'],
           maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
           rollupOptions: {
             plugins: [replaceFirebaseConfigInSwRollup(env)]

@@ -22,7 +22,8 @@ export default function PwaUpdatePrompt() {
       };
       window.addEventListener('focus', onFocus);
       document.addEventListener('visibilitychange', onVis);
-      const intervalId = window.setInterval(check, 15 * 60 * 1000);
+      /** 오래 방문하지 않은 사용자도 배포 후 수 분 안에 SW·캐시 갱신 */
+      const intervalId = window.setInterval(check, 5 * 60 * 1000);
       swCleanupRef.current = () => {
         window.clearInterval(intervalId);
         window.removeEventListener('focus', onFocus);

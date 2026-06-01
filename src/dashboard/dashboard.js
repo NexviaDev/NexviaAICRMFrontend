@@ -7,8 +7,13 @@ import HomeKpiExplainModal, { makeHomeKpiExplainSpec } from './home-kpi-explain-
 
 import { API_BASE } from '@/config';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
-import TodoList from '@/todo-list/todo-list';
-import Calendar from '@/calendar/calendar';
+import {
+  HomeTodoEmbed,
+  HomeCalendarEmbed,
+  HomeTodoModalEmbed,
+  HomeCalendarModalEmbed
+} from './home-schedule-embed';
+import { deferAfterPaint } from '@/lib/defer-after-paint';
 import {
   getLeadVisibilityUserKey,
   loadHomeCaptureLeadVisibility,
@@ -1710,8 +1715,8 @@ export default function Dashboard() {
   const [leadChannelsLoading, setLeadChannelsLoading] = useState(true);
   /** 캡처 채널별 수신 리드 (receivedAt 오름차순 = 가장 오래된 것부터) */
   const [recentCaptureLeads, setRecentCaptureLeads] = useState([]);
-  const [grouped, setGrouped] = useState({});
-  const [totals, setTotals] = useState({});
+  /** GET /reports/home-pipeline-summary — 단계별 count·total, wonLeaderboard */
+  const [pipelineSummary, setPipelineSummary] = useState(null);
   const [stageDefinitions, setStageDefinitions] = useState([]);
   const [pipelineLoading, setPipelineLoading] = useState(true);
   /** 인사이트 그래프: 막대 | 꺾은선 — User.listTemplates.homeDashboard 와 동기 */
@@ -1777,7 +1782,7 @@ export default function Dashboard() {
   const homeOppEditId = String(searchParams.get(HOME_OPP_ID_PARAM) || '').trim();
   const homeOppStageQ = String(searchParams.get(HOME_OPP_STAGE_PARAM) || '').trim();
   const isHomeOppModalOpen = homeOppModalMode === 'add' || homeOppModalMode === 'edit';
-  /** 우수 영업 담당자: 수주 성공(Won) 집계 — 데이터는 fetchPipeline의 grouped와 동기(중복 API 호출 제거) */
+  /** 우수 영업 담당자: GET /reports/home-pipeline-summary 의 wonLeaderboard */
   const [wonLeaderboardMode, setWonLeaderboardMode] = useState('month');
   const [homeTargetContributionBar, setHomeTargetContributionBar] = useState(null);
   /** 기여 막대 계산 방식 모달 — { kind: 'target'|'share', mode: 'team'|'user' } */
@@ -2660,44 +2665,18 @@ export default function Dashboard() {
   ]);
 
   useEffect(() => {
+    if (!insightAccess.checked) return undefined;
     let cancelled = false;
     const fetchLeadCaptureDashboard = async () => {
       try {
-        const res = await fetch(`${API_BASE}/lead-capture-forms`, { headers: getAuthHeader(), credentials: 'include' });
+        const res = await fetch(`${API_BASE}/reports/home-capture-leads?limit=120`, {
+          headers: getAuthHeader(),
+          credentials: 'include'
+        });
         const json = await res.json().catch(() => ({}));
         if (!cancelled && res.ok) {
           const items = Array.isArray(json.items) ? json.items : [];
-          const visibleForms = filterLeadCaptureFormsForHomeViewer(items, getStoredCrmUser());
-
-          const leadBatches = await Promise.all(
-            visibleForms.map(async (form) => {
-              try {
-                const lr = await fetch(
-                  `${API_BASE}/lead-capture-forms/${form._id}/leads?limit=120&page=1`,
-                  { headers: getAuthHeader(), credentials: 'include' }
-                );
-                const lj = await lr.json().catch(() => ({}));
-                if (!lr.ok) return [];
-                const list = Array.isArray(lj.items) ? lj.items : [];
-                const channelLabel = String(form?.name || '').trim() || '캡처 채널';
-                const channelSource = String(form?.source || '').trim() || '기타 채널';
-                return list.map((lead) => ({
-                  ...lead,
-                  _channelLabel: channelLabel,
-                  _channelSource: channelSource
-                }));
-              } catch {
-                return [];
-              }
-            })
-          );
-          const merged = leadBatches.flat();
-          merged.sort((a, b) => {
-            const ta = new Date(a.receivedAt || 0).getTime();
-            const tb = new Date(b.receivedAt || 0).getTime();
-            return ta - tb;
-          });
-          if (!cancelled) setRecentCaptureLeads(merged);
+          if (!cancelled) setRecentCaptureLeads(items);
         } else if (!cancelled) {
           setRecentCaptureLeads([]);
         }
@@ -2709,9 +2688,14 @@ export default function Dashboard() {
         if (!cancelled) setLeadChannelsLoading(false);
       }
     };
-    fetchLeadCaptureDashboard();
-    return () => { cancelled = true; };
-  }, []);
+    const cancelDefer = deferAfterPaint(() => {
+      if (!cancelled) fetchLeadCaptureDashboard();
+    });
+    return () => {
+      cancelled = true;
+      cancelDefer();
+    };
+  }, [insightAccess.checked]);
 
   const fetchStageDefinitions = useCallback(async () => {
     try {
@@ -2724,20 +2708,18 @@ export default function Dashboard() {
     }
   }, []);
 
-  const fetchPipeline = useCallback(async () => {
+  const fetchHomePipelineSummary = useCallback(async () => {
     setPipelineLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/sales-opportunities`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/reports/home-pipeline-summary`, { headers: getAuthHeader() });
       if (!res.ok) throw new Error('fetch failed');
       const json = await res.json();
       if (pipelineMounted.current) {
-        setGrouped(json.grouped || {});
-        setTotals(json.totals || {});
+        setPipelineSummary(json && typeof json === 'object' ? json : null);
       }
     } catch {
       if (pipelineMounted.current) {
-        setGrouped({});
-        setTotals({});
+        setPipelineSummary(null);
       }
     } finally {
       if (pipelineMounted.current) setPipelineLoading(false);
@@ -2761,21 +2743,22 @@ export default function Dashboard() {
     return () => window.removeEventListener('nexvia-pipeline-stages-updated', onStagesUpdated);
   }, [fetchStageDefinitions]);
 
-  /** 슬립 깨우기와 파이프라인 로드를 순차 대기하지 않음(이전: /health 완료 후에만 fetchPipeline → 체감 지연 가중) */
+  /** 슬립 깨우기는 즉시, 전체 sales-opportunities는 첫 화면 이후 idle에 로드 */
   useEffect(() => {
     pingBackendHealth(getAuthHeader).catch(() => {});
-    fetchPipeline();
-  }, [fetchPipeline]);
+    const cancelDefer = deferAfterPaint(() => fetchHomePipelineSummary());
+    return cancelDefer;
+  }, [fetchHomePipelineSummary]);
 
   useEffect(() => {
     if (!insightAccess.checked) return undefined;
     const handler = () => {
       setDashboardRefreshTick((t) => t + 1);
-      fetchPipeline();
+      fetchHomePipelineSummary();
     };
     window.addEventListener('nexvia-crm-pipeline-refresh', handler);
     return () => window.removeEventListener('nexvia-crm-pipeline-refresh', handler);
-  }, [insightAccess.checked, fetchPipeline]);
+  }, [insightAccess.checked, fetchHomePipelineSummary]);
 
   const activeStages = stageDefinitions.length > 0
     ? stageDefinitions.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((d) => d.key)
@@ -2863,9 +2846,9 @@ export default function Dashboard() {
     (payload, meta) => {
       if (!meta?.keepOpen) closeHomeOppModal();
       setDashboardRefreshTick((t) => t + 1);
-      fetchPipeline();
+      fetchHomePipelineSummary();
     },
-    [closeHomeOppModal, fetchPipeline]
+    [closeHomeOppModal, fetchHomePipelineSummary]
   );
 
   const homeUserDisplay = useMemo(() => {
@@ -3231,11 +3214,14 @@ export default function Dashboard() {
   }, [stats.kpiSummary, stats.taskCompletionMeta, selectedGraphCurrency, homeProjectCounts, isCompanyWideInsight]);
 
   const pipelineColumns = useMemo(() => {
+    const byStage = pipelineSummary?.byStage && typeof pipelineSummary.byStage === 'object'
+      ? pipelineSummary.byStage
+      : {};
     const cols = pipelineMainStages.map((stage) => {
-      const items = grouped[stage] || [];
-      const total = totals[stage] || 0;
-      const mainCurrency = items.length > 0 ? (items[0].currency || 'KRW') : 'KRW';
-      return { stage, label: stageLabels[stage] ?? stage, count: items.length, total, currency: mainCurrency };
+      const row = byStage[stage] || {};
+      const count = Number(row.count) || 0;
+      const total = Number(row.total) || 0;
+      return { stage, label: stageLabels[stage] ?? stage, count, total, currency: 'KRW' };
     });
     const maxCount = Math.max(1, ...cols.map((c) => c.count));
     const maxTotal = Math.max(1, ...cols.map((c) => c.total));
@@ -3245,13 +3231,17 @@ export default function Dashboard() {
       hValue: Math.round((c.total / maxTotal) * 95),
       hMix: Math.round(((c.count / maxCount + c.total / maxTotal) / 2) * 95)
     }));
-  }, [pipelineMainStages, grouped, totals, stageLabels]);
+  }, [pipelineMainStages, pipelineSummary, stageLabels]);
 
   const wonLeaderboardRows = useMemo(() => {
     if (!insightAccess.checked || !insightAccess.seniorPlus) return [];
-    const won = Array.isArray(grouped?.Won) ? grouped.Won : [];
-    return aggregateWonLeaderboard(won, wonLeaderboardMode).rows;
-  }, [insightAccess.checked, insightAccess.seniorPlus, grouped, wonLeaderboardMode]);
+    const bucket =
+      wonLeaderboardMode === 'week'
+        ? pipelineSummary?.wonLeaderboard?.week
+        : pipelineSummary?.wonLeaderboard?.month;
+    if (Array.isArray(bucket?.rows)) return bucket.rows;
+    return [];
+  }, [insightAccess.checked, insightAccess.seniorPlus, pipelineSummary, wonLeaderboardMode]);
 
   const consumerRaw = useMemo(
     () => stats.salesGraphs?.consumerByCurrency?.[selectedGraphCurrency] || [],
@@ -5358,7 +5348,7 @@ export default function Dashboard() {
               </div>
               <div className="home-chart-body home-todo-body">
               <section className="home-todo-upcoming" aria-label="예정 업무">
-                <TodoList embedded previewMax={isMobile ? HOME_MOBILE_PREVIEW_TODO : null} />
+                <HomeTodoEmbed previewMax={isMobile ? HOME_MOBILE_PREVIEW_TODO : null} />
               </section>
               </div>
             </div>
@@ -5380,7 +5370,7 @@ export default function Dashboard() {
                   </Link>
                 )}
               </div>
-              <Calendar embedded hideBottomSection />
+              <HomeCalendarEmbed hideBottomSection />
             </div>
           </div>
         </div>
@@ -5568,7 +5558,7 @@ export default function Dashboard() {
         title={activeHomeView ? HOME_VIEW_TITLES[activeHomeView] : ''}
         onClose={closeHomeView}
       >
-        {activeHomeView === 'todo' ? <TodoList embedded /> : null}
+        {activeHomeView === 'todo' ? <HomeTodoModalEmbed /> : null}
         {activeHomeView === 'leads' ? (
           <div className="home-modal-leads" aria-label="신규 리드 전체">
             {leadChannelsLoading ? (
@@ -5607,7 +5597,7 @@ export default function Dashboard() {
             )}
           </div>
         ) : null}
-        {activeHomeView === 'calendar' ? <Calendar embedded hideBottomSection={false} /> : null}
+        {activeHomeView === 'calendar' ? <HomeCalendarModalEmbed /> : null}
         {activeHomeView === 'forecast' ? (
           <div className="home-modal-forecast" aria-label="Forecast 전체">
             {renderHomeForecastFilterBar('active')}

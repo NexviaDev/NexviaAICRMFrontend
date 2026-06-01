@@ -1572,6 +1572,7 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
 
       {isEventModalOpen && (
         <EventModal
+          key={`${modalEventId || 'add'}-${modalDate || ''}-${modalDateEnd || ''}-${modalAddTs || ''}-${modalAddTe || ''}`}
           eventId={modalEventId}
           isEdit={modalEdit}
           initialDate={modalDate}

@@ -21,6 +21,19 @@
   ],
   "headers": [
     {
+      "source": "/index.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/version.json",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" },
+        { "key": "Content-Type", "value": "application/json; charset=utf-8" }
+      ]
+    },
+    {
       "source": "/firebase-messaging-sw.js",
       "headers": [
         { "key": "Content-Type", "value": "application/javascript; charset=utf-8" },
@@ -41,7 +54,7 @@
       "destination": "/install/index.html"
     },
     {
-      "source": "/((?!firebase-messaging-sw\\.js$|manifest\\.webmanifest$|nexvia-app-icon\\.png$|icon\\.svg$|assets/|install).*)",
+      "source": "/((?!firebase-messaging-sw\\.js$|manifest\\.webmanifest$|version\\.json$|nexvia-app-icon\\.png$|icon\\.svg$|assets/|install).*)",
       "destination": "/index.html"
     }
   ]
