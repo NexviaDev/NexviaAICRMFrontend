@@ -7,7 +7,13 @@ export const SIDEBAR_CATEGORY_ITEMS = [
   { key: 'inhouse', label: '사내 업무', icon: 'arrow_circle_left' },
   { key: 'outside', label: '사외 업무', icon: 'globe' },
   { key: 'schedule', label: '일정', icon: 'event' },
-  { key: 'etc', label: '기타', icon: 'more_horiz' }
+  { key: 'etc', label: '기타', icon: 'more_horiz' },
+  {
+    key: 'remote',
+    label: '원격지원',
+    icon: 'headset_mic',
+    externalHref: 'http://helpu.kr/Nexvia'
+  }
 ];
 
 /** 기본 템플릿 메뉴 순서 — 이 배열 순서 그대로 유지 */

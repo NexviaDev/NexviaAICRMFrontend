@@ -175,6 +175,11 @@
   color: #fff;
 }
 
+.sidebar-category-button-external:hover {
+  background: rgba(232, 238, 245, 0.14);
+  border-color: rgba(200, 220, 240, 0.35);
+}
+
 .sidebar-category-button-drop-target {
   background: rgba(255, 255, 255, 0.18);
   border-color: rgba(255, 255, 255, 0.36);

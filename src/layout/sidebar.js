@@ -231,9 +231,11 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
 
   const visibleCategoryOrder = useMemo(
     () =>
-      categoryOrder.filter((categoryKey) =>
-        (SUBMENU_BY_CATEGORY[categoryKey] || []).some((item) => canShowSidebarMenu(user, item))
-      ),
+      categoryOrder.filter((categoryKey) => {
+        const category = CATEGORY_ITEMS.find((c) => c.key === categoryKey);
+        if (category?.externalHref) return true;
+        return (SUBMENU_BY_CATEGORY[categoryKey] || []).some((item) => canShowSidebarMenu(user, item));
+      }),
     [categoryOrder, user]
   );
 
@@ -245,13 +247,22 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
       .filter((item) => item && canShowSidebarMenu(user, item));
   }, [activeCategory, itemOrdersByCategory, user]);
 
-  const handleCategoryClick = useCallback((categoryKey) => {
-    setActiveCategory((prev) => {
-      const next = prev === categoryKey ? null : categoryKey;
-      setSavedSidebar2LevelConfigLocally({ activeCategory: next });
-      return next;
-    });
-  }, []);
+  const handleCategoryClick = useCallback(
+    (categoryKey) => {
+      const category = CATEGORY_ITEMS.find((c) => c.key === categoryKey);
+      if (category?.externalHref) {
+        window.open(category.externalHref, '_blank', 'noopener,noreferrer');
+        onCloseDrawer?.();
+        return;
+      }
+      setActiveCategory((prev) => {
+        const next = prev === categoryKey ? null : categoryKey;
+        setSavedSidebar2LevelConfigLocally({ activeCategory: next });
+        return next;
+      });
+    },
+    [onCloseDrawer]
+  );
 
   const handleDragEnd = useCallback(() => {
     draggedToRef.current = null;
@@ -347,15 +358,18 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
           {visibleCategoryOrder.map((categoryKey) => {
             const category = CATEGORY_ITEMS.find((c) => c.key === categoryKey);
             if (!category) return null;
-            const isActive = activeCategory === category.key;
+            const isActive = !category.externalHref && activeCategory === category.key;
+            const categoryTitle = category.externalHref
+              ? `${category.label} — 클릭 시 원격지원 안내(새 창)`
+              : category.label;
             return (
               <div key={category.key} className="sidebar-category-wrap">
                 <button
                   type="button"
-                  className={`sidebar-category-button ${isActive ? 'sidebar-category-button-active' : ''}`}
+                  className={`sidebar-category-button${category.externalHref ? ' sidebar-category-button-external' : ''} ${isActive ? 'sidebar-category-button-active' : ''}`}
                   onClick={() => handleCategoryClick(category.key)}
-                  title={category.label}
-                  aria-label={category.label}
+                  title={categoryTitle}
+                  aria-label={categoryTitle}
                 >
                   <span className="material-symbols-outlined">{category.icon}</span>
                 </button>
