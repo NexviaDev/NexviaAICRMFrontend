@@ -9,6 +9,8 @@ export const CRM_PUSH_TOKEN_KEY = 'crm_fcm_push_token';
 export const CRM_PUSH_DEVICE_ID_KEY = 'crm_push_device_id';
 /** 푸시 등록 시점 로그인 사용자 — 계정 전환·로그아웃 검증용 */
 export const CRM_PUSH_OWNER_USER_ID_KEY = 'crm_push_owner_user_id';
+/** 로그인 직후 자동 알림 허용 요청(세션당 사용자 1회) */
+const CRM_PUSH_AUTO_ENABLE_KEY = 'crm_push_auto_enable_user';
 
 const PUSH_META_DB = 'nexvia_push';
 const PUSH_META_STORE = 'meta';
@@ -218,6 +220,30 @@ export function shouldShowPushForCurrentSession(data = {}) {
   return true;
 }
 
+function shouldAutoEnablePushOnLogin(userId) {
+  try {
+    return sessionStorage.getItem(CRM_PUSH_AUTO_ENABLE_KEY) !== String(userId);
+  } catch {
+    return true;
+  }
+}
+
+function markAutoEnablePushOnLogin(userId) {
+  try {
+    sessionStorage.setItem(CRM_PUSH_AUTO_ENABLE_KEY, String(userId));
+  } catch {
+    /* ignore */
+  }
+}
+
+function clearAutoEnablePushOnLoginMarker() {
+  try {
+    sessionStorage.removeItem(CRM_PUSH_AUTO_ENABLE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 /** 로그인 사용자와 푸시 등록 동기화 — 계정 전환 시 이전 계정 토큰을 현재 계정으로 이전 */
 export async function syncPushRegistrationForSession(user) {
   const sessionUserId = String(user?._id || user?.id || '').trim();
@@ -229,8 +255,31 @@ export async function syncPushRegistrationForSession(user) {
     return { ok: false, reason: 'not-logged-in' };
   }
 
-  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') {
+  const permission =
+    typeof Notification !== 'undefined' ? Notification.permission : 'unsupported';
+
+  if (permission === 'denied') {
     if (getStoredPushToken()) await clearLocalPushRegistration();
+    emitPushStatusChange(await getPushNotificationStatus());
+    return { ok: false, reason: 'denied' };
+  }
+
+  /** 로그인 직후: 사이드바 알람 버튼과 동일 — 브라우저·스마트폰 알림 허용 팝업 */
+  if (permission === 'default') {
+    if (!shouldAutoEnablePushOnLogin(sessionUserId)) {
+      await writePushSessionMeta(sessionUserId, sessionCompanyId);
+      emitPushStatusChange(await getPushNotificationStatus());
+      return { ok: true, registered: false, skipped: 'auto-prompt-already' };
+    }
+    markAutoEnablePushOnLogin(sessionUserId);
+    const result = await enablePushNotifications({ forceRefresh: false });
+    await writePushSessionMeta(sessionUserId, sessionCompanyId);
+    emitPushStatusChange(await getPushNotificationStatus());
+    return result;
+  }
+
+  if (permission !== 'granted') {
+    await writePushSessionMeta(sessionUserId, sessionCompanyId);
     return { ok: false, reason: 'no-permission' };
   }
 
@@ -260,7 +309,9 @@ export async function syncPushRegistrationForSession(user) {
   }
 
   await writePushSessionMeta(sessionUserId, sessionCompanyId);
-  return { ok: true, registered: false };
+  const result = await enablePushNotifications({ forceRefresh: false });
+  emitPushStatusChange(await getPushNotificationStatus());
+  return result;
 }
 
 /** 로그아웃 시 — crm_token 삭제 전에 호출. UI는 즉시 전환하고 푸시 정리는 백그라운드. */
@@ -270,6 +321,7 @@ export function clearPushSessionOnLogout() {
 
   setStoredPushToken('');
   setStoredPushOwnerUserId('');
+  clearAutoEnablePushOnLoginMarker();
   void writePushSessionMeta('', '');
 
   emitPushStatusChange({
