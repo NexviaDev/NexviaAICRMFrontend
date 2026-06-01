@@ -13,6 +13,7 @@ import {
 } from '../lib/list-templates';
 import './product-list.css';
 import './product-list-responsive.css';
+import '@/shared/crm-list-sheet-table.css';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import ListPaginationButtons from '@/components/list-pagination-buttons/list-pagination-buttons';
 
@@ -929,7 +930,9 @@ export default function ProductList({
             )}
           </div>
           <div className="table-wrap">
-            <table className="data-table product-list-table">
+            <div className="crm-list-sheet-scroll">
+            <div className="crm-list-sheet-table-wrap">
+            <table className="data-table product-list-table crm-list-sheet">
               <thead>
                 <tr>
                   <th className="pl-th-checkbox" scope="col" aria-label="현재 페이지 전체 선택">
@@ -980,7 +983,7 @@ export default function ProductList({
                   sortedItems.map((row, rowIdx) => (
                     <tr
                       key={row._id}
-                      className={`${isSearchModal ? 'product-list-row--search-modal-pick' : 'product-list-row-clickable'} ${row.status === 'EndOfLife' ? 'product-list-row-eol' : ''}`}
+                      className={`${isSearchModal ? 'product-list-row--search-modal-pick' : 'product-list-row-clickable'} ${row.status === 'EndOfLife' ? 'product-list-row-eol' : ''} ${rowIdx % 2 === 0 ? 'crm-list-sheet-row--stripe-a' : 'crm-list-sheet-row--stripe-b'}`}
                       onClick={(e) => {
                         if (isSearchModal) handleRowCheckboxClick(e, rowIdx, row._id);
                         else openDetail(row);
@@ -1059,6 +1062,8 @@ export default function ProductList({
                 )}
               </tbody>
             </table>
+            </div>
+            </div>
           </div>
           {!isSearchModal ? (
             <div className="pagination-bar">

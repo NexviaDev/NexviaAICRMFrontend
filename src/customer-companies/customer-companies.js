@@ -20,6 +20,7 @@ import {
 } from './customer-companies-list-cells';
 import './customer-companies.css';
 import './customer-companies-responsive.css';
+import '@/shared/crm-list-sheet-table.css';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import ListPaginationButtons from '@/components/list-pagination-buttons/list-pagination-buttons';
 import * as XLSX from 'xlsx';
@@ -1087,7 +1088,9 @@ export default function CustomerCompanies({
             )}
           </div>
           <div className="table-wrap">
-            <table className="data-table">
+            <div className="crm-list-sheet-scroll">
+            <div className="crm-list-sheet-table-wrap">
+            <table className="data-table crm-list-sheet">
               <colgroup>
                 <col style={{ width: '3rem' }} />
                 {displayColumns.map((col) => (
@@ -1150,7 +1153,11 @@ export default function CustomerCompanies({
                   <tr><td colSpan={colSpan + 1} className="text-center">등록된 고객사가 없습니다.</td></tr>
                 ) : (
                   sortedItems.map((row, idx) => (
-                    <tr key={row._id} className="customer-companies-row-clickable" onClick={() => openDetailModal(row)}>
+                    <tr
+                      key={row._id}
+                      className={`customer-companies-row-clickable ${idx % 2 === 0 ? 'crm-list-sheet-row--stripe-a' : 'crm-list-sheet-row--stripe-b'}`}
+                      onClick={() => openDetailModal(row)}
+                    >
                       <td
                         className="cc-td-check"
                         onClick={(e) => e.stopPropagation()}
@@ -1236,6 +1243,8 @@ export default function CustomerCompanies({
                 )}
               </tbody>
             </table>
+            </div>
+            </div>
           </div>
           {!isSearchModal ? (
           <div className="pagination-bar">

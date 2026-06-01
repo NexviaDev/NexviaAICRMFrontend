@@ -263,17 +263,25 @@
   min-height: 0;
 }
 
+/* 우측 패널: 래퍼는 레이아웃에 참여하지 않음 */
+.contact-detail-body:not(.contact-detail-body--center) .contact-detail-center-aside,
+.contact-detail-body:not(.contact-detail-body--center) .contact-detail-center-main {
+  display: contents;
+}
+
 .contact-detail-body--center {
   display: grid;
-  grid-template-columns: minmax(0, 1.18fr) minmax(24rem, 0.9fr);
-  grid-template-rows: auto auto auto minmax(0, 1fr);
-  column-gap: 1.25rem;
-  row-gap: 1.25rem;
+  grid-template-columns: minmax(16.5rem, 32%) minmax(0, 1fr);
+  gap: 1rem;
   align-items: start;
   margin-bottom: 0;
+  padding: 1rem 1.2rem 1.25rem;
+  background: #eef2f7;
   overflow-x: hidden;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  flex: 1;
+  min-height: 0;
 }
 
 .contact-detail-profile {
@@ -440,8 +448,6 @@
 
 .contact-detail-body--center .contact-detail-main-card.customer-company-detail-card {
   margin-bottom: 0;
-  grid-column: 1;
-  grid-row: 1;
 }
 
 @media (min-width: 640px) {
@@ -751,51 +757,9 @@
   white-space: nowrap;
 }
 
-/* 증서 · 자료 (Drive) - 고객사 상세와 동일: 배경/테두리 없음, Drive 구간만 살짝 테두리 */
-.contact-detail-panel .customer-company-detail-section.register-sale-docs {
-  padding: 0;
-  margin: 0 0 2rem;
-}
-
-.contact-detail-panel .customer-company-detail-section.register-sale-docs .customer-company-detail-section-head {
-  margin-bottom: 0.75rem;
-  padding: 0;
-  background: none;
-  border: none;
-  box-shadow: none;
-}
-
-.contact-detail-panel .customer-company-detail-section.register-sale-docs .customer-company-detail-section-title {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--text);
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.contact-detail-panel .customer-company-detail-section.register-sale-docs .customer-company-detail-section-title .material-symbols-outlined {
-  color: var(--primary);
-  font-size: 1.25rem;
-}
-
-.contact-detail-panel .customer-company-detail-section.register-sale-docs .customer-company-detail-btn-all {
-  padding: 0.35rem;
-  border-radius: 0.4rem;
-  font-size: 1.1rem;
-  background: none;
-  color: var(--text);
-  border: none;
-  box-shadow: none;
-  transition: color 0.2s;
-}
-
-.contact-detail-panel .customer-company-detail-section.register-sale-docs .customer-company-detail-btn-all:hover:not(:disabled) {
-  color: var(--primary);
-}
-
-.contact-detail-panel .customer-company-detail-section.register-sale-docs .customer-company-detail-btn-all:disabled {
-  opacity: 0.5;
+/* 증서 · 자료 — 공통 스타일은 register-sale-docs-drive.css (crm-drive-storage-*) */
+.contact-detail-panel .crm-drive-storage-section {
+  margin-bottom: 2rem;
 }
 
 .contact-detail-panel .register-sale-docs-embed-wrap,
@@ -1738,68 +1702,283 @@
   background: var(--pastel-peach);
 }
 
-/* 상세 모달 2열 레이아웃: 좌측 정보/세일즈/자료, 우측 업무 기록 */
-.contact-detail-body--center .contact-detail-custom-fields {
-  grid-column: 1;
-  grid-row: 2;
-  min-height: 0;
-  max-height: min(24dvh, 14rem);
-  overflow-x: hidden;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-.contact-detail-body--center .contact-detail-sales-section {
-  grid-column: 1;
-  grid-row: 3;
-}
-
-.contact-detail-body--center .contact-detail-drive-section {
-  grid-column: 1;
-  grid-row: 4;
-}
-
-.contact-detail-body--center .contact-detail-section--journal-column {
-  grid-column: 2;
-  grid-row: 1 / span 4;
-  align-self: stretch;
-  min-height: 100%;
-  margin-bottom: 0;
+/* ── 가운데 모달 2열: 좌 프로필·필드·자료 / 우 업무 기록 ── */
+.contact-detail-center-aside {
   display: flex;
   flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
 }
 
-.contact-detail-body--center .contact-detail-section--journal-column .contact-detail-summary-card,
-.contact-detail-body--center .contact-detail-section--journal-column .contact-detail-journal-input-wrap {
-  flex-shrink: 0;
+.contact-detail-center-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
 }
 
-.contact-detail-body--center .contact-detail-section--journal-column .contact-detail-timeline {
-  flex: 0 0 auto;
-  min-height: auto;
+.contact-detail-body--center .contact-detail-main-card,
+.contact-detail-body--center .contact-detail-custom-fields,
+.contact-detail-body--center .customer-company-detail-section,
+.contact-detail-body--center .contact-detail-section--journal-column {
+  background: #fff;
+  border: 1px solid rgba(78, 121, 167, 0.12);
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 3px rgba(29, 40, 58, 0.05);
+  margin-bottom: 0;
+}
+
+.contact-detail-body--center .contact-detail-main-card.customer-company-detail-card {
+  padding: 1.25rem 1rem 1rem;
+}
+
+.contact-detail-body--center .contact-detail-custom-fields {
+  padding: 0.85rem 1rem;
+  max-height: none;
   overflow: visible;
 }
 
-.contact-detail-body--center .customer-company-detail-section.contact-detail-sales-section,
-.contact-detail-body--center .customer-company-detail-section.contact-detail-drive-section,
-.contact-detail-body--center .contact-detail-section.contact-detail-section--journal-column {
+.contact-detail-body--center .customer-company-detail-section {
+  padding: 0.9rem 1rem 1rem;
+}
+
+.contact-detail-body--center .customer-company-detail-section-head {
+  margin-bottom: 0.65rem;
+}
+
+.contact-detail-body--center .customer-company-detail-section-head .customer-company-detail-section-title,
+.contact-detail-body--center .customer-company-detail-section-title {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: #2c4255;
+}
+
+.contact-detail-body--center .customer-company-detail-section-title .material-symbols-outlined {
+  font-size: 1.05rem;
+  color: #4e79a7;
+}
+
+.contact-detail-body--center .customer-company-detail-btn-sales-add {
+  color: #4e79a7;
+  font-weight: 600;
+}
+
+.contact-detail-body--center .customer-company-detail-employees-empty,
+.contact-detail-body--center .customer-company-detail-product-sales-preview {
+  background: #f5f8fb;
+  border: 1px solid rgba(78, 121, 167, 0.1);
+  border-radius: 0.5rem;
+  padding: 0.65rem 0.75rem;
+  margin: 0;
+}
+
+.contact-detail-body--center .crm-drive-storage-body {
+  background: #fafbfd;
+}
+
+.contact-detail-body--center .crm-drive-storage-dropzone {
+  background: #fff;
+}
+
+/* 프로필 정보 표 (이름·연락처·이메일) */
+.contact-detail-profile-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.contact-detail-profile-table th {
+  width: 4.75rem;
+  padding: 0.5rem 0.65rem 0.5rem 0;
+  text-align: left;
+  vertical-align: middle;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #64748b;
+  white-space: nowrap;
+  border-bottom: 1px solid rgba(78, 121, 167, 0.08);
+}
+
+.contact-detail-profile-table td {
+  padding: 0.5rem 0;
+  vertical-align: middle;
+  color: #1e3344;
+  border-bottom: 1px solid rgba(78, 121, 167, 0.08);
+}
+
+.contact-detail-profile-table tr:last-child th,
+.contact-detail-profile-table tr:last-child td {
+  border-bottom: none;
+}
+
+.contact-detail-profile-name-wrap {
+  position: relative;
+  max-width: 100%;
+}
+
+.contact-detail-profile-name-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.contact-detail-profile-name-link .customer-company-detail-name {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #4e79a7;
+}
+
+.contact-detail-profile-contact-cell {
+  width: 100%;
+}
+
+.contact-detail-profile-plain {
+  font-size: 0.875rem;
+  color: #334155;
+  word-break: break-word;
+}
+
+.contact-detail-main-card--center .customer-company-detail-info {
+  width: 100%;
+}
+
+.customer-company-detail-meta--center-hidden {
+  display: none !important;
+}
+
+.contact-detail-body--center .contact-detail-section--journal-column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem 1.1rem 1.1rem;
+  min-height: 0;
+}
+
+.contact-detail-body--center .contact-detail-section-head {
   margin-bottom: 0;
+}
+
+.contact-detail-body--center .contact-detail-section-head h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #2c4255;
+}
+
+.contact-detail-body--center .contact-detail-section-badge {
+  background: #e8eef5;
+  color: #4e79a7;
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.contact-detail-body--center .contact-detail-summary-card {
+  background: #f5f8fb;
+  border: 1px solid rgba(78, 121, 167, 0.1);
+  border-radius: 0.55rem;
+  padding: 0.85rem 0.95rem;
+}
+
+.contact-detail-body--center .contact-detail-journal-input-wrap {
+  background: #fafbfd;
+  border: 1px solid rgba(78, 121, 167, 0.1);
+  border-radius: 0.55rem;
+  padding: 0.85rem;
+}
+
+.contact-detail-body--center .contact-detail-journal-datetime,
+.contact-detail-body--center .contact-detail-journal-select,
+.contact-detail-body--center .contact-detail-journal-input {
+  border-color: rgba(78, 121, 167, 0.18);
+  background: #fff;
+}
+
+.contact-detail-body--center .contact-detail-journal-audio-drop {
+  border-color: rgba(78, 121, 167, 0.16);
+  background: #fff;
+}
+
+.contact-detail-body--center .contact-detail-save-note-btn {
+  background: #4e79a7;
+}
+
+.contact-detail-body--center .contact-detail-journal-audio-btn {
+  background: #eef4fa;
+  color: #4e79a7;
+  border-color: rgba(78, 121, 167, 0.22);
+}
+
+.contact-detail-timeline-heading {
+  display: none;
+  margin: 0.15rem 0 0;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #4e79a7;
+}
+
+.contact-detail-body--center .contact-detail-timeline-heading {
+  display: block;
+}
+
+.contact-detail-body--center .contact-detail-timeline {
+  padding-left: 0;
+  padding-bottom: 0.5rem;
+}
+
+.contact-detail-body--center .contact-detail-timeline::before {
+  display: none;
+}
+
+.contact-detail-body--center .contact-detail-timeline-item {
+  gap: 0.75rem;
+  margin-bottom: 0.85rem;
+  padding: 0.75rem 0.85rem;
+  background: #fafbfd;
+  border: 1px solid rgba(78, 121, 167, 0.1);
+  border-radius: 0.55rem;
+}
+
+.contact-detail-body--center .contact-detail-timeline-icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  background: #4e79a7;
+  border: none;
+}
+
+.contact-detail-body--center .contact-detail-timeline-icon .material-symbols-outlined {
+  font-size: 1rem;
+  color: #fff;
+}
+
+.contact-detail-body--center .contact-detail-timeline-meta time {
+  margin-left: auto;
+  text-transform: none;
+  font-size: 0.75rem;
+  color: #7a8fa3;
+}
+
+.contact-detail-inner--center .contact-detail-header {
+  background: #fff;
+  border-bottom: 1px solid rgba(78, 121, 167, 0.12);
+  padding: 0.85rem 1.2rem;
+}
+
+.contact-detail-inner--center .contact-detail-header-title .material-symbols-outlined {
+  color: #4e79a7;
 }
 
 @media (max-width: 1180px) {
   .contact-detail-body--center {
-    display: flex;
-    flex-direction: column;
-    row-gap: 0;
-    column-gap: 0;
+    grid-template-columns: 1fr;
   }
 
-  .contact-detail-body--center .contact-detail-custom-fields {
-    max-height: none;
-  }
-
-  .contact-detail-body--center .contact-detail-section--journal-column .contact-detail-timeline {
-    overflow: visible;
+  .contact-detail-body--center .contact-detail-section--journal-column {
+    min-height: auto;
   }
 }
 

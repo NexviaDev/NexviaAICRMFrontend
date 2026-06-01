@@ -314,13 +314,13 @@
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  -webkit-overflow-scrolling: touch;
+  overflow: visible;
 }
 
 /*
  * 데스크톱 메인 제품 목록(layout fullheight):
  * - 상단 page-header(검색·설정)·상단 툴바·페이지네이션은 고정
- * - 세로·가로 스크롤은 .table-wrap 한 곳만 → 셀 색/반투명 열이 스크롤 경계에서 어긋나지 않도록 isolation + 배경
+ * - 세로·가로 스크롤은 .crm-list-sheet-scroll 한 곳만 → 셀 색/반투명 열이 스크롤 경계에서 어긋나지 않도록 isolation + 배경
  */
 @media (min-width: 769px) {
   .product-list-page:not(.product-list-page--search-modal) {
@@ -371,9 +371,16 @@
   .product-list-page:not(.product-list-page--search-modal) .table-wrap {
     flex: 1;
     min-height: 0;
-    overflow: auto;
+    overflow: visible;
     background: var(--card);
     isolation: isolate;
+  }
+
+  .product-list-page:not(.product-list-page--search-modal) .crm-list-sheet-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .product-list-page:not(.product-list-page--search-modal) .pagination-bar {
@@ -382,13 +389,8 @@
   }
 }
 
-.product-list-page .product-list-table {
-  width: max-content;
-  min-width: 100%;
+.product-list-page .product-list-table.crm-list-sheet {
   table-layout: auto;
-  /* collapse + sticky th 조합에서 본문이 헤더 위로 겹쳐 보이는 브라우저 이슈 완화 */
-  border-collapse: separate;
-  border-spacing: 0;
 }
 
 .product-list-page .product-list-table th:not(.pl-th-checkbox),
@@ -400,34 +402,10 @@
   min-width: 11rem;
 }
 
-.product-list-page .data-table {
-  font-size: 0.8125rem;
-}
-
-.product-list-page .data-table th {
-  padding: 0.45rem 0.85rem;
-  text-align: left;
-  font-size: 0.65rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
-  background: var(--bg-light);
-}
-
-.product-list-page .data-table td {
-  padding: 0.4rem 0.85rem;
-  border-top: 1px solid var(--card-border);
-}
-
-/* sticky 헤더(z-index 높음) 아래로 본문 셀이 그려지도록 쌓임 순서 고정 */
-.product-list-page .product-list-table tbody td {
+/* sticky 헤더(z-index) 아래로 본문 셀이 그려지도록 */
+.product-list-page .crm-list-sheet-scroll .crm-list-sheet tbody td {
   position: relative;
   z-index: 0;
-}
-
-.product-list-page .data-table tbody tr:hover {
-  background: var(--bg-light);
 }
 
 .product-list-page .btn-primary {
@@ -462,21 +440,20 @@
 }
 .product-list-page .list-template-drag-handle {
   font-size: 0.9rem;
-  color: var(--text-muted);
   cursor: grab;
 }
 .product-list-page .list-template-drag-handle:active {
   cursor: grabbing;
 }
-.product-list-page .data-table th.list-template-drag-over {
-  background: var(--primary-pastel, #e8eaf6);
+.product-list-page .crm-list-sheet.data-table thead th.list-template-drag-over {
+  background: #3d6289;
 }
 .product-list-page .list-template-th-sortable {
   cursor: pointer;
   user-select: none;
 }
-.product-list-page .list-template-th-sortable:hover {
-  color: var(--text);
+.product-list-page .crm-list-sheet thead th.list-template-th-sortable:hover {
+  color: #fff;
 }
 .product-list-page .list-template-sort-icon {
   font-size: 0.9rem;
@@ -484,94 +461,130 @@
   vertical-align: middle;
 }
 
-/* 직접 판매 묶음: 소비자가 + 순 마진 */
-.product-list-page .data-table th.pl-col--direct,
-.product-list-page .data-table td.pl-col--direct {
-  background: rgba(167, 212, 181, 0.2);
+/* 제품 목록: 아주 약한 셀 구분선 */
+.product-list-page .crm-list-sheet.data-table thead th,
+.product-list-page .crm-list-sheet.data-table tbody td {
+  border-right: 1px solid rgba(78, 121, 167, 0.07);
+  border-bottom: 1px solid rgba(78, 121, 167, 0.07);
 }
 
-/* 유통 묶음: 유통가 + 유통시 순 마진 */
-.product-list-page .data-table th.pl-col--channel,
-.product-list-page .data-table td.pl-col--channel {
-  background: rgba(244, 196, 160, 0.26);
+.product-list-page .crm-list-sheet.data-table thead th {
+  border-bottom: 1px solid var(--crm-list-sheet-header-border);
 }
 
-.product-list-page .data-table tbody tr:hover td.pl-col--direct {
-  background: rgba(167, 212, 181, 0.3);
+.product-list-page .crm-list-sheet.data-table tbody tr:last-child td {
+  border-bottom: 1px solid rgba(78, 121, 167, 0.07);
 }
 
-.product-list-page .data-table tbody tr:hover td.pl-col--channel {
-  background: rgba(244, 196, 160, 0.34);
+/* 직접 판매(소비자가·순 마진) / 유통(유통가·유통시 순 마진) — 줄무늬 없음, 행마다 동일 배경 */
+.product-list-page .crm-list-sheet thead th.pl-col--direct {
+  background: #4a6d62;
 }
 
-.product-list-page .data-table th.pl-col--direct,
-.product-list-page .data-table th.pl-col--channel {
-  color: var(--text-muted);
+.product-list-page .crm-list-sheet thead th.pl-col--channel {
+  background: #6a5d4e;
+  border-left: 1px solid rgba(255, 255, 255, 0.18);
 }
 
-/* 세로 스크롤 시 열 이름(첫 행) 고정 — 스크롤 상위는 .table-wrap(메인·모달 공통) */
+.product-list-page .crm-list-sheet tbody tr.crm-list-sheet-row--stripe-a td.pl-col--direct,
+.product-list-page .crm-list-sheet tbody tr.crm-list-sheet-row--stripe-b td.pl-col--direct {
+  background: rgba(167, 212, 181, 0.28) !important;
+}
+
+.product-list-page .crm-list-sheet tbody tr.crm-list-sheet-row--stripe-a td.pl-col--channel,
+.product-list-page .crm-list-sheet tbody tr.crm-list-sheet-row--stripe-b td.pl-col--channel {
+  background: rgba(244, 196, 160, 0.22) !important;
+}
+
+.product-list-page .crm-list-sheet tbody td.pl-col--channel {
+  border-left: 1px solid rgba(78, 121, 167, 0.1);
+}
+
+.product-list-page .crm-list-sheet tbody tr:hover td.pl-col--direct {
+  background: rgba(167, 212, 181, 0.38) !important;
+}
+
+.product-list-page .crm-list-sheet tbody tr:hover td.pl-col--channel {
+  background: rgba(244, 196, 160, 0.32) !important;
+}
+
+/* 세로 스크롤 시 열 이름(첫 행) 고정 */
 @media (min-width: 769px) {
-  .product-list-page .product-list-table thead th {
+  .product-list-page .crm-list-sheet-scroll .crm-list-sheet thead th {
     position: sticky;
     top: 0;
     z-index: 20;
-    box-shadow: 0 1px 0 0 var(--card-border);
-    /* 반투명 열과 무관하게 본문이 비치지 않도록 */
     background-clip: padding-box;
+    box-shadow: 0 1px 0 rgba(78, 121, 167, 0.35);
   }
 
-  .product-list-page .product-list-table thead th.pl-th-checkbox {
+  .product-list-page .crm-list-sheet-scroll .crm-list-sheet thead th.pl-th-checkbox {
     z-index: 21;
-    background: var(--bg-light);
+    background: var(--crm-list-sheet-header, #4e79a7);
   }
 
-  .product-list-page .product-list-table thead th.pl-col--direct {
+  .product-list-page .crm-list-sheet-scroll .crm-list-sheet thead th.pl-col--direct {
     z-index: 21;
-    background: linear-gradient(to bottom, rgba(167, 212, 181, 0.45), rgba(167, 212, 181, 0.45)), var(--bg-light);
+    background: #4a6d62;
   }
 
-  .product-list-page .product-list-table thead th.pl-col--channel {
+  .product-list-page .crm-list-sheet-scroll .crm-list-sheet thead th.pl-col--channel {
     z-index: 21;
-    background: linear-gradient(to bottom, rgba(244, 196, 160, 0.5), rgba(244, 196, 160, 0.5)), var(--bg-light);
+    background: #6a5d4e;
   }
 
-  .product-list-page .product-list-table thead th.list-template-drag-over {
-    background: var(--primary-pastel, #e8eaf6);
+  .product-list-page .crm-list-sheet-scroll .crm-list-sheet thead th.list-template-drag-over {
     z-index: 22;
+    background: #3d6289;
   }
 }
 
-.product-list-page--search-modal .product-list-table thead th {
+.product-list-page--search-modal .table-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.product-list-page--search-modal .crm-list-sheet-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.product-list-page--search-modal .crm-list-sheet-scroll .crm-list-sheet thead th {
   position: sticky;
   top: 0;
   z-index: 20;
-  box-shadow: 0 1px 0 0 var(--card-border);
   background-clip: padding-box;
+  box-shadow: 0 1px 0 rgba(78, 121, 167, 0.35);
 }
 
-.product-list-page--search-modal .product-list-table thead th.pl-th-checkbox {
+.product-list-page--search-modal .crm-list-sheet-scroll .crm-list-sheet thead th.pl-th-checkbox {
   z-index: 21;
-  background: var(--bg-light);
+  background: var(--crm-list-sheet-header, #4e79a7);
 }
 
-.product-list-page--search-modal .product-list-table thead th.pl-col--direct {
+.product-list-page--search-modal .crm-list-sheet-scroll .crm-list-sheet thead th.pl-col--direct {
   z-index: 21;
-  background: linear-gradient(to bottom, rgba(167, 212, 181, 0.45), rgba(167, 212, 181, 0.45)), var(--bg-light);
+  background: #4a6d62;
 }
 
-.product-list-page--search-modal .product-list-table thead th.pl-col--channel {
+.product-list-page--search-modal .crm-list-sheet-scroll .crm-list-sheet thead th.pl-col--channel {
   z-index: 21;
-  background: linear-gradient(to bottom, rgba(244, 196, 160, 0.5), rgba(244, 196, 160, 0.5)), var(--bg-light);
+  background: #6a5d4e;
 }
 
 /* 행 선택 · 일괄 삭제 모달 */
-.product-list-page .pl-th-checkbox,
-.product-list-page .pl-td-checkbox {
+.product-list-page .crm-list-sheet thead th.pl-th-checkbox,
+.product-list-page .crm-list-sheet tbody td.pl-td-checkbox {
   width: 2.75rem;
-  text-align: center;
+  text-align: center !important;
   vertical-align: middle;
-  padding-left: 0.5rem;
-  padding-right: 0.25rem;
+  padding-left: 0.35rem !important;
+  padding-right: 0.35rem !important;
 }
 
 .product-list-page .pl-th-checkbox {
@@ -781,15 +794,6 @@
   margin-bottom: 0;
   border-radius: 0;
   box-shadow: none;
-}
-
-.product-list-page--search-modal .table-wrap {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  background: var(--card);
-  isolation: isolate;
-  -webkit-overflow-scrolling: touch;
 }
 
 .product-list-page--search-modal .product-list-search-modal-footer {

@@ -359,3 +359,169 @@ export function RegisterSaleDocsCrmTable({
     </div>
   );
 }
+
+/**
+ * 증서·자료 Drive 저장소 UI — 연락처/고객사/영업기회 등 모달 공통
+ */
+export function CrmDriveStoragePanel({
+  asSection = true,
+  sectionClassName = 'customer-company-detail-section crm-drive-storage-section',
+  ariaLabel = '증서 · 자료',
+  title = '증서 · 자료',
+  showTitleIcon = true,
+  rowCount: rowCountProp,
+  headerSlot = null,
+  headerActions = null,
+  hideAddButton = false,
+  addButtonLabel = '파일 추가',
+  onRequestUpload,
+  uploadDisabled = false,
+  bodyBusy = false,
+  crmListDropActive = false,
+  onDragEnter,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  beforeBody = null,
+  toolbar = null,
+  rows = [],
+  emptyShowSpinner = false,
+  emptyTitle = '파일을 여기에 놓거나 추가하세요',
+  emptyHint = 'Google Drive에 저장되면 제목·수정일·링크가 여기에 표시됩니다',
+  emptyBusyLabel = '업로드 중…',
+  canEmptyActivate = true,
+  onEmptyActivate,
+  onEmptyKeyDown,
+  formatDriveFileDate,
+  driveUploading = false,
+  crmDriveDeletingId = '',
+  onDeleteRow,
+  listTall = false,
+  inlineAlert = null,
+  driveError = '',
+  driveUploadNotice = ''
+}) {
+  const rowCount = rowCountProp ?? (Array.isArray(rows) ? rows.length : 0);
+  const isEmpty = rowCount === 0;
+
+  const defaultEmptyActivate = () => {
+    if (!uploadDisabled && !bodyBusy && onRequestUpload) onRequestUpload();
+  };
+
+  const handleEmptyClick = () => {
+    if (!canEmptyActivate || uploadDisabled || bodyBusy) return;
+    if (onEmptyActivate) onEmptyActivate();
+    else defaultEmptyActivate();
+  };
+
+  const handleEmptyKeyDown = (e) => {
+    if (onEmptyKeyDown) {
+      onEmptyKeyDown(e);
+      return;
+    }
+    if ((e.key === 'Enter' || e.key === ' ') && canEmptyActivate && !uploadDisabled && !bodyBusy) {
+      e.preventDefault();
+      defaultEmptyActivate();
+    }
+  };
+
+  const bodyClass = [
+    'crm-drive-storage-body',
+    crmListDropActive ? 'is-drop-active' : '',
+    bodyBusy ? 'is-busy' : ''
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  const content = (
+    <>
+      {headerSlot || (
+        <div className="customer-company-detail-section-head crm-drive-storage-head">
+          <h3 className="customer-company-detail-section-title">
+            {showTitleIcon ? <span className="material-symbols-outlined">folder</span> : null}
+            {title}
+            {rowCount > 0 ? <span className="crm-drive-storage-count">{rowCount}개</span> : null}
+          </h3>
+          <div className="crm-drive-storage-head-actions">
+            {headerActions}
+            {!hideAddButton && onRequestUpload ? (
+              <button
+                type="button"
+                className="crm-drive-storage-add-btn"
+                onClick={onRequestUpload}
+                disabled={uploadDisabled}
+                title={addButtonLabel}
+                aria-label={addButtonLabel}
+              >
+                <span className="material-symbols-outlined" aria-hidden>
+                  upload_file
+                </span>
+                {addButtonLabel}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      )}
+      {beforeBody}
+      {toolbar}
+      <div
+        className={bodyClass}
+        onDragEnter={onDragEnter}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+      >
+        {inlineAlert ? (
+          <p className="crm-drive-storage-message crm-drive-storage-message--error crm-drive-storage-message--inline" role="alert">
+            {inlineAlert}
+          </p>
+        ) : null}
+        {isEmpty ? (
+          <div
+            className={`crm-drive-storage-dropzone${crmListDropActive ? ' is-drop-active' : ''}`}
+            onClick={handleEmptyClick}
+            role={canEmptyActivate ? 'button' : undefined}
+            tabIndex={canEmptyActivate ? 0 : undefined}
+            onKeyDown={canEmptyActivate ? handleEmptyKeyDown : undefined}
+          >
+            <span
+              className={`material-symbols-outlined crm-drive-storage-dropzone-icon${emptyShowSpinner && bodyBusy ? ' crm-drive-storage-dropzone-icon--spin' : ''}`}
+              aria-hidden
+            >
+              {emptyShowSpinner && bodyBusy ? 'progress_activity' : 'cloud_upload'}
+            </span>
+            <span className="crm-drive-storage-dropzone-title">
+              {bodyBusy && emptyShowSpinner ? emptyBusyLabel : emptyTitle}
+            </span>
+            {emptyHint ? <span className="crm-drive-storage-dropzone-hint">{emptyHint}</span> : null}
+          </div>
+        ) : (
+          <div className={`crm-drive-storage-list${listTall ? ' crm-drive-storage-list--tall' : ''}`}>
+            <RegisterSaleDocsCrmTable
+              rows={rows}
+              formatDriveFileDate={formatDriveFileDate}
+              driveUploading={driveUploading}
+              crmDriveDeletingId={crmDriveDeletingId}
+              onDeleteRow={onDeleteRow}
+            />
+          </div>
+        )}
+      </div>
+      {driveError ? (
+        <p className="crm-drive-storage-message crm-drive-storage-message--error">{driveError}</p>
+      ) : null}
+      {driveUploadNotice && !driveError ? (
+        <p className="crm-drive-storage-message crm-drive-storage-message--ok" role="status">
+          {driveUploadNotice}
+        </p>
+      ) : null}
+    </>
+  );
+
+  if (!asSection) return content;
+  return (
+    <section className={sectionClassName} aria-label={ariaLabel}>
+      {content}
+    </section>
+  );
+}

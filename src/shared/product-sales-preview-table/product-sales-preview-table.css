@@ -1,0 +1,123 @@
+.product-sales-preview-table-wrap.customer-company-detail-product-sales-preview {
+  margin-top: 0;
+}
+
+.product-sales-preview-table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-height: min(22rem, 42dvh);
+  overflow-y: auto;
+}
+
+.product-sales-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.product-sales-preview-th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0.45rem 0.5rem;
+  text-align: left;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #64748b;
+  border-bottom: 1px solid rgba(78, 121, 167, 0.14);
+  background: #f5f8fb;
+  white-space: nowrap;
+}
+
+.product-sales-preview-th--qty {
+  width: 3.25rem;
+  text-align: center;
+}
+
+.product-sales-preview-th--date {
+  width: 5.5rem;
+  text-align: right;
+}
+
+.product-sales-preview-data-row {
+  transition: background 0.12s;
+}
+
+.product-sales-preview-data-row:hover {
+  background: #f5f9fc;
+}
+
+.product-sales-preview-data-row--new-block td {
+  border-top: 1px solid rgba(78, 121, 167, 0.2);
+}
+
+.product-sales-preview-td {
+  padding: 0.55rem 0.5rem;
+  vertical-align: middle;
+  border-bottom: 1px solid rgba(78, 121, 167, 0.1);
+  color: #1e3344;
+}
+
+.product-sales-preview-td--product {
+  min-width: 6.5rem;
+}
+
+.product-sales-preview-product-label {
+  display: block;
+  font-weight: 600;
+  color: #2c4255;
+  word-break: break-word;
+}
+
+.product-sales-preview-sale-title {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: #7a8fa3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product-sales-preview-td--meta {
+  font-size: 0.78rem;
+  color: #475569;
+  word-break: break-word;
+}
+
+.product-sales-preview-td--qty {
+  text-align: center;
+}
+
+.product-sales-preview-qty-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.65rem;
+  padding: 0.12rem 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #4e79a7;
+  background: #e8eef5;
+  border-radius: 999px;
+}
+
+.product-sales-preview-td--date {
+  text-align: right;
+  font-size: 0.75rem;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.contact-detail-body--center .product-sales-preview-table-wrap,
+.customer-company-detail-body--center .product-sales-preview-table-wrap {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.contact-detail-body--center .product-sales-preview-th,
+.customer-company-detail-body--center .product-sales-preview-th {
+  background: #f0f4f8;
+}

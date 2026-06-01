@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import AllEmployeesModal from './all-employees-modal/all-employees-modal';
 import AllHistoryModal from './all-history-modal/all-history-modal';
 import ProductSalesModal from '../../shared/product-sales-modal/product-sales-modal';
+import ProductSalesPreviewTable from '../../shared/product-sales-preview-table/product-sales-preview-table';
 import OpportunityModal from '../../sales-pipeline/opportunity-modal/opportunity-modal';
 import ContactDetailModal from '../../customer-company-employees/customer-company-employees-detail-modal/customer-company-employees-detail-modal';
 import SmsDraftModal, { phoneToSmsHref } from '../../customer-company-employees/sms-draft-modal/sms-draft-modal';
@@ -16,6 +17,8 @@ import { getUserVisibleApiError, alertApiError } from '@/lib/api-error';
 import { getStoredCrmUser, isManagerOrAboveRole, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { pingBackendHealth, BACKEND_KEEPALIVE_INTERVAL_MS, BACKEND_KEEPALIVE_INTERVAL_ENABLED } from '@/lib/backend-wake';
 import { uploadJournalAudioFromFile, JOURNAL_AUDIO_CHUNK_THRESHOLD } from '@/lib/upload-journal-audio-from-file';
+import { notifyVoiceTranscriptionUsageChanged, useVoiceTranscriptionUsage } from '@/lib/voice-transcription-usage';
+import VoiceTranscriptionUsagePanel from '@/shared/voice-transcription-usage-panel/voice-transcription-usage-panel';
 import { queueJournalAudioBackgroundJob, useJournalAudioJobWatcher } from '@/lib/journal-audio-background-upload';
 import { splitContentIntoBlocks, formatJournalTextForDisplay } from '@/lib/journal-content-blocks';
 import { pruneDriveUploadedFilesIndex, syncDriveUploadedFilesIndex } from '@/lib/drive-uploaded-files-prune';
@@ -27,7 +30,7 @@ import {
   sanitizeDriveFolderWebViewLink
 } from '@/lib/google-drive-url';
 import {
-  RegisterSaleDocsCrmTable,
+  CrmDriveStoragePanel,
   formatDriveFileDate,
   resolveCompanyDriveMongoRegisteredUrl,
   runDriveDirectFileUpload,
@@ -155,6 +158,13 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
   const [audioUploading, setAudioUploading] = useState(false);
   const [audioUploadProgress, setAudioUploadProgress] = useState(null);
   const [audioJobPollUrl, setAudioJobPollUrl] = useState(null);
+  const {
+    usageStats: voiceUsageStats,
+    loading: voiceUsageLoading,
+    error: voiceUsageError,
+    refresh: refreshVoiceUsage,
+    quotaExceeded: voiceQuotaExceeded
+  } = useVoiceTranscriptionUsage({ pollWhileProcessing: audioUploading || !!audioJobPollUrl });
   const [audioDropActive, setAudioDropActive] = useState(false);
   const [journalError, setJournalError] = useState('');
   const [summaryNotice, setSummaryNotice] = useState(null);
@@ -710,6 +720,8 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
       });
       void fetchHistory();
       void fetchCompanyDetail();
+      void refreshVoiceUsage(true);
+      notifyVoiceTranscriptionUsageChanged();
     },
     onError: (e) => {
       setAudioJobPollUrl(null);
@@ -807,6 +819,10 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
   const uploadAudioForJournal = useCallback(async (filesLike) => {
     const files = Array.from(filesLike || []).filter((f) => f && f instanceof File);
     if (!files.length || !companyId || savingNote || audioUploading) return;
+    if (voiceQuotaExceeded) {
+      setJournalError('이번 달 전사 사용 한도(40시간)에 도달했습니다. AI 음성·업무기록 음성 합산 기준입니다.');
+      return;
+    }
     const accept = /\.(mp3|wav|m4a|webm)$/i;
     const audioTypes = ['audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/x-m4a', 'audio/webm'];
     const file = files.find((f) => accept.test(f.name) || audioTypes.includes(f.type));
@@ -838,18 +854,25 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
       });
       setAudioUploadProgress(null);
       setAudioJobPollUrl(pollUrl);
+      void refreshVoiceUsage(true);
+      notifyVoiceTranscriptionUsageChanged();
       setSummaryNotice({
         type: 'info',
         text:
           '업로드 완료. 서버에서 전사·요약 후 업무 메모로 자동 등록합니다. 다른 작업을 계속하셔도 되며, 브라우저·인터넷이 끊겨도 서버 처리는 이어집니다.'
       });
     } catch (e) {
-      setJournalError(e.message || '음성 업로드 처리에 실패했습니다.');
+      if (e?.code === 'TRANSCRIPTION_QUOTA_EXCEEDED') {
+        setJournalError(e.message || '이번 달 전사 사용 한도(40시간)에 도달했습니다.');
+        void refreshVoiceUsage(true);
+      } else {
+        setJournalError(e.message || '음성 업로드 처리에 실패했습니다.');
+      }
     } finally {
       setAudioUploading(false);
       setAudioUploadProgress(null);
     }
-  }, [audioUploading, companyId, savingNote, journalWorkCategory, journalContactChannel]);
+  }, [audioUploading, companyId, savingNote, journalWorkCategory, journalContactChannel, voiceQuotaExceeded, refreshVoiceUsage]);
 
   const summaryStatusText = {
     idle: '요약 대기',
@@ -935,27 +958,159 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
   const canMutate = isManagerOrAboveRole(getStoredCrmUser()?.role);
   const canDeleteCompany = isAdminOrAboveRole(getStoredCrmUser()?.role);
 
+  const isCenterPresentation = detailPresentation === 'center';
+
+  function renderCompanyMapBlock() {
+    return (
+      <div className="customer-company-detail-card-map-col">
+        <div className="customer-company-detail-card-map">
+          <button
+            type="button"
+            className="customer-company-detail-card-map-btn"
+            onClick={openCompanyOnMap}
+            disabled={!companyId}
+            title={companyId ? '/map으로 이동해 해당 업체를 검색·표시합니다.' : '고객사 정보가 없습니다.'}
+          >
+            {mapEmbedSrc || staticMapPreviewUrl ? (
+              useStaticPreview ? (
+                <img
+                  src={staticMapPreviewUrl}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  draggable={false}
+                  onError={() => setStaticMapLoadFailed(true)}
+                  className="customer-company-detail-card-map-static"
+                />
+              ) : mapEmbedSrcDeferred ? (
+                <iframe
+                  title={`${companyToShow.name || '업체'} 위치 미리보기`}
+                  src={mapEmbedSrcDeferred}
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  className="customer-company-detail-card-map-iframe"
+                />
+              ) : (
+                <div className="customer-company-detail-card-map-loading">
+                  <span className="material-symbols-outlined" aria-hidden>map</span>
+                  <span>지도 불러오는 중…</span>
+                </div>
+              )
+            ) : (
+              <div className="customer-company-detail-card-map-empty">
+                <span className="material-symbols-outlined">map</span>
+                <span>주소/좌표 없음</span>
+              </div>
+            )}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  function renderCompanyNameAndCertPopover({ nameTag: NameTag = 'h1' }) {
+    return (
+      <div className="customer-company-detail-name-wrap contact-detail-profile-name-wrap">
+        <button
+          type="button"
+          ref={companyNameButtonRef}
+          className={`customer-company-detail-name-link${isCenterPresentation ? ' contact-detail-profile-name-link' : ''}`}
+          onClick={() => {
+            if (companyToShow.businessRegistrationCertificateDriveUrl) {
+              window.open(companyToShow.businessRegistrationCertificateDriveUrl, '_blank', 'noopener,noreferrer');
+              return;
+            }
+            setShowRegisteredNamePopover((v) => !v);
+          }}
+          aria-expanded={showRegisteredNamePopover}
+          aria-haspopup="dialog"
+          aria-label="회사명 클릭 시 등록된 사업자 등록증 보기"
+        >
+          <NameTag className={`customer-company-detail-name${isCenterPresentation ? ' contact-detail-name-in-card' : ''}`}>
+            {companyToShow.name || '—'}
+          </NameTag>
+          <span className="material-symbols-outlined customer-company-detail-name-link-icon">info</span>
+        </button>
+        {showRegisteredNamePopover && (
+          <div
+            ref={registeredNamePopoverRef}
+            className="customer-company-detail-registered-name-popover customer-company-detail-certificate-popover"
+            role="dialog"
+            aria-label="등록된 사업자 등록증"
+          >
+            <div className="customer-company-detail-registered-name-popover-title">등록된 사업자 등록증</div>
+            {companyToShow.businessRegistrationCertificateUrl ? (
+              <div className="customer-company-detail-certificate-body">
+                {!certificateImageError && (
+                  <img
+                    src={companyToShow.businessRegistrationCertificateUrl}
+                    alt="사업자 등록증"
+                    className="customer-company-detail-certificate-img"
+                    onError={() => setCertificateImageError(true)}
+                  />
+                )}
+                {certificateImageError && (
+                  <p className="customer-company-detail-certificate-doc-hint">문서(PDF)는 아래 링크로 확인하세요.</p>
+                )}
+                <a
+                  href={companyToShow.businessRegistrationCertificateUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="customer-company-detail-certificate-link"
+                >
+                  새 탭에서 보기
+                  <span className="material-symbols-outlined">open_in_new</span>
+                </a>
+              </div>
+            ) : (
+              <p className="customer-company-detail-certificate-empty">등록된 사업자 등록증이 없습니다.</p>
+            )}
+            <button
+              type="button"
+              className="customer-company-detail-registered-name-popover-close"
+              onClick={() => setShowRegisteredNamePopover(false)}
+              aria-label="닫기"
+            >
+              <span className="material-symbols-outlined">close</span>
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   function renderJournalAside(extraAsideClass) {
     return (
       <aside
         className={`ccd-center-journal${extraAsideClass ? ` ${extraAsideClass}` : ''}`}
         aria-label="지원 및 업무 기록"
       >
-        <section className="customer-company-detail-section customer-company-detail-section--journal-rail">
-          <div className="customer-company-detail-section-head">
-            <h3 className="customer-company-detail-section-title">
-              <span className="material-symbols-outlined">history_edu</span>
-              지원 및 업무 기록
-            </h3>
-            {!loadingHistory && historyItems.length > 0 && (
-              <button
-                type="button"
-                className="customer-company-detail-btn-all"
-                onClick={() => setShowAllHistoryModal(true)}
-              >
-                전체 보기
-                <span className="material-symbols-outlined">arrow_forward</span>
-              </button>
+        <section className={`customer-company-detail-section customer-company-detail-section--journal-rail${isCenterPresentation ? ' ccd-journal-section--center' : ''}`}>
+          <div className={`customer-company-detail-section-head${isCenterPresentation ? ' ccd-journal-section-head--center' : ''}`}>
+            {isCenterPresentation ? (
+              <>
+                <h3 className="ccd-journal-title-plain">지원 및 업무 기록</h3>
+                <span className="ccd-section-badge">
+                  {loadingHistory ? '…' : `${historyItems.length}건`}
+                </span>
+              </>
+            ) : (
+              <>
+                <h3 className="customer-company-detail-section-title">
+                  <span className="material-symbols-outlined">history_edu</span>
+                  지원 및 업무 기록
+                </h3>
+                {!loadingHistory && historyItems.length > 0 && (
+                  <button
+                    type="button"
+                    className="customer-company-detail-btn-all"
+                    onClick={() => setShowAllHistoryModal(true)}
+                  >
+                    전체 보기
+                    <span className="material-symbols-outlined">arrow_forward</span>
+                  </button>
+                )}
+              </>
             )}
           </div>
           <div className={`customer-company-detail-summary-card ${companyToShow?.summaryStatus === 'error' ? 'is-error' : ''}`}>
@@ -1083,6 +1238,17 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
               value={journalText}
               onChange={(e) => setJournalText(e.target.value)}
             />
+            <VoiceTranscriptionUsagePanel
+              compact
+              usageStats={voiceUsageStats}
+              loading={voiceUsageLoading}
+              error={voiceUsageError}
+            />
+            {voiceQuotaExceeded ? (
+              <p className="journal-audio-quota-msg">
+                이번 달 전사 한도(40시간)를 모두 사용했습니다. AI 음성·고객사·연락처 업무기록 음성이 합산됩니다.
+              </p>
+            ) : null}
             <input
               ref={audioInputRef}
               type="file"
@@ -1095,11 +1261,11 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
               aria-hidden="true"
             />
             <div
-              className={`customer-company-detail-journal-audio-drop ${audioDropActive ? 'is-dragover' : ''} ${audioUploading ? 'is-uploading' : ''} ${audioJobPollUrl ? 'is-server-processing' : ''}`}
+              className={`customer-company-detail-journal-audio-drop ${audioDropActive ? 'is-dragover' : ''} ${audioUploading ? 'is-uploading' : ''} ${audioJobPollUrl ? 'is-server-processing' : ''}${voiceQuotaExceeded ? ' journal-audio-drop--quota-disabled' : ''}`}
               onDragOver={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                if (!audioUploading && !savingNote) setAudioDropActive(true);
+                if (!audioUploading && !savingNote && !voiceQuotaExceeded) setAudioDropActive(true);
               }}
               onDragLeave={(e) => {
                 e.preventDefault();
@@ -1110,14 +1276,16 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                 e.preventDefault();
                 e.stopPropagation();
                 setAudioDropActive(false);
-                if (!audioUploading && !savingNote && e.dataTransfer?.files?.length) {
+                if (!audioUploading && !savingNote && !voiceQuotaExceeded && e.dataTransfer?.files?.length) {
                   uploadAudioForJournal(e.dataTransfer.files);
                 }
               }}
             >
               <span className="material-symbols-outlined">audio_file</span>
               <span>
-                {audioUploading
+                {voiceQuotaExceeded
+                  ? '이번 달 전사 한도(40시간)에 도달했습니다.'
+                  : audioUploading
                   ? (audioUploadProgress?.total
                     ? `음성 업로드 ${Math.min(100, Math.round((audioUploadProgress.sent / audioUploadProgress.total) * 100))}%…`
                     : '음성 업로드 중…')
@@ -1129,7 +1297,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                 type="button"
                 className="customer-company-detail-journal-audio-btn"
                 onClick={() => audioInputRef.current?.click()}
-                disabled={audioUploading || savingNote}
+                disabled={audioUploading || savingNote || voiceQuotaExceeded}
               >
                 파일 선택
               </button>
@@ -1145,6 +1313,9 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
               </button>
             </div>
           </div>
+          {isCenterPresentation ? (
+            <h4 className="ccd-timeline-heading">타임라인</h4>
+          ) : null}
           <div className="customer-company-detail-timeline">
             {loadingHistory ? (
               <p className="customer-company-detail-timeline-empty">불러오는 중...</p>
@@ -1283,154 +1454,98 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
           )}
 
           <div
-            className={`customer-company-detail-body${detailPresentation === 'center' ? ' customer-company-detail-body--center' : ''}`}
+            className={`customer-company-detail-body${isCenterPresentation ? ' customer-company-detail-body--center' : ''}`}
           >
-            <div className={`ccd-top-pair${detailPresentation === 'center' ? ' ccd-top-pair--split' : ''}`}>
-              <div className="ccd-top-pair-left">
-            <section className="customer-company-detail-card">
-              <div className="customer-company-detail-card-map-col">
-                <div className="customer-company-detail-card-map">
-                  <button
-                    type="button"
-                    className="customer-company-detail-card-map-btn"
-                    onClick={openCompanyOnMap}
-                    disabled={!companyId}
-                    title={companyId ? '/map으로 이동해 해당 업체를 검색·표시합니다.' : '고객사 정보가 없습니다.'}
-                  >
-                    {mapEmbedSrc || staticMapPreviewUrl ? (
-                      useStaticPreview ? (
-                        <img
-                          src={staticMapPreviewUrl}
-                          alt=""
-                          loading="lazy"
-                          decoding="async"
-                          draggable={false}
-                          onError={() => setStaticMapLoadFailed(true)}
-                          className="customer-company-detail-card-map-static"
-                        />
-                      ) : mapEmbedSrcDeferred ? (
-                        <iframe
-                          title={`${companyToShow.name || '업체'} 위치 미리보기`}
-                          src={mapEmbedSrcDeferred}
-                          loading="lazy"
-                          referrerPolicy="no-referrer-when-downgrade"
-                          className="customer-company-detail-card-map-iframe"
-                        />
-                      ) : (
-                        <div className="customer-company-detail-card-map-loading">
-                          <span className="material-symbols-outlined" aria-hidden>map</span>
-                          <span>지도 불러오는 중…</span>
-                        </div>
-                      )
-                    ) : (
-                      <div className="customer-company-detail-card-map-empty">
-                        <span className="material-symbols-outlined">map</span>
-                        <span>주소/좌표 없음</span>
-                      </div>
-                    )}
-                  </button>
+            <aside className="ccd-center-aside">
+            {isCenterPresentation ? (
+              <section className="customer-company-detail-card customer-company-detail-card--center">
+                {renderCompanyMapBlock()}
+                <div className="customer-company-detail-info">
+                  <table className="contact-detail-profile-table ccd-profile-table">
+                    <tbody>
+                      <tr>
+                        <th scope="row">회사명</th>
+                        <td>{renderCompanyNameAndCertPopover({ nameTag: 'span' })}</td>
+                      </tr>
+                      {companyToShow.businessNumber != null && (
+                        <tr>
+                          <th scope="row">사업자번호</th>
+                          <td>
+                            <span className="contact-detail-profile-plain">
+                              {formatBusinessNumber(companyToShow.businessNumber)}
+                            </span>
+                          </td>
+                        </tr>
+                      )}
+                      {companyToShow.representativeName ? (
+                        <tr>
+                          <th scope="row">대표</th>
+                          <td>
+                            <span className="contact-detail-profile-plain">{companyToShow.representativeName}</span>
+                          </td>
+                        </tr>
+                      ) : null}
+                      {companyToShow.industry ? (
+                        <tr>
+                          <th scope="row">업종</th>
+                          <td>
+                            <span className="contact-detail-profile-plain">{companyToShow.industry}</span>
+                          </td>
+                        </tr>
+                      ) : null}
+                      {companyToShow.address ? (
+                        <tr>
+                          <th scope="row">주소</th>
+                          <td>
+                            <span className="contact-detail-profile-plain">{companyToShow.address}</span>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
                 </div>
-              </div>
-              <div className="customer-company-detail-info">
-                <div className="customer-company-detail-name-row">
-                  <div className="customer-company-detail-name-wrap">
-                    <button
-                      type="button"
-                      ref={companyNameButtonRef}
-                      className="customer-company-detail-name-link"
-                      onClick={() => {
-                        if (companyToShow.businessRegistrationCertificateDriveUrl) {
-                          window.open(companyToShow.businessRegistrationCertificateDriveUrl, '_blank', 'noopener,noreferrer');
-                          return;
-                        }
-                        setShowRegisteredNamePopover((v) => !v);
-                      }}
-                      aria-expanded={showRegisteredNamePopover}
-                      aria-haspopup="dialog"
-                      aria-label="회사명 클릭 시 등록된 사업자 등록증 보기"
-                    >
-                      <h1 className="customer-company-detail-name">{companyToShow.name || '—'}</h1>
-                      <span className="material-symbols-outlined customer-company-detail-name-link-icon">info</span>
-                    </button>
-                    {showRegisteredNamePopover && (
-                      <div
-                        ref={registeredNamePopoverRef}
-                        className="customer-company-detail-registered-name-popover customer-company-detail-certificate-popover"
-                        role="dialog"
-                        aria-label="등록된 사업자 등록증"
-                      >
-                        <div className="customer-company-detail-registered-name-popover-title">등록된 사업자 등록증</div>
-                        {companyToShow.businessRegistrationCertificateUrl ? (
-                          <div className="customer-company-detail-certificate-body">
-                            {!certificateImageError && (
-                              <img
-                                src={companyToShow.businessRegistrationCertificateUrl}
-                                alt="사업자 등록증"
-                                className="customer-company-detail-certificate-img"
-                                onError={() => setCertificateImageError(true)}
-                              />
-                            )}
-                            {certificateImageError && (
-                              <p className="customer-company-detail-certificate-doc-hint">문서(PDF)는 아래 링크로 확인하세요.</p>
-                            )}
-                            <a
-                              href={companyToShow.businessRegistrationCertificateUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="customer-company-detail-certificate-link"
-                            >
-                              새 탭에서 보기
-                              <span className="material-symbols-outlined">open_in_new</span>
-                            </a>
+              </section>
+            ) : (
+              <div className="ccd-top-pair">
+                <div className="ccd-top-pair-left">
+                  <section className="customer-company-detail-card">
+                    {renderCompanyMapBlock()}
+                    <div className="customer-company-detail-info">
+                      <div className="customer-company-detail-name-row">
+                        {renderCompanyNameAndCertPopover({ nameTag: 'h1' })}
+                        <span className={`customer-company-detail-status-badge status-${status}`}>{displayStatus}</span>
+                      </div>
+                      <div className="customer-company-detail-meta">
+                        {companyToShow.businessNumber != null && (
+                          <div className="customer-company-detail-meta-item">
+                            <span className="material-symbols-outlined">badge</span>
+                            <span>사업자번호: {formatBusinessNumber(companyToShow.businessNumber)}</span>
                           </div>
-                        ) : (
-                          <p className="customer-company-detail-certificate-empty">등록된 사업자 등록증이 없습니다.</p>
                         )}
-                        <button
-                          type="button"
-                          className="customer-company-detail-registered-name-popover-close"
-                          onClick={() => setShowRegisteredNamePopover(false)}
-                          aria-label="닫기"
-                        >
-                          <span className="material-symbols-outlined">close</span>
-                        </button>
+                        {companyToShow.representativeName && (
+                          <div className="customer-company-detail-meta-item">
+                            <span className="material-symbols-outlined">person</span>
+                            <span>대표: {companyToShow.representativeName}</span>
+                          </div>
+                        )}
+                        {companyToShow.industry && (
+                          <div className="customer-company-detail-meta-item">
+                            <span className="material-symbols-outlined">domain</span>
+                            <span>업종: {companyToShow.industry}</span>
+                          </div>
+                        )}
+                        {companyToShow.address && (
+                          <div className="customer-company-detail-meta-item full">
+                            <span className="material-symbols-outlined">location_on</span>
+                            <span>{companyToShow.address}</span>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                  <span className={`customer-company-detail-status-badge status-${status}`}>{displayStatus}</span>
-                </div>
-                <div className="customer-company-detail-meta">
-                  {companyToShow.businessNumber != null && (
-                    <div className="customer-company-detail-meta-item">
-                      <span className="material-symbols-outlined">badge</span>
-                      <span>사업자번호: {formatBusinessNumber(companyToShow.businessNumber)}</span>
                     </div>
-                  )}
-                  {companyToShow.representativeName && (
-                    <div className="customer-company-detail-meta-item">
-                      <span className="material-symbols-outlined">person</span>
-                      <span>대표: {companyToShow.representativeName}</span>
-                    </div>
-                  )}
-                  {companyToShow.industry && (
-                    <div className="customer-company-detail-meta-item">
-                      <span className="material-symbols-outlined">domain</span>
-                      <span>업종: {companyToShow.industry}</span>
-                    </div>
-                  )}
-                  {companyToShow.address && (
-                    <div className="customer-company-detail-meta-item full">
-                      <span className="material-symbols-outlined">location_on</span>
-                      <span>{companyToShow.address}</span>
-                    </div>
-                  )}
+                  </section>
                 </div>
               </div>
-            </section>
-              </div>
-            </div>
-
-            {detailPresentation === 'center' && renderJournalAside('ccd-center-journal--top-row')}
+            )}
 
             <CustomFieldsDisplay
               definitions={customDefinitions}
@@ -1586,18 +1701,10 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
               </div>
               {loadingProductSales ? (
                 <p className="customer-company-detail-employees-empty">불러오는 중...</p>
-              ) : productSalesList.length === 0 ? (
+              ) : !productSalesList.some((row) => row.stage === 'Won') ? (
                 <p className="customer-company-detail-employees-empty">제품판매 이력이 없습니다.</p>
               ) : (
-                <div className="customer-company-detail-product-sales-preview">
-                  <ul className="customer-company-detail-product-sales-preview-list">
-                    {productSalesList.slice(0, 3).map((row) => (
-                      <li key={row._id} className="customer-company-detail-product-sales-preview-item">
-                        <span className="customer-company-detail-product-sales-preview-title">{row.title || '—'}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                <ProductSalesPreviewTable items={productSalesList} />
               )}
             </section>
             </div>
@@ -1610,7 +1717,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
               aria-hidden={detailPresentation === 'center' && centerMainTab !== 'drive'}
             >
             {/* 증서 · 자료 (Google Drive: [고객사]_[사업자번호] 폴더) */}
-            <section className="customer-company-detail-section register-sale-docs">
+            <>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -1620,24 +1727,16 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                 disabled={driveUploading}
                 aria-hidden="true"
               />
-              <div className="customer-company-detail-section-head">
-                <h3 className="customer-company-detail-section-title">
-                  <span className="material-symbols-outlined">folder</span>
-                  증서 · 자료
-                </h3>
-                <button
-                  type="button"
-                  className="customer-company-detail-btn-all"
-                  onClick={() => { if (!driveUploading && fileInputRef.current) fileInputRef.current.click(); }}
-                  disabled={driveUploading}
-                  title="파일 추가"
-                  aria-label="파일 추가"
-                >
-                  <span className="material-symbols-outlined">add</span>
-                </button>
-              </div>
-              <div
-                className={`register-sale-docs-crm-uploads ${crmListDropActive ? 'register-sale-docs-crm-uploads--drop-active' : ''} ${driveUploading ? 'register-sale-docs-crm-uploads--disabled' : ''}`}
+              <CrmDriveStoragePanel
+                rowCount={crmDriveUploadsSorted.length}
+                rows={crmDriveUploadsSorted}
+                onRequestUpload={() => {
+                  if (!driveUploading && fileInputRef.current) fileInputRef.current.click();
+                }}
+                uploadDisabled={driveUploading}
+                bodyBusy={driveUploading}
+                emptyShowSpinner
+                crmListDropActive={crmListDropActive}
                 onDragEnter={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -1663,56 +1762,26 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                     handleDirectFileUpload(picked);
                   }
                 }}
-              >
-                <h4 className="register-sale-docs-crm-uploads-title">
-                  <span className="material-symbols-outlined"></span>
-                  리스트
-                </h4>
-                <p className="register-sale-docs-crm-uploads-hint">
-                  루트 폴더에 올려 CRM에 기록된 파일만 표시됩니다. 사업자등록증은 상단 회사명 옆에서 확인할 수 있습니다. 여러 파일을 한 번에 놓으면 가장 마지막 파일만 업로드됩니다. Drive 웹에서만 넣은 파일은 동기화에 안 잡힐 수 있으니, 가능하면 이 화면에서 업로드해 주세요.
-                </p>
-                {crmDriveUploadsSorted.length === 0 ? (
-                  <div
-                    className={`register-sale-docs-crm-empty ${crmListDropActive ? 'register-sale-docs-crm-empty--active' : ''}`}
-                    onClick={() => {
-                      if (!driveUploading && fileInputRef.current) fileInputRef.current.click();
-                    }}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if ((e.key === 'Enter' || e.key === ' ') && !driveUploading && fileInputRef.current) {
-                        e.preventDefault();
-                        fileInputRef.current.click();
-                      }
-                    }}
-                  >
-                    <span className="material-symbols-outlined register-sale-docs-crm-empty-icon">inbox</span>
-                    <span className="register-sale-docs-crm-empty-text">
-                      {driveUploading ? '업로드 중…' : '등록된 항목이 없습니다. 파일을 여기에 놓거나 위쪽 추가 버튼으로 올리세요.'}
-                    </span>
-                  </div>
-                ) : (
-                  <RegisterSaleDocsCrmTable
-                    rows={crmDriveUploadsSorted}
-                    formatDriveFileDate={formatDriveFileDate}
-                    driveUploading={driveUploading}
-                    crmDriveDeletingId={crmDriveDeletingId}
-                    onDeleteRow={handleDeleteCrmDriveFile}
-                  />
-                )}
-              </div>
-              {driveError && <p className="register-sale-docs-error">{driveError}</p>}
-              {driveUploadNotice && !driveError && (
-                <p className="register-sale-docs-success" role="status">
-                  {driveUploadNotice}
-                </p>
-              )}
-            </section>
+                emptyHint="루트 폴더에 올린 파일이 CRM에 기록되면 여기에 표시됩니다. 여러 파일을 한 번에 놓으면 마지막 파일만 업로드됩니다."
+                formatDriveFileDate={formatDriveFileDate}
+                driveUploading={driveUploading}
+                crmDriveDeletingId={crmDriveDeletingId}
+                onDeleteRow={handleDeleteCrmDriveFile}
+                driveError={driveError}
+                driveUploadNotice={driveUploadNotice}
+              />
+            </>
             </div>
               </div>
 
-            {detailPresentation === 'side' && renderJournalAside('ccd-center-journal--side-below')}
+            {!isCenterPresentation && renderJournalAside('ccd-center-journal--side-below')}
             </div>
+            </aside>
+
+            <div className="ccd-center-main">
+              {isCenterPresentation && renderJournalAside('ccd-center-journal--center-main')}
+            </div>
+
             {showProductSalesModal && (
               <ProductSalesModal
                 companyName={companyToShow.name}

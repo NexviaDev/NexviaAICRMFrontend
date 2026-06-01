@@ -2,20 +2,26 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import CustomFieldsDisplay from '../../shared/custom-fields-display';
 import CustomFieldsSection from '../../shared/custom-fields-section';
 import ProductSalesModal from '../../shared/product-sales-modal/product-sales-modal';
+import ProductSalesPreviewTable from '../../shared/product-sales-preview-table/product-sales-preview-table';
 import OpportunityModal from '../../sales-pipeline/opportunity-modal/opportunity-modal';
 import AddContactModal from '../add-customer-company-employees-modal/add-customer-company-employees-modal';
+import SmsDraftModal from '../sms-draft-modal/sms-draft-modal';
+import EmailComposeModal from '../../email/email-compose-modal.jsx';
 import './customer-company-employees-detail-modal.css';
+import '../customer-company-employees.css';
 
 import { API_BASE } from '@/config';
 import { getStoredCrmUser, isManagerOrAboveRole, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { pingBackendHealth, BACKEND_KEEPALIVE_INTERVAL_MS, BACKEND_KEEPALIVE_INTERVAL_ENABLED } from '@/lib/backend-wake';
 import { uploadJournalAudioFromFile, JOURNAL_AUDIO_CHUNK_THRESHOLD } from '@/lib/upload-journal-audio-from-file';
+import { notifyVoiceTranscriptionUsageChanged, useVoiceTranscriptionUsage } from '@/lib/voice-transcription-usage';
+import VoiceTranscriptionUsagePanel from '@/shared/voice-transcription-usage-panel/voice-transcription-usage-panel';
 import { queueJournalAudioBackgroundJob, useJournalAudioJobWatcher } from '@/lib/journal-audio-background-upload';
 import { splitContentIntoBlocks, formatJournalTextForDisplay } from '@/lib/journal-content-blocks';
 import { pruneDriveUploadedFilesIndex, syncDriveUploadedFilesIndex } from '@/lib/drive-uploaded-files-prune';
 import { buildDriveFileDeleteUrl, isValidDriveNodeId, sanitizeDriveFolderWebViewLink } from '@/lib/google-drive-url';
 import {
-  RegisterSaleDocsCrmTable,
+  CrmDriveStoragePanel,
   formatDriveFileDate,
   keepLatestBusinessCardRowOnlyInDriveUploads,
   runDriveDirectFileUpload,
@@ -65,6 +71,55 @@ function getContactChannelLabel(value) {
   return CONTACT_CHANNEL_OPTIONS.find((opt) => opt.value === value)?.label || '';
 }
 
+function phoneToTelHref(phone) {
+  if (phone == null) return '';
+  const s = String(phone).trim();
+  if (!s) return '';
+  const cleaned = s.replace(/[^\d+]/g, '');
+  if (!cleaned || !cleaned.replace(/\+/g, '')) return '';
+  return `tel:${cleaned}`;
+}
+
+async function appendCommunicationHistoryForContacts({ contacts, channel, subject = '', body = '' }) {
+  const list = Array.isArray(contacts) ? contacts : [];
+  const normalizedBody = String(body || '').trim();
+  if (!list.length || !normalizedBody) return;
+  const normalizedChannel = channel === 'email' ? 'email' : 'sms';
+  const channelLabel = normalizedChannel === 'email' ? '메일' : '문자';
+  const normalizedSubject = String(subject || '').trim();
+  const noteLines = [
+    `[${channelLabel} 발송 기록]`,
+    normalizedSubject ? `제목: ${normalizedSubject}` : null,
+    `본문: ${normalizedBody}`,
+    `코멘트: 위 내용이 ${channelLabel}로 발송되었습니다.`
+  ].filter(Boolean);
+  const content = noteLines.join('\n');
+  const headers = { 'Content-Type': 'application/json', ...getAuthHeader() };
+  const uniqueContacts = list.filter((c, idx, arr) => c?._id && arr.findIndex((x) => String(x?._id) === String(c._id)) === idx);
+  await Promise.all(
+    uniqueContacts.map(async (c) => {
+      try {
+        await fetch(`${API_BASE}/customer-company-employees/${c._id}/history`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            content,
+            workCategory: 'sales',
+            contactChannel: normalizedChannel
+          })
+        });
+      } catch (_) {
+        // 발송 흐름은 막지 않음
+      }
+    })
+  );
+}
+
+function getContactChannelTimelineIcon(channel) {
+  const map = { phone: 'call', visit: 'location_on', email: 'mail', sms: 'sms' };
+  return map[channel] || 'history_edu';
+}
+
 function formatPhoneInput(value) {
   const digits = value.replace(/\D/g, '');
   if (digits.length === 0) return '';
@@ -84,8 +139,6 @@ function formatPhoneInput(value) {
   return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
 }
 
-const statusClass = { Active: 'status-active', Pending: 'status-pending', Lead: 'status-lead', Inactive: 'status-inactive' };
-const statusLabel = { Active: '활성', Pending: '대기', Lead: '리드', Inactive: '비활성' };
 const statusHint = {
   Lead: '아직 접촉만 한 잠재 고객',
   Active: '현재 거래 진행 중이거나 소통 중인 고객',
@@ -154,6 +207,13 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   const [audioUploadProgress, setAudioUploadProgress] = useState(null);
   /** 업로드 완료 후 서버 백그라운드 전사·요약·메모 등록 */
   const [audioJobPollUrl, setAudioJobPollUrl] = useState(null);
+  const {
+    usageStats: voiceUsageStats,
+    loading: voiceUsageLoading,
+    error: voiceUsageError,
+    refresh: refreshVoiceUsage,
+    quotaExceeded: voiceQuotaExceeded
+  } = useVoiceTranscriptionUsage({ pollWhileProcessing: audioUploading || !!audioJobPollUrl });
   const [audioDropActive, setAudioDropActive] = useState(false);
   const [error, setError] = useState('');
   const [summaryNotice, setSummaryNotice] = useState(null);
@@ -175,6 +235,8 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   const [displayedContact, setDisplayedContact] = useState(contact);
   const [showCardImageModal, setShowCardImageModal] = useState(false);
   const [showContactCardEmptyPopover, setShowContactCardEmptyPopover] = useState(false);
+  const [smsModal, setSmsModal] = useState(null);
+  const [emailCompose, setEmailCompose] = useState(null);
   const contactNameCardPopoverRef = useRef(null);
   const [googleSaving, setGoogleSaving] = useState(false);
   const [googleResult, setGoogleResult] = useState(null);
@@ -284,9 +346,15 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
       setShowContactCardEmptyPopover((v) => !v);
     }
   }, [businessCardImageUrl, businessCardDriveUrl]);
-  const status = contactToShow.status || 'Lead';
-  const displayStatus = statusLabel[status] || status;
   const contactId = contact?._id;
+  const profileCompanyName = contactToShow.company || contactToShow.companyName || '';
+  const profilePhone = String(contactToShow.phone || '').trim();
+  const profileEmail = String(contactToShow.email || '').trim();
+  const profileTelHref = phoneToTelHref(profilePhone);
+  const profileContactRow = useMemo(
+    () => ({ ...contactToShow, _id: contactId || contactToShow._id }),
+    [contactToShow, contactId]
+  );
 
   useEffect(() => {
     setDetailPresentation(getSavedCustomerCompanyEmployeesDetailModalPresentation());
@@ -363,6 +431,8 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
       });
       void fetchHistory();
       void fetchContactDetail();
+      void refreshVoiceUsage(true);
+      notifyVoiceTranscriptionUsageChanged();
     },
     onError: (e) => {
       setAudioJobPollUrl(null);
@@ -721,6 +791,10 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   const uploadAudioForJournal = useCallback(async (filesLike) => {
     const files = Array.from(filesLike || []).filter((f) => f && f instanceof File);
     if (!files.length || !contactId || savingNote || audioUploading) return;
+    if (voiceQuotaExceeded) {
+      setError('이번 달 전사 사용 한도(40시간)에 도달했습니다. AI 음성·업무기록 음성 합산 기준입니다.');
+      return;
+    }
     const accept = /\.(mp3|wav|m4a|webm)$/i;
     const audioTypes = ['audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/mp4', 'audio/x-m4a', 'audio/webm'];
     const file = files.find((f) => accept.test(f.name) || audioTypes.includes(f.type));
@@ -752,18 +826,25 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
       });
       setAudioUploadProgress(null);
       setAudioJobPollUrl(pollUrl);
+      void refreshVoiceUsage(true);
+      notifyVoiceTranscriptionUsageChanged();
       setSummaryNotice({
         type: 'info',
         text:
           '업로드가 완료되었습니다. 서버에서 전사·요약 후 업무 메모로 자동 등록합니다. 이 창에서 다른 탭·입력을 계속하셔도 되며, 인터넷이 끊겨도 서버 처리는 계속됩니다. AssemblyAI 음성·전사 원본은 처리 후 삭제됩니다.'
       });
     } catch (e) {
-      setError(e.message || '음성 업로드 처리에 실패했습니다.');
+      if (e?.code === 'TRANSCRIPTION_QUOTA_EXCEEDED') {
+        setError(e.message || '이번 달 전사 사용 한도(40시간)에 도달했습니다.');
+        void refreshVoiceUsage(true);
+      } else {
+        setError(e.message || '음성 업로드 처리에 실패했습니다.');
+      }
     } finally {
       setAudioUploading(false);
       setAudioUploadProgress(null);
     }
-  }, [audioUploading, contactId, savingNote, journalWorkCategory, journalContactChannel]);
+  }, [audioUploading, contactId, savingNote, journalWorkCategory, journalContactChannel, voiceQuotaExceeded, refreshVoiceUsage]);
 
   const handleDeleteHistory = async (historyId) => {
     if (!historyId) return;
@@ -1022,6 +1103,8 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
 
   if (!contact) return null;
 
+  const isCenterPresentation = detailPresentation === 'center';
+
   return (
     <div className={`contact-detail-root contact-detail-root--${detailPresentation}`}>
       {editing && canMutate && (
@@ -1157,66 +1240,131 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
             </div>
           )}
 
-          <div className={`contact-detail-body${detailPresentation === 'center' ? ' contact-detail-body--center' : ''}`}>
+          <div className={`contact-detail-body${isCenterPresentation ? ' contact-detail-body--center' : ''}`}>
             {editing ? null : (
-              /* ── 조회 모드: 고객사 상세와 동일한 한 장 카드 + 메타 리스트 구조 ── */
+              /* ── 조회 모드: 우측 패널(세로) · 가운데 모달(좌 정보 / 우 업무기록) ── */
               <>
-                <section className="contact-detail-main-card customer-company-detail-card">
+                <aside className="contact-detail-center-aside">
+                <section className={`contact-detail-main-card customer-company-detail-card${isCenterPresentation ? ' contact-detail-main-card--center' : ''}`}>
                   <div className="customer-company-detail-info">
-                    <div className="customer-company-detail-name-row">
-                      <div className="customer-company-detail-name-wrap" ref={contactNameCardPopoverRef}>
-                        <button
-                          type="button"
-                          className="customer-company-detail-name-link contact-detail-name-card-link"
-                          onClick={openBusinessCardView}
-                          aria-expanded={showContactCardEmptyPopover}
-                          aria-haspopup="dialog"
-                          aria-label="이름 클릭 시 명함 보기"
-                        >
-                          <h1 className="customer-company-detail-name contact-detail-name-in-card">{contactToShow.name || '—'}</h1>
-                          <span className="material-symbols-outlined customer-company-detail-name-link-icon">
-                            {hasAnyBusinessCard ? 'badge' : 'contact_page'}
-                          </span>
-                        </button>
-                        {showContactCardEmptyPopover && (
-                          <div
-                            className="customer-company-detail-registered-name-popover customer-company-detail-certificate-popover contact-detail-card-empty-popover"
-                            role="dialog"
-                            aria-label="명함 안내"
-                          >
-                            <div className="customer-company-detail-registered-name-popover-title">명함</div>
-                            <p className="customer-company-detail-certificate-empty">등록된 명함이 없습니다.</p>
-                            <p className="contact-detail-card-empty-hint">연락처 수정 등 다른 화면에서 명함을 등록할 수 있습니다.</p>
-                            <button
-                              type="button"
-                              className="customer-company-detail-registered-name-popover-close"
-                              onClick={() => setShowContactCardEmptyPopover(false)}
-                              aria-label="닫기"
-                            >
-                              <span className="material-symbols-outlined">close</span>
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                      <span className={`contact-detail-status-badge ${statusClass[status] || ''}`}>{displayStatus}</span>
-                    </div>
-                    <div className="customer-company-detail-meta">
+                    <table className="contact-detail-profile-table">
+                      <tbody>
+                        <tr>
+                          <th scope="row">이름</th>
+                          <td>
+                            <div className="customer-company-detail-name-wrap contact-detail-profile-name-wrap" ref={contactNameCardPopoverRef}>
+                              <button
+                                type="button"
+                                className="customer-company-detail-name-link contact-detail-name-card-link contact-detail-profile-name-link"
+                                onClick={openBusinessCardView}
+                                aria-expanded={showContactCardEmptyPopover}
+                                aria-haspopup="dialog"
+                                aria-label="이름 클릭 시 명함 보기"
+                              >
+                                <span className="customer-company-detail-name contact-detail-name-in-card">{contactToShow.name || '—'}</span>
+                                <span className="material-symbols-outlined customer-company-detail-name-link-icon">
+                                  {hasAnyBusinessCard ? 'badge' : 'contact_page'}
+                                </span>
+                              </button>
+                              {showContactCardEmptyPopover && (
+                                <div
+                                  className="customer-company-detail-registered-name-popover customer-company-detail-certificate-popover contact-detail-card-empty-popover"
+                                  role="dialog"
+                                  aria-label="명함 안내"
+                                >
+                                  <div className="customer-company-detail-registered-name-popover-title">명함</div>
+                                  <p className="customer-company-detail-certificate-empty">등록된 명함이 없습니다.</p>
+                                  <p className="contact-detail-card-empty-hint">연락처 수정 등 다른 화면에서 명함을 등록할 수 있습니다.</p>
+                                  <button
+                                    type="button"
+                                    className="customer-company-detail-registered-name-popover-close"
+                                    onClick={() => setShowContactCardEmptyPopover(false)}
+                                    aria-label="닫기"
+                                  >
+                                    <span className="material-symbols-outlined">close</span>
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                        <tr>
+                          <th scope="row">연락처</th>
+                          <td>
+                            <div className="cce-contact-cell contact-detail-profile-contact-cell">
+                              <span className="cce-phone-text">{profilePhone || '—'}</span>
+                              {profilePhone && profileTelHref ? (
+                                <span className="cce-phone-action-btns">
+                                  <a
+                                    href={profileTelHref}
+                                    className="cce-phone-call-btn"
+                                    title="전화 걸기"
+                                    aria-label={`전화 걸기 ${profilePhone}`}
+                                  >
+                                    <span className="material-symbols-outlined" aria-hidden>call</span>
+                                  </a>
+                                  <button
+                                    type="button"
+                                    className="cce-phone-sms-btn"
+                                    title="문자 (AI 초안 후 전송)"
+                                    aria-label={`문자 보내기 ${profilePhone}`}
+                                    onClick={() => {
+                                      setSmsModal({
+                                        phone: profilePhone,
+                                        recipientName: contactToShow.name || '',
+                                        companyName: profileCompanyName
+                                      });
+                                    }}
+                                  >
+                                    <span className="material-symbols-outlined" aria-hidden>sms</span>
+                                  </button>
+                                </span>
+                              ) : null}
+                            </div>
+                          </td>
+                        </tr>
+                        <tr>
+                          <th scope="row">이메일</th>
+                          <td>
+                            <div className="cce-email-cell contact-detail-profile-contact-cell">
+                              <span className="cce-email-text" title={profileEmail || undefined}>{profileEmail || '—'}</span>
+                              {profileEmail ? (
+                                <span className="cce-email-action-btns">
+                                  <button
+                                    type="button"
+                                    className="cce-email-compose-btn"
+                                    title="메일 작성 — 보내기 시 PC 기본 메일로 넘기기"
+                                    aria-label={`${profileEmail}에게 메일 작성`}
+                                    onClick={() => {
+                                      setEmailCompose({ initialTo: profileEmail, contacts: [profileContactRow] });
+                                    }}
+                                  >
+                                    <span className="material-symbols-outlined" aria-hidden>mail</span>
+                                  </button>
+                                </span>
+                              ) : null}
+                            </div>
+                          </td>
+                        </tr>
+                        {isCenterPresentation && profileCompanyName ? (
+                          <tr>
+                            <th scope="row">소속</th>
+                            <td><span className="contact-detail-profile-plain">{profileCompanyName}</span></td>
+                          </tr>
+                        ) : null}
+                        {isCenterPresentation && contactToShow.position ? (
+                          <tr>
+                            <th scope="row">직함</th>
+                            <td><span className="contact-detail-profile-plain">{contactToShow.position}</span></td>
+                          </tr>
+                        ) : null}
+                      </tbody>
+                    </table>
+                    <div className={`customer-company-detail-meta${isCenterPresentation ? ' customer-company-detail-meta--center-hidden' : ''}`}>
                       {(contact.company || contact.companyName) && (
                         <div className="customer-company-detail-meta-item">
                           <span className="material-symbols-outlined">business</span>
                           <span>{contact.company || contact.companyName}</span>
-                        </div>
-                      )}
-                      {contact.email && (
-                        <div className="customer-company-detail-meta-item">
-                          <span className="material-symbols-outlined">mail</span>
-                          <span>{contact.email}</span>
-                        </div>
-                      )}
-                      {contact.phone && (
-                        <div className="customer-company-detail-meta-item">
-                          <span className="material-symbols-outlined">call</span>
-                          <span>{contact.phone}</span>
                         </div>
                       )}
                       {contact.position && (
@@ -1265,7 +1413,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                   className="contact-detail-custom-fields"
                 />
 
-                {/* 제품 판매 현황 - customer-company-detail-modal (368-403)과 동일 구조·디자인·로직 */}
+                {/* 제품 판매 현황 — 고객사 상세와 동일: 제품·버전·수량 표 */}
                 <section className="customer-company-detail-section contact-detail-sales-section">
                   <div className="customer-company-detail-section-head">
                     <div className="customer-company-detail-section-title-with-sales">
@@ -1278,7 +1426,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                         className="customer-company-detail-btn-sales-add"
                         onClick={() => setShowRegisterSaleModal(true)}
                       >
-                        <span className="material-symbols-outlined">add</span>세일즈 추가
+                        <span className="material-symbols-outlined">add</span> 세일즈 추가
                       </button>
                     </div>
                     {!loadingProductSales && (
@@ -1294,23 +1442,15 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                   </div>
                   {loadingProductSales ? (
                     <p className="customer-company-detail-employees-empty">불러오는 중...</p>
-                  ) : productSalesList.length === 0 ? (
-                    <p className="customer-company-detail-employees-empty">제품판매 이력이 없습니다. </p>
+                  ) : !productSalesList.some((row) => row.stage === 'Won') ? (
+                    <p className="customer-company-detail-employees-empty">제품판매 이력이 없습니다.</p>
                   ) : (
-                    <div className="customer-company-detail-product-sales-preview">
-                      <ul className="customer-company-detail-product-sales-preview-list">
-                        {productSalesList.slice(0, 3).map((row) => (
-                          <li key={row._id} className="customer-company-detail-product-sales-preview-item">
-                            <span className="customer-company-detail-product-sales-preview-title">{row.title || '—'}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
+                    <ProductSalesPreviewTable items={productSalesList} />
                   )}
                 </section>
 
                 {/* 증서 · 자료 — 개인 폴더 [이름]_[연락처], 고객사 소속 시 고객사 루트 아래 */}
-                <section className="customer-company-detail-section register-sale-docs contact-detail-drive-section">
+                <>
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -1320,24 +1460,16 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                     disabled={driveUploading}
                     aria-hidden="true"
                   />
-                  <div className="customer-company-detail-section-head">
-                    <h3 className="customer-company-detail-section-title">
-                      <span className="material-symbols-outlined">folder</span>
-                      증서 · 자료
-                    </h3>
-                    <button
-                      type="button"
-                      className="customer-company-detail-btn-all"
-                      onClick={() => { if (!driveUploading && fileInputRef.current) fileInputRef.current.click(); }}
-                      disabled={driveUploading}
-                      title="파일 추가"
-                      aria-label="파일 추가"
-                    >
-                      <span className="material-symbols-outlined">add</span>
-                    </button>
-                  </div>
-                  <div
-                    className={`register-sale-docs-crm-uploads ${crmListDropActive ? 'register-sale-docs-crm-uploads--drop-active' : ''} ${driveUploading ? 'register-sale-docs-crm-uploads--disabled' : ''}`}
+                  <CrmDriveStoragePanel
+                    rowCount={crmDriveUploadsSorted.length}
+                    rows={crmDriveUploadsSorted}
+                    onRequestUpload={() => {
+                      if (!driveUploading && fileInputRef.current) fileInputRef.current.click();
+                    }}
+                    uploadDisabled={driveUploading}
+                    bodyBusy={driveUploading}
+                    emptyShowSpinner
+                    crmListDropActive={crmListDropActive}
                     onDragEnter={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -1359,52 +1491,17 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                       setCrmListDropActive(false);
                       if (!driveUploading && e.dataTransfer?.files?.length) handleDirectFileUpload(e.dataTransfer.files);
                     }}
-                  >
-                    <h4 className="register-sale-docs-crm-uploads-title">
-                      <span className="material-symbols-outlined">history_edu</span>
-                      리스트
-                    </h4>
-                    <p className="register-sale-docs-crm-uploads-hint">
-                      업로드가 완료되면 제목·수정일·링크가 MongoDB에 저장되어 여기에 표시됩니다. 파일을 끌어 놓거나 위쪽 「증서 · 자료」의 추가 버튼으로 올릴 수 있습니다.
-                    </p>
-                    {crmDriveUploadsSorted.length === 0 ? (
-                      <div
-                        className={`register-sale-docs-crm-empty ${crmListDropActive ? 'register-sale-docs-crm-empty--active' : ''}`}
-                        onClick={() => {
-                          if (!driveUploading && fileInputRef.current) fileInputRef.current.click();
-                        }}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if ((e.key === 'Enter' || e.key === ' ') && !driveUploading && fileInputRef.current) {
-                            e.preventDefault();
-                            fileInputRef.current.click();
-                          }
-                        }}
-                      >
-                        <span className="material-symbols-outlined register-sale-docs-crm-empty-icon">inbox</span>
-                        <span className="register-sale-docs-crm-empty-text">
-                          {driveUploading ? '업로드 중…' : '등록된 항목이 없습니다. 파일을 여기에 놓거나 위쪽 추가 버튼으로 올리세요.'}
-                        </span>
-                      </div>
-                    ) : (
-                      <RegisterSaleDocsCrmTable
-                        rows={crmDriveUploadsSorted}
-                        formatDriveFileDate={formatDriveFileDate}
-                        driveUploading={driveUploading}
-                        crmDriveDeletingId={crmDriveDeletingId}
-                        onDeleteRow={handleDeleteCrmDriveFile}
-                      />
-                    )}
-                  </div>
-                  {driveError && <p className="register-sale-docs-error">{driveError}</p>}
-                  {driveUploadNotice && !driveError && (
-                    <p className="register-sale-docs-success" role="status">
-                      {driveUploadNotice}
-                    </p>
-                  )}
-                </section>
+                    formatDriveFileDate={formatDriveFileDate}
+                    driveUploading={driveUploading}
+                    crmDriveDeletingId={crmDriveDeletingId}
+                    onDeleteRow={handleDeleteCrmDriveFile}
+                    driveError={driveError}
+                    driveUploadNotice={driveUploadNotice}
+                  />
+                </>
+                </aside>
 
+                <div className="contact-detail-center-main">
                 <section className="contact-detail-section contact-detail-section--journal-column">
                   <div className="contact-detail-section-head">
                   <h3>지원 및 업무 기록</h3>
@@ -1524,6 +1621,17 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                       value={journalText}
                       onChange={(e) => setJournalText(e.target.value)}
                     />
+                    <VoiceTranscriptionUsagePanel
+                      compact
+                      usageStats={voiceUsageStats}
+                      loading={voiceUsageLoading}
+                      error={voiceUsageError}
+                    />
+                    {voiceQuotaExceeded ? (
+                      <p className="journal-audio-quota-msg">
+                        이번 달 전사 한도(40시간)를 모두 사용했습니다. AI 음성·고객사·연락처 업무기록 음성이 합산됩니다.
+                      </p>
+                    ) : null}
                     <input
                       ref={audioInputRef}
                       type="file"
@@ -1536,11 +1644,11 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                       aria-hidden="true"
                     />
                     <div
-                      className={`contact-detail-journal-audio-drop ${audioDropActive ? 'is-dragover' : ''} ${audioUploading ? 'is-uploading' : ''} ${audioJobPollUrl ? 'is-server-processing' : ''}`}
+                      className={`contact-detail-journal-audio-drop ${audioDropActive ? 'is-dragover' : ''} ${audioUploading ? 'is-uploading' : ''} ${audioJobPollUrl ? 'is-server-processing' : ''}${voiceQuotaExceeded ? ' journal-audio-drop--quota-disabled' : ''}`}
                       onDragOver={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        if (!audioUploading && !savingNote) setAudioDropActive(true);
+                        if (!audioUploading && !savingNote && !voiceQuotaExceeded) setAudioDropActive(true);
                       }}
                       onDragLeave={(e) => {
                         e.preventDefault();
@@ -1551,14 +1659,16 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                         e.preventDefault();
                         e.stopPropagation();
                         setAudioDropActive(false);
-                        if (!audioUploading && !savingNote && e.dataTransfer?.files?.length) {
+                        if (!audioUploading && !savingNote && !voiceQuotaExceeded && e.dataTransfer?.files?.length) {
                           uploadAudioForJournal(e.dataTransfer.files);
                         }
                       }}
                     >
                       <span className="material-symbols-outlined">audio_file</span>
                       <span>
-                        {audioUploading
+                        {voiceQuotaExceeded
+                          ? '이번 달 전사 한도(40시간)에 도달했습니다.'
+                          : audioUploading
                           ? (audioUploadProgress?.total
                             ? `음성 업로드 ${Math.min(100, Math.round((audioUploadProgress.sent / audioUploadProgress.total) * 100))}%…`
                             : '음성 업로드 중…')
@@ -1570,7 +1680,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                         type="button"
                         className="contact-detail-journal-audio-btn"
                         onClick={() => audioInputRef.current?.click()}
-                        disabled={audioUploading || savingNote}
+                        disabled={audioUploading || savingNote || voiceQuotaExceeded}
                       >
                         파일 선택
                       </button>
@@ -1586,6 +1696,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                       </button>
                     </div>
                   </div>
+                  <h4 className="contact-detail-timeline-heading">최근 기록</h4>
                   <div className="contact-detail-timeline">
                     {loadingHistory ? (
                       <p className="contact-detail-timeline-empty">불러오는 중...</p>
@@ -1595,7 +1706,9 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                       historyItems.map((entry) => (
                         <div key={entry._id} className="contact-detail-timeline-item">
                           <div className="contact-detail-timeline-icon">
-                            <span className="material-symbols-outlined">history_edu</span>
+                            <span className="material-symbols-outlined">
+                              {isCenterPresentation ? getContactChannelTimelineIcon(entry.contactChannel) : 'history_edu'}
+                            </span>
                           </div>
                           <div className="contact-detail-timeline-content">
                             <div className="contact-detail-timeline-meta">
@@ -1638,6 +1751,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
                     )}
                   </div>
                 </section>
+                </div>
               </>
             )}
           </div>
@@ -1705,6 +1819,30 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
         />
       )}
 
+      <SmsDraftModal
+        open={!!smsModal}
+        onClose={() => setSmsModal(null)}
+        phone={smsModal?.phone}
+        recipientName={smsModal?.recipientName}
+        companyName={smsModal?.companyName}
+      />
+      {emailCompose ? (
+        <EmailComposeModal
+          key={emailCompose.initialTo}
+          initialTo={emailCompose.initialTo}
+          onClose={() => setEmailCompose(null)}
+          onSent={(payload) => {
+            void appendCommunicationHistoryForContacts({
+              contacts: emailCompose.contacts || [],
+              channel: 'email',
+              subject: payload?.subject || '',
+              body: payload?.body || ''
+            });
+            void fetchHistory();
+            setEmailCompose(null);
+          }}
+        />
+      ) : null}
       {showCardImageModal && businessCardImageUrl && (
         <div
           className="contact-detail-card-image-backdrop"

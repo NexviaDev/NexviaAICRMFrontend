@@ -11,7 +11,7 @@ import { OpportunityModalFormSectionTabs } from './opportunity-modal-form-sectio
 import { OpportunityModalScheduleCalendar } from './opportunity-modal-schedule-calendar';
 import '../../customer-companies/customer-company-detail-modal/customer-company-detail-modal.css';
 import './opportunity-modal.css';
-import { RegisterSaleDocsCrmTable, formatDriveFileDate } from '@/shared/register-sale-docs-drive';
+import { CrmDriveStoragePanel, formatDriveFileDate } from '@/shared/register-sale-docs-drive';
 
 import { API_BASE, MAX_DRIVE_JSON_UPLOAD_BYTES } from '@/config';
 import {
@@ -2727,20 +2727,20 @@ export default function OpportunityModal({
     getAuthHeader,
     enabled: !!audioJobPollUrl,
     onCompleted: (data) => {
-      setAudioJobPollUrl(null);
-      if (data.content && !data.autoSaved) {
+          setAudioJobPollUrl(null);
+          if (data.content && !data.autoSaved) {
         setNewComment(formatJournalTextForDisplay(data.content || ''));
-        setJournalDateTime(toDatetimeLocalValue(new Date()));
-      }
-      setJournalSummaryNotice({
-        type: 'info',
-        text: data.autoSaved
-          ? '음성 메모가 서버에서 자동 등록되었습니다. AssemblyAI 원본은 삭제되었습니다.'
-          : '요약이 입력창에 채워졌습니다. 확인 후 "메모 저장"을 눌러 주세요.'
-      });
+            setJournalDateTime(toDatetimeLocalValue(new Date()));
+          }
+          setJournalSummaryNotice({
+            type: 'info',
+            text: data.autoSaved
+              ? '음성 메모가 서버에서 자동 등록되었습니다. AssemblyAI 원본은 삭제되었습니다.'
+              : '요약이 입력창에 채워졌습니다. 확인 후 "메모 저장"을 눌러 주세요.'
+          });
     },
     onError: (e) => {
-      setAudioJobPollUrl(null);
+          setAudioJobPollUrl(null);
       setJournalInputError(e?.message || '음성 처리에 실패했습니다.');
     }
   });
@@ -3171,52 +3171,52 @@ export default function OpportunityModal({
                         <div className="opp-modal-summary-dash-grid">
                           <div
                             className="opp-modal-summary-dash-cell opp-modal-summary-dash-cell--order"
-                            title="제품 행 합계(할인·금액 차감 반영)"
-                          >
-                            <span className="opp-modal-summary-dash-label">수주금액</span>
-                            <div className="opp-modal-summary-dash-value">
-                              {lineItems.length > 0
-                                ? formatCurrencyDisplay(computeTotalFinalAmount(), form.currency)
-                                : '—'}
-                            </div>
-                          </div>
-                          <div
+                        title="제품 행 합계(할인·금액 차감 반영)"
+                      >
+                        <span className="opp-modal-summary-dash-label">수주금액</span>
+                        <div className="opp-modal-summary-dash-value">
+                          {lineItems.length > 0
+                            ? formatCurrencyDisplay(computeTotalFinalAmount(), form.currency)
+                            : '—'}
+                        </div>
+                      </div>
+                      <div
                             className="opp-modal-summary-dash-cell opp-modal-summary-dash-cell--margin"
-                            title="제품 행별 순마진(원가 반영)을 합산한 뒤, 기타 금액 합을 뺀 값입니다. 제품·원가가 없으면 표시할 수 없습니다."
-                          >
-                            <span className="opp-modal-summary-dash-label">마진 합계</span>
-                            <div className="opp-modal-summary-dash-value">
-                              {lineItems.length > 0 && netMarginAfterCommission != null
-                                ? formatCurrencyDisplay(netMarginAfterCommission, form.currency)
-                                : '—'}
-                            </div>
-                          </div>
-                          <div
+                        title="제품 행별 순마진(원가 반영)을 합산한 뒤, 기타 금액 합을 뺀 값입니다. 제품·원가가 없으면 표시할 수 없습니다."
+                      >
+                        <span className="opp-modal-summary-dash-label">마진 합계</span>
+                        <div className="opp-modal-summary-dash-value">
+                          {lineItems.length > 0 && netMarginAfterCommission != null
+                            ? formatCurrencyDisplay(netMarginAfterCommission, form.currency)
+                            : '—'}
+                        </div>
+                      </div>
+                      <div
                             className="opp-modal-summary-dash-cell opp-modal-summary-dash-cell--forecast"
-                            title={
-                              forecastExpectedRevenue != null && Number.isFinite(forecastPctForStage)
-                                ? `전체 최종 금액 × 단계 Forecast (${forecastPctForStage}%)`
-                                : '제품 행과 단계 Forecast 비율이 있을 때 표시됩니다'
-                            }
-                          >
-                            <span className="opp-modal-summary-dash-label">예상매출</span>
-                            {forecastExpectedRevenue != null && Number.isFinite(forecastPctForStage) ? (
-                              <>
-                                <div className="opp-modal-summary-dash-value opp-modal-summary-dash-value--forecast">
-                                  {formatCurrencyDisplay(forecastExpectedRevenue, form.currency)}
-                                </div>
-                                <div className="opp-modal-summary-dash-meta">
-                                  {forecastStageLabel} · {forecastPctForStage}%
-                                </div>
-                              </>
-                            ) : (
-                              <div className="opp-modal-summary-dash-value">—</div>
-                            )}
-                          </div>
+                        title={
+                          forecastExpectedRevenue != null && Number.isFinite(forecastPctForStage)
+                            ? `전체 최종 금액 × 단계 Forecast (${forecastPctForStage}%)`
+                            : '제품 행과 단계 Forecast 비율이 있을 때 표시됩니다'
+                        }
+                      >
+                        <span className="opp-modal-summary-dash-label">예상매출</span>
+                        {forecastExpectedRevenue != null && Number.isFinite(forecastPctForStage) ? (
+                          <>
+                            <div className="opp-modal-summary-dash-value opp-modal-summary-dash-value--forecast">
+                              {formatCurrencyDisplay(forecastExpectedRevenue, form.currency)}
+                            </div>
+                            <div className="opp-modal-summary-dash-meta">
+                              {forecastStageLabel} · {forecastPctForStage}%
+                            </div>
+                          </>
+                        ) : (
+                          <div className="opp-modal-summary-dash-value">—</div>
+                        )}
+                      </div>
                           <div className="opp-modal-summary-dash-cell opp-modal-summary-dash-cell--stage">
-                            <span className="opp-modal-summary-dash-label">현재 상태</span>
-                            <div className="opp-modal-summary-dash-value opp-modal-summary-dash-value--stage">
-                              {forecastStageLabel || '—'}
+                        <span className="opp-modal-summary-dash-label">현재 상태</span>
+                        <div className="opp-modal-summary-dash-value opp-modal-summary-dash-value--stage">
+                          {forecastStageLabel || '—'}
                             </div>
                           </div>
                         </div>
@@ -3242,26 +3242,26 @@ export default function OpportunityModal({
                             <div className="opp-basic-info-sheet" aria-label="고객사">
                               <div className="opp-basic-info-sheet-head">
                                 <span className="opp-basic-info-sheet-head-title">고객사</span>
-                                <button
-                                  type="button"
+                            <button
+                              type="button"
                                   className="opp-basic-info-sheet-head-btn"
-                                  disabled={personalPurchase}
-                                  onClick={() => { if (!personalPurchase) setShowCompanySearchModal(true); }}
+                              disabled={personalPurchase}
+                              onClick={() => { if (!personalPurchase) setShowCompanySearchModal(true); }}
                                   aria-label="고객사 검색"
-                                >
+                            >
                                   <span className="material-symbols-outlined" aria-hidden>search</span>
-                                  검색
-                                </button>
-                              </div>
+                              검색
+                            </button>
+                          </div>
                               <div className="opp-basic-info-sheet-body">
                                 <div className="opp-basic-info-sheet-row">
                                   <span className="opp-basic-info-sheet-label">업체명</span>
                                   <div className="opp-basic-info-sheet-cell">
-                                    {personalPurchase ? (
+                              {personalPurchase ? (
                                       <span className="opp-basic-info-sheet-field opp-basic-info-sheet-field--empty" title="개인 구매 시 고객사 없음">—</span>
-                                    ) : (
-                                      <input
-                                        type="text"
+                              ) : (
+                                <input
+                                  type="text"
                                         className="opp-basic-info-sheet-field opp-basic-info-sheet-field--input"
                                         value={form.customerCompanyName}
                                         placeholder="업체명 입력"
@@ -3281,11 +3281,11 @@ export default function OpportunityModal({
                                 <div className="opp-basic-info-sheet-row">
                                   <span className="opp-basic-info-sheet-label">사업자번호</span>
                                   <div className="opp-basic-info-sheet-cell">
-                                    {personalPurchase ? (
+                              {personalPurchase ? (
                                       <span className="opp-basic-info-sheet-field opp-basic-info-sheet-field--empty">—</span>
-                                    ) : (
-                                      <input
-                                        type="text"
+                              ) : (
+                                <input
+                                  type="text"
                                         className="opp-basic-info-sheet-field opp-basic-info-sheet-field--input"
                                         value={businessNumber}
                                         placeholder="사업자번호"
@@ -3308,7 +3308,7 @@ export default function OpportunityModal({
                                     ) : (
                                       <textarea
                                         className="opp-basic-info-sheet-field opp-basic-info-sheet-field--input opp-basic-info-sheet-field--textarea"
-                                        value={form.customerCompanyAddress}
+                                  value={form.customerCompanyAddress}
                                         placeholder="주소 입력"
                                         rows={2}
                                         onChange={(e) => {
@@ -3320,8 +3320,8 @@ export default function OpportunityModal({
                                         }}
                                       />
                                     )}
-                                  </div>
-                                </div>
+                          </div>
+                        </div>
                               </div>
                             </div>
                           </div>
@@ -3332,26 +3332,26 @@ export default function OpportunityModal({
                                 <span className="opp-basic-info-sheet-head-title">구매 담당자</span>
                                 <div className="opp-basic-info-sheet-head-actions">
                                   <label className="opp-personal-purchase-check opp-personal-purchase-check--compact">
-                                    <span className="opp-personal-purchase-check-text">개인구매</span>
-                                    <input
-                                      type="checkbox"
-                                      checked={personalPurchase}
-                                      onChange={(e) => {
-                                        const next = e.target.checked;
-                                        setPersonalPurchase(next);
-                                        if (next) {
-                                          setForm((f) => ({
-                                            ...f,
-                                            customerCompanyId: '',
-                                            customerCompanyName: '',
-                                            customerCompanyAddress: ''
-                                          }));
-                                          setBusinessNumber('');
-                                          setCompanyRefMissing(false);
-                                        }
-                                      }}
-                                    />
-                                  </label>
+                              <span className="opp-personal-purchase-check-text">개인구매</span>
+                              <input
+                                type="checkbox"
+                                checked={personalPurchase}
+                                onChange={(e) => {
+                                  const next = e.target.checked;
+                                  setPersonalPurchase(next);
+                                  if (next) {
+                                    setForm((f) => ({
+                                      ...f,
+                                      customerCompanyId: '',
+                                      customerCompanyName: '',
+                                      customerCompanyAddress: ''
+                                    }));
+                                    setBusinessNumber('');
+                                    setCompanyRefMissing(false);
+                                  }
+                                }}
+                              />
+                            </label>
                                   <button
                                     type="button"
                                     className="opp-basic-info-sheet-head-btn"
@@ -3359,16 +3359,16 @@ export default function OpportunityModal({
                                     aria-label="구매 담당자 검색"
                                   >
                                     <span className="material-symbols-outlined" aria-hidden>search</span>
-                                    검색
-                                  </button>
-                                </div>
+                              검색
+                            </button>
+                          </div>
                               </div>
                               <div className="opp-basic-info-sheet-body">
                                 <div className="opp-basic-info-sheet-row">
                                   <span className="opp-basic-info-sheet-label">성함</span>
                                   <div className="opp-basic-info-sheet-cell">
-                                    <input
-                                      type="text"
+                                <input
+                                  type="text"
                                       className="opp-basic-info-sheet-field opp-basic-info-sheet-field--input"
                                       value={form.contactName}
                                       placeholder="담당자명 입력"
@@ -3390,10 +3390,10 @@ export default function OpportunityModal({
                                     <input
                                       type="tel"
                                       className="opp-basic-info-sheet-field opp-basic-info-sheet-field--input"
-                                      value={form.contactPhone}
+                                  value={form.contactPhone}
                                       placeholder="010-0000-0000"
                                       inputMode="tel"
-                                      autoComplete="tel"
+                                  autoComplete="tel"
                                       onChange={(e) => {
                                         setContactRefMissing(false);
                                         setForm((f) => ({
@@ -3408,12 +3408,12 @@ export default function OpportunityModal({
                                 <div className="opp-basic-info-sheet-row">
                                   <span className="opp-basic-info-sheet-label">이메일</span>
                                   <div className="opp-basic-info-sheet-cell">
-                                    <input
-                                      type="email"
+                                <input
+                                  type="email"
                                       className="opp-basic-info-sheet-field opp-basic-info-sheet-field--input"
-                                      value={form.contactEmail}
+                                  value={form.contactEmail}
                                       placeholder="email@example.com"
-                                      autoComplete="email"
+                                  autoComplete="email"
                                       onChange={(e) => {
                                         setContactRefMissing(false);
                                         setForm((f) => ({
@@ -3423,11 +3423,11 @@ export default function OpportunityModal({
                                         }));
                                       }}
                                     />
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
                           </div>
+                        </div>
+                      </div>
+                        </div>
+                      </div>
 
                           <div className="opp-basic-split-card opp-basic-info-sheet-card opp-basic-info-sheet-card--doc-mail" aria-label="문서 메일 메일머지">
                             <div className="opp-basic-info-sheet" aria-label="문서 메일 주소">
@@ -3643,7 +3643,7 @@ export default function OpportunityModal({
                                   </div>
                                 ) : null}
                               </div>
-                                </div>
+                            </div>
                                 <button
                                   type="button"
                                   className="opp-basic-info-sheet-head-btn opp-doc-mail-bundle-save-btn--head"
@@ -3663,54 +3663,54 @@ export default function OpportunityModal({
                                     받는 메일 주소
                                   </label>
                                   <div className="opp-basic-info-sheet-cell">
-                                    <input
+                                <input
                                       id="opp-doc-mail-to-input"
-                                      type="email"
+                                  type="email"
                                       className="opp-basic-info-sheet-field opp-basic-info-sheet-field--input"
-                                      autoComplete="email"
-                                      placeholder="example@company.com"
-                                      value={(() => {
-                                        const q = String(quoteDocRecipientEmail || '').trim();
-                                        const p = String(purchaseOrderDocRecipientEmail || '').trim();
-                                        if (q && p && q !== p) return q;
-                                        return q || p;
-                                      })()}
-                                      onChange={(e) => {
-                                        const v = e.target.value;
-                                        setQuoteDocRecipientEmail(v);
-                                        setPurchaseOrderDocRecipientEmail(v);
-                                      }}
-                                      aria-label="받는 메일 주소 문서 메일"
-                                    />
+                                  autoComplete="email"
+                                  placeholder="example@company.com"
+                                  value={(() => {
+                                    const q = String(quoteDocRecipientEmail || '').trim();
+                                    const p = String(purchaseOrderDocRecipientEmail || '').trim();
+                                    if (q && p && q !== p) return q;
+                                    return q || p;
+                                  })()}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    setQuoteDocRecipientEmail(v);
+                                    setPurchaseOrderDocRecipientEmail(v);
+                                  }}
+                                  aria-label="받는 메일 주소 문서 메일"
+                                />
                                   </div>
                                 </div>
                                 <div className="opp-basic-info-sheet-row">
                                   <label className="opp-basic-info-sheet-label" htmlFor="opp-doc-mail-cc-input">
                                     참조 메일 주소 (CC)
-                                  </label>
+                              </label>
                                   <div className="opp-basic-info-sheet-cell">
-                                    <input
+                                <input
                                       id="opp-doc-mail-cc-input"
-                                      type="text"
+                                  type="text"
                                       className="opp-basic-info-sheet-field opp-basic-info-sheet-field--input"
-                                      placeholder="쉼표로 여러 주소"
-                                      value={(() => {
-                                        const q = String(quoteDocCcEmail || '').trim();
-                                        const p = String(purchaseOrderDocCcEmail || '').trim();
-                                        if (q && p && q !== p) return q;
-                                        return q || p;
-                                      })()}
-                                      onChange={(e) => {
-                                        const v = e.target.value;
-                                        setQuoteDocCcEmail(v);
-                                        setPurchaseOrderDocCcEmail(v);
-                                      }}
-                                      aria-label="참조 메일 주소 CC"
-                                    />
-                                  </div>
-                                </div>
-                              </div>
+                                  placeholder="쉼표로 여러 주소"
+                                  value={(() => {
+                                    const q = String(quoteDocCcEmail || '').trim();
+                                    const p = String(purchaseOrderDocCcEmail || '').trim();
+                                    if (q && p && q !== p) return q;
+                                    return q || p;
+                                  })()}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    setQuoteDocCcEmail(v);
+                                    setPurchaseOrderDocCcEmail(v);
+                                  }}
+                                  aria-label="참조 메일 주소 CC"
+                                />
                             </div>
+                          </div>
+                              </div>
+                          </div>
 
                           {docMailSaveOpen ? (
                             <div
@@ -3905,7 +3905,7 @@ export default function OpportunityModal({
                               </div>
                             ))}
                           </div>
-                          </div>
+                        </div>
                         </div>
                         </div>
 
@@ -4017,102 +4017,76 @@ export default function OpportunityModal({
                                 disabled={!canDocsUpload}
                                 aria-hidden="true"
                               />
-                              <div className="opp-basic-info-sheet-head">
-                                <span className="opp-basic-info-sheet-head-title">증서 · 자료</span>
-                                <button
-                                  type="button"
-                                  className="opp-basic-info-sheet-head-btn"
-                                  onClick={() => { if (canDocsUpload && fileInputRef.current) fileInputRef.current.click(); }}
-                                  disabled={!canDocsUpload}
-                                  title={
-                                    canDocsUpload
-                                      ? '파일 추가'
-                                      : driveUploading
-                                        ? '업로드 중'
-                                        : '고객사(사업자번호 포함) 또는 담당자 선택 후 업로드 가능'
-                                  }
-                                  aria-label="파일 추가"
-                                >
-                                  <span className="material-symbols-outlined" aria-hidden="true">add</span>
-                                  추가
-                                </button>
-                              </div>
                               <div className="opp-basic-info-sheet-body opp-basic-info-sheet-body--docs">
-                              <div
-                                className={`register-sale-docs-crm-uploads ${crmListDropActive ? 'register-sale-docs-crm-uploads--drop-active' : ''} ${driveUploading || !canDocsUpload ? 'register-sale-docs-crm-uploads--disabled' : ''}`}
+                              <CrmDriveStoragePanel
+                                asSection={false}
+                                headerSlot={(
+                                  <div className="opp-basic-info-sheet-head crm-drive-storage-head">
+                                    <span className="opp-basic-info-sheet-head-title crm-drive-storage-sheet-title">증서 · 자료</span>
+                                    <div className="crm-drive-storage-head-actions">
+                                      {effectiveDriveFolderIdForList ? (
+                                        <button
+                                          type="button"
+                                          className="crm-drive-storage-refresh-btn"
+                                          onClick={() => void handleRefreshDriveDocList()}
+                                          disabled={driveUploading || loadingDriveFolderList || driveIndexSyncing}
+                                          title="Drive 폴더와 CRM 저장 목록 동기화"
+                                        >
+                                          <span className="material-symbols-outlined" aria-hidden>refresh</span>
+                                          새로고침
+                                        </button>
+                                      ) : null}
+                                      <button
+                                        type="button"
+                                        className="crm-drive-storage-add-btn"
+                                        onClick={() => { if (canDocsUpload && fileInputRef.current) fileInputRef.current.click(); }}
+                                        disabled={!canDocsUpload}
+                                        title={
+                                          canDocsUpload
+                                            ? '파일 추가'
+                                            : driveUploading
+                                              ? '업로드 중'
+                                              : '고객사(사업자번호 포함) 또는 담당자 선택 후 업로드 가능'
+                                        }
+                                        aria-label="파일 추가"
+                                      >
+                                        <span className="material-symbols-outlined" aria-hidden>upload_file</span>
+                                        파일 추가
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                                rowCount={mergedDriveDocsSorted.length}
+                                rows={mergedDriveDocsSorted}
+                                hideAddButton
+                                uploadDisabled={!canDocsUpload}
+                                bodyBusy={driveUploading || !canDocsUpload || loadingDriveFolderList}
+                                emptyShowSpinner={driveUploading || loadingDriveFolderList}
+                                emptyBusyLabel={
+                                  driveUploading
+                                    ? '업로드 중…'
+                                    : loadingDriveFolderList
+                                      ? '폴더 목록을 불러오는 중…'
+                                      : '업로드 중…'
+                                }
+                                crmListDropActive={crmListDropActive}
                                 onDragEnter={handleDocsDragEnter}
                                 onDragOver={handleDocsDragOver}
                                 onDragLeave={handleDocsDragLeave}
                                 onDrop={handleDocsDrop}
-                              >
-                                <div className="opp-register-sale-docs-crm-title-row">
-                                  <h4 className="register-sale-docs-crm-uploads-title">
-                                    <span className="material-symbols-outlined">history_edu</span>
-                                    리스트
-                                  </h4>
-                                  {effectiveDriveFolderIdForList ? (
-                                    <button
-                                      type="button"
-                                      className="opp-register-sale-docs-crm-refresh"
-                                      onClick={() => void handleRefreshDriveDocList()}
-                                      disabled={driveUploading || loadingDriveFolderList || driveIndexSyncing}
-                                      title="Drive 폴더와 CRM 저장 목록을 맞춘 뒤, 화면을 새로고침합니다"
-                                    >
-                                      <span className="material-symbols-outlined" aria-hidden="true">
-                                        refresh
-                                      </span>
-                                      목록 새로고침
-                                    </button>
-                                  ) : null}
-                                </div>
-                                <p className="register-sale-docs-crm-uploads-hint">
-                                  CRM에 기록된 파일과, 같은 폴더를 Drive API로 조회한 항목을 합쳐 표시합니다. Drive 웹에서만 올린 파일을 CRM 저장 목록(MongoDB)에도 넣으려면 「목록 새로고침」으로 동기화하세요. 제품별 하위 폴더는 만들지 않습니다. 이 창에서 파일을 올리면 완료 후 「라이선스 증서 전달 날짜」를 오늘로 기록할지 묻습니다.
-                                </p>
-                                {driveListError ? (
-                                  <p className="register-sale-docs-error" role="alert">
-                                    {driveListError}
-                                  </p>
-                                ) : null}
-                                {mergedDriveDocsSorted.length === 0 ? (
-                                  <div
-                                    className={`register-sale-docs-crm-empty ${crmListDropActive ? 'register-sale-docs-crm-empty--active' : ''}`}
-                                    onClick={() => {
-                                      if (canDocsUpload && fileInputRef.current) fileInputRef.current.click();
-                                    }}
-                                    role="button"
-                                    tabIndex={0}
-                                    onKeyDown={(e) => {
-                                      if ((e.key === 'Enter' || e.key === ' ') && canDocsUpload && fileInputRef.current) {
-                                        e.preventDefault();
-                                        fileInputRef.current.click();
-                                      }
-                                    }}
-                                  >
-                                    <span className="material-symbols-outlined register-sale-docs-crm-empty-icon">inbox</span>
-                                    <span className="register-sale-docs-crm-empty-text">
-                                      {driveUploading
-                                        ? '업로드 중…'
-                                        : loadingDriveFolderList
-                                          ? '폴더 목록을 불러오는 중…'
-                                          : '등록된 항목이 없습니다. 파일을 여기에 놓거나 위쪽 추가 버튼으로 올리세요. Drive 웹에서만 올린 뒤에는 「목록 새로고침」을 눌러 주세요.'}
-                                    </span>
-                                  </div>
-                                ) : (
-                                  <RegisterSaleDocsCrmTable
-                                    rows={mergedDriveDocsSorted}
-                                    formatDriveFileDate={formatDriveFileDate}
-                                    driveUploading={driveUploading}
-                                    crmDriveDeletingId={driveDocDeletingId}
-                                    onDeleteRow={handleDeleteMergedDriveDoc}
-                                  />
-                                )}
-                              </div>
-                              {driveError ? <p className="register-sale-docs-error">{driveError}</p> : null}
-                              {driveUploadNotice && !driveError ? (
-                                <p className="register-sale-docs-success" role="status">
-                                  {driveUploadNotice}
-                                </p>
-                              ) : null}
+                                onRequestUpload={() => {
+                                  if (canDocsUpload && fileInputRef.current) fileInputRef.current.click();
+                                }}
+                                emptyHint="CRM·Drive API 목록을 합쳐 표시합니다. Drive 웹에서만 올린 파일은 「새로고침」으로 동기화하세요."
+                                listTall
+                                inlineAlert={driveListError || ''}
+                                formatDriveFileDate={formatDriveFileDate}
+                                driveUploading={driveUploading}
+                                crmDriveDeletingId={driveDocDeletingId}
+                                onDeleteRow={handleDeleteMergedDriveDoc}
+                                driveError={driveError}
+                                driveUploadNotice={driveUploadNotice}
+                              />
                               </div>
                             </div>
                           ) : null}
@@ -4288,9 +4262,9 @@ export default function OpportunityModal({
                           </div>
                           <div className="opp-basic-info-sheet-body opp-products-line-sheet-body">
                             <p className="opp-schedule-won-banner opp-products-line-sheet-intro">
-                              가격 기준은 한 행당 하나만 선택됩니다. 유통을 고르면 유통사를 적습니다. 저장 시 목록에 없는 유통사명은 회사 템플릿에 자동 등록됩니다. 기타 금액은 위 열에 입력하고, 추가 금액이 있으면 아래 행에서 나누어 적습니다. 순마진에서는 기타 금액 합만큼 차감됩니다.
-                            </p>
-                            <div className="opp-line-sheet-scroll">
+                            가격 기준은 한 행당 하나만 선택됩니다. 유통을 고르면 유통사를 적습니다. 저장 시 목록에 없는 유통사명은 회사 템플릿에 자동 등록됩니다. 기타 금액은 위 열에 입력하고, 추가 금액이 있으면 아래 행에서 나누어 적습니다. 순마진에서는 기타 금액 합만큼 차감됩니다.
+                          </p>
+                          <div className="opp-line-sheet-scroll">
                             <div className="opp-line-sheet-table-wrap">
                               <table className="opp-line-sheet">
 
@@ -4552,15 +4526,15 @@ export default function OpportunityModal({
                             <span className="opp-basic-info-sheet-head-title">금액 요약</span>
                           </div>
                           <div className="opp-basic-info-sheet-body opp-products-summary-body">
-                            {lineItems.map((line) => {
-                              const lineFinal = computeLineFinalAmount(line);
-                              const lineComm = (Array.isArray(line.commissionRecipients) ? line.commissionRecipients : []).reduce(
-                                (s, r) => s + parseNumber(r.commissionAmount),
-                                0
-                              );
-                              const lineNet = computeLineNetMargin(line);
-                              const lineNetShown = lineNet != null ? lineNet - lineComm : null;
-                              return (
+                          {lineItems.map((line) => {
+                            const lineFinal = computeLineFinalAmount(line);
+                            const lineComm = (Array.isArray(line.commissionRecipients) ? line.commissionRecipients : []).reduce(
+                              (s, r) => s + parseNumber(r.commissionAmount),
+                              0
+                            );
+                            const lineNet = computeLineNetMargin(line);
+                            const lineNetShown = lineNet != null ? lineNet - lineComm : null;
+                            return (
                                 <React.Fragment key={line.lineId}>
                                   <div className="opp-schedule-finance-subhead">{line.productName || '제품'}</div>
                                   <div
@@ -4573,25 +4547,25 @@ export default function OpportunityModal({
                                       <span className="opp-basic-info-sheet-field opp-basic-info-sheet-field--readonly">
                                         - {formatCurrencyDisplay(computeLineDeduction(line), form.currency)}
                                       </span>
-                                    </div>
+                                  </div>
                                     <span className="opp-basic-info-sheet-label">최종</span>
                                     <div className="opp-basic-info-sheet-cell">
                                       <span className="opp-basic-info-sheet-field opp-basic-info-sheet-field--readonly opp-products-summary-val--main">
                                         {formatCurrencyDisplay(lineFinal, form.currency)}
                                       </span>
-                                    </div>
+                                  </div>
                                     <span className="opp-basic-info-sheet-label">순마진</span>
                                     <div className="opp-basic-info-sheet-cell">
                                       <span className="opp-basic-info-sheet-field opp-basic-info-sheet-field--readonly opp-products-summary-val--margin">
-                                        {line.productId && productById[line.productId] && lineNetShown != null
-                                          ? formatCurrencyDisplay(lineNetShown, form.currency)
-                                          : '—'}
-                                      </span>
-                                    </div>
+                                      {line.productId && productById[line.productId] && lineNetShown != null
+                                        ? formatCurrencyDisplay(lineNetShown, form.currency)
+                                        : '—'}
+                                    </span>
                                   </div>
+                                </div>
                                 </React.Fragment>
-                              );
-                            })}
+                            );
+                          })}
                             <div className="opp-schedule-finance-subhead">전체 합계</div>
                             <div className="opp-basic-info-sheet-row opp-schedule-finance-quad-row" aria-label="전체 차감 및 마진">
                               <span className="opp-basic-info-sheet-label">차감</span>
@@ -4599,27 +4573,27 @@ export default function OpportunityModal({
                                 <span className="opp-basic-info-sheet-field opp-basic-info-sheet-field--readonly">
                                   - {formatCurrencyDisplay(computeTotalDeduction(), form.currency)}
                                 </span>
-                              </div>
+                                </div>
                               <span className="opp-basic-info-sheet-label">마진</span>
                               <div className="opp-basic-info-sheet-cell">
                                 <span className="opp-basic-info-sheet-field opp-basic-info-sheet-field--readonly opp-products-summary-val--margin">
-                                  {netMarginAfterCommission != null ? formatCurrencyDisplay(netMarginAfterCommission, form.currency) : '—'}
-                                </span>
+                                    {netMarginAfterCommission != null ? formatCurrencyDisplay(netMarginAfterCommission, form.currency) : '—'}
+                                  </span>
                               </div>
-                            </div>
-                            {forecastExpectedRevenue != null ? (
-                              <div
+                                </div>
+                                {forecastExpectedRevenue != null ? (
+                                  <div
                                 className="opp-basic-info-sheet-row"
-                                aria-label="Forecast 예상 매출"
-                                title={`전체 최종 금액 × 단계 Forecast (${forecastPctForStage}%)`}
-                              >
+                                    aria-label="Forecast 예상 매출"
+                                    title={`전체 최종 금액 × 단계 Forecast (${forecastPctForStage}%)`}
+                                  >
                                 <span className="opp-basic-info-sheet-label">Forecast</span>
                                 <div className="opp-basic-info-sheet-cell">
                                   <span className="opp-basic-info-sheet-field opp-basic-info-sheet-field--readonly opp-products-summary-val--forecast">
                                     <span className="opp-products-summary-forecast-meta">{forecastStageLabel} · {forecastPctForStage}%</span>
-                                    {formatCurrencyDisplay(forecastExpectedRevenue, form.currency)}
-                                  </span>
-                                </div>
+                                      {formatCurrencyDisplay(forecastExpectedRevenue, form.currency)}
+                                    </span>
+                                  </div>
                               </div>
                             ) : null}
                             <div className="opp-basic-info-sheet-row opp-products-summary-final-row" aria-label="전체 최종 금액">
@@ -4648,76 +4622,76 @@ export default function OpportunityModal({
                             <div className="opp-basic-info-sheet opp-basic-info-sheet--panel opp-schedule-sheet" aria-label="기회 일정">
                               <div className="opp-basic-info-sheet-head">
                                 <span className="opp-basic-info-sheet-head-title">기회 일정</span>
-                                {canManageScheduleFieldDefs ? (
-                                  <button
-                                    type="button"
+                              {canManageScheduleFieldDefs ? (
+                                <button
+                                  type="button"
                                     className="opp-basic-info-sheet-head-btn"
-                                    title="회사별 추가 일정 항목 정의"
-                                    aria-label="회사별 추가 일정 항목 정의"
-                                    onClick={() => setShowScheduleFieldsManageModal(true)}
-                                  >
-                                    <span className="material-symbols-outlined" aria-hidden>
-                                      add
-                                    </span>
+                                  title="회사별 추가 일정 항목 정의"
+                                  aria-label="회사별 추가 일정 항목 정의"
+                                  onClick={() => setShowScheduleFieldsManageModal(true)}
+                                >
+                                  <span className="material-symbols-outlined" aria-hidden>
+                                    add
+                                  </span>
                                     추가
-                                  </button>
-                                ) : null}
-                              </div>
+                                </button>
+                              ) : null}
+                            </div>
                               <div className="opp-basic-info-sheet-body opp-schedule-sheet-body">
-                                {!wonOnlyScheduleEditable ? (
+                            {!wonOnlyScheduleEditable ? (
                                   <p className="opp-schedule-won-banner">
-                                    계약일·전체 완료·증서 전달은 <strong>수주 성공(Won)</strong> 단계에서만 편집할 수 있습니다. 회사 맞춤 일정은 정의에서 &quot;수주 전&quot;으로 설정한 항목만 지금 단계에서 편집할 수 있습니다.
-                                  </p>
-                                ) : null}
+                                계약일·전체 완료·증서 전달은 <strong>수주 성공(Won)</strong> 단계에서만 편집할 수 있습니다. 회사 맞춤 일정은 정의에서 &quot;수주 전&quot;으로 설정한 항목만 지금 단계에서 편집할 수 있습니다.
+                              </p>
+                            ) : null}
                                 <div className="opp-basic-info-sheet-row">
                                   <span className="opp-basic-info-sheet-label">시작일</span>
                                   <div className="opp-basic-info-sheet-cell">
-                                    <input
-                                      type="date"
+                                <input
+                                  type="date"
                                       className="opp-basic-info-sheet-field opp-basic-info-sheet-field--input opp-schedule-sheet-field--date"
-                                      value={form.startDate}
-                                      onChange={(e) => handleChange('startDate', e.target.value)}
-                                    />
-                                  </div>
+                                  value={form.startDate}
+                                  onChange={(e) => handleChange('startDate', e.target.value)}
+                                />
+                              </div>
                                 </div>
                                 <div className="opp-basic-info-sheet-row">
                                   <span className="opp-basic-info-sheet-label">구매 예정</span>
                                   <div className="opp-basic-info-sheet-cell">
-                                    <input
-                                      type="date"
+                                <input
+                                  type="date"
                                       className="opp-basic-info-sheet-field opp-basic-info-sheet-field--input opp-schedule-sheet-field--date"
-                                      value={form.targetDate}
-                                      onChange={(e) => handleChange('targetDate', e.target.value)}
-                                    />
-                                  </div>
+                                  value={form.targetDate}
+                                  onChange={(e) => handleChange('targetDate', e.target.value)}
+                                />
+                              </div>
                                 </div>
                                 <div className="opp-basic-info-sheet-row">
                                   <span className="opp-basic-info-sheet-label">계약일</span>
                                   <div className="opp-basic-info-sheet-cell">
-                                    <input
-                                      type="date"
+                                <input
+                                  type="date"
                                       className="opp-basic-info-sheet-field opp-basic-info-sheet-field--input opp-schedule-sheet-field--date"
-                                      value={form.saleDate}
-                                      onChange={(e) => handleChange('saleDate', e.target.value)}
-                                      aria-label="계약일"
-                                      disabled={!wonOnlyScheduleEditable}
-                                    />
-                                  </div>
-                                </div>
+                                  value={form.saleDate}
+                                  onChange={(e) => handleChange('saleDate', e.target.value)}
+                                  aria-label="계약일"
+                                  disabled={!wonOnlyScheduleEditable}
+                                />
+                              </div>
+                            </div>
                                 <div className="opp-basic-info-sheet-row">
                                   <span className="opp-basic-info-sheet-label">전체 완료</span>
                                   <div className="opp-basic-info-sheet-cell">
-                                    <input
-                                      type="date"
+                                <input
+                                  type="date"
                                       className="opp-basic-info-sheet-field opp-basic-info-sheet-field--input opp-schedule-sheet-field--date"
-                                      value={form.fullCollectionCompleteDate}
-                                      onChange={(e) => {
-                                        fullCollectionDateTouchedRef.current = true;
-                                        handleChange('fullCollectionCompleteDate', e.target.value);
-                                      }}
-                                      aria-label="전체 완료 날짜"
-                                      disabled={!wonOnlyScheduleEditable}
-                                    />
+                                  value={form.fullCollectionCompleteDate}
+                                  onChange={(e) => {
+                                    fullCollectionDateTouchedRef.current = true;
+                                    handleChange('fullCollectionCompleteDate', e.target.value);
+                                  }}
+                                  aria-label="전체 완료 날짜"
+                                  disabled={!wonOnlyScheduleEditable}
+                                />
                                   </div>
                                 </div>
                                 <p className="opp-schedule-sheet-hint">
@@ -4727,14 +4701,14 @@ export default function OpportunityModal({
                                 <div className="opp-basic-info-sheet-row">
                                   <span className="opp-basic-info-sheet-label">증서 전달</span>
                                   <div className="opp-basic-info-sheet-cell">
-                                    <input
-                                      type="date"
+                                <input
+                                  type="date"
                                       className="opp-basic-info-sheet-field opp-basic-info-sheet-field--input opp-schedule-sheet-field--date"
-                                      value={form.licenseCertificateDeliveredDate}
-                                      onChange={(e) => handleChange('licenseCertificateDeliveredDate', e.target.value)}
-                                      aria-label="라이선스 증서 전달 날짜"
-                                      disabled={!wonOnlyScheduleEditable}
-                                    />
+                                  value={form.licenseCertificateDeliveredDate}
+                                  onChange={(e) => handleChange('licenseCertificateDeliveredDate', e.target.value)}
+                                  aria-label="라이선스 증서 전달 날짜"
+                                  disabled={!wonOnlyScheduleEditable}
+                                />
                                   </div>
                                 </div>
                                 <p className="opp-schedule-sheet-hint">
@@ -4758,8 +4732,8 @@ export default function OpportunityModal({
                                           aria-label={def.label || def.key}
                                           disabled={!scheduleFieldEditable}
                                         />
-                                      </div>
-                                    </div>
+                              </div>
+                            </div>
                                   );
                                 })}
                               </div>
@@ -4774,71 +4748,71 @@ export default function OpportunityModal({
                                 <div className="opp-basic-info-sheet-row opp-schedule-finance-quad-row">
                                   <span className="opp-basic-info-sheet-label">금액</span>
                                   <div className="opp-basic-info-sheet-cell">
-                                    <input
-                                      type="text"
-                                      inputMode="numeric"
-                                      pattern="[0-9,]*"
+                                        <input
+                                          type="text"
+                                          inputMode="numeric"
+                                          pattern="[0-9,]*"
                                       className="opp-basic-info-sheet-field opp-basic-info-sheet-field--input"
-                                      placeholder="숫자만 입력"
-                                      value={form.contractAmount}
-                                      onChange={(e) => handleChange('contractAmount', formatNumberInput(e.target.value))}
+                                          placeholder="숫자만 입력"
+                                          value={form.contractAmount}
+                                          onChange={(e) => handleChange('contractAmount', formatNumberInput(e.target.value))}
                                       aria-label="계약금액"
                                     />
                                   </div>
                                   <span className="opp-basic-info-sheet-label">날짜</span>
                                   <div className="opp-basic-info-sheet-cell">
-                                    <input
-                                      type="date"
+                                        <input
+                                          type="date"
                                       className="opp-basic-info-sheet-field opp-basic-info-sheet-field--input opp-schedule-sheet-field--date"
-                                      value={form.saleDate}
-                                      onChange={(e) => handleChange('saleDate', e.target.value)}
-                                      aria-label="계약일"
-                                      disabled={!wonOnlyScheduleEditable}
-                                    />
+                                          value={form.saleDate}
+                                          onChange={(e) => handleChange('saleDate', e.target.value)}
+                                          aria-label="계약일"
+                                          disabled={!wonOnlyScheduleEditable}
+                                        />
+                                    </div>
                                   </div>
-                                </div>
 
                                 <div className="opp-schedule-finance-subhead">계산서 금액</div>
                                 <div className="opp-basic-info-sheet-row opp-schedule-finance-quad-row">
                                   <span className="opp-basic-info-sheet-label">금액</span>
                                   <div className="opp-basic-info-sheet-cell">
-                                    <input
-                                      type="text"
-                                      inputMode="numeric"
-                                      pattern="[0-9,]*"
+                                        <input
+                                          type="text"
+                                          inputMode="numeric"
+                                          pattern="[0-9,]*"
                                       className="opp-basic-info-sheet-field opp-basic-info-sheet-field--input"
-                                      placeholder="숫자만 입력"
-                                      value={form.invoiceAmount}
-                                      onChange={(e) => handleChange('invoiceAmount', formatNumberInput(e.target.value))}
+                                          placeholder="숫자만 입력"
+                                          value={form.invoiceAmount}
+                                          onChange={(e) => handleChange('invoiceAmount', formatNumberInput(e.target.value))}
                                       aria-label="계산서 금액"
                                     />
                                   </div>
                                   <span className="opp-basic-info-sheet-label">날짜</span>
                                   <div className="opp-basic-info-sheet-cell">
-                                    <input
-                                      type="date"
+                                        <input
+                                          type="date"
                                       className="opp-basic-info-sheet-field opp-basic-info-sheet-field--input opp-schedule-sheet-field--date"
-                                      value={form.invoiceAmountDate}
-                                      onChange={(e) => handleChange('invoiceAmountDate', e.target.value)}
+                                          value={form.invoiceAmountDate}
+                                          onChange={(e) => handleChange('invoiceAmountDate', e.target.value)}
                                       aria-label="계산서 날짜"
-                                    />
+                                        />
                                   </div>
                                 </div>
 
                                 <div className="opp-schedule-finance-subhead">
                                   <span>수금 완료 (누적)</span>
-                                  <button
-                                    type="button"
+                                      <button
+                                        type="button"
                                     className="opp-schedule-inline-btn"
-                                    onClick={addCollectionEntry}
-                                    aria-label="수금 항목 추가"
-                                    title="수금 항목 추가"
-                                  >
-                                    <span className="material-symbols-outlined" aria-hidden="true">add</span>
+                                        onClick={addCollectionEntry}
+                                        aria-label="수금 항목 추가"
+                                        title="수금 항목 추가"
+                                      >
+                                        <span className="material-symbols-outlined" aria-hidden="true">add</span>
                                     추가
-                                  </button>
-                                </div>
-                                {collectionEntries.map((entry, index) => (
+                                      </button>
+                                    </div>
+                                      {collectionEntries.map((entry, index) => (
                                   <React.Fragment key={entry.id}>
                                     {collectionEntries.length > 1 ? (
                                       <div className="opp-schedule-collection-entry-head">{`수금 ${index + 1}`}</div>
@@ -4846,77 +4820,77 @@ export default function OpportunityModal({
                                     <div className="opp-basic-info-sheet-row opp-schedule-finance-quad-row">
                                       <span className="opp-basic-info-sheet-label">금액</span>
                                       <div className="opp-basic-info-sheet-cell">
-                                        <input
-                                          type="text"
-                                          inputMode="numeric"
-                                          pattern="[0-9,]*"
+                                            <input
+                                              type="text"
+                                              inputMode="numeric"
+                                              pattern="[0-9,]*"
                                           className="opp-basic-info-sheet-field opp-basic-info-sheet-field--input"
-                                          placeholder="숫자만 입력"
-                                          value={entry.amount}
-                                          onChange={(e) => handleCollectionAmountChange(entry.id, e.target.value)}
+                                              placeholder="숫자만 입력"
+                                              value={entry.amount}
+                                              onChange={(e) => handleCollectionAmountChange(entry.id, e.target.value)}
                                           aria-label={`수금 ${index + 1} 금액`}
                                         />
                                       </div>
                                       <span className="opp-basic-info-sheet-label">날짜</span>
                                       <div className="opp-basic-info-sheet-cell opp-schedule-finance-quad-date-cell">
-                                        <input
-                                          type="date"
+                                            <input
+                                              type="date"
                                           className="opp-basic-info-sheet-field opp-basic-info-sheet-field--input opp-schedule-sheet-field--date"
-                                          value={entry.date}
-                                          onChange={(e) => handleCollectionDateChange(entry.id, e.target.value)}
+                                              value={entry.date}
+                                              onChange={(e) => handleCollectionDateChange(entry.id, e.target.value)}
                                           aria-label={`수금 ${index + 1} 날짜`}
-                                        />
-                                        <button
-                                          type="button"
+                                            />
+                                          <button
+                                            type="button"
                                           className="opp-schedule-inline-btn opp-schedule-inline-btn--danger opp-schedule-collection-delete"
-                                          onClick={() => removeCollectionEntry(entry.id)}
-                                          disabled={collectionEntries.length <= 1}
-                                          aria-label={`수금 ${index + 1} 항목 삭제`}
-                                          title="수금 항목 삭제"
-                                        >
-                                          <span className="material-symbols-outlined" aria-hidden="true">delete</span>
-                                        </button>
-                                      </div>
+                                            onClick={() => removeCollectionEntry(entry.id)}
+                                            disabled={collectionEntries.length <= 1}
+                                            aria-label={`수금 ${index + 1} 항목 삭제`}
+                                            title="수금 항목 삭제"
+                                          >
+                                            <span className="material-symbols-outlined" aria-hidden="true">delete</span>
+                                          </button>
+                                        </div>
                                     </div>
                                   </React.Fragment>
-                                ))}
-                              </div>
-                            </div>
+                                      ))}
+                                  </div>
+                                </div>
 
-                            {(canManageScheduleFieldDefs || financeFieldDefs.length > 0) ? (
+                                {(canManageScheduleFieldDefs || financeFieldDefs.length > 0) ? (
                               <div className="opp-basic-info-sheet opp-basic-info-sheet--panel opp-schedule-sheet" aria-label="추가 필드">
                                 <div className="opp-basic-info-sheet-head">
                                   <span className="opp-basic-info-sheet-head-title">추가 필드</span>
-                                  {canManageScheduleFieldDefs ? (
-                                    <button
-                                      type="button"
+                                      {canManageScheduleFieldDefs ? (
+                                        <button
+                                          type="button"
                                       className="opp-basic-info-sheet-head-btn"
-                                      title="회사별 계약·수금 추가 필드 정의"
-                                      aria-label="회사별 계약·수금 추가 필드 정의"
-                                      onClick={() => setShowFinanceFieldsManageModal(true)}
-                                    >
-                                      <span className="material-symbols-outlined" aria-hidden="true">add</span>
+                                          title="회사별 계약·수금 추가 필드 정의"
+                                          aria-label="회사별 계약·수금 추가 필드 정의"
+                                          onClick={() => setShowFinanceFieldsManageModal(true)}
+                                        >
+                                          <span className="material-symbols-outlined" aria-hidden="true">add</span>
                                       추가
-                                    </button>
-                                  ) : null}
-                                </div>
+                                        </button>
+                                      ) : null}
+                                    </div>
                                 <div className="opp-basic-info-sheet-body opp-schedule-sheet-body opp-schedule-custom-fields-body">
-                                  <CustomFieldsSection
-                                    hideTitle
-                                    definitions={financeFieldDefs}
-                                    values={financeCustomFieldValues}
-                                    onChangeValues={(key, v) =>
-                                      setFinanceCustomFieldValues((prev) => ({
-                                        ...prev,
-                                        [key]: v
-                                      }))
-                                    }
+                                    <CustomFieldsSection
+                                      hideTitle
+                                      definitions={financeFieldDefs}
+                                      values={financeCustomFieldValues}
+                                      onChangeValues={(key, v) =>
+                                        setFinanceCustomFieldValues((prev) => ({
+                                          ...prev,
+                                          [key]: v
+                                        }))
+                                      }
                                     fieldClassName="opp-schedule-custom-field"
                                     inputClassName="opp-basic-info-sheet-field opp-basic-info-sheet-field--input"
-                                  />
+                                    />
                                 </div>
-                              </div>
-                            ) : null}
+                                  </div>
+                                ) : null}
                           </div>
                           <OpportunityModalScheduleCalendar
                             marks={scheduleCalendarMarks}
@@ -4931,13 +4905,10 @@ export default function OpportunityModal({
             </div>
 
             <div className="opp-modal-footer">
-              {isEdit && canDeleteOpportunity ? (
-                <button type="button" className="opp-delete-btn" onClick={handleDelete}>
-                  <span className="material-symbols-outlined">delete</span>
-                  삭제
+              <button type="button" className="opp-cancel-btn" onClick={onClose} disabled={saving}>
+                <span className="material-symbols-outlined" aria-hidden>close</span>
+                취소
                 </button>
-              ) : null}
-              <button type="button" className="opp-cancel-btn" onClick={onClose}>취소</button>
               {isEdit || typeof onSwitchToEditAfterCreate === 'function' ? (
                 <button
                   type="button"
@@ -4947,7 +4918,14 @@ export default function OpportunityModal({
                   title="서버에 반영하고 이 창은 열어 둡니다."
                   aria-label="적용: 저장 후 창 유지"
                 >
+                  {!saving ? <span className="material-symbols-outlined" aria-hidden>done</span> : null}
                   {saving ? '저장 중...' : '적용'}
+                </button>
+              ) : null}
+              {isEdit && canDeleteOpportunity ? (
+                <button type="button" className="opp-delete-btn" onClick={handleDelete} disabled={saving}>
+                  <span className="material-symbols-outlined" aria-hidden>delete</span>
+                  삭제
                 </button>
               ) : null}
               <button
@@ -4957,6 +4935,7 @@ export default function OpportunityModal({
                 disabled={saving}
                 title={isEdit ? '저장한 뒤 이 창을 닫습니다.' : '등록한 뒤 이 창을 닫습니다.'}
               >
+                {!saving ? <span className="material-symbols-outlined" aria-hidden>save</span> : null}
                 {saving ? '저장 중...' : isEdit ? '수정' : '추가'}
               </button>
             </div>

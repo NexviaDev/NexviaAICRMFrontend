@@ -1,9 +1,4 @@
-function isXlsxTemplate(t) {
-  if (!t) return false;
-  if (String(t.fileType || '').toLowerCase() === 'xlsx') return true;
-  const n = String(t.fileName || t.name || '');
-  return /\.xlsx$/i.test(n);
-}
+import { isXlsxMergeTemplate } from '@/lib/merge-template-file-types';
 
 function rowTemplateIds(row, selectedTemplateId, templates) {
   const def = selectedTemplateId || templates[0]?._id || '';
@@ -37,7 +32,7 @@ export function resolvePdfPrintAreaXlsxTemplate(mergeRows, templates, selectedTe
   const pickFromIds = (ids) => {
     for (const id of ids) {
       const t = templates.find((x) => String(x._id) === String(id));
-      if (isXlsxTemplate(t)) return { templateId: String(t._id), templateName: nameOf(t) };
+      if (isXlsxMergeTemplate(t)) return { templateId: String(t._id), templateName: nameOf(t) };
     }
     return null;
   };
@@ -51,7 +46,7 @@ export function resolvePdfPrintAreaXlsxTemplate(mergeRows, templates, selectedTe
     const hit = pickFromIds(rowTemplateIds(row, selectedTemplateId, templates));
     if (hit) return hit;
   }
-  const t = templates.find(isXlsxTemplate);
+  const t = templates.find(isXlsxMergeTemplate);
   if (t) return { templateId: String(t._id), templateName: nameOf(t) };
   return null;
 }
@@ -74,7 +69,7 @@ export function resolvePdfPrintAreaXlsxTemplateForRow(
   const ids = rowTemplateIds(row, selectedTemplateId, templates);
   for (const id of ids) {
     const t = templates.find((x) => String(x._id) === String(id));
-    if (isXlsxTemplate(t)) return { templateId: String(t._id), templateName: nameOf(t) };
+    if (isXlsxMergeTemplate(t)) return { templateId: String(t._id), templateName: nameOf(t) };
   }
   return null;
 }

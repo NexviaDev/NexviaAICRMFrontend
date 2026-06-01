@@ -228,33 +228,45 @@ export default function NotificationPage() {
     }
   };
 
-  const openMentionProject = async (item) => {
-    const linkId = String(item?.linkProjectId || '').trim();
-    if (!linkId) return;
+  const markInboxRead = async (item) => {
+    const mentionId = String(item?._id || '').trim();
+    const token = localStorage.getItem('crm_token');
+    if (!token || !mentionId || item?.readAt) return;
+    try {
+      const res = await fetch(`${API_BASE}/notifications/mentions/${encodeURIComponent(mentionId)}/read`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        setMentionRows((prev) =>
+          prev.map((row) =>
+            String(row?._id || '') === mentionId ? { ...row, readAt: new Date().toISOString() } : row
+          )
+        );
+        try {
+          window.dispatchEvent(new CustomEvent('crm-notifications-seen'));
+        } catch {
+          /* ignore */
+        }
+      }
+    } catch {
+      /* 이동은 계속 */
+    }
+  };
+
+  const openInboxItem = async (item) => {
     const mentionId = String(item?._id || '').trim();
     setOpeningMentionId(mentionId);
-    const token = localStorage.getItem('crm_token');
-    if (token && mentionId && !item?.readAt) {
-      try {
-        const res = await fetch(`${API_BASE}/notifications/mentions/${encodeURIComponent(mentionId)}/read`, {
-          method: 'PATCH',
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (res.ok) {
-          setMentionRows((prev) =>
-            prev.map((row) =>
-              String(row?._id || '') === mentionId ? { ...row, readAt: new Date().toISOString() } : row
-            )
-          );
-          try {
-            window.dispatchEvent(new CustomEvent('crm-notifications-seen'));
-          } catch {
-            /* ignore */
-          }
-        }
-      } catch {
-        /* 이동은 계속 */
-      }
+    await markInboxRead(item);
+    if (item?.type === 'admin-user-signup') {
+      navigate(String(item?.linkUrl || '/admin/users').trim() || '/admin/users');
+      setOpeningMentionId('');
+      return;
+    }
+    const linkId = String(item?.linkProjectId || '').trim();
+    if (!linkId) {
+      setOpeningMentionId('');
+      return;
     }
     navigate(`/project?projectModal=edit&projectId=${encodeURIComponent(linkId)}`);
     setOpeningMentionId('');
@@ -269,7 +281,7 @@ export default function NotificationPage() {
         <div>
           <h1 className="notification-title">알림</h1>
           <p className="notification-lead">
-            프로젝트 코멘트에서 @언급되면 여기에 표시됩니다. 사내 공지는 대표·관리자가 등록하며, Nexvia 전체 공지는
+            프로젝트 코멘트 @언급, 회원가입·정보 수정(관리자), 사내 공지가 여기에 표시됩니다. Nexvia 전체 공지는
             열람만 가능합니다.
           </p>
         </div>
@@ -289,7 +301,7 @@ export default function NotificationPage() {
 
         <p className="notification-push-sidebar-hint">
           스마트폰·PWA 푸시는 왼쪽 사이드바 하단 <strong>알림(종) 아이콘</strong>으로 켜고 끌 수 있습니다. 프로젝트
-          @언급·공지 모두 로그인한 계정에만 알림이 갑니다.
+          @언급·회원가입 알림(관리자)·공지 모두 로그인한 계정에만 알림이 갑니다.
         </p>
 
         {editorOpen && canManage ? (
@@ -380,31 +392,54 @@ export default function NotificationPage() {
             {mentionRows.length > 0 ? (
               <>
                 {mentionRows.map((item) => {
+                  const type = String(item?.type || 'project-comment-mention');
+                  const isAdminSignup = type === 'admin-user-signup';
                   const authorName = String(item?.authorName || '동료').trim();
                   const projectTitle = String(item?.projectTitle || '프로젝트').trim();
                   const excerpt = String(item?.messageExcerpt || '').trim();
                   const unread = !item?.readAt;
                   const mentionId = String(item?._id || '');
+                  const actionKind = item?.actionKind === 'profile-update' ? 'profile-update' : 'register';
                   return (
                     <button
                       key={`mention-${mentionId}`}
                       type="button"
                       className={`notification-card notification-card--mention${unread ? ' notification-card--unread' : ''}`}
-                      onClick={() => void openMentionProject(item)}
+                      onClick={() => void openInboxItem(item)}
                       disabled={openingMentionId === mentionId}
                     >
                       <div className="notification-card-meta">
-                        <span className="notification-card-badge notification-card-badge--mention">프로젝트 언급</span>
+                        <span
+                          className={`notification-card-badge ${
+                            isAdminSignup
+                              ? 'notification-card-badge--admin-signup'
+                              : 'notification-card-badge--mention'
+                          }`}
+                        >
+                          {isAdminSignup
+                            ? actionKind === 'profile-update'
+                              ? '회원 정보 수정'
+                              : '신규 회원가입'
+                            : '프로젝트 언급'}
+                        </span>
                         <span>{formatDt(item.createdAt)}</span>
                         {unread ? <span className="notification-card-unread-dot" aria-label="읽지 않음" /> : null}
                       </div>
                       <h2 className="notification-card-title">
-                        {authorName}님이 프로젝트 코멘트에서 언급했습니다
+                        {isAdminSignup
+                          ? actionKind === 'profile-update'
+                            ? `${authorName}님이 회원 정보를 수정했습니다`
+                            : `${authorName}님이 회원가입했습니다`
+                          : `${authorName}님이 프로젝트 코멘트에서 언급했습니다`}
                       </h2>
                       <p className="notification-card-excerpt">
-                        [{projectTitle}]{excerpt ? ` ${excerpt}` : ''}
+                        {isAdminSignup
+                          ? excerpt || `${item?.subjectEmail || ''} · ${item?.subjectCompanyName || ''}`.trim()
+                          : `[${projectTitle}]${excerpt ? ` ${excerpt}` : ''}`}
                       </p>
-                      <p className="notification-card-open-hint">탭하면 해당 프로젝트가 열립니다</p>
+                      <p className="notification-card-open-hint">
+                        {isAdminSignup ? '탭하면 유저 현황(/admin)으로 이동합니다' : '탭하면 해당 프로젝트가 열립니다'}
+                      </p>
                     </button>
                   );
                 })}

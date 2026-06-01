@@ -39,6 +39,16 @@ function toDateInputValue(input) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+function getDefaultStartDateInput() {
+  return toDateInputValue(new Date());
+}
+
+function getDefaultDueDateInput() {
+  const d = new Date();
+  d.setMonth(d.getMonth() + 1);
+  return toDateInputValue(d);
+}
+
 function initialsFromName(name = '') {
   const text = String(name).trim();
   if (!text) return '?';
@@ -102,7 +112,9 @@ export default function ProjectFormModal({
   stageOptions,
   initialProject = null,
   saving = false,
+  deleting = false,
   onSubmit,
+  onDelete,
   onClose
 }) {
   const teamOptions = useMemo(
@@ -164,8 +176,14 @@ export default function ProjectFormModal({
 
     setTitle(String(initialProject?.title || initialProject?.name || ''));
     setDescription(String(initialProject?.description || ''));
-    setStartDate(toDateInputValue(initialProject?.startDateIso || ''));
-    setDueDate(toDateInputValue(initialProject?.dueDateIso || ''));
+    setStartDate(
+      toDateInputValue(initialProject?.startDateIso || '') ||
+        (mode === 'create' ? getDefaultStartDateInput() : '')
+    );
+    setDueDate(
+      toDateInputValue(initialProject?.dueDateIso || '') ||
+        (mode === 'create' ? getDefaultDueDateInput() : '')
+    );
     setStage(String(initialProject?.stage || boardStages[0]?.value || 'todo'));
     setTag(String(initialProject?.tag || ''));
     setPriority(String(initialProject?.priority || '보통'));
@@ -194,7 +212,7 @@ export default function ProjectFormModal({
     setMentionField('comment');
     setMentionQuery('');
     setMentionRange(null);
-  }, [initialProject, boardStages]);
+  }, [initialProject, boardStages, mode]);
 
   useEffect(() => {
     if (boardStages.some((row) => row.value === stage)) return;
@@ -714,6 +732,20 @@ export default function ProjectFormModal({
     }
   };
 
+  const isLegacyTask = initialProject?.entityType === 'legacyTask' && initialProject?.sourceProjectId;
+  const canDelete = mode === 'edit' && initialProject?._id && typeof onDelete === 'function';
+
+  const handleDelete = async () => {
+    if (!canDelete) return;
+    const label = isLegacyTask ? '작업' : '프로젝트';
+    if (!window.confirm(`이 ${label}을(를) 삭제할까요?\n삭제 후에는 복구되지 않습니다.`)) return;
+    await onDelete({
+      projectId: isLegacyTask ? String(initialProject.sourceProjectId) : String(initialProject._id),
+      taskId: isLegacyTask ? String(initialProject._id) : '',
+      isLegacyTask: !!isLegacyTask
+    });
+  };
+
   return (
     <div className="pfm-overlay" role="dialog" aria-modal="true" aria-labelledby="pfm-title">
       <div className="pfm-panel">
@@ -728,7 +760,7 @@ export default function ProjectFormModal({
                 : '제목·일정·참여자와 임무를 입력해 새 프로젝트를 등록합니다.'}
             </p>
           </div>
-          <button type="button" className="pfm-close" onClick={onClose} disabled={saving || driveBusy} aria-label="닫기">
+          <button type="button" className="pfm-close" onClick={onClose} disabled={saving || driveBusy || deleting} aria-label="닫기">
             <span className="material-symbols-outlined">close</span>
           </button>
         </div>
@@ -980,7 +1012,7 @@ export default function ProjectFormModal({
             <section className="pfm-section">
               <h3 className="pfm-section-title">코멘트</h3>
               <p className="pfm-hint">
-                참여자만 @이름 형식으로 언급할 수 있습니다. 예: @강세진 — 언급된 분에게 공지와 같은 방식의 푸시 알림이 전송됩니다.
+                참여자만 @이름 형식으로 언급할 수 있습니다.
               </p>
               <div className="pfm-comment-composer">
                 <textarea
@@ -994,7 +1026,7 @@ export default function ProjectFormModal({
                   }}
                   onClick={(e) => syncMentionFromInput('comment', e.target.value, e.target.selectionStart)}
                   onKeyUp={(e) => syncMentionFromInput('comment', e.target.value, e.target.selectionStart)}
-                  placeholder="코멘트를 입력하세요. @참여자이름 으로 알림을 보낼 수 있습니다."
+                  placeholder=""
                   maxLength={2000}
                   disabled={commentBusy}
                 />
@@ -1114,11 +1146,26 @@ export default function ProjectFormModal({
           </div>
 
           <div className="pfm-footer">
-            <button type="button" className="pfm-btn-cancel" onClick={onClose} disabled={saving || driveBusy}>
+            <button type="button" className="pfm-btn-cancel" onClick={onClose} disabled={saving || driveBusy || deleting}>
+              <span className="material-symbols-outlined" aria-hidden>close</span>
               취소
             </button>
-            <button type="submit" className="pfm-btn-submit" disabled={saving || driveBusy}>
-              {saving || driveBusy ? '저장 중…' : mode === 'edit' ? '수정 저장' : '등록하기'}
+            {canDelete ? (
+              <button
+                type="button"
+                className="pfm-btn-delete"
+                onClick={() => void handleDelete()}
+                disabled={saving || driveBusy || deleting}
+              >
+                <span className="material-symbols-outlined" aria-hidden>delete</span>
+                {deleting ? '삭제 중…' : '삭제'}
+              </button>
+            ) : null}
+            <button type="submit" className="pfm-btn-submit" disabled={saving || driveBusy || deleting}>
+              {!saving && !driveBusy ? (
+                <span className="material-symbols-outlined" aria-hidden>save</span>
+              ) : null}
+              {saving || driveBusy ? '저장 중…' : mode === 'edit' ? '저장' : '등록하기'}
             </button>
           </div>
         </form>

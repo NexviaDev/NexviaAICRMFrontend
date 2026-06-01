@@ -240,7 +240,7 @@ export default function MergePdfSettingsModal({
         </header>
         <p className="merge-pdf-settings-desc">
           「PDF 추가 추출」「PDF 만 추출」에 적용됩니다. <strong>인쇄 영역</strong>은 CRM 데이터 표가 아니라{' '}
-          <strong>등록한 Word/Excel 양식 파일</strong>의 셀 주소입니다.
+          <strong>등록한 Excel(.xlsx) 양식 파일</strong>의 셀 주소입니다.
         </p>
         <section className="merge-pdf-settings-presets-section">
           <p className="merge-pdf-settings-presets-label">
@@ -480,7 +480,7 @@ function MergePdfSettingsFields({
             checked={(draft.mergeExportAddon || 'same') === 'same'}
             onChange={() => setDraft((d) => ({ ...d, mergeExportAddon: 'same' }))}
           />
-          <span>양식만 (Word/Excel)</span>
+          <span>양식만 (Office)</span>
         </label>
         <label className="merge-pdf-settings-radio">
           <input

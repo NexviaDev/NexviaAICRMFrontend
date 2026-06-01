@@ -56,7 +56,11 @@ export async function uploadJournalAudioFromFile({
       body: form
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || '음성 업로드 처리에 실패했습니다.');
+    if (!res.ok) {
+      const err = new Error(data.error || '음성 업로드 처리에 실패했습니다.');
+      if (data.code) err.code = data.code;
+      throw err;
+    }
     if (res.status !== 202 || !data.jobId) {
       throw new Error(data.error || '서버 응답 형식을 알 수 없습니다.');
     }
@@ -76,7 +80,11 @@ export async function uploadJournalAudioFromFile({
     })
   });
   const initData = await initRes.json().catch(() => ({}));
-  if (!initRes.ok) throw new Error(initData.error || '업로드 준비에 실패했습니다.');
+  if (!initRes.ok) {
+    const err = new Error(initData.error || '업로드 준비에 실패했습니다.');
+    if (initData.code) err.code = initData.code;
+    throw err;
+  }
   const { uploadId, chunkSizeBytes } = initData;
   if (!uploadId) throw new Error(initData.error || 'uploadId를 받지 못했습니다.');
   const chunkCap = 4 * 1024 * 1024;
@@ -106,7 +114,9 @@ export async function uploadJournalAudioFromFile({
     });
     const errData = await res.json().catch(() => ({}));
     if (!res.ok) {
-      throw new Error(errData.error || `청크 전송에 실패했습니다. (${chunkIndex + 1}번째)`);
+      const err = new Error(errData.error || `청크 전송에 실패했습니다. (${chunkIndex + 1}번째)`);
+      if (errData.code) err.code = errData.code;
+      throw err;
     }
     offset = end;
     chunkIndex += 1;
@@ -121,7 +131,9 @@ export async function uploadJournalAudioFromFile({
   });
   const compData = await compRes.json().catch(() => ({}));
   if (!compRes.ok || compRes.status !== 202 || !compData.jobId) {
-    throw new Error(compData.error || '업로드 마무리에 실패했습니다.');
+    const err = new Error(compData.error || '업로드 마무리에 실패했습니다.');
+    if (compData.code) err.code = compData.code;
+    throw err;
   }
   onProgress?.({ sent: fileByteLength, total: fileByteLength, phase: 'processing' });
   return compData;

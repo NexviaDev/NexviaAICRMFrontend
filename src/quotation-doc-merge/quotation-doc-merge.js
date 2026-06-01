@@ -52,6 +52,15 @@ import {
 } from '@/lib/merge-template-mail-defaults';
 import { MERGE_EXCEL_FORMATS, MERGE_FIELD_VALUE_KINDS } from '@/lib/merge-field-editor-constants';
 import {
+  isAllowedMergeTemplateFilename,
+  mergeTemplateAcceptAttribute,
+  mergeTemplateDefaultExt,
+  mergeTemplateKindLabel,
+  mergeTemplateMimeType,
+  MERGE_TEMPLATE_UPLOAD_HINT,
+  stripKnownMergeTemplateExtensions
+} from '@/lib/merge-template-file-types';
+import {
   mergeFieldsWithoutRowIndex,
   buildMergeFieldsPayload,
   mapApiFieldsToEditorDraft,
@@ -169,7 +178,7 @@ function parseTemplateIdsFromPaste(raw, templates, fallbackTid) {
   if (p0) {
     for (const t of list) {
       const label = templateListFileName(t)
-        .replace(/\.(docx|xlsx)$/i, '')
+        .replace(/\.(docx|xlsx|pptx|hwp|hwpx)$/i, '')
         .trim()
         .toLowerCase();
       if (label && (label === p0 || p0.includes(label) || label.includes(p0))) {
@@ -306,7 +315,7 @@ function buildRowJobsForSheetRow({
   for (let j = 0; j < tids.length; j += 1) {
     const tid = tids[j];
     const t = templates.find((x) => String(x._id) === tid);
-    const tplRaw = templateListFileName(t).replace(/\.(docx|xlsx)$/i, '').trim();
+    const tplRaw = stripKnownMergeTemplateExtensions(templateListFileName(t)).trim();
     const tplSlug = sanitizeDownloadFileStem(tplRaw).slice(0, 50) || 'doc';
     const apiRow = { ...rowForApi(row) };
     if (tids.length > 1) {
@@ -339,9 +348,8 @@ function templateListFileName(t) {
   if (orig) return orig;
   const n = String(t.name || '').trim();
   if (!n) return '—';
-  if (/\.(docx|xlsx)$/i.test(n)) return n;
-  const ext = t.fileType === 'xlsx' ? 'xlsx' : 'docx';
-  return `${n}.${ext}`;
+  if (/\.(docx|xlsx|pptx|hwp|hwpx)$/i.test(n)) return n;
+  return `${n}.${mergeTemplateDefaultExt(t.fileType)}`;
 }
 
 /** Windows 등에서 문제되는 문자 제거·길이 제한(확장자 제외 파일명 줄기) */
@@ -364,13 +372,13 @@ function sanitizeDownloadFileStem(s, maxLen = 120) {
 function buildSingleMergeDownloadStem(template, row) {
   const label = String(row?.fileLabel ?? '').trim();
   if (label) {
-    const noExt = label.replace(/\.(docx|xlsx|zip)$/i, '').trim();
+    const noExt = label.replace(/\.(docx|xlsx|pptx|hwp|hwpx|zip)$/i, '').trim();
     const stem = sanitizeDownloadFileStem(noExt);
     if (stem) return stem;
   }
   const listName = template ? templateListFileName(template) : '';
   const rawStem = String(listName || '')
-    .replace(/\.(docx|xlsx)$/i, '')
+    .replace(/\.(docx|xlsx|pptx|hwp|hwpx)$/i, '')
     .trim();
   const stem = sanitizeDownloadFileStem(rawStem) || '견적';
   return stem;
@@ -718,11 +726,11 @@ export default function QuotationDocMerge() {
       window.alert('파일을 선택해 주세요.');
       return;
     }
-    const lower = String(file.name || '').toLowerCase();
-    if (!lower.endsWith('.docx') && !lower.endsWith('.xlsx')) {
-      window.alert('Word(.docx) 또는 Excel(.xlsx) 파일만 등록할 수 있습니다.');
+    if (!isAllowedMergeTemplateFilename(file.name)) {
+      window.alert(`${MERGE_TEMPLATE_UPLOAD_HINT} 파일만 등록할 수 있습니다.`);
       return;
     }
+    const lower = String(file.name || '').toLowerCase();
     setUploading(true);
     try {
       await pingBackendHealth();
@@ -847,7 +855,7 @@ export default function QuotationDocMerge() {
       return;
     }
     if (!templateUploadPendingFile) {
-      window.alert('Word(.docx) 또는 Excel(.xlsx) 파일을 이 창에 끌어다 놓거나 선택해 주세요.');
+      window.alert(`${MERGE_TEMPLATE_UPLOAD_HINT} 파일을 이 창에 끌어다 놓거나 선택해 주세요.`);
       return;
     }
     if (!mergeFieldsSheet.length) {
@@ -1298,15 +1306,14 @@ export default function QuotationDocMerge() {
       if (!silent) window.alert('선택된 행이 없습니다. 왼쪽 # 열을 드래그하거나 Ctrl+클릭으로 선택하세요.');
       return;
     }
-    const header = ['파일 이름', '종류', '저장', '크기', '등록일'].join('\t');
+    const header = ['파일 이름', '종류', '크기', '등록일'].join('\t');
     const body = rows
       .map((t) => {
         const name = templateListFileName(t);
-        const kind = t.fileType === 'docx' ? 'Word' : 'Excel';
-        const storage = t.cloudinaryUrl ? 'Cloudinary' : 'DB';
+        const kind = mergeTemplateKindLabel(t.fileType);
         const size = formatBytes(t.sizeBytes);
         const date = t.createdAt ? new Date(t.createdAt).toLocaleString('ko-KR') : '—';
-        return [name, kind, storage, size, date].join('\t');
+        return [name, kind, size, date].join('\t');
       })
       .join('\n');
     const tsv = `${header}\n${body}`;
@@ -1752,10 +1759,7 @@ export default function QuotationDocMerge() {
         const blob = await fetchTemplateFileBlob(String(t._id));
         previewLabel = templateListFileName(t);
         previewFile = new File([blob], previewLabel, {
-          type:
-            t.fileType === 'docx'
-              ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-              : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          type: mergeTemplateMimeType(t.fileType)
         });
       }
       if (!previewFile) {
@@ -1898,7 +1902,7 @@ export default function QuotationDocMerge() {
       for (let j = 0; j < tids.length; j += 1) {
         const tid = tids[j];
         const t = templates.find((x) => String(x._id) === tid);
-        const tplRaw = templateListFileName(t).replace(/\.(docx|xlsx)$/i, '').trim();
+        const tplRaw = stripKnownMergeTemplateExtensions(templateListFileName(t)).trim();
         const tplSlug = sanitizeDownloadFileStem(tplRaw).slice(0, 50) || 'doc';
         const apiRow = { ...rowForApi(r) };
         if (tids.length > 1) {
@@ -2152,8 +2156,8 @@ export default function QuotationDocMerge() {
                 ref={uploadInputRef}
                 type="file"
                 className="qdm-sr-only-input"
-                accept=".docx,.xlsx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                aria-label="양식 파일 선택 (.docx .xlsx)"
+                accept={mergeTemplateAcceptAttribute()}
+                aria-label={`양식 파일 선택 (${MERGE_TEMPLATE_UPLOAD_HINT})`}
                 onChange={(e) => {
                   const f = e.target.files?.[0];
                   e.target.value = '';
@@ -2202,7 +2206,7 @@ export default function QuotationDocMerge() {
               <p className="quotation-doc-merge-desc">불러오는 중…</p>
             ) : templates.length === 0 ? (
               <p className="quotation-doc-merge-desc qdm-template-drop-empty">
-                등록된 양식이 없습니다. + 버튼으로 어떤 {'{{항목}}'}이 들어가는지 확인한 뒤 파일을 고르거나, 이 영역에 Word/Excel 파일을 놓아 주세요.
+                등록된 양식이 없습니다. + 버튼으로 어떤 {'{{항목}}'}이 들어가는지 확인한 뒤 파일을 고르거나, 이 영역에 {MERGE_TEMPLATE_UPLOAD_HINT} 파일을 놓아 주세요.
               </p>
             ) : (
               <div
@@ -2263,7 +2267,6 @@ export default function QuotationDocMerge() {
                         </th>
                         <th scope="col">파일 이름</th>
                         <th scope="col">종류</th>
-                        <th scope="col">저장</th>
                         <th scope="col">크기</th>
                         <th scope="col">등록일</th>
                         <th scope="col" className="qdm-excel-th--actions" />
@@ -2299,18 +2302,7 @@ export default function QuotationDocMerge() {
                               {idx + 1}
                             </td>
                             <td className="qdm-excel-td">{templateListFileName(t)}</td>
-                            <td className="qdm-excel-td">{t.fileType === 'docx' ? 'Word' : 'Excel'}</td>
-                            <td className="qdm-excel-td">
-                              {t.cloudinaryUrl ? (
-                                <span className="qdm-badge qdm-badge-cloud" title={t.cloudinaryUrl}>
-                                  Cloudinary
-                                </span>
-                              ) : (
-                                <span className="qdm-badge qdm-badge-db" title="MongoDB에 바이너리 저장(구방식)">
-                                  DB
-                                </span>
-                              )}
-                            </td>
+                            <td className="qdm-excel-td">{mergeTemplateKindLabel(t.fileType)}</td>
                             <td className="qdm-excel-td">{formatBytes(t.sizeBytes)}</td>
                             <td className="qdm-excel-td">{t.createdAt ? new Date(t.createdAt).toLocaleString('ko-KR') : '—'}</td>
                             <td className="qdm-table-actions qdm-excel-td qdm-excel-td--actions" onClick={(e) => e.stopPropagation()}>
@@ -2572,7 +2564,7 @@ export default function QuotationDocMerge() {
               {mergeFieldsSheet.length > 0 ? (
                 <>
                   <p className="qdm-template-prepare-hint">
-                    Word 본문·Excel 셀에 아래 <strong>치환자</strong> 열 값을 그대로 넣으면 됩니다. 예시 열은 문서 편집 시 참고용입니다.
+                    Word·PowerPoint·HWP 본문/슬라이드·Excel 셀에 아래 <strong>치환자</strong> 열 값을 그대로 넣으면 됩니다. 예시 열은 문서 편집 시 참고용입니다.
                   </p>
                   <div className="qdm-template-prepare-table-wrap">
                     <table className="qdm-template-prepare-table">
@@ -2646,7 +2638,7 @@ export default function QuotationDocMerge() {
                       <strong>{templateListFileName(templatePrepareEditingTemplate)}</strong>
                     </p>
                     <p className="qdm-template-prepare-note">
-                      {templatePrepareEditingTemplate.fileType === 'docx' ? 'Word' : 'Excel'} ·{' '}
+                      {mergeTemplateKindLabel(templatePrepareEditingTemplate.fileType)} ·{' '}
                       {formatBytes(templatePrepareEditingTemplate.sizeBytes)} · 등록{' '}
                       {templatePrepareEditingTemplate.createdAt
                         ? new Date(templatePrepareEditingTemplate.createdAt).toLocaleString('ko-KR')
@@ -2690,7 +2682,7 @@ export default function QuotationDocMerge() {
                     </p>
                   ) : (
                     <p className="qdm-template-prepare-drop-hint">
-                      Word(.docx) 또는 Excel(.xlsx)를 <strong>여기에 끌어다 놓으세요</strong>
+                      {MERGE_TEMPLATE_UPLOAD_HINT} 파일을 <strong>여기에 끌어다 놓으세요</strong>
                     </p>
                   )}
                   <button

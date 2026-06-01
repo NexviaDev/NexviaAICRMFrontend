@@ -1,0 +1,132 @@
+/**
+ * CRM 목록 테이블 — opportunity-modal opp-line-sheet / tableau 톤과 동일
+ * (그라데이션 없음, 헤더 #4e79a7 · 줄무늬 #eef4fa)
+ */
+.customer-companies-page,
+.customer-company-employees-page,
+.product-list-page {
+  --crm-list-sheet-header: #4e79a7;
+  --crm-list-sheet-stripe: #eef4fa;
+  --crm-list-sheet-border: rgba(78, 121, 167, 0.14);
+  --crm-list-sheet-header-border: rgba(78, 121, 167, 0.2);
+}
+
+.crm-list-sheet-scroll {
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid rgba(78, 121, 167, 0.22);
+  border-radius: 0;
+  background: #fff;
+}
+
+.crm-list-sheet-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.crm-list-sheet-scroll::-webkit-scrollbar-thumb {
+  background: #c5d4e4;
+  border-radius: 6px;
+}
+
+.crm-list-sheet-scroll::-webkit-scrollbar-thumb:hover {
+  background: #a8bdd4;
+}
+
+.crm-list-sheet-table-wrap {
+  display: inline-block;
+  min-width: 100%;
+  box-sizing: border-box;
+  vertical-align: top;
+}
+
+.crm-list-sheet.data-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  font-family: ui-sans-serif, system-ui, 'Segoe UI', 'Malgun Gothic', sans-serif;
+  background: #fff;
+  color: #1e3344;
+}
+
+.crm-list-sheet.data-table thead th {
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+  padding: 0.55rem 0.85rem;
+  border: none;
+  border-bottom: 1px solid var(--crm-list-sheet-header-border);
+  background: var(--crm-list-sheet-header);
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+  text-transform: none;
+  box-shadow: none;
+}
+
+.crm-list-sheet.data-table tbody td {
+  text-align: left;
+  vertical-align: middle;
+  padding: 0.55rem 0.85rem;
+  border: none;
+  border-bottom: 1px solid var(--crm-list-sheet-border);
+  box-sizing: border-box;
+  background: #fff;
+  color: #1e3344;
+}
+
+.crm-list-sheet.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.crm-list-sheet.data-table tbody tr.crm-list-sheet-row--stripe-a td {
+  background: var(--crm-list-sheet-stripe);
+}
+
+.crm-list-sheet.data-table tbody tr.crm-list-sheet-row--stripe-b td {
+  background: #fff;
+}
+
+.crm-list-sheet.data-table tbody tr:hover {
+  background: transparent;
+}
+
+.crm-list-sheet.data-table tbody tr:hover td {
+  background: rgba(78, 121, 167, 0.12);
+}
+
+.crm-list-sheet.data-table tbody tr.crm-list-sheet-row--selected td {
+  background: rgba(78, 121, 167, 0.2) !important;
+}
+
+.crm-list-sheet.data-table tbody tr.crm-list-sheet-row--selected:hover td {
+  background: rgba(78, 121, 167, 0.26) !important;
+}
+
+.crm-list-sheet.data-table thead th.list-template-drag-over {
+  background: #3d6289;
+}
+
+.crm-list-sheet.data-table thead th .list-template-drag-handle {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.crm-list-sheet.data-table thead th.list-template-th-sortable:hover {
+  color: #fff;
+  background: #3d6289;
+}
+
+.crm-list-sheet.data-table thead th .list-template-sort-icon {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.crm-list-sheet.data-table thead th.cc-th-favorite-icon,
+.crm-list-sheet.data-table thead th.cce-th-favorite-icon {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.crm-list-sheet.data-table .text-center {
+  color: #64748b;
+}

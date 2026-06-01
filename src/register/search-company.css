@@ -14,7 +14,7 @@
   border-radius: 0.75rem;
   width: 100%;
   max-width: 28rem;
-  max-height: 75vh;
+  max-height: min(520px, 85vh);
   display: flex;
   flex-direction: column;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
@@ -22,6 +22,7 @@
 }
 
 .search-company-header {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -53,6 +54,7 @@
 }
 
 .search-company-search-wrap {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -76,9 +78,22 @@
 }
 
 .search-company-results {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: min(240px, 38vh);
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 0.25rem 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.search-company-results::-webkit-scrollbar {
+  width: 6px;
+}
+
+.search-company-results::-webkit-scrollbar-thumb {
+  background: #c5dce8;
+  border-radius: 999px;
 }
 
 .search-company-msg {
@@ -114,4 +129,38 @@
   font-size: 0.8rem;
   color: var(--text-muted);
   margin-top: 0.15rem;
+}
+
+.search-company-footer {
+  flex-shrink: 0;
+  padding: 0.75rem 1.25rem 1rem;
+  border-top: 1px solid var(--card-border);
+  background: var(--bg-light, #f8fafc);
+}
+
+.search-company-add-btn {
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  background: #fff;
+  border: 1px solid #c5dce8;
+  border-radius: 0.5rem;
+  color: #4a7a99;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.search-company-add-btn .material-symbols-outlined {
+  font-size: 1.15rem;
+}
+
+.search-company-add-btn:hover {
+  background: #f0f7fc;
+  border-color: #9ec5db;
+  color: #2c6485;
 }

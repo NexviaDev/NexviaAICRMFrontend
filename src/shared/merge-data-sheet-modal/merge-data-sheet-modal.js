@@ -16,6 +16,7 @@ import {
 } from '@/lib/merge-pdf-sync-from-template';
 import { mergeRowsIncludePdfExport, resolveMergeExportAddonForRow } from '@/lib/merge-export-addon';
 import MergePdfPreviewModal from './merge-pdf-preview-modal';
+import { isXlsxMergeTemplate } from '@/lib/merge-template-file-types';
 import './merge-data-sheet-modal.css';
 
 /** 안내 문구용(quotation-doc-merge.js 의 MERGE_SHEET_* 과 동일하게 유지) */
@@ -81,13 +82,6 @@ function rowTemplateIdsForSelect(row, selectedTemplateId, templates) {
           ? [String(def)]
           : [];
   return raw.filter((id) => templates.some((t) => String(t._id) === String(id)));
-}
-
-function isXlsxMergeTemplate(t) {
-  if (!t) return false;
-  if (String(t.fileType || '').toLowerCase() === 'xlsx') return true;
-  const n = String(t.fileName || t.name || '');
-  return /\.xlsx$/i.test(n);
 }
 
 /** 접힌 드롭다운에만 표시: 1개면 파일명만, 2개 이상이면 개수만 */
@@ -663,75 +657,89 @@ export default function MergeDataSheetModal({
       <div className="merge-data-sheet-modal-backdrop" aria-hidden />
       <div className="merge-data-sheet-modal-panel">
         <header className="merge-data-sheet-modal-head">
-          <div className="merge-data-sheet-modal-head-inner">
-            <div className="merge-data-sheet-modal-head-row2">
-              <h2 id="merge-data-sheet-modal-title" className="merge-data-sheet-modal-head-title">
-                데이터 입력 후 파일 받기
-              </h2>
-              <div className="merge-data-sheet-modal-head-tools">
-                <label className="merge-data-sheet-modal-template-label">
-                  <span className="merge-data-sheet-modal-template-label-text">저장된 필드 구성</span>
-                  <select
-                    className="merge-data-sheet-modal-template-select qdm-select"
-                    value={String(selectedFieldPresetId || '')}
-                    onChange={(e) => onSelectFieldPresetId?.(e.target.value)}
-                    disabled={mergeRunning || fieldPresetsLoading}
-                    aria-label="이름 붙여 저장한 치환 필드 목록에서 선택"
-                    title="여러 번 저장해 둔 ‘필드 구성’을 이름으로 골라 씁니다. 맨 위 ‘회사 기본’은 이름 없이 회사에 한 벌만 두는 방식입니다. Word/Excel 양식 파일은 표의「사용 양식」열에서 고릅니다."
-                  >
-                    <option value=""> 기본 </option>
-                    {(fieldPresets || []).map((p) => (
-                      <option key={p._id} value={p._id}>
-                        {p.name} ({p.fieldCount}필드)
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {canManageMergeFields && typeof onCreateFieldPreset === 'function' ? (
-                  <button
-                    type="button"
-                    className="qdm-btn qdm-btn-ghost qdm-btn-small"
-                    onClick={onCreateFieldPreset}
-                    disabled={mergeRunning || !fields.length}
-                    title="지금 시트에 보이는 항목 그대로, 이름을 붙여 새 구성으로 DB에 저장합니다."
-                  >
-                    새 구성 추가
-                  </button>
-                ) : null}
-                {canManageMergeFields && typeof onOpenFieldEditor === 'function' ? (
-                  <button
-                    type="button"
-                    className="qdm-btn qdm-btn-ghost qdm-btn-small merge-data-sheet-modal-field-btn"
-                    onClick={onOpenFieldEditor}
-                    disabled={mergeRunning || !fields.length}
-                    title={!fields.length ? '문서 치환 항목을 불러온 뒤 사용할 수 있습니다.' : '문서에 넣을 {{항목}} 이름·표시 이름 등을 바꿉니다.'}
-                  >
-                    <span className="material-symbols-outlined" aria-hidden>
-                      tune
-                    </span>
-                    문서 치환 항목 편집
-                  </button>
-                ) : null}
-                <button type="button" className="qdm-btn qdm-btn-ghost" onClick={onOpenCompanyPick} disabled={mergeRunning}>
-                  고객사에서 불러오기
-                </button>
-              </div>
-            </div>
-          </div>
+          <div className="merge-data-sheet-modal-head-main">
+            <h2 id="merge-data-sheet-modal-title" className="merge-data-sheet-modal-head-title">
+              데이터 입력 후 파일 받기
+            </h2>
+            <div className="merge-data-sheet-modal-head-tools">
+              <label className="merge-data-sheet-modal-template-label">
+                <span className="merge-data-sheet-modal-template-label-text">저장된 필드 구성</span>
+                <select
+                  className="merge-data-sheet-modal-template-select"
+                  value={String(selectedFieldPresetId || '')}
+                  onChange={(e) => onSelectFieldPresetId?.(e.target.value)}
+                  disabled={mergeRunning || fieldPresetsLoading}
+                  aria-label="이름 붙여 저장한 치환 필드 목록에서 선택"
+                  title="여러 번 저장해 둔 ‘필드 구성’을 이름으로 골라 씁니다. 맨 위 ‘회사 기본’은 이름 없이 회사에 한 벌만 두는 방식입니다. Word/Excel 양식 파일은 표의「사용 양식」열에서 고릅니다."
+                >
+                  <option value=""> 기본 </option>
+                  {(fieldPresets || []).map((p) => (
+                    <option key={p._id} value={p._id}>
+                      {p.name} ({p.fieldCount}필드)
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {canManageMergeFields && typeof onCreateFieldPreset === 'function' ? (
                 <button
                   type="button"
-                  className="btn-primary"
-                  onClick={() => void onRunMerge()}
-                  disabled={mergeRunning || !templates.length || !fields.length}
+                  className="mdm-toolbar-btn mdm-toolbar-btn--ghost mdm-toolbar-btn--small"
+                  onClick={onCreateFieldPreset}
+                  disabled={mergeRunning || !fields.length}
+                  title="지금 시트에 보이는 항목 그대로, 이름을 붙여 새 구성으로 DB에 저장합니다."
                 >
-                  <span className="material-symbols-outlined">download</span>
-                  다운로드
+                  새 구성 추가
                 </button>
-          <button type="button" className="icon-btn" onClick={onClose} aria-label="시트 닫기" title="닫기" disabled={mergeRunning}>
-            <span className="material-symbols-outlined" aria-hidden>
-              close
-            </span>
-          </button>
+              ) : null}
+              {canManageMergeFields && typeof onOpenFieldEditor === 'function' ? (
+                <button
+                  type="button"
+                  className="mdm-toolbar-btn mdm-toolbar-btn--ghost mdm-toolbar-btn--small merge-data-sheet-modal-field-btn"
+                  onClick={onOpenFieldEditor}
+                  disabled={mergeRunning || !fields.length}
+                  title={!fields.length ? '문서 치환 항목을 불러온 뒤 사용할 수 있습니다.' : '문서에 넣을 {{항목}} 이름·표시 이름 등을 바꿉니다.'}
+                >
+                  <span className="material-symbols-outlined" aria-hidden>
+                    tune
+                  </span>
+                  문서 치환 항목 편집
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="mdm-toolbar-btn mdm-toolbar-btn--ghost"
+                onClick={onOpenCompanyPick}
+                disabled={mergeRunning}
+              >
+                고객사에서 불러오기
+              </button>
+            </div>
+          </div>
+          <div className="merge-data-sheet-modal-head-actions">
+            <button
+              type="button"
+              className="mdm-toolbar-btn mdm-toolbar-btn--primary"
+              onClick={() => void onRunMerge()}
+              disabled={mergeRunning || !templates.length || !fields.length}
+            >
+              <span className="material-symbols-outlined" aria-hidden>
+                download
+              </span>
+              다운로드
+            </button>
+            <button
+              type="button"
+              className="mdm-toolbar-btn mdm-toolbar-btn--icon"
+              onClick={onClose}
+              aria-label="시트 닫기"
+              title="닫기"
+              disabled={mergeRunning}
+            >
+              <span className="material-symbols-outlined" aria-hidden>
+                close
+              </span>
+            </button>
+          </div>
         </header>
 
         {mergeMessage ? (
@@ -754,7 +762,7 @@ export default function MergeDataSheetModal({
                 aria-label="문서 메일머지 데이터 표, 가로·세로 스크롤 가능"
               >
                 <div className="merge-data-sheet-modal-table-wrap">
-                <table className="qdm-grid qdm-grid--merge qdm-grid--sheet">
+                <table className="qdm-grid qdm-grid--merge qdm-grid--sheet mdm-sheet">
                   <thead>
                     <tr>
                       <th
@@ -814,7 +822,10 @@ export default function MergeDataSheetModal({
                       const selectedIds = rowTemplateIdsForSelect(row, selectedTemplateId, templates);
                       const selectedSet = new Set(selectedIds);
                       return (
-                        <tr key={`row-${idx}`}>
+                        <tr
+                          key={`row-${idx}`}
+                          className={idx % 2 === 0 ? 'mdm-sheet-row--stripe-a' : 'mdm-sheet-row--stripe-b'}
+                        >
                           <td
                             className={`qdm-sheet-td qdm-sheet-td--preset qdm-sheet-td--template qdm-sheet-td--template-dropdown qdm-sheet-td--merge-select${isCellSelected(idx, 0) ? ' qdm-sheet-td--selected' : ''
                               }`}
@@ -897,7 +908,7 @@ export default function MergeDataSheetModal({
                             <div className="qdm-sheet-mail-actions-wrap">
                               <button
                                 type="button"
-                                className="qdm-btn qdm-btn-ghost qdm-btn-small qdm-sheet-mail-download-btn"
+                                className="mdm-sheet-action-btn mdm-sheet-action-btn--download mdm-sheet-mail-download-btn"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   void onDownloadRow?.(idx);
@@ -918,7 +929,7 @@ export default function MergeDataSheetModal({
                               </button>
                               <button
                                 type="button"
-                                className="qdm-btn qdm-btn-ghost qdm-btn-small qdm-sheet-mail-send-btn"
+                                className="mdm-sheet-action-btn mdm-sheet-action-btn--send mdm-sheet-mail-send-btn"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   void onMailtoHandoffRow?.(idx);

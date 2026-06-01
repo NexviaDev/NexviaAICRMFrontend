@@ -75,6 +75,8 @@ export default function Layout({ embeddedContent = null }) {
           ? data.linkProjectId
             ? `/project?projectModal=edit&projectId=${encodeURIComponent(data.linkProjectId)}`
             : '/project'
+          : data.type === 'admin-user-signup'
+          ? data.url || '/notification'
           : '/notification');
       showWebPushNotification(payload, { url });
     }).then((unsub) => {

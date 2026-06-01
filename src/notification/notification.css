@@ -301,6 +301,11 @@
   color: #2e6b4a;
 }
 
+.notification-card-badge--admin-signup {
+  background: #e8f2fa;
+  color: #3d6f94;
+}
+
 .notification-section-title {
   margin: 0.35rem 0 0;
   padding: 0 0.15rem;

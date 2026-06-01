@@ -20,7 +20,7 @@ import { buildDriveFileDeleteUrl, getDriveFileIdFromUrl, isValidDriveNodeId, san
 import { pingBackendHealth } from '@/lib/backend-wake';
 import { pruneDriveUploadedFilesIndex, syncDriveUploadedFilesIndex } from '@/lib/drive-uploaded-files-prune';
 import {
-  RegisterSaleDocsCrmTable,
+  CrmDriveStoragePanel,
   fileToBase64,
   formatDriveFileDate,
   keepLatestBusinessCardRowOnlyInDriveUploads,
@@ -1583,7 +1583,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
             </>
           )}
           {isEditMode && contactId ? (
-            <section className="customer-company-detail-section register-sale-docs" aria-label="증서 · 자료">
+            <section className="customer-company-detail-section crm-drive-storage-section" aria-label="증서 · 자료">
               <input
                 ref={cardInputRef}
                 type="file"
@@ -1621,40 +1621,57 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
                 }}
                 aria-hidden="true"
               />
-              <div className="customer-company-detail-section-head">
-                <h3 className="customer-company-detail-section-title">
-                  <span className="material-symbols-outlined">folder</span>
-                  증서 · 자료
-                </h3>
-                <div className="register-sale-docs-section-actions">
-                  <button
-                    type="button"
-                    className="customer-company-detail-btn-all"
-                    onClick={() => {
-                      if (!driveUploading && !extractingBusinessCard && driveFileInputRef.current) {
-                        driveFileInputRef.current.click();
-                      }
-                    }}
-                    disabled={driveUploading || extractingBusinessCard}
-                    title="파일 추가"
-                    aria-label="파일 추가"
-                  >
-                    <span className="material-symbols-outlined">add</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="customer-company-detail-btn-all"
-                    onClick={() => { if (!extractingBusinessCard && !driveUploading && cardInputRef.current) cardInputRef.current.click(); }}
-                    disabled={extractingBusinessCard || driveUploading}
-                    title="명함 인식으로 폼 채우기"
-                    aria-label="명함 인식으로 폼 채우기"
-                  >
-                    <span className="material-symbols-outlined">swap_horiz</span>
-                  </button>
-                </div>
-              </div>
-              <div
-                className={`register-sale-docs-crm-uploads ${crmListDropActive ? 'register-sale-docs-crm-uploads--drop-active' : ''} ${driveUploading || saving || extractingBusinessCard || importPreviewLoading ? 'register-sale-docs-crm-uploads--disabled' : ''}`}
+              <CrmDriveStoragePanel
+                asSection={false}
+                title="증서 · 자료 · 명함"
+                rowCount={businessCardTableRows.length}
+                rows={businessCardTableRows}
+                hideAddButton
+                headerActions={(
+                  <>
+                    <button
+                      type="button"
+                      className="crm-drive-storage-icon-btn"
+                      onClick={() => {
+                        if (!driveUploading && !extractingBusinessCard && driveFileInputRef.current) {
+                          driveFileInputRef.current.click();
+                        }
+                      }}
+                      disabled={driveUploading || extractingBusinessCard}
+                      title="일반 파일 추가"
+                      aria-label="일반 파일 추가"
+                    >
+                      <span className="material-symbols-outlined" aria-hidden>upload_file</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="crm-drive-storage-icon-btn"
+                      onClick={() => {
+                        if (!extractingBusinessCard && !driveUploading && cardInputRef.current) cardInputRef.current.click();
+                      }}
+                      disabled={extractingBusinessCard || driveUploading}
+                      title="명함 인식으로 폼 채우기"
+                      aria-label="명함 인식으로 폼 채우기"
+                    >
+                      <span className="material-symbols-outlined" aria-hidden>swap_horiz</span>
+                    </button>
+                  </>
+                )}
+                uploadDisabled={driveUploading || saving || extractingBusinessCard || importPreviewLoading}
+                bodyBusy={driveUploading || saving || extractingBusinessCard || importPreviewLoading}
+                emptyShowSpinner={
+                  !!(saving || driveUploading || extractingBusinessCard || importPreviewLoading)
+                }
+                emptyBusyLabel={
+                  saving
+                    ? '저장 중…'
+                    : driveUploading
+                      ? '다른 파일 업로드 중…'
+                      : extractingBusinessCard || importPreviewLoading
+                        ? '명함에서 정보를 읽는 중…'
+                        : '처리 중…'
+                }
+                crmListDropActive={crmListDropActive}
                 onDragEnter={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -1679,71 +1696,26 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
                   if (!list?.length) return;
                   handleEditModeBusinessCardListDrop(list);
                 }}
-              >
-                <h4 className="register-sale-docs-crm-uploads-title">
-                  <span className="material-symbols-outlined">badge</span>
-                  명함 리스트
-                </h4>
-                <p className="register-sale-docs-crm-uploads-hint">
-                  드래그 앤 드롭(다중 가능) 또는 클릭. 캡처 화면을 클립보드에 둔 뒤 이 창을 클릭한 다음 붙여넣기(Ctrl+V)로도 가능합니다.
-               </p>
-                {businessCardTableRows.length === 0 ? (
-                  <div
-                    className={`register-sale-docs-crm-empty ${crmListDropActive ? 'register-sale-docs-crm-empty--active' : ''}`}
-                    onClick={() => {
-                      if (
-                        !driveUploading &&
-                        !saving &&
-                        !extractingBusinessCard &&
-                        !importPreviewLoading &&
-                        businessCardListInputRef.current
-                      ) {
-                        businessCardListInputRef.current.click();
-                      }
-                    }}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (
-                        (e.key === 'Enter' || e.key === ' ') &&
-                        !driveUploading &&
-                        !saving &&
-                        !extractingBusinessCard &&
-                        !importPreviewLoading &&
-                        businessCardListInputRef.current
-                      ) {
-                        e.preventDefault();
-                        businessCardListInputRef.current.click();
-                      }
-                    }}
-                  >
-                    <span className="material-symbols-outlined register-sale-docs-crm-empty-icon">inbox</span>
-                    <span className="register-sale-docs-crm-empty-text">
-                      {saving
-                        ? '저장 중…'
-                        : driveUploading
-                          ? '다른 파일 업로드 중…'
-                          : extractingBusinessCard || importPreviewLoading
-                            ? '명함에서 정보를 읽는 중…'
-                            : '등록된 명함이 없습니다. 명함 이미지·TXT를 놓으면 폼에 반영되고, 클릭하면 이미지만 준비합니다.'}
-                    </span>
-                  </div>
-                ) : (
-                  <RegisterSaleDocsCrmTable
-                    rows={businessCardTableRows}
-                    formatDriveFileDate={formatDriveFileDate}
-                    driveUploading={driveUploading}
-                    crmDriveDeletingId={crmDriveDeletingId}
-                    onDeleteRow={handleDeleteCrmDriveFile}
-                  />
-                )}
-              </div>
-              {driveError && <p className="register-sale-docs-error">{driveError}</p>}
-              {driveUploadNotice && !driveError && (
-                <p className="register-sale-docs-success" role="status">
-                  {driveUploadNotice}
-                </p>
-              )}
+                onEmptyActivate={() => {
+                  if (
+                    !driveUploading &&
+                    !saving &&
+                    !extractingBusinessCard &&
+                    !importPreviewLoading &&
+                    businessCardListInputRef.current
+                  ) {
+                    businessCardListInputRef.current.click();
+                  }
+                }}
+                emptyTitle="명함·파일을 여기에 놓거나 아이콘으로 추가"
+                emptyHint="명함 이미지·TXT는 폼 반영, 일반 파일은 왼쪽 업로드 아이콘. Ctrl+V 붙여넣기도 가능합니다."
+                formatDriveFileDate={formatDriveFileDate}
+                driveUploading={driveUploading}
+                crmDriveDeletingId={crmDriveDeletingId}
+                onDeleteRow={handleDeleteCrmDriveFile}
+                driveError={driveError}
+                driveUploadNotice={driveUploadNotice}
+              />
             </section>
           ) : (
             <section className="add-company-section" aria-label="명함 등록">

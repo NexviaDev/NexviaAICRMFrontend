@@ -9,8 +9,6 @@ import {
   buildExcelSourceOptions,
   previewExcelMappedValue
 } from '../../customer-companies/customer-companies-excel-import-modal/excel-import-mapping-utils';
-import '../../lead-capture/lead-capture-crm-mapping/lead-capture-crm-mapping-modal.css';
-import '../../customer-companies/customer-companies-excel-import-modal/customer-companies-excel-import-modal.css';
 import {
   buildProductTargetOptions,
   createInitialProductMappingRows,

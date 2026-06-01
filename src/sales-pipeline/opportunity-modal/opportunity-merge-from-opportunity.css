@@ -1,54 +1,97 @@
 /*
- * 기회 문서 매핑 모달: 뷰포트 전체(전체화면에 가깝게).
- * lc-crm-map-overlay 기본값 left:16rem(사이드바 비움)을 무시 — 옆으로 배경만 밀리는 현상 방지.
+ * 기회 문서 매핑 — opportunity-modal.js 와 동일한 opp-modal 셸·토큰 사용
+ * (lead-capture-crm-mapping 스타일 의존 제거)
  */
-.lc-crm-map-overlay.opp-merge-from-opp-overlay {
-  inset: 0;
-  left: 0;
-  width: 100%;
-  max-width: none;
-  min-height: 100vh;
-  min-height: 100dvh;
-  padding: 0;
-  align-items: stretch;
-  justify-content: stretch;
-  overflow: hidden;
+
+/* 기회 모달(1400) 위에 열림 */
+.opp-modal-overlay.opp-merge-from-opp-overlay {
   z-index: 1500;
-  box-sizing: border-box;
 }
 
-.lc-crm-map-overlay.opp-merge-from-opp-overlay .lc-crm-map-panel {
+.opp-merge-from-opp-modal.opp-modal {
+  z-index: 1501;
+}
+
+/* 본문 폭 — opportunity-modal 과 동일한 95% 레이아웃 */
+.opp-merge-form-layout.opp-modal-form-layout {
+  width: 95%;
+  max-width: 72rem;
+}
+
+.opp-merge-form-main.opp-modal-form-main {
+  gap: 1rem;
   width: 100%;
-  max-width: none;
-  min-height: 100vh;
-  min-height: 100dvh;
+}
+
+/* 헤더 배지 */
+.opp-merge-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.55rem;
+  border-radius: 0.35rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+}
+
+.opp-merge-badge--tag {
+  background: #e8eef6;
+  color: #64748b;
+  text-transform: uppercase;
+}
+
+.opp-merge-badge--count {
+  background: #d9eef9;
+  color: #0369a1;
+  border: 1px solid rgba(44, 123, 182, 0.22);
+  font-size: 0.7rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* 소개 블록 */
+.opp-merge-intro {
+  margin-bottom: 0.25rem;
+}
+
+.opp-merge-intro-title {
+  margin: 0 0 0.35rem;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--text, #1d283a);
+}
+
+.opp-merge-intro-desc {
   margin: 0;
-  border-radius: 0;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-  overflow: hidden;
+  font-size: var(--opp-f-sm, 0.8125rem);
+  color: #64748b;
+  line-height: 1.5;
+  max-width: 42rem;
 }
 
-.lc-crm-map-overlay.opp-merge-from-opp-overlay .lc-crm-map-head {
-  flex-shrink: 0;
-  border-radius: 0;
+.opp-merge-intro-desc strong {
+  color: #475569;
+  font-weight: 700;
 }
 
-.lc-crm-map-overlay.opp-merge-from-opp-overlay .lc-crm-map-body {
-  flex: 1 1 0;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
+.opp-merge-section-label.opp-label {
+  margin: 0;
 }
 
-/* 필드 구성 + 자주 쓰는 매핑: 넓은 화면 1행 2열, 좁은 화면은 2행(세로)으로 공간 활용 */
+.opp-merge-section-label.opp-label > span {
+  font-size: var(--opp-f-sm, 0.8125rem);
+  font-weight: 700;
+  color: #475569;
+}
+
+/* 필드 구성 + 자주 쓰는 매핑 — 2열 그리드 */
 .opp-merge-setup-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem 1.5rem;
+  gap: 1rem 1.25rem;
   align-items: start;
-  margin-bottom: 1rem;
+  margin-bottom: 0.25rem;
   box-sizing: border-box;
 }
 
@@ -63,49 +106,9 @@
   }
 }
 
-.opp-merge-flow-section {
-  margin-bottom: 1rem;
-}
-
-.opp-merge-flow-sub {
-  margin: 0 0 8px;
-  font-size: 0.8rem;
-  font-weight: 700;
-  color: #475569;
-}
-
-.opp-merge-flow-muted {
-  margin: 0;
-  font-size: 0.78rem;
-  color: #94a3b8;
-}
-
 .opp-merge-preset-row {
   display: block;
   max-width: 100%;
-}
-
-.opp-merge-saved-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
-
-.opp-merge-select {
-  font-family: inherit;
-  font-size: 0.78rem;
-  padding: 0.35rem 0.5rem;
-  border-radius: 6px;
-  border: 1px solid #cbd5e1;
-  background: #fff;
-  color: #334155;
-  min-width: 10rem;
-}
-
-.opp-merge-select:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
 }
 
 .opp-merge-select--wide {
@@ -113,50 +116,315 @@
   max-width: 100%;
 }
 
-.opp-merge-input {
-  font-family: inherit;
-  font-size: 0.78rem;
-  padding: 0.35rem 0.5rem;
-  border-radius: 6px;
-  border: 1px solid #cbd5e1;
-  flex: 1 1 10rem;
-  min-width: 8rem;
+/* 안내 문구 */
+.opp-merge-map-desc {
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.85rem;
+  background: rgba(200, 220, 240, 0.35);
+  border: 1px solid var(--card-border, #dce6f2);
+  border-radius: 8px;
+  font-size: var(--opp-f-sm, 0.8125rem);
+  color: #475569;
+  line-height: 1.45;
 }
 
-.opp-merge-btn {
-  font-family: inherit;
-  font-size: 0.78rem;
-  font-weight: 600;
-  padding: 0.4rem 0.75rem;
-  border-radius: 6px;
-  cursor: pointer;
-  border: 1px solid transparent;
+.opp-merge-map-desc strong {
+  color: #334155;
+  font-weight: 700;
 }
 
-.opp-merge-btn--ghost {
+/* 매핑 테이블 */
+.opp-merge-map-table-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) 2.5rem minmax(0, 1fr) minmax(0, 1fr) minmax(0, 5.5rem);
+  gap: 0.75rem;
+  padding: 0.5rem 1rem 0.75rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--opp-tableau-header, #4e79a7);
+}
+
+@media (max-width: 900px) {
+  .opp-merge-map-table-head {
+    display: none;
+  }
+}
+
+.opp-merge-map-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.opp-merge-map-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) 2.5rem minmax(0, 1fr) minmax(0, 1fr) minmax(0, 5.5rem);
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.85rem 1rem;
+  background: #fff;
+  border: 1px solid var(--card-border, #dce6f2);
+  border-radius: 10px;
+  box-shadow: var(--opp-shade-sm, 0 1px 2px rgba(15, 23, 42, 0.06));
+}
+
+@media (max-width: 900px) {
+  .opp-merge-map-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.opp-merge-map-row.is-constant {
+  background: var(--opp-tableau-stripe, #eef4fa);
+  border-style: dashed;
+  border-color: rgba(78, 121, 167, 0.35);
+}
+
+.opp-merge-map-row--sheet-mail-first {
+  border-top: 2px solid var(--card-border, #dce6f2);
+  margin-top: 0.35rem;
+  padding-top: 0.85rem;
+}
+
+.opp-merge-map-row--sheet-mail .opp-merge-map-icon-box {
+  background: #e8f4fc;
+  color: #2c7bb6;
+}
+
+.opp-merge-map-source-cell {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.opp-merge-map-icon-box {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 8px;
   background: #f1f5f9;
-  border-color: #cbd5e1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+.opp-merge-map-row.is-constant .opp-merge-map-icon-box {
+  background: rgba(44, 123, 182, 0.12);
+  color: var(--primary, #2c7bb6);
+}
+
+.opp-merge-map-source-mode-toggle {
+  display: flex;
+  width: 100%;
+  max-width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--card-border, #dce6f2);
+  background: #f8fafc;
+  margin-bottom: 0.35rem;
+}
+
+.opp-merge-map-source-mode-toggle button {
+  flex: 1;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  line-height: 1.2;
+  font-family: inherit;
+}
+
+.opp-merge-map-source-mode-toggle button.is-active {
+  background: #c8dff0;
+  color: #1e3a5f;
+}
+
+.opp-merge-map-source-mode-toggle button:not(:disabled):not(.is-active):hover {
+  background: #eef4fa;
   color: #475569;
 }
 
-.opp-merge-btn--secondary {
-  background: #ede9fe;
-  border-color: rgba(167, 139, 250, 0.4);
-  color: #4c3a75;
-}
-
-.opp-merge-btn--primary {
-  background: #bfdbfe;
-  border-color: rgba(59, 130, 246, 0.35);
-  color: #0c2a4d;
-}
-
-.opp-merge-btn--primary:disabled {
+.opp-merge-map-source-mode-toggle button:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
 
-/* 자주 사용하는 매핑 — 커스텀 드롭다운 */
+.opp-merge-map-select,
+.opp-merge-map-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  font-size: var(--opp-f-sm, 0.8125rem);
+}
+
+.opp-merge-map-source-meta {
+  margin: 0.2rem 0 0;
+  font-size: 0.625rem;
+  font-weight: 400;
+  color: #94a3b8;
+  line-height: 1.35;
+}
+
+.opp-merge-map-connector-wrap {
+  display: flex;
+  align-items: center;
+}
+
+.opp-merge-map-connector {
+  height: 2px;
+  width: 100%;
+  background-color: #cbd5e1;
+  opacity: 0.5;
+}
+
+@media (max-width: 900px) {
+  .opp-merge-map-connector-wrap {
+    display: none;
+  }
+}
+
+.opp-merge-map-target {
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--opp-panel-bg, #f9fbfd);
+  border: 1px solid var(--card-border, #dce6f2);
+  border-radius: 8px;
+  color: #334155;
+  font-weight: 600;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.opp-merge-map-target code {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: #64748b;
+  background: transparent;
+  padding: 0;
+}
+
+.opp-merge-map-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.65rem;
+  background: var(--opp-tableau-stripe, #eef4fa);
+  border-radius: 8px;
+  font-size: 0.75rem;
+  color: #475569;
+  min-height: 2rem;
+  word-break: break-all;
+  border: 1px solid rgba(78, 121, 167, 0.12);
+}
+
+.opp-merge-map-preview .material-symbols-outlined {
+  font-size: 1rem;
+  color: var(--opp-tableau-header, #4e79a7);
+  flex-shrink: 0;
+}
+
+.opp-merge-map-status {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.opp-merge-map-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.opp-merge-map-badge.ok {
+  background: #d1fae5;
+  color: #047857;
+}
+
+.opp-merge-map-badge.warn {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.opp-merge-map-badge.err {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.opp-merge-map-badge.muted {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.opp-merge-map-badge .material-symbols-outlined {
+  font-size: 0.875rem;
+}
+
+/* 하단 안내 카드 */
+.opp-merge-map-footer-card {
+  margin-top: 1.25rem;
+  padding: 1rem 1.15rem;
+  background: #fff;
+  border: 1px solid var(--card-border, #dce6f2);
+  border-radius: 10px;
+  box-shadow: var(--opp-shade-sm);
+}
+
+.opp-merge-map-footer-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  max-width: 40rem;
+}
+
+.opp-merge-map-footer-icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 9999px;
+  background: rgba(44, 123, 182, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary, #2c7bb6);
+  flex-shrink: 0;
+}
+
+.opp-merge-map-footer-hint p {
+  margin: 0;
+  font-size: var(--opp-f-body, 0.875rem);
+  font-weight: 700;
+  color: #334155;
+}
+
+.opp-merge-map-footer-hint span {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+.opp-merge-map-footer-hint span strong {
+  color: #475569;
+  font-weight: 700;
+}
+
+/* 자주 사용하는 매핑 — 커스텀 드롭다운 (opp-input / opp-select 톤) */
 .opp-merge-saved-dropdown {
   position: relative;
   max-width: 100%;
@@ -168,17 +436,18 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  padding: 0.45rem 0.65rem;
+  padding: 10px 12px;
   font-family: inherit;
-  font-size: 0.82rem;
+  font-size: var(--opp-f-body, 0.875rem);
   font-weight: 600;
-  color: #334155;
+  color: var(--text, #334155);
   background: #fff;
-  border: 1px solid #cbd5e1;
-  border-radius: 0.5rem;
+  border: 1px solid var(--card-border, #b0c0d4);
+  border-radius: 8px;
   cursor: pointer;
   text-align: left;
   box-sizing: border-box;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.07);
 }
 
 .opp-merge-saved-dropdown-trigger:disabled {
@@ -212,9 +481,9 @@
   z-index: 50;
   margin-top: 4px;
   background: #fff;
-  border: 1px solid #cbd5e1;
-  border-radius: 0.5rem;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.1);
+  border: 1px solid var(--card-border, #dce6f2);
+  border-radius: 8px;
+  box-shadow: var(--opp-shade-md, 0 2px 6px rgba(15, 23, 42, 0.07));
   max-height: min(18rem, 55vh);
   display: flex;
   flex-direction: column;
@@ -265,11 +534,11 @@
 }
 
 .opp-merge-saved-dropdown-option:hover:not(:disabled) {
-  background: #eef2f7;
+  background: var(--opp-tableau-stripe, #eef4fa);
 }
 
 .opp-merge-saved-dropdown-option.is-active {
-  background: #e0effc;
+  background: #c8dff0;
   color: #1e3a5f;
 }
 
@@ -298,7 +567,7 @@
 
 .opp-merge-saved-dropdown-del:hover:not(:disabled) {
   background: #fef2f2;
-  color: #b45353;
+  color: #9a4545;
 }
 
 .opp-merge-saved-dropdown-del:disabled {
@@ -313,68 +582,18 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.55rem 0.6rem;
-  border-top: 1px solid #e2e8f0;
-  background: #f8fafc;
+  border-top: 1px solid var(--card-border, #dce6f2);
+  background: #f0f4f7;
 }
 
 .opp-merge-saved-dropdown-footer-input {
   flex: 1 1 8rem;
   min-width: 0;
+  padding: 8px 10px;
+  font-size: var(--opp-f-sm, 0.8125rem);
 }
 
-.opp-merge-saved-dropdown-register {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  flex-shrink: 0;
-}
-
-.opp-merge-map-table {
-  width: 100%;
-  border-collapse: collapse;
+.opp-merge-saved-dropdown-register.opp-save-btn {
+  padding: 0.45rem 0.85rem;
   font-size: 0.78rem;
-}
-
-.opp-merge-map-table th,
-.opp-merge-map-table td {
-  padding: 0.45rem 0.5rem;
-  border-bottom: 1px solid #f1f5f9;
-  text-align: left;
-  vertical-align: middle;
-}
-
-.opp-merge-map-table th {
-  background: #f8fafc;
-  font-weight: 700;
-  color: #475569;
-}
-
-.opp-merge-map-table code {
-  font-size: 0.72rem;
-  background: #f1f5f9;
-  padding: 0.1rem 0.25rem;
-  border-radius: 4px;
-}
-
-.opp-merge-flow-foot {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-top: 8px;
-  padding-top: 12px;
-  border-top: 1px solid #e2e8f0;
-}
-
-/* 데이터 시트 메일 행 — 문서 치환 매핑 테이블 맨 아래 */
-.lc-crm-map-row--sheet-mail-first {
-  border-top: 2px solid #e2e8f0;
-  margin-top: 0.35rem;
-  padding-top: 0.65rem;
-}
-
-.lc-crm-map-row--sheet-mail .lc-crm-map-icon-box {
-  background: #eef2ff;
-  border-color: #c7d2fe;
-  color: #4f46e5;
 }

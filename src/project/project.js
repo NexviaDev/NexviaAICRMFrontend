@@ -848,6 +848,7 @@ export default function Project() {
   const [projectFormMode, setProjectFormMode] = useState('create');
   const [editingProject, setEditingProject] = useState(null);
   const [savingProject, setSavingProject] = useState(false);
+  const [deletingProject, setDeletingProject] = useState(false);
   const kanbanDragIdRef = useRef('');
   const kanbanDraggedItemRef = useRef(null);
   const dragClickSuppressRef = useRef(false);
@@ -1086,6 +1087,30 @@ export default function Project() {
     }
   };
 
+  const handleDeleteProject = async ({ projectId, taskId, isLegacyTask }) => {
+    setDeletingProject(true);
+    try {
+      const path =
+        isLegacyTask && taskId
+          ? `${API_BASE}/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}`
+          : `${API_BASE}/projects/${encodeURIComponent(projectId)}`;
+      const res = await fetch(path, {
+        method: 'DELETE',
+        headers: getAuthHeader()
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || '삭제에 실패했습니다.');
+      setShowProjectFormModal(false);
+      setEditingProject(null);
+      clearProjectModalUrlParams();
+      await fetchBoard();
+    } catch (err) {
+      window.alert(err.message || '삭제에 실패했습니다.');
+    } finally {
+      setDeletingProject(false);
+    }
+  };
+
   const tabSearchString = useMemo(() => {
     return (tabKey) => {
       const p = new URLSearchParams();
@@ -1280,9 +1305,11 @@ export default function Project() {
           stageOptions={projectStageOptions}
           initialProject={projectFormMode === 'edit' ? editingProject : null}
           saving={savingProject}
+          deleting={deletingProject}
           onSubmit={handleSaveProject}
+          onDelete={handleDeleteProject}
           onClose={() => {
-            if (savingProject) return;
+            if (savingProject || deletingProject) return;
             setShowProjectFormModal(false);
             setEditingProject(null);
             clearProjectModalUrlParams();

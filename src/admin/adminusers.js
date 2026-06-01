@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { API_BASE } from '@/config';
 import { getAdminSiteFetchHeaders } from '@/lib/admin-site-headers';
+import AdminUserDetailModal from './admin-user-detail-modal';
 import './adminsubscription.css';
+import './admin-user-detail-modal.css';
 
 const ADMIN_TOKEN_KEY = 'admin_site_token';
 const ADMIN_BOUND_USER_KEY = 'admin_site_bound_user_id';
@@ -49,6 +51,7 @@ export default function AdminUsers() {
   const [successMsg, setSuccessMsg] = useState('');
   const [rows, setRows] = useState([]);
   const [grantLoadingId, setGrantLoadingId] = useState(null);
+  const [selectedUserId, setSelectedUserId] = useState(null);
   const [summary, setSummary] = useState({
     totalUsers: 0,
     owners: 0,
@@ -142,8 +145,8 @@ export default function AdminUsers() {
           <p className="admin-sub-sub">
             전체 사용자, 권한, 회사 연결 상태를 한 번에 확인합니다.
             {canGrantAdminSite
-              ? ' `관리자 부여`는 @nexvia.co.kr 로만 실행할 수 있으며, 대상은 구독 비밀번호로 /admin에 들어올 수 있습니다.'
-              : null}
+              ? ' 행을 클릭하면 사용자 설정·사이드바 메뉴 숨김을 편집할 수 있습니다. `관리자 부여`는 @nexvia.co.kr 로만 실행할 수 있으며, 대상은 구독 비밀번호로 /admin에 들어올 수 있습니다.'
+              : ' 행을 클릭하면 사용자 설정·사이드바 메뉴 숨김을 편집할 수 있습니다.'}
           </p>
         </div>
       </header>
@@ -199,7 +202,18 @@ export default function AdminUsers() {
                 </thead>
                 <tbody>
                   {rows.map((row) => (
-                    <tr key={row.userId}>
+                    <tr
+                      key={row.userId}
+                      className="admin-sub-table-row-clickable"
+                      tabIndex={0}
+                      onClick={() => setSelectedUserId(row.userId)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setSelectedUserId(row.userId);
+                        }
+                      }}
+                    >
                       <td>
                         <div className="admin-sub-co">{row.name}</div>
                         <div className="admin-sub-id">{row.email}</div>
@@ -214,7 +228,7 @@ export default function AdminUsers() {
                       <td>{row.companyBusinessNumber || '—'}</td>
                       <td>{formatDateTime(row.createdAt)}</td>
                       <td>{formatDateTime(row.updatedAt)}</td>
-                      <td>
+                      <td onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
                         {String(row.email || '')
                           .toLowerCase()
                           .endsWith(NEXVIA_STAFF_SUFFIX) ? (
@@ -227,7 +241,10 @@ export default function AdminUsers() {
                               type="button"
                               className="admin-sub-badge admin-sub-badge--on admin-sub-badge-button"
                               disabled={grantLoadingId === row.userId}
-                              onClick={() => void grantAdminSite(row.userId, row.email)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void grantAdminSite(row.userId, row.email);
+                              }}
                               title="클릭하면 관리자 권한 해제"
                             >
                               {grantLoadingId === row.userId ? '처리 중…' : '접근 허용'}
@@ -237,7 +254,10 @@ export default function AdminUsers() {
                               type="button"
                               className="admin-sub-btn admin-sub-btn-primary admin-sub-btn--compact"
                               disabled={grantLoadingId === row.userId}
-                              onClick={() => void grantAdminSite(row.userId, row.email)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void grantAdminSite(row.userId, row.email);
+                              }}
                             >
                               {grantLoadingId === row.userId ? '처리 중…' : '관리자 부여'}
                             </button>
@@ -254,6 +274,32 @@ export default function AdminUsers() {
           </div>
         </>
       )}
+
+      {selectedUserId ? (
+        <AdminUserDetailModal
+          userId={selectedUserId}
+          onClose={() => setSelectedUserId(null)}
+          onSaved={(savedUser) => {
+            if (savedUser?.userId) {
+              setRows((prev) =>
+                prev.map((r) =>
+                  r.userId === savedUser.userId
+                    ? {
+                        ...r,
+                        name: savedUser.name ?? r.name,
+                        role: savedUser.role ?? r.role,
+                        hiddenSidebarMenus: savedUser.hiddenSidebarMenus ?? r.hiddenSidebarMenus
+                      }
+                    : r
+                )
+              );
+            } else {
+              void loadUsers();
+            }
+            setSuccessMsg(`${savedUser?.name || savedUser?.email || '사용자'} 설정을 저장했습니다.`);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

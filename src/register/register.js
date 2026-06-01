@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import './register.css';
 import { formatPhone, phoneDigitsOnly } from './phoneFormat';
-import AddCompany from './add-company';
 import SearchCompany from './search-company';
 import PrivacyPolicyModal from '../login/legal-modals/PrivacyPolicyModal';
 import TermsOfServiceModal from '../login/legal-modals/TermsOfServiceModal';
@@ -38,7 +37,6 @@ export default function Register() {
   const [departmentOptions, setDepartmentOptions] = useState([]);
   const [departmentLoading, setDepartmentLoading] = useState(false);
 
-  const [addCompanyModalOpen, setAddCompanyModalOpen] = useState(false);
   const [companySearchModalOpen, setCompanySearchModalOpen] = useState(false);
   /** Google 추가 정보 입력 시 필수 — 내 정보 수정(edit)에서는 생략 */
   const [agreePrivacy, setAgreePrivacy] = useState(false);
@@ -446,7 +444,7 @@ export default function Register() {
       return;
     }
     if (!companyConfirmed || !companyName.trim()) {
-      setError('회사를 검색하여 선택하거나, 회사 추가 버튼으로 등록해 주세요.');
+      setError('돋보기로 회사를 검색하여 선택하거나, 검색 창에서 새 회사를 등록해 주세요.');
       setLoading(false);
       return;
     }
@@ -549,7 +547,7 @@ export default function Register() {
       return;
     }
     if (!companyConfirmed || !companyName.trim()) {
-      setError('회사를 검색하여 선택하거나, 회사 추가 버튼으로 등록해 주세요.');
+      setError('돋보기로 회사를 검색하여 선택하거나, 검색 창에서 새 회사를 등록해 주세요.');
       setLoading(false);
       return;
     }
@@ -704,16 +702,15 @@ export default function Register() {
                   )}
                   {!companyConfirmed && (
                     <span className="register-company-status unconfirmed">
-                      <span className="material-symbols-outlined">info</span> 돋보기를 눌러 검색하거나, 회사 추가를 이용해 주세요
+                      <span className="material-symbols-outlined">info</span> 돋보기를 눌러 회사를 검색·선택하거나, 검색 창에서 새 회사를 등록해 주세요
                     </span>
                   )}
                   {isEditMode && companyConfirmed && (
                     <span className="register-company-status unconfirmed">
                       <span className="material-symbols-outlined">hourglass_top</span>
-                      검색으로 기존 회사로 바꾸면 승인 후 이용(권한 대기)될 수 있습니다. 회사 추가로 새 회사를 처음 등록하면 저장자에게 Owner가 부여됩니다.
+                      검색으로 기존 회사로 바꾸면 승인 후 이용(권한 대기)될 수 있습니다. 검색 창에서 새 회사를 등록하면 저장자에게 Owner가 부여됩니다.
                     </span>
                   )}
-                  <button type="button" className="register-company-add-btn" onClick={() => setAddCompanyModalOpen(true)}>+ 회사 추가</button>
                 </div>
                 <div className="register-field">
                   <label>회사 주소</label>
@@ -806,11 +803,6 @@ export default function Register() {
           isOpen={companySearchModalOpen}
           onClose={() => setCompanySearchModalOpen(false)}
           onSelect={handleCompanySelect}
-        />
-        <AddCompany
-          isOpen={addCompanyModalOpen}
-          onClose={() => setAddCompanyModalOpen(false)}
-          onSuccess={(company) => { handleCompanySelect(company); setAddCompanyModalOpen(false); }}
           setError={setError}
         />
         <PrivacyPolicyModal open={legalModal === 'privacy'} onClose={() => setLegalModal(null)} />
@@ -897,7 +889,7 @@ export default function Register() {
                 )}
                 {!companyConfirmed && (
                   <span className="register-company-status unconfirmed">
-                    <span className="material-symbols-outlined">info</span> 돋보기를 눌러 검색하거나, 회사 추가를 이용해 주세요
+                    <span className="material-symbols-outlined">info</span> 돋보기를 눌러 회사를 검색·선택하거나, 검색 창에서 새 회사를 등록해 주세요
                   </span>
                 )}
                 {companyConfirmed && (
@@ -905,7 +897,6 @@ export default function Register() {
                     <span className="material-symbols-outlined">verified_user</span> 새 회사라면 저장 시 최초 저장자에게 자동으로 Owner 권한이 부여됩니다.
                   </span>
                 )}
-                <button type="button" className="register-company-add-btn" onClick={() => setAddCompanyModalOpen(true)}>+ 회사 추가</button>
               </div>
               <div className="register-field">
                 <label>회사 주소</label>
@@ -981,11 +972,6 @@ export default function Register() {
         isOpen={companySearchModalOpen}
         onClose={() => setCompanySearchModalOpen(false)}
         onSelect={handleCompanySelect}
-      />
-      <AddCompany
-        isOpen={addCompanyModalOpen}
-        onClose={() => setAddCompanyModalOpen(false)}
-        onSuccess={(company) => { handleCompanySelect(company); setAddCompanyModalOpen(false); }}
         setError={setError}
       />
       <PrivacyPolicyModal open={legalModal === 'privacy'} onClose={() => setLegalModal(null)} />

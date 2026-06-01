@@ -16,7 +16,7 @@ import {
 import { pingBackendHealth } from '@/lib/backend-wake';
 import { pruneDriveUploadedFilesIndex, syncDriveUploadedFilesIndex } from '@/lib/drive-uploaded-files-prune';
 import {
-  RegisterSaleDocsCrmTable,
+  CrmDriveStoragePanel,
   fileToBase64,
   formatDriveFileDate,
   mergeCertificateRowIntoDriveUploads,
@@ -1152,7 +1152,7 @@ export default function AddCompanyModal({ company, initialName = '', onClose, on
         {error && <p className="add-company-modal-error">{error}</p>}
         {/* 사업자등록증 · 자료 */}
         {isEdit && driveFolderId ? (
-          <section className="customer-company-detail-section register-sale-docs">
+          <section className="customer-company-detail-section crm-drive-storage-section" aria-label="증서 · 자료">
             <input
               ref={certificateInputRef}
               type="file"
@@ -1174,60 +1174,26 @@ export default function AddCompanyModal({ company, initialName = '', onClose, on
               disabled={driveUploading}
               aria-hidden="true"
             />
-            <div className="customer-company-detail-section-head">
-              <h3 className="customer-company-detail-section-title">
-                <span className="material-symbols-outlined">folder</span>
-                증서 · 자료
-              </h3>
-              <button
-                type="button"
-                className="customer-company-detail-btn-all"
-                onClick={() => { if (!driveUploading && fileInputRef.current) fileInputRef.current.click(); }}
-                disabled={driveUploading}
-                title="파일 추가"
-                aria-label="파일 추가"
-              >
-                <span className="material-symbols-outlined">add</span>
-              </button>
-            </div>
-            {certificateFile && (
-              <div className="register-sale-docs-cert-pending">
-                <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>upload_file</span>
-                <span className="register-sale-docs-cert-pending-name">{certificateFile.name}</span>
-                <button type="button" className="register-sale-docs-cert-pending-cancel" onClick={() => setCertificateFile(null)}>
-                  <span className="material-symbols-outlined" style={{ fontSize: '1rem' }}>close</span>
-                </button>
-              </div>
-            )}
-            <div className="register-sale-docs-drive-meta" aria-live="polite">
-              <div className="register-sale-docs-drive-meta-row">
-                <span className="register-sale-docs-drive-meta-label">폴더명</span>
-                <code className="register-sale-docs-drive-meta-code" title="공유 드라이브 루트 아래 이 이름으로 준비됩니다">
-                  {driveFolderName}
-                </code>
-              </div>
-              {driveMongoRegisteredUrl ? (
-                <div className="register-sale-docs-drive-meta-row register-sale-docs-drive-meta-row--link">
-                  <span className="register-sale-docs-drive-meta-label">CRM 저장 주소</span>
-                  <a
-                    href={driveMongoRegisteredUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="register-sale-docs-drive-meta-link"
-                  >
-                    {driveMongoRegisteredUrl.length > 64
-                      ? `${driveMongoRegisteredUrl.slice(0, 48)}…`
-                      : driveMongoRegisteredUrl}
-                  </a>
-                </div>
-              ) : (
-                <p className="register-sale-docs-drive-meta-pending">
-                  저장 후 CRM에 Drive 링크가 표시됩니다. 공유 드라이브 루트는 회사 개요 「전체 공유 드라이브 주소」에서 설정합니다.
-                </p>
-              )}
-            </div>
-            <div
-              className={`register-sale-docs-crm-uploads ${crmListDropActive ? 'register-sale-docs-crm-uploads--drop-active' : ''} ${driveUploading || extractingCertificate || importPreviewLoading ? 'register-sale-docs-crm-uploads--disabled' : ''}`}
+            <CrmDriveStoragePanel
+              asSection={false}
+              rowCount={crmDriveTableRows.length}
+              rows={crmDriveTableRows}
+              onRequestUpload={() => {
+                if (!driveUploading && !extractingCertificate && !importPreviewLoading && fileInputRef.current) {
+                  fileInputRef.current.click();
+                }
+              }}
+              uploadDisabled={driveUploading || extractingCertificate || importPreviewLoading}
+              bodyBusy={driveUploading || extractingCertificate || importPreviewLoading}
+              emptyShowSpinner={driveUploading || extractingCertificate || importPreviewLoading}
+              emptyBusyLabel={
+                driveUploading
+                  ? '업로드 중…'
+                  : extractingCertificate || importPreviewLoading
+                    ? 'AI가 증빙에서 정보를 읽는 중…'
+                    : '업로드 중…'
+              }
+              crmListDropActive={crmListDropActive}
               onDragEnter={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -1251,62 +1217,55 @@ export default function AddCompanyModal({ company, initialName = '', onClose, on
                   handleEditModeDrop(e.dataTransfer.files);
                 }
               }}
-            >
-              <h4 className="register-sale-docs-crm-uploads-title">
-                <span className="material-symbols-outlined">history_edu</span>
-                리스트
-              </h4>
-              <p className="register-sale-docs-crm-uploads-hint">
-                드래그 앤 드롭 또는 클릭. 증빙(이미지·PDF·TXT)은 한 번에 한 개만, AI로 폼 반영.
-              </p>
-              {crmDriveTableRows.length === 0 ? (
-                <div
-                  className={`register-sale-docs-crm-empty ${crmListDropActive ? 'register-sale-docs-crm-empty--active' : ''}`}
-                  onClick={() => {
-                    if (!driveUploading && !extractingCertificate && !importPreviewLoading && fileInputRef.current) {
-                      fileInputRef.current.click();
-                    }
-                  }}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (
-                      (e.key === 'Enter' || e.key === ' ') &&
-                      !driveUploading &&
-                      !extractingCertificate &&
-                      !importPreviewLoading &&
-                      fileInputRef.current
-                    ) {
-                      e.preventDefault();
-                      fileInputRef.current.click();
-                    }
-                  }}
-                >
-                  <span className="material-symbols-outlined register-sale-docs-crm-empty-icon">inbox</span>
-                  <span className="register-sale-docs-crm-empty-text">
-                    {driveUploading
-                      ? '업로드 중…'
-                      : extractingCertificate || importPreviewLoading
-                        ? 'AI가 증빙에서 정보를 읽는 중…'
-                        : '등록된 항목이 없습니다. 증빙을 놓으면 폼 반영, 일반 파일은 위 추가.'}
-                  </span>
-                </div>
-              ) : (
-                <RegisterSaleDocsCrmTable
-                  rows={crmDriveTableRows}
-                  formatDriveFileDate={formatDriveFileDate}
-                  driveUploading={driveUploading}
-                  crmDriveDeletingId={crmDriveDeletingId}
-                  onDeleteRow={handleDeleteCrmDriveFile}
-                />
+              beforeBody={(
+                <>
+                  {certificateFile ? (
+                    <div className="register-sale-docs-cert-pending">
+                      <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>upload_file</span>
+                      <span className="register-sale-docs-cert-pending-name">{certificateFile.name}</span>
+                      <button type="button" className="register-sale-docs-cert-pending-cancel" onClick={() => setCertificateFile(null)}>
+                        <span className="material-symbols-outlined" style={{ fontSize: '1rem' }}>close</span>
+                      </button>
+                    </div>
+                  ) : null}
+                  <div className="register-sale-docs-drive-meta" aria-live="polite">
+                    <div className="register-sale-docs-drive-meta-row">
+                      <span className="register-sale-docs-drive-meta-label">폴더명</span>
+                      <code className="register-sale-docs-drive-meta-code" title="공유 드라이브 루트 아래 이 이름으로 준비됩니다">
+                        {driveFolderName}
+                      </code>
+                    </div>
+                    {driveMongoRegisteredUrl ? (
+                      <div className="register-sale-docs-drive-meta-row register-sale-docs-drive-meta-row--link">
+                        <span className="register-sale-docs-drive-meta-label">CRM 저장 주소</span>
+                        <a
+                          href={driveMongoRegisteredUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="register-sale-docs-drive-meta-link"
+                        >
+                          {driveMongoRegisteredUrl.length > 64
+                            ? `${driveMongoRegisteredUrl.slice(0, 48)}…`
+                            : driveMongoRegisteredUrl}
+                        </a>
+                      </div>
+                    ) : (
+                      <p className="register-sale-docs-drive-meta-pending">
+                        저장 후 CRM에 Drive 링크가 표시됩니다. 공유 드라이브 루트는 회사 개요 「전체 공유 드라이브 주소」에서 설정합니다.
+                      </p>
+                    )}
+                  </div>
+                </>
               )}
-            </div>
-            {driveError && <p className="register-sale-docs-error">{driveError}</p>}
-            {driveUploadNotice && !driveError && (
-              <p className="register-sale-docs-success" role="status">
-                {driveUploadNotice}
-              </p>
-            )}
+              emptyHint="증빙(이미지·PDF·TXT)은 한 번에 한 개만 — AI로 폼에 반영됩니다. 일반 파일은 「파일 추가」로 올리세요."
+              emptyTitle="파일을 여기에 놓거나 추가하세요"
+              formatDriveFileDate={formatDriveFileDate}
+              driveUploading={driveUploading}
+              crmDriveDeletingId={crmDriveDeletingId}
+              onDeleteRow={handleDeleteCrmDriveFile}
+              driveError={driveError}
+              driveUploadNotice={driveUploadNotice}
+            />
           </section>
         ) : (
           <section className="add-company-section">

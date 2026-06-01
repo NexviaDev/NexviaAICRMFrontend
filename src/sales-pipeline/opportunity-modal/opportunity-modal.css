@@ -2006,60 +2006,50 @@
   color: var(--text, #334155);
 }
 
-/* ========== Modal footer (sample: border-t, bg-slate-50, 취소 + 추가) ========== */
+/* ========== Modal footer ========== */
 .opp-modal-footer {
   flex-shrink: 0;
-  padding: 16px 24px;
-  border-top: 1px solid #e2e8f0;
-  background: #fff;
-  box-shadow: 0 -1px 3px rgba(15, 23, 42, 0.04);
+  padding: 1rem 1.5rem 1.25rem;
+  border-top: 1px solid rgba(172, 179, 183, 0.25);
+  background: #f0f4f7;
   display: flex;
-  gap: 12px;
+  gap: 0.65rem;
   justify-content: flex-end;
   align-items: center;
+  flex-wrap: wrap;
 }
 
-.opp-modal-footer .opp-cancel-btn {
-  padding: 10px 24px;
-  border-radius: 8px;
-  font-weight: 600;
-}
-
-.opp-modal-footer .opp-save-btn {
-  padding: 10px 32px;
-  border-radius: 8px;
-  background: var(--primary);
-  box-shadow: 0 4px 14px rgba(44, 123, 182, 0.25);
-}
-
-.opp-modal-footer .opp-save-btn:hover {
-  filter: brightness(1.05);
-  opacity: 1;
-}
-
-.opp-modal-footer .opp-apply-btn {
-  padding: 10px 22px;
-  border-radius: 8px;
-  font-weight: 600;
-  border: 1px solid rgba(44, 123, 182, 0.35);
-  background: #c8dff0;
-  color: #1a4971;
+.opp-apply-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.55rem 1.35rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: #5889a5;
+  color: #f5f9ff;
+  font-size: 0.82rem;
+  font-weight: 700;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  box-shadow: 0 1px 2px rgba(68, 108, 133, 0.22);
+  transition: opacity 0.15s;
 }
 
-.opp-modal-footer .opp-apply-btn:hover:not(:disabled) {
-  background: #b8daf0;
-  border-color: #2c7bb6;
+.opp-apply-btn:hover:not(:disabled) {
+  opacity: 0.92;
 }
 
-.opp-modal-footer .opp-apply-btn:disabled {
+.opp-apply-btn:active:not(:disabled) {
+  opacity: 0.88;
+}
+
+.opp-apply-btn .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
+.opp-apply-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
-}
-
-.opp-modal-footer .opp-delete-btn {
-  margin-right: auto;
 }
 
 /* 제품 관련 필드 표시 체크박스 */
@@ -3330,61 +3320,89 @@
 }
 
 .opp-delete-btn {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
-  background: none;
-  border: 1px solid var(--danger);
-  color: var(--danger);
-  padding: 7px 14px;
-  border-radius: 8px;
+  gap: 0.35rem;
+  padding: 0.55rem 1.35rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: #9a4545;
+  color: #fff8f8;
   font-size: 0.82rem;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
-  transition: background 0.15s;
+  box-shadow: 0 1px 2px rgba(122, 52, 52, 0.22);
+  transition: opacity 0.15s;
 }
 
-.opp-delete-btn:hover {
-  background: rgba(220, 38, 38, 0.06);
+.opp-delete-btn:hover:not(:disabled) {
+  opacity: 0.92;
 }
 
 .opp-delete-btn .material-symbols-outlined {
-  font-size: 0.95rem;
+  font-size: 1.05rem;
+}
+
+.opp-delete-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .opp-cancel-btn {
-  background: none;
-  border: 1px solid var(--card-border);
-  color: var(--text-muted);
-  padding: 7px 16px;
-  border-radius: 8px;
-  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.55rem 1.35rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: #7a8f9a;
+  color: #f8fbfd;
+  font-size: 0.82rem;
+  font-weight: 700;
   cursor: pointer;
-  transition: background 0.15s;
+  box-shadow: 0 1px 2px rgba(90, 110, 122, 0.2);
+  transition: opacity 0.15s;
 }
 
-.opp-cancel-btn:hover {
-  background: var(--bg-light);
+.opp-cancel-btn:hover:not(:disabled) {
+  opacity: 0.92;
+}
+
+.opp-cancel-btn .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
+.opp-cancel-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .opp-save-btn {
-  background: var(--primary);
-  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.55rem 1.35rem;
   border: none;
-  padding: 7px 20px;
-  border-radius: 8px;
-  font-size: 0.85rem;
-  font-weight: 600;
+  border-radius: 0.5rem;
+  background: #2c6485;
+  color: #f5f9ff;
+  font-size: 0.82rem;
+  font-weight: 700;
   cursor: pointer;
-  transition: filter 0.15s;
+  box-shadow: 0 1px 2px rgba(44, 100, 133, 0.2);
+  transition: opacity 0.15s;
 }
 
-.opp-save-btn:hover {
-  filter: brightness(1.05);
+.opp-save-btn:hover:not(:disabled) {
+  opacity: 0.92;
+}
+
+.opp-save-btn .material-symbols-outlined {
+  font-size: 1.05rem;
 }
 
 .opp-save-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.55;
   cursor: not-allowed;
 }
 
@@ -3806,42 +3824,37 @@
   flex-direction: column;
 }
 
-.opp-basic-info-sheet-body--docs .register-sale-docs-crm-uploads {
+.opp-basic-info-sheet-body--docs .crm-drive-storage-head {
+  flex-shrink: 0;
+  margin-bottom: 0.45rem;
+}
+
+.opp-basic-info-sheet-body--docs .crm-drive-storage-body {
   flex: 1 1 0;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior-y: auto;
-  padding: 0.35rem 0.45rem 0.45rem;
-  border: none;
-  background: transparent;
 }
 
-.opp-basic-info-sheet-body--docs .register-sale-docs-crm-uploads-hint {
+.opp-basic-info-sheet-body--docs .crm-drive-storage-dropzone {
+  min-height: 4.5rem;
+  padding: 0.65rem;
+}
+
+.opp-basic-info-sheet-body--docs .crm-drive-storage-dropzone-hint {
   font-size: 0.64rem;
-  line-height: 1.45;
-  margin-bottom: 0.35rem;
+  max-width: 100%;
 }
 
-.opp-basic-info-sheet-body--docs .register-sale-docs-crm-empty {
-  min-height: 3.5rem;
-  padding: 0.5rem;
-}
-
-.opp-basic-info-sheet-body--docs .register-sale-docs-crm-empty-text {
-  font-size: 0.68rem;
-}
-
-.opp-basic-info-sheet-body--docs .register-sale-docs-error,
-.opp-basic-info-sheet-body--docs .register-sale-docs-success {
+.opp-basic-info-sheet-body--docs .crm-drive-storage-message {
   flex-shrink: 0;
-  margin: 0;
-  padding: 0.25rem 0.45rem 0.35rem;
+  margin: 0.35rem 0 0;
   font-size: 0.68rem;
 }
 
-.opp-basic-info-sheet-body--docs .opp-register-sale-docs-crm-refresh {
-  padding: 0.25rem 0.45rem;
-  font-size: 0.62rem;
+.opp-basic-info-sheet-body--docs .crm-drive-storage-refresh-btn {
+  padding: 0.28rem 0.5rem;
+  font-size: 0.68rem;
 }
 
 .opp-basic-tab-comments-full {
@@ -5086,7 +5099,7 @@
     max-height: none;
   }
 
-  .opp-basic-info-sheet-body--docs .register-sale-docs-crm-uploads {
+  .opp-basic-info-sheet-body--docs .crm-drive-storage-body {
     overflow: visible;
     max-height: none;
   }

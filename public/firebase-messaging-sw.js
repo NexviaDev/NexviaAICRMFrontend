@@ -75,6 +75,7 @@ function buildDisplayFromPayload(payload) {
     else if (data.type === 'calendar-reminder') body = '일정 알림이 도착했습니다.';
     else if (data.type === 'lead-capture') body = '새 리드가 수신되었습니다.';
     else if (data.type === 'project-comment') body = '프로젝트 코멘트에서 언급되었습니다.';
+    else if (data.type === 'admin-user-signup') body = '회원가입·회원 정보 변경 알림이 도착했습니다.';
     else body = '탭하여 내용을 확인하세요.';
   }
   const tag =

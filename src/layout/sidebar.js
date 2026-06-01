@@ -19,6 +19,7 @@ import { API_BASE } from '@/config';
 import { resolveDepartmentDisplayFromChart } from '@/lib/org-chart-tree-utils';
 import { useSidebarPush } from './use-sidebar-push';
 import { clearPushSessionOnLogout } from '@/lib/push-notifications';
+import { isSidebarMenuHiddenForUser } from '@/lib/sidebar-menu-restrictions';
 import './sidebar.css';
 
 /** stacking: sidebar.css `--sidebar-z`(30) — 페이지 모달 오버레이(≥50)보다 항상 아래 */
@@ -67,6 +68,12 @@ function canShowMenuByRole(user, item) {
     const r = user?.role;
     return r === 'owner' || r === 'admin' || r === 'senior';
   }
+  return true;
+}
+
+function canShowSidebarMenu(user, item) {
+  if (!canShowMenuByRole(user, item)) return false;
+  if (isSidebarMenuHiddenForUser(user, item.to)) return false;
   return true;
 }
 
@@ -225,7 +232,7 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
   const visibleCategoryOrder = useMemo(
     () =>
       categoryOrder.filter((categoryKey) =>
-        (SUBMENU_BY_CATEGORY[categoryKey] || []).some((item) => canShowMenuByRole(user, item))
+        (SUBMENU_BY_CATEGORY[categoryKey] || []).some((item) => canShowSidebarMenu(user, item))
       ),
     [categoryOrder, user]
   );
@@ -235,7 +242,7 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
     const orderedTos = itemOrdersByCategory?.[activeCategory] || [];
     return orderedTos
       .map((to) => SUBMENU_BY_TO[to])
-      .filter((item) => item && canShowMenuByRole(user, item));
+      .filter((item) => item && canShowSidebarMenu(user, item));
   }, [activeCategory, itemOrdersByCategory, user]);
 
   const handleCategoryClick = useCallback((categoryKey) => {

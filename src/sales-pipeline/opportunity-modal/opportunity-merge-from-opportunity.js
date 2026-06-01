@@ -56,9 +56,13 @@ import {
   isMergeDataSheetUrlOpen
 } from '@/lib/merge-data-sheet-url';
 import { MERGE_EXCEL_FORMATS } from '@/lib/merge-field-editor-constants';
+import {
+  mergeTemplateDefaultExt,
+  stripKnownMergeTemplateExtensions
+} from '@/lib/merge-template-file-types';
 import { parseTsvGrid, isSingleColumnMultilinePaste } from '@/lib/tsv-grid';
 import CustomerCompanySearchModal from '@/customer-companies/customer-company-search-modal/customer-company-search-modal';
-import '@/lead-capture/lead-capture-crm-mapping/lead-capture-crm-mapping-modal.css';
+import './opportunity-modal.css';
 import './opportunity-merge-from-opportunity.css';
 
 const MERGE_SHEET_INITIAL_ROWS = 200;
@@ -152,9 +156,8 @@ function templateListFileName(t) {
   if (orig) return orig;
   const n = String(t.name || '').trim();
   if (!n) return '—';
-  if (/\.(docx|xlsx)$/i.test(n)) return n;
-  const ext = t.fileType === 'xlsx' ? 'xlsx' : 'docx';
-  return `${n}.${ext}`;
+  if (/\.(docx|xlsx|pptx|hwp|hwpx)$/i.test(n)) return n;
+  return `${n}.${mergeTemplateDefaultExt(t.fileType)}`;
 }
 
 function sanitizeDownloadFileStem(s, maxLen = 120) {
@@ -267,7 +270,7 @@ function parseTemplateIdsFromPaste(raw, templates, fallbackTid) {
   if (p0) {
     for (const t of list) {
       const label = templateListFileName(t)
-        .replace(/\.(docx|xlsx)$/i, '')
+        .replace(/\.(docx|xlsx|pptx|hwp|hwpx)$/i, '')
         .trim()
         .toLowerCase();
       if (label && (label === p0 || p0.includes(label) || label.includes(p0))) {
@@ -411,7 +414,7 @@ function buildRowJobsForSheetRow({
   for (let j = 0; j < tids.length; j += 1) {
     const tid = tids[j];
     const t = templates.find((x) => String(x._id) === tid);
-    const tplRaw = templateListFileName(t).replace(/\.(docx|xlsx)$/i, '').trim();
+    const tplRaw = stripKnownMergeTemplateExtensions(templateListFileName(t)).trim();
     const tplSlug = sanitizeDownloadFileStem(tplRaw).slice(0, 50) || 'doc';
     const apiRow = { ...rowForApi(row) };
     if (tids.length > 1) {
@@ -1199,7 +1202,7 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
       for (let j = 0; j < tids.length; j += 1) {
         const tid = tids[j];
         const t = templates.find((x) => String(x._id) === tid);
-        const tplRaw = templateListFileName(t).replace(/\.(docx|xlsx)$/i, '').trim();
+        const tplRaw = stripKnownMergeTemplateExtensions(templateListFileName(t)).trim();
         const tplSlug = sanitizeDownloadFileStem(tplRaw).slice(0, 50) || 'doc';
         const apiRow = { ...rowForApi(r) };
         if (tids.length > 1) {
@@ -1807,67 +1810,54 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
   return (
     <>
       {phase === 'setup' ? (
-        <div className="lc-crm-map-overlay opp-merge-from-opp-overlay" role="dialog" aria-modal="true" aria-labelledby="opp-merge-map-title">
-          <div className="lc-crm-map-panel" onClick={(e) => e.stopPropagation()}>
-            <header className="lc-crm-map-head">
-              <div className="lc-crm-map-head-left">
-                <button
-                  type="button"
-                  className="lc-crm-map-btn-discard"
-                  onClick={handleCloseAll}
-                  aria-label="뒤로"
-                  disabled={disabled}
-                >
-                  <span className="material-symbols-outlined" style={{ fontSize: '1.25rem', verticalAlign: 'middle' }}>
-                    arrow_back
-                  </span>
-                </button>
-                <h2 id="opp-merge-map-title">{docTitle} — 문서 매핑</h2>
-                <span className="lc-crm-map-draft">Merge</span>
-                <span className="lc-crm-map-lead-count" title="문서 치환 필드 수">
+        <div
+          className="opp-modal-overlay opp-merge-from-opp-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="opp-merge-map-title"
+        >
+          <div className="opp-modal opp-merge-from-opp-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="opp-modal-header">
+              <div className="opp-modal-header-left">
+                <h3 className="opp-modal-title" id="opp-merge-map-title">
+                  {docTitle} — 문서 매핑
+                </h3>
+                <span className="opp-merge-badge opp-merge-badge--tag">Merge</span>
+                <span className="opp-merge-badge opp-merge-badge--count" title="문서 치환 필드 수">
                   {mergeFieldsSheet.length > 0 ? `${mergeFieldsSheet.length}필드` : '필드 없음'}
                 </span>
               </div>
-              <div className="lc-crm-map-head-actions">
-                <button type="button" className="lc-crm-map-btn-discard" onClick={handleCloseAll} disabled={disabled}>
-                  닫기
-                </button>
-                <button
-                  type="button"
-                  className="lc-crm-map-btn-save"
-                  onClick={openSheetPhase}
-                  disabled={
-                    disabled ||
-                    !mergeFieldsSheet.length ||
-                    templatesLoading ||
-                    mergeFieldsSheet.some((f) => f?.key && !mappingByFieldKey[f.key])
-                  }
-                >
-                  <span className="material-symbols-outlined" style={{ fontSize: '1.1rem' }}>
-                    table_rows
-                  </span>
-                  데이터 시트 열기
-                </button>
-              </div>
-            </header>
+              <button
+                type="button"
+                className="opp-modal-close"
+                onClick={handleCloseAll}
+                disabled={disabled}
+                aria-label="닫기"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
 
-            <div className="lc-crm-map-body">
-              <div className="lc-crm-map-title-block">
-                <h1>기회 → 문서</h1>
-                <p className="lc-crm-map-lead-hint">
-                  아래에서 <strong>기회에 있는 값</strong>(또는 <strong>고정값</strong>)을 각 <strong>문서 치환 키</strong>에 연결합니다.
-                  <strong> 미리보기</strong>는 지금 기회 폼에 보이는 값 기준입니다. 엑셀 가져오기와 달리 파일 드래그는 없습니다.
-                </p>
-              </div>
+            <div className="opp-modal-form opp-merge-from-opp-form">
+              <div className="opp-modal-form-layout opp-merge-form-layout">
+                <div className="opp-modal-form-main opp-merge-form-main">
+                  <div className="opp-merge-intro">
+                    <h2 className="opp-merge-intro-title">기회 → 문서</h2>
+                    <p className="opp-merge-intro-desc">
+                      아래에서 <strong>기회에 있는 값</strong>(또는 <strong>고정값</strong>)을 각{' '}
+                      <strong>문서 치환 키</strong>에 연결합니다.
+                      <strong> 미리보기</strong>는 지금 기회 폼에 보이는 값 기준입니다. 엑셀 가져오기와 달리 파일
+                      드래그는 없습니다.
+                    </p>
+                  </div>
 
-              <div className="opp-merge-setup-grid">
-                <section className="opp-merge-setup-grid-cell opp-merge-field-preset-section">
-                <p className="lc-crm-map-target-desc" style={{ marginBottom: '0.5rem' }}>
-                  <strong>1. 저장된 필드 구성</strong>
-                </p>
-                <div className="opp-merge-preset-row">
-                  <select
-                    className="opp-merge-select opp-merge-select--wide"
+                  <div className="opp-merge-setup-grid">
+                    <section className="opp-merge-setup-grid-cell opp-merge-field-preset-section">
+                      <label className="opp-label opp-merge-section-label">
+                        <span>1. 저장된 필드 구성</span>
+                        <div className="opp-merge-preset-row">
+                          <select
+                            className="opp-select opp-merge-select--wide"
                     value={String(selectedFieldPresetId ?? '')}
                     onChange={(e) => setSelectedFieldPresetId(e.target.value)}
                     disabled={disabled || fieldPresetsLoading}
@@ -1876,19 +1866,19 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
                     <option value="">회사 기본</option>
                     {fieldPresets.map((p) => (
                       <option key={p._id} value={String(p._id)}>
-                        {typeof p.fieldCount === 'number' ? `${p.name} (${p.fieldCount}필드)` : p.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {fieldPresetsLoading ? <p className="lc-crm-map-source-meta">목록 불러오는 중…</p> : null}
-              </section>
+                            {typeof p.fieldCount === 'number' ? `${p.name} (${p.fieldCount}필드)` : p.name}
+                          </option>
+                        ))}
+                      </select>
+                        </div>
+                      </label>
+                      {fieldPresetsLoading ? <p className="opp-merge-map-source-meta">목록 불러오는 중…</p> : null}
+                    </section>
 
-              <section className="opp-merge-setup-grid-cell opp-merge-saved-mapping-section">
-                <p className="lc-crm-map-target-desc" style={{ marginBottom: '0.5rem' }}>
-                  <strong>자주 사용하는 매핑</strong> (회사 DB · 동료와 공유)
-                </p>
-                <div className="opp-merge-saved-dropdown" ref={savedMappingDropdownRef}>
+                    <section className="opp-merge-setup-grid-cell opp-merge-saved-mapping-section">
+                      <label className="opp-label opp-merge-section-label">
+                        <span>자주 사용하는 매핑 (회사 DB · 동료와 공유)</span>
+                        <div className="opp-merge-saved-dropdown" ref={savedMappingDropdownRef}>
                   <button
                     type="button"
                     className="opp-merge-saved-dropdown-trigger"
@@ -1972,7 +1962,7 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
                       <div className="opp-merge-saved-dropdown-footer">
                         <input
                           type="text"
-                          className="opp-merge-input opp-merge-saved-dropdown-footer-input"
+                          className="opp-input opp-merge-saved-dropdown-footer-input"
                           placeholder="새로 저장할 이름"
                           value={savedMappingNameDraft}
                           onChange={(e) => setSavedMappingNameDraft(e.target.value)}
@@ -1988,7 +1978,7 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
                         />
                         <button
                           type="button"
-                          className="opp-merge-btn opp-merge-btn--primary opp-merge-saved-dropdown-register"
+                          className="opp-save-btn opp-merge-saved-dropdown-register"
                           onClick={() => void handleSaveMappingPreset()}
                           disabled={
                             disabled ||
@@ -2003,32 +1993,31 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
                           {savedMappingPresetSaving ? '저장 중…' : '등록'}
                         </button>
                       </div>
-                    </div>
-                  ) : null}
-                </div>
-                {savedMappingPresetsLoading ? (
-                  <p className="lc-crm-map-source-meta" style={{ marginTop: '0.35rem' }}>
-                    저장된 매핑 목록을 불러오는 중…
+                        </div>
+                      ) : null}
+                        </div>
+                      </label>
+                      {savedMappingPresetsLoading ? (
+                        <p className="opp-merge-map-source-meta">저장된 매핑 목록을 불러오는 중…</p>
+                      ) : null}
+                    </section>
+                  </div>
+
+                  <p className="opp-merge-map-desc">
+                    미리보기는 <strong>현재 기회 입력값</strong> 기준입니다. <strong>데이터 시트 열기</strong>를 누르면
+                    아래 매핑이 첫 행에 반영됩니다. 맨 아래 <strong>받는 사람·참조(CC)</strong>는 데이터 시트 메일
+                    칸이며, 값이 없으면 <strong>양식에 등록한 메일 기본값</strong>(문서 메일머지)이 적용됩니다.
                   </p>
-                ) : null}
-              </section>
-              </div>
 
-              <p className="lc-crm-map-target-desc" style={{ marginBottom: '1rem' }}>
-                미리보기는 <strong>현재 기회 입력값</strong> 기준입니다. <strong>데이터 시트 열기</strong>를 누르면 아래 매핑이 첫 행에 반영됩니다.
-                맨 아래 <strong>받는 사람·참조(CC)</strong>는 데이터 시트 메일 칸이며, 값이 없으면{' '}
-                <strong>양식에 등록한 메일 기본값</strong>(문서 메일머지)이 적용됩니다.
-              </p>
+                  <div className="opp-merge-map-table-head">
+                    <div>소스 (기회 값)</div>
+                    <div />
+                    <div>대상 (치환 · 시트 메일)</div>
+                    <div>미리보기</div>
+                    <div style={{ textAlign: 'right' }}>상태</div>
+                  </div>
 
-              <div className="lc-crm-map-table-head">
-                <div>소스 (기회 값)</div>
-                <div />
-                <div>대상 (치환 · 시트 메일)</div>
-                <div>미리보기</div>
-                <div style={{ textAlign: 'right' }}>상태</div>
-              </div>
-
-              <div className="lc-crm-map-rows">
+                  <div className="opp-merge-map-rows">
                 {mappingTableRows.map((row, rowIdx) => {
                   const preview =
                     row.isSheetMail && row.sourceType === 'field'
@@ -2041,10 +2030,10 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
                   const targetCode = row.targetToken || row.mergeKey;
                   const isFirstSheetMail = isSheetMail && rowIdx === mappingRows.length;
                   const rowClass = [
-                    'lc-crm-map-row',
+                    'opp-merge-map-row',
                     isConst ? 'is-constant' : '',
-                    isSheetMail ? 'lc-crm-map-row--sheet-mail' : '',
-                    isFirstSheetMail ? 'lc-crm-map-row--sheet-mail-first' : ''
+                    isSheetMail ? 'opp-merge-map-row--sheet-mail' : '',
+                    isFirstSheetMail ? 'opp-merge-map-row--sheet-mail-first' : ''
                   ]
                     .filter(Boolean)
                     .join(' ');
@@ -2055,14 +2044,14 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
                     : '소스: 기회 필드 또는 고정값';
                   return (
                     <div key={row.id} className={rowClass}>
-                      <div className="lc-crm-map-source-cell">
-                        <div className="lc-crm-map-icon-box">
+                      <div className="opp-merge-map-source-cell">
+                        <div className="opp-merge-map-icon-box">
                           <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>
                             {sourceIcon}
                           </span>
                         </div>
                         <div style={{ minWidth: 0, flex: 1 }}>
-                          <div className="lc-crm-map-source-mode-toggle" role="group" aria-label={sourceAria}>
+                          <div className="opp-merge-map-source-mode-toggle" role="group" aria-label={sourceAria}>
                             <button
                               type="button"
                               className={!isConst ? 'is-active' : ''}
@@ -2082,7 +2071,7 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
                           </div>
                           {isConst ? (
                             <input
-                              className="lc-crm-map-input"
+                              className="opp-input opp-merge-map-input"
                               style={{ marginTop: '0.35rem' }}
                               placeholder={constPlaceholder}
                               value={row.constantValue}
@@ -2092,7 +2081,7 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
                           ) : (
                             <>
                               <select
-                                className="lc-crm-map-select"
+                                className="opp-select opp-merge-map-select"
                                 value={row.sourceKey}
                                 onChange={(e) => patchRow(row.id, { sourceKey: e.target.value })}
                                 disabled={disabled}
@@ -2108,52 +2097,31 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
                                   </optgroup>
                                 ))}
                               </select>
-                              <p className="lc-crm-map-source-meta">{opportunitySourceMeta(row.sourceKey)}</p>
+                              <p className="opp-merge-map-source-meta">{opportunitySourceMeta(row.sourceKey)}</p>
                             </>
                           )}
                         </div>
                       </div>
-                      <div className="lc-crm-map-connector-wrap" style={{ display: 'flex', alignItems: 'center' }}>
-                        <div className="lc-crm-map-connector" />
+                      <div className="opp-merge-map-connector-wrap">
+                        <div className="opp-merge-map-connector" />
                       </div>
                       <div>
-                        <div
-                          className="lc-crm-map-input"
-                          style={{
-                            margin: 0,
-                            background: '#f8fafc',
-                            borderColor: '#e2e8f0',
-                            color: '#334155',
-                            fontWeight: 600,
-                            fontSize: '0.78rem',
-                            lineHeight: 1.35,
-                            cursor: 'default'
-                          }}
-                        >
+                        <div className="opp-merge-map-target">
                           {row.targetLabel || targetCode}
-                          <code style={{ display: 'block', fontSize: '0.72rem', fontWeight: 500, marginTop: '0.2rem' }}>
+                          <code>
                             {'{{'}
                             {targetCode}
                             {'}}'}
                           </code>
                         </div>
                       </div>
-                      <div className="lc-crm-map-preview">
+                      <div className="opp-merge-map-preview">
                         <span className="material-symbols-outlined">visibility</span>
                         <span>{preview || '—'}</span>
                       </div>
-                      <div
-                        className="lc-crm-map-status"
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'flex-end',
-                          gap: '0.35rem',
-                          flexWrap: 'wrap'
-                        }}
-                      >
+                      <div className="opp-merge-map-status">
                         <span
-                          className={`lc-crm-map-badge ${status.type === 'ok' ? 'ok' : status.type === 'warn' ? 'warn' : status.type === 'err' ? 'err' : 'muted'}`}
+                          className={`opp-merge-map-badge ${status.type === 'ok' ? 'ok' : status.type === 'warn' ? 'warn' : status.type === 'err' ? 'err' : 'muted'}`}
                         >
                           {status.type === 'ok' && <span className="material-symbols-outlined">check_circle</span>}
                           {status.type === 'warn' && <span className="material-symbols-outlined">priority_high</span>}
@@ -2164,24 +2132,47 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
                     </div>
                   );
                 })}
-              </div>
-
-              <div className="lc-crm-map-footer-card">
-                <div className="lc-crm-map-footer-hint">
-                  <div className="lc-crm-map-footer-icon">
-                    <span className="material-symbols-outlined">lightbulb</span>
                   </div>
-                  <div>
-                    <p>기회 ↔ 문서 치환</p>
-                    <span>
-                      저장된 필드 구성은 매핑 화면 위쪽에서 고릅니다. 데이터 시트를 연 뒤에는 상단{' '}
-                      <strong>문서 치환 항목 편집</strong>에서 키·표시 이름을 바꿀 수 있습니다(매니저 이상). 각 행에서{' '}
-                      <strong>기회 필드</strong>와 <strong>고정값</strong>을 바꿀 수 있으며, 미리보기로 값이 맞는지 확인한 뒤
-                      데이터 시트로 넘어가세요.
-                    </span>
+
+                  <div className="opp-merge-map-footer-card">
+                    <div className="opp-merge-map-footer-hint">
+                      <div className="opp-merge-map-footer-icon">
+                        <span className="material-symbols-outlined">lightbulb</span>
+                      </div>
+                      <div>
+                        <p>기회 ↔ 문서 치환</p>
+                        <span>
+                          저장된 필드 구성은 매핑 화면 위쪽에서 고릅니다. 데이터 시트를 연 뒤에는 상단{' '}
+                          <strong>문서 치환 항목 편집</strong>에서 키·표시 이름을 바꿀 수 있습니다(매니저 이상). 각
+                          행에서 <strong>기회 필드</strong>와 <strong>고정값</strong>을 바꿀 수 있으며, 미리보기로
+                          값이 맞는지 확인한 뒤 데이터 시트로 넘어가세요.
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
+            </div>
+
+            <div className="opp-modal-footer">
+              <button type="button" className="opp-cancel-btn" onClick={handleCloseAll} disabled={disabled}>
+                <span className="material-symbols-outlined">close</span>
+                취소
+              </button>
+              <button
+                type="button"
+                className="opp-save-btn"
+                onClick={openSheetPhase}
+                disabled={
+                  disabled ||
+                  !mergeFieldsSheet.length ||
+                  templatesLoading ||
+                  mergeFieldsSheet.some((f) => f?.key && !mappingByFieldKey[f.key])
+                }
+              >
+                <span className="material-symbols-outlined">table_rows</span>
+                데이터 시트 열기
+              </button>
             </div>
           </div>
         </div>

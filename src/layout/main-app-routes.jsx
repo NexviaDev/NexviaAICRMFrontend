@@ -1,5 +1,9 @@
-import { lazy } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { lazy, useEffect } from 'react';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import {
+  getFirstAllowedSidebarPathForUser,
+  isRouteAccessBlockedForUser
+} from '@/lib/sidebar-menu-restrictions';
 
 const CustomerCompanies = lazy(() => import('../customer-companies/customer-companies'));
 const CustomerCompanyEmployees = lazy(() => import('../customer-company-employees/customer-company-employees'));
@@ -38,7 +42,25 @@ function isPendingUser() {
 }
 
 export function PendingRestrictedRoute({ children }) {
-  if (isPendingUser()) return <Navigate to="/company-overview" replace />;
+  const location = useLocation();
+  const user = getStoredUser();
+
+  if (isPendingUser() && location.pathname !== '/company-overview') {
+    return <Navigate to="/company-overview" replace />;
+  }
+
+  const blocked = isRouteAccessBlockedForUser(user, location.pathname);
+  const redirectTo = blocked ? getFirstAllowedSidebarPathForUser(user) : null;
+
+  useEffect(() => {
+    if (!blocked) return;
+    window.alert('접근이 제한된 메뉴입니다. 관리자에게 문의해 주세요.');
+  }, [blocked, location.pathname]);
+
+  if (blocked && redirectTo) {
+    return <Navigate to={redirectTo} replace />;
+  }
+
   return children;
 }
 
@@ -48,7 +70,7 @@ export function PendingRestrictedRoute({ children }) {
 export default function MainAppRoutes() {
   return (
     <Routes>
-      <Route path="company-overview" element={<CompanyOverview />} />
+      <Route path="company-overview" element={<PendingRestrictedRoute><CompanyOverview /></PendingRestrictedRoute>} />
       <Route path="customer-companies" element={<PendingRestrictedRoute><CustomerCompanies /></PendingRestrictedRoute>} />
       <Route path="customer-company-employees" element={<PendingRestrictedRoute><CustomerCompanyEmployees /></PendingRestrictedRoute>} />
       <Route path="kpi" element={<PendingRestrictedRoute><Kpi /></PendingRestrictedRoute>} />

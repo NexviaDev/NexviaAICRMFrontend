@@ -15,6 +15,7 @@ import {
 import { listColumnValueInlineStyle } from '@/lib/list-column-cell-styles';
 import './customer-company-employees.css';
 import './customer-company-employees-responsive.css';
+import '@/shared/crm-list-sheet-table.css';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import ListPaginationButtons from '@/components/list-pagination-buttons/list-pagination-buttons';
 import CustomerCompanyEmployeesExcelImportModal from './customer-company-employees-excel-import-modal/customer-company-employees-excel-import-modal';
@@ -1210,7 +1211,9 @@ export default function CustomerCompanyEmployees() {
             )}
           </div>
           <div className="table-wrap">
-            <table className="data-table">
+            <div className="crm-list-sheet-scroll">
+            <div className="crm-list-sheet-table-wrap">
+            <table className="data-table crm-list-sheet">
               <colgroup>
                 {displayColumns.map((col) => (
                   <col
@@ -1285,7 +1288,7 @@ export default function CustomerCompanyEmployees() {
                     return (
                       <tr
                         key={row._id}
-                        className={`customer-company-employees-row-clickable ${isChecked ? 'cce-row-selected' : ''}`}
+                        className={`customer-company-employees-row-clickable ${isChecked ? 'crm-list-sheet-row--selected' : ''} ${idx % 2 === 0 ? 'crm-list-sheet-row--stripe-a' : 'crm-list-sheet-row--stripe-b'}`}
                         onClick={() => openDetailModal(row)}
                       >
                         {displayColumns.map((col) => {
@@ -1460,6 +1463,8 @@ export default function CustomerCompanyEmployees() {
                 )}
               </tbody>
             </table>
+            </div>
+            </div>
           </div>
           <div className="pagination-bar">
             <p className="pagination-info">

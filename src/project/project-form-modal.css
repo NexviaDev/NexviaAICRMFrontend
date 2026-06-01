@@ -845,27 +845,75 @@
   padding: 1rem 2rem 1.25rem;
   background: #f0f4f7;
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   gap: 0.65rem;
   border-top: 1px solid rgba(172, 179, 183, 0.25);
 }
 
-.pfm-btn-cancel {
-  padding: 0.55rem 1.1rem;
+.pfm-btn-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.55rem 1.35rem;
   border: none;
   border-radius: 0.5rem;
-  background: transparent;
+  background: #9a4545;
+  color: #fff8f8;
   font-size: 0.82rem;
   font-weight: 700;
-  color: #596064;
   cursor: pointer;
+  box-shadow: 0 1px 2px rgba(122, 52, 52, 0.22);
+}
+
+.pfm-btn-delete .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
+.pfm-btn-delete:hover:not(:disabled) {
+  opacity: 0.92;
+}
+
+.pfm-btn-delete:active:not(:disabled) {
+  opacity: 0.88;
+}
+
+.pfm-btn-delete:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.pfm-btn-cancel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.55rem 1.35rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: #7a8f9a;
+  color: #f8fbfd;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(90, 110, 122, 0.2);
+}
+
+.pfm-btn-cancel .material-symbols-outlined {
+  font-size: 1.05rem;
 }
 
 .pfm-btn-cancel:hover:not(:disabled) {
-  background: #dce4e8;
+  opacity: 0.92;
+}
+
+.pfm-btn-cancel:active:not(:disabled) {
+  opacity: 0.88;
 }
 
 .pfm-btn-submit {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   padding: 0.55rem 1.35rem;
   border: none;
   border-radius: 0.5rem;
@@ -877,6 +925,10 @@
   box-shadow: 0 1px 2px rgba(44, 100, 133, 0.2);
 }
 
+.pfm-btn-submit .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
 .pfm-btn-submit:hover:not(:disabled) {
   opacity: 0.92;
 }
@@ -886,6 +938,7 @@
 }
 
 .pfm-btn-cancel:disabled,
+.pfm-btn-delete:disabled,
 .pfm-btn-submit:disabled {
   opacity: 0.55;
   cursor: not-allowed;
@@ -901,6 +954,7 @@
   .pfm-footer {
     padding-left: 1rem;
     padding-right: 1rem;
+    flex-wrap: wrap;
   }
 
   .pfm-mission-row {

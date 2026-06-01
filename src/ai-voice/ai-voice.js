@@ -12,6 +12,11 @@ import { pingBackendHealth } from '@/lib/backend-wake';
 import { AI_VOICE_LIST_POLL_MS } from '@/lib/polling-intervals';
 import { splitContentIntoBlocks, formatJournalTextForDisplay } from '@/lib/journal-content-blocks';
 import { getStoredCrmUser } from '@/lib/crm-role-utils';
+import {
+  notifyVoiceTranscriptionUsageChanged,
+  useVoiceTranscriptionUsage
+} from '@/lib/voice-transcription-usage';
+import VoiceTranscriptionUsagePanel from '@/shared/voice-transcription-usage-panel/voice-transcription-usage-panel';
 
 /** 백엔드 단일 POST 상한과 동일 — 초과 시 청크 API로 나눔 */
 const VOICE_DIRECT_UPLOAD_MAX_BYTES = 12 * 1024 * 1024;
@@ -47,23 +52,6 @@ function formatTimestamp(ms) {
   const m = Math.floor(s / 60);
   const sec = s % 60;
   return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
-}
-
-/** 전사 사용량(초) → 표시용 */
-function formatHoursMinutesShort(sec) {
-  if (sec == null || Number.isNaN(Number(sec))) return '—';
-  const n = Math.max(0, Math.floor(Number(sec)));
-  const h = Math.floor(n / 3600);
-  const m = Math.floor((n % 3600) / 60);
-  if (h > 0) return `${h}시간 ${m}분`;
-  return `${m}분`;
-}
-
-function formatMonthKeyLabel(monthKey) {
-  if (!monthKey || typeof monthKey !== 'string') return '';
-  const [y, mo] = monthKey.split('-');
-  if (!y || !mo) return monthKey;
-  return `${y}년 ${Number(mo)}월`;
 }
 
 const STATUS_MAP = {
@@ -103,13 +91,23 @@ export default function AiVoice() {
   const [showSendToContact, setShowSendToContact] = useState(false);
   const [sendToLoading, setSendToLoading] = useState(false);
   const [sendToMessage, setSendToMessage] = useState('');
-  const [usageStats, setUsageStats] = useState(null);
-  const [usageLoading, setUsageLoading] = useState(true);
-  const [usageError, setUsageError] = useState('');
   const fileInputRef = useRef(null);
   const pollRef = useRef(null);
   const autoSummaryRequestedRef = useRef(new Set());
   const navigate = useNavigate();
+
+  const listHasPendingTranscription = useMemo(
+    () => items.some((i) => i.status === 'processing' || i.status === 'queued'),
+    [items]
+  );
+
+  const {
+    usageStats,
+    loading: usageLoading,
+    error: usageError,
+    refresh: fetchUsage,
+    quotaExceeded: uploadQuotaExceeded
+  } = useVoiceTranscriptionUsage({ pollWhileProcessing: listHasPendingTranscription });
 
   const fetchList = useCallback(async (opts = {}) => {
     const silent = opts.silent === true;
@@ -142,49 +140,18 @@ export default function AiVoice() {
     }
   }, [searchQuery]);
 
-  const fetchUsage = useCallback(async (opts = {}) => {
-    const silent = opts.silent === true;
-    if (!silent) {
-      setUsageLoading(true);
-      setUsageError('');
-    }
-    try {
-      const res = await fetch(`${API_BASE}/voice-recordings/usage-stats`, { headers: getAuthHeader() });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || '사용량 조회 실패');
-      setUsageStats(data);
-    } catch (e) {
-      if (!silent) {
-        setUsageError(e.message || '사용량 조회 실패');
-        setUsageStats(null);
-      }
-    } finally {
-      if (!silent) setUsageLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
     fetchList();
   }, [fetchList]);
 
-  useEffect(() => {
-    void fetchUsage();
-  }, [fetchUsage]);
-
-  const listHasPendingTranscription = useMemo(
-    () => items.some((i) => i.status === 'processing' || i.status === 'queued'),
-    [items]
-  );
-
-  /** 화면을 유지한 채 전사가 끝나도 목록·사용량이 갱신되도록 */
+  /** 화면을 유지한 채 전사가 끝나도 목록이 갱신되도록 */
   useEffect(() => {
     if (!listHasPendingTranscription) return undefined;
     const t = setInterval(() => {
       void fetchList({ silent: true });
-      void fetchUsage({ silent: true });
     }, AI_VOICE_LIST_POLL_MS);
     return () => clearInterval(t);
-  }, [listHasPendingTranscription, fetchList, fetchUsage]);
+  }, [listHasPendingTranscription, fetchList]);
 
   const fetchDetail = useCallback(async (id, opts = {}) => {
     const silent = opts.silent === true;
@@ -218,7 +185,7 @@ export default function AiVoice() {
     const onVis = () => {
       if (document.visibilityState !== 'visible') return;
       void fetchList({ silent: true });
-      void fetchUsage({ silent: true });
+      void fetchUsage(true);
       if (selectedId) void fetchDetail(selectedId, { silent: true });
     };
     document.addEventListener('visibilitychange', onVis);
@@ -248,7 +215,10 @@ export default function AiVoice() {
             setItems((prev) =>
               prev.map((i) => (String(i._id) === String(id) ? { ...i, ...data } : i))
             );
-            if (data.status === 'completed') void fetchUsage({ silent: true });
+            if (data.status === 'completed') {
+              void fetchUsage(true);
+              notifyVoiceTranscriptionUsageChanged();
+            }
           }
         })
         .catch(() => {});
@@ -308,11 +278,6 @@ export default function AiVoice() {
     selectedDetail?.transcriptText,
     selectedDetail?.utterances
   ]);
-
-  const uploadQuotaExceeded = useMemo(() => {
-    if (!usageStats?.limitSeconds) return false;
-    return usageStats.remainingSeconds <= 0 || usageStats.usedSeconds >= usageStats.limitSeconds;
-  }, [usageStats]);
 
   const handleUploadClick = () => {
     if (uploadQuotaExceeded) return;
@@ -388,7 +353,7 @@ export default function AiVoice() {
           const doneData = await done.json().catch(() => ({}));
           if (!done.ok) {
             if (done.status === 403 && doneData.code === 'TRANSCRIPTION_QUOTA_EXCEEDED') {
-              void fetchUsage({ silent: true });
+              void fetchUsage(true);
             }
             throw new Error(doneData.error || '등록 실패');
           }
@@ -411,7 +376,7 @@ export default function AiVoice() {
             data = await uploadChunked();
           } else if (!res.ok) {
             if (res.status === 403 && resData.code === 'TRANSCRIPTION_QUOTA_EXCEEDED') {
-              void fetchUsage({ silent: true });
+              void fetchUsage(true);
             }
             if (res.status === 413 || resData.code === 'FILE_TOO_LARGE') {
               throw new Error(resData.error || '파일이 허용 크기를 초과했습니다.');
@@ -428,7 +393,8 @@ export default function AiVoice() {
         setUploadSplitStatus('');
       }
       await fetchList();
-      await fetchUsage({ silent: true });
+      await fetchUsage(true);
+      notifyVoiceTranscriptionUsageChanged();
     } catch (err) {
       setUploadError(err.message);
     } finally {
@@ -485,7 +451,7 @@ export default function AiVoice() {
         setSelectedId(next?._id || null);
         setSelectedDetail(null);
       }
-      void fetchUsage({ silent: true });
+      void fetchUsage(true);
     } catch (e) {
       alert(e.message);
     }
@@ -623,50 +589,12 @@ export default function AiVoice() {
 
       <div className="ai-voice-body">
         <aside className="ai-voice-side">
-          <div className="ai-voice-usage-section">
-            <div className="ai-voice-usage-head">
-              <span className="material-symbols-outlined" aria-hidden>
-                analytics
-              </span>
-              <span className="ai-voice-usage-head-title">전사 사용량</span>
-            </div>
-            {usageLoading && !usageStats ? (
-              <div className="ai-voice-usage-skeleton" aria-busy="true" aria-label="이번 달 전사 사용량 불러오는 중">
-                <div className="ai-voice-usage-skeleton-row">
-                  <span className="ai-voice-usage-skeleton-chip" />
-                  <span className="ai-voice-usage-skeleton-chip ai-voice-usage-skeleton-chip--wide" />
-                  <span className="ai-voice-usage-skeleton-chip ai-voice-usage-skeleton-chip--mid" />
-                </div>
-                <div className="ai-voice-usage-skeleton-bar" />
-                <div className="ai-voice-usage-skeleton-note" />
-              </div>
-            ) : null}
-            {usageError ? <p className="ai-voice-usage-err">{usageError}</p> : null}
-            {usageStats ? (
-              <>
-                <p className="ai-voice-usage-current">
-                  <span className="ai-voice-usage-current-label">{formatMonthKeyLabel(usageStats.currentMonthKey)}</span>
-                  <span className="ai-voice-usage-current-value">
-                    {formatHoursMinutesShort(usageStats.usedSeconds)} / {formatHoursMinutesShort(usageStats.limitSeconds)}
-                  </span>
-                  <span className="ai-voice-usage-current-remain">
-                    남음 <strong>{formatHoursMinutesShort(usageStats.remainingSeconds)}</strong>
-                  </span>
-                </p>
-                <div className="ai-voice-usage-bar-wrap" aria-hidden>
-                  <div
-                    className={`ai-voice-usage-bar-fill ${uploadQuotaExceeded ? 'ai-voice-usage-bar-fill--full' : ''}`}
-                    style={{
-                      width: `${Math.min(100, (usageStats.usedSeconds / Math.max(1, usageStats.limitSeconds)) * 100)}%`
-                    }}
-                  />
-                </div>
-                <p className="ai-voice-usage-note">
-                  본인이 업로드한 녹음 길이 합산 · 달력은 한국(서울) 기준 · 월 최대 40시간
-                </p>
-              </>
-            ) : null}
-          </div>
+          <VoiceTranscriptionUsagePanel
+            usageStats={usageStats}
+            loading={usageLoading}
+            error={usageError}
+            className="ai-voice-usage-section"
+          />
 
           <div className="ai-voice-upload-section">
             <input

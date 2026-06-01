@@ -70,8 +70,8 @@ export async function fetchTemplatePdfPreviewBlob({ apiBase, getAuthHeader, file
   if (!file) {
     throw new Error('미리볼 양식 파일이 없습니다. 파일을 먼저 선택해 주세요.');
   }
-  if (!/\.(docx|xlsx)$/i.test(String(file.name || ''))) {
-    throw new Error('.docx 또는 .xlsx 양식만 PDF 미리보기가 가능합니다.');
+  if (!/\.(docx|xlsx|pptx|hwp|hwpx)$/i.test(String(file.name || ''))) {
+    throw new Error('.docx, .xlsx, .pptx, .hwp, .hwpx 양식만 PDF 미리보기가 가능합니다.');
   }
   const fd = new FormData();
   fd.append('file', file, file.name || 'template.xlsx');
