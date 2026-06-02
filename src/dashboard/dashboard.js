@@ -3338,14 +3338,13 @@ export default function Dashboard() {
   }, [pipelineMainStages, pipelineSummary, stageLabels]);
 
   const wonLeaderboardRows = useMemo(() => {
-    if (!insightAccess.checked || !insightAccess.seniorPlus) return [];
     const bucket =
       wonLeaderboardMode === 'week'
         ? pipelineSummary?.wonLeaderboard?.week
         : pipelineSummary?.wonLeaderboard?.month;
     if (Array.isArray(bucket?.rows)) return bucket.rows;
     return [];
-  }, [insightAccess.checked, insightAccess.seniorPlus, pipelineSummary, wonLeaderboardMode]);
+  }, [pipelineSummary, wonLeaderboardMode]);
 
   const consumerRaw = useMemo(
     () => stats.salesGraphs?.consumerByCurrency?.[selectedGraphCurrency] || [],
@@ -5518,107 +5517,84 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {insightAccess.checked && (
-          insightAccess.seniorPlus ? (
-            <div className="home-bottom">
-              <div className="panel home-chart-panel reps-panel">
-                <div className="panel-head home-chart-head reps-panel-head">
-                  <div>
-                    <h2>우수 영업 담당자</h2>
-                    <p className="home-chart-subtitle">
-                      세일즈 현황과 동일한 데이터입니다. <strong>수주 성공(Won)</strong>만 집계합니다. 기간은 판매일(없으면 수정일) 기준 — {wonLeaderboardMode === 'week' ? '최근 7일' : '당월'}.
-                    </p>
-                  </div>
-                  <div className="home-chart-actions reps-panel-actions">
-                    <div className="home-reps-switch home-insight-mode-switch">
-                      <button
-                        type="button"
-                        className={wonLeaderboardMode === 'week' ? 'active is-active' : ''}
-                        onClick={() => setWonLeaderboardMode('week')}
-                      >
-                        주간
-                      </button>
-                      <button
-                        type="button"
-                        className={wonLeaderboardMode === 'month' ? 'active is-active' : ''}
-                        onClick={() => setWonLeaderboardMode('month')}
-                      >
-                        월간
-                      </button>
-                    </div>
-                    <Link to="/sales-pipeline" className="home-pipeline-link">
-                      세일즈 현황
-                      <span className="material-symbols-outlined" aria-hidden>arrow_forward</span>
-                    </Link>
-                  </div>
+        <div className="home-bottom">
+          <div className="panel home-chart-panel reps-panel">
+            <div className="panel-head home-chart-head reps-panel-head">
+              <div>
+                <h2>우수 영업 담당자</h2>
+                <p className="home-chart-subtitle">
+                  세일즈 현황과 동일한 데이터입니다. <strong>수주 성공(Won)</strong>만 집계합니다. 기간은 판매일(없으면 수정일) 기준 — {wonLeaderboardMode === 'week' ? '최근 7일' : '당월'}.
+                </p>
+              </div>
+              <div className="home-chart-actions reps-panel-actions">
+                <div className="home-reps-switch home-insight-mode-switch">
+                  <button
+                    type="button"
+                    className={wonLeaderboardMode === 'week' ? 'active is-active' : ''}
+                    onClick={() => setWonLeaderboardMode('week')}
+                  >
+                    주간
+                  </button>
+                  <button
+                    type="button"
+                    className={wonLeaderboardMode === 'month' ? 'active is-active' : ''}
+                    onClick={() => setWonLeaderboardMode('month')}
+                  >
+                    월간
+                  </button>
                 </div>
-                <div className="home-chart-body home-reps-body">
-                <div className="table-wrap">
-                  {pipelineLoading ? (
-                    <p className="home-chart-empty home-reps-loading">불러오는 중…</p>
-                  ) : wonLeaderboardRows.length === 0 ? (
-                    <p className="home-chart-empty home-reps-empty">
-                      해당 기간에 수주 성공 건이 없거나, 담당자 정보가 없습니다.
-                    </p>
-                  ) : (
-                    <table className="data-table home-reps-table">
-                      <thead>
-                        <tr>
-                          <th>담당자</th>
-                          <th>매출액</th>
-                          <th className="home-reps-col-extra">수주 성공 건수</th>
-                          <th className="home-reps-col-extra">비중(건수)</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {wonLeaderboardRows.map((row) => (
-                          <tr key={row.name}>
-                            <td>
-                              <div className="cell-user">
-                                <span className="avatar-initials">{row.initials}</span>
-                                {row.name}
-                              </div>
-                            </td>
-                            <td className="font-semibold">{row.revenueDisplay}</td>
-                            <td className="home-reps-col-extra">{row.deals}</td>
-                            <td className="home-reps-col-extra">
-                              <div className="quota-cell">
-                                <div className="quota-bar">
-                                  <div className="quota-fill" style={{ width: `${row.sharePct}%` }} />
-                                </div>
-                                <span>{row.sharePct}%</span>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-                </div>
+                <Link to="/sales-pipeline" className="home-pipeline-link">
+                  세일즈 현황
+                  <span className="material-symbols-outlined" aria-hidden>arrow_forward</span>
+                </Link>
               </div>
             </div>
-          ) : (
-            <div className="home-bottom">
-              <div className="panel home-chart-panel reps-panel home-reps-panel-restricted">
-                <div className="panel-head home-chart-head">
-                  <div>
-                    <h2>우수 영업 담당자</h2>
-                    <p className="home-chart-subtitle">
-                      이 표는 <strong>관리자·대표</strong>만 열람할 수 있습니다. (수주 성공 실적은 세일즈 현황과 연동됩니다.)
-                    </p>
-                  </div>
-                </div>
-                <div className="home-chart-body home-reps-body home-insights-restricted-body home-reps-restricted-inner">
-                  <span className="material-symbols-outlined home-insights-restricted-icon" aria-hidden>
-                    lock
-                  </span>
-                  <p>권한이 없어 목록을 표시할 수 없습니다.</p>
-                </div>
-              </div>
+            <div className="home-chart-body home-reps-body">
+            <div className="table-wrap">
+              {pipelineLoading ? (
+                <p className="home-chart-empty home-reps-loading">불러오는 중…</p>
+              ) : wonLeaderboardRows.length === 0 ? (
+                <p className="home-chart-empty home-reps-empty">
+                  해당 기간에 수주 성공 건이 없거나, 담당자 정보가 없습니다.
+                </p>
+              ) : (
+                <table className="data-table home-reps-table">
+                  <thead>
+                    <tr>
+                      <th>담당자</th>
+                      <th>매출액</th>
+                      <th className="home-reps-col-extra">수주 성공 건수</th>
+                      <th className="home-reps-col-extra">비중(건수)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {wonLeaderboardRows.map((row) => (
+                      <tr key={row.name}>
+                        <td>
+                          <div className="cell-user">
+                            <span className="avatar-initials">{row.initials}</span>
+                            {row.name}
+                          </div>
+                        </td>
+                        <td className="font-semibold">{row.revenueDisplay}</td>
+                        <td className="home-reps-col-extra">{row.deals}</td>
+                        <td className="home-reps-col-extra">
+                          <div className="quota-cell">
+                            <div className="quota-bar">
+                              <div className="quota-fill" style={{ width: `${row.sharePct}%` }} />
+                            </div>
+                            <span>{row.sharePct}%</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
-          )
-        )}
+            </div>
+          </div>
+        </div>
       </div>
 
       {homeKpiExplainSpec ? (

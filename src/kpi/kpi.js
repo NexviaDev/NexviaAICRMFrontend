@@ -3240,9 +3240,6 @@ export default function Kpi() {
                   </button>
                 ))}
               </div>
-            </div>
-
-            <div className="kpi-scope-select-row">
               <div
                 className={`kpi-scope-field kpi-scope-combobox${scopeType === 'user' ? ' kpi-scope-combobox--user' : ''}`}
                 ref={scopePickerWrapRef}

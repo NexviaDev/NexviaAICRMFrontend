@@ -1,4 +1,5 @@
-import { useState, useMemo, useRef, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
+import ParticipantModal from '@/shared/participant-modal/participant-modal';
 import './add-todo-modal.css';
 
 function initialsForMember(m) {
@@ -14,7 +15,7 @@ function idKey(id) {
 }
 
 /**
- * 새 할 일 추가 모달 — 참여자는 + 로 사내 명단(검색·체크·Shift 범위 선택) 후 배지로 표시
+ * 새 할 일 추가 모달 — 참여자는 ParticipantModal(조직도·검색)로 선택
  */
 export default function AddTodoModal({
   onClose,
@@ -30,79 +31,42 @@ export default function AddTodoModal({
   companyMembers,
   currentUserId
 }) {
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [pickerSearch, setPickerSearch] = useState('');
-  const [pickerSelected, setPickerSelected] = useState(() => new Set());
-  const anchorIndexRef = useRef(null);
+  const [showParticipantModal, setShowParticipantModal] = useState(false);
 
-  /** 본인 제외, 이름순 — 명단·Shift 범위 인덱스 기준 */
-  const rosterList = useMemo(() => {
-    return companyMembers
-      .filter((m) => idKey(m._id) !== idKey(currentUserId))
-      .slice()
-      .sort((a, b) =>
-        (a.name || a.email || '').localeCompare(b.name || b.email || '', 'ko')
-      );
+  const currentUser = useMemo(() => {
+    if (!currentUserId) return null;
+    const m = companyMembers.find((x) => idKey(x._id) === idKey(currentUserId));
+    if (m) return { _id: m._id, name: m.name, email: m.email };
+    return { _id: currentUserId };
   }, [companyMembers, currentUserId]);
 
-  const filteredRoster = useMemo(() => {
-    const q = pickerSearch.trim().toLowerCase();
-    if (!q) return rosterList;
-    return rosterList.filter((m) => {
-      const name = (m.name || '').toLowerCase();
-      const email = (m.email || '').toLowerCase();
-      return name.includes(q) || email.includes(q);
-    });
-  }, [rosterList, pickerSearch]);
+  const memberById = useMemo(() => {
+    const map = new Map();
+    companyMembers.forEach((m) => m._id != null && map.set(idKey(m._id), m));
+    return map;
+  }, [companyMembers]);
 
-  const openPicker = useCallback(() => {
-    const ids = form.participantIds || [];
-    setPickerSelected(new Set(ids.map((x) => idKey(x))));
-    setPickerSearch('');
-    anchorIndexRef.current = null;
-    setPickerOpen(true);
-  }, [form.participantIds]);
+  const selectedParticipants = useMemo(
+    () =>
+      (form.participantIds || []).map((pid) => {
+        const m = memberById.get(idKey(pid));
+        return {
+          userId: pid,
+          name: m?.name || m?.email || idKey(pid)
+        };
+      }),
+    [form.participantIds, memberById]
+  );
 
-  const closePicker = useCallback(() => {
-    setPickerOpen(false);
-  }, []);
-
-  const confirmPicker = useCallback(() => {
-    const ids = Array.from(pickerSelected).filter(Boolean);
-    setForm((p) => ({ ...p, participantIds: ids }));
-    setPickerOpen(false);
-  }, [pickerSelected, setForm]);
-
-  const handlePickerRowClick = useCallback(
-    (index, memberId, e) => {
-      e.preventDefault();
-      const id = idKey(memberId);
-      const list = filteredRoster;
-      if (!list.length) return;
-
-      if (e.shiftKey && anchorIndexRef.current !== null) {
-        const a = Math.min(anchorIndexRef.current, index);
-        const b = Math.max(anchorIndexRef.current, index);
-        setPickerSelected((prev) => {
-          const next = new Set(prev);
-          for (let i = a; i <= b; i++) {
-            const row = list[i];
-            if (row) next.add(idKey(row._id));
-          }
-          return next;
-        });
-        anchorIndexRef.current = index;
-      } else {
-        setPickerSelected((prev) => {
-          const next = new Set(prev);
-          if (next.has(id)) next.delete(id);
-          else next.add(id);
-          return next;
-        });
-        anchorIndexRef.current = index;
-      }
+  const handleParticipantConfirm = useCallback(
+    (selected) => {
+      setForm((p) => ({
+        ...p,
+        participantIds: (selected || []).map((x) => x.userId).filter(Boolean)
+      }));
+      setShowParticipantModal(false);
     },
-    [filteredRoster]
+    [setForm]
   );
 
   const removeParticipantBadge = useCallback(
@@ -117,11 +81,6 @@ export default function AddTodoModal({
   );
 
   const participantIds = form.participantIds || [];
-  const memberById = useMemo(() => {
-    const map = new Map();
-    companyMembers.forEach((m) => m._id != null && map.set(idKey(m._id), m));
-    return map;
-  }, [companyMembers]);
 
   return (
     <div
@@ -284,16 +243,13 @@ export default function AddTodoModal({
               <button
                 type="button"
                 className="atm-participant-add-btn"
-                onClick={openPicker}
+                onClick={() => setShowParticipantModal(true)}
                 aria-label="참여자 추가"
                 title="사내 명단에서 선택"
               >
                 <span className="material-symbols-outlined">add</span>
               </button>
             </div>
-            {rosterList.length === 0 && (
-              <p className="atm-participants-hint">표시할 사내 명단이 없습니다.</p>
-            )}
           </div>
 
           <div className="atm-actions">
@@ -313,83 +269,16 @@ export default function AddTodoModal({
         </form>
       </div>
 
-      {pickerOpen && (
-        <div
-          className="atm-picker-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="atm-picker-title"
-        >
-          <div className="atm-picker-dialog">
-            <header className="atm-picker-header">
-              <h3 id="atm-picker-title" className="atm-picker-title">
-                사내 명단
-              </h3>
-              <p className="atm-picker-hint">
-                체크로 선택 · Shift+클릭으로 범위 선택
-              </p>
-            </header>
-            <div className="atm-picker-search">
-              <span className="material-symbols-outlined atm-picker-search-icon" aria-hidden>
-                search
-              </span>
-              <input
-                type="search"
-                className="atm-picker-search-input"
-                placeholder="이름 또는 이메일 검색"
-                value={pickerSearch}
-                onChange={(e) => setPickerSearch(e.target.value)}
-                aria-label="명단 검색"
-              />
-            </div>
-            <div className="atm-picker-list" role="listbox" aria-multiselectable="true">
-              {filteredRoster.length === 0 ? (
-                <p className="atm-picker-empty">검색 결과가 없습니다.</p>
-              ) : (
-                filteredRoster.map((m, index) => {
-                  const checked = pickerSelected.has(idKey(m._id));
-                  return (
-                    <div
-                      key={idKey(m._id)}
-                      role="option"
-                      aria-selected={checked}
-                      className={`atm-picker-row ${checked ? 'atm-picker-row--selected' : ''}`}
-                      onClick={(e) => handlePickerRowClick(index, m._id, e)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          handlePickerRowClick(index, m._id, e);
-                        }
-                      }}
-                      tabIndex={0}
-                    >
-                      <input
-                        type="checkbox"
-                        className="atm-picker-checkbox"
-                        readOnly
-                        checked={checked}
-                        tabIndex={-1}
-                        aria-hidden
-                      />
-                      <span className="atm-picker-name">{m.name || m.email || m._id}</span>
-                      {m.email && m.name && (
-                        <span className="atm-picker-email">{m.email}</span>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-            <div className="atm-picker-actions">
-              <button type="button" className="atm-btn-cancel" onClick={closePicker}>
-                취소
-              </button>
-              <button type="button" className="btn-primary" onClick={confirmPicker}>
-                확인
-              </button>
-            </div>
-          </div>
-        </div>
+      {showParticipantModal && (
+        <ParticipantModal
+          teamMembers={companyMembers}
+          selected={selectedParticipants}
+          currentUser={currentUser}
+          title="참여자 선택"
+          bulkAddLabel="표시된 인원 모두 참여자에 추가"
+          onConfirm={handleParticipantConfirm}
+          onClose={() => setShowParticipantModal(false)}
+        />
       )}
     </div>
   );

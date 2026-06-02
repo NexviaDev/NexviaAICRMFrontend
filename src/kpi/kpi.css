@@ -174,32 +174,27 @@
 }
 
 .kpi-hero-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.8rem;
+  width: 100%;
 }
 
 .kpi-scope-period-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-end;
-  gap: 0.8rem;
+  gap: 0.65rem 0.8rem;
   width: 100%;
 }
 
-.kpi-scope-select-row {
-  display: flex;
-  align-items: stretch;
-  justify-content: flex-end;
-  gap: 0.8rem;
-  width: 100%;
+/** 팀/개인·기간 탭 + 검색: 한 줄(좁은 화면은 줄바꿈) */
+.kpi-scope-period-row .kpi-scope-field.kpi-scope-combobox {
+  margin-left: auto;
+  flex: 0 1 18rem;
+  max-width: 22rem;
+  min-width: 11rem;
 }
 
-/** 팀/개인 범위: 검색 + 선택을 한 카드(kpi-scope-select-row 직계) */
+/** 팀/개인 범위: 검색 + 선택 콤보박스 */
 .kpi-scope-field {
-  flex: 1 1 17rem;
   min-width: 0;
   display: flex;
   flex-wrap: wrap;
@@ -1413,9 +1408,11 @@
     align-items: stretch;
   }
 
-  .kpi-scope-select-row {
-    flex-direction: column;
-    align-items: stretch;
+  .kpi-scope-period-row .kpi-scope-field.kpi-scope-combobox {
+    margin-left: 0;
+    flex: 1 1 100%;
+    max-width: none;
+    width: 100%;
   }
 
   .kpi-page-header .page-title {

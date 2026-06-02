@@ -204,11 +204,6 @@ function normalizeCrmEventFromApi(ev) {
   return out;
 }
 
-const FILTER_OPTIONS = [
-  { key: 'all', label: '회사 일정' },
-  { key: 'mine', label: '개인 일정' }
-];
-
 const VIEW_OPTIONS = [
   { key: 'month', label: '월' },
   { key: 'week', label: '주' },
@@ -348,7 +343,6 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [activeFilter, setActiveFilter] = useState('all');
   const [viewMode, setViewMode] = useState(() => getSavedCalendarViewMode());
   const [selectedDay, setSelectedDay] = useState(() => new Date().getDate());
   /** 주간 보기: 해당 주 일요일 (로컬) */
@@ -369,6 +363,11 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
     () => typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches
   );
   const [headerSearch, setHeaderSearch] = useState('');
+  const [googleLinkStatus, setGoogleLinkStatus] = useState(null);
+  const [naverLinkStatus, setNaverLinkStatus] = useState(null);
+  const [syncMessage, setSyncMessage] = useState('');
+  const [syncBusy, setSyncBusy] = useState('');
+  const [googleLoadHint, setGoogleLoadHint] = useState('');
   const [selectedGoogleCalendarIds, setSelectedGoogleCalendarIds] = useState(() => {
     try {
       const raw = localStorage.getItem(GOOGLE_CALENDAR_IDS_STORAGE_KEY);
@@ -566,8 +565,43 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
   }, [selectedGoogleCalendarIds]);
 
   useEffect(() => {
-    if (activeFilter !== 'mine') setGoogleCalDropdownOpen(false);
-  }, [activeFilter]);
+    if (!currentUser?._id) return;
+    let cancelled = false;
+    Promise.all([
+      fetch(`${API_BASE}/auth/google/link-status`, { headers: getAuthHeader() }).then((r) => r.json()),
+      fetch(`${API_BASE}/auth/naver/link-status`, { headers: getAuthHeader() }).then((r) => r.json())
+    ])
+      .then(([g, n]) => {
+        if (cancelled) return;
+        setGoogleLinkStatus(g);
+        setNaverLinkStatus(n);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [currentUser?._id, refreshKey]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const naverOk = params.get('naver_link');
+    const naverErr = params.get('naver_link_error');
+    const googleErr = params.get('google_link_error');
+    if (naverOk === 'calendar_ok') {
+      setSyncMessage('네이버 캘린더 연동이 완료되었습니다.');
+      params.delete('naver_link');
+      const qs = params.toString();
+      window.history.replaceState({}, '', `${window.location.pathname}${qs ? `?${qs}` : ''}`);
+    } else if (naverErr) {
+      setSyncMessage(decodeURIComponent(naverErr));
+      params.delete('naver_link_error');
+      const qs = params.toString();
+      window.history.replaceState({}, '', `${window.location.pathname}${qs ? `?${qs}` : ''}`);
+    } else if (googleErr) {
+      setSyncMessage(decodeURIComponent(googleErr));
+      params.delete('google_link_error');
+      const qs = params.toString();
+      window.history.replaceState({}, '', `${window.location.pathname}${qs ? `?${qs}` : ''}`);
+    }
+  }, []);
 
   useEffect(() => {
     if (!googleCalDropdownOpen) return;
@@ -588,9 +622,15 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
     return () => mq.removeEventListener('change', onChange);
   }, []);
 
-  /** 개인 일정 탭: Google에 연결된 캘린더 목록(분류) — CalendarList API */
+  /** Google에 연결된 캘린더 목록 — CRM 일정과 함께 표시 */
   useEffect(() => {
-    if (activeFilter !== 'mine') return;
+    if (!currentUser?._id || googleLinkStatus?.calendar !== true) {
+      if (googleLinkStatus && !googleLinkStatus.calendar) {
+        setGoogleCalendarList([]);
+        setGoogleEvents([]);
+      }
+      return;
+    }
     let cancelled = false;
     fetch(`${API_BASE}/google-calendar/calendar-list`, { headers: getAuthHeader() })
       .then((r) => r.json())
@@ -612,111 +652,245 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [activeFilter]);
+  }, [currentUser?._id, refreshKey, googleLinkStatus?.calendar]);
 
-  /**
-   * 회사 일정 탭: CRM(MongoDB)만 조회 (공개범위 적용)
-   * 개인 일정 탭: 선택한 Google 캘린더별로 이벤트 조회 후 병합
-   */
+  /** CRM + Google 캘린더 일정 병합 조회 */
   useEffect(() => {
     let cancelled = false;
     setError(null);
+    setGoogleLoadHint('');
     setLoading(true);
 
-    if (activeFilter === 'all') {
-      const crmParams = new URLSearchParams({ start: timeMin, end: timeMax });
-      fetch(`${API_BASE}/calendar-events?${crmParams}`, { headers: getAuthHeader() })
-        .then(async (r) => {
-          const data = await r.json().catch(() => ({}));
-          if (cancelled) return;
-          if (!r.ok) {
-            setError(data.error || `회사 일정을 불러올 수 없습니다. (${r.status})`);
-            setCrmEvents([]);
-            return;
-          }
-          if (data.error && !data.items) {
-            setError(data.error);
-            setCrmEvents([]);
-          } else {
-            const raw = Array.isArray(data.items) ? data.items : [];
-            setCrmEvents(raw.map(normalizeCrmEventFromApi));
-          }
-          setGoogleEvents([]);
-        })
-        .catch(() => { if (!cancelled) { setError('일정을 불러올 수 없습니다.'); setCrmEvents([]); } })
-        .finally(() => { if (!cancelled) setLoading(false); });
-    } else {
-      const ids = selectedGoogleCalendarIds.length > 0 ? selectedGoogleCalendarIds : ['primary'];
-      const metaById = {};
-      googleCalendarList.forEach((it) => {
-        metaById[it.id] = {
-          calendarSummary: it.summary || it.id,
-          backgroundColor: (it.backgroundColor || '').trim(),
-          accessRole: it.accessRole || ''
-        };
-      });
+    const crmParams = new URLSearchParams({ start: timeMin, end: timeMax });
+    const crmFetch = fetch(`${API_BASE}/calendar-events?${crmParams}`, { headers: getAuthHeader() }).then(
+      async (r) => ({ ok: r.ok, status: r.status, data: await r.json().catch(() => ({})) })
+    );
 
-      Promise.all(
-        ids.map((calId) => {
-          const gParams = new URLSearchParams({ timeMin, timeMax, calendarId: calId });
-          return fetch(`${API_BASE}/google-calendar/events?${gParams}`, { headers: getAuthHeader() }).then((r) => r.json());
-        })
-      )
-        .then((results) => {
-          if (cancelled) return;
-          const userId = currentUser?._id || '';
-          const merged = [];
-          let authErr = null;
-          let anyOk = false;
-          results.forEach((data, idx) => {
-            const calId = ids[idx];
-            if (data.error && !data.items) {
-              if (data.needsReauth) authErr = data;
-              return;
-            }
-            anyOk = true;
-            const meta = metaById[calId] || { calendarSummary: calId, backgroundColor: '', accessRole: '' };
-            (data.items || [])
-              .filter((gev) => gev && gev.id)
-              .forEach((gev) => {
-                merged.push(
-                  normalizeGoogleEvent(gev, userId, {
-                    calendarId: calId,
-                    calendarSummary: meta.calendarSummary,
-                    backgroundColor: meta.backgroundColor,
-                    accessRole: meta.accessRole
-                  })
-                );
-              });
-          });
-          if (!anyOk) {
-            setError(authErr?.needsReauth ? 'Google 계정 연동이 필요합니다.' : (authErr?.error || 'Google 캘린더를 불러올 수 없습니다.'));
-            setGoogleEvents([]);
+    const googleLinked = googleLinkStatus?.calendar === true;
+    const ids = googleLinked
+      ? (selectedGoogleCalendarIds.length > 0 ? selectedGoogleCalendarIds : ['primary'])
+      : [];
+    const metaById = {};
+    googleCalendarList.forEach((it) => {
+      metaById[it.id] = {
+        calendarSummary: it.summary || it.id,
+        backgroundColor: (it.backgroundColor || '').trim(),
+        accessRole: it.accessRole || ''
+      };
+    });
+
+    const googleFetches = ids.map((calId) => {
+      const gParams = new URLSearchParams({ timeMin, timeMax, calendarId: calId });
+      return fetch(`${API_BASE}/google-calendar/events?${gParams}`, { headers: getAuthHeader() }).then(
+        async (r) => ({ calId, data: await r.json().catch(() => ({})) })
+      );
+    });
+
+    Promise.all([crmFetch, googleLinked ? Promise.all(googleFetches) : Promise.resolve([])])
+      .then(([crmResult, googleResults]) => {
+        if (cancelled) return;
+
+        if (!crmResult.ok) {
+          setError(crmResult.data.error || `회사 일정을 불러올 수 없습니다. (${crmResult.status})`);
+          setCrmEvents([]);
+        } else if (crmResult.data.error && !crmResult.data.items) {
+          setError(crmResult.data.error);
+          setCrmEvents([]);
+        } else {
+          const raw = Array.isArray(crmResult.data.items) ? crmResult.data.items : [];
+          setCrmEvents(raw.map(normalizeCrmEventFromApi));
+        }
+
+        if (!googleLinked) {
+          setGoogleEvents([]);
+          if (googleLinkStatus != null) {
+            setGoogleLoadHint(
+              googleLinkStatus.needsReauth
+                ? '구글 연동이 만료되었습니다. 동기화 아이콘을 눌러 다시 연동해 주세요.'
+                : '구글 캘린더를 함께 보려면 동기화 아이콘으로 연동해 주세요.'
+            );
+          }
+          return;
+        }
+
+        const userId = currentUser?._id || '';
+        const merged = [];
+        let authErr = null;
+        let anyOk = false;
+        googleResults.forEach(({ calId, data }) => {
+          if (data.error && !data.items) {
+            if (data.needsReauth) authErr = data;
             return;
           }
+          anyOk = true;
+          const meta = metaById[calId] || { calendarSummary: calId, backgroundColor: '', accessRole: '' };
+          (data.items || [])
+            .filter((gev) => gev && gev.id)
+            .forEach((gev) => {
+              merged.push(
+                normalizeGoogleEvent(gev, userId, {
+                  calendarId: calId,
+                  calendarSummary: meta.calendarSummary,
+                  backgroundColor: meta.backgroundColor,
+                  accessRole: meta.accessRole
+                })
+              );
+            });
+        });
+
+        if (googleResults.length > 0 && !anyOk) {
+          setGoogleLoadHint(
+            authErr?.needsReauth
+              ? '구글 캘린더 연동이 필요합니다. 동기화 아이콘을 눌러 연동해 주세요.'
+              : authErr?.error || '구글 캘린더를 불러올 수 없습니다.'
+          );
+          setGoogleEvents([]);
+        } else {
           merged.sort((a, b) => compareCalendarEvents(a, b));
           setGoogleEvents(merged);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setError('일정을 불러올 수 없습니다.');
           setCrmEvents([]);
-        })
-        .catch(() => {
-          if (!cancelled) {
-            setError('Google 캘린더를 불러올 수 없습니다.');
-            setGoogleEvents([]);
-          }
-        })
-        .finally(() => { if (!cancelled) setLoading(false); });
-    }
+          setGoogleEvents([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
 
     return () => { cancelled = true; };
-  }, [timeMin, timeMax, refreshKey, activeFilter, selectedGoogleCalendarIds, googleCalendarList, currentUser]);
+  }, [timeMin, timeMax, refreshKey, selectedGoogleCalendarIds, googleCalendarList, currentUser, googleLinkStatus]);
 
-  /** 회사 일정=CRM 이벤트, 개인 일정=이미 정규화된 Google 이벤트 배열 */
   const rawEvents = useMemo(() => {
-    if (activeFilter === 'all') {
-      return crmEvents.map((ev) => ({ ...ev, _source: 'crm' }));
+    const crm = crmEvents.map((ev) => ({ ...ev, _source: 'crm' }));
+    return [...crm, ...googleEvents].sort(compareCalendarEvents);
+  }, [crmEvents, googleEvents]);
+
+  /** 로그인 계정 유형 — 네이버 우선, 없으면 Google */
+  const calendarSyncProvider = useMemo(() => {
+    if (!currentUser?._id) return null;
+    if (currentUser.naverId) return 'naver';
+    if (currentUser.googleId) return 'google';
+    const email = String(currentUser.email || '').toLowerCase();
+    if (email.endsWith('@naver.com')) return 'naver';
+    return 'google';
+  }, [currentUser]);
+
+  const calendarSyncLinked = useMemo(() => {
+    if (calendarSyncProvider === 'naver') return naverLinkStatus?.calendar === true;
+    if (calendarSyncProvider === 'google') return googleLinkStatus?.calendar === true;
+    return false;
+  }, [calendarSyncProvider, naverLinkStatus?.calendar, googleLinkStatus?.calendar]);
+
+  const startGoogleCalendarLink = useCallback(() => {
+    const token = localStorage.getItem('crm_token');
+    if (!token) return;
+    window.location.href = `${API_BASE}/auth/google/link/calendar?token=${encodeURIComponent(token)}&return=${encodeURIComponent('/calendar')}`;
+  }, []);
+
+  const startNaverCalendarLink = useCallback(() => {
+    const token = localStorage.getItem('crm_token');
+    if (!token) return;
+    window.location.href = `${API_BASE}/auth/naver/link/calendar?token=${encodeURIComponent(token)}&return=${encodeURIComponent('/calendar')}`;
+  }, []);
+
+  const pushCrmToGoogle = useCallback(async () => {
+    setSyncBusy('google');
+    setSyncMessage('');
+    try {
+      const res = await fetch(`${API_BASE}/calendar-events/push-to-google`, {
+        method: 'POST',
+        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ start: timeMin, end: timeMax })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSyncMessage(data.error || '구글 반영에 실패했습니다.');
+        if (data.needsReauth) startGoogleCalendarLink();
+        return;
+      }
+      setSyncMessage(`구글: 생성 ${data.created || 0}건, 수정 ${data.updated || 0}건${data.failed ? `, 실패 ${data.failed}건` : ''}`);
+      setRefreshKey((k) => k + 1);
+    } catch {
+      setSyncMessage('구글 반영 중 오류가 발생했습니다.');
+    } finally {
+      setSyncBusy('');
     }
-    return googleEvents;
-  }, [crmEvents, googleEvents, activeFilter]);
+  }, [timeMin, timeMax, startGoogleCalendarLink]);
+
+  const pushCrmToNaver = useCallback(async () => {
+    setSyncBusy('naver');
+    setSyncMessage('');
+    try {
+      const res = await fetch(`${API_BASE}/calendar-events/push-to-naver`, {
+        method: 'POST',
+        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ start: timeMin, end: timeMax })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setSyncMessage(data.error || data.details || '네이버 반영에 실패했습니다.');
+        if (data.needsReauth) startNaverCalendarLink();
+        return;
+      }
+      const firstErr = data.errors?.[0];
+      const detailText = firstErr?.details || data.details || '';
+      const errDetail = detailText ? ` — ${detailText}` : '';
+      if (data.needsReauth) {
+        setSyncMessage(detailText || '네이버 캘린더 연동이 필요합니다.');
+        startNaverCalendarLink();
+        return;
+      }
+      setSyncMessage(
+        data.message ||
+          `네이버: 등록 ${data.created || 0}건, 건너뜀 ${data.skipped || 0}건${data.failed ? `, 실패 ${data.failed}건${errDetail}` : ''}`
+      );
+    } catch {
+      setSyncMessage('네이버 반영 중 오류가 발생했습니다.');
+    } finally {
+      setSyncBusy('');
+    }
+  }, [timeMin, timeMax, startNaverCalendarLink]);
+
+  const handleCalendarSyncClick = useCallback(async () => {
+    if (!calendarSyncProvider || syncBusy) return;
+    if (calendarSyncProvider === 'naver') {
+      if (!naverLinkStatus?.calendar) {
+        startNaverCalendarLink();
+        return;
+      }
+      await pushCrmToNaver();
+      return;
+    }
+    if (!googleLinkStatus?.calendar) {
+      startGoogleCalendarLink();
+      return;
+    }
+    await pushCrmToGoogle();
+  }, [
+    calendarSyncProvider,
+    syncBusy,
+    naverLinkStatus?.calendar,
+    googleLinkStatus?.calendar,
+    startNaverCalendarLink,
+    startGoogleCalendarLink,
+    pushCrmToNaver,
+    pushCrmToGoogle
+  ]);
+
+  const calendarSyncAriaLabel = useMemo(() => {
+    if (syncBusy) return '캘린더 반영 중';
+    if (calendarSyncProvider === 'naver') {
+      return calendarSyncLinked ? '네이버 캘린더에 반영' : '네이버 캘린더 연동';
+    }
+    if (calendarSyncProvider === 'google') {
+      return calendarSyncLinked ? '구글 캘린더에 반영' : '구글 캘린더 연동';
+    }
+    return '캘린더 연동';
+  }, [calendarSyncProvider, calendarSyncLinked, syncBusy]);
 
   const events = useMemo(() => {
     const q = headerSearch.trim().toLowerCase();
@@ -1047,11 +1221,6 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
         </div>
         <div className="calendar-page-header-right">
           <div className="calendar-page-header-trailing">
-            <div
-              className="calendar-page-header-avatar"
-              style={{ backgroundImage: `url(${HEADER_AVATAR_PLACEHOLDER})` }}
-              aria-hidden
-            />
             <PageHeaderNotifyChat
               buttonClassName="calendar-page-icon-btn"
               wrapperClassName="calendar-page-header-notify-chat"
@@ -1105,22 +1274,9 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
                     </button>
                   ))}
                 </div>
-                <div className="calendar-filter-tabs" role="tablist" aria-label="일정 범위">
-                  {FILTER_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.key}
-                      type="button"
-                      role="tab"
-                      aria-selected={activeFilter === opt.key}
-                      className={`calendar-filter-tab ${activeFilter === opt.key ? 'active' : ''}`}
-                      onClick={() => setActiveFilter(opt.key)}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
               </div>
-              {activeFilter === 'mine' && googleCalendarList.length > 0 && (
+              <div className="calendar-integration-row">
+                {googleCalendarList.length > 0 && (
                 <div
                   ref={googleCalDropdownRef}
                   className="calendar-google-cal-dropdown"
@@ -1130,10 +1286,10 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
                     className="calendar-google-cal-dropdown-trigger"
                     aria-expanded={googleCalDropdownOpen}
                     aria-haspopup="listbox"
-                    aria-label="표시할 Google 캘린더 열기"
+                    aria-label="표시할 구글 캘린더 열기"
                     onClick={() => setGoogleCalDropdownOpen((o) => !o)}
                   >
-                    <span className="calendar-google-cal-dropdown-trigger-text">Google 캘린더</span>
+                    <span className="calendar-google-cal-dropdown-trigger-text">구글 캘린더</span>
                     <span className="calendar-google-cal-dropdown-count">({selectedGoogleCalendarIds.length})</span>
                     <span
                       className={`material-symbols-outlined calendar-google-cal-dropdown-chevron ${googleCalDropdownOpen ? 'open' : ''}`}
@@ -1146,7 +1302,7 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
                     <div
                       className="calendar-google-cal-dropdown-panel"
                       role="listbox"
-                      aria-label="표시할 Google 캘린더"
+                      aria-label="표시할 구글 캘린더"
                     >
                       {googleCalendarList.map((cal) => (
                         <label key={cal.id} className="calendar-google-cal-pick-item">
@@ -1175,11 +1331,36 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
                     </div>
                   )}
                 </div>
-              )}
+                )}
+                {calendarSyncProvider && (googleLinkStatus != null || naverLinkStatus != null) && (
+                  <button
+                    type="button"
+                    className={`calendar-sync-icon-btn calendar-sync-icon-btn--${calendarSyncProvider}${syncBusy ? ' calendar-sync-icon-btn--busy' : ''}${calendarSyncLinked ? '' : ' calendar-sync-icon-btn--needs-link'}`}
+                    disabled={!!syncBusy}
+                    onClick={handleCalendarSyncClick}
+                    title={calendarSyncAriaLabel}
+                    aria-label={calendarSyncAriaLabel}
+                  >
+                    <span
+                      className={`material-symbols-outlined${syncBusy ? ' calendar-sync-icon-spin' : ''}`}
+                      aria-hidden
+                    >
+                      {syncBusy ? 'progress_activity' : 'cloud_sync'}
+                    </span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
-          {error && <p className="calendar-google-hint" role="status">{error}</p>}
+          {googleLoadHint && !error && calendarSyncProvider === 'google' && (
+            <p className="calendar-google-hint" role="status">{googleLoadHint}</p>
+          )}
+          {naverLinkStatus?.hint && !naverLinkStatus.calendar && calendarSyncProvider === 'naver' && (
+            <p className="calendar-google-hint" role="status">{naverLinkStatus.hint}</p>
+          )}
+          {syncMessage && <p className="calendar-sync-message" role="status">{syncMessage}</p>}
+          {error && <p className="calendar-google-hint calendar-google-hint--error" role="alert">{error}</p>}
 
           <div className={`calendar-panel-card${embedded ? ' calendar-panel-card--embedded' : ''}`}>
             {viewMode === 'month' ? (
@@ -1559,7 +1740,7 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
               </span>
               <h3 className="calendar-ai-title">효율적인 일정 관리를 시작하세요.</h3>
               <p className="calendar-ai-desc">
-                팀 캘린더에서 회사 일정과 개인 일정을 전환해 보세요. 일정은 더블클릭으로 빠르게 추가할 수 있습니다.
+                회사 일정과 구글·네이버 캘린더를 한 화면에서 확인할 수 있습니다. 일정은 더블클릭으로 빠르게 추가할 수 있습니다.
               </p>
               <button type="button" className="calendar-ai-cta" onClick={openAddEvent}>
                 일정 추가하기
@@ -1580,7 +1761,7 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
           initialAllDay={modalAddAllDay ? true : modalAddTs || modalAddTe ? false : undefined}
           initialStartTime={modalAddTs || undefined}
           initialEndTime={modalAddTe || undefined}
-          calendarType={activeFilter === 'mine' ? 'personal' : 'company'}
+          calendarType="company"
           googleCalendarId={modalGoogleCalendarId}
           googleCalendarAccessRole={googleCalendarAccessRole}
           onClose={closeEventModal}

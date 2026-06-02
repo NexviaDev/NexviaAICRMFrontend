@@ -102,6 +102,8 @@ const STATUS_COMPLETED = 'completed';
 export default function TodoDetailModal({
   taskListId,
   task,
+  taskSource = 'crm',
+  googleTaskListId,
   onClose,
   currentUserId,
   onMarkComplete,
@@ -120,9 +122,13 @@ export default function TodoDetailModal({
   const [replyText, setReplyText] = useState('');
 
   const baseUrl = useMemo(() => {
-    if (!taskListId || !task?.id) return null;
-    return `${API_BASE}/google-tasks/lists/${encodeURIComponent(taskListId)}/tasks/${encodeURIComponent(task.id)}`;
-  }, [taskListId, task?.id]);
+    if (!task?.id) return null;
+    if (taskSource === 'googleExternal' && googleTaskListId) {
+      return `${API_BASE}/google-tasks/lists/${encodeURIComponent(googleTaskListId)}/tasks/${encodeURIComponent(task.id)}`;
+    }
+    if (!taskListId) return null;
+    return `${API_BASE}/crm-todos/lists/${encodeURIComponent(taskListId)}/tasks/${encodeURIComponent(task.id)}`;
+  }, [taskListId, task?.id, taskSource, googleTaskListId]);
 
   const isDone = task?.status === STATUS_COMPLETED;
 
@@ -444,6 +450,11 @@ export default function TodoDetailModal({
                 >
                   {isDone ? '완료' : '진행중'}
                 </span>
+                {taskSource === 'googleExternal' && (
+                  <span className="tdm-source-badge" title="Google Tasks 앱에서 직접 등록한 할 일">
+                    Google
+                  </span>
+                )}
                 <h2 id="tdm-title" className="tdm-title">
                   {task?.title || '(제목 없음)'}
                 </h2>

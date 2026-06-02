@@ -10,9 +10,22 @@ function getAuthHeader() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-/** Google Tasks API: status is "needsAction" | "completed" */
 const STATUS_NEEDS_ACTION = 'needsAction';
 const STATUS_COMPLETED = 'completed';
+const TODO_SOURCE_CRM = 'crm';
+const TODO_SOURCE_GOOGLE_EXTERNAL = 'googleExternal';
+const CRM_TODO_API = `${API_BASE}/crm-todos`;
+
+function taskRowKey(task) {
+  return `${task.source || TODO_SOURCE_CRM}:${task.id}`;
+}
+
+function taskPatchUrl(taskListId, task) {
+  if (task.source === TODO_SOURCE_GOOGLE_EXTERNAL && task.googleTaskListId) {
+    return `${API_BASE}/google-tasks/lists/${encodeURIComponent(task.googleTaskListId)}/tasks/${encodeURIComponent(task.id)}`;
+  }
+  return `${CRM_TODO_API}/lists/${encodeURIComponent(taskListId)}/tasks/${encodeURIComponent(task.id)}`;
+}
 
 const AVATAR_PLACEHOLDER = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%2394a3b8"%3E%3Cpath d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/%3E%3C/svg%3E';
 
@@ -53,7 +66,7 @@ export default function TodoList({ embedded = false, previewMax = null }) {
 
   const fetchTaskLists = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/google-tasks/lists`, { headers: getAuthHeader(), credentials: 'include' });
+      const res = await fetch(`${CRM_TODO_API}/lists`, { headers: getAuthHeader(), credentials: 'include' });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || '할 일 목록을 불러올 수 없습니다.');
@@ -61,8 +74,9 @@ export default function TodoList({ embedded = false, previewMax = null }) {
       const data = await res.json();
       const items = data.items || [];
       setTaskLists(items);
-      if (items.length > 0) setTaskListId((prev) => prev || items[0].id);
-      if (items.length === 0) setError('Google 할 일 목록이 없습니다. Google Tasks에서 목록을 만든 뒤 다시 시도해 주세요.');
+      const defaultList = items.find((l) => l.isDefault) || items[0];
+      if (defaultList) setTaskListId((prev) => prev || defaultList.id);
+      if (items.length === 0) setError('할 일 목록을 준비할 수 없습니다. 잠시 후 다시 시도해 주세요.');
     } catch (err) {
       setError(err.message || '할 일 목록 조회 실패');
       setTaskListId(null);
@@ -77,7 +91,7 @@ export default function TodoList({ embedded = false, previewMax = null }) {
     if (!silent) setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_BASE}/google-tasks/lists/${encodeURIComponent(taskListId)}/tasks`, {
+      const res = await fetch(`${CRM_TODO_API}/lists/${encodeURIComponent(taskListId)}/tasks`, {
         headers: getAuthHeader(),
         credentials: 'include'
       });
@@ -155,20 +169,17 @@ export default function TodoList({ embedded = false, previewMax = null }) {
   const handleToggleComplete = async (task) => {
     if (!taskListId || togglingId) return;
     const newStatus = task.status === STATUS_COMPLETED ? STATUS_NEEDS_ACTION : STATUS_COMPLETED;
-    setTogglingId(task.id);
+    setTogglingId(taskRowKey(task));
     try {
-      const res = await fetch(
-        `${API_BASE}/google-tasks/lists/${encodeURIComponent(taskListId)}/tasks/${encodeURIComponent(task.id)}`,
-        {
-          method: 'PATCH',
-          headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            status: newStatus,
-            ...(newStatus === STATUS_COMPLETED ? { completed: new Date().toISOString() } : {})
-          })
-        }
-      );
+      const res = await fetch(taskPatchUrl(taskListId, task), {
+        method: 'PATCH',
+        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          status: newStatus,
+          ...(newStatus === STATUS_COMPLETED ? { completed: new Date().toISOString() } : {})
+        })
+      });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || '상태 변경 실패');
@@ -181,14 +192,16 @@ export default function TodoList({ embedded = false, previewMax = null }) {
     }
   };
 
-  const handleDelete = async (taskId) => {
+  const handleDelete = async (task) => {
     if (!taskListId || deletingId) return;
-    setDeletingId(taskId);
+    const rowKey = taskRowKey(task);
+    setDeletingId(rowKey);
     try {
-      const res = await fetch(
-        `${API_BASE}/google-tasks/lists/${encodeURIComponent(taskListId)}/tasks/${encodeURIComponent(taskId)}`,
-        { method: 'DELETE', headers: getAuthHeader(), credentials: 'include' }
-      );
+      const res = await fetch(taskPatchUrl(taskListId, task), {
+        method: 'DELETE',
+        headers: getAuthHeader(),
+        credentials: 'include'
+      });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || '삭제 실패');
@@ -206,7 +219,7 @@ export default function TodoList({ embedded = false, previewMax = null }) {
     if (!createListTitle?.trim() || creatingList) return;
     setCreatingList(true);
     try {
-      const res = await fetch(`${API_BASE}/google-tasks/lists`, {
+      const res = await fetch(`${CRM_TODO_API}/lists`, {
         method: 'POST',
         headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -247,7 +260,7 @@ export default function TodoList({ embedded = false, previewMax = null }) {
       const due = toDueRfc3339(form.dueDate);
       if (due) body.due = due;
       if (Array.isArray(form.participantIds) && form.participantIds.length > 0) body.participantIds = form.participantIds;
-      const res = await fetch(`${API_BASE}/google-tasks/lists/${encodeURIComponent(listId)}/tasks`, {
+      const res = await fetch(`${CRM_TODO_API}/lists/${encodeURIComponent(listId)}/tasks`, {
         method: 'POST',
         headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -329,10 +342,13 @@ export default function TodoList({ embedded = false, previewMax = null }) {
             {filteredTasks.length === 0 ? (
               <li className="todo-list-empty">할 일이 없습니다. 새 할 일을 추가해 보세요.</li>
             ) : (
-              tasksForDisplay.map((task) => (
+              tasksForDisplay.map((task) => {
+                const rowKey = taskRowKey(task);
+                const isGoogleExternal = task.source === TODO_SOURCE_GOOGLE_EXTERNAL;
+                return (
                 <li
-                  key={task.id}
-                  className={`todo-list-row ${task.status === STATUS_COMPLETED ? 'todo-list-row-done' : ''}`}
+                  key={rowKey}
+                  className={`todo-list-row ${task.status === STATUS_COMPLETED ? 'todo-list-row-done' : ''}${isGoogleExternal ? ' todo-list-row--google-external' : ''}`}
                 >
                   <button
                     type="button"
@@ -341,7 +357,7 @@ export default function TodoList({ embedded = false, previewMax = null }) {
                       e.stopPropagation();
                       handleToggleComplete(task);
                     }}
-                    disabled={togglingId === task.id}
+                    disabled={togglingId === rowKey}
                     aria-label={task.status === STATUS_COMPLETED ? '완료 해제' : '완료'}
                   >
                     <span className="material-symbols-outlined">
@@ -361,7 +377,14 @@ export default function TodoList({ embedded = false, previewMax = null }) {
                     }}
                     aria-label="상세 보기"
                   >
-                    <span className="todo-list-title">{task.title || '(제목 없음)'}</span>
+                    <span className="todo-list-title-row">
+                      <span className="todo-list-title">{task.title || '(제목 없음)'}</span>
+                      {isGoogleExternal && (
+                        <span className="todo-list-source-badge" title="Google Tasks 앱에서 직접 등록한 할 일">
+                          Google
+                        </span>
+                      )}
+                    </span>
                     {(task.notes || task.due) && (
                       <div className="todo-list-meta">
                         {task.notes && <span className="todo-list-notes">{task.notes}</span>}
@@ -374,15 +397,16 @@ export default function TodoList({ embedded = false, previewMax = null }) {
                     className="todo-list-delete"
                     onClick={(e) => {
                       e.stopPropagation();
-                      handleDelete(task.id);
+                      handleDelete(task);
                     }}
-                    disabled={deletingId === task.id}
+                    disabled={deletingId === rowKey}
                     aria-label="삭제"
                   >
                     <span className="material-symbols-outlined">delete</span>
                   </button>
                 </li>
-              ))
+              );
+              })
             )}
           </ul>
         )}
@@ -397,10 +421,12 @@ export default function TodoList({ embedded = false, previewMax = null }) {
         <TodoDetailModal
           taskListId={taskListId}
           task={detailTask}
+          taskSource={detailTask.source || TODO_SOURCE_CRM}
+          googleTaskListId={detailTask.googleTaskListId}
           onClose={() => setDetailTask(null)}
           currentUserId={currentUserId}
           onMarkComplete={handleToggleComplete}
-          markCompleteBusy={togglingId === detailTask?.id}
+          markCompleteBusy={togglingId === taskRowKey(detailTask)}
         />
       )}
 

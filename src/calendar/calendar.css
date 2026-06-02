@@ -736,6 +736,94 @@
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 }
 
+.calendar-integration-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-top: 0.65rem;
+}
+
+.calendar-sync-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2.35rem;
+  height: 2.35rem;
+  padding: 0;
+  border-radius: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--border, #cbd5e1) 80%, transparent);
+  background: var(--card, #fff);
+  color: var(--text, #475569);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.calendar-sync-icon-btn .material-symbols-outlined {
+  font-size: 1.35rem;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+.calendar-sync-icon-btn:hover:not(:disabled) {
+  background: var(--surface-bright, #f8fafc);
+}
+
+.calendar-sync-icon-btn:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.calendar-sync-icon-btn--google {
+  border-color: color-mix(in srgb, #7baaf7 45%, var(--border, #cbd5e1));
+  color: #3b6ea5;
+  background: color-mix(in srgb, #e8f0fe 55%, var(--card, #fff));
+}
+
+.calendar-sync-icon-btn--google:hover:not(:disabled) {
+  background: color-mix(in srgb, #dce8fc 70%, var(--card, #fff));
+}
+
+.calendar-sync-icon-btn--naver {
+  border-color: color-mix(in srgb, #6dd4a0 45%, var(--border, #cbd5e1));
+  color: #2d8a5c;
+  background: color-mix(in srgb, #e8f7ef 55%, var(--card, #fff));
+}
+
+.calendar-sync-icon-btn--naver:hover:not(:disabled) {
+  background: color-mix(in srgb, #dcf5e8 70%, var(--card, #fff));
+}
+
+.calendar-sync-icon-btn--needs-link {
+  border-style: dashed;
+}
+
+.calendar-sync-icon-spin {
+  animation: calendar-sync-spin 0.85s linear infinite;
+}
+
+@keyframes calendar-sync-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.calendar-sync-message {
+  margin: 0 0 0.75rem;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.8125rem;
+  color: var(--text, #334155);
+  background: color-mix(in srgb, var(--cal-primary, #5b8def) 8%, #fff);
+  border: 1px solid color-mix(in srgb, var(--cal-primary, #5b8def) 18%, var(--border, #e2e8f0));
+  border-radius: 0.5rem;
+}
+
+.calendar-google-hint--error {
+  color: #b42318;
+  border-color: color-mix(in srgb, #fecaca 60%, var(--border, #e2e8f0));
+  background: #fef2f2;
+}
+
 /* 월 / 일 보기 전환 (히어로 우측) */
 .calendar-view-tabs {
   display: flex;

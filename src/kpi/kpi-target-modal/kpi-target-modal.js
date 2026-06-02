@@ -141,6 +141,42 @@ function roundKpiAmountByMode(value, place, mode) {
   return Math.round(n / p) * p;
 }
 
+/** 클립보드 TSV·여러 줄 → 첫 칸 텍스트 */
+function firstClipboardCell(text) {
+  return String(text ?? '')
+    .replace(/\r\n/g, '\n')
+    .split(/[\t\n]/)[0]
+    ?.trim() ?? '';
+}
+
+/** 범위 붙여넣기: 복사한 글자·셀 값을 선택 칸 전체에 동일 숫자로 적용 */
+function digitsFromClipboardForBulkPaste(text) {
+  const cell = firstClipboardCell(text);
+  if (!cell) return null;
+  return digitsFromEvaluatedKpiAmount(cell, 0);
+}
+
+function sortBulkCellKeysByVisualOrder(keys, registry) {
+  return [...keys].sort((a, b) => {
+    const ra = registry.get(a)?.element?.getBoundingClientRect?.();
+    const rb = registry.get(b)?.element?.getBoundingClientRect?.();
+    if (!ra || !rb) return String(a).localeCompare(String(b), 'ko');
+    if (Math.abs(ra.top - rb.top) > 3) return ra.top - rb.top;
+    return ra.left - rb.left;
+  });
+}
+
+function serializeBulkSelectionForCopy(keys, registry) {
+  const ordered = sortBulkCellKeysByVisualOrder(keys, registry);
+  return ordered
+    .map((key) => {
+      const meta = registry.get(key);
+      if (!meta || meta.disabled) return '';
+      return String(Math.max(0, Math.round(Number(meta.value) || 0)));
+    })
+    .join('\t');
+}
+
 function formatKpiDraftWhileTyping(value, metric) {
   const raw = String(value ?? '');
   if (!raw) return '';
@@ -217,6 +253,7 @@ function KpiTargetExprInput({
   const [draft, setDraft] = useState('');
   const [focused, setFocused] = useState(false);
   const baseRef = useRef(0);
+  const focusedRef = useRef(false);
   const commitLock = useRef(false);
   const inputRef = useRef(null);
   const bulk = useContext(KpiTargetBulkContext);
@@ -224,6 +261,8 @@ function KpiTargetExprInput({
   const rounded = Math.max(0, Math.round(Number(numericValue) || 0));
   const cellKey = normalizeBulkKey(bulkCellKey || ariaLabel || className);
   const rowKey = normalizeBulkKey(bulkRowKey || inferBulkRowKey(ariaLabel));
+
+  focusedRef.current = focused;
 
   const commit = () => {
     if (commitLock.current) return;
@@ -251,6 +290,23 @@ function KpiTargetExprInput({
     inputModeProp || (metric === 'revenue' ? 'text' : 'numeric');
   const selected = Boolean(bulk?.isSelected(cellKey));
 
+  /** 범위 붙여넣기·반올림: 포커스 중인 칸도 draft/base를 맞춰 blur 시 되돌아가지 않게 함 */
+  const commitDigitsFromBulk = useCallback(
+    (digits) => {
+      const nextValue = Math.max(0, Math.round(Number(digits) || 0));
+      baseRef.current = nextValue;
+      if (focusedRef.current) {
+        const display =
+          metric === 'revenue'
+            ? formatRevenueDisplay(String(nextValue))
+            : formatIntDisplay(nextValue);
+        setDraft(display);
+      }
+      onCommitDigits(String(nextValue));
+    },
+    [metric, onCommitDigits]
+  );
+
   useEffect(() => {
     if (!bulk || !cellKey) return undefined;
     return bulk.registerCell(cellKey, {
@@ -260,9 +316,9 @@ function KpiTargetExprInput({
       value: rounded,
       disabled: Boolean(disabled),
       element: inputRef.current,
-      commitDigits: onCommitDigits
+      commitDigits: commitDigitsFromBulk
     });
-  }, [ariaLabel, bulk, cellKey, disabled, onCommitDigits, rounded, rowKey]);
+  }, [ariaLabel, bulk, cellKey, commitDigitsFromBulk, disabled, rounded, rowKey]);
 
   return (
     <input
@@ -273,7 +329,7 @@ function KpiTargetExprInput({
       value={displayValue}
       placeholder={placeholder}
       pattern={pattern}
-      title="예: *1.2, +1000, =10+20*2 (Enter 또는 다른 칸으로 이동 시 확정). Alt+드래그·우클릭 드래그로 범위 선택 후 우클릭하면 반올림 메뉴."
+      title="예: *1.2, +1000, =10+20*2 (Enter 또는 다른 칸으로 이동 시 확정). Alt+드래그·우클릭 드래그로 범위 선택 → Ctrl+V 붙여넣기(동일 값) · 우클릭 반올림."
       disabled={disabled}
       aria-label={ariaLabel}
       {...(bulk && cellKey
@@ -370,9 +426,18 @@ function KpiTargetBulkProvider({ children }) {
       if (meta?.disabled) return;
       const r = meta?.element?.getBoundingClientRect?.();
       if (!r) return;
+      const overlapW = Math.min(r.right, right) - Math.max(r.left, left);
+      const overlapH = Math.min(r.bottom, bottom) - Math.max(r.top, top);
+      if (overlapW <= 0 || overlapH <= 0) return;
       const cx = r.left + r.width / 2;
       const cy = r.top + r.height / 2;
       if (cx >= left && cx <= right && cy >= top && cy <= bottom) {
+        next.add(key);
+        return;
+      }
+      const minW = Math.min(r.width, right - left);
+      const minH = Math.min(r.height, bottom - top);
+      if (overlapW >= Math.max(2, minW * 0.4) && overlapH >= Math.max(2, minH * 0.4)) {
         next.add(key);
       }
     });
@@ -483,6 +548,53 @@ function KpiTargetBulkProvider({ children }) {
     setMenu(null);
   }, [menu?.cellKey, roundPlace, selectedKeys]);
 
+  const resolvePasteTargetKeys = useCallback(() => {
+    if (selectedKeysRef.current.size > 0) return [...selectedKeysRef.current];
+    const hit = resolveBulkCellFromTarget(document.activeElement, registryRef.current);
+    if (hit?.cellKey) return [hit.cellKey];
+    if (menu?.cellKey) return [menu.cellKey];
+    return [];
+  }, [menu?.cellKey]);
+
+  const applyPasteToSelection = useCallback(
+    (clipboardText) => {
+      const digits = digitsFromClipboardForBulkPaste(clipboardText);
+      if (digits == null) return false;
+      const keys = resolvePasteTargetKeys();
+      if (keys.length === 0) return false;
+      let applied = 0;
+      keys.forEach((key) => {
+        const meta = registryRef.current.get(key);
+        if (!meta || meta.disabled || typeof meta.commitDigits !== 'function') return;
+        meta.commitDigits(digits);
+        applied += 1;
+      });
+      return applied > 0;
+    },
+    [resolvePasteTargetKeys]
+  );
+
+  const isBulkMatrixContext = useCallback((el) => {
+    if (!el || typeof el.closest !== 'function') return false;
+    if (el.closest('.kpi-target-bulk-menu')) return false;
+    if (el.closest('.kpi-target-calc-help-layer')) return false;
+    if (el.closest('.kpi-target-modal-header')) return false;
+    if (el.closest('.kpi-target-modal-footer')) return false;
+    return Boolean(el.closest('[data-kpi-bulk-cell]'));
+  }, []);
+
+  const isBulkInteractionRoot = useCallback(() => {
+    if (!bulkRootRef.current) return false;
+    if (selectedKeysRef.current.size > 0) return true;
+    return isBulkMatrixContext(document.activeElement);
+  }, [isBulkMatrixContext]);
+
+  const inputHasTextSelection = useCallback((el) => {
+    if (!el || el.tagName !== 'INPUT') return false;
+    if (typeof el.selectionStart !== 'number' || typeof el.selectionEnd !== 'number') return false;
+    return el.selectionEnd !== el.selectionStart;
+  }, []);
+
   useEffect(() => {
     const stopDrag = () => {
       dragRef.current = false;
@@ -561,6 +673,57 @@ function KpiTargetBulkProvider({ children }) {
     return () => window.removeEventListener('keydown', closeOnEscape, true);
   }, [clearSelection, menu]);
 
+  /** Ctrl+C — 선택 셀(또는 포커스 셀) 값 복사 */
+  useEffect(() => {
+    const onCopy = (e) => {
+      if (!isBulkInteractionRoot()) return;
+      const ae = document.activeElement;
+      if (inputHasTextSelection(ae)) return;
+
+      let keys = [...selectedKeysRef.current];
+      if (keys.length === 0) {
+        const hit = resolveBulkCellFromTarget(ae, registryRef.current);
+        if (hit?.cellKey) keys = [hit.cellKey];
+      }
+      if (keys.length === 0) return;
+
+      const text = serializeBulkSelectionForCopy(keys, registryRef.current);
+      if (!text && keys.length === 1) {
+        const meta = registryRef.current.get(keys[0]);
+        if (!meta || meta.disabled) return;
+      }
+      if (!text) return;
+
+      e.preventDefault();
+      e.clipboardData?.setData('text/plain', text);
+    };
+    document.addEventListener('copy', onCopy, true);
+    return () => document.removeEventListener('copy', onCopy, true);
+  }, [inputHasTextSelection, isBulkInteractionRoot]);
+
+  /**
+   * Ctrl+V — Alt+드래그 등으로 여러 칸 선택 시 클립보드 첫 값을 선택 전체에 동일 적용
+   * (엑셀·메모에서 복사한 글자, 또는 KPI 셀 Ctrl+C 값 모두 가능)
+   */
+  useEffect(() => {
+    const onPaste = (e) => {
+      if (!isBulkInteractionRoot()) return;
+      if (inputHasTextSelection(document.activeElement)) return;
+
+      const keys = resolvePasteTargetKeys();
+      if (keys.length === 0) return;
+
+      const t = e.clipboardData?.getData('text/plain');
+      if (t == null || t === '') return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      applyPasteToSelection(t);
+    };
+    document.addEventListener('paste', onPaste, true);
+    return () => document.removeEventListener('paste', onPaste, true);
+  }, [applyPasteToSelection, inputHasTextSelection, isBulkInteractionRoot, resolvePasteTargetKeys]);
+
   const contextValue = useMemo(
     () => ({
       registerCell,
@@ -606,8 +769,8 @@ function KpiTargetBulkProvider({ children }) {
         >
           <div className="kpi-target-bulk-menu-title">선택 셀 반올림</div>
           <p className="kpi-target-bulk-menu-help">
-            Alt+드래그 또는 우클릭 드래그로 시작 셀과 현재 셀 사이의 사각 영역을 선택한 뒤, 우클릭으로 이
-            메뉴를 열고 자리수와 방식을 적용합니다.
+            Alt+드래그 또는 우클릭 드래그로 범위를 선택한 뒤, 복사해 둔 값(Ctrl+C·엑셀·메모 등)을 Ctrl+V로
+            선택 칸 전체에 같은 숫자로 붙여 넣을 수 있습니다. 우클릭으로 반올림 메뉴도 열립니다.
           </p>
           <label className="kpi-target-bulk-menu-field">
             <span>자리수</span>
@@ -2264,6 +2427,30 @@ export default function KpiTargetModal({
   useEffect(() => {
     setYearDraft(String(year || ''));
   }, [year]);
+
+  /** Esc — 도움말·연도 목록 닫기 → (범위 선택은 BulkProvider) → 모달 닫기 */
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key !== 'Escape') return;
+      if (calcHelpOpen) {
+        event.preventDefault();
+        event.stopPropagation();
+        setCalcHelpOpen(false);
+        return;
+      }
+      if (yearDropdownOpen) {
+        event.preventDefault();
+        event.stopPropagation();
+        setYearDropdownOpen(false);
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      if (typeof onClose === 'function') onClose();
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [calcHelpOpen, onClose, yearDropdownOpen]);
 
   const commitYearDraft = (nextValue = yearDraft) => {
     const digits = String(nextValue ?? '').replace(/\D/g, '').slice(0, 4);
