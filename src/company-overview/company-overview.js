@@ -15,6 +15,7 @@ import {
   coOrgPn
 } from '@/lib/org-chart-mind-shared';
 import { GoogleWorkspaceChatPolicyHint } from '@/lib/google-workspace-chat-hint';
+import { LIST_IDS, getSavedTemplate, patchListTemplate } from '@/lib/list-templates';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -57,10 +58,6 @@ function resolveDeptDisplay(orgChartRoot, stored) {
   return s;
 }
 
-function deptLegacySelectValue(raw) {
-  return `legacy:${encodeURIComponent(raw)}`;
-}
-
 function formatSubscriptionDate(iso) {
   if (!iso) return '—';
   try {
@@ -89,6 +86,61 @@ const CO_ORG_MIND_THEME = {
   randomColor: false,
   palette: CO_VIVID_PALETTE
 };
+
+const COMPANY_OVERVIEW_EMPLOYEE_LIST_ID = LIST_IDS.COMPANY_OVERVIEW_EMPLOYEES;
+const COMPANY_OVERVIEW_FILTER_MENU_CURSOR_GAP = 12;
+const COMPANY_OVERVIEW_FILTER_MENU_VIEWPORT_MARGIN = 8;
+const COMPANY_OVERVIEW_EMPLOYEE_COLUMNS = [
+  { key: 'department', label: '부서' },
+  { key: 'rank', label: '직급' },
+  { key: 'name', label: '이름' },
+  { key: 'phone', label: '연락처' },
+  { key: 'email', label: '이메일' },
+  { key: 'crmRole', label: 'CRM 관리 역할' }
+];
+const COMPANY_OVERVIEW_EMPLOYEE_COLUMN_KEYS = COMPANY_OVERVIEW_EMPLOYEE_COLUMNS.map((c) => c.key);
+
+function normalizeEmployeeColumnOrder(order, allowedKeys = COMPANY_OVERVIEW_EMPLOYEE_COLUMN_KEYS) {
+  const normalizedKeys = Array.isArray(allowedKeys) ? allowedKeys.map((k) => String(k || '').trim()).filter(Boolean) : [];
+  const base = Array.isArray(order) ? order.map((k) => String(k || '').trim()).filter((k) => normalizedKeys.includes(k)) : [];
+  for (const k of normalizedKeys) {
+    if (!base.includes(k)) base.push(k);
+  }
+  return base;
+}
+
+function getEmployeeCellText(row, key) {
+  if (!row || typeof row !== 'object') return '';
+  if (key === 'name') return String(row.name || row.email || '').trim();
+  if (key === 'email') return String(row.email || '').trim();
+  if (key === 'phone') return String(row.phone || '').trim();
+  if (key === 'department') return String(row._deptLabel || '').trim();
+  if (key === 'rank') return String(row.rank || '').trim();
+  if (key === 'title') return String(row.title || '').trim();
+  if (key === 'crmRole') return String(row._roleLabel || '').trim();
+  return '';
+}
+
+function getUniqueEmployeeFilterOptions(rows, key) {
+  const set = new Set();
+  (rows || []).forEach((row) => {
+    set.add(getEmployeeCellText(row, key));
+  });
+  return Array.from(set).sort((a, b) => a.localeCompare(b, 'ko', { numeric: true, sensitivity: 'base' }));
+}
+
+function sortEmployeeRows(rows, sortConfig) {
+  if (!sortConfig?.key || !sortConfig?.dir) return rows;
+  const key = String(sortConfig.key || '').trim();
+  const dir = sortConfig.dir === 'desc' ? -1 : 1;
+  const next = [...rows];
+  next.sort((a, b) => {
+    const va = getEmployeeCellText(a, key);
+    const vb = getEmployeeCellText(b, key);
+    return va.localeCompare(vb, 'ko', { numeric: true, sensitivity: 'base' }) * dir;
+  });
+  return next;
+}
 
 /** 구독 카드용 — 역할별 한 줄 요약(summary)만 표시 */
 const CRM_ROLE_PERMISSION_GUIDE = [
@@ -161,7 +213,8 @@ export default function CompanyOverview() {
   const [showDriveSettingsModal, setShowDriveSettingsModal] = useState(false);
   const [savingMemberId, setSavingMemberId] = useState('');
   const [savingDeptLeader, setSavingDeptLeader] = useState(false);
-  const [editingRoleMemberId, setEditingRoleMemberId] = useState('');
+  const [memberEditOpen, setMemberEditOpen] = useState(false);
+  const [memberEditForm, setMemberEditForm] = useState(null);
   const [selectedApproverIds, setSelectedApproverIds] = useState([]);
   const [requestSending, setRequestSending] = useState(false);
   const [requestMessage, setRequestMessage] = useState('');
@@ -172,6 +225,20 @@ export default function CompanyOverview() {
   const [handoverViewerCanConsent, setHandoverViewerCanConsent] = useState(false);
   const [handoverApprovingKey, setHandoverApprovingKey] = useState('');
   const [handoverActionError, setHandoverActionError] = useState('');
+  const [employeeColumnOrder, setEmployeeColumnOrder] = useState(() => {
+    const saved = getSavedTemplate(COMPANY_OVERVIEW_EMPLOYEE_LIST_ID);
+    return normalizeEmployeeColumnOrder(saved?.columnOrder, COMPANY_OVERVIEW_EMPLOYEE_COLUMN_KEYS);
+  });
+  const [employeeDraggingKey, setEmployeeDraggingKey] = useState('');
+  const [employeeDragOverKey, setEmployeeDragOverKey] = useState('');
+  const [employeeSortConfig, setEmployeeSortConfig] = useState({ key: '', dir: '' });
+  const [employeeActiveFilters, setEmployeeActiveFilters] = useState({});
+  const [employeeOpenFilterKey, setEmployeeOpenFilterKey] = useState('');
+  const [employeeFilterSearch, setEmployeeFilterSearch] = useState('');
+  const [employeeDraftSelected, setEmployeeDraftSelected] = useState([]);
+  const [employeeFilterMenuPosition, setEmployeeFilterMenuPosition] = useState({ top: 0, left: 0 });
+  const [employeeFilterAnchor, setEmployeeFilterAnchor] = useState({ x: 0, y: 0 });
+  const employeeFilterMenuRef = useRef(null);
   const mindContainerRef = useRef(null);
   const mindInstanceRef = useRef(null);
 
@@ -549,12 +616,80 @@ export default function CompanyOverview() {
   /** 구독·시트 블록: Admin·Owner (레거시 senior 포함) */
   const canSeeSubscriptionSection = ['owner', 'admin', 'senior'].includes(me.role);
   const canEditRole = (emp) => canManageRoles && String(emp.id) !== String(me.id) && emp.role !== 'owner';
+  const canEditMemberMeta = (emp) => canManageRoles && !!String(emp?.id || '').trim();
+
+  const openMemberEditModal = useCallback((emp) => {
+    if (!canEditMemberMeta(emp)) return;
+    const deptRaw = String(emp.department || '').trim();
+    const deptInOrg = deptRaw && orgDeptOptions.some((o) => o.id === deptRaw);
+    const isDeptLeader = deptRaw && departmentLeaderList.some(
+      (l) => String(l.userId) === String(emp.id) && String(l.departmentId) === deptRaw
+    );
+    setMemberEditForm({
+      id: String(emp.id),
+      name: emp.name || emp.email || '직원',
+      role: String(emp.role || 'pending'),
+      department: deptRaw,
+      rank: String(emp.rank || '').trim(),
+      title: String(emp.title || '').trim(),
+      deptInOrg: Boolean(deptInOrg),
+      isDeptLeader: Boolean(isDeptLeader)
+    });
+    setMemberEditOpen(true);
+  }, [canEditMemberMeta, departmentLeaderList, orgDeptOptions]);
+
+  const closeMemberEditModal = useCallback(() => {
+    if (savingMemberId || savingDeptLeader) return;
+    setMemberEditOpen(false);
+    setMemberEditForm(null);
+  }, [savingDeptLeader, savingMemberId]);
+
+  const saveMemberEditModal = useCallback(async () => {
+    if (!memberEditForm?.id) return;
+    setActionError('');
+    const department = String(memberEditForm.department || '').trim();
+    const title = String(memberEditForm.title || '').trim();
+    if (!department) {
+      alert('부서는 필수 입력입니다.');
+      return;
+    }
+    if (!title) {
+      alert('역할은 필수 입력입니다.');
+      return;
+    }
+    const patch = {
+      role: memberEditForm.role,
+      department,
+      rank: memberEditForm.rank || '',
+      title
+    };
+    const ok = await updateMemberAccess(memberEditForm.id, patch);
+    if (!ok) return;
+    if (canManageDepartmentLeaders) {
+      const currentDept = String(memberEditForm.department || '').trim();
+      const currentLeader = currentDept && departmentLeaderList.some(
+        (l) => String(l.userId) === String(memberEditForm.id) && String(l.departmentId) === currentDept
+      );
+      if (Boolean(currentLeader) !== Boolean(memberEditForm.isDeptLeader) && currentDept && orgDeptOptions.some((o) => o.id === currentDept)) {
+        await applyDepartmentLeaderToggle({ id: memberEditForm.id, department: currentDept });
+      }
+    }
+    setMemberEditOpen(false);
+    setMemberEditForm(null);
+  }, [
+    applyDepartmentLeaderToggle,
+    canManageDepartmentLeaders,
+    departmentLeaderList,
+    memberEditForm,
+    orgDeptOptions,
+    updateMemberAccess
+  ]);
   /** 구독 시트: 대표·관리자·실무자·직원(비-pending) 인원만큼만 부여 가능 */
   const subActive = subscription?.hasActiveSubscription === true;
   const seatsRemaining = subscription?.seatsRemaining;
   const noSeatForPromotion = subActive && typeof seatsRemaining === 'number' && seatsRemaining <= 0;
 
-  const sortedEmployees = useMemo(() => {
+  const baseSortedEmployees = useMemo(() => {
     const order = {
       owner: 0,
       admin: 1,
@@ -565,13 +700,170 @@ export default function CompanyOverview() {
       staff: 3,
       pending: 4
     };
-    return [...employees].sort((a, b) => {
+    return [...employees].map((emp) => {
+      const deptRaw = String(emp.department || '').trim();
+      const isDeptLeader = Boolean(
+        deptRaw && departmentLeaderList.some(
+          (l) => String(l.userId) === String(emp.id) && String(l.departmentId) === deptRaw
+        )
+      );
+      return {
+        ...emp,
+        _deptLabel: resolveDeptDisplay(orgChart, emp.department) || '—',
+        _isDeptLeader: isDeptLeader,
+        _roleLabel: roleLabel(emp.role)
+      };
+    }).sort((a, b) => {
       const ra = order[a.role] ?? 99;
       const rb = order[b.role] ?? 99;
       if (ra !== rb) return ra - rb;
       return (a.name || a.email || '').localeCompare(b.name || b.email || '', 'ko');
     });
-  }, [employees]);
+  }, [departmentLeaderList, employees, orgChart]);
+
+  useEffect(() => {
+    const saved = getSavedTemplate(COMPANY_OVERVIEW_EMPLOYEE_LIST_ID);
+    setEmployeeColumnOrder(normalizeEmployeeColumnOrder(saved?.columnOrder, COMPANY_OVERVIEW_EMPLOYEE_COLUMN_KEYS));
+  }, []);
+
+  const orderedEmployeeColumns = useMemo(() => {
+    const byKey = new Map(COMPANY_OVERVIEW_EMPLOYEE_COLUMNS.map((col) => [col.key, col]));
+    const normalizedOrder = normalizeEmployeeColumnOrder(employeeColumnOrder, COMPANY_OVERVIEW_EMPLOYEE_COLUMN_KEYS);
+    return normalizedOrder.map((k) => byKey.get(k)).filter(Boolean);
+  }, [employeeColumnOrder]);
+
+  const employeeFilterOptionsByKey = useMemo(() => {
+    const map = {};
+    orderedEmployeeColumns.forEach((col) => {
+      map[col.key] = getUniqueEmployeeFilterOptions(baseSortedEmployees, col.key);
+    });
+    return map;
+  }, [baseSortedEmployees, orderedEmployeeColumns]);
+
+  const filteredAndSortedEmployees = useMemo(() => {
+    let rows = [...baseSortedEmployees];
+    Object.entries(employeeActiveFilters || {}).forEach(([key, selectedValues]) => {
+      if (!Array.isArray(selectedValues) || selectedValues.length === 0) return;
+      const allowed = new Set(selectedValues);
+      rows = rows.filter((row) => allowed.has(getEmployeeCellText(row, key)));
+    });
+    return sortEmployeeRows(rows, employeeSortConfig);
+  }, [baseSortedEmployees, employeeActiveFilters, employeeSortConfig]);
+
+  const persistEmployeeColumnOrder = useCallback(async (nextOrder) => {
+    try {
+      await patchListTemplate(COMPANY_OVERVIEW_EMPLOYEE_LIST_ID, { columnOrder: nextOrder });
+    } catch (_) {
+      // no-op
+    }
+  }, []);
+
+  const handleEmployeeHeaderDragOver = (e, key) => {
+    if (!employeeDraggingKey || employeeDraggingKey === key) return;
+    e.preventDefault();
+    setEmployeeDragOverKey(key);
+  };
+
+  const handleEmployeeHeaderDrop = (targetKey) => {
+    if (!employeeDraggingKey || employeeDraggingKey === targetKey) {
+      setEmployeeDraggingKey('');
+      setEmployeeDragOverKey('');
+      return;
+    }
+    const next = [...normalizeEmployeeColumnOrder(employeeColumnOrder, COMPANY_OVERVIEW_EMPLOYEE_COLUMN_KEYS)];
+    const from = next.indexOf(employeeDraggingKey);
+    const to = next.indexOf(targetKey);
+    if (from < 0 || to < 0) {
+      setEmployeeDraggingKey('');
+      setEmployeeDragOverKey('');
+      return;
+    }
+    next.splice(from, 1);
+    next.splice(to, 0, employeeDraggingKey);
+    const normalized = normalizeEmployeeColumnOrder(next, COMPANY_OVERVIEW_EMPLOYEE_COLUMN_KEYS);
+    setEmployeeColumnOrder(normalized);
+    setEmployeeDraggingKey('');
+    setEmployeeDragOverKey('');
+    persistEmployeeColumnOrder(normalized);
+  };
+
+  const placeEmployeeFilterMenu = useCallback((anchorX, anchorY) => {
+    const menuEl = employeeFilterMenuRef.current;
+    const menuW = menuEl?.offsetWidth || 220;
+    const menuH = menuEl?.offsetHeight || 320;
+    let left = anchorX + COMPANY_OVERVIEW_FILTER_MENU_CURSOR_GAP;
+    let top = anchorY + COMPANY_OVERVIEW_FILTER_MENU_CURSOR_GAP;
+    if (left + menuW > window.innerWidth - COMPANY_OVERVIEW_FILTER_MENU_VIEWPORT_MARGIN) left = anchorX - menuW - COMPANY_OVERVIEW_FILTER_MENU_CURSOR_GAP;
+    if (top + menuH > window.innerHeight - COMPANY_OVERVIEW_FILTER_MENU_VIEWPORT_MARGIN) top = anchorY - menuH - COMPANY_OVERVIEW_FILTER_MENU_CURSOR_GAP;
+    left = Math.min(
+      Math.max(COMPANY_OVERVIEW_FILTER_MENU_VIEWPORT_MARGIN, left),
+      Math.max(COMPANY_OVERVIEW_FILTER_MENU_VIEWPORT_MARGIN, window.innerWidth - menuW - COMPANY_OVERVIEW_FILTER_MENU_VIEWPORT_MARGIN)
+    );
+    top = Math.min(
+      Math.max(COMPANY_OVERVIEW_FILTER_MENU_VIEWPORT_MARGIN, top),
+      Math.max(COMPANY_OVERVIEW_FILTER_MENU_VIEWPORT_MARGIN, window.innerHeight - menuH - COMPANY_OVERVIEW_FILTER_MENU_VIEWPORT_MARGIN)
+    );
+    setEmployeeFilterMenuPosition({ top, left });
+  }, []);
+
+  const openEmployeeFilter = (key, mousePoint) => {
+    const allOptions = employeeFilterOptionsByKey[key] || [];
+    const selected = Array.isArray(employeeActiveFilters[key]) && employeeActiveFilters[key].length > 0
+      ? employeeActiveFilters[key]
+      : allOptions;
+    const anchorX = Number(mousePoint?.x) || 0;
+    const anchorY = Number(mousePoint?.y) || 0;
+    setEmployeeFilterAnchor({ x: anchorX, y: anchorY });
+    placeEmployeeFilterMenu(anchorX, anchorY);
+    setEmployeeOpenFilterKey(key);
+    setEmployeeFilterSearch('');
+    setEmployeeDraftSelected(selected);
+  };
+
+  const applyEmployeeFilter = () => {
+    if (!employeeOpenFilterKey) return;
+    const key = employeeOpenFilterKey;
+    const allOptions = employeeFilterOptionsByKey[key] || [];
+    const normalized = [...new Set(employeeDraftSelected)];
+    setEmployeeActiveFilters((prev) => {
+      const next = { ...prev };
+      if (normalized.length === 0 || normalized.length === allOptions.length) delete next[key];
+      else next[key] = normalized;
+      return next;
+    });
+    setEmployeeOpenFilterKey('');
+  };
+
+  const clearEmployeeFilter = (key) => {
+    setEmployeeActiveFilters((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    if (employeeOpenFilterKey === key) setEmployeeOpenFilterKey('');
+  };
+
+  useEffect(() => {
+    if (!employeeOpenFilterKey) return undefined;
+    const onDocDown = (e) => {
+      if (employeeFilterMenuRef.current && !employeeFilterMenuRef.current.contains(e.target)) {
+        setEmployeeOpenFilterKey('');
+      }
+    };
+    document.addEventListener('mousedown', onDocDown);
+    return () => document.removeEventListener('mousedown', onDocDown);
+  }, [employeeOpenFilterKey]);
+
+  useEffect(() => {
+    if (!employeeOpenFilterKey) return undefined;
+    const closeMenu = () => setEmployeeOpenFilterKey('');
+    window.addEventListener('resize', closeMenu);
+    window.addEventListener('scroll', closeMenu, true);
+    return () => {
+      window.removeEventListener('resize', closeMenu);
+      window.removeEventListener('scroll', closeMenu, true);
+    };
+  }, [employeeOpenFilterKey]);
 
   useEffect(() => {
     if (!isPendingUser) {
@@ -617,7 +909,7 @@ export default function CompanyOverview() {
     );
   }
 
-  const updateMemberAccess = async (memberId, patch) => {
+  async function updateMemberAccess(memberId, patch) {
     setActionError('');
     setRequestMessage('');
     setSavingMemberId(String(memberId));
@@ -630,13 +922,14 @@ export default function CompanyOverview() {
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || '직원 정보 변경에 실패했습니다.');
       await refreshOverview();
-      setEditingRoleMemberId('');
+      return true;
     } catch (e) {
       setActionError(e.message || '직원 정보 변경에 실패했습니다.');
+      return false;
     } finally {
       setSavingMemberId('');
     }
-  };
+  }
 
   const toggleApproverSelection = (memberId) => {
     const normalizedId = String(memberId);
@@ -806,7 +1099,7 @@ export default function CompanyOverview() {
           <h2 className="company-overview-section-title">
             <span className="material-symbols-outlined">group</span>
             직원 리스트
-            <span className="company-overview-count">({sortedEmployees.length}명)</span>
+            <span className="company-overview-count">({filteredAndSortedEmployees.length}명)</span>
           </h2>
           {canSeeSubscriptionSection && subscription?.overLimit && (
             <div className="company-overview-seat-warning" role="status">
@@ -833,162 +1126,156 @@ export default function CompanyOverview() {
               {requestMessage && <p className="company-overview-request-message">{requestMessage}</p>}
             </div>
           )}
-          {sortedEmployees.length === 0 ? (
+          {filteredAndSortedEmployees.length === 0 ? (
             <p className="company-overview-empty">등록된 직원이 없습니다.</p>
           ) : (
             <div className="company-overview-table-wrap">
               <table className="company-overview-table">
                 <thead>
                   <tr>
-                    <th>이름</th>
-                    <th>이메일</th>
-                    <th>연락처</th>
-                    <th>부서</th>
-                    <th
-                      className="company-overview-th-dept-leader"
-                      title="대표·관리자만 체크할 수 있습니다."
-                    >
-                      부서 팀장
-                    </th>
-                    <th>CRM 관리 역할</th>
+                    {orderedEmployeeColumns.map((col) => {
+                      const key = col.key;
+                      const isDragOver = employeeDragOverKey === key;
+                      const isDragging = employeeDraggingKey === key;
+                      return (
+                        <th
+                          key={`head-${key}`}
+                          onDragOver={(e) => handleEmployeeHeaderDragOver(e, key)}
+                          onDrop={() => handleEmployeeHeaderDrop(key)}
+                          onDragEnd={() => { setEmployeeDraggingKey(''); setEmployeeDragOverKey(''); }}
+                          className={[
+                            'company-overview-table-head-draggable',
+                            isDragOver ? 'company-overview-table-head-drag-over' : '',
+                            isDragging ? 'company-overview-table-head-dragging' : ''
+                          ].filter(Boolean).join(' ')}
+                        >
+                          <span
+                            className="company-overview-table-drag-handle"
+                            draggable
+                            onDragStart={() => setEmployeeDraggingKey(key)}
+                            title="드래그해서 열 순서 변경"
+                            aria-label={`${col.label} 순서 변경`}
+                          >
+                            <span className="material-symbols-outlined" aria-hidden>drag_indicator</span>
+                          </span>
+                          <button
+                            type="button"
+                            className="company-overview-table-head-filter-trigger"
+                            onClick={(e) => openEmployeeFilter(key, { x: e.clientX, y: e.clientY })}
+                            title="정렬/필터"
+                          >
+                            <span className="company-overview-table-head-label">{col.label}</span>
+                            {employeeSortConfig.key === key && employeeSortConfig.dir ? (
+                              <span className="material-symbols-outlined company-overview-table-head-sort-icon" aria-hidden>
+                                {employeeSortConfig.dir === 'asc' ? 'arrow_upward' : 'arrow_downward'}
+                              </span>
+                            ) : null}
+                            {Array.isArray(employeeActiveFilters[key]) && employeeActiveFilters[key].length > 0 ? (
+                              <span className="material-symbols-outlined company-overview-table-head-filter-icon" aria-hidden>filter_alt</span>
+                            ) : null}
+                          </button>
+                          {employeeOpenFilterKey === key ? (
+                            <div
+                              ref={employeeFilterMenuRef}
+                              className="company-overview-table-filter-menu"
+                              style={{ top: `${employeeFilterMenuPosition.top}px`, left: `${employeeFilterMenuPosition.left}px` }}
+                              onMouseDown={(e) => e.stopPropagation()}
+                            >
+                              <div className="company-overview-table-filter-menu-actions">
+                                <button type="button" onClick={() => setEmployeeSortConfig({ key, dir: 'asc' })} className="company-overview-table-filter-btn">오름차순 정렬</button>
+                                <button type="button" onClick={() => setEmployeeSortConfig({ key, dir: 'desc' })} className="company-overview-table-filter-btn">내림차순 정렬</button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEmployeeSortConfig((prev) => (prev.key === key ? { key: '', dir: '' } : prev))}
+                                  className="company-overview-table-filter-btn"
+                                >
+                                  정렬 해제
+                                </button>
+                              </div>
+                              <input
+                                type="search"
+                                className="company-overview-table-filter-search"
+                                value={employeeFilterSearch}
+                                onChange={(e) => setEmployeeFilterSearch(e.target.value)}
+                                placeholder="검색"
+                              />
+                              <div className="company-overview-table-filter-options">
+                                {(employeeFilterOptionsByKey[key] || [])
+                                  .filter((v) => v.toLowerCase().includes(employeeFilterSearch.trim().toLowerCase()))
+                                  .map((option) => (
+                                    <label key={`f-${key}-${option || '__empty'}`} className="company-overview-table-filter-option">
+                                      <input
+                                        type="checkbox"
+                                        checked={employeeDraftSelected.includes(option)}
+                                        onChange={() => setEmployeeDraftSelected((prev) => (
+                                          prev.includes(option) ? prev.filter((v) => v !== option) : [...prev, option]
+                                        ))}
+                                      />
+                                      <span>{option || '(빈 값)'}</span>
+                                    </label>
+                                  ))}
+                              </div>
+                              <div className="company-overview-table-filter-footer">
+                                <button type="button" onClick={applyEmployeeFilter} className="company-overview-table-filter-ok">확인</button>
+                                <button type="button" onClick={() => clearEmployeeFilter(key)} className="company-overview-table-filter-cancel">전체</button>
+                                <button type="button" onClick={() => setEmployeeOpenFilterKey('')} className="company-overview-table-filter-cancel">취소</button>
+                              </div>
+                            </div>
+                          ) : null}
+                        </th>
+                      );
+                    })}
                     {isPendingUser && <th>선택</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedEmployees.map((emp) => {
-                    const deptRaw = String(emp.department || '').trim();
-                    const deptInOrg = deptRaw && orgDeptOptions.some((o) => o.id === deptRaw);
-                    const isDeptLeader = deptRaw && departmentLeaderList.some(
-                      (l) => String(l.userId) === String(emp.id) && String(l.departmentId) === deptRaw
-                    );
+                  {filteredAndSortedEmployees.map((emp) => {
                     return (
-                    <tr key={emp.id}>
-                      <td>
-                        <div className="company-overview-name-with-badge">
-                          <span>{emp.name || '—'}</span>
-
-                        </div>
-                      </td>
-                      <td>{emp.email || '—'}</td>
-                      <td>{emp.phone || '—'}</td>
-                      <td>
-                        {canManageRoles ? (
-                          <select
-                            className="company-overview-select"
-                            value={(() => {
-                              const raw = String(emp.department || '').trim();
-                              if (!raw) return '';
-                              if (orgDeptOptions.some((o) => o.id === raw)) return raw;
-                              return deptLegacySelectValue(raw);
-                            })()}
-                            disabled={savingMemberId === String(emp.id) || orgDeptOptions.length === 0}
-                            title={
-                              orgDeptOptions.length === 0
-                                ? '조직도 노드가 없으면 부서를 지정할 수 없습니다.'
-                                : '조직도에 있는 부서(노드)를 선택하세요. 값은 노드 ID로 저장됩니다.'
-                            }
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              if (v.startsWith('legacy:')) return;
-                              void updateMemberAccess(emp.id, { department: v });
-                            }}
-                          >
-                            <option value="">미배정</option>
-                            {(() => {
-                              const raw = String(emp.department || '').trim();
-                              const matched = orgDeptOptions.some((o) => o.id === raw);
-                              if (raw && !matched) {
-                                return (
-                                  <option value={deptLegacySelectValue(raw)}>
-                                    (기존·조직도 외) {resolveDeptDisplay(orgChart, raw)}
-                                  </option>
-                                );
-                              }
-                              return null;
-                            })()}
-                            {orgDeptOptions.map((o) => (
-                              <option key={o.id} value={o.id}>
-                                {o.label}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          resolveDeptDisplay(orgChart, emp.department) || '—'
-                        )}
-                      </td>
-                      <td className="company-overview-dept-leader-cell">
-                        {canManageDepartmentLeaders && deptInOrg ? (
-                          <label className="company-overview-dept-leader-label">
-                            <input
-                              type="checkbox"
-                              checked={isDeptLeader}
-                              disabled={savingDeptLeader || savingMemberId === String(emp.id)}
-                              onChange={() => void applyDepartmentLeaderToggle(emp)}
-                            />
-                          </label>
-                        ) : (
-                          <span className="company-overview-muted">—</span>
-                        )}
-                      </td>
-                      <td>
-                        {editingRoleMemberId === String(emp.id) && canEditRole(emp) ? (
-                          <select
-                            className="company-overview-select"
-                            value={emp.role || 'pending'}
-                            disabled={savingMemberId === String(emp.id)}
-                            autoFocus
-                            onBlur={() => {
-                              if (savingMemberId !== String(emp.id)) setEditingRoleMemberId('');
-                            }}
-                            onChange={(e) => updateMemberAccess(emp.id, { role: e.target.value })}
-                          >
-                            <option value="pending">권한 대기 (Pending Approval)</option>
-                            <option
-                              value="staff"
-                              disabled={emp.role === 'pending' && noSeatForPromotion}
-                              title={emp.role === 'pending' && noSeatForPromotion ? '구독 시트가 부족합니다. 구독 관리에서 인원을 늘리세요.' : undefined}
-                            >
-                              직원 (Staff)
-                            </option>
-                            <option
-                              value="manager"
-                              disabled={emp.role === 'pending' && noSeatForPromotion}
-                              title={emp.role === 'pending' && noSeatForPromotion ? '구독 시트가 부족합니다.' : undefined}
-                            >
-                              실무자 (Manager)
-                            </option>
-                            {me.role === 'owner' && (
-                              <option
-                                value="admin"
-                                disabled={emp.role === 'pending' && noSeatForPromotion}
-                                title={emp.role === 'pending' && noSeatForPromotion ? '구독 시트가 부족합니다.' : undefined}
-                              >
-                                관리자 (Admin)
-                              </option>
-                            )}
-                          </select>
-                        ) : (
-                          canEditRole(emp) ? (
-                            <button
-                              type="button"
-                              className="company-overview-role-trigger"
-                              onClick={() => setEditingRoleMemberId(String(emp.id))}
-                              disabled={savingMemberId === String(emp.id)}
-                            >
+                    <tr
+                      key={emp.id}
+                      className={canManageRoles ? 'company-overview-table-row-editable' : ''}
+                      onClick={() => {
+                        if (!canManageRoles) return;
+                        openMemberEditModal(emp);
+                      }}
+                    >
+                      {orderedEmployeeColumns.map((col) => {
+                        if (col.key === 'name') {
+                          return (
+                            <td key={`${emp.id}-${col.key}`}>
+                              <div className="company-overview-name-with-badge">
+                                <span>{emp.name || '—'}</span>
+                                {emp._isDeptLeader ? (
+                                  <span className="company-overview-name-leader-mark" title="리더" aria-label="리더">
+                                    <span className="material-symbols-outlined" aria-hidden>star</span>
+                                  </span>
+                                ) : null}
+                              </div>
+                            </td>
+                          );
+                        }
+                        if (col.key === 'email') return <td key={`${emp.id}-${col.key}`}>{emp.email || '—'}</td>;
+                        if (col.key === 'phone') return <td key={`${emp.id}-${col.key}`}>{emp.phone || '—'}</td>;
+                        if (col.key === 'department') return <td key={`${emp.id}-${col.key}`}>{emp._deptLabel || '—'}</td>;
+                        if (col.key === 'rank') return <td key={`${emp.id}-${col.key}`}>{emp.rank || '—'}</td>;
+                        if (col.key === 'title') return <td key={`${emp.id}-${col.key}`}>{emp.title || '—'}</td>;
+                        if (col.key === 'crmRole') {
+                          return (
+                            <td key={`${emp.id}-${col.key}`}>
                               <span className={`company-overview-badge role-${emp.role || 'staff'}`}>
-                                {roleLabel(emp.role)}
+                                {emp._roleLabel}
                               </span>
-                            </button>
-                          ) : (
-                            <span className={`company-overview-badge role-${emp.role || 'staff'}`}>
-                              {roleLabel(emp.role)}
-                            </span>
-                          )
-                        )}
-                      </td>
+                            </td>
+                          );
+                        }
+                        return <td key={`${emp.id}-${col.key}`}>{getEmployeeCellText(emp, col.key) || '—'}</td>;
+                      })}
                       {isPendingUser && (
-                        <td>
-                          <label className="company-overview-approval-check">
+                        <td onClick={(e) => e.stopPropagation()}>
+                          <label
+                            className="company-overview-approval-check"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <input
                               type="checkbox"
                               checked={selectedApproverIds.includes(String(emp.id))}
@@ -1164,6 +1451,103 @@ export default function CompanyOverview() {
           }}
         />
       )}
+
+      {memberEditOpen && memberEditForm ? (
+        <div className="company-member-edit-overlay" role="dialog" aria-modal="true" aria-labelledby="company-member-edit-title">
+          <div className="company-member-edit-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="company-member-edit-head">
+              <div className="company-member-edit-title-wrap">
+                <h3 id="company-member-edit-title">직원 정보 수정 · {memberEditForm.name}</h3>
+                <p className="company-member-edit-subtitle">부서 · 직급 · 역할 · 리더 상태를 한 번에 수정합니다.</p>
+              </div>
+              <button type="button" className="company-member-edit-close" onClick={closeMemberEditModal} disabled={savingMemberId || savingDeptLeader} aria-label="닫기">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <div className="company-member-edit-body">
+              <label className="company-member-edit-field">
+                <span>부서</span>
+                <select
+                  className="company-overview-select"
+                  value={memberEditForm.department || ''}
+                  disabled={savingMemberId === memberEditForm.id || orgDeptOptions.length === 0}
+                  onChange={(e) => setMemberEditForm((prev) => ({ ...prev, department: e.target.value }))}
+                >
+                  <option value="">미배정</option>
+                  {orgDeptOptions.map((o) => (
+                    <option key={o.id} value={o.id}>{o.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="company-member-edit-field">
+                <span>직급</span>
+                <input
+                  type="text"
+                  className="company-member-edit-input"
+                  value={memberEditForm.rank || ''}
+                  maxLength={80}
+                  onChange={(e) => setMemberEditForm((prev) => ({ ...prev, rank: e.target.value }))}
+                  disabled={savingMemberId === memberEditForm.id}
+                />
+              </label>
+              <label className="company-member-edit-field">
+                <span>역할</span>
+                <input
+                  type="text"
+                  className="company-member-edit-input"
+                  value={memberEditForm.title || ''}
+                  maxLength={80}
+                  onChange={(e) => setMemberEditForm((prev) => ({ ...prev, title: e.target.value }))}
+                  disabled={savingMemberId === memberEditForm.id}
+                />
+              </label>
+              <label className="company-member-edit-field">
+                <span>CRM 관리 역할</span>
+                <select
+                  className="company-overview-select"
+                  value={memberEditForm.role || 'pending'}
+                  disabled={savingMemberId === memberEditForm.id || !canEditRole({ id: memberEditForm.id, role: memberEditForm.role })}
+                  onChange={(e) => setMemberEditForm((prev) => ({ ...prev, role: e.target.value }))}
+                >
+                  <option value="pending">권한 대기 (Pending Approval)</option>
+                  <option value="staff" disabled={memberEditForm.role === 'pending' && noSeatForPromotion}>직원 (Staff)</option>
+                  <option value="manager" disabled={memberEditForm.role === 'pending' && noSeatForPromotion}>실무자 (Manager)</option>
+                  {me.role === 'owner' ? <option value="admin" disabled={memberEditForm.role === 'pending' && noSeatForPromotion}>관리자 (Admin)</option> : null}
+                </select>
+              </label>
+              <label className="company-member-edit-field company-member-edit-field--check">
+                <span>리더</span>
+                <input
+                  type="checkbox"
+                  checked={!!memberEditForm.isDeptLeader}
+                  disabled={savingMemberId === memberEditForm.id || savingDeptLeader || !canManageDepartmentLeaders || !memberEditForm.department}
+                  onChange={(e) => setMemberEditForm((prev) => ({ ...prev, isDeptLeader: e.target.checked }))}
+                />
+              </label>
+            </div>
+            <div className="company-member-edit-foot">
+              <button type="button" className="company-member-edit-btn company-member-edit-btn-cancel" onClick={closeMemberEditModal} disabled={savingMemberId || savingDeptLeader}>
+                <span className="material-symbols-outlined">close</span>
+                취소
+              </button>
+              <button
+                type="button"
+                className="company-member-edit-btn company-member-edit-btn-save"
+                onClick={() => void saveMemberEditModal()}
+                disabled={
+                  savingMemberId ||
+                  savingDeptLeader ||
+                  !String(memberEditForm.department || '').trim() ||
+                  !String(memberEditForm.title || '').trim()
+                }
+              >
+                <span className="material-symbols-outlined">save</span>
+                {(savingMemberId || savingDeptLeader) ? '저장 중…' : '저장'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

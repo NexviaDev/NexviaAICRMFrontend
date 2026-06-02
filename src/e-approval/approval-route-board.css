@@ -1,0 +1,661 @@
+/* 결재선 보드 — approval-sheet(신청 내역) 와 동일 톤 */
+
+.approval-route-board {
+  --approval-sheet-line: #a8c4d8;
+  --approval-sheet-line-strong: #5a8fb0;
+  --route-cell-divider: 1px solid #a8c4d8;
+  --route-slot-w: 5rem;
+  --route-slot-body-h: 3.35rem;
+  --route-slot-foot-h: 1.3rem;
+  --route-band-h: 1.85rem;
+  --route-panel-head-h: 2.5rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'agreement approval-panel'
+    'reference approval-panel';
+  column-gap: 1rem;
+  row-gap: 0.65rem;
+  width: 100%;
+  margin-bottom: 1.25rem;
+  align-items: start;
+}
+
+.approval-route-panel {
+  border: 2px solid var(--approval-sheet-line-strong);
+  background: #fff;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.approval-route-panel--agreement {
+  grid-area: agreement;
+  justify-self: stretch;
+  width: 100%;
+  max-width: 100%;
+}
+
+.approval-route-panel--approval {
+  grid-area: approval-panel;
+  grid-row: 1 / -1;
+  justify-self: end;
+  align-self: start;
+}
+
+.approval-route-panel--reference {
+  grid-area: reference;
+  justify-self: stretch;
+  width: 100%;
+  max-width: 100%;
+}
+
+.approval-route-panel--pick-only {
+  width: auto;
+  min-width: 5.5rem;
+  max-width: 100%;
+  justify-self: start;
+}
+
+.approval-route-panel-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: var(--route-panel-head-h);
+  padding: 0.45rem 0.7rem;
+  background: #5a8fb0;
+  border-bottom: var(--route-cell-divider);
+  color: #fff;
+}
+
+.approval-route-panel-head-title {
+  flex: 1;
+  text-align: center;
+  font-size: 0.9375rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #fff;
+}
+
+.approval-route-panel-head-title--pick {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #fff;
+  transition: background 0.15s ease, opacity 0.15s ease;
+  border-radius: 0.25rem;
+}
+
+.approval-route-panel-head-title--pick:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.approval-route-panel-head-title--pick:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.85);
+  outline-offset: 2px;
+}
+
+.approval-route-panel-head-title--pick:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.approval-route-panel-body {
+  background: #fff;
+}
+
+/* ── 결재: 기안 / 결재 밴드 + 슬롯 ── */
+.approval-route-approval-table {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.approval-route-band {
+  display: flex;
+  width: 100%;
+  box-sizing: border-box;
+  border-bottom: var(--route-cell-divider);
+}
+
+.approval-route-band-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--route-band-h);
+  padding: 0.28rem 0.45rem;
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #1e293b;
+  background: #eef4f8;
+  box-sizing: border-box;
+  text-align: center;
+}
+
+.approval-route-band-cell:first-child {
+  flex: 0 0 var(--route-slot-w);
+  width: var(--route-slot-w);
+  border-right: var(--route-cell-divider);
+}
+
+.approval-route-band-cell--merge {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
+}
+
+.approval-route-slot-row {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  align-items: stretch;
+}
+
+.approval-route-approval-table .approval-route-slot {
+  display: flex;
+  flex-direction: column;
+}
+
+.approval-route-approval-table .approval-route-slot-body {
+  flex: 1 1 auto;
+  min-height: var(--route-slot-body-h);
+}
+
+.approval-route-approval-table .approval-route-slot-foot {
+  flex-shrink: 0;
+}
+
+.approval-route-slots {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* ── 슬롯 공통 ── */
+.approval-route-slot {
+  flex: 0 0 var(--route-slot-w);
+  width: var(--route-slot-w);
+  border-right: var(--route-cell-divider);
+  display: flex;
+  flex-direction: column;
+  text-align: center;
+  background: #fff;
+  padding: 0;
+  font: inherit;
+  color: #0f172a;
+  box-sizing: border-box;
+}
+
+.approval-route-slot-row > .approval-route-slot:last-child,
+.approval-route-slots > .approval-route-slot:last-child {
+  border-right: none;
+}
+
+.approval-route-slot--empty-cell {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 6.5rem;
+  max-width: 11rem;
+  border-right: none;
+}
+
+.approval-route-slot--empty-cell .approval-route-slot-body {
+  color: #64748b;
+  font-size: 0.875rem;
+  font-weight: 600;
+  padding: 0.6rem 0.75rem;
+  min-height: var(--route-slot-body-h);
+  background: #f8fbfd;
+}
+
+.approval-route-slot-head {
+  height: 1.55rem;
+  background: #eef4f8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #1e293b;
+  border-bottom: var(--route-cell-divider);
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.approval-route-slot-head--blank {
+  background: #fff;
+}
+
+.approval-route-slot-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.45rem 0.28rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #0f172a;
+  word-break: keep-all;
+  position: relative;
+  flex-direction: column;
+  min-height: var(--route-slot-body-h);
+}
+
+.approval-route-slot-body--drafter {
+  font-weight: 800;
+}
+
+.approval-route-slot-foot {
+  height: var(--route-slot-foot-h);
+  min-height: var(--route-slot-foot-h);
+  border-top: var(--route-cell-divider);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: #475569;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: #f8fbfd;
+  text-align: center;
+}
+
+.approval-route-slot.is-clickable {
+  cursor: pointer;
+  transition: background 0.15s ease;
+  border: none;
+  border-right: var(--route-cell-divider);
+  text-align: center;
+}
+
+.approval-route-slot-row > .approval-route-slot.is-clickable:last-child,
+.approval-route-slots > .approval-route-slot.is-clickable:last-child {
+  border-right: none;
+}
+
+.approval-route-slot.is-clickable:hover:not(:disabled) {
+  background: #f8fbfd;
+}
+
+.approval-route-slot.is-active {
+  box-shadow: inset 0 0 0 2px rgba(90, 143, 176, 0.55);
+}
+
+.approval-route-slot:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.approval-route-slot-body--current {
+  background: #eef4f8;
+}
+
+/* ── 참조 ── */
+.approval-route-ref-layout {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.approval-route-ref-table {
+  width: 100%;
+  max-width: 100%;
+}
+
+.approval-route-ref-head {
+  display: grid;
+  grid-template-columns: 2.25rem minmax(0, 1.2fr) 3.75rem minmax(0, 1fr);
+  gap: 0;
+  align-items: stretch;
+  width: 100%;
+  padding: 0;
+  background: #eef4f8;
+  border-bottom: var(--route-cell-divider);
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #1e293b;
+}
+
+.approval-route-ref-head > span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.4rem 0.45rem;
+  text-align: center;
+  border-right: var(--route-cell-divider);
+  box-sizing: border-box;
+}
+
+.approval-route-ref-head > span:last-child {
+  border-right: none;
+}
+
+.approval-route-ref-empty {
+  padding: 0.7rem 0.9rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #64748b;
+  white-space: nowrap;
+  background: #f8fbfd;
+  min-width: 10rem;
+}
+
+.approval-route-ref-rows {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.approval-route-ref-row {
+  display: grid;
+  grid-template-columns: 2.25rem minmax(0, 1.2fr) 3.75rem minmax(0, 1fr);
+  gap: 0;
+  align-items: stretch;
+  width: 100%;
+  padding: 0;
+  border-bottom: var(--route-cell-divider);
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #0f172a;
+  background: #fff;
+}
+
+.approval-route-ref-row > span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.45rem 0.45rem;
+  text-align: center;
+  border-right: var(--route-cell-divider);
+  box-sizing: border-box;
+  min-height: 2.35rem;
+}
+
+.approval-route-ref-row > span:last-child {
+  border-right: none;
+}
+
+.approval-route-ref-row:last-child {
+  border-bottom: none;
+}
+
+.approval-route-ref-row:hover {
+  background: #f8fbfd;
+}
+
+.approval-route-ref-no {
+  color: #475569;
+}
+
+.approval-route-ref-name {
+  font-weight: 700;
+}
+
+.approval-route-ref-status {
+  color: #2c6485;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.approval-route-ref-dept {
+  color: #475569;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+/* ── 문서 상단: 기안일(좌) · 문서번호(우) ── */
+.approval-doc-corner-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
+  position: relative;
+  z-index: 1;
+}
+
+.approval-doc-corner-date,
+.approval-doc-corner-docno {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.approval-doc-corner-docno {
+  justify-content: flex-end;
+  text-align: right;
+  font-family: ui-monospace, 'JetBrains Mono', monospace;
+  font-weight: 700;
+  color: #0c4a6e;
+}
+
+.approval-doc-corner-label {
+  font-size: 0.6875rem;
+  font-weight: 800;
+  color: #64748b;
+  letter-spacing: 0.02em;
+}
+
+@media (max-width: 640px) {
+  .approval-doc-corner-meta {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.35rem;
+  }
+
+  .approval-doc-corner-docno {
+    justify-content: flex-start;
+    text-align: left;
+  }
+}
+
+/* ── 기안자 정보 미니 시트 (form/detail 공통) ── */
+.approval-doc-meta-sheet {
+  --approval-sheet-line: #a8c4d8;
+  --approval-sheet-line-strong: #5a8fb0;
+  --approval-sheet-label-w: 6.25rem;
+  --approval-sheet-grid-cols: var(--approval-sheet-label-w) minmax(0, 1fr) var(--approval-sheet-label-w) minmax(0, 1fr);
+  border: 2px solid var(--approval-sheet-line-strong);
+  background: #fff;
+  overflow: hidden;
+  margin-bottom: 1.5rem;
+}
+
+.approval-doc-meta-sheet-head {
+  min-height: 2.65rem;
+  padding: 0.4rem 0.75rem;
+  background: #5a8fb0;
+  border-bottom: 2px solid var(--approval-sheet-line-strong);
+  font-size: 0.875rem;
+  font-weight: 800;
+  color: #fff;
+  text-align: center;
+}
+
+.approval-form-meta-block.approval-doc-meta-sheet,
+.approval-detail-meta-block.approval-doc-meta-sheet {
+  margin-bottom: 1.5rem;
+}
+
+.approval-form-meta-list,
+.approval-detail-meta-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.approval-form-meta-row,
+.approval-detail-meta-row {
+  display: grid;
+  grid-template-columns: var(--approval-sheet-grid-cols);
+  min-height: 2.75rem;
+  border-bottom: 2px solid var(--approval-sheet-line);
+  align-items: stretch;
+}
+
+.approval-form-meta-row:last-child,
+.approval-detail-meta-row:last-child {
+  border-bottom: none;
+}
+
+.approval-form-meta-value:nth-child(2),
+.approval-detail-meta-value:nth-child(2) {
+  border-right: 2px solid var(--approval-sheet-line);
+}
+
+.approval-form-meta-label,
+.approval-detail-meta-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8125rem;
+  font-weight: 800;
+  color: #1e293b;
+  background: #eef4f8;
+  border-right: 2px solid var(--approval-sheet-line);
+  text-align: center;
+}
+
+.approval-form-meta-value,
+.approval-detail-meta-value {
+  display: flex;
+  align-items: center;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #0f172a;
+  background: #fff;
+}
+
+.approval-form-meta-value--mono,
+.approval-detail-meta-value--mono {
+  font-family: ui-monospace, 'JetBrains Mono', monospace;
+  color: #0c4a6e;
+  font-weight: 700;
+}
+
+.approval-form-meta-row:hover .approval-form-meta-value,
+.approval-detail-meta-row:hover .approval-detail-meta-value {
+  background: #f8fbfd;
+}
+
+.approval-route-board--no-agreement:not(.approval-route-board--no-reference) {
+  grid-template-areas:
+    'reference approval-panel'
+    'reference approval-panel';
+}
+
+.approval-route-board--no-agreement:not(.approval-route-board--no-reference) .approval-route-panel--reference {
+  grid-row: 1 / -1;
+}
+
+.approval-route-board--no-reference:not(.approval-route-board--no-agreement) {
+  grid-template-areas:
+    'agreement approval-panel'
+    'agreement approval-panel';
+}
+
+.approval-route-board--no-reference:not(.approval-route-board--no-agreement) .approval-route-panel--agreement {
+  grid-row: 1 / -1;
+}
+
+.approval-route-board--only-approval {
+  grid-template-columns: 1fr;
+  grid-template-areas: 'approval-panel';
+}
+
+.approval-route-board--only-approval .approval-route-panel--approval {
+  justify-self: end;
+}
+
+.approval-route-panel--pick-only .approval-route-panel-head {
+  border-bottom: none;
+}
+
+@media (max-width: 768px) {
+  .approval-route-board {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      'approval-panel'
+      'agreement'
+      'reference';
+    column-gap: 0;
+  }
+
+  .approval-route-panel--approval {
+    grid-row: auto;
+  }
+
+  .approval-route-board--no-agreement:not(.approval-route-board--no-reference) .approval-route-panel--reference,
+  .approval-route-board--no-reference:not(.approval-route-board--no-agreement) .approval-route-panel--agreement {
+    grid-row: auto;
+  }
+
+  .approval-route-panel--agreement,
+  .approval-route-panel--approval,
+  .approval-route-panel--reference,
+  .approval-route-panel--pick-only {
+    justify-self: stretch;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .approval-route-approval-table,
+  .approval-route-slots,
+  .approval-route-ref-layout {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  .approval-route-board {
+    --route-slot-w: 4.25rem;
+    --route-slot-body-h: 3rem;
+  }
+
+  .approval-doc-meta-sheet {
+    --approval-sheet-label-w: 5.75rem;
+  }
+
+  .approval-route-band-cell:first-child {
+    flex: 0 0 var(--route-slot-w);
+    width: var(--route-slot-w);
+  }
+
+  .approval-form-meta-row,
+  .approval-detail-meta-row {
+    grid-template-columns: var(--approval-sheet-label-w) minmax(0, 1fr);
+  }
+
+  .approval-form-meta-value:nth-child(2),
+  .approval-detail-meta-value:nth-child(2) {
+    border-right: none;
+  }
+
+  .approval-route-ref-row {
+    grid-template-columns: 2rem minmax(0, 1fr) 3.25rem minmax(0, 1fr);
+  }
+
+  .approval-route-ref-head {
+    grid-template-columns: 2rem minmax(0, 1fr) 3.25rem minmax(0, 1fr);
+  }
+
+  .approval-route-ref-row > span {
+    padding: 0.38rem 0.35rem;
+  }
+}

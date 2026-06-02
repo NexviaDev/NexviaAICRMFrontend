@@ -1,0 +1,308 @@
+/* 엑셀형 미니 시트 — opportunity-modal opp-basic-info-sheet (선명한 텍스트) */
+
+.approval-sheet {
+  --approval-sheet-line: #a8c4d8;
+  --approval-sheet-line-strong: #5a8fb0;
+  --approval-sheet-label-w: 6.25rem;
+  --approval-sheet-grid-cols: var(--approval-sheet-label-w) minmax(0, 1fr) var(--approval-sheet-label-w) minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  border: 2px solid var(--approval-sheet-line-strong);
+  border-radius: 0;
+  overflow: hidden;
+  background: #fff;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* 지출결의서: 첫 행 sticky 헤더가 부모 overflow에 막히지 않도록 예외 처리 */
+.approval-sheet--expense-sticky {
+  overflow: visible;
+}
+
+.approval-sheet--expense-sticky .approval-sheet-body {
+  overflow: visible;
+}
+
+.approval-sheet--expense-sticky .approval-sheet-head {
+  position: sticky;
+  top: 0;
+  z-index: 120;
+}
+
+.approval-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 2.65rem;
+  padding: 0.4rem 0.75rem;
+  background: #5a8fb0;
+  border-bottom: 2px solid var(--approval-sheet-line-strong);
+  color: #fff;
+}
+
+.approval-sheet-head-title {
+  flex: 1;
+  text-align: center;
+  font-size: 0.875rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: #fff;
+}
+
+.approval-sheet-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.approval-sheet-row {
+  display: grid;
+  grid-template-columns: var(--approval-sheet-grid-cols);
+  min-height: 2.75rem;
+  border-bottom: 2px solid var(--approval-sheet-line);
+  align-items: stretch;
+}
+
+.approval-sheet-row .approval-sheet-label {
+  grid-column: 1;
+}
+
+.approval-sheet-row .approval-sheet-cell {
+  grid-column: 2 / -1;
+}
+
+.approval-sheet-row:last-child {
+  border-bottom: none;
+}
+
+.approval-sheet-pair-row {
+  display: grid;
+  grid-template-columns: var(--approval-sheet-grid-cols);
+  min-height: 2.75rem;
+  border-bottom: 2px solid var(--approval-sheet-line);
+  align-items: stretch;
+}
+
+.approval-sheet-pair-row:last-child {
+  border-bottom: none;
+}
+
+.approval-sheet-pair-row .approval-sheet-cell:nth-child(2) {
+  border-right: 2px solid var(--approval-sheet-line);
+}
+
+.approval-sheet-pair-row--wide {
+  grid-template-columns: var(--approval-sheet-grid-cols);
+}
+
+.approval-sheet-pair-row--wide .approval-sheet-label {
+  grid-column: 1;
+}
+
+.approval-sheet-pair-row--wide .approval-sheet-cell {
+  grid-column: 2 / -1;
+  border-right: none;
+}
+
+.approval-sheet-row:hover .approval-sheet-cell,
+.approval-sheet-pair-row:hover .approval-sheet-cell {
+  background: #f8fbfd;
+}
+
+.approval-sheet-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8125rem;
+  font-weight: 800;
+  color: #1e293b;
+  background: #eef4f8;
+  border-right: 2px solid var(--approval-sheet-line);
+  letter-spacing: -0.015em;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.approval-sheet-cell {
+  display: flex;
+  align-items: stretch;
+  padding: 0;
+  min-width: 0;
+  background: #fff;
+}
+
+.approval-sheet-cell:focus-within {
+  box-shadow: inset 0 0 0 2px rgba(90, 143, 176, 0.45);
+  z-index: 1;
+}
+
+.approval-sheet-field {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  min-height: 2.75rem;
+  margin: 0;
+  padding: 0.4rem 0.65rem;
+  box-sizing: border-box;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #0f172a;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.approval-sheet-field--multiline {
+  align-items: flex-start;
+  min-height: 4rem;
+  padding-top: 0.5rem;
+  line-height: 1.5;
+}
+
+.approval-sheet-field--empty {
+  color: #64748b;
+  font-weight: 500;
+}
+
+.approval-sheet-cell .approval-form-input,
+.approval-sheet-cell .approval-form-select,
+.approval-sheet-cell .approval-form-textarea {
+  border: none;
+  border-radius: 0;
+  background: #fff;
+  min-height: 2.75rem;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #0f172a;
+  box-shadow: none;
+}
+
+.approval-sheet-cell .approval-form-input::placeholder,
+.approval-sheet-cell .approval-form-textarea::placeholder {
+  color: #64748b;
+  font-weight: 500;
+  opacity: 1;
+}
+
+.approval-sheet-cell .approval-form-input:focus,
+.approval-sheet-cell .approval-form-select:focus,
+.approval-sheet-cell .approval-form-textarea:focus {
+  outline: none;
+  box-shadow: none;
+  background: #fff;
+}
+
+.approval-sheet-cell .approval-form-select {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.approval-sheet-cell .approval-form-textarea {
+  min-height: 5rem;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.approval-sheet-cell .approval-form-date-range {
+  padding: 0.4rem 0.65rem;
+  width: 100%;
+  align-items: center;
+}
+
+.approval-sheet-cell .approval-form-date-wrap {
+  min-width: 8rem;
+}
+
+.approval-sheet-cell .approval-form-date-wrap .approval-form-input {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.approval-sheet-cell .approval-form-balance-box {
+  margin: 0.4rem 0.65rem;
+  width: calc(100% - 1.3rem);
+  border-radius: 0.35rem;
+  min-height: 2.15rem;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.approval-sheet-cell .approval-form-balance-box strong {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.approval-sheet-cell .approval-form-time-hint,
+.approval-sheet-cell .approval-form-days-note {
+  margin: 0 0.65rem 0.5rem;
+  width: calc(100% - 1.3rem);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+.approval-sheet-cell .approval-form-days-badge {
+  font-size: 0.8125rem;
+  font-weight: 800;
+  color: #004666;
+}
+
+.approval-sheet-cell .approval-form-date-sep {
+  color: #334155;
+  font-weight: 800;
+  font-size: 0.875rem;
+}
+
+.approval-sheet-cell-inner {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .approval-sheet {
+    --approval-sheet-label-w: 5.75rem;
+  }
+
+  .approval-sheet-row,
+  .approval-sheet-pair-row,
+  .approval-sheet-pair-row--wide {
+    grid-template-columns: var(--approval-sheet-label-w) minmax(0, 1fr);
+  }
+
+  .approval-sheet-row .approval-sheet-cell,
+  .approval-sheet-pair-row--wide .approval-sheet-cell {
+    grid-column: 2;
+  }
+
+  .approval-sheet-pair-row .approval-sheet-cell:nth-child(2) {
+    border-right: none;
+  }
+
+  .approval-sheet-label {
+    font-size: 0.75rem;
+    padding: 0.35rem 0.45rem;
+  }
+
+  .approval-sheet-field,
+  .approval-sheet-cell .approval-form-input,
+  .approval-sheet-cell .approval-form-select,
+  .approval-sheet-cell .approval-form-textarea {
+    font-size: 0.8125rem;
+  }
+}

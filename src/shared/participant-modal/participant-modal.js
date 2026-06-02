@@ -10,6 +10,16 @@ function getAuthHeader() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+function memberToPickerRow(m) {
+  const deptId = String(m.companyDepartment || m.department || '').trim();
+  const deptLabel = String(m.departmentDisplay || '').trim();
+  return {
+    userId: m._id,
+    name: m.name || m.email,
+    department: deptLabel || deptId
+  };
+}
+
 export default function ParticipantModal({
   teamMembers,
   selected,
@@ -121,7 +131,7 @@ export default function ParticipantModal({
       for (const m of directoryMembers) {
         const deptId = String(m.companyDepartment || '').trim();
         if (!deptId || !allowed.has(deptId)) continue;
-        map.set(String(m._id), { userId: m._id, name: m.name || m.email });
+        map.set(String(m._id), memberToPickerRow(m));
       }
       return Array.from(map.values());
     });
@@ -160,7 +170,7 @@ export default function ParticipantModal({
     setLocalSelected((prev) => {
       const map = new Map(prev.map((p) => [String(p.userId), p]));
       for (const m of filtered) {
-        map.set(String(m._id), { userId: m._id, name: m.name || m.email });
+        map.set(String(m._id), memberToPickerRow(m));
       }
       return Array.from(map.values());
     });
@@ -180,13 +190,13 @@ export default function ParticipantModal({
           const m = filtered[i];
           if (!m) continue;
           const mid = String(m._id);
-          if (willCheck) selectedMap.set(mid, { userId: m._id, name: m.name || m.email });
+          if (willCheck) selectedMap.set(mid, memberToPickerRow(m));
           else selectedMap.delete(mid);
         }
       } else if (exists) {
         selectedMap.delete(targetId);
       } else {
-        selectedMap.set(targetId, { userId: member._id, name: member.name || member.email });
+        selectedMap.set(targetId, memberToPickerRow(member));
       }
       return Array.from(selectedMap.values());
     });

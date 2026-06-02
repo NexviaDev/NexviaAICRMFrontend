@@ -356,6 +356,7 @@ input, select, textarea {
 
 .customer-companies-page .data-table tbody td .status-badge,
 .customer-company-employees-page .data-table tbody td .status-badge,
-.product-list-page .data-table tbody td .status-badge {
+.product-list-page .data-table tbody td .status-badge,
+.e-approval-page .data-table tbody td .status-badge {
   font-size: 0.875rem;
 }

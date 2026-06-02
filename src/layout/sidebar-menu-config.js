@@ -21,6 +21,7 @@ export const SIDEBAR_SUBMENU_ITEMS = [
   { to: '/dashboard', icon: 'dashboard', label: '대시보드', category: 'inhouse' },
   { to: '/company-overview', icon: 'domain', label: '사내 현황', category: 'inhouse' },
   { to: '/meeting-minutes', icon: 'event_note', label: '회의 일지', category: 'inhouse' },
+  { to: '/e-approval', icon: 'approval', label: '전자결재', category: 'inhouse' },
   { to: '/reports/work-report', icon: 'assignment', label: '직원 업무 보고', category: 'inhouse' },
   { to: '/product-list', icon: 'inventory_2', label: '제품 리스트', category: 'inhouse' },
   { to: '/kpi', icon: 'analytics', label: '성과분석', category: 'inhouse' },

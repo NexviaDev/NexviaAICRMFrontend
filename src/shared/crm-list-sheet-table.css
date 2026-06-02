@@ -4,7 +4,8 @@
  */
 .customer-companies-page,
 .customer-company-employees-page,
-.product-list-page {
+.product-list-page,
+.e-approval-page {
   --crm-list-sheet-header: #4e79a7;
   --crm-list-sheet-stripe: #eef4fa;
   --crm-list-sheet-border: rgba(78, 121, 167, 0.14);

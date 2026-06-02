@@ -1,0 +1,840 @@
+/* approval-form-modal — Sample Design approval-form-modal.html (Etheric Flow, no gradients) */
+
+.approval-form-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 0;
+  overflow: hidden;
+  background: #f2f4f6;
+}
+
+.approval-form-panel {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  background: #f2f4f6;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-family: 'Segoe UI', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+}
+
+.approval-form-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1.25rem;
+  background: rgba(255, 255, 255, 0.88);
+  border-bottom: 1px solid rgba(212, 219, 223, 0.45);
+}
+
+.approval-form-topbar-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #2c6485;
+  letter-spacing: -0.02em;
+}
+
+.approval-form-topbar-sub {
+  font-size: 0.82rem;
+  color: #43474e;
+  font-weight: 500;
+}
+
+.approval-form-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.approval-form-topbar-divider {
+  width: 1px;
+  height: 1rem;
+  background: #c4c6cf;
+}
+
+.approval-form-close {
+  border: none;
+  background: transparent;
+  color: #74777f;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.approval-form-close:hover:not(:disabled) {
+  background: #f7f9fb;
+  color: #002045;
+}
+
+.approval-form-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1.25rem 1.25rem 0;
+}
+
+.approval-form-body--expense {
+  padding-top: 0;
+}
+
+.approval-form-error {
+  margin: 0 0 0.85rem;
+  padding: 0.6rem 0.85rem;
+  border-radius: 0.5rem;
+  background: #ffebee;
+  color: #9a4545;
+  font-size: 0.82rem;
+  border: 1px solid rgba(186, 26, 26, 0.12);
+}
+
+.approval-form-type-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 1rem;
+}
+
+.approval-form-type-btn {
+  border: 1px solid #c4c6cf;
+  background: #fff;
+  color: #43474e;
+  border-radius: 999px;
+  padding: 0.38rem 0.95rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.approval-form-type-btn.is-active {
+  border-color: #39b8fd;
+  background: #e8f6ff;
+  color: #004666;
+}
+
+.approval-form-doc {
+  position: relative;
+  background: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  border-radius: 0.75rem;
+  padding: 2rem 1.75rem 1.5rem;
+  box-shadow: 0 12px 32px rgba(26, 54, 93, 0.05);
+  overflow: hidden;
+}
+
+.approval-form-doc--expense-sticky {
+  overflow: visible;
+  padding-top: 1.25rem;
+}
+
+.approval-form-doc--expense-sticky .approval-form-meta-block.approval-doc-meta-sheet {
+  margin-bottom: 1rem;
+}
+
+.approval-form-doc--expense-sticky .approval-sheet--expense-sticky .approval-sheet-head {
+  position: sticky;
+  top: 0;
+  z-index: 220;
+  margin-bottom: 0;
+  background: #5a8fb0;
+  box-shadow: 0 2px 0 #5a8fb0;
+}
+
+.approval-form-doc--expense-sticky .approval-expense-lines-head {
+  position: sticky;
+  top: 2.65rem;
+  z-index: 210;
+  margin-top: -2px;
+  background: #eef4f8;
+}
+
+.approval-form-doc-glow {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 8rem;
+  height: 8rem;
+  background: rgba(57, 184, 253, 0.12);
+  filter: blur(48px);
+  border-radius: 999px;
+  margin: -4rem -4rem 0 0;
+  pointer-events: none;
+}
+
+.approval-form-doc-title-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto 1.25rem;
+  position: relative;
+}
+
+.approval-form-doc-title {
+  margin: 0;
+  font-size: clamp(1.5rem, 4vw, 2rem);
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.025em;
+}
+
+.approval-form-doc-title-bar {
+  width: calc(100% + 0.75rem);
+  min-width: 4rem;
+  height: 0.25rem;
+  background: #39b8fd;
+  border-radius: 999px;
+  margin: 0.85rem 0 0;
+}
+
+.approval-form-header-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+@media (max-width: 768px) {
+  .approval-form-header-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.approval-form-approval-wrap {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.approval-form-approval-box {
+  display: flex;
+  border: 1px solid #e0e3e5;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  min-height: 8rem;
+  max-width: 100%;
+}
+
+.approval-form-approval-side-label {
+  width: 2rem;
+  background: #e6e8ea;
+  border-right: 1px solid #e0e3e5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  writing-mode: vertical-lr;
+  font-size: 0.62rem;
+  font-weight: 800;
+  color: #74777f;
+  letter-spacing: 0.35em;
+  flex-shrink: 0;
+}
+
+.approval-form-approval-slots {
+  display: flex;
+  overflow-x: auto;
+}
+
+.approval-form-approval-slot {
+  width: 5.5rem;
+  min-width: 5.5rem;
+  border-right: 1px solid #e0e3e5;
+  display: flex;
+  flex-direction: column;
+  text-align: center;
+}
+
+.approval-form-approval-slot:last-child {
+  border-right: none;
+}
+
+.approval-form-approval-slot-head {
+  height: 1.5rem;
+  background: rgba(224, 227, 229, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #74777f;
+}
+
+.approval-form-approval-slot-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0.25rem;
+  font-size: 0.72rem;
+  color: #43474e;
+  word-break: keep-all;
+}
+
+.approval-form-approval-slot-body--drafter {
+  flex-direction: column;
+  gap: 0.15rem;
+  color: #191c1e;
+  font-weight: 600;
+}
+
+.approval-form-approval-slot-foot {
+  height: 1.25rem;
+  border-top: 1px solid #e0e3e5;
+  font-size: 0.58rem;
+  color: #74777f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.approval-form-approval-empty {
+  width: 5.5rem;
+  min-width: 5.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  font-size: 0.68rem;
+  color: #74777f;
+  text-align: center;
+}
+
+.approval-form-section {
+  margin-bottom: 2rem;
+}
+
+.approval-form-section--expense {
+  position: relative;
+  z-index: 2;
+}
+
+.approval-form-section-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.85rem;
+}
+
+.approval-form-section-accent {
+  width: 0.25rem;
+  height: 1rem;
+  background: #1a365d;
+  border-radius: 999px;
+}
+
+.approval-form-section-title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.approval-form-info-card {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  padding: 1.25rem;
+  background: #f7f9fb;
+  border: 1px solid rgba(196, 198, 207, 0.35);
+  border-radius: 0.75rem;
+}
+
+@media (max-width: 640px) {
+  .approval-form-info-card {
+    grid-template-columns: 1fr;
+  }
+}
+
+.approval-form-info-item label {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #74777f;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.25rem;
+}
+
+.approval-form-info-item p {
+  margin: 0;
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: #191c1e;
+}
+
+.approval-form-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.approval-form-fields--cards {
+  gap: 0.85rem;
+}
+
+.approval-form-field-card {
+  padding: 0.85rem 1rem;
+  background: #f7f9fb;
+  border: 1px solid rgba(196, 198, 207, 0.4);
+  border-radius: 0.75rem;
+}
+
+.approval-form-field-card--wide {
+  grid-column: 1 / -1;
+}
+
+.approval-form-field-card--title {
+  margin-bottom: 0.25rem;
+  border-color: rgba(57, 184, 253, 0.35);
+  background: rgba(57, 184, 253, 0.06);
+}
+
+.approval-form-field-card label {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #74777f;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 0.45rem;
+}
+
+.approval-form-field-card .approval-form-input,
+.approval-form-field-card .approval-form-select,
+.approval-form-field-card .approval-form-textarea {
+  background: #fff;
+}
+
+.approval-form-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 640px) {
+  .approval-form-row-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.approval-form-field label {
+  display: block;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #43474e;
+  margin-bottom: 0.45rem;
+}
+
+.approval-form-input,
+.approval-form-select,
+.approval-form-textarea {
+  width: 100%;
+  border: 1px solid #c4c6cf;
+  border-radius: 0.5rem;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  background: #fff;
+  color: #0f172a;
+}
+
+.approval-form-input::placeholder,
+.approval-form-textarea::placeholder {
+  color: #64748b;
+  font-weight: 500;
+  opacity: 1;
+}
+
+.approval-form-input:focus,
+.approval-form-select:focus,
+.approval-form-textarea:focus {
+  outline: none;
+  border-color: #39b8fd;
+  box-shadow: 0 0 0 4px rgba(57, 184, 253, 0.12);
+  background: #fff;
+}
+
+.approval-form-input--amount {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+.approval-form-input:disabled {
+  background: #eceef0;
+  color: #596064;
+  cursor: not-allowed;
+}
+
+.approval-form-textarea {
+  min-height: 5.5rem;
+  resize: vertical;
+  border-radius: 0.75rem;
+}
+
+.approval-form-date-range {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.approval-form-date-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 9rem;
+}
+
+.approval-form-date-wrap .approval-form-date-icon-btn {
+  position: absolute;
+  right: 0.65rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1.6rem;
+  height: 1.6rem;
+  border: none;
+  border-radius: 0.35rem;
+  padding: 0;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.approval-form-date-wrap .approval-form-date-icon-btn .material-symbols-outlined {
+  color: #74777f;
+  font-size: 1.1rem;
+}
+
+.approval-form-date-wrap .approval-form-date-icon-btn:hover:not(:disabled) {
+  background: rgba(116, 119, 127, 0.12);
+}
+
+.approval-form-date-wrap .approval-form-date-icon-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.approval-form-date-wrap .approval-form-input {
+  padding-right: 2.25rem;
+}
+
+.approval-form-native-picker {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.approval-form-date-sep {
+  color: #74777f;
+  font-weight: 600;
+}
+
+.approval-form-days-badge {
+  white-space: nowrap;
+  padding: 0.45rem 0.85rem;
+  background: rgba(57, 184, 253, 0.12);
+  color: #006591;
+  font-weight: 800;
+  font-size: 0.82rem;
+  border-radius: 0.5rem;
+}
+
+.approval-form-balance-box {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.65rem 0.85rem;
+  background: rgba(214, 227, 255, 0.45);
+  border: 1px solid #d6e3ff;
+  border-radius: 0.5rem;
+  color: #2d476f;
+  font-size: 0.9rem;
+}
+
+.approval-form-balance-box strong {
+  font-size: 1.1rem;
+  color: #002045;
+}
+
+.approval-form-time-hint {
+  margin: 0.45rem 0 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  background: #e8f6ff;
+  color: #004666;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border: 1px solid rgba(57, 184, 253, 0.25);
+}
+
+.approval-form-days-note {
+  margin: 0.35rem 0 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #475569;
+}
+
+.approval-form-line-section {
+  padding: 1rem;
+  background: #f7f9fb;
+  border: 1px dashed #c4c6cf;
+  border-radius: 0.75rem;
+}
+
+.approval-form-line-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.approval-form-line-title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.approval-form-line-add {
+  border: 1px solid #39b8fd;
+  background: #fff;
+  color: #006591;
+  border-radius: 999px;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.approval-form-line-add:hover:not(:disabled) {
+  background: #e8f6ff;
+}
+
+.approval-form-line-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.approval-form-line-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.55rem;
+  background: #fff;
+  border: 1px solid #e0e3e5;
+  border-radius: 999px;
+  font-size: 0.8rem;
+}
+
+.approval-form-line-order {
+  width: 1.35rem;
+  height: 1.35rem;
+  border-radius: 999px;
+  background: #d6e3ff;
+  color: #1a365d;
+  font-size: 0.68rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.approval-form-line-name {
+  color: #191c1e;
+  font-weight: 600;
+}
+
+.approval-form-line-dept {
+  color: #74777f;
+  font-size: 0.72rem;
+}
+
+.approval-form-line-remove {
+  border: none;
+  background: transparent;
+  color: #9a4545;
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+}
+
+.approval-form-empty-line {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #74777f;
+}
+
+.approval-form-declaration {
+  padding: 2rem 0 1rem;
+  text-align: center;
+  border-top: 1px solid #e0e3e5;
+  margin-top: 1.5rem;
+}
+
+.approval-form-declaration p {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.65;
+  color: #43474e;
+}
+
+.approval-form-declaration-date {
+  margin-top: 1.25rem !important;
+  font-weight: 700;
+  color: #191c1e;
+}
+
+.approval-form-declaration-sign {
+  margin-top: 0.35rem !important;
+  font-size: 1rem !important;
+  font-weight: 700;
+  color: #002045;
+}
+
+.approval-form-meta-row--notes {
+  grid-template-columns: var(--approval-sheet-label-w) minmax(0, 1fr) !important;
+  min-height: 6.25rem;
+}
+
+.approval-form-meta-row--notes .approval-form-meta-label {
+  border-right: 2px solid var(--approval-sheet-line, #a8c4d8);
+}
+
+.approval-form-meta-value--notes {
+  align-items: stretch;
+  padding: 0;
+}
+
+.approval-form-meta-notes-textarea {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  resize: none;
+  box-sizing: border-box;
+  padding: 0.6rem 0.65rem;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.approval-form-meta-notes-textarea:focus {
+  box-shadow: inset 0 0 0 2px rgba(57, 184, 253, 0.18);
+}
+
+.approval-form-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 1.25rem 1.75rem 1.5rem;
+  background: #fff;
+  border-top: 1px solid #e0e3e5;
+}
+
+.approval-form-btn-cancel,
+.approval-form-btn-draft,
+.approval-form-btn-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.65rem 1.5rem;
+  border-radius: 999px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.approval-form-btn-draft {
+  background: #fff;
+  border-color: #74777f;
+  color: #191c1e;
+}
+
+.approval-form-btn-draft:hover:not(:disabled) {
+  background: #eceef0;
+}
+
+.approval-form-btn-cancel {
+  background: #fff;
+  border-color: #c4c6cf;
+  color: #74777f;
+}
+
+.approval-form-btn-cancel:hover:not(:disabled) {
+  color: #ba1a1a;
+  border-color: #ba1a1a;
+}
+
+.approval-form-btn-submit {
+  background: #002045;
+  color: #fff;
+  font-weight: 700;
+  padding-left: 1.75rem;
+  padding-right: 1.75rem;
+  box-shadow: 0 8px 20px rgba(0, 32, 69, 0.18);
+}
+
+.approval-form-btn-submit:hover:not(:disabled) {
+  background: #1a365d;
+}
+
+.approval-form-btn-cancel:disabled,
+.approval-form-btn-draft:disabled,
+.approval-form-btn-submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+  .approval-form-doc {
+    padding: 1.25rem 1rem 1rem;
+  }
+
+  .approval-form-foot {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .approval-form-btn-cancel,
+  .approval-form-btn-draft,
+  .approval-form-btn-submit {
+    width: 100%;
+  }
+}

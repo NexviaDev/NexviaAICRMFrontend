@@ -37,6 +37,10 @@ export const LIST_IDS = {
   HOME_DASHBOARD: 'homeDashboard',
   /** 결과 드롭존 목록 표 열 순서 — listTemplates.dropZoneListModal { columnOrder } */
   DROP_ZONE_LIST_MODAL: 'dropZoneListModal',
+  /** 전자결재 지출 결의서 표 컬럼 순서 — listTemplates.eApprovalExpenseLines.columnOrder */
+  E_APPROVAL_EXPENSE_LINES: 'eApprovalExpenseLines',
+  /** 사내 현황 직원 리스트 표 컬럼 순서 — listTemplates.companyOverviewEmployees.columnOrder */
+  COMPANY_OVERVIEW_EMPLOYEES: 'companyOverviewEmployees',
   /** 메일 작성 모달 AI 문장 다듬기 기본값 — listTemplates.emailComposeModal { guidedRewrite } */
   EMAIL_COMPOSE_MODAL: 'emailComposeModal'
 };
@@ -659,7 +663,7 @@ export async function patchListTemplate(listId, fields = {}) {
  * (신규 메뉴 누락·PWA 구버전 번들 이슈 완화)
  */
 /** 사이드바 기본 순서·구조를 다시 적용할 때마다 1 올림(저장된 순서 무시 = 초기화) */
-export const SIDEBAR_MENU_EPOCH = 8;
+export const SIDEBAR_MENU_EPOCH = 9;
 
 function dedupeRoutesPreserveOrder(paths) {
   const seen = new Set();
