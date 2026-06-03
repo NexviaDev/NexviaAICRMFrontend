@@ -6,6 +6,7 @@ import PipelineStagesManageModal from './pipeline-stages-manage-modal/pipeline-s
 import DropZoneListModal from './drop-zone-list-modal/drop-zone-list-modal';
 import './sales-pipeline.css';
 import './sales-pipeline-responsive.css';
+import './sales-pipeline-table-theme.css';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import ListTemplateModal from '@/components/list-template-modal/list-template-modal';
 import {
@@ -1068,7 +1069,7 @@ export default function SalesPipeline() {
   };
 
   return (
-    <div className="sp-container">
+    <div className={`sp-container${pipelineViewMode === 'table' ? ' sp-pipeline-page--table-view' : ''}`}>
       {/* Header */}
       <header className="sp-header">
         <div className="sp-header-brand">
@@ -1383,8 +1384,23 @@ export default function SalesPipeline() {
             </>
           ) : null}
 
-          <div className={`sp-board${pipelineViewMode === 'table' ? ' sp-board--table-view' : ''}`}>
-            {pipelineViewMode === 'kanban' ? (
+          {pipelineViewMode === 'table' ? (
+            <div className="sp-pipeline-table-view-root sp-board--table-view">
+              <SalesPipelineTablePanel
+                allOpportunities={allOpportunities}
+                pipelineListTemplate={pipelineListTemplate}
+                displayColumnKeys={pipelineDisplayColumnKeys}
+                stageForecastPercent={stageForecastPercent}
+                stageLabels={stageLabels}
+                canViewAdminContent={canViewAdminContent}
+                onOpenEdit={openEditModal}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+                onSaveColumnOrder={savePipelineTableColumnOrder}
+              />
+            </div>
+          ) : (
+          <div className="sp-board">
               <div className="sp-board-desktop">
                 <div className="sp-kanban">
                   {boardStages.map((stage) => {
@@ -1454,23 +1470,8 @@ export default function SalesPipeline() {
                   })}
                 </div>
               </div>
-            ) : (
-              <SalesPipelineTablePanel
-                allOpportunities={allOpportunities}
-                pipelineListTemplate={pipelineListTemplate}
-                displayColumnKeys={pipelineDisplayColumnKeys}
-                stageForecastPercent={stageForecastPercent}
-                stageLabels={stageLabels}
-                canViewAdminContent={canViewAdminContent}
-                onOpenEdit={openEditModal}
-                onDragStart={handleDragStart}
-                onDragEnd={handleDragEnd}
-                onSaveColumnOrder={savePipelineTableColumnOrder}
-              />
-            )}
 
             {/* Drop Zones — Won / Lost / 보류 */}
-            {pipelineViewMode === 'kanban' ? (
               <div className="sp-dropzones-section">
                 <div className="sp-dropzones">
                   {Object.entries(DROP_ZONE_CONFIG).map(([stage, cfg]) => {
@@ -1517,8 +1518,8 @@ export default function SalesPipeline() {
                   })}
                 </div>
               </div>
-            ) : null}
           </div>
+          )}
         </>
       )}
 

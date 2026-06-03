@@ -2164,32 +2164,31 @@
   overflow: hidden;
 }
 
+/* 가로·세로 스크롤을 패널 뷰포트(sp-dz-table-h-scroll) 한 곳에 — 세로 스크롤바가 표 맨 오른쪽이 아닌 화면 오른쪽 */
 .sp-dz-table-h-scroll {
   flex: 1;
   min-height: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  display: flex;
-  flex-direction: column;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .sp-dz-table-inner {
-  flex: 1;
-  min-height: 0;
-  min-width: min-content;
   display: flex;
   flex-direction: column;
+  min-width: min-content;
+  width: max-content;
 }
 
 .sp-dz-table-scroll {
-  flex: 1;
-  min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
+  flex: none;
+  overflow: visible;
   border-top: 1px solid #dbe4ea;
 }
 
 .sp-dz-table-totals-strip {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
   flex-shrink: 0;
   border-top: 2px solid #cbd5e1;
   background: rgba(236, 253, 245, 0.88);

@@ -8,6 +8,7 @@ import {
 } from '@/lib/sales-opportunity-schedule-labels';
 import { financeCustomFieldsColumnTitle } from '@/lib/sales-opportunity-finance-labels';
 import { resolvePipelineStageLabel } from '../pipeline-stage-labels';
+import './drop-zone-list-modal.css';
 
 export { resolvePipelineStageLabel };
 
@@ -18,6 +19,14 @@ function getAuthHeader() {
 
 /** 헤더 열 재정렬 드래그 (표 행 드래그와 구분) — 파이프라인 표에서 동일 MIME 사용 */
 export const DZ_COL_DRAG_MIME = 'application/x-sp-dz-col-reorder';
+
+function isDzColHandleReorderDrag(dataTransfer) {
+  try {
+    return Boolean(dataTransfer?.types && Array.from(dataTransfer.types).includes(DZ_COL_DRAG_MIME));
+  } catch {
+    return false;
+  }
+}
 
 /** colgroup 측정 시 데이터 열 최소 너비(px) — 말줄임 없이 내용이 더 넓게 보이도록 */
 export const DZ_COL_MIN_WIDTH_DATA_PX = 104;
@@ -193,34 +202,8 @@ function getOppFilterInstant(opp) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function matchesDateRange(opp, dateStart, dateEnd) {
-  if (!dateStart && !dateEnd) return true;
-  const inst = getOppFilterInstant(opp);
-  if (!inst) return false;
-  const ms = inst.getTime();
-
-  let startStr = dateStart;
-  let endStr = dateEnd;
-  if (startStr && endStr && startStr > endStr) {
-    const t = startStr;
-    startStr = endStr;
-    endStr = t;
-  }
-
-  if (startStr) {
-    const [y, m, d] = startStr.split('-').map(Number);
-    const startMs = new Date(y, m - 1, d, 0, 0, 0, 0).getTime();
-    if (ms < startMs) return false;
-  }
-  if (endStr) {
-    const [y, m, d] = endStr.split('-').map(Number);
-    const endMs = new Date(y, m - 1, d, 23, 59, 59, 999).getTime();
-    if (ms > endMs) return false;
-  }
-  return true;
-}
-
-function matchesYearMonth(opp, yearStr, monthPart) {
+/** 연도 + 월(다중). monthParts 비어 있으면 해당 연도 전체, 있으면 선택 월 중 하나라도 일치 */
+function matchesYearMonths(opp, yearStr, monthParts) {
   const rawY = String(yearStr ?? '').trim();
   if (rawY === '') return true;
   const y = parseInt(rawY, 10);
@@ -228,17 +211,32 @@ function matchesYearMonth(opp, yearStr, monthPart) {
   const inst = getOppFilterInstant(opp);
   if (!inst) return false;
   const ms = inst.getTime();
-  const mp = String(monthPart ?? '').trim();
-  if (!mp) {
+  const parts = Array.isArray(monthParts)
+    ? monthParts.map((p) => String(p ?? '').trim()).filter(Boolean)
+    : [];
+  if (parts.length === 0) {
     const startMs = new Date(y, 0, 1, 0, 0, 0, 0).getTime();
     const endMs = new Date(y, 11, 31, 23, 59, 59, 999).getTime();
     return ms >= startMs && ms <= endMs;
   }
-  const mo = parseInt(mp, 10);
-  if (mo < 1 || mo > 12) return false;
-  const startMs = new Date(y, mo - 1, 1, 0, 0, 0, 0).getTime();
-  const endMs = new Date(y, mo, 0, 23, 59, 59, 999).getTime();
-  return ms >= startMs && ms <= endMs;
+  for (const mp of parts) {
+    const mo = parseInt(mp, 10);
+    if (mo < 1 || mo > 12) continue;
+    const startMs = new Date(y, mo - 1, 1, 0, 0, 0, 0).getTime();
+    const endMs = new Date(y, mo, 0, 23, 59, 59, 999).getTime();
+    if (ms >= startMs && ms <= endMs) return true;
+  }
+  return false;
+}
+
+function formatMonthPickerSummary(yearStr, monthParts) {
+  if (!String(yearStr ?? '').trim()) return '연도 선택 후 이용';
+  const parts = Array.isArray(monthParts) ? monthParts : [];
+  if (parts.length === 0) return '전체 월';
+  if (parts.length === MONTH_SELECT_OPTIONS.length) return '1~12월 전체';
+  const labels = MONTH_SELECT_OPTIONS.filter((o) => parts.includes(o.value)).map((o) => o.label);
+  if (labels.length <= 4) return labels.join(', ');
+  return `${labels.length}개월 선택`;
 }
 
 function matchesLocalSearch(opp, q) {
@@ -1310,15 +1308,16 @@ export default function DropZoneListModal({
   onDragEnd
 }) {
   const [listSearch, setListSearch] = useState('');
-  const [dateStart, setDateStart] = useState('');
-  const [dateEnd, setDateEnd] = useState('');
   const [filterYear, setFilterYear] = useState(() => String(new Date().getFullYear()));
-  const [filterMonthPart, setFilterMonthPart] = useState('');
+  const [selectedMonthParts, setSelectedMonthParts] = useState([]);
   const [sortState, setSortState] = useState({ key: null, dir: null });
   const [columnFilters, setColumnFilters] = useState({});
   const [openFilterCol, setOpenFilterCol] = useState(null);
   const [colFilterSearch, setColFilterSearch] = useState('');
+  const [draggingColIdx, setDraggingColIdx] = useState(null);
+  const [dragOverColIdx, setDragOverColIdx] = useState(null);
   const filterPopoverRef = useRef(null);
+  const monthMasterCheckboxRef = useRef(null);
   const columnReorderBusyRef = useRef(false);
 
   const [persistedColumnOrder, setPersistedColumnOrder] = useState(() => readSavedDropZoneListColumnOrder());
@@ -1331,7 +1330,9 @@ export default function DropZoneListModal({
   const [scheduleFieldLabelByKey, setScheduleFieldLabelByKey] = useState({});
   const [allowedScheduleCustomDateKeys, setAllowedScheduleCustomDateKeys] = useState(() => new Set());
   const [colSettingsOpen, setColSettingsOpen] = useState(false);
+  const [monthPickerOpen, setMonthPickerOpen] = useState(false);
   const colSettingsWrapRef = useRef(null);
+  const monthPickerWrapRef = useRef(null);
   const columnSettingsBusyRef = useRef(false);
   const [columnSettingsSaving, setColumnSettingsSaving] = useState(false);
 
@@ -1340,10 +1341,8 @@ export default function DropZoneListModal({
 
   useEffect(() => {
     setListSearch('');
-    setDateStart('');
-    setDateEnd('');
     setFilterYear(String(new Date().getFullYear()));
-    setFilterMonthPart('');
+    setSelectedMonthParts([]);
     setSortState({ key: null, dir: null });
     setColumnFilters({});
     setOpenFilterCol(null);
@@ -1352,6 +1351,7 @@ export default function DropZoneListModal({
     setShowScheduleCustomDateColumns(readShowScheduleCustomDateColumns());
     setScheduleCustomDateColumnVisibility(readScheduleCustomDateColumnVisibility());
     setColSettingsOpen(false);
+    setMonthPickerOpen(false);
   }, [stageKey]);
 
   useEffect(() => {
@@ -1382,6 +1382,16 @@ export default function DropZoneListModal({
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
   }, [colSettingsOpen]);
+
+  useEffect(() => {
+    if (!monthPickerOpen) return;
+    const onDown = (e) => {
+      const el = monthPickerWrapRef.current;
+      if (el && !el.contains(e.target)) setMonthPickerOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [monthPickerOpen]);
 
   useEffect(() => {
     setColumnFilters((prev) => {
@@ -1418,10 +1428,9 @@ export default function DropZoneListModal({
       (items || []).filter(
         (opp) =>
           matchesLocalSearch(opp, listSearch) &&
-          matchesDateRange(opp, dateStart, dateEnd) &&
-          matchesYearMonth(opp, filterYear, filterMonthPart)
+          matchesYearMonths(opp, filterYear, selectedMonthParts)
       ),
-    [items, listSearch, dateStart, dateEnd, filterYear, filterMonthPart]
+    [items, listSearch, filterYear, selectedMonthParts]
   );
 
   const filteredByColumns = useMemo(
@@ -1437,10 +1446,24 @@ export default function DropZoneListModal({
     return arr;
   }, [filteredByColumns, sortState, forecastPercent]);
 
-  const isYmDefault = filterYear === defaultYearStr && filterMonthPart === '';
+  const isYmDefault = filterYear === defaultYearStr && selectedMonthParts.length === 0;
 
-  const filterMonth =
-    filterYear && filterMonthPart ? `${filterYear}-${filterMonthPart}` : '';
+  const allMonthsSelected =
+    Boolean(filterYear) && selectedMonthParts.length === MONTH_SELECT_OPTIONS.length;
+  const monthMasterIndeterminate =
+    Boolean(filterYear) &&
+    selectedMonthParts.length > 0 &&
+    selectedMonthParts.length < MONTH_SELECT_OPTIONS.length;
+
+  const monthPickerSummary = useMemo(
+    () => formatMonthPickerSummary(filterYear, selectedMonthParts),
+    [filterYear, selectedMonthParts]
+  );
+
+  useLayoutEffect(() => {
+    const el = monthMasterCheckboxRef.current;
+    if (el) el.indeterminate = monthMasterIndeterminate;
+  }, [monthMasterIndeterminate, allMonthsSelected]);
 
   /** 열 설정 체크박스: CustomFieldDefinition 에 있는 일정 키만 (고아 DB 키 제외) */
   const scheduleColumnKeyCandidates = useMemo(() => {
@@ -1473,27 +1496,49 @@ export default function DropZoneListModal({
   );
 
   const handleColumnHeaderDragStart = useCallback((e, colIdx) => {
-    if (e.target.closest('button')) {
-      e.preventDefault();
-      return;
-    }
+    e.stopPropagation();
+    setDraggingColIdx(colIdx);
+    setDragOverColIdx(null);
     e.dataTransfer.setData(DZ_COL_DRAG_MIME, String(colIdx));
     e.dataTransfer.effectAllowed = 'move';
   }, []);
 
-  const handleColumnHeaderDragOver = useCallback((e) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
+  const handleColumnHeaderDragEnd = useCallback(() => {
+    setDraggingColIdx(null);
+    setDragOverColIdx(null);
+  }, []);
+
+  const handleColumnHeaderDragOver = useCallback(
+    (e, colIdx) => {
+      if (!isDzColHandleReorderDrag(e.dataTransfer) && draggingColIdx == null) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = 'move';
+      if (colIdx !== draggingColIdx) setDragOverColIdx(colIdx);
+    },
+    [draggingColIdx]
+  );
+
+  const handleColumnHeaderDragLeave = useCallback((e) => {
+    if (!e.currentTarget.contains(e.relatedTarget)) setDragOverColIdx(null);
   }, []);
 
   const handleColumnHeaderDrop = useCallback(
     async (e, dropIdx) => {
       e.preventDefault();
+      e.stopPropagation();
+      setDragOverColIdx(null);
       if (columnReorderBusyRef.current) return;
       const raw = e.dataTransfer.getData(DZ_COL_DRAG_MIME);
       const fromIdx = Number(raw);
-      if (!Number.isFinite(fromIdx)) return;
-      if (fromIdx === dropIdx) return;
+      if (!Number.isFinite(fromIdx)) {
+        handleColumnHeaderDragEnd();
+        return;
+      }
+      if (fromIdx === dropIdx) {
+        handleColumnHeaderDragEnd();
+        return;
+      }
       const nextOrder = reorderColumnKeysAt(columnKeys, fromIdx, dropIdx);
       columnReorderBusyRef.current = true;
       setPersistedColumnOrder(nextOrder);
@@ -1504,9 +1549,10 @@ export default function DropZoneListModal({
         setPersistedColumnOrder(readSavedDropZoneListColumnOrder());
       } finally {
         columnReorderBusyRef.current = false;
+        handleColumnHeaderDragEnd();
       }
     },
-    [columnKeys]
+    [columnKeys, handleColumnHeaderDragEnd]
   );
 
   const rowsForFilterOptions = useMemo(
@@ -1704,29 +1750,36 @@ export default function DropZoneListModal({
     setListSearch(e.target.value);
   }, []);
 
-  const handleDateStartChange = useCallback((e) => {
-    setDateStart(e.target.value);
-  }, []);
-
-  const handleDateEndChange = useCallback((e) => {
-    setDateEnd(e.target.value);
-  }, []);
-
   const handleFilterYearChange = useCallback((e) => {
     const v = e.target.value;
     setFilterYear(v);
-    if (!v) setFilterMonthPart('');
+    if (!v) {
+      setSelectedMonthParts([]);
+      setMonthPickerOpen(false);
+    }
   }, []);
 
-  const handleFilterMonthPartChange = useCallback((e) => {
-    setFilterMonthPart(e.target.value);
+  const handleMonthMasterChange = useCallback((e) => {
+    if (e.target.checked) {
+      setSelectedMonthParts(MONTH_SELECT_OPTIONS.map((o) => o.value));
+    } else {
+      setSelectedMonthParts([]);
+    }
   }, []);
 
-  const clearDateRange = useCallback(() => {
-    setDateStart('');
-    setDateEnd('');
+  const handleMonthPartToggle = useCallback((part, checked) => {
+    setSelectedMonthParts((prev) => {
+      if (checked) {
+        return prev.includes(part) ? prev : [...prev, part].sort();
+      }
+      return prev.filter((p) => p !== part);
+    });
+  }, []);
+
+  const clearYearMonthFilter = useCallback(() => {
     setFilterYear(String(new Date().getFullYear()));
-    setFilterMonthPart('');
+    setSelectedMonthParts([]);
+    setMonthPickerOpen(false);
   }, []);
 
   const persistDropZoneColumnPrefs = useCallback(async (patch) => {
@@ -1788,12 +1841,12 @@ export default function DropZoneListModal({
             <span className="material-symbols-outlined sp-dz-list-modal-icon sp-dz-icon--fill" aria-hidden>
               {modalCfg.icon}
             </span>
-            <div>
+            <div className="sp-dz-list-modal-title-block">
               <h2 id="sp-dz-list-modal-title" className="sp-dz-list-modal-title">
                 {modalCfg.label}
               </h2>
               {Number.isFinite(forecastPercent) ? (
-                <p className="sp-dz-list-modal-sub">Forecast {forecastPercent}%</p>
+                <span className="sp-dz-list-modal-sub">Forecast {forecastPercent}%</span>
               ) : null}
             </div>
           </div>
@@ -1897,76 +1950,110 @@ export default function DropZoneListModal({
                 </div>
               ) : null}
             </div>
-          </div>
-          <div className="sp-dz-list-modal-date-toolbar">
-            <div className="sp-dz-list-modal-date-row">
-              <label className="sp-dz-list-modal-date-field">
-                <span className="sp-dz-list-modal-date-field-label">시작일</span>
-                <input
-                  type="date"
-                  className="sp-dz-list-modal-date-input"
-                  value={dateStart}
-                  onChange={handleDateStartChange}
-                  aria-label="기간 시작일"
-                />
-              </label>
-              <span className="sp-dz-list-modal-date-sep" aria-hidden>
-                ~
+            <label className="sp-dz-list-modal-date-field sp-dz-list-modal-toolbar-ym-field">
+              <span className="sp-dz-list-modal-date-field-label">연도</span>
+              <select
+                className="sp-dz-list-modal-date-input sp-dz-list-modal-date-input--select"
+                value={filterYear}
+                onChange={handleFilterYearChange}
+                aria-label="연도"
+              >
+                <option value="">연도 전체</option>
+                {yearSelectValues.map((y) => (
+                  <option key={y} value={String(y)}>
+                    {y}년
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div
+              className={`sp-dz-month-picker sp-dz-list-modal-toolbar-ym-field${filterYear ? '' : ' sp-dz-month-picker--disabled'}`}
+              ref={monthPickerWrapRef}
+            >
+              <span className="sp-dz-list-modal-date-field-label" id="sp-dz-month-picker-label">
+                월
               </span>
-              <label className="sp-dz-list-modal-date-field">
-                <span className="sp-dz-list-modal-date-field-label">마감일</span>
-                <input
-                  type="date"
-                  className="sp-dz-list-modal-date-input"
-                  value={dateEnd}
-                  onChange={handleDateEndChange}
-                  aria-label="기간 마감일"
-                />
-              </label>
-              <label className="sp-dz-list-modal-date-field">
-                <span className="sp-dz-list-modal-date-field-label">연도</span>
-                <select
-                  className="sp-dz-list-modal-date-input sp-dz-list-modal-date-input--select"
-                  value={filterYear}
-                  onChange={handleFilterYearChange}
-                  aria-label="연도"
+              <button
+                type="button"
+                className="sp-dz-month-picker-trigger"
+                disabled={!filterYear}
+                aria-expanded={monthPickerOpen}
+                aria-haspopup="listbox"
+                aria-labelledby="sp-dz-month-picker-label"
+                aria-controls="sp-dz-month-picker-panel"
+                onClick={() => setMonthPickerOpen((o) => !o)}
+              >
+                <span className="sp-dz-month-picker-trigger__text">{monthPickerSummary}</span>
+                <span className="material-symbols-outlined sp-dz-month-picker-trigger__icon" aria-hidden>
+                  expand_more
+                </span>
+              </button>
+              {monthPickerOpen && filterYear ? (
+                <div
+                  id="sp-dz-month-picker-panel"
+                  className="sp-dz-month-picker-pop"
+                  role="listbox"
+                  aria-multiselectable="true"
+                  aria-label="월 다중 선택"
+                  onMouseDown={(e) => e.stopPropagation()}
                 >
-                  <option value="">연도 전체</option>
-                  {yearSelectValues.map((y) => (
-                    <option key={y} value={String(y)}>
-                      {y}년
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="sp-dz-list-modal-date-field">
-                <span className="sp-dz-list-modal-date-field-label">월</span>
-                <select
-                  className="sp-dz-list-modal-date-input sp-dz-list-modal-date-input--select"
-                  value={filterMonthPart}
-                  onChange={handleFilterMonthPartChange}
-                  aria-label={filterMonth ? `월 (${filterMonth})` : '월'}
-                  disabled={!filterYear}
-                >
-                  <option value="">월 전체</option>
-                  {MONTH_SELECT_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {dateStart || dateEnd || !isYmDefault ? (
-                <button type="button" className="sp-dz-list-modal-date-clear" onClick={clearDateRange}>
-                  기간·월 초기화
-                </button>
+                  <label className="sp-dz-list-modal-month-master">
+                    <input
+                      ref={monthMasterCheckboxRef}
+                      type="checkbox"
+                      checked={allMonthsSelected}
+                      onChange={handleMonthMasterChange}
+                    />
+                    <span>전체</span>
+                  </label>
+                  <p className="sp-dz-month-picker-pop-hint">
+                    {selectedMonthParts.length === 0
+                      ? '선택 없음 — 해당 연도 전체'
+                      : '선택한 월 중 하나라도 일치하면 표시'}
+                  </p>
+                  <ul className="sp-dz-month-picker-list">
+                    {MONTH_SELECT_OPTIONS.map((opt) => {
+                      const monthChecked = selectedMonthParts.includes(opt.value);
+                      const monthId = `sp-dz-month-${stageKey}-${opt.value}`;
+                      return (
+                        <li key={opt.value}>
+                          <label className="sp-dz-list-modal-month-check" htmlFor={monthId}>
+                            <input
+                              id={monthId}
+                              type="checkbox"
+                              checked={monthChecked}
+                              onChange={(e) => handleMonthPartToggle(opt.value, e.target.checked)}
+                            />
+                            <span>{opt.label}</span>
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <button
+                    type="button"
+                    className="sp-dz-month-picker-close"
+                    onClick={() => setMonthPickerOpen(false)}
+                  >
+                    닫기
+                  </button>
+                </div>
               ) : null}
             </div>
-            <p className="sp-dz-list-modal-date-hint">
-              기준: 마지막 수정일(없으면 등록일)입니다. 열 이름을 누르면 정렬·필터 패널이 열립니다. 맞춤 일정 열은 상단{' '}
-              <strong>열 추가</strong>에서 선택합니다.
-            </p>
+            {!isYmDefault ? (
+              <button
+                type="button"
+                className="sp-dz-list-modal-date-clear sp-dz-list-modal-toolbar-ym-clear"
+                onClick={clearYearMonthFilter}
+              >
+                연도·월 초기화
+              </button>
+            ) : null}
           </div>
+          <p className="sp-dz-list-modal-date-hint">
+            기준: 마지막 수정일(없으면 등록일)입니다. 월을 여러 개 선택하면 OR 조건으로 표시됩니다. 열 이름을 누르면
+            정렬·필터 패널이 열립니다. 맞춤 일정 열은 상단 <strong>열 추가</strong>에서 선택합니다.
+          </p>
         </div>
 
         <div className="sp-dz-list-modal-body sp-dz-list-modal-body--table">
@@ -2000,36 +2087,53 @@ export default function DropZoneListModal({
                       const hasColFilter = Array.isArray(columnFilters[colKey]);
                       const activeSortKey = sortState.key;
                       const activeSortDir = sortState.dir;
+                      const colLabel = columnHeaderLabel(colKey, scheduleFieldLabelByKey, {});
+                      const isColDragging = draggingColIdx === colIdx;
+                      const isColDragOver = dragOverColIdx === colIdx;
               return (
                         <th
                           key={colKey}
                           className={`sp-dz-data-table__th sp-dz-data-table__th--col-tools sp-dz-data-table__th--dz-col-reorder${
                             openFilterCol === colKey ? ' sp-dz-data-table__th--filter-open' : ''
+                          }${isColDragging ? ' sp-dz-data-table__th--dz-col-dragging' : ''}${
+                            isColDragOver ? ' sp-dz-data-table__th--dz-col-drag-over' : ''
                           }`}
                           scope="col"
-                          title={columnHeaderLabel(colKey, scheduleFieldLabelByKey, {})}
-                draggable
-                          onDragStart={(e) => handleColumnHeaderDragStart(e, colIdx)}
-                          onDragOver={handleColumnHeaderDragOver}
+                          title={colLabel}
+                          onDragOver={(e) => handleColumnHeaderDragOver(e, colIdx)}
+                          onDragLeave={handleColumnHeaderDragLeave}
                           onDrop={(e) => handleColumnHeaderDrop(e, colIdx)}
                         >
                           <div
                             className="sp-dz-th-wrap"
                             ref={openFilterCol === colKey ? filterPopoverRef : null}
                           >
+                            <div className="sp-dz-th-inner">
+                              <span
+                                className="sp-dz-col-drag-handle"
+                                draggable
+                                onDragStart={(e) => handleColumnHeaderDragStart(e, colIdx)}
+                                onDragEnd={handleColumnHeaderDragEnd}
+                                title="드래그하여 열 순서 변경"
+                                aria-label={`${colLabel} 열 순서 변경`}
+                              >
+                                <span className="material-symbols-outlined" aria-hidden>
+                                  drag_indicator
+                                </span>
+                              </span>
                     <button
                       type="button"
                               className={`sp-dz-th-col-trigger${hasColFilter ? ' sp-dz-th-col-trigger--filtered' : ''}`}
                               aria-expanded={openFilterCol === colKey}
                               aria-haspopup="dialog"
-                              aria-label={`${columnHeaderLabel(colKey, scheduleFieldLabelByKey, {})} 정렬·필터`}
+                              aria-label={`${colLabel} 정렬·필터`}
                       onClick={(e) => {
                         e.stopPropagation();
                                 openColumnFilter(colKey);
                               }}
                             >
                               <span className="sp-dz-th-col-trigger__label">
-                                {columnHeaderLabel(colKey, scheduleFieldLabelByKey, {})}
+                                {colLabel}
                               </span>
                               {activeSortKey === colKey && activeSortDir === 'asc' ? (
                                 <span className="material-symbols-outlined sp-dz-th-col-trigger__sort-icon" aria-hidden>
@@ -2042,6 +2146,7 @@ export default function DropZoneListModal({
                                 </span>
                               ) : null}
                             </button>
+                            </div>
                             {openFilterCol === colKey ? (
                               <div
                                 className="sp-dz-col-filter-pop"
@@ -2266,15 +2371,6 @@ export default function DropZoneListModal({
             </div>
           )}
         </div>
-
-        {filteredByToolbar.length > 0 ? (
-          <div className="sp-dz-list-modal-footer">
-            <p className="sp-dz-list-modal-page-info">
-              표시 행 <strong>{displayRows.length}</strong> · 기회 <strong>{sortedFiltered.length}</strong>건 · 열{' '}
-              <strong>{columnKeys.length}</strong>
-            </p>
-          </div>
-        ) : null}
       </div>
     </div>
   );
