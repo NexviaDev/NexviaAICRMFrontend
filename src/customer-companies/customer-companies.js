@@ -1283,6 +1283,7 @@ export default function CustomerCompanies({
       {isAddModalOpen && (
         <AddCompanyModal
           initialName={isSearchModal ? (searchApplied || searchInput) : ''}
+          existingCompanies={items}
           onClose={closeAddModal}
           onSaved={(payload) => {
             if (isSearchModal && payload?._id) {

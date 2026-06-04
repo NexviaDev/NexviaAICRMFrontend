@@ -82,8 +82,7 @@
   font-weight: 600;
 }
 
-.sp-pipeline-page--table-view .sp-filter-select,
-.sp-pipeline-page--table-view .sp-filter-multi-summary {
+.sp-pipeline-page--table-view .sp-filter-select {
   min-height: var(--sp-tbl-control-h);
   padding: 0 10px;
   box-sizing: border-box;
@@ -92,6 +91,32 @@
   background: #fff;
   color: var(--sp-tbl-text);
   font-size: 0.8125rem;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+}
+
+.sp-pipeline-page--table-view .sp-filter-multi {
+  flex: 1 1 auto;
+  min-width: 5.5rem;
+  max-width: 11rem;
+}
+
+.sp-pipeline-page--table-view .sp-filter-multi-summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-width: 5.5rem;
+  max-width: 11rem;
+  min-height: var(--sp-tbl-control-h);
+  padding: 0 1.75rem 0 10px;
+  box-sizing: border-box;
+  border-radius: 8px;
+  border: 1px solid #a8b8cc;
+  background: #fff;
+  color: var(--sp-tbl-text);
+  font-size: 0.8125rem;
+  line-height: 1.2;
+  text-align: center;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
 }
 
@@ -137,11 +162,17 @@
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
 }
 
-.sp-pipeline-page--table-view .sp-header-icon-btn.is-active {
+.sp-pipeline-page--table-view .sp-header-icon-btn.is-active,
+.sp-pipeline-page--table-view .sp-header-tool-btn.is-active {
   background: rgba(200, 223, 240, 0.65);
   color: #1a4971;
   border: 1px solid rgba(44, 123, 182, 0.28);
   border-radius: 8px;
+}
+
+.sp-pipeline-page--table-view .sp-header-tool-btn {
+  border-color: #c5d4e4;
+  background: #fff;
 }
 
 /* 표 영역 툴바·패널 */

@@ -1,0 +1,602 @@
+/* 영업 기회 엑셀 가져오기 — opportunity-modal Tableau 토큰, 그라데이션 없음 */
+
+/* —— 별도 모달: 엑셀 원본 미리보기(편집) — 전체 화면 —— */
+.opp-excel-raw-preview-overlay.opp-modal-overlay {
+  z-index: 1420;
+  padding: 0;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.opp-excel-raw-preview-modal.opp-modal {
+  z-index: 1421;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  flex: 1 1 auto;
+  min-height: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* —— 엑셀 가져오기 Footer (매핑·미리보기 공통, 파스텔·그라데이션 없음) —— */
+.excel-import-map-modal .opp-modal-footer,
+.opp-excel-raw-preview-modal .opp-modal-footer {
+  flex-shrink: 0;
+  padding: 14px 24px 16px;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+  display: flex;
+  gap: 0.65rem;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.opp-excel-footer-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 2.5rem;
+  padding: 0.5rem 1.35rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: inherit;
+  line-height: 1.2;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.opp-excel-footer-btn--ghost {
+  color: #475569;
+  background: #fff;
+  border-color: #cbd5e1;
+}
+
+.opp-excel-footer-btn--ghost:hover:not(:disabled) {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #334155;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
+.opp-excel-footer-btn--next {
+  color: #1a4d6e;
+  background: #c5e4f3;
+  border-color: #9ecae8;
+  font-weight: 700;
+}
+
+.opp-excel-footer-btn--next:hover:not(:disabled) {
+  background: #b3daf0;
+  border-color: #7eb8dd;
+  color: #133d57;
+  box-shadow: 0 2px 6px rgba(68, 130, 170, 0.18);
+}
+
+.opp-excel-footer-btn--register {
+  color: #14532d;
+  background: #d1fae5;
+  border-color: #a7f3d0;
+  font-weight: 700;
+  min-width: 7.5rem;
+}
+
+.opp-excel-footer-btn--register:hover:not(:disabled) {
+  background: #bbf7d0;
+  border-color: #86efac;
+  color: #166534;
+  box-shadow: 0 2px 6px rgba(34, 120, 72, 0.16);
+}
+
+.opp-excel-footer-btn:disabled {
+  cursor: not-allowed;
+  color: #94a3b8;
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+  box-shadow: none;
+}
+
+.opp-excel-footer-btn--next:disabled,
+.opp-excel-footer-btn--register:disabled {
+  color: #94a3b8;
+  background: #eef2f6;
+  border-color: #e2e8f0;
+}
+
+.opp-excel-footer-btn .material-symbols-outlined {
+  font-size: 1.125rem;
+  line-height: 1;
+}
+
+.opp-excel-footer-icon-spin {
+  animation: opp-excel-footer-spin 0.85s linear infinite;
+}
+
+@keyframes opp-excel-footer-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.opp-excel-raw-preview-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+
+.opp-excel-raw-preview-intro-bar {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.5rem 1.25rem;
+  background: var(--opp-tableau-stripe, #eef4fa);
+  border-bottom: 1px solid rgba(78, 121, 167, 0.12);
+  font-size: 0.8125rem;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+.opp-excel-raw-preview-intro-bar strong {
+  color: #475569;
+}
+
+.opp-excel-raw-preview-warn {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0.45rem 1.25rem;
+  font-size: 0.75rem;
+  color: #92400e;
+  background: #fffbeb;
+  border-bottom: 1px solid #fde68a;
+  line-height: 1.4;
+}
+
+.opp-excel-raw-preview-empty {
+  padding: 1.5rem;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 0.875rem;
+}
+
+.opp-excel-raw-preview-wrap {
+  margin-top: 1rem;
+  border: 1px solid var(--card-border, #dce6f2);
+  border-radius: 10px;
+  background: #fff;
+  overflow: hidden;
+  box-shadow: var(--opp-shade-sm, 0 1px 2px rgba(15, 23, 42, 0.06));
+}
+
+.opp-excel-raw-preview-wrap--modal {
+  margin: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  border-top: 1px solid var(--card-border, #dce6f2);
+}
+
+.opp-excel-raw-preview-wrap--modal .opp-excel-raw-preview-scroll,
+.opp-excel-raw-preview-scroll.opp-excel-raw-preview-scroll--fill {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  height: auto;
+  overflow: auto;
+}
+
+.opp-excel-raw-cell-input {
+  width: 100%;
+  min-width: 5rem;
+  max-width: 14rem;
+  font-size: 0.75rem;
+  padding: 0.28rem 0.4rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font-family: inherit;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.opp-excel-raw-cell-input:focus {
+  outline: none;
+  border-color: var(--primary, #2c7bb6);
+  box-shadow: 0 0 0 2px rgba(44, 123, 182, 0.15);
+}
+
+.opp-excel-raw-cell-input.is-invalid,
+.opp-excel-raw-cell-select.is-invalid {
+  border-color: #dc2626;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.opp-excel-raw-cell-input.is-locked {
+  background: #f1f5f9;
+  color: #64748b;
+  cursor: not-allowed;
+}
+
+.opp-excel-raw-cell-select {
+  width: 100%;
+  min-width: 6.5rem;
+  max-width: 14rem;
+  font-size: 0.75rem;
+  padding: 0.28rem 0.4rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  font-family: inherit;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.opp-excel-raw-cell-select:focus {
+  outline: none;
+  border-color: var(--primary, #2c7bb6);
+  box-shadow: 0 0 0 2px rgba(44, 123, 182, 0.15);
+}
+
+.opp-excel-raw-preview-th--stage {
+  background: rgba(238, 244, 250, 0.95) !important;
+}
+
+.opp-excel-raw-preview-th-badge {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--opp-tableau-header, #4e79a7);
+}
+
+.opp-excel-raw-assignee-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 7.5rem;
+  max-width: 15rem;
+}
+
+.opp-excel-raw-assignee-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.opp-excel-raw-assignee-row .opp-excel-raw-cell-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none;
+}
+
+.opp-excel-raw-assignee-search {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #f0f9ff;
+  color: #2c7bb6;
+  cursor: pointer;
+}
+
+.opp-excel-raw-assignee-search:hover:not(:disabled) {
+  background: #e0f2fe;
+  border-color: #93c5fd;
+}
+
+.opp-excel-raw-assignee-search:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.opp-excel-raw-assignee-search .material-symbols-outlined {
+  font-size: 1rem;
+}
+
+.opp-excel-raw-assignee-warn {
+  font-size: 0.625rem;
+  line-height: 1.3;
+  color: #b91c1c;
+  white-space: normal;
+  max-width: 14rem;
+}
+
+.opp-excel-raw-force-btn {
+  margin-top: 0.2rem;
+  padding: 0.15rem 0.45rem;
+  font-size: 0.625rem;
+  border-radius: 4px;
+  border: 1px solid #fcd34d;
+  background: #fffbeb;
+  color: #92400e;
+  cursor: pointer;
+}
+
+.opp-excel-raw-force-btn:hover:not(:disabled) {
+  background: #fef3c7;
+}
+
+.opp-excel-raw-force-ok {
+  font-size: 0.625rem;
+  color: #047857;
+}
+
+.opp-excel-raw-product-hint {
+  font-size: 0.625rem;
+  color: #b45309;
+  line-height: 1.3;
+}
+
+.opp-excel-preview-cell-hint {
+  display: block;
+  font-size: 0.625rem;
+  color: #b45309;
+  margin-top: 0.15rem;
+  line-height: 1.25;
+}
+
+.opp-excel-preview-snapshot-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.opp-excel-preview-snapshot-tag {
+  font-size: 0.625rem;
+  color: #047857;
+}
+
+.excel-import-map-badge.err {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.opp-excel-raw-preview-th-num,
+.opp-excel-raw-preview-td-num {
+  width: 2.25rem;
+  text-align: center;
+  color: #94a3b8;
+  font-weight: 600;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: inherit;
+}
+
+.opp-excel-raw-preview-table th.opp-excel-raw-preview-th-num {
+  background: #f8fafc;
+}
+
+.opp-excel-raw-preview-table .opp-excel-raw-preview-td-num {
+  background: #fff;
+}
+
+/* 엑셀 미리보기(1420) 위에 사내 담당자 선택 모달 */
+.opp-excel-raw-participant-portal .participant-modal-overlay {
+  z-index: 1500;
+}
+
+.opp-excel-raw-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 1rem;
+  background: var(--opp-tableau-stripe, #eef4fa);
+  border-bottom: 1px solid rgba(78, 121, 167, 0.15);
+}
+
+.opp-excel-raw-preview-head h4 {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--opp-tableau-header, #4e79a7);
+}
+
+/* 매핑 모달 등 소형 미리보기용 — 전체화면 모달은 --fill 사용 */
+.opp-excel-raw-preview-scroll:not(.opp-excel-raw-preview-scroll--fill) {
+  overflow: auto;
+  max-height: min(16rem, 40vh);
+}
+
+.opp-excel-raw-preview-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+
+.opp-excel-raw-preview-table th,
+.opp-excel-raw-preview-table td {
+  border: 1px solid #e2e8f0;
+  padding: 0.35rem 0.55rem;
+  white-space: nowrap;
+  max-width: 12rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.opp-excel-raw-preview-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f8fafc;
+  font-weight: 700;
+  color: #475569;
+}
+
+/* 엑셀 미리보기 — 행 전체 줄무늬 없음(오류는 셀 단위 붉은 테두리만) */
+.opp-excel-raw-preview-table tbody tr td {
+  background: #fff;
+}
+
+/* —— CRM 검증·등록 미리보기 — 전체 화면 —— */
+.opp-excel-preview-overlay.opp-modal-overlay {
+  z-index: 1450;
+  padding: 0;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.opp-excel-preview-modal.opp-modal {
+  z-index: 1451;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.opp-excel-preview-modal.opp-excel-preview-modal--fullscreen {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  flex: 1 1 auto;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.opp-excel-preview-modal--fullscreen .opp-modal-footer {
+  flex-shrink: 0;
+  padding: 12px 24px;
+  border-top: 1px solid #e2e8f0;
+  background: #fff;
+}
+
+.opp-excel-preview-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.opp-excel-preview-scroll {
+  overflow: auto;
+  margin: 0 1.25rem 1rem;
+  border: 1px solid var(--card-border, #dce6f2);
+  border-radius: 10px;
+}
+
+.opp-excel-preview-modal--fullscreen .opp-excel-preview-summary {
+  flex-shrink: 0;
+  padding: 0.5rem 1.25rem 0.65rem;
+  border-bottom: 1px solid rgba(78, 121, 167, 0.12);
+  background: var(--opp-tableau-stripe, #eef4fa);
+}
+
+.opp-excel-preview-modal--fullscreen .opp-excel-preview-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  border-top: 1px solid var(--card-border, #dce6f2);
+}
+
+.opp-excel-preview-scroll.opp-excel-preview-scroll--fill {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  height: auto;
+}
+
+.opp-excel-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+}
+
+.opp-excel-preview-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--opp-tableau-header, #4e79a7);
+  color: #fff;
+  font-weight: 700;
+  padding: 0.5rem 0.45rem;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.opp-excel-preview-table td {
+  padding: 0.35rem 0.4rem;
+  border-bottom: 1px solid #e8eef4;
+  vertical-align: middle;
+}
+
+.opp-excel-preview-table tbody tr td {
+  background: #fff;
+}
+
+.opp-excel-preview-cell-select {
+  width: 100%;
+  min-width: 6.5rem;
+  max-width: 14rem;
+  font-size: 0.75rem;
+  padding: 0.3rem 0.4rem;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  font-family: inherit;
+  background: #fff;
+}
+
+.opp-excel-preview-cell-select.is-invalid {
+  border-color: #dc2626;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.opp-excel-preview-cell-input {
+  width: 100%;
+  min-width: 5rem;
+  font-size: 0.75rem;
+  padding: 0.3rem 0.4rem;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  font-family: inherit;
+}
+
+.opp-excel-preview-cell-input.is-invalid {
+  border-color: #dc2626;
+  background: #fef2f2;
+}
+
+.opp-excel-preview-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0 1.25rem 0.75rem;
+  font-size: 0.8125rem;
+  color: #475569;
+}
+
+.opp-excel-preview-summary strong {
+  color: #334155;
+}
+
+.opp-excel-preview-summary .is-err {
+  color: #b91c1c;
+  font-weight: 700;
+}

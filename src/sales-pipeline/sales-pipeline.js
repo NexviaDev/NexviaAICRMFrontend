@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import OpportunityModal from './opportunity-modal/opportunity-modal';
 import PipelineStagesManageModal from './pipeline-stages-manage-modal/pipeline-stages-manage-modal';
 import DropZoneListModal from './drop-zone-list-modal/drop-zone-list-modal';
+import SalesPipelineExcelImportModal from './sales-opportunity-excel-import-modal/sales-pipeline-excel-import-modal';
 import './sales-pipeline.css';
 import './sales-pipeline-responsive.css';
 import './sales-pipeline-table-theme.css';
@@ -39,6 +40,7 @@ import {
 
 const SALES_PIPELINE_LIST_ID = LIST_IDS.SALES_PIPELINE;
 const MODAL_PARAM = 'oppModal';
+const MODAL_EXCEL_IMPORT = 'excel-import';
 const MODAL_ADD = 'add';
 const MODAL_EDIT = 'edit';
 const OPP_ID_PARAM = 'oppId';
@@ -405,9 +407,25 @@ export default function SalesPipeline() {
   const [allowedFinanceCustomFieldKeys, setAllowedFinanceCustomFieldKeys] = useState(() => new Set());
 
   const modalMode = searchParams.get(MODAL_PARAM);
+  const excelImportOpen = searchParams.get('modal') === MODAL_EXCEL_IMPORT;
   const editOppId = searchParams.get(OPP_ID_PARAM);
   const defaultStage = searchParams.get(STAGE_PARAM);
   const isModalOpen = modalMode === MODAL_ADD || modalMode === MODAL_EDIT;
+
+  const openExcelImportModal = () => {
+    setDropZoneListStage(null);
+    const p = new URLSearchParams(searchParams);
+    p.set('modal', MODAL_EXCEL_IMPORT);
+    p.delete(MODAL_PARAM);
+    p.delete(OPP_ID_PARAM);
+    setSearchParams(p);
+  };
+
+  const closeExcelImportModal = () => {
+    const p = new URLSearchParams(searchParams);
+    p.delete('modal');
+    setSearchParams(p, { replace: true });
+  };
 
   const openAddModal = (stage) => {
     setDropZoneListStage(null);
@@ -1083,7 +1101,7 @@ export default function SalesPipeline() {
           <div className="sp-view-mode-toggle" role="group" aria-label="보기 방식">
             <button
               type="button"
-              className="sp-header-icon-btn is-active"
+              className="sp-header-icon-btn sp-header-tool-btn is-active"
               onClick={() => persistPipelineViewMode(pipelineViewMode === 'kanban' ? 'table' : 'kanban')}
               title={pipelineViewMode === 'kanban' ? '표 보기로 전환' : '칸반 보기로 전환'}
               aria-label={
@@ -1095,19 +1113,23 @@ export default function SalesPipeline() {
               <span className="material-symbols-outlined">
                 {pipelineViewMode === 'kanban' ? 'view_kanban' : 'table_rows'}
               </span>
+              <span className="sp-header-btn-label">
+                {pipelineViewMode === 'kanban' ? '표 보기' : '칸반 보기'}
+              </span>
             </button>
             <button
               type="button"
-              className="sp-header-icon-btn"
+              className="sp-header-icon-btn sp-header-tool-btn"
               onClick={() => setPipelineListSettingsOpen(true)}
               title="표·칸반 표시 항목 설정"
               aria-label="표·칸반 표시 항목 설정"
             >
               <span className="material-symbols-outlined">settings</span>
+              <span className="sp-header-btn-label">표시 설정</span>
             </button>
             <button
               type="button"
-              className="sp-header-icon-btn"
+              className="sp-header-icon-btn sp-header-tool-btn"
               onClick={() => {
                 setDropZoneListStage(null);
                 setShowStagesModal(true);
@@ -1116,8 +1138,19 @@ export default function SalesPipeline() {
               aria-label="단계 관리"
             >
               <span className="material-symbols-outlined">tune</span>
+              <span className="sp-header-btn-label">단계 관리</span>
             </button>
           </div>
+          <button
+            type="button"
+            className="sp-header-icon-btn sp-header-tool-btn"
+            onClick={openExcelImportModal}
+            title="엑셀 파일을 매핑하여 영업 기회 일괄 등록"
+            aria-label="엑셀 매핑 가져오기"
+          >
+            <span className="material-symbols-outlined">upload_file</span>
+            <span className="sp-header-btn-label">엑셀 가져오기</span>
+          </button>
           <button type="button" className="sp-add-btn" onClick={() => openAddModal()}>
             <span className="material-symbols-outlined">add</span>
             기회 추가
@@ -1535,6 +1568,14 @@ export default function SalesPipeline() {
           <span className="material-symbols-outlined">add</span>
         </button>
       )}
+
+      <SalesPipelineExcelImportModal
+        open={excelImportOpen}
+        onClose={closeExcelImportModal}
+        onImported={() => {
+          void fetchData({ silent: true });
+        }}
+      />
 
       {/* 기회 모달 */}
       {isModalOpen && (

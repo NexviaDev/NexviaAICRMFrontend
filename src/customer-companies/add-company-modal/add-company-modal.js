@@ -119,13 +119,40 @@ function buildCertificateDriveFileName(companyName, businessNumberRaw, mimeType,
 
 const INFORMATION_FOLDER_NAME = 'information';
 
-export default function AddCompanyModal({ company, initialName = '', onClose, onSaved, onUpdated }) {
+function findExactDuplicateCompaniesByName(nameRaw, companies, excludeId) {
+  const n = String(nameRaw || '').trim();
+  if (!n) return [];
+  const ex = excludeId ? String(excludeId) : '';
+  return (Array.isArray(companies) ? companies : []).filter((c) => {
+    const cn = String(c?.name ?? '').trim();
+    if (!cn || cn !== n) return false;
+    const id = String(c?._id ?? c?.id ?? '');
+    return !ex || id !== ex;
+  });
+}
+
+function similarPregateTitle(similar, nameRaw) {
+  const n = String(nameRaw || '').trim();
+  const exact = findExactDuplicateCompaniesByName(n, similar, '');
+  if (exact.length) return `동명업체 ${exact.length}건`;
+  return '비슷한 상호의 고객사';
+}
+
+export default function AddCompanyModal({
+  company,
+  initialName = '',
+  existingCompanies = [],
+  onClose,
+  onSaved,
+  onUpdated
+}) {
   const isEdit = Boolean(company);
   /** 수정 모드: 기업명 변경은 서버가 Admin 이상만 허용 — UI에서도 동일하게 막음 */
   const canEditCompanyNameInEdit = useMemo(
     () => !isEdit || isAdminOrAboveRole(getStoredCrmUser()?.role),
     [isEdit]
   );
+
   const [form, setForm] = useState({
     name: '',
     representativeName: '',
@@ -145,6 +172,14 @@ export default function AddCompanyModal({ company, initialName = '', onClose, on
   const [customDefinitions, setCustomDefinitions] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  const exactNameDuplicates = useMemo(
+    () =>
+      isEdit
+        ? []
+        : findExactDuplicateCompaniesByName(form.name, existingCompanies, company?._id),
+    [form.name, existingCompanies, isEdit, company?._id]
+  );
   /** POST 전 유사 상호 — 사용자가 `그래도 신규` 선택 시 body.forceCreateDespiteSimilar */
   const [preSaveCompany, setPreSaveCompany] = useState(null);
   const [showMapPicker, setShowMapPicker] = useState(false);
@@ -1340,6 +1375,12 @@ export default function AddCompanyModal({ company, initialName = '', onClose, on
                   : undefined
               }
             />
+            {!isEdit && exactNameDuplicates.length > 0 ? (
+              <p className="add-company-name-dup-warn" role="status">
+                동명업체 <strong>{exactNameDuplicates.length}</strong>건이 이미 등록되어 있습니다. 저장 시 확인 후 「그래도
+                신규로 등록」할 수 있습니다.
+              </p>
+            ) : null}
           </div>
           <div className="add-company-field">
             <label className="add-company-label" htmlFor="add-company-business-number">사업자등록번호</label>
@@ -1578,8 +1619,14 @@ export default function AddCompanyModal({ company, initialName = '', onClose, on
               aria-label="유사 고객사"
             >
               <div className="add-company-pregate-panel" onClick={(e) => e.stopPropagation()}>
-                <h3 className="add-company-pregate-title">비슷한 상호의 고객사</h3>
-                <p className="add-company-pregate-hint">아래와 유사한 고객사가 이미 등록되어 있습니다. 그대로 <strong>새로 추가</strong>할지, 취소하고 목록·검색에서 기존 건에 맞출지 정해 주세요.</p>
+                <h3 className="add-company-pregate-title">
+                  {similarPregateTitle(preSaveCompany.similar, form.name)}
+                </h3>
+                <p className="add-company-pregate-hint">
+                  {findExactDuplicateCompaniesByName(form.name, preSaveCompany.similar).length > 0
+                    ? '아래와 동일·유사한 상호가 이미 있습니다. 그대로 새로 추가할지, 취소하고 목록·검색에서 기존 건을 선택할지 정해 주세요.'
+                    : '아래와 유사한 고객사가 이미 등록되어 있습니다. 그대로 새로 추가할지, 취소하고 목록·검색에서 기존 건에 맞출지 정해 주세요.'}
+                </p>
                 <ul className="add-company-pregate-list">
                   {(preSaveCompany.similar || []).slice(0, 20).map((c) => (
                     <li key={String(c._id)}>
@@ -1704,8 +1751,12 @@ export default function AddCompanyModal({ company, initialName = '', onClose, on
           aria-label="유사 고객사"
         >
           <div className="add-company-pregate-panel" onClick={(e) => e.stopPropagation()}>
-            <h3 className="add-company-pregate-title">비슷한 상호의 고객사</h3>
-            <p className="add-company-pregate-hint">아래와 유사한 고객사가 이미 등록되어 있습니다. 그대로 <strong>새로 추가</strong>할지, 취소하고 목록·검색에서 기존 건에 맞출지 정해 주세요.</p>
+            <h3 className="add-company-pregate-title">{similarPregateTitle(preSaveCompany.similar, form.name)}</h3>
+            <p className="add-company-pregate-hint">
+              {findExactDuplicateCompaniesByName(form.name, preSaveCompany.similar).length > 0
+                ? '아래와 동일·유사한 상호가 이미 있습니다. 그대로 새로 추가할지, 취소하고 목록·검색에서 기존 건을 선택할지 정해 주세요.'
+                : '아래와 유사한 고객사가 이미 등록되어 있습니다. 그대로 새로 추가할지, 취소하고 목록·검색에서 기존 건에 맞출지 정해 주세요.'}
+            </p>
             <ul className="add-company-pregate-list">
               {(preSaveCompany.similar || []).slice(0, 20).map((c) => (
                 <li key={String(c._id)}>

@@ -113,10 +113,17 @@
 }
 
 .sp-filter-multi-summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 5.5rem;
   max-width: 11rem;
+  min-height: 2rem;
   padding: 0.4rem 1.35rem 0.4rem 0.55rem;
+  box-sizing: border-box;
   font-size: 0.8125rem;
+  line-height: 1.2;
+  text-align: center;
   border: 1px solid rgba(172, 179, 183, 0.35);
   border-radius: 0.45rem;
   background: #eef3f6;
@@ -258,6 +265,42 @@
 .sp-header-icon-btn:hover {
   background: #eaeff2;
   color: #2c6485;
+}
+
+/* 연락처 목록(cce)과 동일 — 아이콘+라벨 툴바 버튼 */
+.sp-header-tool-btn {
+  width: auto;
+  height: auto;
+  min-height: 2.125rem;
+  padding: 0.45rem 0.7rem;
+  gap: 0.35rem;
+  border: 1px solid rgba(172, 179, 183, 0.35);
+  border-radius: 0.5rem;
+  background: #fff;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.sp-header-tool-btn .material-symbols-outlined {
+  font-size: 1.125rem;
+  flex-shrink: 0;
+}
+
+.sp-header-tool-btn:hover {
+  background: #f8fafb;
+  border-color: rgba(44, 100, 133, 0.28);
+}
+
+.sp-header-btn-label {
+  display: none;
+}
+
+@media (min-width: 640px) {
+  .sp-header-btn-label {
+    display: inline;
+  }
 }
 
 .sp-stages-manage-btn {
@@ -522,13 +565,16 @@
 .sp-view-mode-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 0.2rem;
+  flex-wrap: wrap;
+  gap: 0.35rem;
   margin-right: 0.15rem;
 }
 
-.sp-header-icon-btn.is-active {
+.sp-header-icon-btn.is-active,
+.sp-header-tool-btn.is-active {
   background: rgba(184, 212, 232, 0.55);
   color: #2c6485;
+  border-color: rgba(44, 100, 133, 0.35);
 }
 
 /* Etheric Flow 칸반 — Sample sales-pipeline.js: 320px 컬럼 + 단계별 파스텔 틴트 */
