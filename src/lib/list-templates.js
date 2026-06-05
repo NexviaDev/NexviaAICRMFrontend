@@ -266,14 +266,22 @@ export function getSavedAddProductModalDefaults() {
     const d = user?.listTemplates?.addProductModal;
     if (d && typeof d === 'object') {
       const billingType = ADD_PRODUCT_BILLING.has(d.billingType) ? d.billingType : 'Monthly';
+      const rawIv = Number(d.billingInterval);
+      const billingInterval =
+        billingType === 'Perpetual'
+          ? 1
+          : Number.isFinite(rawIv) && rawIv >= 1
+            ? Math.min(99, Math.round(rawIv))
+            : 1;
       return {
         categoryKey: typeof d.categoryKey === 'string' ? d.categoryKey : '',
         categoryOther: typeof d.categoryOther === 'string' ? d.categoryOther : '',
-        billingType
+        billingType,
+        billingInterval
       };
     }
   } catch (_) {}
-  return { categoryKey: '', categoryOther: '', billingType: 'Monthly' };
+  return { categoryKey: '', categoryOther: '', billingType: 'Monthly', billingInterval: 1 };
 }
 
 const CALENDAR_VIEW_MODES = new Set(['month', 'week', 'day']);
@@ -338,7 +346,7 @@ export const DEFAULT_COLUMNS = {
   ],
   [LIST_IDS.PRODUCT_LIST]: [
     { key: 'name', label: '제품명' },
-    { key: 'code', label: '제품 코드', defaultVisible: false },
+    { key: 'code', label: '제품 코드' },
     { key: 'category', label: '카테고리' },
     { key: 'version', label: '버전' },
     { key: 'costPrice', label: '원가' },
@@ -360,7 +368,7 @@ function getAuthHeader() {
 /**
  * PATCH /api/auth/list-templates — 신규 제품 등록 모달만 사용 (categoryKey, categoryOther, billingType)
  */
-export async function patchAddProductModalDefaults({ categoryKey, categoryOther, billingType }) {
+export async function patchAddProductModalDefaults({ categoryKey, categoryOther, billingType, billingInterval }) {
   const res = await fetch(`${API_BASE}/auth/list-templates`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
@@ -369,7 +377,8 @@ export async function patchAddProductModalDefaults({ categoryKey, categoryOther,
       listId: LIST_IDS.ADD_PRODUCT_MODAL,
       categoryKey,
       categoryOther,
-      billingType
+      billingType,
+      billingInterval
     })
   });
   const data = await res.json().catch(() => ({}));

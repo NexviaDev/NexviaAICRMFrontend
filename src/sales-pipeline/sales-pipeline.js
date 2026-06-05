@@ -46,6 +46,15 @@ const MODAL_EDIT = 'edit';
 const OPP_ID_PARAM = 'oppId';
 const STAGE_PARAM = 'stage';
 
+/** 브라우저 로컬 기준 오늘 연·월 — 파이프라인 필터 초기값 */
+function getLocalTodayYearMonth() {
+  const now = new Date();
+  return {
+    year: String(now.getFullYear()),
+    month: String(now.getMonth() + 1)
+  };
+}
+
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -316,10 +325,11 @@ const OPP_SCHEDULE_CARD_FIELDS = [
   { key: 'license', shortLabel: '증서', fullLabel: '라이선스 증서 전달 날짜', field: 'licenseCertificateDeliveredDate' }
 ];
 
-/** 헤더 연·월 필터와 연동: 빈 값 → 최종 수정일(updatedAt), 그 외 → 해당 일정 필드(서울 달력 구간) */
+/** 헤더 연·월 필터: 기본 시작일(없으면 계약일→등록일) — 상한일 이전·당일 누적. 빈 값 → 최종 수정일(해당 구간만) */
+const PIPELINE_SCHEDULE_FIELD_FILTER_DEFAULT = 'startDate';
 const PIPELINE_SCHEDULE_FIELD_FILTER_OPTIONS = [
-  { value: '', label: '최종 수정일' },
   { value: 'startDate', label: '시작일' },
+  { value: '', label: '최종 수정일' },
   { value: 'targetDate', label: '구매 예정' },
   { value: 'saleDate', label: '계약일' },
   { value: 'fullCollectionCompleteDate', label: '전체 완료' },
@@ -376,11 +386,11 @@ export default function SalesPipeline() {
   const [showStagesModal, setShowStagesModal] = useState(false);
   /** 모바일: 칩으로 선택한 파이프라인 단계(해당 단계 카드만 목록 표시) */
   const [mobileListStage, setMobileListStage] = useState(null);
-  /** 목록 API: year/month(기본 updatedAt·서울 달력, 일정 기준 선택 시 해당 필드), productId·assignedTo 복수 */
-  const [filterYear, setFilterYear] = useState('');
-  const [filterMonth, setFilterMonth] = useState('');
-  /** 연도 선택 시에만 의미 있음. 빈 문자열 = 최종 수정일 */
-  const [filterScheduleField, setFilterScheduleField] = useState('');
+  /** 목록 API: year/month + scheduleField(기본 시작일·서울 달력), productId·assignedTo 복수 */
+  const [filterYear, setFilterYear] = useState(() => getLocalTodayYearMonth().year);
+  const [filterMonth, setFilterMonth] = useState(() => getLocalTodayYearMonth().month);
+  /** 연도 선택 시 적용할 일정 필드 — 기본 시작일 */
+  const [filterScheduleField, setFilterScheduleField] = useState(PIPELINE_SCHEDULE_FIELD_FILTER_DEFAULT);
   const [filterProductIds, setFilterProductIds] = useState([]);
   const [filterAssigneeIds, setFilterAssigneeIds] = useState(() => {
     const meOnly = getMergedSalesPipelineTemplate().assigneeMeOnly === true;
@@ -470,8 +480,8 @@ export default function SalesPipeline() {
         params.set('year', fy);
         const fm = (filterMonth || '').trim();
         if (fm) params.set('month', fm);
-        const fs = (filterScheduleField || '').trim();
-        if (fs) params.set('scheduleField', fs);
+        /* 빈 문자열 = 최종 수정일, startDate 등 = 해당 일정 필드(기본 시작일) */
+        params.set('scheduleField', (filterScheduleField || '').trim());
       }
       /*
        * productId / assignedTo 가 비어 있으면 API는 ‘전체’로 본다.
@@ -901,7 +911,11 @@ export default function SalesPipeline() {
         {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-          body: JSON.stringify({ stage: targetStage })
+          body: JSON.stringify({
+            stage: targetStage,
+            renewalFollowUpLayout: 'split',
+            renewalFollowUpCreateOpportunities: true
+          })
         }
       );
       const data = await res.json().catch(() => ({}));
@@ -1171,10 +1185,10 @@ export default function SalesPipeline() {
                 setFilterYear(v);
                 if (!v) {
                   setFilterMonth('');
-                  setFilterScheduleField('');
+                  setFilterScheduleField(PIPELINE_SCHEDULE_FIELD_FILTER_DEFAULT);
                 }
               }}
-              aria-label="연도별 필터(아래 일정 기준·또는 최종 수정일)"
+              aria-label="연도별 필터(아래 일정 기준·기본 시작일)"
             >
               <option value="">전체</option>
               {pipelineYearOptions.map((yr) => (
@@ -1208,8 +1222,8 @@ export default function SalesPipeline() {
               value={filterScheduleField}
               disabled={!filterYear}
               onChange={(e) => setFilterScheduleField(e.target.value)}
-              title="연도·월로 잡은 구간(서울 달력)을 어떤 날짜 필드에 적용할지 선택합니다. 최종 수정일이면 기존과 같습니다."
-              aria-label="연도·월 구간을 적용할 일정 필드"
+              title="시작일 기준(비어 있으면 계약일→등록일): 선택 연·월 상한 이전·당일까지 모두 표시. Won은 칸반 하단 «수주 성공»."
+              aria-label="연도·월 구간을 적용할 일정 필드(기본 시작일·누적)"
             >
               {PIPELINE_SCHEDULE_FIELD_FILTER_OPTIONS.map((o) => (
                 <option key={o.value || 'updatedAt'} value={o.value}>

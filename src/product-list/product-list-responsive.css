@@ -274,18 +274,6 @@
     gap: 0.5rem;
   }
 
-  .product-list-page .pl-mcard-id {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    justify-content: flex-start;
-    text-align: left;
-  }
-
-  /* pl-mcard-icon: 공통 스타일은 product-list.css */
-
   .product-list-page .pl-mcard-text {
     flex: 1;
     min-width: 0;
@@ -297,12 +285,12 @@
     font-family: 'Manrope', 'Inter', system-ui, sans-serif;
     font-size: 1rem;
     font-weight: 700;
-    line-height: 1.25;
+    line-height: 1.35;
     color: #2c3435;
     text-align: left;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: anywhere;
   }
 
   .product-list-page .pl-mcard-sub {
@@ -311,9 +299,9 @@
     font-weight: 500;
     color: #596061;
     text-align: left;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: anywhere;
   }
 
   .product-list-page .pl-mcard-badge {

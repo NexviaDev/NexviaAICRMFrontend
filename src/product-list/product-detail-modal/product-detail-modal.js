@@ -5,6 +5,7 @@ import './product-detail-modal.css';
 
 import { API_BASE } from '@/config';
 import { listPriceFromProduct } from '@/lib/product-price-utils';
+import { formatProductBillingDisplay } from '@/lib/product-billing-utils';
 const CURRENCY_OPTIONS = ['KRW', 'USD'];
 const STATUS_LABELS = { Active: '활성', EndOfLife: 'End of Life', Draft: '초안' };
 const BILLING_LABELS = { Monthly: '월간', Annual: '연간', Perpetual: '영구' };
@@ -204,7 +205,7 @@ export default function ProductDetailModal({ product, onClose, onUpdated, onDele
                     </div>
                     <div className="product-detail-dl-row">
                       <dt>결제 주기</dt>
-                      <dd>{product.billingType ? BILLING_LABELS[product.billingType] : '—'}</dd>
+                      <dd>{formatProductBillingDisplay(product.billingType, product.billingInterval)}</dd>
                     </div>
                     <div className="product-detail-dl-row">
                       <dt>통화</dt>

@@ -2,11 +2,13 @@ import { previewExcelMappedValue } from '../../customer-companies/customer-compa
 import { PRODUCT_TARGET_OPTIONS_FALLBACK, productRowStatus } from './product-excel-import-utils';
 import '../../sales-pipeline/opportunity-modal/opportunity-modal.css';
 import '../../shared/excel-import-mapping-modal.css';
+import '../../sales-pipeline/sales-opportunity-excel-import-modal/opportunity-excel-import.css';
 
 export default function ProductImportMappingModal({
   onClose,
   saving,
-  onImport,
+  onProceed,
+  mappingReady,
   excelRows,
   fileInputRef,
   ingestFile,
@@ -61,7 +63,10 @@ export default function ProductImportMappingModal({
                 <h2 className="excel-import-map-intro-title">제품 일괄 등록</h2>
                 <p className="excel-import-map-intro-desc">
                   엑셀 <strong>첫 행은 헤더</strong>(열 이름)로 사용됩니다. 각 열을 <strong>제품 필드</strong>에 연결한 뒤{' '}
-                  <strong>가져오기</strong>를 누르세요. 커스텀 필드는 정의에 맞춰 대상 목록에 표시됩니다.
+                  <strong>엑셀 미리보기</strong>에서 확인·수정 후 일괄 등록합니다.{' '}
+                  결제 주기 열은 <strong>1Y·2Y·3Y(년)</strong>, <strong>1M·2M(개월)</strong>, <strong>P(영구)</strong> 또는{' '}
+                  <strong>1년·3개월·1달·영구</strong> 형식을 지원합니다. 미리보기에서 <strong>1Y→1년, 1M→1개월, P→영구</strong>로 변환되어 표시됩니다.
+                  커스텀 필드는 정의에 맞춰 대상 목록에 표시됩니다.
                 </p>
               </div>
 
@@ -245,9 +250,10 @@ export default function ProductImportMappingModal({
                     <span className="material-symbols-outlined">lightbulb</span>
                   </div>
                   <div>
-                    <p>내보내기 양식</p>
+                    <p>필수: 제품명</p>
                     <span>
-                      제품 목록의 「내보내기」로 받은 엑셀 열 이름과 맞추면 매핑이 자동으로 잡히는 경우가 많습니다.
+                      다음 <strong>엑셀 미리보기</strong> 창에서 셀을 고칠 수 있습니다. 제품명·결제주기·상태·통화 오류는{' '}
+                      <strong style={{ color: '#b91c1c' }}>붉은색</strong> — 모두 수정 후 일괄 등록합니다.
                     </span>
                   </div>
                 </div>
@@ -275,11 +281,11 @@ export default function ProductImportMappingModal({
                   <p className="sub">미리보기 = 첫 데이터 행</p>
                 </div>
                 <div className="excel-import-map-summary-card">
-                  <p>등록</p>
+                  <p>다음 단계</p>
                   <p className="num" style={{ fontSize: '1rem' }}>
-                    제품만
+                    미리보기
                   </p>
-                  <p className="sub">행마다 POST 저장</p>
+                  <p className="sub">편집 후 일괄 등록</p>
                 </div>
               </div>
 
@@ -290,14 +296,26 @@ export default function ProductImportMappingModal({
           </div>
         </div>
 
-        <div className="opp-modal-footer">
-          <button type="button" className="opp-cancel-btn" onClick={onClose} disabled={disabled}>
-            <span className="material-symbols-outlined">close</span>
+        <div className="opp-modal-footer opp-excel-import-footer">
+          <button
+            type="button"
+            className="opp-excel-footer-btn opp-excel-footer-btn--ghost"
+            onClick={onClose}
+            disabled={disabled}
+          >
             취소
           </button>
-          <button type="button" className="opp-save-btn" onClick={onImport} disabled={disabled}>
-            <span className="material-symbols-outlined">play_arrow</span>
-            {saving ? '등록 중…' : '가져오기'}
+          <button
+            type="button"
+            className="opp-excel-footer-btn opp-excel-footer-btn--next"
+            disabled={disabled || !mappingReady}
+            title={!mappingReady ? '제품명 매핑과 엑셀 파일을 완료해 주세요' : undefined}
+            onClick={onProceed}
+          >
+            <span className="material-symbols-outlined" aria-hidden>
+              table_view
+            </span>
+            엑셀 미리보기
           </button>
         </div>
       </div>

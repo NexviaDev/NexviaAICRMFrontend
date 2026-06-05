@@ -9,6 +9,12 @@ import { API_BASE } from '@/config';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { getSavedAddProductModalDefaults, patchAddProductModalDefaults } from '@/lib/list-templates';
 import {
+  billingIntervalUnitLabel,
+  normalizeBillingInterval,
+  parseBillingIntervalInput,
+  showBillingIntervalInput
+} from '@/lib/product-billing-utils';
+import {
   excelObjectToProductFormDraft,
   isExcelRowEffectivelyEmpty,
   parseExcelFileToRows
@@ -135,6 +141,10 @@ export default function AddProductModal({
       version: product?.version ?? '',
       currency: product?.currency ?? 'KRW',
       billingType: product?.billingType ?? savedNew?.billingType ?? 'Monthly',
+      billingInterval: normalizeBillingInterval(
+        product?.billingType ?? savedNew?.billingType ?? 'Monthly',
+        product?.billingInterval ?? savedNew?.billingInterval ?? 1
+      ),
       status: product?.status ?? 'Active',
       customFields: product?.customFields ? { ...product.customFields } : {}
     };
@@ -273,7 +283,17 @@ export default function AddProductModal({
   };
 
   const setBillingType = (value) => {
-    setForm((prev) => ({ ...prev, billingType: value }));
+    setForm((prev) => ({
+      ...prev,
+      billingType: value,
+      billingInterval: value === 'Perpetual' ? 1 : normalizeBillingInterval(value, prev.billingInterval)
+    }));
+    setError('');
+  };
+
+  const setBillingInterval = (raw) => {
+    const n = parseBillingIntervalInput(raw, form.billingType);
+    setForm((prev) => ({ ...prev, billingInterval: n }));
     setError('');
   };
 
@@ -317,6 +337,7 @@ export default function AddProductModal({
           price: listP,
           currency: form.currency,
           billingType: form.billingType,
+          billingInterval: normalizeBillingInterval(form.billingType, form.billingInterval),
           status: form.status,
           customFields: form.customFields && Object.keys(form.customFields).length ? form.customFields : undefined
         })
@@ -327,7 +348,9 @@ export default function AddProductModal({
         return;
       }
       if (addModalSnapshot && !isEdit) {
-        const billingChanged = addModalSnapshot.billingType !== form.billingType;
+        const billingChanged =
+          addModalSnapshot.billingType !== form.billingType ||
+          Number(addModalSnapshot.billingInterval) !== Number(form.billingInterval);
         const catChanged =
           addModalSnapshot.categoryKey !== categoryKey ||
           String(addModalSnapshot.categoryOther || '') !== String(categoryOther || '');
@@ -336,7 +359,8 @@ export default function AddProductModal({
             await patchAddProductModalDefaults({
               categoryKey,
               categoryOther,
-              billingType: form.billingType
+              billingType: form.billingType,
+              billingInterval: normalizeBillingInterval(form.billingType, form.billingInterval)
             });
           } catch {
             /* listTemplates 갱신 실패해도 제품 저장은 완료된 상태 */
@@ -656,19 +680,44 @@ export default function AddProductModal({
                 </div>
                 <div className="add-product-modal-field add-product-modal-field--billing-full">
                   <span id="add-product-billing-label" className="add-product-modal-label">결제 주기</span>
-                  <div className="add-product-modal-radio-row" role="radiogroup" aria-labelledby="add-product-billing-label">
-                    {BILLING_OPTIONS.map((b) => (
-                      <label key={b} className={`add-product-modal-radio ${form.billingType === b ? 'is-checked' : ''}`}>
+                  <div className="add-product-modal-billing-row">
+                    <div className="add-product-modal-radio-row" role="radiogroup" aria-labelledby="add-product-billing-label">
+                      {BILLING_OPTIONS.map((b) => (
+                        <label key={b} className={`add-product-modal-radio ${form.billingType === b ? 'is-checked' : ''}`}>
+                          <input
+                            type="radio"
+                            name="billingType"
+                            value={b}
+                            checked={form.billingType === b}
+                            onChange={() => setBillingType(b)}
+                          />
+                          <span>{BILLING_LABELS[b]}</span>
+                        </label>
+                      ))}
+                    </div>
+                    {showBillingIntervalInput(form.billingType) ? (
+                      <div className="add-product-modal-billing-interval">
+                        <label htmlFor="add-product-billing-interval" className="add-product-modal-billing-interval-label">
+                          기간
+                        </label>
                         <input
-                          type="radio"
-                          name="billingType"
-                          value={b}
-                          checked={form.billingType === b}
-                          onChange={() => setBillingType(b)}
+                          id="add-product-billing-interval"
+                          type="number"
+                          min={1}
+                          max={99}
+                          step={1}
+                          inputMode="numeric"
+                          className="add-product-modal-billing-interval-input"
+                          value={form.billingInterval}
+                          onChange={(e) => setBillingInterval(e.target.value)}
+                          onBlur={() => setBillingInterval(form.billingInterval)}
+                          aria-describedby="add-product-billing-interval-hint"
                         />
-                        <span>{BILLING_LABELS[b]}</span>
-                      </label>
-                    ))}
+                        <span id="add-product-billing-interval-hint" className="add-product-modal-billing-interval-unit">
+                          {billingIntervalUnitLabel(form.billingType)}
+                        </span>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>

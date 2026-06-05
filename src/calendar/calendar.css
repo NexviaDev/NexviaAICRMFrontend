@@ -284,6 +284,99 @@
   color: var(--text);
 }
 
+.calendar-month-headline--clickable {
+  cursor: pointer;
+  border-radius: 0.35rem;
+  padding: 0.1rem 0.25rem;
+  margin: -0.1rem -0.25rem;
+  transition: background 0.15s, color 0.15s;
+}
+
+.calendar-month-headline--clickable:hover {
+  background: rgba(44, 123, 182, 0.08);
+  color: #1a4971;
+}
+
+.calendar-month-headline--clickable:focus-visible {
+  outline: 2px solid rgba(44, 123, 182, 0.35);
+  outline-offset: 2px;
+}
+
+.calendar-headline-date-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  margin: 0;
+}
+
+.calendar-headline-date-input {
+  width: 4.5rem;
+  padding: 0.35rem 0.45rem;
+  font-size: 1rem;
+  font-weight: 600;
+  font-family: inherit;
+  border: 1px solid rgba(172, 179, 183, 0.45);
+  border-radius: 0.4rem;
+  background: var(--surface-container-lowest, #fff);
+  color: var(--text);
+}
+
+.calendar-headline-date-input--year {
+  width: 5.25rem;
+}
+
+.calendar-headline-date-input--month,
+.calendar-headline-date-input--day {
+  width: 3.25rem;
+  text-align: center;
+}
+
+.calendar-headline-date-input:focus {
+  outline: none;
+  border-color: rgba(44, 123, 182, 0.55);
+  box-shadow: 0 0 0 2px rgba(44, 123, 182, 0.15);
+}
+
+.calendar-headline-date-unit {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.calendar-headline-date-apply {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-family: inherit;
+  border: none;
+  border-radius: 0.45rem;
+  background: #b8daf0;
+  color: #1a4971;
+  cursor: pointer;
+}
+
+.calendar-headline-date-apply:hover {
+  background: #a8cce8;
+}
+
+.calendar-headline-date-cancel {
+  padding: 0.4rem 0.65rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-family: inherit;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 0.45rem;
+  background: var(--card, #fff);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.calendar-headline-date-cancel:hover {
+  color: var(--text);
+  background: var(--bg-light, #f8fafc);
+}
+
 .calendar-round-nav {
   display: inline-flex;
   gap: 0.45rem;
@@ -1272,6 +1365,94 @@
   background: var(--bg-light, #f8fafc);
   color: var(--text);
   border-color: rgba(0, 0, 0, 0.14);
+}
+
+.calendar-day-view-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-family: inherit;
+  border: 1px solid rgba(220, 100, 120, 0.25);
+  border-radius: 0.55rem;
+  background: #fde8ec;
+  color: #9f3048;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+}
+
+.calendar-day-view-delete-btn:hover:not(:disabled) {
+  background: #fbd5dc;
+  border-color: rgba(220, 100, 120, 0.4);
+}
+
+.calendar-day-view-delete-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.calendar-day-view-delete-btn .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
+.calendar-day-view-select-hint {
+  margin: -0.35rem 0 0.75rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.calendar-day-view-select-hint kbd {
+  padding: 0.1rem 0.35rem;
+  font-size: 0.7rem;
+  border-radius: 0.25rem;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: var(--bg-light, #f1f5f9);
+}
+
+.calendar-day-view-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.calendar-day-view-row.is-selected .calendar-day-view-card {
+  box-shadow: 0 0 0 2px rgba(44, 123, 182, 0.28);
+}
+
+.calendar-day-view-check {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  flex-shrink: 0;
+  width: 2.25rem;
+  padding: 0.25rem 0;
+  cursor: pointer;
+  user-select: none;
+}
+
+.calendar-day-view-check input[type='checkbox'] {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: #5b8db8;
+  cursor: pointer;
+  pointer-events: none;
+}
+
+.calendar-day-view-check-num {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  line-height: 1;
+}
+
+.calendar-day-view-row .calendar-day-view-card {
+  flex: 1;
+  min-width: 0;
 }
 
 .calendar-day-view-empty {

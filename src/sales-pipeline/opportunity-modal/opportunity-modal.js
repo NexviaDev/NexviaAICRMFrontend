@@ -480,6 +480,7 @@ export default function OpportunityModal({
   const [replyText, setReplyText] = useState('');
   /** 서버에서 불러온 직후 단계 — 저장 시 Won→다른 단계면 갱신 캘린더 삭제 반영용 */
   const stageAtLoadRef = useRef(null);
+  const createdAtAtLoadRef = useRef(null);
   const fullCollectionDateTouchedRef = useRef(false);
   /** 편집 시 GET 기회의 value(제품 행 없을 때 수주 시 계약금 자동 기입용) */
   const opportunityValueRef = useRef(0);
@@ -882,6 +883,7 @@ export default function OpportunityModal({
       const product = data.productId;
       const loadedStage = data.stage || 'NewLead';
       stageAtLoadRef.current = loadedStage;
+      createdAtAtLoadRef.current = data.createdAt || null;
       const rawAt = data.assignedTo;
       const atId =
         rawAt && typeof rawAt === 'object' && rawAt._id != null
@@ -2402,7 +2404,10 @@ export default function OpportunityModal({
           headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
           body: JSON.stringify({
             saleDate: body.saleDate,
-            lineItems: body.lineItems
+            lineItems: body.lineItems,
+            productId: body.productId,
+            createdAt: createdAtAtLoadRef.current || undefined,
+            updatedAt: createdAtAtLoadRef.current || undefined
           })
         });
         const preview = await previewRes.json().catch(() => ({}));

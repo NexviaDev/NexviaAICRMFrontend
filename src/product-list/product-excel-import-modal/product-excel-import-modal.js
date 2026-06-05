@@ -5,19 +5,25 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { API_BASE } from '@/config';
 import { pingBackendHealth } from '@/lib/backend-wake';
 import ProductImportMappingModal from './product-import-mapping-modal';
+import ProductImportResultModal from './product-import-result-modal';
+import ProductExcelRawPreviewModal from './product-excel-raw-preview-modal';
 import {
   buildExcelSourceOptions,
   previewExcelMappedValue
 } from '../../customer-companies/customer-companies-excel-import-modal/excel-import-mapping-utils';
 import {
   buildProductTargetOptions,
+  countInvalidProductExcelDraftCells,
   createInitialProductMappingRows,
   excelRowToProductBody,
   isExcelRowEffectivelyEmpty,
   MAX_PRODUCT_EXCEL_ROWS,
   mergeCustomFieldMappingRows,
+  normalizeExcelRowsBillingForPreview,
   parseExcelFileToRows,
-  productRowStatus
+  productMappingCanProceed,
+  productRowStatus,
+  resolveProductExcelColumnKey
 } from './product-excel-import-utils';
 
 function getAuthHeader() {
@@ -44,11 +50,19 @@ export default function ProductExcelImportModal({
   const [dragOver, setDragOver] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null);
+  /** mapping → excel-raw(편집·등록) → (result) */
+  const [step, setStep] = useState('mapping');
+  const [excelRowsDraft, setExcelRowsDraft] = useState([]);
+  const [importResult, setImportResult] = useState(null);
   const appliedInitialRef = useRef(false);
 
   useEffect(() => {
     if (!open) {
       appliedInitialRef.current = false;
+      setStep('mapping');
+      setExcelRowsDraft([]);
+      setImportResult(null);
+      setSaveMsg(null);
       return;
     }
     let cancelled = false;
@@ -176,85 +190,179 @@ export default function ProductExcelImportModal({
     return { mapped: rows.filter((r) => r.targetKey).length, err };
   }, [rows, sampleRow]);
 
-  const runImport = useCallback(async () => {
-    if (!excelRows.length) {
-      setSaveMsg('엑셀 파일을 먼저 올려 주세요.');
-      return;
-    }
-    const nameRow = rows.find((r) => r.targetKey === 'product.name');
-    if (!nameRow) {
-      setSaveMsg('제품명(product.name) 매핑 행을 추가해 주세요.');
-      return;
-    }
-    const prev = previewExcelMappedValue(sampleRow, nameRow);
-    const st = productRowStatus(nameRow, prev);
-    if (st.type !== 'ok') {
-      setSaveMsg('첫 데이터 행 기준으로 제품명이 비어 있으면 안 됩니다. 매핑을 확인해 주세요.');
-      return;
-    }
+  const mappingReady = productMappingCanProceed(rows, excelRows);
 
-    setSaving(true);
-    setSaveMsg(null);
-    let ok = 0;
-    let skipped = 0;
-    let failed = 0;
-    const errors = [];
-    try {
-      await pingBackendHealth(getAuthHeader);
-      let i = 0;
-      for (const excelRow of excelRows) {
-        if (isExcelRowEffectivelyEmpty(excelRow)) {
-          skipped += 1;
-          continue;
-        }
-        const body = excelRowToProductBody(excelRow, rows);
-        if (!body.name?.trim()) {
-          skipped += 1;
-          continue;
-        }
-        if (i > 0 && i % 20 === 0) {
-          await pingBackendHealth(getAuthHeader);
-        }
-        const res = await fetch(`${API_BASE}/products`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-          body: JSON.stringify(body)
-        });
-        if (res.ok) {
-          ok += 1;
-        } else {
-          failed += 1;
-          const errData = await res.json().catch(() => ({}));
-          errors.push(errData.error || `HTTP ${res.status}`);
-        }
-        i += 1;
-      }
-      const parts = [`완료: 성공 ${ok}건`];
-      if (skipped) parts.push(`빈 행·제품명 없음 ${skipped}건 건너뜀`);
-      if (failed) parts.push(`실패 ${failed}건`);
-      setSaveMsg(parts.join(' · ') + (errors.length ? ` (${errors.slice(0, 3).join('; ')})` : ''));
-      if (ok > 0) {
-        try {
-          window.dispatchEvent(new CustomEvent('nexvia-product-excel-import-completed'));
-        } catch {
-          /* ignore */
-        }
-        onImported?.();
-      }
-    } catch (e) {
-      setSaveMsg(e?.message || '등록 중 오류가 났습니다.');
-    } finally {
-      setSaving(false);
+  const openRawPreview = useCallback(() => {
+    if (!productMappingCanProceed(rows, excelRows)) {
+      setSaveMsg('제품명 매핑을 완료하고 엑셀 파일을 업로드해 주세요.');
+      return;
     }
-  }, [excelRows, rows, onImported]);
+    setExcelRowsDraft(normalizeExcelRowsBillingForPreview(excelRows, rows));
+    setStep('excel-raw');
+    setSaveMsg(null);
+  }, [rows, excelRows]);
+
+  const onRawCellChange = useCallback((rowIndex, header, value) => {
+    setExcelRowsDraft((prev) =>
+      prev.map((r, i) => (i === rowIndex ? { ...r, [header]: value } : r))
+    );
+  }, []);
+
+  const runImport = useCallback(
+    async (sourceRows) => {
+      const rowsToImport = Array.isArray(sourceRows) && sourceRows.length ? sourceRows : excelRows;
+      if (!rowsToImport.length) {
+        setSaveMsg('엑셀 파일을 먼저 올려 주세요.');
+        return;
+      }
+
+      setSaving(true);
+      setSaveMsg(null);
+      let ok = 0;
+      let skipped = 0;
+      let failed = 0;
+      const successSamples = [];
+      const failedItems = [];
+      try {
+        await pingBackendHealth(getAuthHeader);
+        let i = 0;
+        for (let rowIndex = 0; rowIndex < rowsToImport.length; rowIndex += 1) {
+          const excelRow = rowsToImport[rowIndex];
+          if (isExcelRowEffectivelyEmpty(excelRow)) {
+            skipped += 1;
+            continue;
+          }
+          const body = excelRowToProductBody(excelRow, rows);
+          const name = String(body.name || '').trim();
+          if (!name) {
+            skipped += 1;
+            continue;
+          }
+          if (i > 0 && i % 20 === 0) {
+            await pingBackendHealth(getAuthHeader);
+          }
+          const res = await fetch(`${API_BASE}/products`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+            body: JSON.stringify({
+              ...body,
+              createSource: 'excel-import',
+              skipCatalogRenewalCalendar: true
+            })
+          });
+          if (res.ok) {
+            ok += 1;
+            if (successSamples.length < 10) {
+              successSamples.push({ rowIndex, name });
+            }
+          } else {
+            failed += 1;
+            const errData = await res.json().catch(() => ({}));
+            failedItems.push({
+              rowIndex,
+              name,
+              error: errData.error || `HTTP ${res.status}`
+            });
+          }
+          i += 1;
+        }
+        if (ok > 0) {
+          try {
+            window.dispatchEvent(new CustomEvent('nexvia-product-excel-import-completed'));
+          } catch {
+            /* ignore */
+          }
+          onImported?.();
+        }
+        setImportResult({
+          totalRows: rowsToImport.length,
+          success: ok,
+          skipped,
+          failed,
+          fileName: excelFileName,
+          successSamples,
+          failedItems
+        });
+      } catch (e) {
+        setSaveMsg(e?.message || '등록 중 오류가 났습니다.');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [excelRows, rows, excelFileName, onImported]
+  );
+
+  const registerFromExcelRawPreview = useCallback(() => {
+    const sourceRows = excelRowsDraft.length ? excelRowsDraft : excelRows;
+    const nameColumnKey = resolveProductExcelColumnKey(rows, 'product.name');
+    const billingColumnKey = resolveProductExcelColumnKey(rows, 'product.billingType');
+    const billingIntervalColumnKey = resolveProductExcelColumnKey(rows, 'product.billingInterval');
+    const statusColumnKey = resolveProductExcelColumnKey(rows, 'product.status');
+    const currencyColumnKey = resolveProductExcelColumnKey(rows, 'product.currency');
+    const invalid = countInvalidProductExcelDraftCells(sourceRows, {
+      nameColumnKey,
+      billingColumnKey,
+      billingIntervalColumnKey,
+      statusColumnKey,
+      currencyColumnKey
+    });
+    if (invalid.total > 0) {
+      const parts = [];
+      if (invalid.nameMissing) parts.push(`제품명 ${invalid.nameMissing}건`);
+      if (invalid.billing) parts.push(`결제주기 ${invalid.billing}건`);
+      if (invalid.billingInterval) parts.push(`결제기간 ${invalid.billingInterval}건`);
+      if (invalid.status) parts.push(`상태 ${invalid.status}건`);
+      if (invalid.currency) parts.push(`통화 ${invalid.currency}건`);
+      setSaveMsg(`수정이 필요합니다: ${parts.join(', ')}. 붉은 칸을 확인해 주세요.`);
+      return;
+    }
+    setSaveMsg(null);
+    void runImport(sourceRows);
+  }, [excelRowsDraft, excelRows, rows, runImport]);
+
+  const handleConfirmResult = useCallback(() => {
+    setImportResult(null);
+    onClose?.();
+  }, [onClose]);
 
   if (!open) return null;
+
+  if (importResult) {
+    return (
+      <ProductImportResultModal
+        result={importResult}
+        onConfirm={handleConfirmResult}
+      />
+    );
+  }
+
+  if (step === 'excel-raw') {
+    return (
+      <ProductExcelRawPreviewModal
+        open
+        rows={excelRowsDraft}
+        mappingRows={rows}
+        targetOptions={targetOptions}
+        excelFileName={excelFileName}
+        rowCount={excelRowsDraft.length}
+        saving={saving}
+        onClose={() => !saving && setStep('mapping')}
+        onProceed={registerFromExcelRawPreview}
+        onCellChange={(rowIndex, header, value) => {
+          setSaveMsg(null);
+          onRawCellChange(rowIndex, header, value);
+        }}
+        saveMsg={saveMsg}
+      />
+    );
+  }
 
   return (
     <ProductImportMappingModal
       onClose={onClose}
       saving={saving}
-      onImport={runImport}
+      onProceed={openRawPreview}
+      mappingReady={mappingReady}
       excelRows={excelRows}
       fileInputRef={fileInputRef}
       ingestFile={ingestFile}

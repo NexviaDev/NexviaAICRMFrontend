@@ -445,7 +445,7 @@ export default function SalesPipelineExcelImportModal({ open, onClose, onImporte
       }
       if (!built.length) {
         setSaveMsg(
-          '등록할 유효한 행이 없습니다. 엑셀에 기회명·제품명이 보이는지, 매핑에서 「기회 · 제목」「기회 · 제품명」 열이 연결됐는지 확인해 주세요.'
+          '등록할 유효한 행이 없습니다. 엑셀에 제품명·단계가 보이는지, 매핑에서 「제품명」「기회 · 단계」 열이 연결됐는지 확인해 주세요.'
         );
         return;
       }
@@ -529,6 +529,8 @@ export default function SalesPipelineExcelImportModal({ open, onClose, onImporte
       <OpportunityExcelRawPreviewModal
         open
         rows={excelRowsDraft}
+        mappingRows={rows}
+        targetOptions={targetOptions}
         excelFileName={excelFileName}
         rowCount={excelRowsDraft.length}
         saving={saving || overviewLoading}

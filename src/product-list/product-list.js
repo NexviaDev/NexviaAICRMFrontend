@@ -23,7 +23,7 @@ import { API_BASE } from '@/config';
 import { pingBackendHealth } from '@/lib/backend-wake';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { listPriceFromProduct } from '@/lib/product-price-utils';
-import { CATEGORY_AVATAR_RULES } from './product-category-avatar-config';
+import { formatProductBillingDisplay } from '@/lib/product-billing-utils';
 const LIST_ID = LIST_IDS.PRODUCT_LIST;
 const LIMIT = 10;
 /** 검색 모달: 페이지네이션 UI 숨김 — 한 번에 더 많이 불러옴 */
@@ -99,66 +99,6 @@ function getConsumerMarginPercent(row) {
   return (getConsumerMargin(row) / lp) * 100;
 }
 
-function getProductInitials(name) {
-  const s = String(name || '').trim();
-  if (!s) return '?';
-  if (/[가-힣]/.test(s)) return s.slice(0, 2);
-  const parts = s.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2 && /^[a-zA-Z]/.test(parts[0])) {
-    const a = parts[0][0];
-    const b = parts[1][0];
-    if (/[a-zA-Z0-9]/.test(a) && /[a-zA-Z0-9]/.test(b)) return (a + b).toUpperCase();
-  }
-  const alnum = s.replace(/[^a-zA-Z0-9가-힣]/g, '');
-  if (alnum.length >= 2) return alnum.slice(0, 2).toUpperCase();
-  return s.slice(0, 2).toUpperCase();
-}
-
-/** 데스크톱 표: 소비자가+순 마진 / 유통가+유통시 순 마진 묶음 배경 */
-function productListColumnToneClass(key) {
-  if (key === 'price' || key === 'consumerMargin') return 'pl-col--direct';
-  if (key === 'channelPrice' || key === 'channelMargin') return 'pl-col--channel';
-  return '';
-}
-
-function hashToneFromString(seed) {
-  let h = 0;
-  const s = String(seed || '');
-  for (let i = 0; i < s.length; i++) {
-    h = (h * 31 + s.charCodeAt(i)) | 0;
-  }
-  return Math.abs(h) % 4;
-}
-
-function resolveProductAvatar(row, idx) {
-  const cat = String(row.category || '').toLowerCase();
-  for (const rule of CATEGORY_AVATAR_RULES) {
-    if (rule.keys.some((k) => cat.includes(k.toLowerCase()))) {
-      return { kind: 'icon', icon: rule.icon, tone: rule.tone % 4 };
-    }
-  }
-  const initials = getProductInitials(row.name);
-  const tone = hashToneFromString(row._id || row.name || String(idx));
-  return { kind: 'initials', initials, tone };
-}
-
-function ProductListAvatar({ row, idx }) {
-  const av = resolveProductAvatar(row, idx);
-  const base = `pl-mcard-icon pl-mcard-icon--${av.tone}`;
-  if (av.kind === 'initials') {
-    return (
-      <div className={`${base} pl-mcard-icon--initials`} aria-hidden>
-        <span className="pl-mcard-icon-initials">{av.initials}</span>
-      </div>
-    );
-  }
-  return (
-    <div className={base} aria-hidden>
-      <span className="material-symbols-outlined">{av.icon}</span>
-    </div>
-  );
-}
-
 /**
  * @param {{ listVariant?: 'page' | 'searchModal', onSearchModalClose?: () => void, onSearchModalConfirm?: (products: object[]) => void }} props
  */
@@ -197,6 +137,7 @@ export default function ProductList({
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
   const [bulkCopyLoading, setBulkCopyLoading] = useState(false);
+  const [selectAllLoading, setSelectAllLoading] = useState(false);
   const [excelImportSeed, setExcelImportSeed] = useState(null);
   const selectionAnchorIdxRef = useRef(null);
   const headerSelectAllRef = useRef(null);
@@ -279,6 +220,30 @@ export default function ProductList({
       setLoading(false);
     }
   }, [searchApplied, appliedSearchField, listPageLimit]);
+
+  const fetchAllProductsForExport = useCallback(async () => {
+    let page = 1;
+    let totalPages = 1;
+    const all = [];
+    do {
+      const params = new URLSearchParams({ page: String(page), limit: String(EXPORT_PAGE_LIMIT) });
+      if (searchApplied) {
+        params.set('search', searchApplied);
+        if (appliedSearchField) params.set('searchField', appliedSearchField);
+      }
+      const res = await fetch(`${API_BASE}/products?${params}`, { headers: getAuthHeader() });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || '목록을 가져오지 못했습니다.');
+      }
+      const data = await res.json();
+      const batch = data.items || [];
+      all.push(...batch);
+      totalPages = Math.max(1, Number(data.pagination?.totalPages) || 1);
+      page += 1;
+    } while (page <= totalPages);
+    return all;
+  }, [searchApplied, appliedSearchField]);
 
   useEffect(() => { fetchList(pagination.page); }, [pagination.page, fetchList]);
 
@@ -435,7 +400,10 @@ export default function ProductList({
     saveTemplate({ columnOrder: order, visible: template.visible, columnCellStyles: template.columnCellStyles });
   };
 
-  const displayColumns = template.columns.filter((c) => template.visible[c.key]);
+  /** 제품명·코드는 항상 별도 열 (이름 열 아래 UID 중복 표시 없음) */
+  const displayColumns = template.columns.filter(
+    (c) => c.key === 'code' || template.visible[c.key]
+  );
   const colSpan = Math.max(1, displayColumns.length + 1);
 
   const getSortValue = useCallback((row, key) => {
@@ -480,17 +448,16 @@ export default function ProductList({
     });
   }, []);
 
-  const pageRowIds = useMemo(
-    () => sortedItems.map((r) => productIdKey(r._id)).filter(Boolean),
-    [sortedItems]
-  );
-  const allOnPageSelected = pageRowIds.length > 0 && pageRowIds.every((id) => selectedIds.has(id));
-  const someOnPageSelected = pageRowIds.some((id) => selectedIds.has(id)) && !allOnPageSelected;
+  /** 검색·필터 결과 전체가 선택됐는지 (헤더 체크박스) */
+  const allChecked =
+    (pagination.total || 0) > 0 && selectedIds.size === pagination.total;
 
   useEffect(() => {
     const el = headerSelectAllRef.current;
-    if (el) el.indeterminate = someOnPageSelected;
-  }, [someOnPageSelected]);
+    if (!el) return;
+    const total = pagination.total || 0;
+    el.indeterminate = total > 0 && selectedIds.size > 0 && selectedIds.size < total;
+  }, [selectedIds.size, pagination.total]);
 
   const handleRowCheckboxClick = useCallback((e, rowIdx, rowId) => {
     e.stopPropagation();
@@ -519,19 +486,6 @@ export default function ProductList({
       });
       selectionAnchorIdxRef.current = rowIdx;
     }
-  }, [sortedItems]);
-
-  const toggleSelectAllOnPage = useCallback((e) => {
-    e.stopPropagation();
-    const ids = sortedItems.map((r) => productIdKey(r._id)).filter(Boolean);
-    setSelectedIds((prev) => {
-      const allSelected = ids.length > 0 && ids.every((id) => prev.has(id));
-      const next = new Set(prev);
-      if (allSelected) ids.forEach((id) => next.delete(id));
-      else ids.forEach((id) => next.add(id));
-      return next;
-    });
-    selectionAnchorIdxRef.current = null;
   }, [sortedItems]);
 
   const clearSelection = useCallback(() => {
@@ -618,6 +572,7 @@ export default function ProductList({
               channelPrice: channelP,
               currency: src.currency || 'KRW',
               billingType: src.billingType || 'Monthly',
+              billingInterval: src.billingInterval ?? 1,
               status: src.status || 'Active',
               customFields:
                 src.customFields && typeof src.customFields === 'object' && Object.keys(src.customFields).length
@@ -646,29 +601,35 @@ export default function ProductList({
     }
   }, [selectedIds, fetchList, pagination.page]);
 
-  const fetchAllProductsForExport = useCallback(async () => {
-    let page = 1;
-    let totalPages = 1;
-    const all = [];
-    do {
-      const params = new URLSearchParams({ page: String(page), limit: String(EXPORT_PAGE_LIMIT) });
-      if (searchApplied) {
-        params.set('search', searchApplied);
-        if (appliedSearchField) params.set('searchField', appliedSearchField);
+  /** 헤더 체크: 현재 검색·필터 조건의 전체 제품 선택 / 이미 전체면 전체 해제 */
+  const handleSelectAll = useCallback(async () => {
+    const total = pagination.total || 0;
+    if (total === 0) return;
+
+    if (selectedIds.size === total) {
+      clearSelection();
+      return;
+    }
+
+    setSelectAllLoading(true);
+    try {
+      await pingBackendHealth(getAuthHeader);
+      const rows = await fetchAllProductsForExport();
+      const next = new Set();
+      for (const r of rows) {
+        const id = productIdKey(r._id);
+        if (!id) continue;
+        next.add(id);
+        pickedProductByIdRef.current.set(id, r);
       }
-      const res = await fetch(`${API_BASE}/products?${params}`, { headers: getAuthHeader() });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || '목록을 가져오지 못했습니다.');
-      }
-      const data = await res.json();
-      const batch = data.items || [];
-      all.push(...batch);
-      totalPages = Math.max(1, Number(data.pagination?.totalPages) || 1);
-      page += 1;
-    } while (page <= totalPages);
-    return all;
-  }, [searchApplied, appliedSearchField]);
+      setSelectedIds(next);
+      selectionAnchorIdxRef.current = null;
+    } catch (e) {
+      window.alert(e?.message || '전체 선택에 실패했습니다.');
+    } finally {
+      setSelectAllLoading(false);
+    }
+  }, [pagination.total, selectedIds.size, fetchAllProductsForExport, clearSelection]);
 
   const handleDownloadExcel = useCallback(async () => {
     const viewer = getStoredCrmUser();
@@ -702,7 +663,7 @@ export default function ProductList({
           '순 마진': getConsumerMargin(row),
           '유통시 순 마진': shouldDashChannelMargin(row) ? '-' : getChannelMargin(row),
           통화: row.currency || '',
-          결제주기: row.billingType ? BILLING_LABELS[row.billingType] || row.billingType : '',
+          결제주기: formatProductBillingDisplay(row.billingType, row.billingInterval),
           상태: row.status ? STATUS_LABELS[row.status] || row.status : '',
           수정일: row.updatedAt ? new Date(row.updatedAt).toLocaleString('ko-KR') : ''
         };
@@ -769,12 +730,9 @@ export default function ProductList({
             />
           </div>
           <div className="pl-mcard-head-row">
-            <div className="pl-mcard-id">
-              <ProductListAvatar row={row} idx={idx} />
-              <div className="pl-mcard-text">
-                <h3 className="pl-mcard-name">{row.name || '—'}</h3>
-                <p className="pl-mcard-sub">{sub}</p>
-              </div>
+            <div className="pl-mcard-text">
+              <h3 className="pl-mcard-name">{row.name || '—'}</h3>
+              <p className="pl-mcard-sub">{sub}</p>
             </div>
             <span className={`pl-mcard-badge ${badgeClass}`}>{STATUS_LABELS[row.status] || row.status || '—'}</span>
           </div>
@@ -932,18 +890,27 @@ export default function ProductList({
           <div className="table-wrap">
             <div className="crm-list-sheet-scroll">
             <div className="crm-list-sheet-table-wrap">
-            <table className="data-table product-list-table crm-list-sheet">
+            <table className="data-table crm-list-sheet">
               <thead>
                 <tr>
-                  <th className="pl-th-checkbox" scope="col" aria-label="현재 페이지 전체 선택">
+                  <th className="pl-th-checkbox" scope="col" aria-label="검색·필터 결과 전체 선택">
                     <input
                       ref={headerSelectAllRef}
                       type="checkbox"
                       className="pl-row-checkbox"
-                      checked={allOnPageSelected}
-                      onChange={() => {}}
-                      onClick={toggleSelectAllOnPage}
-                      title="현재 페이지 전체 선택"
+                      checked={allChecked}
+                      disabled={selectAllLoading || loading || (pagination.total || 0) === 0}
+                      onChange={() => void handleSelectAll()}
+                      aria-label={
+                        selectAllLoading
+                          ? '전체 제품 불러오는 중'
+                          : '검색·필터 결과 전체 선택'
+                      }
+                      title={
+                        selectAllLoading
+                          ? '목록을 불러오는 중…'
+                          : '현재 검색·필터 조건에 맞는 제품 전부를 선택합니다. 다시 누르면 전체 해제합니다.'
+                      }
                     />
                   </th>
                   {displayColumns.map((col) => (
@@ -951,8 +918,7 @@ export default function ProductList({
                       key={col.key}
                       className={[
                         'list-template-th-sortable',
-                        dragOverKey === col.key ? 'list-template-drag-over' : '',
-                        productListColumnToneClass(col.key)
+                        dragOverKey === col.key ? 'list-template-drag-over' : ''
                       ].filter(Boolean).join(' ')}
                       draggable
                       onDragStart={(e) => handleHeaderDragStart(e, col.key)}
@@ -1000,16 +966,10 @@ export default function ProductList({
                         />
                       </td>
                       {displayColumns.map((col) => (
-                        <td key={col.key} className={productListColumnToneClass(col.key)}>
+                        <td key={col.key}>
                           {col.key === 'name' && (
                             <div className="product-list-cell-name">
-                              <ProductListAvatar row={row} idx={rowIdx} />
-                              <div>
-                                <span className="product-list-name">{row.name || '—'}</span>
-                                {row.code && !template.visible?.code && (
-                                  <span className="product-list-uid">UID: {row.code}</span>
-                                )}
-                              </div>
+                              <span className="product-list-name">{row.name || '—'}</span>
                             </div>
                           )}
                           {col.key === 'category' && (
@@ -1021,13 +981,17 @@ export default function ProductList({
                           {col.key === 'code' && <span className="text-muted">{row.code || '—'}</span>}
                           {col.key === 'currency' && <span>{row.currency || '—'}</span>}
                           {col.key === 'billingType' && (
-                            <span className="product-list-billing">{row.billingType ? BILLING_LABELS[row.billingType] || row.billingType : '—'}</span>
+                            <span className="product-list-billing">
+                              {formatProductBillingDisplay(row.billingType, row.billingInterval)}
+                            </span>
                           )}
                           {col.key === 'price' && (
                             <div className="product-list-pricing">
                               <span className="product-list-price">{formatPrice(listPriceFromProduct(row), row.currency)}</span>
                               {row.billingType && !template.visible?.billingType && (
-                                <span className="product-list-billing">{BILLING_LABELS[row.billingType] || row.billingType}</span>
+                                <span className="product-list-billing">
+                                  {formatProductBillingDisplay(row.billingType, row.billingInterval)}
+                                </span>
                               )}
                             </div>
                           )}

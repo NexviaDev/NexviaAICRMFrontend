@@ -184,9 +184,74 @@ function compareCalendarEvents(a, b) {
   return (a.title || '').localeCompare(b.title || '', 'ko');
 }
 
+function dayEventSelectionKey(ev) {
+  return `${ev._source || 'crm'}::${ev._id}::${ev.googleCalendarId || ''}`;
+}
+
+function googleCalendarDeleteQuery(calendarId) {
+  if (!calendarId) return '';
+  return `?calendarId=${encodeURIComponent(calendarId)}`;
+}
+
+function resolveCalendarEventDeleteTarget(ev) {
+  const isGoogle = ev._source === 'google';
+  const rawId = String(ev._id || '');
+  const realId = isGoogle && rawId.startsWith('g:') ? rawId.slice(2) : rawId;
+  return { isGoogle, realId };
+}
+
+const CALENDAR_BULK_DELETE_CHUNK = 300;
+
+function chunkCalendarDeleteList(items, chunkSize) {
+  if (!Array.isArray(items) || items.length === 0) return [];
+  const size = Math.max(1, chunkSize);
+  const chunks = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
 function compareEventsForDayList(a, b) {
   if (a.isMultiDay !== b.isMultiDay) return a.isMultiDay ? -1 : 1;
   return compareCalendarEvents(a.event, b.event);
+}
+
+/**
+ * CRM→Google 동기화된 일정은 Mongo + Google API 양쪽에서 잡혀 2개로 보이는 문제 방지.
+ * googleSyncedMembers 매칭 우선, 동기화 직후엔 제목·시작 시각으로 보조 매칭.
+ */
+function buildCrmGoogleDedupIndex(crmEvents) {
+  const syncedKeys = new Set();
+  const titleTimeKeys = new Set();
+  for (const ev of crmEvents || []) {
+    const title = String(ev.title || '').trim();
+    const startMs = ev.start ? new Date(ev.start).getTime() : NaN;
+    if (title && Number.isFinite(startMs)) {
+      titleTimeKeys.add(`${title}::${startMs}`);
+    }
+    const members = ev.googleSyncedMembers;
+    if (!Array.isArray(members)) continue;
+    for (const m of members) {
+      const gId = String(m?.googleEventId || '').trim();
+      const calId = String(m?.googleCalendarId || 'primary').trim() || 'primary';
+      if (gId) syncedKeys.add(`${calId}::${gId}`);
+    }
+  }
+  return { syncedKeys, titleTimeKeys };
+}
+
+function isGoogleEventDuplicateOfCrm(gev, dedupIndex) {
+  if (!gev || !dedupIndex) return false;
+  const calId = String(gev.googleCalendarId || 'primary').trim() || 'primary';
+  const gId = String(gev.googleEventId || '').trim();
+  if (gId && dedupIndex.syncedKeys.has(`${calId}::${gId}`)) return true;
+  const title = String(gev.title || '').trim();
+  const startMs = gev.start ? new Date(gev.start).getTime() : NaN;
+  if (title && Number.isFinite(startMs) && dedupIndex.titleTimeKeys.has(`${title}::${startMs}`)) {
+    return true;
+  }
+  return false;
 }
 
 /** API(JSON) → 그리드용 필드 정규화 */
@@ -368,6 +433,16 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
   const [syncMessage, setSyncMessage] = useState('');
   const [syncBusy, setSyncBusy] = useState('');
   const [googleLoadHint, setGoogleLoadHint] = useState('');
+  /** 일 보기: 체크박스 선택(Shift+클릭 범위 선택) */
+  const [daySelectedKeys, setDaySelectedKeys] = useState(() => new Set());
+  const dayLastSelectIndexRef = useRef(null);
+  const [dayDeleteBusy, setDayDeleteBusy] = useState(false);
+  /** 헤드라인 클릭 → 연·월·일 직접 이동 */
+  const [headlineDateEdit, setHeadlineDateEdit] = useState(false);
+  const [headlineEditYear, setHeadlineEditYear] = useState('');
+  const [headlineEditMonth, setHeadlineEditMonth] = useState('');
+  const [headlineEditDay, setHeadlineEditDay] = useState('');
+  const headlineYearInputRef = useRef(null);
   const [selectedGoogleCalendarIds, setSelectedGoogleCalendarIds] = useState(() => {
     try {
       const raw = localStorage.getItem(GOOGLE_CALENDAR_IDS_STORAGE_KEY);
@@ -766,7 +841,9 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
 
   const rawEvents = useMemo(() => {
     const crm = crmEvents.map((ev) => ({ ...ev, _source: 'crm' }));
-    return [...crm, ...googleEvents].sort(compareCalendarEvents);
+    const dedupIndex = buildCrmGoogleDedupIndex(crmEvents);
+    const googleFiltered = googleEvents.filter((gev) => !isGoogleEventDuplicateOfCrm(gev, dedupIndex));
+    return [...crm, ...googleFiltered].sort(compareCalendarEvents);
   }, [crmEvents, googleEvents]);
 
   /** 로그인 계정 유형 — 네이버 우선, 없으면 Google */
@@ -924,6 +1001,183 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
     () => eventsForSelectedDay.filter((ev) => !isAllDayEvent(ev)),
     [eventsForSelectedDay]
   );
+  /** 일간 목록 번호·Shift 범위 선택과 동일한 순서 (종일 → 시간) */
+  const dayViewOrderedEvents = useMemo(
+    () => [...dayViewAllDay, ...dayViewTimed],
+    [dayViewAllDay, dayViewTimed]
+  );
+
+  const daySelectedCount = daySelectedKeys.size;
+
+  useEffect(() => {
+    setDaySelectedKeys(new Set());
+    dayLastSelectIndexRef.current = null;
+  }, [current.year, current.month, selectedDay, viewMode]);
+
+  useEffect(() => {
+    if (!headlineDateEdit) return;
+    const t = window.setTimeout(() => {
+      headlineYearInputRef.current?.focus();
+      headlineYearInputRef.current?.select();
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, [headlineDateEdit]);
+
+  const openHeadlineDateEdit = useCallback(() => {
+    setHeadlineEditYear(String(current.year));
+    setHeadlineEditMonth(String(current.month + 1));
+    setHeadlineEditDay(String(selectedDay));
+    setHeadlineDateEdit(true);
+  }, [current.year, current.month, selectedDay]);
+
+  const applyHeadlineDateEdit = useCallback(() => {
+    const y = parseInt(headlineEditYear, 10);
+    const m = parseInt(headlineEditMonth, 10);
+    if (!Number.isFinite(y) || !Number.isFinite(m) || m < 1 || m > 12) return;
+    const monthIdx = m - 1;
+    const dim = new Date(y, monthIdx + 1, 0).getDate();
+    const dRaw = parseInt(headlineEditDay, 10);
+
+    if (viewMode === 'month') {
+      setCurrent({ year: y, month: monthIdx });
+      setSelectedDay((d) => Math.min(Math.max(1, d), dim));
+    } else if (viewMode === 'week') {
+      const safeDay = Number.isFinite(dRaw) ? Math.min(Math.max(1, dRaw), dim) : Math.min(selectedDay, dim);
+      setCurrent({ year: y, month: monthIdx });
+      setSelectedDay(safeDay);
+      setWeekViewStart(sundayPartsOfLocalDate(y, monthIdx, safeDay));
+    } else {
+      const safeDay = Number.isFinite(dRaw) ? Math.min(Math.max(1, dRaw), dim) : 1;
+      setCurrent({ year: y, month: monthIdx });
+      setSelectedDay(safeDay);
+    }
+    setHeadlineDateEdit(false);
+  }, [headlineEditYear, headlineEditMonth, headlineEditDay, viewMode, selectedDay]);
+
+  const onHeadlineDateEditKeyDown = useCallback(
+    (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        applyHeadlineDateEdit();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        setHeadlineDateEdit(false);
+      }
+    },
+    [applyHeadlineDateEdit]
+  );
+
+  const handleDayEventCheckbox = useCallback(
+    (index, ev, shiftKey) => {
+      const key = dayEventSelectionKey(ev);
+      const list = dayViewOrderedEvents;
+      const anchor = dayLastSelectIndexRef.current;
+
+      setDaySelectedKeys((prev) => {
+        const next = new Set(prev);
+        if (shiftKey && anchor != null && list.length > 0) {
+          const from = Math.min(anchor, index);
+          const to = Math.max(anchor, index);
+          for (let i = from; i <= to; i += 1) {
+            const row = list[i];
+            if (row) next.add(dayEventSelectionKey(row));
+          }
+        } else if (next.has(key)) {
+          next.delete(key);
+        } else {
+          next.add(key);
+        }
+        return next;
+      });
+      dayLastSelectIndexRef.current = index;
+    },
+    [dayViewOrderedEvents]
+  );
+
+  const onDayEventSelectPointerDown = useCallback(
+    (e, index, ev) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      handleDayEventCheckbox(index, ev, e.shiftKey);
+    },
+    [handleDayEventCheckbox]
+  );
+
+  const deleteSelectedDayEvents = useCallback(async () => {
+    const selected = eventsForSelectedDay.filter((ev) => daySelectedKeys.has(dayEventSelectionKey(ev)));
+    if (!selected.length) return;
+    if (!window.confirm(`선택한 ${selected.length}개 일정을 삭제할까요?`)) return;
+
+    const crmIds = [];
+    const googleItems = [];
+    selected.forEach((ev) => {
+      const { isGoogle, realId } = resolveCalendarEventDeleteTarget(ev);
+      if (isGoogle) {
+        googleItems.push({
+          eventId: realId,
+          calendarId: ev.googleCalendarId || 'primary'
+        });
+      } else if (realId) {
+        crmIds.push(realId);
+      }
+    });
+
+    setDayDeleteBusy(true);
+    let failed = 0;
+    const headers = { ...getAuthHeader(), 'Content-Type': 'application/json' };
+
+    try {
+      const tasks = [];
+      chunkCalendarDeleteList(crmIds, CALENDAR_BULK_DELETE_CHUNK).forEach((ids) => {
+        tasks.push(
+          fetch(`${API_BASE}/calendar-events/bulk-delete`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ ids })
+          }).then(async (res) => {
+            if (!res.ok) {
+              failed += ids.length;
+              return;
+            }
+            const data = await res.json().catch(() => ({}));
+            const deleted = Number(data.deletedCount);
+            if (!Number.isFinite(deleted)) failed += ids.length;
+            else failed += Math.max(0, ids.length - deleted);
+          })
+        );
+      });
+      chunkCalendarDeleteList(googleItems, CALENDAR_BULK_DELETE_CHUNK).forEach((items) => {
+        tasks.push(
+          fetch(`${API_BASE}/google-calendar/events/bulk-delete`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ items })
+          }).then(async (res) => {
+            if (!res.ok) {
+              failed += items.length;
+              return;
+            }
+            const data = await res.json().catch(() => ({}));
+            failed += Number(data.failedCount) || 0;
+          })
+        );
+      });
+
+      await Promise.all(tasks);
+
+      if (failed > 0) {
+        window.alert(`${failed}개 일정 삭제에 실패했습니다.`);
+      }
+      setDaySelectedKeys(new Set());
+      dayLastSelectIndexRef.current = null;
+      setRefreshKey((k) => k + 1);
+    } catch {
+      window.alert('일정 삭제 중 오류가 발생했습니다.');
+    } finally {
+      setDayDeleteBusy(false);
+    }
+  }, [eventsForSelectedDay, daySelectedKeys]);
 
   const segmentsWithRow = useMemo(() => {
     const segments = [];
@@ -1235,9 +1489,80 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
           <div className="calendar-hero">
             <div className="calendar-hero-main">
               <div className="calendar-title-block">
-                <h1 className="calendar-month-headline">
-                  {viewMode === 'day' ? dayTitle : viewMode === 'week' ? weekTitle : monthTitle}
-                </h1>
+                {headlineDateEdit ? (
+                  <div
+                    className="calendar-headline-date-edit"
+                    role="group"
+                    aria-label="날짜 직접 입력"
+                    onKeyDown={onHeadlineDateEditKeyDown}
+                  >
+                    <input
+                      ref={headlineYearInputRef}
+                      type="number"
+                      className="calendar-headline-date-input calendar-headline-date-input--year"
+                      value={headlineEditYear}
+                      onChange={(e) => setHeadlineEditYear(e.target.value)}
+                      aria-label="연도"
+                      min={1970}
+                      max={2100}
+                    />
+                    <span className="calendar-headline-date-unit">년</span>
+                    <input
+                      type="number"
+                      className="calendar-headline-date-input calendar-headline-date-input--month"
+                      value={headlineEditMonth}
+                      onChange={(e) => setHeadlineEditMonth(e.target.value)}
+                      aria-label="월"
+                      min={1}
+                      max={12}
+                    />
+                    <span className="calendar-headline-date-unit">월</span>
+                    {viewMode !== 'month' ? (
+                      <>
+                        <input
+                          type="number"
+                          className="calendar-headline-date-input calendar-headline-date-input--day"
+                          value={headlineEditDay}
+                          onChange={(e) => setHeadlineEditDay(e.target.value)}
+                          aria-label="일"
+                          min={1}
+                          max={31}
+                        />
+                        <span className="calendar-headline-date-unit">일</span>
+                      </>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="calendar-headline-date-apply"
+                      onClick={applyHeadlineDateEdit}
+                    >
+                      이동
+                    </button>
+                    <button
+                      type="button"
+                      className="calendar-headline-date-cancel"
+                      onClick={() => setHeadlineDateEdit(false)}
+                    >
+                      취소
+                    </button>
+                  </div>
+                ) : (
+                  <h1
+                    className="calendar-month-headline calendar-month-headline--clickable"
+                    role="button"
+                    tabIndex={0}
+                    title="클릭하여 날짜로 이동 (Enter)"
+                    onClick={openHeadlineDateEdit}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        openHeadlineDateEdit();
+                      }
+                    }}
+                  >
+                    {viewMode === 'day' ? dayTitle : viewMode === 'week' ? weekTitle : monthTitle}
+                  </h1>
+                )}
                 <div className="calendar-round-nav">
                   <button
                     type="button"
@@ -1625,7 +1950,24 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
                 >
                   하루 일정 목록
                 </button>
+                <button
+                  type="button"
+                  className="calendar-day-view-delete-btn"
+                  disabled={dayDeleteBusy || daySelectedCount === 0}
+                  onClick={() => void deleteSelectedDayEvents()}
+                  title={daySelectedCount === 0 ? '삭제할 일정을 선택하세요' : undefined}
+                >
+                  <span className="material-symbols-outlined" aria-hidden>
+                    {dayDeleteBusy ? 'progress_activity' : 'delete'}
+                  </span>
+                  {dayDeleteBusy ? '삭제 중…' : `선택 삭제${daySelectedCount > 0 ? ` (${daySelectedCount})` : ''}`}
+                </button>
               </div>
+              {eventsForSelectedDay.length > 0 ? (
+                <p className="calendar-day-view-select-hint">
+                  체크 후 삭제 · 1번 클릭 후 <kbd>Shift</kbd> 누른 채 11번 클릭하면 1~11번 전체 선택
+                </p>
+              ) : null}
               {eventsForSelectedDay.length === 0 ? (
                 <p className="calendar-day-view-empty">이 날짜에 표시할 일정이 없습니다.</p>
               ) : (
@@ -1637,11 +1979,31 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
                       </h3>
                       <ul className="calendar-day-view-list">
                         {dayViewAllDay.map((ev, evIdx) => {
+                          const globalIndex = evIdx;
                           const style = getEventStyle(ev);
                           const pillClass = style ? '' : eventPillClass(ev, evIdx);
                           const isGoogle = ev._source === 'google';
+                          const selKey = dayEventSelectionKey(ev);
+                          const isSelected = daySelectedKeys.has(selKey);
                           return (
-                            <li key={`${ev.googleCalendarId || ''}-${ev._id}`}>
+                            <li
+                              key={`${ev.googleCalendarId || ''}-${ev._id}`}
+                              className={`calendar-day-view-row${isSelected ? ' is-selected' : ''}`}
+                            >
+                              <label
+                                className="calendar-day-view-check"
+                                title={`${globalIndex + 1}번 일정`}
+                                onMouseDown={(e) => onDayEventSelectPointerDown(e, globalIndex, ev)}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  readOnly
+                                  tabIndex={-1}
+                                  aria-label={`${globalIndex + 1}번 일정 선택`}
+                                />
+                                <span className="calendar-day-view-check-num">{globalIndex + 1}</span>
+                              </label>
                               <button
                                 type="button"
                                 className={`calendar-day-view-card ${pillClass} ${isGoogle ? 'google-event' : ''}`}
@@ -1667,11 +2029,31 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
                       </h3>
                       <ul className="calendar-day-view-list">
                         {dayViewTimed.map((ev, evIdx) => {
+                          const globalIndex = dayViewAllDay.length + evIdx;
                           const style = getEventStyle(ev);
                           const pillClass = style ? '' : eventPillClass(ev, evIdx);
                           const isGoogle = ev._source === 'google';
+                          const selKey = dayEventSelectionKey(ev);
+                          const isSelected = daySelectedKeys.has(selKey);
                           return (
-                            <li key={`${ev.googleCalendarId || ''}-${ev._id}`}>
+                            <li
+                              key={`${ev.googleCalendarId || ''}-${ev._id}`}
+                              className={`calendar-day-view-row${isSelected ? ' is-selected' : ''}`}
+                            >
+                              <label
+                                className="calendar-day-view-check"
+                                title={`${globalIndex + 1}번 일정`}
+                                onMouseDown={(e) => onDayEventSelectPointerDown(e, globalIndex, ev)}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isSelected}
+                                  readOnly
+                                  tabIndex={-1}
+                                  aria-label={`${globalIndex + 1}번 일정 선택`}
+                                />
+                                <span className="calendar-day-view-check-num">{globalIndex + 1}</span>
+                              </label>
                               <button
                                 type="button"
                                 className={`calendar-day-view-card calendar-day-view-card--timed ${pillClass} ${isGoogle ? 'google-event' : ''}`}

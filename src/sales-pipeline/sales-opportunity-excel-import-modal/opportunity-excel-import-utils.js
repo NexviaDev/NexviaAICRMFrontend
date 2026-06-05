@@ -32,7 +32,27 @@ export function isForceImportExcelRow(row) {
 }
 
 export function isExcelMetaHeaderKey(key) {
-  return String(key || '').startsWith('__');
+  const k = String(key || '');
+  if (k.startsWith('__preview:')) return false;
+  return k.startsWith('__');
+}
+
+/** 열 미연결 시 미리보기·등록용 가상 열 키 */
+export function opportunityPreviewCellKey(targetKey) {
+  return `__preview:${String(targetKey || '').trim()}`;
+}
+
+export function isOpportunityPreviewCellKey(key) {
+  return String(key || '').startsWith('__preview:');
+}
+
+function resolveExcelFieldColumnKey(headers, mapping, targetKey, guessFn) {
+  if (mapping?.mode === 'constant') return '';
+  if (mapping?.mode === 'field' && mapping.sourceKey) return mapping.sourceKey;
+  const guessed = guessFn ? guessFn(headers) : guessOpportunityExcelSourceKey(targetKey, headers);
+  if (guessed) return guessed;
+  if (mapping?.mode === 'field') return opportunityPreviewCellKey(targetKey);
+  return '';
 }
 
 export function newMappingRowId() {
@@ -111,7 +131,10 @@ export function readMappedValuesFromExcelRow(excelRow, mappings) {
     const key = m.targetKey;
     if (!key || !String(key).startsWith('opp.')) continue;
     const raw =
-      m.sourceType === 'constant' ? m.constantValue ?? '' : readExcelMappedCell(excelRow, m.sourceKey || '');
+      m.sourceType === 'constant'
+        ? m.constantValue ?? ''
+        : readExcelMappedCell(excelRow, m.sourceKey || '') ||
+          readExcelMappedCell(excelRow, opportunityPreviewCellKey(key));
     vals[key] = raw == null ? '' : String(raw).trim();
   }
   return vals;
@@ -164,6 +187,51 @@ export function getOppStageExcelMapping(mappingRows) {
   return getOppFieldExcelMapping(mappingRows, 'opp.stage');
 }
 
+/** 미리보기 표 — 매핑 대상 필드 전부(열 미선택 포함), 헤더는 CRM 라벨 */
+export function buildOpportunityExcelPreviewColumns(mappingRows, targetOptions, excelHeaders = []) {
+  const labelMap = new Map();
+  for (const o of targetOptions || []) {
+    if (o?.value) labelMap.set(o.value, o.label || o.value);
+  }
+  const hdrs = Array.isArray(excelHeaders) ? excelHeaders : [];
+  const seenTargets = new Set();
+  const cols = [];
+  for (const row of mappingRows || []) {
+    const targetKey = String(row?.targetKey ?? '').trim();
+    if (!targetKey || seenTargets.has(targetKey)) continue;
+    seenTargets.add(targetKey);
+
+    if (row.sourceType === 'constant') {
+      cols.push({
+        targetKey,
+        excelKey: opportunityPreviewCellKey(targetKey),
+        label: labelMap.get(targetKey) || targetKey,
+        excelTitle: `고정값 (${row.constantValue ?? ''})`,
+        isConstant: true,
+        constantValue: String(row.constantValue ?? '')
+      });
+      continue;
+    }
+
+    const mapping = getOppFieldExcelMapping(mappingRows, targetKey);
+    const excelKey = resolveExcelFieldColumnKey(hdrs, mapping, targetKey, () =>
+      guessOpportunityExcelSourceKey(targetKey, hdrs)
+    );
+    if (!excelKey) continue;
+
+    cols.push({
+      targetKey,
+      excelKey,
+      label: labelMap.get(targetKey) || targetKey,
+      excelTitle: isOpportunityPreviewCellKey(excelKey)
+        ? '열 미연결 · 미리보기에서 직접 입력'
+        : excelKey,
+      isPreviewOnly: isOpportunityPreviewCellKey(excelKey)
+    });
+  }
+  return cols;
+}
+
 export function resolveStageValue(raw, stageOptions) {
   const s = String(raw || '').trim();
   if (!s) return { value: '', valid: false, label: '' };
@@ -187,8 +255,7 @@ export function guessExcelStageColumnKey(headers) {
 
 /** 미리보기·검증에 쓸 단계 엑셀 열 이름 */
 export function resolveExcelStageColumnKey(headers, stageMapping) {
-  if (stageMapping?.mode === 'field' && stageMapping.sourceKey) return stageMapping.sourceKey;
-  return guessExcelStageColumnKey(headers);
+  return resolveExcelFieldColumnKey(headers, stageMapping, 'opp.stage', guessExcelStageColumnKey);
 }
 
 export function guessExcelPriceBasisColumnKey(headers) {
@@ -230,8 +297,7 @@ export function guessExcelCompanyColumnKey(headers) {
 }
 
 export function resolveExcelCompanyColumnKey(headers, mapping) {
-  if (mapping?.mode === 'field' && mapping.sourceKey) return mapping.sourceKey;
-  return guessExcelCompanyColumnKey(headers);
+  return resolveExcelFieldColumnKey(headers, mapping, 'opp.snapshotCompanyName', guessExcelCompanyColumnKey);
 }
 
 /** 고객사명으로 CRM 목록 매칭(정확·정규화) */
@@ -369,18 +435,20 @@ export function companyRowFromSearchModal(company) {
 }
 
 export function resolveExcelPriceBasisColumnKey(headers, mapping) {
-  if (mapping?.mode === 'field' && mapping.sourceKey) return mapping.sourceKey;
-  return guessExcelPriceBasisColumnKey(headers);
+  return resolveExcelFieldColumnKey(headers, mapping, 'opp.unitPriceBasis', guessExcelPriceBasisColumnKey);
 }
 
 export function resolveExcelChannelDistributorColumnKey(headers, mapping) {
-  if (mapping?.mode === 'field' && mapping.sourceKey) return mapping.sourceKey;
-  return guessExcelChannelDistributorColumnKey(headers);
+  return resolveExcelFieldColumnKey(
+    headers,
+    mapping,
+    'opp.channelDistributor',
+    guessExcelChannelDistributorColumnKey
+  );
 }
 
 export function resolveExcelAssigneeColumnKey(headers, mapping) {
-  if (mapping?.mode === 'field' && mapping.sourceKey) return mapping.sourceKey;
-  return guessExcelAssigneeColumnKey(headers);
+  return resolveExcelFieldColumnKey(headers, mapping, 'opp.assignedToName', guessExcelAssigneeColumnKey);
 }
 
 export function normalizeOverviewEmployees(employees) {
@@ -469,7 +537,7 @@ export function countInvalidStageCellsInExcelDraft(excelRows, stageMapping, stag
   if (!col) return excelRows.length;
   let n = 0;
   for (const row of excelRows) {
-    const raw = row[col];
+    const raw = readExcelMappedCell(row, col);
     if (!resolveStageValue(raw, stageOptions).valid) n += 1;
   }
   return n;
@@ -602,8 +670,8 @@ function countInvalidPriceBasisCellsInExcelDraft(excelRows, basisMapping, channe
   const distCol = resolveExcelChannelDistributorColumnKey(hdrs, channelMapping);
   let n = 0;
   for (const row of excelRows) {
-    const distRaw = distCol ? row[distCol] : '';
-    const raw = row[col];
+    const distRaw = distCol ? readExcelMappedCell(row, distCol) : '';
+    const raw = readExcelMappedCell(row, col);
     if (String(distRaw || '').trim()) {
       const basis = resolvePriceBasisValue(raw);
       if (basis.value !== 'channel') n += 1;
@@ -622,11 +690,12 @@ function countInvalidChannelDistributorCellsInExcelDraft(excelRows, basisMapping
   if (!chCol) return 0;
   let n = 0;
   for (const row of excelRows) {
-    const basisRaw = basisCol ? row[basisCol] : basisMapping?.mode === 'constant' ? basisMapping.constantValue : '';
+    const basisRaw = basisCol ? readExcelMappedCell(row, basisCol) : basisMapping?.mode === 'constant' ? basisMapping.constantValue : '';
     const basis = resolvePriceBasisValue(basisRaw);
+    const chCellRaw = readExcelMappedCell(row, chCol);
     const effectiveBasis =
-      String(row[chCol] || '').trim() && basis.value !== 'channel' ? { value: 'channel', valid: true } : basis;
-    const chRes = resolveChannelDistributor(row[chCol], meta, effectiveBasis.value);
+      String(chCellRaw || '').trim() && basis.value !== 'channel' ? { value: 'channel', valid: true } : basis;
+    const chRes = resolveChannelDistributor(chCellRaw, meta, effectiveBasis.value);
     if (!chRes.valid) n += 1;
   }
   return n;
@@ -642,7 +711,7 @@ function countInvalidCompanyCellsInExcelDraft(excelRows, companyMapping, meta, h
   for (const row of excelRows) {
     if (isForceImportExcelRow(row)) continue;
     const forced = row[OPP_EXCEL_ROW_META_COMPANY_ID];
-    const res = resolveCustomerCompanyInExcelDraft(row[col], meta, forced);
+    const res = resolveCustomerCompanyInExcelDraft(readExcelMappedCell(row, col), meta, forced);
     if (!res.valid) n += 1;
   }
   return n;
@@ -658,7 +727,7 @@ function countInvalidAssigneeCellsInExcelDraft(excelRows, assigneeMapping, emplo
   for (const row of excelRows) {
     if (isForceImportExcelRow(row)) continue;
     const forced = row[OPP_EXCEL_ROW_META_ASSIGNEE_ID];
-    const res = resolveAssigneeFromOverview(row[col], employees, forced, defaultUserId);
+    const res = resolveAssigneeFromOverview(readExcelMappedCell(row, col), employees, forced, defaultUserId);
     if (!res.valid) n += 1;
   }
   return n;

@@ -661,3 +661,36 @@
   flex-shrink: 0;
   align-self: center;
 }
+
+/* 가져오기 실행 중 — 모달 위 스피너만 표시 */
+.excel-import-map-modal.is-importing {
+  position: relative;
+}
+
+.excel-import-map-saving-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.78);
+  border-radius: inherit;
+  pointer-events: all;
+}
+
+.excel-import-map-spinner {
+  width: 2.75rem;
+  height: 2.75rem;
+  box-sizing: border-box;
+  border: 3px solid #e2e8f0;
+  border-top-color: #4e79a7;
+  border-radius: 50%;
+  animation: excel-import-map-spin 0.75s linear infinite;
+}
+
+@keyframes excel-import-map-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

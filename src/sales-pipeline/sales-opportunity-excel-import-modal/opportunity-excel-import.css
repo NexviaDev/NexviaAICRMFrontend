@@ -10,6 +10,8 @@
 
 .opp-excel-raw-preview-modal.opp-modal {
   z-index: 1421;
+  display: flex;
+  flex-direction: column;
   width: 100%;
   height: 100%;
   max-width: none;
@@ -199,13 +201,15 @@
   min-height: 0;
   max-height: none;
   height: auto;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .opp-excel-raw-cell-input {
   width: 100%;
-  min-width: 5rem;
-  max-width: 14rem;
+  min-width: 8rem;
+  max-width: 28rem;
   font-size: 0.75rem;
   padding: 0.28rem 0.4rem;
   border: 1px solid #e2e8f0;
@@ -219,6 +223,18 @@
   outline: none;
   border-color: var(--primary, #2c7bb6);
   box-shadow: 0 0 0 2px rgba(44, 123, 182, 0.15);
+}
+
+.opp-excel-raw-cell-input--narrow {
+  width: 4rem;
+  min-width: 3.5rem;
+  max-width: 5rem;
+  text-align: center;
+}
+
+.opp-excel-raw-cell-muted {
+  color: #94a3b8;
+  font-size: 0.75rem;
 }
 
 .opp-excel-raw-cell-input.is-invalid,
@@ -432,9 +448,9 @@
   border: 1px solid #e2e8f0;
   padding: 0.35rem 0.55rem;
   white-space: nowrap;
-  max-width: 12rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  min-width: 6.5rem;
+  max-width: none;
+  vertical-align: middle;
 }
 
 .opp-excel-raw-preview-table th {

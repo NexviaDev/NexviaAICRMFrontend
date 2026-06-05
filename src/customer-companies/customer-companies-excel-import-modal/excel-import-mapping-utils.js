@@ -48,6 +48,21 @@ export function readExcelMappedCell(excelRow, sourceKey) {
   return '';
 }
 
+/** 엑셀 행 객체에서 실제 키 이름 찾기(쓰기·패치용) */
+export function resolveExcelRowHeaderKey(excelRow, sourceKey) {
+  if (!excelRow || typeof excelRow !== 'object' || sourceKey == null || sourceKey === '') {
+    return String(sourceKey ?? '');
+  }
+  if (Object.prototype.hasOwnProperty.call(excelRow, sourceKey)) return sourceKey;
+  const want = normalizeExcelHeaderKey(sourceKey);
+  if (!want) return sourceKey;
+  for (const k of Object.keys(excelRow)) {
+    if (String(k).startsWith('__')) continue;
+    if (normalizeExcelHeaderKey(k) === want) return k;
+  }
+  return sourceKey;
+}
+
 export function previewExcelMappedValue(sampleRow, row) {
   if (!row) return '';
   if (row.sourceType === 'constant') return row.constantValue ?? '';

@@ -2,6 +2,10 @@ import { useMemo, useCallback, useState } from 'react';
 import { createPortal } from 'react-dom';
 import ParticipantModal from '@/shared/participant-modal/participant-modal';
 import CustomerCompanySearchModal from '@/customer-companies/customer-company-search-modal/customer-company-search-modal';
+import {
+  readExcelMappedCell,
+  resolveExcelRowHeaderKey
+} from '../../customer-companies/customer-companies-excel-import-modal/excel-import-mapping-utils';
 import { OPPORTUNITY_PRICE_BASIS_OPTIONS } from '@/lib/product-price-utils';
 import {
   resolveStageValue,
@@ -18,6 +22,8 @@ import {
   resolveProductInExcelDraft,
   countSoftWarningExcelDraftCells,
   guessExcelProductColumnKey,
+  buildOpportunityExcelPreviewColumns,
+  isOpportunityPreviewCellKey,
   isForceImportExcelRow,
   isExcelMetaHeaderKey,
   OPP_EXCEL_ROW_META_ASSIGNEE_ID,
@@ -279,11 +285,13 @@ function ProductExcelCell({ raw, meta, saving, onTextChange }) {
 }
 
 /**
- * 매핑 다음 단계 — 업로드한 엑셀을 원본 열 구조 그대로 보여 주고 셀 값을 수정할 수 있습니다.
+ * 매핑 다음 단계 — 매핑된 CRM 대상 필드 기준으로 표시하고, 셀 값(엑셀 원본)을 수정할 수 있습니다.
  */
 export default function OpportunityExcelRawPreviewModal({
   open,
   rows,
+  mappingRows,
+  targetOptions,
   excelFileName,
   rowCount,
   saving,
@@ -325,6 +333,11 @@ export default function OpportunityExcelRawPreviewModal({
     return Array.from(keys);
   }, [rows]);
 
+  const displayColumns = useMemo(
+    () => buildOpportunityExcelPreviewColumns(mappingRows, targetOptions, headers),
+    [mappingRows, targetOptions, headers]
+  );
+
   const displayRows = useMemo(() => {
     const list = Array.isArray(rows) ? rows : [];
     return list.length > DISPLAY_MAX_ROWS ? list.slice(0, DISPLAY_MAX_ROWS) : list;
@@ -355,7 +368,11 @@ export default function OpportunityExcelRawPreviewModal({
     [headers, companyMapping]
   );
 
-  const productColumnKey = useMemo(() => guessExcelProductColumnKey(headers), [headers]);
+  const productColumnKey = useMemo(() => {
+    const fromMap = displayColumns.find((c) => c.targetKey === 'opp.productName');
+    if (fromMap?.excelKey) return fromMap.excelKey;
+    return guessExcelProductColumnKey(headers);
+  }, [displayColumns, headers]);
 
   const invalidCounts = useMemo(
     () =>
@@ -410,37 +427,27 @@ export default function OpportunityExcelRawPreviewModal({
   );
 
   const handleCell = useCallback(
-    (rowIndex, header, value) => {
-      onCellChange?.(rowIndex, header, value);
+    (rowIndex, sourceKey, value) => {
+      const row = displayRows[rowIndex];
+      const actualKey = isOpportunityPreviewCellKey(sourceKey)
+        ? sourceKey
+        : resolveExcelRowHeaderKey(row, sourceKey);
+      onCellChange?.(rowIndex, actualKey, value);
     },
-    [onCellChange]
+    [displayRows, onCellChange]
   );
 
-  const isStageColumn = useCallback((header) => stageColumnKey && header === stageColumnKey, [stageColumnKey]);
-  const isPriceBasisColumn = useCallback(
-    (header) => priceBasisColumnKey && header === priceBasisColumnKey,
-    [priceBasisColumnKey]
-  );
-  const isChannelColumn = useCallback((header) => channelColumnKey && header === channelColumnKey, [channelColumnKey]);
-  const isAssigneeColumn = useCallback(
-    (header) => assigneeColumnKey && header === assigneeColumnKey,
-    [assigneeColumnKey]
-  );
-  const isCompanyColumn = useCallback(
-    (header) => companyColumnKey && header === companyColumnKey,
-    [companyColumnKey]
-  );
-  const isProductColumn = useCallback(
-    (header) => productColumnKey && header === productColumnKey,
-    [productColumnKey]
-  );
+  const previewCellRaw = useCallback((row, col) => {
+    if (col?.isConstant) return col.constantValue ?? '';
+    return readExcelMappedCell(row, col?.excelKey);
+  }, []);
 
   const pickerSelected = useMemo(() => {
     if (assigneePickerRow == null) return [];
     const row = displayRows[assigneePickerRow];
     if (!row || !assigneeColumnKey) return [];
     const forced = row[OPP_EXCEL_ROW_META_ASSIGNEE_ID];
-    const name = String(row[assigneeColumnKey] ?? '').trim();
+    const name = readExcelMappedCell(row, assigneeColumnKey).trim();
     if (!forced) return [];
     const tm = (teamMembersForPicker || []).find((m) => String(m._id || m.id || m.userId) === String(forced));
     if (tm) {
@@ -514,7 +521,8 @@ export default function OpportunityExcelRawPreviewModal({
         <div className="opp-excel-raw-preview-modal-body">
           <div className="opp-excel-raw-preview-intro-bar">
             <span>
-              엑셀과 <strong>동일한 열·행</strong> · <strong>고객사</strong>는 CRM 고객사 목록과 대조(없으면 돋보기로 검색·추가) ·{' '}
+              <strong>매핑 대상 필드</strong> 전부 표시(열 미연결은 직접 입력) · 헤더 위에 마우스를 올리면 원본 엑셀 열 ·{' '}
+              <strong>고객사</strong>는 CRM 목록과 대조(없으면 돋보기로 검색·추가) ·{' '}
               <strong>단계·가격기준·유통사·사내담당자</strong>는 목록만 선택 · 잘못된 값은{' '}
               <strong style={{ color: '#b91c1c' }}>붉게</strong> 표시 · 해소 후 <strong>일괄 등록</strong>
             </span>
@@ -527,47 +535,53 @@ export default function OpportunityExcelRawPreviewModal({
 
           <div className="opp-excel-raw-preview-wrap opp-excel-raw-preview-wrap--modal">
             <div className="opp-excel-raw-preview-head">
-              <h4>원본 데이터</h4>
+              <h4>등록 예정 데이터</h4>
               <span className="excel-import-map-source-meta">
                 {truncated ? `표시 ${DISPLAY_MAX_ROWS}행 / 전체 ${total}행` : `전체 ${total}행 · 스크롤로 확인`}
               </span>
             </div>
             <div className="opp-excel-raw-preview-scroll opp-excel-raw-preview-scroll--fill">
-              {headers.length === 0 ? (
-                <p className="opp-excel-raw-preview-empty">표시할 열이 없습니다. 매핑 단계로 돌아가 파일을 다시 올려 주세요.</p>
+              {displayColumns.length === 0 ? (
+                <p className="opp-excel-raw-preview-empty">
+                  표시할 대상 필드가 없습니다. 매핑 단계로 돌아가 주세요.
+                </p>
               ) : (
                 <table className="opp-excel-raw-preview-table">
                   <thead>
                     <tr>
                       <th className="opp-excel-raw-preview-th-num">#</th>
-                      {headers.map((h) => (
+                      {displayColumns.map((col) => (
                         <th
-                          key={h}
-                          title={h}
+                          key={col.targetKey}
+                          title={col.excelTitle}
                           className={
-                            isStageColumn(h) ||
-                            isPriceBasisColumn(h) ||
-                            isChannelColumn(h) ||
-                            isAssigneeColumn(h) ||
-                            isCompanyColumn(h) ||
-                            isProductColumn(h)
+                            col.targetKey === 'opp.stage' ||
+                            col.targetKey === 'opp.unitPriceBasis' ||
+                            col.targetKey === 'opp.channelDistributor' ||
+                            col.targetKey === 'opp.assignedToName' ||
+                            col.targetKey === 'opp.snapshotCompanyName' ||
+                            col.targetKey === 'opp.productName'
                               ? 'opp-excel-raw-preview-th--stage'
                               : ''
                           }
                         >
-                          {h}
-                          {isStageColumn(h) ? <span className="opp-excel-raw-preview-th-badge">단계 목록</span> : null}
-                          {isCompanyColumn(h) ? (
+                          {col.label}
+                          {col.targetKey === 'opp.stage' ? (
+                            <span className="opp-excel-raw-preview-th-badge">단계 목록</span>
+                          ) : null}
+                          {col.targetKey === 'opp.snapshotCompanyName' ? (
                             <span className="opp-excel-raw-preview-th-badge">고객사 CRM</span>
                           ) : null}
-                          {isProductColumn(h) ? (
+                          {col.targetKey === 'opp.productName' ? (
                             <span className="opp-excel-raw-preview-th-badge">제품명</span>
                           ) : null}
-                          {isPriceBasisColumn(h) ? (
+                          {col.targetKey === 'opp.unitPriceBasis' ? (
                             <span className="opp-excel-raw-preview-th-badge">다이렉트·유통</span>
                           ) : null}
-                          {isChannelColumn(h) ? <span className="opp-excel-raw-preview-th-badge">유통사</span> : null}
-                          {isAssigneeColumn(h) ? (
+                          {col.targetKey === 'opp.channelDistributor' ? (
+                            <span className="opp-excel-raw-preview-th-badge">유통사</span>
+                          ) : null}
+                          {col.targetKey === 'opp.assignedToName' ? (
                             <span className="opp-excel-raw-preview-th-badge">사내 담당</span>
                           ) : null}
                         </th>
@@ -578,33 +592,50 @@ export default function OpportunityExcelRawPreviewModal({
                     {displayRows.map((row, idx) => (
                         <tr key={idx}>
                           <td className="opp-excel-raw-preview-td-num">{idx + 1}</td>
-                          {headers.map((h) => (
-                            <td key={h}>
-                              {isStageColumn(h) ? (
+                          {displayColumns.map((col) => {
+                            const h = col.excelKey;
+                            const cellRaw = previewCellRaw(row, col);
+                            const tk = col.targetKey;
+                            return (
+                            <td key={col.targetKey}>
+                              {col.isConstant ? (
+                                <input
+                                  type="text"
+                                  className="opp-excel-raw-cell-input is-locked"
+                                  value={cellRaw}
+                                  readOnly
+                                  disabled
+                                  aria-label={`${idx + 1}행 ${col.label} (고정값)`}
+                                />
+                              ) : tk === 'opp.stage' ? (
                                 <StageExcelCell
-                                  raw={row[h]}
+                                  raw={cellRaw}
                                   stageOptions={stageOptions}
                                   saving={saving}
                                   onPick={(v) => handleCell(idx, h, v)}
                                 />
-                              ) : isPriceBasisColumn(h) ? (
+                              ) : tk === 'opp.unitPriceBasis' ? (
                                 <PriceBasisExcelCell
-                                  raw={row[h]}
-                                  distributorRaw={channelColumnKey ? row[channelColumnKey] : ''}
+                                  raw={cellRaw}
+                                  distributorRaw={
+                                    channelColumnKey ? readExcelMappedCell(row, channelColumnKey) : ''
+                                  }
                                   saving={saving}
                                   onPick={(v) => handleCell(idx, h, v)}
                                 />
-                              ) : isChannelColumn(h) ? (
+                              ) : tk === 'opp.channelDistributor' ? (
                                 <ChannelDistributorExcelCell
-                                  raw={row[h]}
-                                  priceBasisRaw={priceBasisColumnKey ? row[priceBasisColumnKey] : ''}
+                                  raw={cellRaw}
+                                  priceBasisRaw={
+                                    priceBasisColumnKey ? readExcelMappedCell(row, priceBasisColumnKey) : ''
+                                  }
                                   channelDistributors={channelDistributors}
                                   saving={saving}
                                   onPick={(v) => handleCell(idx, h, v)}
                                 />
-                              ) : isCompanyColumn(h) ? (
+                              ) : tk === 'opp.snapshotCompanyName' ? (
                                 <CompanyExcelCell
-                                  raw={row[h]}
+                                  raw={cellRaw}
                                   row={row}
                                   companyCol={h}
                                   customerCompanies={customerCompanies}
@@ -613,16 +644,16 @@ export default function OpportunityExcelRawPreviewModal({
                                   onOpenPicker={() => setCompanyPickerRow(idx)}
                                   onForceRow={() => onForceImportRow?.(idx)}
                                 />
-                              ) : isProductColumn(h) ? (
+                              ) : tk === 'opp.productName' ? (
                                 <ProductExcelCell
-                                  raw={row[h]}
+                                  raw={cellRaw}
                                   meta={{ products: products || [], customerCompanies }}
                                   saving={saving}
                                   onTextChange={(v) => handleCell(idx, h, v)}
                                 />
-                              ) : isAssigneeColumn(h) ? (
+                              ) : tk === 'opp.assignedToName' ? (
                                 <AssigneeExcelCell
-                                  raw={row[h]}
+                                  raw={cellRaw}
                                   row={row}
                                   assignCol={h}
                                   overviewEmployees={overviewEmployees}
@@ -636,14 +667,15 @@ export default function OpportunityExcelRawPreviewModal({
                                 <input
                                   type="text"
                                   className="opp-excel-raw-cell-input"
-                                  value={row[h] == null ? '' : String(row[h])}
+                                  value={cellRaw}
                                   onChange={(e) => handleCell(idx, h, e.target.value)}
                                   disabled={saving}
-                                  aria-label={`${idx + 1}행 ${h}`}
+                                  aria-label={`${idx + 1}행 ${col.label}`}
                                 />
                               )}
                             </td>
-                          ))}
+                            );
+                          })}
                         </tr>
                     ))}
                   </tbody>
