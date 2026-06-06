@@ -35,7 +35,8 @@ export const SIDEBAR_SUBMENU_ITEMS = [
   { to: '/todo-list', icon: 'checklist', label: 'Todo List', category: 'schedule' },
   { to: '/ai-voice', icon: 'mic', label: 'AI 음성 기록', category: 'etc' },
   { to: '/quotation-doc-merge', icon: 'merge_type', label: '문서 메일머지', category: 'etc' },
-  { to: '/subscription', icon: 'subscriptions', label: '구독관리', category: 'etc' }
+  { to: '/subscription', icon: 'subscriptions', label: '구독관리', category: 'etc' },
+  { to: '/exchange-rates', icon: 'currency_exchange', label: '환율', category: 'etc' }
 ];
 
 export const SIDEBAR_SUBMENU_BY_CATEGORY = SIDEBAR_CATEGORY_ITEMS.reduce((acc, category) => {
