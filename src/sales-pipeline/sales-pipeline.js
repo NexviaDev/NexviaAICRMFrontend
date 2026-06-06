@@ -14,14 +14,15 @@ import {
   buildSalesPipelineVisibleMap,
   collectSalesPipelineTableColumnKeys,
   columnHeaderLabel,
-  formatCellValue
+  formatCellValue,
+  isPersonalPurchaseOpp
 } from './drop-zone-list-modal/drop-zone-list-modal';
 import { listColumnValueInlineStyle } from '@/lib/list-column-cell-styles';
 import { OPPORTUNITY_MERGE_SHEET_URL_PARAM } from '@/lib/merge-data-sheet-url';
 
 import { API_BASE } from '@/config';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
-import { getMergedSalesPipelineTemplate, patchListTemplate, LIST_IDS } from '@/lib/list-templates';
+import { getMergedSalesPipelineTemplate, patchListTemplate, resetListTemplate, LIST_IDS } from '@/lib/list-templates';
 import { buildStageForecastPercentMap } from './pipeline-forecast-utils';
 import {
   buildStageLabelMapFromDefinitions,
@@ -80,6 +81,26 @@ const DROP_ZONE_CONFIG = {
 
 /** 칸반 카드 헤더 파스텔 톤 — 기회 _id 기준 고정(순서·추가와 무관) */
 const KANBAN_CARD_HEAD_TONE_COUNT = 8;
+
+const KANBAN_MONEY_COLUMN_KEYS = new Set([
+  'value',
+  '__dz_net_margin',
+  '__dz_forecast_expected',
+  'contractAmount',
+  'invoiceAmount',
+  'unitPrice',
+  'discountAmount',
+  'discountValue'
+]);
+
+function isKanbanMoneyColumn(colKey) {
+  return KANBAN_MONEY_COLUMN_KEYS.has(colKey);
+}
+
+function isKanbanDateColumn(colKey) {
+  const k = String(colKey || '');
+  return k.endsWith('Date') || k.startsWith('scheduleCustomDates.');
+}
 
 function kanbanCardHeadToneClass(oppId) {
   const s = String(oppId ?? '');
@@ -275,6 +296,12 @@ function nameInitials(name) {
   const parts = s.split(/\s+/).filter(Boolean);
   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
   return s.slice(0, 2).toUpperCase();
+}
+
+/** 칸반 카드 — 개인 구매 시 고객사 칸에 표시할 구매 담당자명 */
+function kanbanPersonalPurchaseContactLabel(opp) {
+  const contact = opp?.contactName != null ? String(opp.contactName).trim() : '';
+  return contact || '—';
 }
 
 /** 고객사가 없는 개인구매면 연락처(담당자) 이름, 아니면 고객사명 */
@@ -739,6 +766,16 @@ export default function SalesPipeline() {
     }
   }, []);
 
+  const resetPipelineListTemplate = useCallback(async () => {
+    try {
+      await resetListTemplate(SALES_PIPELINE_LIST_ID);
+      setPipelineTemplateTick((t) => t + 1);
+    } catch (err) {
+      window.alert(err?.message || '초기화에 실패했습니다.');
+      throw err;
+    }
+  }, []);
+
   const savePipelineTableColumnOrder = useCallback(async (nextOrder) => {
     try {
       await patchListTemplate(SALES_PIPELINE_LIST_ID, { columnOrder: nextOrder });
@@ -1035,7 +1072,9 @@ export default function SalesPipeline() {
   const renderDesktopKanbanLucidCard = (opp) => {
     const fp = stageForecastPercent[opp.stage];
     const patching = String(stagePatchingId) === String(opp._id);
-    const colKeys = pipelineDisplayColumnKeys;
+    const colKeys = isPersonalPurchaseOpp(opp)
+      ? pipelineDisplayColumnKeys.filter((k) => k !== 'contactName')
+      : pipelineDisplayColumnKeys;
     const accentTone = stageToneByKey[opp.stage] || 'tone-0';
     return (
       <div
@@ -1060,42 +1099,81 @@ export default function SalesPipeline() {
             <span className="material-symbols-outlined">delete</span>
           </button>
         ) : null}
-        <div className="sp-kanban-card-grid">
-          {colKeys.map((colKey, idx, keys) => {
-            const text = pipelineKanbanOppCellText(colKey, opp, fp, stageLabels, canViewAdminContent);
+        {(() => {
+          const [headKey, ...bodyKeys] = colKeys;
+          const renderField = (colKey, idx, keys, isHead) => {
+            const personalPurchase = isPersonalPurchaseOpp(opp);
+            const isPersonalCompanyCell = personalPurchase && colKey === 'customerCompanyName';
+            let text = pipelineKanbanOppCellText(colKey, opp, fp, stageLabels, canViewAdminContent);
+            if (isPersonalCompanyCell) text = kanbanPersonalPurchaseContactLabel(opp);
             const spanFull =
-              idx === 0 ||
+              isHead ||
               shouldKanbanFieldSpanFullRow(colKey, text) ||
               (keys.length % 2 === 1 && idx === keys.length - 1);
             const kStyle = listColumnValueInlineStyle(pipelineListTemplate.columnCellStyles, colKey);
             const isProductNameCol = colKey === 'productName';
             const label = columnHeaderLabel(colKey, scheduleFieldLabelByKey, financeFieldLabelByKey);
+            const valTitle = isPersonalCompanyCell
+              ? `${text} (개인 구매)`
+              : text === ''
+                ? undefined
+                : text;
             return (
               <div
                 key={colKey}
                 className={[
                   'sp-kanban-card-field',
-                  idx === 0 ? `sp-kanban-card-field--head ${kanbanCardHeadToneClass(opp._id)}` : '',
+                  isHead ? `sp-kanban-card-field--head ${kanbanCardHeadToneClass(opp._id)}` : 'sp-kanban-card-field--body',
                   spanFull ? 'sp-kanban-card-field--full' : '',
                   isProductNameCol ? 'sp-kanban-card-field--product-name' : '',
+                  isPersonalCompanyCell ? 'sp-kanban-card-field--personal-company' : '',
+                  isKanbanMoneyColumn(colKey) ? 'sp-kanban-card-field--money' : '',
+                  isKanbanDateColumn(colKey) ? 'sp-kanban-card-field--date' : '',
                   spanFull ? 'sp-kanban-card-field--wrap' : ''
                 ]
                   .filter(Boolean)
                   .join(' ')}
               >
                 <div className="sp-kanban-card-field-label">{label}</div>
-                <div className="sp-kanban-card-field-val" title={text === '' ? undefined : text}>
-                  <span
-                    className={`sp-kanban-card-field-val-inner${spanFull ? ' sp-kanban-card-field-val-inner--wrap' : ''}`}
-                    style={kStyle || undefined}
-                  >
-                    {text === '' ? '\u00A0' : text}
-                  </span>
+                <div
+                  className={`sp-kanban-card-field-val${isPersonalCompanyCell ? ' sp-kanban-card-field-val--personal' : ''}`}
+                  title={valTitle}
+                >
+                  {isPersonalCompanyCell ? (
+                    <>
+                      <span
+                        className={`sp-kanban-card-field-val-inner${spanFull ? ' sp-kanban-card-field-val-inner--wrap' : ''}`}
+                        style={kStyle || undefined}
+                      >
+                        {text === '—' ? '\u00A0' : text}
+                      </span>
+                      <span className="sp-kanban-card-personal-tag">개인 구매</span>
+                    </>
+                  ) : (
+                    <span
+                      className={`sp-kanban-card-field-val-inner${spanFull ? ' sp-kanban-card-field-val-inner--wrap' : ''}`}
+                      style={kStyle || undefined}
+                    >
+                      {text === '' ? '\u00A0' : text}
+                    </span>
+                  )}
                 </div>
               </div>
             );
-          })}
-        </div>
+          };
+          return (
+            <>
+              {headKey ? renderField(headKey, 0, colKeys, true) : null}
+              {bodyKeys.length > 0 ? (
+                <div className="sp-kanban-card-body">
+                  <div className="sp-kanban-card-grid sp-kanban-card-grid--body">
+                    {bodyKeys.map((colKey, idx) => renderField(colKey, idx, bodyKeys, false))}
+                  </div>
+                </div>
+              ) : null}
+            </>
+          );
+        })()}
       </div>
     );
   };
@@ -1624,6 +1702,7 @@ export default function SalesPipeline() {
           columnOrder={pipelineListTemplate.columnOrder}
           columnCellStyles={pipelineListTemplate.columnCellStyles}
           onSave={savePipelineListTemplate}
+          onReset={resetPipelineListTemplate}
           onClose={() => setPipelineListSettingsOpen(false)}
         />
       ) : null}

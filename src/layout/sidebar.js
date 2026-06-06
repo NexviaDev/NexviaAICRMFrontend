@@ -486,7 +486,7 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
 
       <div className="sidebar-footer">
         <div className="sidebar-user-row">
-          <Link to="/register?edit=1" className="sidebar-user sidebar-user-clickable">
+          <Link to="/account-settings" className="sidebar-user sidebar-user-clickable">
           {user?.avatar ? (
             <img src={user.avatar} alt="" className="sidebar-avatar sidebar-avatar-img" />
           ) : (

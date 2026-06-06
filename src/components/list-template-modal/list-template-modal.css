@@ -244,8 +244,38 @@
 
 .list-template-modal-footer {
   display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
   padding: 1rem 1.25rem;
   border-top: 1px solid var(--card-border, #e0e0e0);
+}
+
+.list-template-modal-footer-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.list-template-modal-btn-reset {
+  padding: 0.45rem 0.85rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #64748b;
+  background: #f8fafc;
+  border: 1px solid rgba(172, 179, 183, 0.45);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.list-template-modal-btn-reset:hover:not(:disabled) {
+  color: #475569;
+  background: #f1f5f9;
+  border-color: rgba(172, 179, 183, 0.6);
+}
+
+.list-template-modal-btn-reset:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }

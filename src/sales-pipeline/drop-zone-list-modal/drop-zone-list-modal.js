@@ -2376,4 +2376,10 @@ export default function DropZoneListModal({
   );
 }
 
-export { formatCellValue, columnHeaderLabel, COLUMN_LABELS, DROPZONE_DEFAULT_COLUMN_ORDER };
+export {
+  formatCellValue,
+  columnHeaderLabel,
+  COLUMN_LABELS,
+  DROPZONE_DEFAULT_COLUMN_ORDER,
+  isPersonalPurchaseOpp
+};

@@ -28,6 +28,7 @@ const QuotationDocMerge = lazy(() => import('../quotation-doc-merge/quotation-do
 const NotificationPage = lazy(() => import('../notification/notification'));
 const Messenger = lazy(() => import('../messenger/messenger'));
 const BusinessRegistryPage = lazy(() => import('../business-registry/business-registry'));
+const AccountSettings = lazy(() => import('../account-settings/account-settings'));
 
 function getStoredUser() {
   try {
@@ -46,7 +47,11 @@ export function PendingRestrictedRoute({ children }) {
   const location = useLocation();
   const user = getStoredUser();
 
-  if (isPendingUser() && location.pathname !== '/company-overview') {
+  if (
+    isPendingUser()
+    && location.pathname !== '/company-overview'
+    && location.pathname !== '/account-settings'
+  ) {
     return <Navigate to="/company-overview" replace />;
   }
 
@@ -71,6 +76,7 @@ export function PendingRestrictedRoute({ children }) {
 export default function MainAppRoutes() {
   return (
     <Routes>
+      <Route path="account-settings" element={<PendingRestrictedRoute><AccountSettings /></PendingRestrictedRoute>} />
       <Route path="company-overview" element={<PendingRestrictedRoute><CompanyOverview /></PendingRestrictedRoute>} />
       <Route path="customer-companies" element={<PendingRestrictedRoute><CustomerCompanies /></PendingRestrictedRoute>} />
       <Route path="customer-company-employees" element={<PendingRestrictedRoute><CustomerCompanyEmployees /></PendingRestrictedRoute>} />

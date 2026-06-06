@@ -57,6 +57,7 @@ function isListTemplateReorderDrag(dataTransfer) {
  * @param {{ [key: string]: boolean }} visible - 필드별 표시 여부
  * @param {string[]} columnOrder - 열 순서
  * @param {(payload: { visible: {}, columnOrder: string[], columnCellStyles?: Record<string, object> }) => void} onSave
+ * @param {() => void | Promise<void>} [onReset] — 기본값으로 되돌리기 (서버 저장·상위 state 갱신)
  * @param {() => void} onClose
  * @param {string} [titleText]
  * @param {string} [hintText]
@@ -70,6 +71,7 @@ export default function ListTemplateModal({
   columnOrder,
   columnCellStyles = {},
   onSave,
+  onReset,
   onClose,
   titleText = '리스트 열 설정',
   hintText = '표시할 열을 선택하고, 왼쪽 핸들을 드래그해 순서를 바꿀 수 있습니다.',
@@ -90,6 +92,7 @@ export default function ListTemplateModal({
   const draggedKeyRef = useRef(null);
   const [draggingKey, setDraggingKey] = useState(null);
   const [dragOverKey, setDragOverKey] = useState(null);
+  const [resetting, setResetting] = useState(false);
 
   const isSalesPipelineScheduleMerge =
     listId === LIST_IDS.SALES_PIPELINE && mergeSalesPipelineScheduleColumns !== false;
@@ -321,6 +324,20 @@ export default function ListTemplateModal({
     }
   };
 
+  const handleReset = async () => {
+    if (!onReset) return;
+    if (!window.confirm('열 표시·순서·스타일을 기본값으로 되돌릴까요?')) return;
+    try {
+      setResetting(true);
+      await Promise.resolve(onReset());
+      onClose();
+    } catch {
+      /* 상위(alert 등) */
+    } finally {
+      setResetting(false);
+    }
+  };
+
   return (
     <div
       className="list-template-modal-overlay"
@@ -453,8 +470,26 @@ export default function ListTemplateModal({
           </ul>
         </div>
         <div className="list-template-modal-footer">
-          <button type="button" className="btn-outline" onClick={onClose}>취소</button>
-          <button type="button" className="btn-primary" onClick={handleSave}>저장</button>
+          {onReset ? (
+            <button
+              type="button"
+              className="list-template-modal-btn-reset"
+              onClick={handleReset}
+              disabled={resetting}
+            >
+              기본값으로
+            </button>
+          ) : (
+            <span />
+          )}
+          <div className="list-template-modal-footer-actions">
+            <button type="button" className="btn-outline" onClick={onClose} disabled={resetting}>
+              취소
+            </button>
+            <button type="button" className="btn-primary" onClick={handleSave} disabled={resetting}>
+              저장
+            </button>
+          </div>
         </div>
       </div>
     </div>

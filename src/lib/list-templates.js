@@ -647,6 +647,48 @@ export async function patchProductSearchModalUsage(selectedProductIds) {
   return data;
 }
 
+/** 열 설정 외 필터·보기 모드 등이 같은 섹션에 함께 저장되는 listId */
+const LIST_TEMPLATE_COLUMN_ONLY_RESET_IDS = new Set([
+  LIST_IDS.SALES_PIPELINE,
+  LIST_IDS.CUSTOMER_COMPANIES,
+  LIST_IDS.CUSTOMER_COMPANY_EMPLOYEES
+]);
+
+/**
+ * 리스트 열 설정(표시·순서·스타일)을 기본값으로 되돌림.
+ * salesPipeline·고객사·연락처는 담당자 필터 등은 유지하고 열 설정만 복원합니다.
+ * @param {{ key: string, label: string }[]} [extraColumns] — 커스텀 필드 열(고객사·연락처)
+ */
+export async function resetListTemplate(listId, extraColumns = []) {
+  if (LIST_TEMPLATE_COLUMN_ONLY_RESET_IDS.has(listId)) {
+    if (listId === LIST_IDS.SALES_PIPELINE) {
+      const d = DEFAULT_SALES_PIPELINE_LIST_TEMPLATE;
+      return patchListTemplate(listId, {
+        columnOrder: [...d.columnOrder],
+        visible: { ...d.visible },
+        columnCellStyles: {}
+      });
+    }
+    const defaults = getEffectiveTemplate(listId, null, extraColumns);
+    return patchListTemplate(listId, {
+      columnOrder: defaults.columnOrder,
+      visible: defaults.visible,
+      columnCellStyles: {}
+    });
+  }
+  const res = await fetch(`${API_BASE}/auth/list-templates/section/${encodeURIComponent(listId)}`, {
+    method: 'DELETE',
+    headers: { ...getAuthHeader() }
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || '초기화에 실패했습니다.');
+  const userRaw = localStorage.getItem('crm_user');
+  const user = userRaw ? JSON.parse(userRaw) : {};
+  user.listTemplates = data.listTemplates || user.listTemplates || {};
+  localStorage.setItem('crm_user', JSON.stringify(user));
+  return data;
+}
+
 /** PATCH /api/auth/list-templates 호출 후 응답의 listTemplates로 crm_user 갱신 */
 export async function patchListTemplate(listId, fields = {}) {
   const payload = { listId, ...fields };

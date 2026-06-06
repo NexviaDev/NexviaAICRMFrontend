@@ -9,6 +9,7 @@ import {
   getSavedTemplate,
   getEffectiveTemplate,
   patchListTemplate,
+  resetListTemplate,
   patchProductSearchModalUsage
 } from '../lib/list-templates';
 import './product-list.css';
@@ -374,6 +375,16 @@ export default function ProductList({
       setTemplate(next);
     } catch (err) {
       alert(err.message || '저장에 실패했습니다.');
+    }
+  }, [customFieldColumns]);
+
+  const resetTemplate = useCallback(async () => {
+    try {
+      const data = await resetListTemplate(LIST_ID);
+      setTemplate(getEffectiveTemplate(LIST_ID, data.listTemplates?.[LIST_ID] || null, customFieldColumns));
+    } catch (err) {
+      alert(err.message || '초기화에 실패했습니다.');
+      throw err;
     }
   }, [customFieldColumns]);
 
@@ -1101,6 +1112,7 @@ export default function ProductList({
           columnOrder={template.columnOrder}
           columnCellStyles={template.columnCellStyles}
           onSave={saveTemplate}
+          onReset={resetTemplate}
           onClose={() => setSettingsOpen(false)}
         />
       )}

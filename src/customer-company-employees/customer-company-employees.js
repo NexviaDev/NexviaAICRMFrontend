@@ -10,7 +10,8 @@ import {
   LIST_IDS,
   getSavedTemplate,
   getEffectiveTemplate,
-  patchListTemplate
+  patchListTemplate,
+  resetListTemplate
 } from '../lib/list-templates';
 import { listColumnValueInlineStyle } from '@/lib/list-column-cell-styles';
 import './customer-company-employees.css';
@@ -464,6 +465,16 @@ export default function CustomerCompanyEmployees() {
       setTemplate(getEffectiveTemplate(LIST_ID, data.listTemplates?.[LIST_ID] || payload, customFieldColumns));
     } catch (err) {
       alert(err.message || '저장에 실패했습니다.');
+    }
+  }, [customFieldColumns]);
+
+  const resetTemplate = useCallback(async () => {
+    try {
+      const data = await resetListTemplate(LIST_ID, customFieldColumns);
+      setTemplate(getEffectiveTemplate(LIST_ID, data.listTemplates?.[LIST_ID] || null, customFieldColumns));
+    } catch (err) {
+      alert(err.message || '초기화에 실패했습니다.');
+      throw err;
     }
   }, [customFieldColumns]);
 
@@ -1546,6 +1557,7 @@ export default function CustomerCompanyEmployees() {
           columnOrder={template.columnOrder}
           columnCellStyles={template.columnCellStyles}
           onSave={saveTemplate}
+          onReset={resetTemplate}
           onClose={() => setSettingsOpen(false)}
         />
       )}
