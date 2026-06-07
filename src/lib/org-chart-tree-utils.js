@@ -18,14 +18,37 @@ export function formatOrgChartNodeDeptLabel(node) {
   return r ? `${n} (${r})` : n;
 }
 
-/** DB에 저장된 부서(조직 노드 id)를 조직도 루트로 해석해 표시명으로 바꿉니다. 트리 없음·미매칭 시 id 그대로. */
+/** 조직도 노드 id만 저장된 값인지 (화면에 그대로 노출하지 않음) */
+export function isOrgChartStoredDeptId(value) {
+  const s = String(value || '').trim().toLowerCase();
+  if (!s) return false;
+  if (s === 'root') return true;
+  if (s.startsWith('dept-')) return true;
+  if (s.startsWith('org_')) return true;
+  return false;
+}
+
+/** DB에 저장된 부서(조직 노드 id) → 조직도 표시명. 트리 없을 때 노드 id(root 등)는 빈 문자열. */
 export function resolveDepartmentDisplayFromChart(orgRoot, storedDeptId) {
   const s = String(storedDeptId || '').trim();
   if (!s) return '';
-  if (!orgRoot) return s;
+  if (!orgRoot) {
+    return isOrgChartStoredDeptId(s) ? '' : s;
+  }
   const n = findOrgChartNodeById(orgRoot, s);
-  if (n) return formatOrgChartNodeDeptLabel(n) || s;
-  return s;
+  if (n) {
+    const label = formatOrgChartNodeDeptLabel(n);
+    if (label) return label;
+    return isOrgChartStoredDeptId(s) ? '' : s;
+  }
+  return isOrgChartStoredDeptId(s) ? '' : s;
+}
+
+/** listTemplates 에서 조직도 루트 트리 추출 */
+export function resolveOrgChartFromListTemplates(listTemplates) {
+  const lt = listTemplates && typeof listTemplates === 'object' ? listTemplates : {};
+  const chart = lt.organizationChart || lt.orgChart?.tree || lt.orgChart || null;
+  return chart && typeof chart === 'object' ? chart : null;
 }
 
 export function flattenOrgChartNodeIds(node) {

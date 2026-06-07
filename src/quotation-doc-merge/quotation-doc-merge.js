@@ -12,6 +12,7 @@ import {
   saveMergePdfExportOptions
 } from '@/lib/merge-pdf-export-options';
 import {
+  buildMergeOutputEntryJobIndexes,
   mergeExportAddonWantsPdf,
   normalizeMergeExportAddon,
   resolveMergeExportAddonForRow
@@ -68,10 +69,16 @@ import {
 } from '@/lib/merge-field-guide-payload';
 import { parseTsvGrid, isSingleColumnMultilinePaste } from '@/lib/tsv-grid';
 import {
-  MERGE_DATA_SHEET_URL_PARAM,
   MERGE_DATA_SHEET_URL_VALUE,
   isMergeDataSheetUrlOpen
 } from '@/lib/merge-data-sheet-url';
+import { MERGE_RUNTIME_TENANT } from '@/lib/quotation-doc-merge-runtime';
+import {
+  applyOurForcedToMergeRow,
+  resolveOurForcedMergeValues,
+  rowHasCustomerMergeFieldContent
+} from '@/lib/merge-our-forced-fields';
+import { resolveOrgChartFromListTemplates } from '@/lib/org-chart-tree-utils';
 import './quotation-doc-merge.css';
 
 /** 데이터 시트를 처음 열 때 만들 빈 행 수 */
@@ -102,11 +109,6 @@ function mergeValueKindLabel(vk) {
 
 function mergeExcelFormatLabel(id) {
   return MERGE_EXCEL_FORMATS.find((x) => x.id === id)?.label || String(id || '');
-}
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 /** 사업자등록번호 10자리 하이픈 (000-00-00000) */
@@ -277,12 +279,9 @@ function rowHasContent(row) {
   return Object.entries(row || {}).some(([k, v]) => !k.startsWith('_') && String(v || '').trim() !== '');
 }
 
-/** 다운로드 대상: 현재 치환 필드 목록 기준으로, 양식(_*) 제외 실제 입력이 하나라도 있는지 */
+/** 다운로드 대상: 고객 치환 필드 입력 여부(our* 강제값 제외) */
 function rowHasMergeFieldContent(row, mergeFields) {
-  if (!row || !Array.isArray(mergeFields)) return false;
-  return mergeFields.some(
-    (f) => f?.key && String(f.key) !== 'rowIndex' && String(row[f.key] ?? '').trim() !== ''
-  );
+  return rowHasCustomerMergeFieldContent(row, mergeFields);
 }
 
 /**
@@ -297,7 +296,8 @@ function buildRowJobsForSheetRow({
   fallbackTid,
   prof,
   templateProfilesById,
-  globalPdfOpts
+  globalPdfOpts,
+  ourForcedValues
 }) {
   if (!row || !Array.isArray(mergeFieldsSheet)) return { rowJobs: [], anyPreferPdf: false, error: '데이터를 확인해 주세요.' };
   if (!rowHasMergeFieldContent(row, mergeFieldsSheet)) {
@@ -317,12 +317,12 @@ function buildRowJobsForSheetRow({
     const t = templates.find((x) => String(x._id) === tid);
     const tplRaw = stripKnownMergeTemplateExtensions(templateListFileName(t)).trim();
     const tplSlug = sanitizeDownloadFileStem(tplRaw).slice(0, 50) || 'doc';
-    const apiRow = { ...rowForApi(row) };
+    let apiRow = applyOurForcedToMergeRow(rowForApi(row), ourForcedValues);
     if (tids.length > 1) {
       const p = prof || '';
       const suffix = p ? `${p}_${tplSlug}` : `_${tplSlug}`;
       const combined = sanitizeDownloadFileStem(`${baseStem}${suffix}`.slice(0, 200));
-      if (combined) apiRow.fileLabel = combined;
+      if (combined) apiRow = { ...apiRow, fileLabel: combined };
     }
     rowJobs.push({
       templateId: tid,
@@ -394,23 +394,29 @@ function fieldSignature(fields) {
     .join('|');
 }
 
-export default function QuotationDocMerge() {
+export default function QuotationDocMerge({ runtime = MERGE_RUNTIME_TENANT } = {}) {
   const [searchParams, setSearchParams] = useSearchParams();
   const me = useMemo(() => getStoredCrmUser(), []);
-  const canDeleteTemplate = isAdminOrAboveRole(me?.role);
-  const canManageMergeFields = isManagerOrAboveRole(me?.role);
+  const [companyProfile, setCompanyProfile] = useState(null);
+  const [orgChartRoot, setOrgChartRoot] = useState(null);
+  const canDeleteTemplateByRole = isAdminOrAboveRole(me?.role);
+  const canManageMergeFields =
+    runtime.forceCanManageMergeFields === true || isManagerOrAboveRole(me?.role);
+  const mergeApiBase = `${API_BASE}${runtime.apiPrefix}`;
+  const getAuthHeader = useCallback((opts) => runtime.getAuthHeaders(opts), [runtime]);
+  const sheetUrlParam = runtime.sheetUrlParam;
 
-  const mergeDataSheetOpen = isMergeDataSheetUrlOpen(searchParams, MERGE_DATA_SHEET_URL_PARAM);
+  const mergeDataSheetOpen = isMergeDataSheetUrlOpen(searchParams, sheetUrlParam);
   const openMergeDataSheet = useCallback(() => {
     const p = new URLSearchParams(searchParams);
-    p.set(MERGE_DATA_SHEET_URL_PARAM, MERGE_DATA_SHEET_URL_VALUE);
+    p.set(sheetUrlParam, MERGE_DATA_SHEET_URL_VALUE);
     setSearchParams(p, { replace: false });
-  }, [searchParams, setSearchParams]);
+  }, [searchParams, setSearchParams, sheetUrlParam]);
   const closeMergeDataSheet = useCallback(() => {
     const p = new URLSearchParams(searchParams);
-    p.delete(MERGE_DATA_SHEET_URL_PARAM);
+    p.delete(sheetUrlParam);
     setSearchParams(p, { replace: true });
-  }, [searchParams, setSearchParams]);
+  }, [searchParams, setSearchParams, sheetUrlParam]);
 
   const [fieldGuide, setFieldGuide] = useState(null);
   const [templates, setTemplates] = useState([]);
@@ -476,6 +482,10 @@ export default function QuotationDocMerge() {
   const [templateProfilesById, setTemplateProfilesById] = useState({});
 
   const mergeFields = fieldGuide?.fields;
+  const ourForcedValues = useMemo(
+    () => resolveOurForcedMergeValues(me, companyProfile, { orgChartRoot }),
+    [me, companyProfile, orgChartRoot]
+  );
   const mergeFieldsSheet = useMemo(() => mergeFieldsWithoutRowIndex(mergeFields), [mergeFields]);
   const fieldSig = useMemo(() => fieldSignature(mergeFieldsSheet), [mergeFieldsSheet]);
 
@@ -519,6 +529,33 @@ export default function QuotationDocMerge() {
     closeMergeDataSheet();
   }, [mergeDataSheetOpen, mergeFieldsSheet?.length, closeMergeDataSheet]);
 
+  useEffect(() => {
+    if (!me) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/companies/list-templates-bundle`, {
+          headers: { ...getAuthHeader() },
+          credentials: 'include'
+        });
+        const data = await res.json().catch(() => ({}));
+        if (cancelled || !res.ok) return;
+        setCompanyProfile(
+          data.company
+            ? { ...data.company, listTemplates: data.listTemplates }
+            : null
+        );
+        const lt = data.listTemplates && typeof data.listTemplates === 'object' ? data.listTemplates : {};
+        setOrgChartRoot(resolveOrgChartFromListTemplates(lt));
+      } catch {
+        /* our* 는 crm_user 스냅샷만으로도 부분 채움 */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [me, getAuthHeader]);
+
   const loadFieldGuide = useCallback(
     async (presetIdOverride = undefined) => {
       const eff = presetIdOverride !== undefined ? presetIdOverride : selectedFieldPresetId;
@@ -526,7 +563,7 @@ export default function QuotationDocMerge() {
       const q = isMergeFieldPresetMongoId(idStr) ? `?presetId=${encodeURIComponent(idStr)}` : '';
       setFieldGuideLoading(true);
       try {
-        const res = await fetch(`${API_BASE}/quotation-merge/field-guide${q}`, {
+        const res = await fetch(`${mergeApiBase}/field-guide${q}`, {
           headers: { ...getAuthHeader() },
           credentials: 'include'
         });
@@ -539,7 +576,7 @@ export default function QuotationDocMerge() {
         setFieldGuideLoading(false);
       }
     },
-    [selectedFieldPresetId, getAuthHeader]
+    [selectedFieldPresetId, getAuthHeader, mergeApiBase]
   );
 
   const handleSelectFieldPresetId = useCallback(
@@ -553,7 +590,7 @@ export default function QuotationDocMerge() {
   const loadFieldPresets = useCallback(async () => {
     setFieldPresetsLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/quotation-merge/field-presets`, {
+      const res = await fetch(`${mergeApiBase}/field-presets`, {
         headers: { ...getAuthHeader() },
         credentials: 'include'
       });
@@ -622,7 +659,7 @@ export default function QuotationDocMerge() {
 
   const loadTemplateProfiles = useCallback(async () => {
     try {
-      const map = await fetchMergeTemplateProfiles(getAuthHeader);
+      const map = await fetchMergeTemplateProfiles(getAuthHeader, runtime.apiPrefix);
       setTemplateProfilesById(map);
       return map;
     } catch (_) {
@@ -657,7 +694,7 @@ export default function QuotationDocMerge() {
       void loadFieldGuide();
       let profMap = templateProfilesById;
       try {
-        profMap = await fetchMergeTemplateProfiles(getAuthHeader);
+        profMap = await fetchMergeTemplateProfiles(getAuthHeader, runtime.apiPrefix);
         setTemplateProfilesById(profMap);
       } catch (_) {
         /* 기존 캐시로 폼 채움 */
@@ -701,7 +738,7 @@ export default function QuotationDocMerge() {
     setTemplatesLoading(true);
     setTemplatesError('');
     try {
-      const res = await fetch(`${API_BASE}/quotation-merge/templates`, {
+      const res = await fetch(`${mergeApiBase}/templates`, {
         headers: { ...getAuthHeader() },
         credentials: 'include'
       });
@@ -736,8 +773,10 @@ export default function QuotationDocMerge() {
       await pingBackendHealth();
       const fd = new FormData();
       fd.append('file', file);
-      const scope = opts.registrationScope === 'personal' ? 'personal' : 'company';
-      fd.append('registrationScope', scope);
+      if (runtime.showRegistrationScopePicker) {
+        const scope = opts.registrationScope === 'personal' ? 'personal' : 'company';
+        fd.append('registrationScope', scope);
+      }
       const pdfOpts = opts.pdfExportOptions
         ? normalizeMergePdfExportOptions(opts.pdfExportOptions)
         : null;
@@ -746,9 +785,9 @@ export default function QuotationDocMerge() {
       if (mail && templateProfileHasMailDefaults(mail)) {
         fd.append('mailDefaults', JSON.stringify(mail));
       }
-      const res = await fetch(`${API_BASE}/quotation-merge/templates`, {
+      const res = await fetch(`${mergeApiBase}/templates`, {
         method: 'POST',
-        headers: { ...getAuthHeader() },
+        headers: { ...getAuthHeader({ formData: true }) },
         credentials: 'include',
         body: fd
       });
@@ -760,7 +799,7 @@ export default function QuotationDocMerge() {
       if (newTid) setSelectedTemplateId(newTid);
       if (lower.endsWith('.xlsx') && newTid) {
         try {
-          const names = await fetchXlsxSheetNamesFromMergeTemplate(API_BASE, getAuthHeader, newTid);
+          const names = await fetchXlsxSheetNamesFromMergeTemplate(API_BASE, getAuthHeader, newTid, runtime.apiPrefix);
           if (names.length) {
             setPdfExportOptions((prev) =>
               saveMergePdfExportOptions(pdfExportOptionsWithSheetNames(prev, names))
@@ -797,11 +836,18 @@ export default function QuotationDocMerge() {
     setUploading(true);
     try {
       await pingBackendHealth();
-      await patchMergeTemplateProfile(getAuthHeader, tid, {
-        registrationScope: templateUploadPrepareScope,
-        pdfExportOptions: templateUploadPreparePdfOpts,
-        mailDefaults: templateUploadPrepareMail
-      });
+      await patchMergeTemplateProfile(
+        getAuthHeader,
+        tid,
+        {
+          ...(runtime.showRegistrationScopePicker
+            ? { registrationScope: templateUploadPrepareScope }
+            : {}),
+          pdfExportOptions: templateUploadPreparePdfOpts,
+          mailDefaults: templateUploadPrepareMail
+        },
+        runtime.apiPrefix
+      );
       const map = await loadTemplateProfiles();
       const prof = map[tid];
       const normPdf = prof?.pdfExportOptions
@@ -846,7 +892,9 @@ export default function QuotationDocMerge() {
     templates,
     pdfExportOptions,
     mergeMailFallback,
-    mergeFieldsSheet
+    mergeFieldsSheet,
+    runtime.apiPrefix,
+    runtime.showRegistrationScopePicker
   ]);
 
   const saveTemplateUploadPrepare = useCallback(async () => {
@@ -1037,8 +1085,8 @@ export default function QuotationDocMerge() {
     try {
       await pingBackendHealth();
       const url = presetId
-        ? `${API_BASE}/quotation-merge/field-presets/${presetId}`
-        : `${API_BASE}/quotation-merge/field-config`;
+        ? `${mergeApiBase}/field-presets/${presetId}`
+        : `${mergeApiBase}/field-config`;
       const body = presetId
         ? { fields: fieldsPayload, name: String(fieldPresetNameDraft || '').trim().slice(0, MERGE_FIELD_PRESET_NAME_MAX) }
         : { fields: fieldsPayload };
@@ -1073,7 +1121,7 @@ export default function QuotationDocMerge() {
     try {
       await pingBackendHealth();
       if (presetId) {
-        const res = await fetch(`${API_BASE}/quotation-merge/field-presets/${presetId}`, {
+        const res = await fetch(`${mergeApiBase}/field-presets/${presetId}`, {
           method: 'DELETE',
           headers: { ...getAuthHeader() },
           credentials: 'include'
@@ -1086,7 +1134,7 @@ export default function QuotationDocMerge() {
         closeFieldEditor();
         window.alert('저장된 필드 구성을 삭제했습니다.');
       } else {
-        const res = await fetch(`${API_BASE}/quotation-merge/field-config`, {
+        const res = await fetch(`${mergeApiBase}/field-config`, {
           method: 'DELETE',
           headers: { ...getAuthHeader() },
           credentials: 'include'
@@ -1116,7 +1164,7 @@ export default function QuotationDocMerge() {
         window.alert(built.error);
         return;
       }
-      const res = await fetch(`${API_BASE}/quotation-merge/field-presets`, {
+      const res = await fetch(`${mergeApiBase}/field-presets`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         credentials: 'include',
@@ -1152,7 +1200,7 @@ export default function QuotationDocMerge() {
     setFieldSaving(true);
     try {
       await pingBackendHealth();
-      const res = await fetch(`${API_BASE}/quotation-merge/field-presets`, {
+      const res = await fetch(`${mergeApiBase}/field-presets`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         credentials: 'include',
@@ -1180,7 +1228,7 @@ export default function QuotationDocMerge() {
 
   const fetchTemplateFileBlob = async (id) => {
     await pingBackendHealth();
-    const res = await fetch(`${API_BASE}/quotation-merge/templates/${id}/download`, {
+    const res = await fetch(`${mergeApiBase}/templates/${id}/download`, {
       headers: { ...getAuthHeader() },
       credentials: 'include'
     });
@@ -1209,7 +1257,7 @@ export default function QuotationDocMerge() {
     if (!window.confirm('이 양식을 삭제할까요?')) return;
     try {
       await pingBackendHealth();
-      const res = await fetch(`${API_BASE}/quotation-merge/templates/${id}`, {
+      const res = await fetch(`${mergeApiBase}/templates/${id}`, {
         method: 'DELETE',
         headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
         credentials: 'include'
@@ -1706,7 +1754,8 @@ export default function QuotationDocMerge() {
         fallbackTid,
         prof,
         templateProfilesById,
-        globalPdfOpts: pdfExportOptions
+        globalPdfOpts: pdfExportOptions,
+        ourForcedValues
       });
       if (built.error) throw new Error(built.error);
 
@@ -1726,7 +1775,8 @@ export default function QuotationDocMerge() {
           getAuthHeader,
           rowJobs: built.rowJobs,
           fieldPresetId: fieldPresetIdParam,
-          pdfExportOptions: pdfOpts
+          pdfExportOptions: pdfOpts,
+          apiPrefix: runtime.apiPrefix
         });
         const url = URL.createObjectURL(blob);
         pdfPreviewUrlRef.current = url;
@@ -1746,7 +1796,9 @@ export default function QuotationDocMerge() {
       fieldPresets,
       selectedFieldPresetId,
       templateProfilesById,
-      pdfExportOptions
+      pdfExportOptions,
+      runtime.apiPrefix,
+      getAuthHeader
     ]
   );
 
@@ -1781,7 +1833,8 @@ export default function QuotationDocMerge() {
           apiBase: API_BASE,
           getAuthHeader,
           file: previewFile,
-          pdfExportOptions: pdfOpts
+          pdfExportOptions: pdfOpts,
+          apiPrefix: runtime.apiPrefix
         });
         const url = URL.createObjectURL(blob);
         pdfPreviewUrlRef.current = url;
@@ -1792,7 +1845,7 @@ export default function QuotationDocMerge() {
         setPdfPreviewLoading(false);
       }
     },
-    [templateUploadPendingFile, templatePrepareMode, templatePrepareEditingTemplate, getAuthHeader]
+    [templateUploadPendingFile, templatePrepareMode, templatePrepareEditingTemplate, getAuthHeader, runtime.apiPrefix]
   );
 
   const downloadMergeOutputsAsSeparateFiles = useCallback(
@@ -1802,7 +1855,7 @@ export default function QuotationDocMerge() {
       if (fieldPresetId && isMergeFieldPresetMongoId(fieldPresetId)) {
         planBody.fieldPresetId = String(fieldPresetId).trim();
       }
-      const planRes = await fetch(`${API_BASE}/quotation-merge/plan`, {
+      const planRes = await fetch(`${mergeApiBase}/plan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
         credentials: 'include',
@@ -1816,17 +1869,25 @@ export default function QuotationDocMerge() {
       if (!entries.length) {
         throw new Error('생성할 파일 정보가 없습니다.');
       }
+      const entryJobIndexes = buildMergeOutputEntryJobIndexes(rowJobs);
       for (let i = 0; i < entries.length; i += 1) {
         await pingBackendHealth();
-        const job = rowJobs[i];
+        const jobIndex = entryJobIndexes[i] ?? i;
+        const job = rowJobs[jobIndex];
         const srcRow =
           job && typeof job.sourceRowIndex === 'number' ? rowsCtx?.[job.sourceRowIndex] : null;
+        const templateIdsForPdf =
+          job?.templateId != null
+            ? [String(job.templateId)]
+            : srcRow
+              ? getRowTemplateIds(srcRow, fallbackTid)
+              : [];
         const pdfExportOptionsBody = normalizeMergePdfExportOptions(
           resolvePdfExportOptionsForRow(
             srcRow,
             profMap,
             globalPdfOpts,
-            srcRow ? getRowTemplateIds(srcRow, fallbackTid) : [],
+            templateIdsForPdf,
             tplCtx
           )
         );
@@ -1838,7 +1899,7 @@ export default function QuotationDocMerge() {
           pdfExportOptions: pdfExportOptionsBody
         };
         if (planBody.fieldPresetId) body.fieldPresetId = planBody.fieldPresetId;
-        const res = await fetch(`${API_BASE}/quotation-merge/run`, {
+        const res = await fetch(`${mergeApiBase}/run`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
           credentials: 'include',
@@ -1865,7 +1926,7 @@ export default function QuotationDocMerge() {
       }
       return entries.length;
     },
-    []
+    [getAuthHeader, mergeApiBase]
   );
 
   const runMerge = async () => {
@@ -1904,12 +1965,12 @@ export default function QuotationDocMerge() {
         const t = templates.find((x) => String(x._id) === tid);
         const tplRaw = stripKnownMergeTemplateExtensions(templateListFileName(t)).trim();
         const tplSlug = sanitizeDownloadFileStem(tplRaw).slice(0, 50) || 'doc';
-        const apiRow = { ...rowForApi(r) };
+        let apiRow = applyOurForcedToMergeRow(rowForApi(r), ourForcedValues);
         if (tids.length > 1) {
           const p = prof || '';
           const suffix = p ? `${p}_${tplSlug}` : `_${tplSlug}`;
           const combined = sanitizeDownloadFileStem(`${baseStem}${suffix}`.slice(0, 200));
-          if (combined) apiRow.fileLabel = combined;
+          if (combined) apiRow = { ...apiRow, fileLabel: combined };
         }
         rowJobs.push({
           templateId: tid,
@@ -1970,7 +2031,8 @@ export default function QuotationDocMerge() {
         fallbackTid,
         prof,
         templateProfilesById,
-        globalPdfOpts: pdfExportOptions
+        globalPdfOpts: pdfExportOptions,
+        ourForcedValues
       });
       if (built.error) {
         window.alert(`${ri + 1}행: ${built.error}`);
@@ -2005,7 +2067,8 @@ export default function QuotationDocMerge() {
       mergeRows,
       pdfExportOptions,
       downloadMergeOutputsAsSeparateFiles,
-      templateProfilesById
+      templateProfilesById,
+      ourForcedValues
     ]
   );
 
@@ -2116,7 +2179,7 @@ export default function QuotationDocMerge() {
 
     return (
       <textarea
-        className="qdm-cell qdm-cell--sheet qdm-cell-sheet-single"
+        className="qdm-cell qdm-cell--sheet qdm-cell-sheet-single qdm-cell--auto-fit"
         value={val}
         rows={1}
         onChange={(e) => updateRow(rowIndex, key, e.target.value)}
@@ -2132,7 +2195,12 @@ export default function QuotationDocMerge() {
   return (
     <div className="page quotation-doc-merge-page">
       <header className="page-header quotation-doc-merge-header">
-        <h1 className="page-title">문서 메일머지</h1>
+        <div>
+          <h1 className="page-title">{runtime.pageTitle}</h1>
+          {runtime.pageSubtitle ? (
+            <p className="quotation-doc-merge-lead">{runtime.pageSubtitle}</p>
+          ) : null}
+        </div>
         <div className="quotation-doc-merge-header-tools">
           <PageHeaderNotifyChat />
         </div>
@@ -2301,41 +2369,50 @@ export default function QuotationDocMerge() {
                             >
                               {idx + 1}
                             </td>
-                            <td className="qdm-excel-td">{templateListFileName(t)}</td>
+                            <td className="qdm-excel-td">
+                              {templateListFileName(t)}
+                              {runtime.showCommonTemplateBadge && t.isCommon ? (
+                                <span className="qdm-badge qdm-badge-common" title="모든 회사에서 사용 가능한 공통 양식">
+                                  공통
+                                </span>
+                              ) : null}
+                            </td>
                             <td className="qdm-excel-td">{mergeTemplateKindLabel(t.fileType)}</td>
                             <td className="qdm-excel-td">{formatBytes(t.sizeBytes)}</td>
                             <td className="qdm-excel-td">{t.createdAt ? new Date(t.createdAt).toLocaleString('ko-KR') : '—'}</td>
-                            <td className="qdm-table-actions qdm-excel-td qdm-excel-td--actions" onClick={(e) => e.stopPropagation()}>
-                              <button
-                                type="button"
-                                className="icon-btn qdm-excel-row-icon-btn"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  downloadTemplateFile(t._id, t.originalFilename || `${t.name}.${t.fileType}`);
-                                }}
-                                title="파일 받기"
-                                aria-label="파일 받기"
-                              >
-                                <span className="material-symbols-outlined" aria-hidden>
-                                  file_download
-                                </span>
-                              </button>
-                              {canDeleteTemplate ? (
+                            <td className="qdm-excel-td qdm-excel-td--actions" onClick={(e) => e.stopPropagation()}>
+                              <div className="qdm-table-row-actions" role="group" aria-label="양식 파일 작업">
                                 <button
                                   type="button"
-                                  className="icon-btn qdm-excel-row-icon-btn qdm-excel-row-icon-btn--danger"
+                                  className="icon-btn qdm-excel-row-icon-btn"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    deleteTemplate(t._id);
+                                    downloadTemplateFile(t._id, t.originalFilename || `${t.name}.${t.fileType}`);
                                   }}
-                                  title="양식 삭제"
-                                  aria-label="양식 삭제"
+                                  title="파일 받기"
+                                  aria-label="파일 받기"
                                 >
                                   <span className="material-symbols-outlined" aria-hidden>
-                                    delete
+                                    file_download
                                   </span>
                                 </button>
-                              ) : null}
+                                {runtime.allowDeleteTemplate(t, canDeleteTemplateByRole) ? (
+                                  <button
+                                    type="button"
+                                    className="icon-btn qdm-excel-row-icon-btn qdm-excel-row-icon-btn--danger"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      deleteTemplate(t._id);
+                                    }}
+                                    title="양식 삭제"
+                                    aria-label="양식 삭제"
+                                  >
+                                    <span className="material-symbols-outlined" aria-hidden>
+                                      delete
+                                    </span>
+                                  </button>
+                                ) : null}
+                              </div>
                             </td>
                           </tr>
                         );
@@ -2418,6 +2495,7 @@ export default function QuotationDocMerge() {
           pdfPreviewCaption={pdfPreviewCaption}
           onClosePdfPreview={closePdfPreview}
           apiBase={API_BASE}
+          mergeApiPrefix={runtime.apiPrefix}
           getAuthHeader={getAuthHeader}
           onDownloadRow={runSheetDownloadForRow}
           onMailtoHandoffRow={runSheetMailHandoffForRow}
@@ -2425,6 +2503,7 @@ export default function QuotationDocMerge() {
           onMailCellKeyDown={handleMergeSheetCellKeyDown}
           onMergeSheetGridPaste={handleMergeSheetGridPaste}
           renderMergeCell={renderMergeCell}
+          ourForcedValues={ourForcedValues}
         />
       ) : null}
 
@@ -2446,6 +2525,7 @@ export default function QuotationDocMerge() {
           onCreateProfile={canManageMergeFields ? createFieldPresetFromEditor : undefined}
           onDeleteProfile={canManageMergeFields ? resetFieldGuideToDefault : undefined}
           fieldProfileNameMaxLength={MERGE_FIELD_PRESET_NAME_MAX}
+          ourForcedValues={ourForcedValues}
         />
       ) : null}
 
@@ -2645,7 +2725,8 @@ export default function QuotationDocMerge() {
                         : '—'}
                     </p>
                     <p className="qdm-template-prepare-note">
-                      양식 파일은 바꾸지 않습니다. PDF·메일 기본값과 저장 위치만 수정합니다.
+                      양식 파일은 바꾸지 않습니다. PDF·메일 기본값
+                      {runtime.showRegistrationScopePicker ? '과 저장 위치' : ''}만 수정합니다.
                     </p>
                   </div>
                 ) : (
@@ -2696,17 +2777,19 @@ export default function QuotationDocMerge() {
                 </div>
                 )}
 
-                <fieldset className="qdm-template-prepare-fieldset">
-                  <legend className="qdm-template-prepare-label">저장 위치</legend>
-                  <label className="qdm-template-prepare-radio">
-                    <input type="radio" name="template-upload-scope" checked={templateUploadPrepareScope !== 'personal'} onChange={() => setTemplateUploadPrepareScope('company')} />
-                    <span>회사 (Company.listTemplates)</span>
-                  </label>
-                  <label className="qdm-template-prepare-radio">
-                    <input type="radio" name="template-upload-scope" checked={templateUploadPrepareScope === 'personal'} onChange={() => setTemplateUploadPrepareScope('personal')} />
-                    <span>개인 (User.listTemplates)</span>
-                  </label>
-                </fieldset>
+                {runtime.showRegistrationScopePicker ? (
+                  <fieldset className="qdm-template-prepare-fieldset">
+                    <legend className="qdm-template-prepare-label">저장 위치</legend>
+                    <label className="qdm-template-prepare-radio">
+                      <input type="radio" name="template-upload-scope" checked={templateUploadPrepareScope !== 'personal'} onChange={() => setTemplateUploadPrepareScope('company')} />
+                      <span>회사 (Company.listTemplates)</span>
+                    </label>
+                    <label className="qdm-template-prepare-radio">
+                      <input type="radio" name="template-upload-scope" checked={templateUploadPrepareScope === 'personal'} onChange={() => setTemplateUploadPrepareScope('personal')} />
+                      <span>개인 (User.listTemplates)</span>
+                    </label>
+                  </fieldset>
+                ) : null}
 
                 <div className="qdm-template-prepare-pdf-block">
                   <div className="qdm-template-prepare-pdf-head">
@@ -2869,6 +2952,7 @@ export default function QuotationDocMerge() {
           }}
           onRequestPreview={requestTemplatePreparePdfPreview}
           apiBase={API_BASE}
+          mergeApiPrefix={runtime.apiPrefix}
           getAuthHeader={getAuthHeader}
           printAreaTemplateId={
             templatePrepareMode === 'edit' && templatePrepareEditingTemplate?._id

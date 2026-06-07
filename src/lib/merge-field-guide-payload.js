@@ -4,6 +4,11 @@
  */
 
 import { MERGE_EXCEL_FORMATS } from '@/lib/merge-field-editor-constants';
+import {
+  isOurForcedMergeFieldKey,
+  mergeOurForcedIntoFields,
+  orderEditorDraftWithOurForcedAtEnd
+} from '@/lib/merge-our-forced-fields';
 
 /** 백엔드 `MERGE_FIELD_PRESET_NAME_MAX` 와 동일 */
 export const MERGE_FIELD_PRESET_NAME_MAX = 60;
@@ -12,7 +17,8 @@ const FIELD_KEY_RE = /^[a-zA-Z][a-zA-Z0-9_]{0,39}$/;
 
 /** `{{rowIndex}}` 는 서버가 행마다 자동 채움 — 시트·편집기에서는 필드로 두지 않음 */
 export function mergeFieldsWithoutRowIndex(fields) {
-  return (fields || []).filter((f) => f && String(f.key || '') !== 'rowIndex');
+  const base = (fields || []).filter((f) => f && String(f.key || '') !== 'rowIndex');
+  return mergeOurForcedIntoFields(base);
 }
 
 /** @returns {{ ok: true, fields: object[] } | { error: string }} */
@@ -21,11 +27,14 @@ export function buildMergeFieldsPayload(fieldDraft) {
     return { error: '필드를 1개 이상 두어 주세요.' };
   }
   for (const f of fieldDraft) {
-    if (!FIELD_KEY_RE.test(String(f.key || '').trim())) {
+    const key = String(f.key || '').trim();
+    if (isOurForcedMergeFieldKey(key)) continue;
+    if (!FIELD_KEY_RE.test(key)) {
       return { error: `필드 키는 영문으로 시작하고 영문·숫자·밑줄(_)만 사용합니다: ${f.key || '(비어 있음)'}` };
     }
   }
-  const fields = fieldDraft.map((f) => {
+  const ordered = orderEditorDraftWithOurForcedAtEnd(fieldDraft);
+  const fields = ordered.map((f) => {
     const valueKind = f.valueKind === 'number' ? 'number' : 'text';
     let excelFormat = MERGE_EXCEL_FORMATS.some((x) => x.id === f.excelFormat) ? f.excelFormat : 'general';
     if (valueKind === 'text') excelFormat = 'general';
@@ -45,12 +54,14 @@ export function buildMergeFieldsPayload(fieldDraft) {
 
 export function mapApiFieldsToEditorDraft(fields) {
   if (!Array.isArray(fields)) return [];
-  return mergeFieldsWithoutRowIndex(fields).map((f) => {
+  return orderEditorDraftWithOurForcedAtEnd(
+    mergeFieldsWithoutRowIndex(fields).map((f) => {
     const valueKind = f.valueKind === 'number' ? 'number' : 'text';
     return {
       ...f,
       valueKind,
       excelFormat: MERGE_EXCEL_FORMATS.some((x) => x.id === f.excelFormat) ? f.excelFormat : 'general'
     };
-  });
+    })
+  );
 }

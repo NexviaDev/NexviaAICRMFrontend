@@ -284,6 +284,14 @@
   color: #475569;
 }
 
+.qdm-badge-common {
+  margin-left: 0.45rem;
+  vertical-align: middle;
+  background: #ede9fe;
+  border-color: #c4b5fd;
+  color: #5b21b6;
+}
+
 .qdm-table-wrap {
   overflow: auto;
   border: 1px solid #e4e9f2;
@@ -309,16 +317,14 @@
   font-weight: 600;
 }
 
-.qdm-table-actions {
-  white-space: nowrap;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-}
-
-.qdm-excel-td--actions.qdm-table-actions {
+.qdm-table-row-actions {
+  display: inline-flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
   justify-content: flex-end;
-  gap: 0.2rem;
+  gap: 0.12rem;
+  white-space: nowrap;
 }
 
 .qdm-template-row {
@@ -402,13 +408,15 @@
 }
 
 .qdm-excel-row-icon-btn {
-  width: 2rem;
-  height: 2rem;
+  width: 1.55rem;
+  height: 1.55rem;
+  min-width: 1.55rem;
+  padding: 0;
   flex-shrink: 0;
 }
 
 .qdm-excel-row-icon-btn .material-symbols-outlined {
-  font-size: 1.1rem;
+  font-size: 1rem;
 }
 
 .qdm-excel-row-icon-btn--danger:hover:not(:disabled) {
@@ -440,6 +448,15 @@
   box-sizing: border-box;
 }
 
+.qdm-table.qdm-table--excel tbody tr {
+  height: 1px;
+}
+
+.qdm-table.qdm-table--excel tbody .qdm-excel-td {
+  padding: 0.14rem 0.4rem;
+  line-height: 1.25;
+}
+
 .qdm-table.qdm-table--excel thead th {
   background: #dfe8f2;
   color: #1e293b;
@@ -465,10 +482,13 @@
 
 .qdm-excel-th--actions,
 .qdm-excel-td--actions {
-  width: 5.25rem;
-  min-width: 5.25rem;
+  width: 4.25rem;
+  min-width: 4.25rem;
+  max-width: 4.5rem;
+  padding: 0.1rem 0.28rem !important;
   text-align: right;
   background: #f4f7fb;
+  vertical-align: middle;
 }
 
 .qdm-table.qdm-table--excel tbody tr:nth-child(even) .qdm-excel-td:not(.qdm-excel-td--gutter):not(.qdm-excel-td--actions) {

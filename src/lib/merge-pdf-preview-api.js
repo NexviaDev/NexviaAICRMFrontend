@@ -11,7 +11,8 @@ export async function fetchMergePdfPreviewBlob({
   getAuthHeader,
   rowJobs,
   fieldPresetId,
-  pdfExportOptions
+  pdfExportOptions,
+  apiPrefix = '/quotation-merge'
 }) {
   if (!Array.isArray(rowJobs) || !rowJobs.length) {
     throw new Error('미리볼 PDF가 없습니다. PDF 추출이 켜진 행·양식을 확인해 주세요.');
@@ -19,7 +20,7 @@ export async function fetchMergePdfPreviewBlob({
   const planBody = { rowJobs };
   if (fieldPresetId) planBody.fieldPresetId = String(fieldPresetId).trim();
   await pingBackendHealth();
-  const planRes = await fetch(`${apiBase}/quotation-merge/plan`, {
+  const planRes = await fetch(`${apiBase}${apiPrefix}/plan`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
     credentials: 'include',
@@ -45,7 +46,7 @@ export async function fetchMergePdfPreviewBlob({
   };
   if (planBody.fieldPresetId) body.fieldPresetId = planBody.fieldPresetId;
   await pingBackendHealth();
-  const res = await fetch(`${apiBase}/quotation-merge/run`, {
+  const res = await fetch(`${apiBase}${apiPrefix}/run`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
     credentials: 'include',
@@ -66,7 +67,13 @@ export async function fetchMergePdfPreviewBlob({
  * 양식 등록 전 등 — 업로드 파일 + PDF 설정만으로 서버 PDF 미리보기 Blob.
  * @param {{ apiBase: string, getAuthHeader: () => object, file: File, pdfExportOptions?: object }} params
  */
-export async function fetchTemplatePdfPreviewBlob({ apiBase, getAuthHeader, file, pdfExportOptions }) {
+export async function fetchTemplatePdfPreviewBlob({
+  apiBase,
+  getAuthHeader,
+  file,
+  pdfExportOptions,
+  apiPrefix = '/quotation-merge'
+}) {
   if (!file) {
     throw new Error('미리볼 양식 파일이 없습니다. 파일을 먼저 선택해 주세요.');
   }
@@ -77,9 +84,9 @@ export async function fetchTemplatePdfPreviewBlob({ apiBase, getAuthHeader, file
   fd.append('file', file, file.name || 'template.xlsx');
   fd.append('pdfExportOptions', JSON.stringify(normalizeMergePdfExportOptions(pdfExportOptions)));
   await pingBackendHealth();
-  const res = await fetch(`${apiBase}/quotation-merge/templates/preview-pdf`, {
+  const res = await fetch(`${apiBase}${apiPrefix}/templates/preview-pdf`, {
     method: 'POST',
-    headers: { ...getAuthHeader() },
+    headers: { ...getAuthHeader({ formData: true }) },
     credentials: 'include',
     body: fd
   });

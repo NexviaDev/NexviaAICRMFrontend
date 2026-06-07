@@ -3,6 +3,7 @@
  */
 
 import { computeLineFinalAmount, parseNumber } from '@/lib/sales-opportunity-form-shared';
+import { buildFormulaExpression, evaluateOpportunityMergeFormula } from '@/lib/opportunity-merge-formula';
 
 /** 제품 행마다 한 줄 — 칸·문서에서 줄바꿈으로 구분(한 줄에 `/`로 이으면 끝이 잘리기 쉬움) */
 function linesSummary(lineItems) {
@@ -180,9 +181,15 @@ export function buildOpportunityDocMailFallback(ctx) {
 }
 
 /** 매핑 행(기회 필드·시트 메일) → 저장/시트 반영용 문자열 */
-export function resolveOpportunityMappingRowValue(row, ctx) {
+export function resolveOpportunityMappingRowValue(row, ctx, mappingRows) {
   if (!row) return '';
   if (row.sourceType === 'constant') return String(row.constantValue ?? '').trim();
+  if (row.sourceType === 'formula') {
+    const expr =
+      String(row.formulaExpression || '').trim() ||
+      buildFormulaExpression(row.formulaLeftKey, row.formulaOp, row.formulaRightKey);
+    return String(evaluateOpportunityMergeFormula(expr, ctx, mappingRows, row.mergeKey) ?? '').trim();
+  }
   if (!row.sourceKey) return '';
   return String(resolveOpportunityMergeSourceValue(row.sourceKey, ctx) ?? '').trim();
 }

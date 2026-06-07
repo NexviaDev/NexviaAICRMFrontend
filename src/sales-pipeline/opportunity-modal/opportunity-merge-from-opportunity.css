@@ -182,6 +182,80 @@
   border-color: rgba(78, 121, 167, 0.35);
 }
 
+.opp-merge-map-row.is-formula {
+  background: #f3f0fa;
+  border-color: rgba(139, 127, 191, 0.35);
+}
+
+.opp-merge-map-row.is-formula .opp-merge-map-icon-box {
+  background: rgba(167, 139, 250, 0.15);
+  color: #7c6bb8;
+}
+
+.opp-merge-formula-wrap {
+  margin-top: 0.35rem;
+}
+
+.opp-merge-formula-pickers {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.opp-merge-formula-op-select {
+  width: 3rem;
+  min-width: 3rem;
+  padding: 8px 4px;
+  font-size: 0.875rem;
+  font-weight: 700;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.opp-merge-formula-select {
+  min-width: 0;
+}
+
+@media (max-width: 520px) {
+  .opp-merge-formula-pickers {
+    grid-template-columns: 1fr;
+  }
+
+  .opp-merge-formula-op-select {
+    width: 100%;
+  }
+}
+
+.opp-merge-formula-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+.opp-merge-formula-preset-btn {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  border: 1px solid rgba(167, 139, 250, 0.45);
+  border-radius: 6px;
+  background: #ede9fe;
+  color: #5b4d8a;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1.2;
+}
+
+.opp-merge-formula-preset-btn:not(:disabled):hover {
+  background: #e4ddfc;
+}
+
+.opp-merge-formula-preset-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .opp-merge-map-row--sheet-mail-first {
   border-top: 2px solid var(--card-border, #dce6f2);
   margin-top: 0.35rem;

@@ -27,9 +27,9 @@ export function normalizeTemplateProfilesMap(profiles) {
 }
 
 /** @param {() => object} getAuthHeader */
-export async function fetchMergeTemplateProfiles(getAuthHeader) {
+export async function fetchMergeTemplateProfiles(getAuthHeader, apiPrefix = '/quotation-merge') {
   await pingBackendHealth();
-  const res = await fetch(`${API_BASE}/quotation-merge/template-profiles`, {
+  const res = await fetch(`${API_BASE}${apiPrefix}/template-profiles`, {
     headers: { ...getAuthHeader() },
     credentials: 'include'
   });
@@ -39,13 +39,11 @@ export async function fetchMergeTemplateProfiles(getAuthHeader) {
 }
 
 /** @param {() => object} getAuthHeader */
-export async function patchMergeTemplateProfile(getAuthHeader, templateId, payload = {}) {
+export async function patchMergeTemplateProfile(getAuthHeader, templateId, payload = {}, apiPrefix = '/quotation-merge') {
   const tid = String(templateId || '').trim();
   if (!tid) throw new Error('양식 ID가 필요합니다.');
   await pingBackendHealth();
-  const scope = payload.registrationScope === 'personal' ? 'personal' : 'company';
   const body = {
-    registrationScope: scope,
     pdfExportOptions: normalizeMergePdfExportOptions(payload.pdfExportOptions || {}),
     mailDefaults: {
       mailTo: String(payload.mailDefaults?.mailTo ?? '').slice(0, 2000),
@@ -54,7 +52,10 @@ export async function patchMergeTemplateProfile(getAuthHeader, templateId, paylo
       mailBody: String(payload.mailDefaults?.mailBody ?? '').slice(0, 12000)
     }
   };
-  const res = await fetch(`${API_BASE}/quotation-merge/templates/${encodeURIComponent(tid)}/profile`, {
+  if (payload.registrationScope != null && payload.registrationScope !== '') {
+    body.registrationScope = payload.registrationScope === 'personal' ? 'personal' : 'company';
+  }
+  const res = await fetch(`${API_BASE}${apiPrefix}/templates/${encodeURIComponent(tid)}/profile`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
     credentials: 'include',

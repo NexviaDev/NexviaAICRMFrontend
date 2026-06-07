@@ -17,6 +17,7 @@ const AdminLayout = lazy(() => import('./admin/adminlayout'));
 const AdminNotices = lazy(() => import('./admin/adminnotices'));
 const AdminUsers = lazy(() => import('./admin/adminusers'));
 const AdminCompanies = lazy(() => import('./admin/admincompanies'));
+const AdminQuotationDocMerge = lazy(() => import('./admin/admin-quotation-doc-merge'));
 
 /** 로그인하지 않으면 /login으로 리다이렉트 */
 function ProtectedRoute({ children }) {
@@ -78,6 +79,7 @@ function App() {
           <Route path="notices" element={<AdminNotices />} />
           <Route path="users" element={<AdminUsers />} />
           <Route path="companies" element={<AdminCompanies />} />
+          <Route path="quotation-doc-merge" element={<AdminQuotationDocMerge />} />
         </Route>
         <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route path="dashboard" element={<PendingRestrictedRoute><Dashboard /></PendingRestrictedRoute>} />

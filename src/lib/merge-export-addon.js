@@ -50,6 +50,25 @@ export function resolveMergeExportAddonForRow(row, templateProfilesById, globalP
   return normalizeMergeExportAddon(row?._exportAddon);
 }
 
+/**
+ * rowJobs → 실제 출력 파일 순서 매핑.
+ * pdfAddon 은 한 job 에서 원본 + PDF 두 파일이 나오므로 entries[i] !== rowJobs[i] 이다.
+ * @param {{ exportAddon?: string }[]} rowJobs
+ * @returns {number[]} output entry index -> rowJobs index
+ */
+export function buildMergeOutputEntryJobIndexes(rowJobs) {
+  const out = [];
+  (rowJobs || []).forEach((job, jobIndex) => {
+    const mode = normalizeMergeExportAddon(job?.exportAddon);
+    if (mode === 'pdfAddon') {
+      out.push(jobIndex, jobIndex);
+    } else {
+      out.push(jobIndex);
+    }
+  });
+  return out;
+}
+
 export function mergeRowsIncludePdfExport(mergeRows, templateProfilesById, globalPdfOpts, templates, selectedTemplateId) {
   const list = Array.isArray(templates) ? templates : [];
   const def = selectedTemplateId || list[0]?._id || '';

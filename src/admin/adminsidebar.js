@@ -6,7 +6,8 @@ function buildAdminMenuItems() {
     { to: '/admin/subscription', icon: 'subscriptions', label: '구독 결제 현황' },
     { to: '/admin/companies', icon: 'apartment', label: '회사·직원' },
     { to: '/admin/notices', icon: 'campaign', label: '공지 사항' },
-    { to: '/admin/users', icon: 'groups', label: '유저 현황' }
+    { to: '/admin/users', icon: 'groups', label: '유저 현황' },
+    { to: '/admin/quotation-doc-merge', icon: 'merge_type', label: '공통 문서 메일머지' }
   ];
 }
 

@@ -17,6 +17,12 @@ import {
 import { mergeRowsIncludePdfExport, resolveMergeExportAddonForRow } from '@/lib/merge-export-addon';
 import MergePdfPreviewModal from './merge-pdf-preview-modal';
 import { isXlsxMergeTemplate } from '@/lib/merge-template-file-types';
+import {
+  autoFitAllMergeSheetTextareas,
+  autoFitMergeSheetRowTextareas,
+  autoFitMergeSheetTextarea
+} from './merge-sheet-textarea-auto-fit';
+import { partitionMergeSheetFields } from '@/lib/merge-our-forced-fields';
 import './merge-data-sheet-modal.css';
 
 /** 안내 문구용(quotation-doc-merge.js 의 MERGE_SHEET_* 과 동일하게 유지) */
@@ -29,6 +35,10 @@ export const MERGE_SHEET_PREFIX_COL_COUNT = 2;
 export const MERGE_SHEET_MAIL_INPUT_COL_COUNT = 4;
 /** 치환 필드 열 시작 인덱스 */
 export const MERGE_SHEET_FIELD_START = MERGE_SHEET_PREFIX_COL_COUNT + MERGE_SHEET_MAIL_INPUT_COL_COUNT;
+
+/** 시트 열기 시 첫 페인트용 행 수 — 나머지는 프레임 단위로 점진 마운트 */
+const SHEET_ROW_RENDER_INITIAL = 24;
+const SHEET_ROW_RENDER_CHUNK = 48;
 
 const MAIL_SERIAL_KEYS = ['_mailTo', '_mailCc', '_mailSubject', '_mailBody'];
 
@@ -93,6 +103,89 @@ function templateDropdownSummaryText(row, selectedTemplateId, templates, templat
   return t ? templateListFileName(t) : '—';
 }
 
+/** 양식 체크박스 패널은 펼칠 때만 마운트(200행×N양식 DOM 폭증 방지) */
+function SheetTemplateDropdown({
+  idx,
+  row,
+  templates,
+  mergeRunning,
+  selectedTemplateId,
+  templateListFileName,
+  templateDropdownSummaryText,
+  rowTemplateIdsForSelect,
+  onUpdateRowTemplates,
+  applyTemplateProfileForRow
+}) {
+  const [panelOpen, setPanelOpen] = useState(false);
+  const selectedIds = rowTemplateIdsForSelect(row, selectedTemplateId, templates);
+  const selectedSet = new Set(selectedIds);
+
+  if (!templates.length) {
+    return <span className="qdm-sheet-template-checkboxes-empty">—</span>;
+  }
+  if (mergeRunning) {
+    return (
+      <div
+        className="qdm-sheet-template-dropdown-summary qdm-sheet-template-dropdown-summary--static"
+        title="생성 중에는 양식을 바꿀 수 없습니다."
+      >
+        <span className="qdm-sheet-template-dropdown-summary-text">
+          {templateDropdownSummaryText(row, selectedTemplateId, templates, templateListFileName)}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <details
+      className="qdm-sheet-template-dropdown"
+      title="펼쳐서 여러 양식을 체크할 수 있습니다."
+      onToggle={(e) => setPanelOpen(e.currentTarget.open)}
+    >
+      <summary className="qdm-sheet-template-dropdown-summary" aria-label={`${idx + 1}행 사용 양식, 펼치기`}>
+        <span className="qdm-sheet-template-dropdown-summary-text">
+          {templateDropdownSummaryText(row, selectedTemplateId, templates, templateListFileName)}
+        </span>
+        <span className="material-symbols-outlined qdm-sheet-template-dropdown-chevron" aria-hidden>
+          expand_more
+        </span>
+      </summary>
+      {panelOpen ? (
+        <div className="qdm-sheet-template-dropdown-panel" role="group" aria-label={`${idx + 1}행 사용 양식(체크로 여러 개)`}>
+          <div className="qdm-sheet-template-checkboxes-scroll">
+            {templates.map((t) => {
+              const id = String(t._id);
+              const checked = selectedSet.has(id);
+              return (
+                <label key={t._id} className="qdm-sheet-template-checkbox-row">
+                  <input
+                    type="checkbox"
+                    className="qdm-sheet-template-checkbox"
+                    checked={checked}
+                    onChange={(e) => {
+                      const cur = rowTemplateIdsForSelect(row, selectedTemplateId, templates);
+                      const next = new Set(cur.map(String));
+                      if (e.target.checked) next.add(id);
+                      else next.delete(id);
+                      const ordered = templates.map((x) => String(x._id)).filter((tid) => next.has(tid));
+                      onUpdateRowTemplates?.(idx, ordered);
+                      applyTemplateProfileForRow?.(idx, ordered);
+                    }}
+                  />
+                  <span className="qdm-sheet-template-checkbox-text">
+                    {templateListFileName(t)}{' '}
+                    <span className="qdm-sheet-template-checkbox-type">({t.fileType})</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </details>
+  );
+}
+
 /**
  * 문서 메일머지 — 데이터 입력 시트 전체 화면 모달.
  * 오버레이 클릭으로는 닫지 않습니다(닫기 버튼으로만 닫습니다).
@@ -131,24 +224,32 @@ export default function MergeDataSheetModal({
   pdfPreviewCaption,
   onClosePdfPreview,
   apiBase,
+  mergeApiPrefix = '/quotation-merge',
   getAuthHeader,
   onDownloadRow,
   onMailtoHandoffRow,
   onMergeSheetGridPaste,
   onMailCellPaste,
   onMailCellKeyDown,
-  renderMergeCell
+  renderMergeCell,
+  ourForcedValues = {}
 }) {
   /** `{{rowIndex}}` 는 서버가 행마다 자동 채움 — 시트 입력·범위 선택 대상에서 제외 */
   const fields = (mergeFields || []).filter((f) => f && String(f.key || '') !== 'rowIndex');
+  const { regularFields, ourForcedFields, allFields } = useMemo(
+    () => partitionMergeSheetFields(fields),
+    [fields]
+  );
   const [selAnchor, setSelAnchor] = useState(null);
   const [selEnd, setSelEnd] = useState(null);
+  const [renderedRowCount, setRenderedRowCount] = useState(0);
   const mergeRowsRef = useRef(mergeRows);
   const fieldsRef = useRef(fields);
   const templatesRef = useRef(templates);
   const selectedTemplateIdRef = useRef(selectedTemplateId);
   const mergeSheetScrollRef = useRef(null);
   const mergeModalRootRef = useRef(null);
+  const prevMergeRowsRef = useRef(null);
   const selectionDragActiveRef = useRef(false);
   const [pdfFocusRowIndex, setPdfFocusRowIndex] = useState(null);
   const pdfExportOptionsRef = useRef(pdfExportOptions);
@@ -184,8 +285,8 @@ export default function MergeDataSheetModal({
     mergeRowsRef.current = mergeRows;
   }, [mergeRows]);
   useEffect(() => {
-    fieldsRef.current = fields;
-  }, [fields]);
+    fieldsRef.current = allFields;
+  }, [allFields]);
   useEffect(() => {
     templatesRef.current = templates;
   }, [templates]);
@@ -201,8 +302,42 @@ export default function MergeDataSheetModal({
       setSelAnchor(null);
       setSelEnd(null);
       setPdfFocusRowIndex(null);
+      setRenderedRowCount(0);
+      prevMergeRowsRef.current = null;
     }
   }, [open]);
+
+  /** 200행 전체를 한 번에 그리지 않고 점진 마운트 — 시트 열기 체감 속도 개선 */
+  useEffect(() => {
+    if (!open || !fields.length) return;
+    setRenderedRowCount(Math.min(SHEET_ROW_RENDER_INITIAL, mergeRows.length));
+  }, [open, fields.length, mergeRows.length]);
+
+  useEffect(() => {
+    if (!open || renderedRowCount >= mergeRows.length) return;
+    const id = requestAnimationFrame(() => {
+      setRenderedRowCount((n) => Math.min(n + SHEET_ROW_RENDER_CHUNK, mergeRows.length));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [open, mergeRows.length, renderedRowCount]);
+
+  useEffect(() => {
+    if (!open || renderedRowCount >= mergeRows.length) return;
+    const el = mergeSheetScrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      if (el.scrollTop + el.clientHeight >= el.scrollHeight - 360) {
+        setRenderedRowCount(mergeRows.length);
+      }
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [open, mergeRows.length, renderedRowCount]);
+
+  const visibleMergeRows = useMemo(
+    () => mergeRows.slice(0, Math.min(renderedRowCount, mergeRows.length)),
+    [mergeRows, renderedRowCount]
+  );
 
   const applyTemplateProfileForRow = useCallback(
     (rowIdx, templateIds) => {
@@ -251,7 +386,7 @@ export default function MergeDataSheetModal({
       });
       if (!xlsxId) return;
       try {
-        const names = await fetchXlsxSheetNamesFromMergeTemplate(apiBase, getAuthHeader, xlsxId);
+        const names = await fetchXlsxSheetNamesFromMergeTemplate(apiBase, getAuthHeader, xlsxId, mergeApiPrefix);
         if (!names.length) return;
         const row = mergeRowsRef.current[rowIdx];
         const base = row?._pdfExportOptions || pdfExportOptionsRef.current;
@@ -260,7 +395,7 @@ export default function MergeDataSheetModal({
         /* 프로필 PDF 설정은 이미 적용됨 — 시트명 자동 맞춤만 생략 */
       }
     },
-    [applyTemplateProfileForRow, apiBase, getAuthHeader, onUpdateRow]
+    [applyTemplateProfileForRow, apiBase, mergeApiPrefix, getAuthHeader, onUpdateRow]
   );
 
   /** 펼친 사용 양식(details) — 모달 안 다른 곳을 누르면 닫음 */
@@ -282,6 +417,54 @@ export default function MergeDataSheetModal({
     document.addEventListener('pointerdown', onPointerDown, true);
     return () => document.removeEventListener('pointerdown', onPointerDown, true);
   }, [open, mergeRunning]);
+
+  /** 시트 textarea — 값이 있는 칸만 높이 맞춤(빈 200행 일괄 측정 방지), 페인트 후 비동기 */
+  useEffect(() => {
+    if (!open || !fields.length) return;
+
+    const prev = prevMergeRowsRef.current;
+    const rows = mergeRows;
+    prevMergeRowsRef.current = rows;
+
+    const id = requestAnimationFrame(() => {
+      const root = mergeSheetScrollRef.current;
+      if (!root) return;
+
+      if (!prev || prev.length !== rows.length) {
+        autoFitAllMergeSheetTextareas(root, { onlyNonEmpty: true });
+        return;
+      }
+      if (prev === rows) return;
+
+      const changed = new Set();
+      for (let i = 0; i < rows.length; i += 1) {
+        if (prev[i] !== rows[i]) changed.add(i);
+      }
+      if (changed.size === 0) return;
+      if (changed.size > 8) {
+        autoFitAllMergeSheetTextareas(root, { onlyNonEmpty: true });
+        return;
+      }
+      changed.forEach((rowIdx) => autoFitMergeSheetRowTextareas(root, rowIdx));
+    });
+
+    return () => cancelAnimationFrame(id);
+  }, [open, fields.length, mergeRows, renderedRowCount]);
+
+  useEffect(() => {
+    if (!open || !fields.length) return;
+    const root = mergeSheetScrollRef.current;
+    if (!root) return;
+
+    const onInput = (e) => {
+      const el = e.target;
+      if (el?.matches?.('textarea.qdm-cell--sheet')) {
+        autoFitMergeSheetTextarea(el);
+      }
+    };
+    root.addEventListener('input', onInput);
+    return () => root.removeEventListener('input', onInput);
+  }, [open, fields.length, mergeRows.length]);
 
   const rect = normalizeSelection(selAnchor, selEnd);
 
@@ -805,7 +988,7 @@ export default function MergeDataSheetModal({
                         <span className="qdm-th-label">메일 본문</span>
                         <code className="qdm-th-code">{`{{mailBody}}`}</code>
                       </th>
-                      {fields.map((f, fi) => (
+                      {regularFields.map((f, fi) => (
                         <th
                           key={f.key}
                           className={`qdm-sheet-th qdm-sheet-th--merge-field${fi === 0 ? ' qdm-sheet-th--merge-field-edge' : ''}`}
@@ -815,12 +998,20 @@ export default function MergeDataSheetModal({
                           <code className="qdm-th-code">{`{{${f.key}}}`}</code>
                         </th>
                       ))}
+                      {ourForcedFields.map((f, oi) => (
+                        <th
+                          key={f.key}
+                          className={`qdm-sheet-th qdm-sheet-th--merge-field qdm-sheet-th--our-forced${oi === 0 ? ' qdm-sheet-th--merge-field-edge' : ''}${oi === ourForcedFields.length - 1 ? ' qdm-sheet-th--our-forced-end' : ''}`}
+                          title={`${f.label} — ${f.key} (자사 강제값, 병합 시 자동 적용)`}
+                        >
+                          <span className="qdm-th-label">{f.label}</span>
+                          <code className="qdm-th-code">{`{{${f.key}}}`}</code>
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {mergeRows.map((row, idx) => {
-                      const selectedIds = rowTemplateIdsForSelect(row, selectedTemplateId, templates);
-                      const selectedSet = new Set(selectedIds);
+                    {visibleMergeRows.map((row, idx) => {
                       return (
                         <tr
                           key={`row-${idx}`}
@@ -834,68 +1025,18 @@ export default function MergeDataSheetModal({
                             onMouseEnter={() => onSheetCellMouseEnter(idx, 0)}
                             onClick={(e) => onTemplatePresetCellClick(e, idx)}
                           >
-                            {!templates.length ? (
-                              <span className="qdm-sheet-template-checkboxes-empty">—</span>
-                            ) : mergeRunning ? (
-                              <div
-                                className="qdm-sheet-template-dropdown-summary qdm-sheet-template-dropdown-summary--static"
-                                title="생성 중에는 양식을 바꿀 수 없습니다."
-                              >
-                                <span className="qdm-sheet-template-dropdown-summary-text">
-                                  {templateDropdownSummaryText(row, selectedTemplateId, templates, templateListFileName)}
-                                </span>
-                              </div>
-                            ) : (
-                              <details className="qdm-sheet-template-dropdown" title="펼쳐서 여러 양식을 체크할 수 있습니다.">
-                                <summary
-                                  className="qdm-sheet-template-dropdown-summary"
-                                  aria-label={`${idx + 1}행 사용 양식, 펼치기`}
-                                >
-                                  <span className="qdm-sheet-template-dropdown-summary-text">
-                                    {templateDropdownSummaryText(row, selectedTemplateId, templates, templateListFileName)}
-                                  </span>
-                                  <span className="material-symbols-outlined qdm-sheet-template-dropdown-chevron" aria-hidden>
-                                    expand_more
-                                  </span>
-                                </summary>
-                                <div
-                                  className="qdm-sheet-template-dropdown-panel"
-                                  role="group"
-                                  aria-label={`${idx + 1}행 사용 양식(체크로 여러 개)`}
-                                >
-                                  <div className="qdm-sheet-template-checkboxes-scroll">
-                                    {templates.map((t) => {
-                                      const id = String(t._id);
-                                      const checked = selectedSet.has(id);
-                                      return (
-                                        <label key={t._id} className="qdm-sheet-template-checkbox-row">
-                                          <input
-                                            type="checkbox"
-                                            className="qdm-sheet-template-checkbox"
-                                            checked={checked}
-                                            onChange={(e) => {
-                                              const cur = rowTemplateIdsForSelect(row, selectedTemplateId, templates);
-                                              const next = new Set(cur.map(String));
-                                              if (e.target.checked) next.add(id);
-                                              else next.delete(id);
-                                              const ordered = templates
-                                                .map((x) => String(x._id))
-                                                .filter((tid) => next.has(tid));
-                                              onUpdateRowTemplates?.(idx, ordered);
-                                              applyTemplateProfileForRow(idx, ordered);
-                                            }}
-                                          />
-                                          <span className="qdm-sheet-template-checkbox-text">
-                                            {templateListFileName(t)}{' '}
-                                            <span className="qdm-sheet-template-checkbox-type">({t.fileType})</span>
-                                          </span>
-                                        </label>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              </details>
-                            )}
+                            <SheetTemplateDropdown
+                              idx={idx}
+                              row={row}
+                              templates={templates}
+                              mergeRunning={mergeRunning}
+                              selectedTemplateId={selectedTemplateId}
+                              templateListFileName={templateListFileName}
+                              templateDropdownSummaryText={templateDropdownSummaryText}
+                              rowTemplateIdsForSelect={rowTemplateIdsForSelect}
+                              onUpdateRowTemplates={onUpdateRowTemplates}
+                              applyTemplateProfileForRow={applyTemplateProfileForRow}
+                            />
                           </td>
                           <td
                             className={`qdm-sheet-td qdm-sheet-td--preset qdm-sheet-td--mail-col qdm-sheet-td--mail-check qdm-sheet-td--merge-select${isCellSelected(idx, 1) ? ' qdm-sheet-td--selected' : ''
@@ -959,7 +1100,7 @@ export default function MergeDataSheetModal({
                             onClick={(e) => onSheetCellClick(e, idx, 2)}
                           >
                             <textarea
-                              className="qdm-cell qdm-cell--sheet qdm-cell-sheet-single"
+                              className="qdm-cell qdm-cell--sheet qdm-cell-sheet-single qdm-cell--auto-fit"
                               rows={1}
                               value={String(row._mailTo ?? '')}
                               onChange={(e) => onUpdateRow?.(idx, '_mailTo', e.target.value)}
@@ -981,7 +1122,7 @@ export default function MergeDataSheetModal({
                             onClick={(e) => onSheetCellClick(e, idx, 3)}
                           >
                             <textarea
-                              className="qdm-cell qdm-cell--sheet qdm-cell-sheet-single"
+                              className="qdm-cell qdm-cell--sheet qdm-cell-sheet-single qdm-cell--auto-fit"
                               rows={1}
                               value={String(row._mailCc ?? '')}
                               onChange={(e) => onUpdateRow?.(idx, '_mailCc', e.target.value)}
@@ -1003,7 +1144,7 @@ export default function MergeDataSheetModal({
                             onClick={(e) => onSheetCellClick(e, idx, 4)}
                           >
                             <textarea
-                              className="qdm-cell qdm-cell--sheet qdm-cell-sheet-single"
+                              className="qdm-cell qdm-cell--sheet qdm-cell-sheet-single qdm-cell--auto-fit"
                               rows={1}
                               value={String(row._mailSubject ?? '')}
                               onChange={(e) => onUpdateRow?.(idx, '_mailSubject', e.target.value)}
@@ -1024,8 +1165,8 @@ export default function MergeDataSheetModal({
                             onClick={(e) => onSheetCellClick(e, idx, 5)}
                           >
                             <textarea
-                              className="qdm-cell qdm-cell--sheet qdm-cell-tall"
-                              rows={2}
+                              className="qdm-cell qdm-cell--sheet qdm-cell-tall qdm-cell--auto-fit"
+                              rows={1}
                               value={String(row._mailBody ?? '')}
                               onChange={(e) => onUpdateRow?.(idx, '_mailBody', e.target.value)}
                               onPaste={(e) => onMailCellPaste?.(e, idx, 5)}
@@ -1036,7 +1177,7 @@ export default function MergeDataSheetModal({
                               aria-label={`${idx + 1}행 메일 본문`}
                             />
                           </td>
-                          {fields.map((f, fi) => {
+                          {regularFields.map((f, fi) => {
                             const sheetCol = MERGE_SHEET_FIELD_START + fi;
                             return (
                               <td
@@ -1049,6 +1190,36 @@ export default function MergeDataSheetModal({
                                 onClick={(e) => onSheetCellClick(e, idx, sheetCol)}
                               >
                                 {renderMergeCell(row, idx, f)}
+                              </td>
+                            );
+                          })}
+                          {ourForcedFields.map((f, oi) => {
+                            const sheetCol = MERGE_SHEET_FIELD_START + regularFields.length + oi;
+                            const showVal = idx === 0 ? String(ourForcedValues?.[f.key] ?? '') : '';
+                            return (
+                              <td
+                                key={f.key}
+                                className={`qdm-sheet-td qdm-sheet-td--field qdm-sheet-td--merge-field qdm-sheet-td--our-forced${oi === 0 ? ' qdm-sheet-td--merge-field-edge' : ''} qdm-sheet-td--merge-select${isCellSelected(idx, sheetCol) ? ' qdm-sheet-td--selected' : ''
+                                  }`}
+                                data-merge-sheet-row={idx}
+                                data-merge-sheet-col={sheetCol}
+                                onMouseEnter={() => onSheetCellMouseEnter(idx, sheetCol)}
+                                onClick={(e) => onSheetCellClick(e, idx, sheetCol)}
+                                title={
+                                  idx === 0
+                                    ? '자사 강제값 — 문서 병합 시 모든 행에 자동 적용'
+                                    : '병합 시 자동 적용(표시는 첫 행만)'
+                                }
+                              >
+                                <textarea
+                                  className="qdm-cell qdm-cell--sheet qdm-cell-sheet-single qdm-cell--auto-fit qdm-cell--our-forced"
+                                  readOnly
+                                  tabIndex={-1}
+                                  rows={1}
+                                  value={showVal}
+                                  spellCheck={false}
+                                  aria-label={`${f.label} 자사 강제 (${f.key})`}
+                                />
                               </td>
                             );
                           })}

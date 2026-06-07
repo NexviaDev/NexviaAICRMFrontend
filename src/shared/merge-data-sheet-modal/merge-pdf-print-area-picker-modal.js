@@ -48,6 +48,7 @@ export default function MergePdfPrintAreaPickerModal({
   open,
   onClose,
   apiBase,
+  mergeApiPrefix = '/quotation-merge',
   getAuthHeader,
   templateId,
   templateName,
@@ -128,7 +129,7 @@ export default function MergePdfPrintAreaPickerModal({
           buf = await localXlsxFile.arrayBuffer();
         } else {
           await pingBackendHealth();
-          const res = await fetch(`${apiBase}/quotation-merge/templates/${templateId}/download`, {
+          const res = await fetch(`${apiBase}${mergeApiPrefix}/templates/${templateId}/download`, {
             headers: { ...getAuthHeader() },
             credentials: 'include'
           });
@@ -153,6 +154,7 @@ export default function MergePdfPrintAreaPickerModal({
     templateId,
     localXlsxFile,
     apiBase,
+    mergeApiPrefix,
     getAuthHeader,
     initialSheetName,
     initialPrintArea,
@@ -386,6 +388,7 @@ export default function MergePdfPrintAreaPickerModal({
         <p className="merge-pdf-area-picker-desc">
           Excel처럼 <strong>첫 셀 클릭</strong> 후 <strong>Shift+마지막 셀 클릭</strong>으로 범위를 잡을 수 있습니다.
           드래그도 가능합니다. 영역을 추가한 뒤 목록에서 <strong>드래그</strong>로 PDF 페이지 순서를 정합니다.
+          목록에 추가한 영역마다 <strong>PDF 페이지가 1장씩</strong> 나뉩니다(한 페이지에 좌우로 붙지 않음).
           {templateName ? (
             <>
               {' '}

@@ -32,6 +32,7 @@ export default function MergePdfSettingsModal({
   onRequestPreview,
   previewCaption,
   apiBase,
+  mergeApiPrefix = '/quotation-merge',
   getAuthHeader,
   printAreaTemplateId,
   printAreaTemplateName,
@@ -421,6 +422,7 @@ export default function MergePdfSettingsModal({
         open={areaPickerOpen}
         onClose={() => setAreaPickerOpen(false)}
         apiBase={apiBase}
+        mergeApiPrefix={mergeApiPrefix}
         getAuthHeader={getAuthHeader}
         templateId={printAreaTemplateId}
         templateName={printAreaTemplateName || localXlsxFile?.name || ''}
@@ -594,7 +596,7 @@ function MergePdfSettingsFields({
           checked={draft.centerOnPage !== false}
           onChange={(e) => setDraft((d) => ({ ...d, centerOnPage: e.target.checked }))}
         />
-        <span>인쇄 영역을 용지 가운데 맞춤 (가로·세로)</span>
+        <span>인쇄 영역을 용지 가로 가운데 맞춤 (A4 여백 유지)</span>
       </label>
       <label className="merge-pdf-settings-check">
         <input

@@ -1,5 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { MERGE_EXCEL_FORMATS, MERGE_FIELD_VALUE_KINDS } from '@/lib/merge-field-editor-constants';
+import { partitionEditorDraftByOurForced } from '@/lib/merge-our-forced-fields';
 import './merge-field-editor-modal.css';
 
 /**
@@ -26,8 +27,14 @@ export default function MergeFieldEditorModal({
   onCreateProfile,
   /** 저장된 구성 선택 시: 그 구성 전체 삭제(확인은 부모) */
   onDeleteProfile,
-  fieldProfileNameMaxLength = 60
+  fieldProfileNameMaxLength = 60,
+  /** 로그인·소속 회사에서 계산한 our* 현재 치환값 */
+  ourForcedValues = {}
 }) {
+  const { regular, ourForced } = useMemo(
+    () => partitionEditorDraftByOurForced(fieldDraft),
+    [fieldDraft]
+  );
   useEffect(() => {
     if (!open) return;
     const onKey = (e) => {
@@ -161,8 +168,8 @@ export default function MergeFieldEditorModal({
                   </tr>
                 </thead>
                 <tbody>
-                  {fieldDraft.map((f, i) => (
-                    <tr key={i}>
+                  {regular.map(({ f, i }) => (
+                    <tr key={`reg-${i}`}>
                       <td>
                         <input
                           className="qdm-cell"
@@ -259,6 +266,73 @@ export default function MergeFieldEditorModal({
                 </tbody>
               </table>
             </div>
+
+            {ourForced.length > 0 ? (
+              <div className="merge-field-editor-our-section">
+                <h3 className="merge-field-editor-our-title">자사(our) 강제 치환</h3>
+                <p className="merge-field-editor-our-lead" role="note">
+                  아래 항목은 <strong>항상</strong> 목록 맨 뒤에 포함되며, 로그인 계정·소속 회사 정보로 문서에 자동 치환됩니다. 키·현재
+                  치환값은 바꿀 수 없고, 표시 이름·예시만 수정할 수 있습니다.
+                </p>
+                <div className="qdm-field-editor-table-wrap">
+                  <table className="qdm-field-editor-table qdm-field-editor-table--our-forced">
+                    <thead>
+                      <tr>
+                        <th className="qdm-field-editor-th-key">키 (양식 {'{{키}}'})</th>
+                        <th>현재 치환값</th>
+                        <th>표시 이름</th>
+                        <th>예시</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ourForced.map(({ f, i }) => {
+                        const liveVal = String(ourForcedValues?.[f.key] ?? '').trim();
+                        const exampleVal =
+                          String(f.example ?? '').trim() || liveVal || String(f.label || f.key);
+                        return (
+                          <tr key={`our-${f.key}`} className="qdm-field-editor-row--our-forced">
+                            <td>
+                              <code className="merge-field-editor-our-key-code">{`{{${f.key}}}`}</code>
+                            </td>
+                            <td>
+                              <span className="merge-field-editor-our-live-value" title="로그인·소속 회사에서 자동 계산">
+                                {liveVal || '—'}
+                              </span>
+                            </td>
+                            <td>
+                              <input
+                                className="qdm-cell"
+                                value={f.label}
+                                onChange={(e) =>
+                                  setFieldDraft((d) =>
+                                    d.map((x, j) => (j === i ? { ...x, label: e.target.value } : x))
+                                  )
+                                }
+                                disabled={fieldSaving}
+                              />
+                            </td>
+                            <td>
+                              <input
+                                className="qdm-cell"
+                                value={f.example}
+                                placeholder={exampleVal}
+                                onChange={(e) =>
+                                  setFieldDraft((d) =>
+                                    d.map((x, j) => (j === i ? { ...x, example: e.target.value } : x))
+                                  )
+                                }
+                                disabled={fieldSaving}
+                              />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
+
             <div className="qdm-field-editor-actions">
               <button type="button" className="qdm-btn qdm-btn-ghost qdm-btn-small" onClick={onClose} disabled={fieldSaving}>
                 닫기

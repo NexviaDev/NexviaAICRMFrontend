@@ -496,66 +496,64 @@
   text-align: center;
 }
 
+/* 메일·치환 열 — crm-list-sheet 처럼 내용에 맞게 가로 확장(max-width 고정 없음) */
 .merge-data-sheet-modal-body .qdm-grid--sheet .qdm-sheet-th--mail-to,
-.merge-data-sheet-modal-body .qdm-grid--sheet .qdm-sheet-td--mail-to {
-  width: 7.75rem;
-  min-width: 7.75rem;
-  max-width: 7.75rem;
-}
-
+.merge-data-sheet-modal-body .qdm-grid--sheet .qdm-sheet-td--mail-to,
 .merge-data-sheet-modal-body .qdm-grid--sheet .qdm-sheet-th--mail-cc,
-.merge-data-sheet-modal-body .qdm-grid--sheet .qdm-sheet-td--mail-cc {
-  width: 7rem;
-  min-width: 7rem;
-  max-width: 7rem;
-}
-
+.merge-data-sheet-modal-body .qdm-grid--sheet .qdm-sheet-td--mail-cc,
 .merge-data-sheet-modal-body .qdm-grid--sheet .qdm-sheet-th--mail-subj,
-.merge-data-sheet-modal-body .qdm-grid--sheet .qdm-sheet-td--mail-subj {
-  width: 7.25rem;
-  min-width: 7.25rem;
-  max-width: 7.25rem;
-}
-
+.merge-data-sheet-modal-body .qdm-grid--sheet .qdm-sheet-td--mail-subj,
 .merge-data-sheet-modal-body .qdm-grid--sheet .qdm-sheet-th--mail-body,
 .merge-data-sheet-modal-body .qdm-grid--sheet .qdm-sheet-td--mail-body {
-  width: 8.75rem;
-  min-width: 8.75rem;
-  max-width: 8.75rem;
+  width: auto;
+  min-width: 6.5rem;
+  max-width: none;
+  overflow: visible;
 }
 
 .merge-data-sheet-modal-body .qdm-grid--sheet tbody .qdm-sheet-td--mail-input {
   position: relative;
   padding: 0;
-  vertical-align: middle;
-  height: 2.35rem;
+  vertical-align: top;
+  height: auto;
   min-height: 2.35rem;
-  max-height: 2.35rem;
+  max-height: none;
 }
 
 .merge-data-sheet-modal-body .qdm-grid--sheet tbody .qdm-sheet-td--mail-input:has(textarea.qdm-cell-tall.qdm-cell--sheet) {
-  height: 3.35rem;
   min-height: 3.35rem;
-  max-height: 3.35rem;
 }
 
 .merge-data-sheet-modal-body .qdm-grid--sheet .qdm-sheet-td--mail-input > textarea.qdm-cell.qdm-cell--sheet {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  max-height: 100%;
-  min-height: 0;
+  position: relative;
+  display: block;
+  width: auto;
+  min-width: 100%;
+  max-width: none;
+  height: auto;
+  min-height: 2.35rem;
+  max-height: none;
   text-align: left;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow-x: visible;
+  overflow-y: hidden;
+  resize: none;
+  field-sizing: content;
   scrollbar-gutter: stable;
+}
+
+.merge-data-sheet-modal-body .qdm-grid--sheet .qdm-sheet-td--mail-input > textarea.qdm-cell-sheet-single.qdm-cell--sheet {
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.merge-data-sheet-modal-body .qdm-grid--sheet .qdm-sheet-td--mail-input > textarea.qdm-cell-tall.qdm-cell--sheet {
+  min-height: 3.35rem;
 }
 
 .merge-data-sheet-modal-body .qdm-grid--sheet .qdm-sheet-td--mail-input > textarea.qdm-cell.qdm-cell--sheet:focus {
   outline: none;
   box-shadow: inset 0 0 0 2px rgba(78, 121, 167, 0.45);
-  position: relative;
 }
 
 .merge-data-sheet-modal-export-addon {
@@ -872,8 +870,8 @@
 }
 
 /*
- * 열별 min/max width는 각 th·td 규칙으로 유지.
- * quotation-doc-merge.css 의 시트 표와 동일한 너비 규칙(가로 스크롤).
+ * table-layout:auto + width:max-content — CRM 목록(crm-list-sheet)과 동일하게
+ * 열은 min-width만 두고 내용·입력값에 맞게 가로 확장, 넓으면 가로 스크롤.
  */
 .merge-data-sheet-modal-body .merge-data-sheet-modal-table-wrap .qdm-grid.qdm-grid--sheet,
 .merge-data-sheet-modal-body .qdm-grid.qdm-grid--sheet {
@@ -1090,46 +1088,82 @@
   text-align: left;
 }
 
+.merge-data-sheet-modal-body .qdm-grid--sheet .qdm-sheet-th--our-forced,
+.merge-data-sheet-modal-body .qdm-grid--sheet .qdm-sheet-td--our-forced {
+  background: #f8fbfd;
+}
+
+.merge-data-sheet-modal-body .qdm-grid--sheet .qdm-sheet-th--our-forced .qdm-th-code {
+  color: #5b21b6;
+}
+
+.merge-data-sheet-modal-body .qdm-grid--sheet textarea.qdm-cell--our-forced {
+  background: #f0f7fb;
+  color: #475569;
+  cursor: default;
+}
+
 .merge-data-sheet-modal-body .qdm-grid--sheet thead .qdm-sheet-th--merge-field,
 .merge-data-sheet-modal-body .qdm-grid--sheet tbody .qdm-sheet-td--field,
 .merge-data-sheet-modal-body .qdm-grid--sheet tbody .qdm-sheet-td--merge-field {
-  width: 7.75rem;
-  min-width: 7.75rem;
-  max-width: 7.75rem;
+  width: auto;
+  min-width: 6.5rem;
+  max-width: none;
   box-sizing: border-box;
-  overflow: hidden;
-  vertical-align: middle;
+  overflow: visible;
+  vertical-align: top;
+  text-align: left;
 }
 
 .merge-data-sheet-modal-body .qdm-grid--sheet tbody .qdm-sheet-td--field,
 .merge-data-sheet-modal-body .qdm-grid--sheet tbody .qdm-sheet-td--merge-field {
-  /* position:absolute textarea 의 기준 — quotation-doc-merge.css 없으면 칸이 통째로 사라짐 */
   position: relative;
   padding: 0;
-  height: 2.35rem;
+  vertical-align: top;
+  height: auto;
   min-height: 2.35rem;
-  max-height: 2.35rem;
+  max-height: none;
 }
 
 .merge-data-sheet-modal-body .qdm-grid--sheet tbody .qdm-sheet-td--field:has(textarea.qdm-cell-tall.qdm-cell--sheet),
 .merge-data-sheet-modal-body .qdm-grid--sheet tbody .qdm-sheet-td--merge-field:has(textarea.qdm-cell-tall.qdm-cell--sheet) {
-  height: 3.35rem;
   min-height: 3.35rem;
-  max-height: 3.35rem;
 }
 
 .merge-data-sheet-modal-body .qdm-grid--sheet .qdm-sheet-td--field > textarea.qdm-cell.qdm-cell--sheet,
 .merge-data-sheet-modal-body .qdm-grid--sheet .qdm-sheet-td--merge-field > textarea.qdm-cell.qdm-cell--sheet {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  max-height: 100%;
-  min-height: 0;
-  text-align: center;
-  overflow-x: hidden;
-  overflow-y: auto;
+  position: relative;
+  display: block;
+  width: auto;
+  min-width: 100%;
+  max-width: none;
+  height: auto;
+  min-height: 2.35rem;
+  max-height: none;
+  text-align: left;
+  overflow-x: visible;
+  overflow-y: hidden;
+  resize: none;
+  field-sizing: content;
   scrollbar-gutter: stable;
+}
+
+.merge-data-sheet-modal-body .qdm-grid--sheet .qdm-sheet-td--field > textarea.qdm-cell-sheet-single.qdm-cell--sheet,
+.merge-data-sheet-modal-body .qdm-grid--sheet .qdm-sheet-td--merge-field > textarea.qdm-cell-sheet-single.qdm-cell--sheet {
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.merge-data-sheet-modal-body .qdm-grid--sheet .qdm-sheet-td--field > textarea.qdm-cell-tall.qdm-cell--sheet,
+.merge-data-sheet-modal-body .qdm-grid--sheet .qdm-sheet-td--merge-field > textarea.qdm-cell-tall.qdm-cell--sheet {
+  white-space: pre-wrap;
+  min-width: 8rem;
+}
+
+.merge-data-sheet-modal-body .qdm-grid--sheet .qdm-sheet-td--field > textarea.qdm-cell-tall.qdm-cell--sheet,
+.merge-data-sheet-modal-body .qdm-grid--sheet .qdm-sheet-td--merge-field > textarea.qdm-cell-tall.qdm-cell--sheet {
+  min-height: 3.35rem;
 }
 
 /* 메일 보내기 대기열(CRM 내부 순서 목록 — Outlook 임시보관함과 별개) */

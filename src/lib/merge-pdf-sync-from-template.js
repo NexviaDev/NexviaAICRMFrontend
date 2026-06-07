@@ -10,11 +10,16 @@ import { normalizeMergePdfExportOptions } from '@/lib/merge-pdf-export-options';
  * @param {string} templateId
  * @returns {Promise<string[]>}
  */
-export async function fetchXlsxSheetNamesFromMergeTemplate(apiBase, getAuthHeader, templateId) {
+export async function fetchXlsxSheetNamesFromMergeTemplate(
+  apiBase,
+  getAuthHeader,
+  templateId,
+  apiPrefix = '/quotation-merge'
+) {
   const tid = String(templateId || '').trim();
   if (!tid || !apiBase) return [];
   await pingBackendHealth();
-  const res = await fetch(`${apiBase}/quotation-merge/templates/${tid}/download`, {
+  const res = await fetch(`${apiBase}${apiPrefix}/templates/${tid}/download`, {
     headers: { ...getAuthHeader() },
     credentials: 'include'
   });

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import React, { startTransition, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import { API_BASE } from '@/config';
@@ -11,11 +11,18 @@ import {
 } from '@/lib/merge-pdf-export-options';
 import { fetchMergePdfPreviewBlob } from '@/lib/merge-pdf-preview-api';
 import {
+  buildMergeOutputEntryJobIndexes,
   mergeExportAddonWantsPdf,
   resolveMergeExportAddonForRow
 } from '@/lib/merge-export-addon';
 import { buildMailtoWithFields } from '@/lib/email-client-links';
 import { getStoredCrmUser, isManagerOrAboveRole } from '@/lib/crm-role-utils';
+import {
+  applyOurForcedToMergeRow,
+  resolveOurForcedMergeValues,
+  rowHasCustomerMergeFieldContent
+} from '@/lib/merge-our-forced-fields';
+import { resolveOrgChartFromListTemplates } from '@/lib/org-chart-tree-utils';
 import {
   buildOpportunityMergeSourceOptions,
   groupOpportunityMergeSourceOptions,
@@ -23,6 +30,12 @@ import {
   resolveOpportunityMappingRowValue,
   resolveOpportunityMergeSourceValue
 } from '@/lib/opportunity-merge-sources';
+import {
+  MERGE_FORMULA_PRESETS,
+  FORMULA_OPERATORS,
+  buildFormulaExpression,
+  parseFormulaExpressionToParts
+} from '@/lib/opportunity-merge-formula';
 import {
   fetchOpportunityMergeMappingPresets,
   fetchOpportunityMergeMappingPresetsWithMigration,
@@ -35,9 +48,7 @@ import {
   resolvePdfExportOptionsForRow
 } from '@/lib/merge-template-profiles-storage';
 import {
-  clearMergeRowMailFields,
   hydrateMergeRowMailFromProfiles,
-  mergeRowHasFieldData,
   mailDefaultsForRow,
   refreshMailTokensFromProfile,
   resolveMergeRowMailField,
@@ -140,10 +151,7 @@ function rowForApi(row) {
 }
 
 function rowHasMergeFieldContent(row, mergeFields) {
-  if (!row || !Array.isArray(mergeFields)) return false;
-  return mergeFields.some(
-    (f) => f?.key && String(f.key) !== 'rowIndex' && String(row[f.key] ?? '').trim() !== ''
-  );
+  return rowHasCustomerMergeFieldContent(row, mergeFields);
 }
 
 function rowHasContent(row) {
@@ -231,10 +239,30 @@ function createDefaultSheetMailMappingRows() {
   }));
 }
 
+function formulaPartsFromRow(row) {
+  const left = String(row?.formulaLeftKey || '').trim();
+  const op = String(row?.formulaOp || '*').trim() || '*';
+  const right = String(row?.formulaRightKey || '').trim();
+  return { left, op, right };
+}
+
 function mappingRowToSavedPayload(row) {
-  return row.sourceType === 'constant'
-    ? { sourceType: 'constant', sourceKey: '', constantValue: String(row.constantValue ?? '') }
-    : { sourceType: 'field', sourceKey: String(row.sourceKey || ''), constantValue: '' };
+  if (row.sourceType === 'constant') {
+    return { sourceType: 'constant', sourceKey: '', constantValue: String(row.constantValue ?? '') };
+  }
+  if (row.sourceType === 'formula') {
+    const { left, op, right } = formulaPartsFromRow(row);
+    return {
+      sourceType: 'formula',
+      sourceKey: '',
+      constantValue: '',
+      formulaLeftKey: left,
+      formulaOp: op,
+      formulaRightKey: right,
+      formulaExpression: buildFormulaExpression(left, op, right)
+    };
+  }
+  return { sourceType: 'field', sourceKey: String(row.sourceKey || ''), constantValue: '' };
 }
 
 function splitPresetMappings(all) {
@@ -292,19 +320,45 @@ function fieldSignature(fields) {
 }
 
 function parseSavedCellMapping(raw) {
-  if (raw == null) return { sourceType: 'field', sourceKey: '', constantValue: '' };
+  const emptyFormula = {
+    formulaExpression: '',
+    formulaLeftKey: '',
+    formulaOp: '*',
+    formulaRightKey: ''
+  };
+  if (raw == null) {
+    return { sourceType: 'field', sourceKey: '', constantValue: '', ...emptyFormula };
+  }
   if (typeof raw === 'object' && (raw.sourceType || raw.sourceKey !== undefined || raw.constantValue !== undefined)) {
     const sourceKey = normalizeOpportunityMergeSourceId(raw.sourceKey);
+    let sourceType = 'field';
+    if (raw.sourceType === 'constant') sourceType = 'constant';
+    else if (raw.sourceType === 'formula') sourceType = 'formula';
+    let formulaLeftKey = String(raw.formulaLeftKey || '').trim();
+    let formulaOp = String(raw.formulaOp || '*').trim() || '*';
+    let formulaRightKey = String(raw.formulaRightKey || '').trim();
+    if (sourceType === 'formula' && !formulaLeftKey && raw.formulaExpression) {
+      const parsed = parseFormulaExpressionToParts(raw.formulaExpression);
+      formulaLeftKey = parsed.left;
+      formulaOp = parsed.op;
+      formulaRightKey = parsed.right;
+    }
+    const formulaExpression = buildFormulaExpression(formulaLeftKey, formulaOp, formulaRightKey);
     return {
-      sourceType: raw.sourceType === 'constant' ? 'constant' : 'field',
+      sourceType,
       sourceKey,
-      constantValue: String(raw.constantValue ?? '')
+      constantValue: String(raw.constantValue ?? ''),
+      formulaExpression,
+      formulaLeftKey,
+      formulaOp,
+      formulaRightKey
     };
   }
   return {
     sourceType: 'field',
     sourceKey: normalizeOpportunityMergeSourceId(raw),
-    constantValue: ''
+    constantValue: '',
+    ...emptyFormula
   };
 }
 
@@ -325,11 +379,9 @@ function formatMappingPreviewText(raw) {
   return t;
 }
 
-function previewOpportunityMappedValue(ctx, row) {
+function previewOpportunityMappedValue(ctx, row, mappingRows) {
   if (!row) return '';
-  if (row.sourceType === 'constant') return formatMappingPreviewText(row.constantValue);
-  if (!row.sourceKey) return '';
-  return formatMappingPreviewText(resolveOpportunityMergeSourceValue(row.sourceKey, ctx));
+  return formatMappingPreviewText(resolveOpportunityMappingRowValue(row, ctx, mappingRows));
 }
 
 /** 시트 메일(받는 사람·CC) — 소스 선택 시 시트와 동일: 소스 값 → 없으면 양식 등록 mailDefaults */
@@ -337,17 +389,13 @@ function previewOpportunitySheetMailValue(row, ctx, previewCtx) {
   if (!row) return '';
   if (row.sourceType === 'constant') return formatMappingPreviewText(row.constantValue);
   const fields = previewCtx?.mergeFieldsSheet || [];
-  if (!fields.length) return previewOpportunityMappedValue(ctx, row);
+  if (!fields.length) return previewOpportunityMappedValue(ctx, row, previewCtx?.mappingRows);
   const defTid =
     previewCtx?.selectedTemplateId || defaultTemplateIdFromList(previewCtx?.templates || []);
   let base = createMergeRowState(fields, defTid, true, defTid ? [defTid] : []);
   const mappingRows = previewCtx?.mappingRows || [];
   for (const rmap of mappingRows) {
-    if (rmap.sourceType === 'constant') {
-      base[rmap.mergeKey] = String(rmap.constantValue ?? '').trim();
-    } else {
-      base[rmap.mergeKey] = rmap.sourceKey ? resolveOpportunityMergeSourceValue(rmap.sourceKey, ctx) : '';
-    }
+    base[rmap.mergeKey] = resolveOpportunityMappingRowValue(rmap, ctx, mappingRows);
   }
   const v = resolveOpportunityMappingRowValue(row, ctx);
   if (row.mergeKey === '_mailTo' && v) base._mailTo = v;
@@ -382,6 +430,13 @@ function opportunityMergeRowStatus(row, preview) {
       ? { type: 'ok', label: 'VALID' }
       : { type: 'warn', label: '값 입력' };
   }
+  if (row.sourceType === 'formula') {
+    const hasLeft = String(row.formulaLeftKey ?? '').trim() !== '';
+    if (!hasLeft) return { type: 'warn', label: '기회 필드 선택' };
+    return preview && String(preview).trim() !== ''
+      ? { type: 'ok', label: 'VALID' }
+      : { type: 'muted', label: '빈 값' };
+  }
   if (!row.sourceKey) return { type: 'warn', label: '소스 선택' };
   const empty = !preview || String(preview).trim() === '';
   if (empty) return { type: 'muted', label: '빈 값' };
@@ -396,7 +451,8 @@ function buildRowJobsForSheetRow({
   fallbackTid,
   prof,
   templateProfilesById,
-  globalPdfOpts
+  globalPdfOpts,
+  ourForcedValues
 }) {
   if (!row || !Array.isArray(mergeFieldsSheet)) return { rowJobs: [], anyPreferPdf: false, error: '데이터를 확인해 주세요.' };
   if (!rowHasMergeFieldContent(row, mergeFieldsSheet)) {
@@ -416,12 +472,12 @@ function buildRowJobsForSheetRow({
     const t = templates.find((x) => String(x._id) === tid);
     const tplRaw = stripKnownMergeTemplateExtensions(templateListFileName(t)).trim();
     const tplSlug = sanitizeDownloadFileStem(tplRaw).slice(0, 50) || 'doc';
-    const apiRow = { ...rowForApi(row) };
+    let apiRow = applyOurForcedToMergeRow(rowForApi(row), ourForcedValues);
     if (tids.length > 1) {
       const p = prof || '';
       const suffix = p ? `${p}_${tplSlug}` : `_${tplSlug}`;
       const combined = sanitizeDownloadFileStem(`${baseStem}${suffix}`.slice(0, 200));
-      if (combined) apiRow.fileLabel = combined;
+      if (combined) apiRow = { ...apiRow, fileLabel: combined };
     }
     rowJobs.push({
       templateId: tid,
@@ -441,6 +497,12 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
   const [searchParams, setSearchParams] = useSearchParams();
   const sheetUrlTransitionRef = useRef(false);
   const me = useMemo(() => getStoredCrmUser(), []);
+  const [companyProfile, setCompanyProfile] = useState(null);
+  const [orgChartRoot, setOrgChartRoot] = useState(null);
+  const ourForcedValues = useMemo(
+    () => resolveOurForcedMergeValues(me, companyProfile, { orgChartRoot }),
+    [me, companyProfile, orgChartRoot]
+  );
   const canManageMergeFields = isManagerOrAboveRole(me?.role);
   const companyStorageKey = String(me?.companyId || me?.company?._id || 'default');
 
@@ -484,6 +546,33 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
   const [fieldSaving, setFieldSaving] = useState(false);
 
   const mergeFieldsSheet = useMemo(() => mergeFieldsWithoutRowIndex(fieldGuide?.fields), [fieldGuide]);
+
+  useEffect(() => {
+    if (!open || !me) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/companies/list-templates-bundle`, {
+          headers: { ...getAuthHeader() },
+          credentials: 'include'
+        });
+        const data = await res.json().catch(() => ({}));
+        if (cancelled || !res.ok) return;
+        setCompanyProfile(
+          data.company
+            ? { ...data.company, listTemplates: data.listTemplates }
+            : null
+        );
+        const lt = data.listTemplates && typeof data.listTemplates === 'object' ? data.listTemplates : {};
+        setOrgChartRoot(resolveOrgChartFromListTemplates(lt));
+      } catch {
+        /* crm_user 스냅샷 fallback */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, me, getAuthHeader]);
   const fieldSig = useMemo(() => fieldSignature(mergeFieldsSheet), [mergeFieldsSheet]);
   const sourceOptions = useMemo(() => buildOpportunityMergeSourceOptions(mergeContext || {}), [mergeContext]);
   const sourceOptionGroups = useMemo(
@@ -759,7 +848,11 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
             targetLabel: f.label || f.key,
             sourceType: 'field',
             sourceKey: '',
-            constantValue: ''
+            constantValue: '',
+            formulaExpression: '',
+            formulaLeftKey: '',
+            formulaOp: '*',
+            formulaRightKey: ''
           };
         } else {
           base = {
@@ -774,6 +867,10 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
           base.sourceType = parsed.sourceType;
           base.sourceKey = parsed.sourceKey;
           base.constantValue = parsed.constantValue;
+          base.formulaExpression = parsed.formulaExpression || '';
+          base.formulaLeftKey = parsed.formulaLeftKey || '';
+          base.formulaOp = parsed.formulaOp || '*';
+          base.formulaRightKey = parsed.formulaRightKey || '';
         }
         return base;
       });
@@ -1070,7 +1167,8 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
         fallbackTid,
         prof,
         templateProfilesById,
-        globalPdfOpts: pdfExportOptions
+        globalPdfOpts: pdfExportOptions,
+        ourForcedValues
       });
       if (built.error) throw new Error(built.error);
       if (pdfPreviewUrlRef.current) {
@@ -1118,7 +1216,6 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
       if (fieldPresetId && isMergeFieldPresetMongoId(fieldPresetId)) {
         planBody.fieldPresetId = String(fieldPresetId).trim();
       }
-      const pdfExportOptionsBody = normalizeMergePdfExportOptions(pdfOpts);
       const planRes = await fetch(`${API_BASE}/quotation-merge/plan`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
@@ -1133,14 +1230,28 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
       if (!entries.length) {
         throw new Error('생성할 파일 정보가 없습니다.');
       }
+      const entryJobIndexes = buildMergeOutputEntryJobIndexes(rowJobs);
       for (let i = 0; i < entries.length; i += 1) {
         await pingBackendHealth();
+        const jobIndex = entryJobIndexes[i] ?? i;
+        const job = rowJobs[jobIndex];
+        const srcRow =
+          job && typeof job.sourceRowIndex === 'number' ? mergeRows?.[job.sourceRowIndex] : null;
+        const pdfExportOptionsForEntry = normalizeMergePdfExportOptions(
+          resolvePdfExportOptionsForRow(
+            srcRow,
+            templateProfilesById,
+            pdfOpts,
+            job?.templateId != null ? [String(job.templateId)] : [],
+            templates
+          )
+        );
         const body = {
           rowJobs,
           zipCollisionPolicy: 'rename',
           asZip: false,
           singleOutputIndex: i,
-          pdfExportOptions: pdfExportOptionsBody
+          pdfExportOptions: pdfExportOptionsForEntry
         };
         if (planBody.fieldPresetId) body.fieldPresetId = planBody.fieldPresetId;
         const res = await fetch(`${API_BASE}/quotation-merge/run`, {
@@ -1170,7 +1281,7 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
       }
       return entries.length;
     },
-    [getAuthHeader]
+    [getAuthHeader, mergeRows, templateProfilesById, templates]
   );
 
   const runMerge = async () => {
@@ -1204,12 +1315,12 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
         const t = templates.find((x) => String(x._id) === tid);
         const tplRaw = stripKnownMergeTemplateExtensions(templateListFileName(t)).trim();
         const tplSlug = sanitizeDownloadFileStem(tplRaw).slice(0, 50) || 'doc';
-        const apiRow = { ...rowForApi(r) };
+        let apiRow = applyOurForcedToMergeRow(rowForApi(r), ourForcedValues);
         if (tids.length > 1) {
           const p = prof || '';
           const suffix = p ? `${p}_${tplSlug}` : `_${tplSlug}`;
           const combined = sanitizeDownloadFileStem(`${baseStem}${suffix}`.slice(0, 200));
-          if (combined) apiRow.fileLabel = combined;
+          if (combined) apiRow = { ...apiRow, fileLabel: combined };
         }
         rowJobs.push({
           templateId: tid,
@@ -1267,7 +1378,8 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
         fallbackTid,
         prof,
         templateProfilesById,
-        globalPdfOpts: pdfExportOptions
+        globalPdfOpts: pdfExportOptions,
+        ourForcedValues
       });
       if (built.error) {
         window.alert(`${ri + 1}행: ${built.error}`);
@@ -1422,7 +1534,7 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
 
     return (
       <textarea
-        className="qdm-cell qdm-cell--sheet qdm-cell-sheet-single"
+        className="qdm-cell qdm-cell--sheet qdm-cell-sheet-single qdm-cell--auto-fit"
         rows={1}
         value={val}
         onChange={(e) => updateRow(rowIndex, key, e.target.value)}
@@ -1509,30 +1621,23 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
     const ctx = mergeContext || {};
     const defTid = selectedTemplateId || defaultTemplateIdFromList(templates);
 
-    setMergeRows((rows) =>
-      rows.map((r, i) => {
-        if (i !== 0) {
-          if (!mergeRowHasFieldData(r, fields)) return clearMergeRowMailFields(r);
-          return r;
-        }
-        let base = createMergeRowState(fields, defTid, true, defTid ? [defTid] : []);
-        for (const rmap of mappingRows) {
-          if (rmap.sourceType === 'constant') {
-            base[rmap.mergeKey] = String(rmap.constantValue ?? '').trim();
-          } else {
-            base[rmap.mergeKey] = rmap.sourceKey
-              ? resolveOpportunityMergeSourceValue(rmap.sourceKey, ctx)
-              : '';
-          }
-        }
-        for (const mailRow of sheetMailMappingRows) {
-          const v = resolveOpportunityMappingRowValue(mailRow, ctx);
-          if (mailRow.mergeKey === '_mailTo' && v) base._mailTo = v;
-          if (mailRow.mergeKey === '_mailCc' && v) base._mailCc = v;
-        }
-        return hydrateMergeRowMailFromProfiles(base, templateProfilesById, fields, null);
-      })
-    );
+    setMergeRows((rows) => {
+      if (!rows.length) return rows;
+      let base = createMergeRowState(fields, defTid, true, defTid ? [defTid] : []);
+      for (const rmap of mappingRows) {
+        base[rmap.mergeKey] = resolveOpportunityMappingRowValue(rmap, ctx, mappingRows);
+      }
+      for (const mailRow of sheetMailMappingRows) {
+        const v = resolveOpportunityMappingRowValue(mailRow, ctx);
+        if (mailRow.mergeKey === '_mailTo' && v) base._mailTo = v;
+        if (mailRow.mergeKey === '_mailCc' && v) base._mailCc = v;
+      }
+      const row0 = hydrateMergeRowMailFromProfiles(base, templateProfilesById, fields, null);
+      if (rows[0] === row0) return rows;
+      const next = rows.slice();
+      next[0] = row0;
+      return next;
+    });
   }, [
     mergeFieldsSheet,
     mergeContext,
@@ -1753,12 +1858,14 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
       window.alert('필드 구성을 불러온 뒤 진행해 주세요.');
       return;
     }
+    applyMappingToFirstRow();
+    startTransition(() => {
+      setPhase('sheet');
+    });
     const p = new URLSearchParams(searchParams);
     p.set(OPPORTUNITY_MERGE_SHEET_URL_PARAM, MERGE_DATA_SHEET_URL_VALUE);
     sheetUrlTransitionRef.current = true;
     setSearchParams(p, { replace: false });
-    applyMappingToFirstRow();
-    setPhase('sheet');
   };
 
   const handleCloseAll = () => {
@@ -2022,9 +2129,10 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
                   const preview =
                     row.isSheetMail && row.sourceType === 'field'
                       ? previewOpportunitySheetMailValue(row, ctx, sheetMailPreviewCtx)
-                      : previewOpportunityMappedValue(ctx, row);
+                      : previewOpportunityMappedValue(ctx, row, mappingRows);
                   const status = opportunityMergeRowStatus(row, preview);
                   const isConst = row.sourceType === 'constant';
+                  const isFormula = row.sourceType === 'formula';
                   const isSheetMail = row.isSheetMail;
                   const patchRow = isSheetMail ? updateSheetMailMappingRow : updateMappingRow;
                   const targetCode = row.targetToken || row.mergeKey;
@@ -2032,12 +2140,13 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
                   const rowClass = [
                     'opp-merge-map-row',
                     isConst ? 'is-constant' : '',
+                    isFormula ? 'is-formula' : '',
                     isSheetMail ? 'opp-merge-map-row--sheet-mail' : '',
                     isFirstSheetMail ? 'opp-merge-map-row--sheet-mail-first' : ''
                   ]
                     .filter(Boolean)
                     .join(' ');
-                  const sourceIcon = isSheetMail ? 'mail' : isConst ? 'add_circle' : 'input';
+                  const sourceIcon = isSheetMail ? 'mail' : isFormula ? 'functions' : isConst ? 'add_circle' : 'input';
                   const constPlaceholder = isSheetMail ? '이메일 주소 등 고정값…' : '값 입력…';
                   const sourceAria = isSheetMail
                     ? `${row.targetLabel} 소스: 기회 필드 또는 고정값`
@@ -2054,7 +2163,7 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
                           <div className="opp-merge-map-source-mode-toggle" role="group" aria-label={sourceAria}>
                             <button
                               type="button"
-                              className={!isConst ? 'is-active' : ''}
+                              className={!isConst && !isFormula ? 'is-active' : ''}
                               onClick={() => patchRow(row.id, { sourceType: 'field' })}
                               disabled={disabled}
                             >
@@ -2068,6 +2177,28 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
                             >
                               고정값
                             </button>
+                            {!isSheetMail ? (
+                              <button
+                                type="button"
+                                className={isFormula ? 'is-active' : ''}
+                                onClick={() =>
+                                  patchRow(row.id, {
+                                    sourceType: 'formula',
+                                    sourceKey: '',
+                                    constantValue: '',
+                                    formulaOp: row.formulaOp || '*',
+                                    formulaExpression: buildFormulaExpression(
+                                      row.formulaLeftKey,
+                                      row.formulaOp || '*',
+                                      row.formulaRightKey
+                                    )
+                                  })
+                                }
+                                disabled={disabled}
+                              >
+                                함수
+                              </button>
+                            ) : null}
                           </div>
                           {isConst ? (
                             <input
@@ -2078,6 +2209,121 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
                               onChange={(e) => patchRow(row.id, { constantValue: e.target.value })}
                               disabled={disabled}
                             />
+                          ) : isFormula ? (
+                            <div className="opp-merge-formula-wrap">
+                              <div className="opp-merge-formula-pickers">
+                                <select
+                                  className="opp-select opp-merge-map-select opp-merge-formula-select"
+                                  value={row.formulaLeftKey || ''}
+                                  onChange={(e) => {
+                                    const left = e.target.value;
+                                    patchRow(row.id, {
+                                      formulaLeftKey: left,
+                                      formulaExpression: buildFormulaExpression(
+                                        left,
+                                        row.formulaOp || '*',
+                                        row.formulaRightKey
+                                      )
+                                    });
+                                  }}
+                                  disabled={disabled}
+                                  aria-label="함수 왼쪽 — 기회 필드"
+                                >
+                                  <option value="">기회 필드 선택…</option>
+                                  {sourceOptionGroups.map((group) => (
+                                    <optgroup key={`fl-${group.label}`} label={group.label}>
+                                      {group.items.map((source) => (
+                                        <option key={`fl-${source.id}`} value={source.id}>
+                                          {source.label}
+                                        </option>
+                                      ))}
+                                    </optgroup>
+                                  ))}
+                                </select>
+                                <select
+                                  className="opp-select opp-merge-formula-op-select"
+                                  value={row.formulaOp || '*'}
+                                  onChange={(e) => {
+                                    const op = e.target.value;
+                                    patchRow(row.id, {
+                                      formulaOp: op,
+                                      formulaExpression: buildFormulaExpression(
+                                        row.formulaLeftKey,
+                                        op,
+                                        row.formulaRightKey
+                                      )
+                                    });
+                                  }}
+                                  disabled={disabled}
+                                  aria-label="연산자"
+                                >
+                                  {FORMULA_OPERATORS.map((fo) => (
+                                    <option key={fo.id} value={fo.id}>
+                                      {fo.label}
+                                    </option>
+                                  ))}
+                                </select>
+                                <select
+                                  className="opp-select opp-merge-map-select opp-merge-formula-select"
+                                  value={row.formulaRightKey || ''}
+                                  onChange={(e) => {
+                                    const right = e.target.value;
+                                    patchRow(row.id, {
+                                      formulaRightKey: right,
+                                      formulaExpression: buildFormulaExpression(
+                                        row.formulaLeftKey,
+                                        row.formulaOp || '*',
+                                        right
+                                      )
+                                    });
+                                  }}
+                                  disabled={disabled}
+                                  aria-label="함수 오른쪽 — 기회 필드"
+                                >
+                                  <option value="">(선택 안 함)</option>
+                                  {sourceOptionGroups.map((group) => (
+                                    <optgroup key={`fr-${group.label}`} label={group.label}>
+                                      {group.items.map((source) => (
+                                        <option key={`fr-${source.id}`} value={source.id}>
+                                          {source.label}
+                                        </option>
+                                      ))}
+                                    </optgroup>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="opp-merge-formula-presets" role="group" aria-label="자주 쓰는 함수">
+                                {MERGE_FORMULA_PRESETS.map((preset) => (
+                                  <button
+                                    key={preset.id}
+                                    type="button"
+                                    className="opp-merge-formula-preset-btn"
+                                    disabled={disabled}
+                                    onClick={() =>
+                                      patchRow(row.id, {
+                                        formulaLeftKey: preset.left,
+                                        formulaOp: preset.op,
+                                        formulaRightKey: preset.right,
+                                        formulaExpression: buildFormulaExpression(
+                                          preset.left,
+                                          preset.op,
+                                          preset.right
+                                        )
+                                      })
+                                    }
+                                  >
+                                    {preset.label}
+                                  </button>
+                                ))}
+                              </div>
+                              <p className="opp-merge-map-source-meta">
+                                {row.formulaLeftKey ? opportunitySourceMeta(row.formulaLeftKey) : '왼쪽 기회 필드'}
+                                {row.formulaRightKey
+                                  ? ` ${row.formulaOp === '*' ? '×' : row.formulaOp} ${opportunitySourceMeta(row.formulaRightKey)}`
+                                  : ''}
+                                {' · '}줄마다 계산(제품 행 수 = 줄 수)
+                              </p>
+                            </div>
                           ) : (
                             <>
                               <select
@@ -2143,9 +2389,9 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
                         <p>기회 ↔ 문서 치환</p>
                         <span>
                           저장된 필드 구성은 매핑 화면 위쪽에서 고릅니다. 데이터 시트를 연 뒤에는 상단{' '}
-                          <strong>문서 치환 항목 편집</strong>에서 키·표시 이름을 바꿀 수 있습니다(매니저 이상). 각
-                          행에서 <strong>기회 필드</strong>와 <strong>고정값</strong>을 바꿀 수 있으며, 미리보기로
-                          값이 맞는지 확인한 뒤 데이터 시트로 넘어가세요.
+                          <strong>문서 치환 항목 편집</strong>에서 키·표시 이름을 바꿀 수 있습니다(매니저 이상).                           각
+                          행에서 <strong>기회 필드</strong>·<strong>고정값</strong>·<strong>함수</strong>(원가×수량 등,
+                          줄마다 계산)를 쓸 수 있습니다. 미리보기로 값이 맞는지 확인한 뒤 데이터 시트로 넘어가세요.
                         </span>
                       </div>
                     </div>
@@ -2225,6 +2471,7 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
           onMailCellPaste={handleMergeSheetCellPaste}
           onMailCellKeyDown={handleMergeSheetCellKeyDown}
           renderMergeCell={renderMergeCell}
+          ourForcedValues={ourForcedValues}
         />
       ) : null}
 
@@ -2246,6 +2493,7 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
           onCreateProfile={canManageMergeFields ? createFieldPresetFromEditor : undefined}
           onDeleteProfile={canManageMergeFields ? resetFieldGuideToDefault : undefined}
           fieldProfileNameMaxLength={MERGE_FIELD_PRESET_NAME_MAX}
+          ourForcedValues={ourForcedValues}
         />
       ) : null}
 

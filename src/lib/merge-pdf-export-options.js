@@ -1,5 +1,6 @@
 import {
   buildLegacyPrintAreaString,
+  legacyPrintAreaToSelections,
   normalizePrintAreaSelections
 } from '@/lib/merge-pdf-print-area-selections';
 import { mergeExportAddonSummaryLabel } from '@/lib/merge-export-addon';
@@ -12,7 +13,7 @@ export const MERGE_PDF_EXPORT_OPTIONS_STORAGE_KEY = 'nexvia.mergePdfExportOption
 export const DEFAULT_MERGE_PDF_EXPORT_OPTIONS = Object.freeze({
   paperSize: 'a4',
   orientation: 'portrait',
-  fitToWidth: true,
+  fitToWidth: false,
   centerOnPage: true,
   printAreaMode: 'custom',
   printArea: '',
@@ -76,17 +77,29 @@ export function normalizeMergePdfExportOptions(raw) {
     parsedArea = buildLegacyPrintAreaString(printAreaSelections) || parsedArea;
     const sheetFromSel = [...new Set(printAreaSelections.map((s) => s.sheetName).filter(Boolean))];
     if (sheetFromSel.length) printSheetNames = sheetFromSel;
-  } else if (o.printAreaMode === 'custom' && parsedArea) {
+  } else if (o.printAreaMode === 'custom' || String(o.printArea || '').trim()) {
     const legacySheet =
       String(o.printSheetName || '').trim() ||
       (Array.isArray(o.printSheetNames) ? String(o.printSheetNames[0] || '').trim() : '');
-    if (legacySheet) {
+    const rawArea = String(o.printArea || '').trim();
+    if (legacySheet && rawArea.includes(',')) {
+      printAreaSelections = legacyPrintAreaToSelections(rawArea, legacySheet);
+      parsedArea = buildLegacyPrintAreaString(printAreaSelections) || parsedArea;
+      printSheetNames = [legacySheet];
+    } else if (legacySheet && parsedArea) {
       printAreaSelections = normalizePrintAreaSelections([
         { sheetName: legacySheet, printArea: parsedArea, printPageMode: 'all' }
       ]);
       parsedArea = buildLegacyPrintAreaString(printAreaSelections) || parsedArea;
       printSheetNames = [legacySheet];
     }
+  }
+  if (printAreaSelections.length === 1 && String(printAreaSelections[0].printArea || '').includes(',')) {
+    printAreaSelections = legacyPrintAreaToSelections(
+      printAreaSelections[0].printArea,
+      printAreaSelections[0].sheetName
+    );
+    parsedArea = buildLegacyPrintAreaString(printAreaSelections) || parsedArea;
   }
   if (printAreaSelections.length) {
     const customPages = printAreaSelections.filter((s) => s.printPageMode === 'custom');
@@ -119,8 +132,10 @@ export function normalizeMergePdfExportOptions(raw) {
     paperSizeId: paper.excelPaperSizeId,
     orientation:
       String(o.orientation || 'portrait').toLowerCase() === 'landscape' ? 'landscape' : 'portrait',
-    fitToWidth: o.fitToWidth !== false,
+    fitToWidth: o.fitToWidth === true,
+    pdfAutoFitToA4: o.pdfAutoFitToA4 === true,
     centerOnPage: o.centerOnPage !== false,
+    singlePageSheet: o.singlePageSheet === true,
     printAreaMode: hasSelections ? 'custom' : 'auto',
     printArea: hasSelections && parsedArea ? parsedArea : '',
     printAreaSelections,

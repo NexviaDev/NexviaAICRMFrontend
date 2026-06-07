@@ -51,9 +51,9 @@ export function legacyPrintAreaToSelections(printArea, sheetName) {
     id: `legacy-${i}`,
     sheetName: sheet || 'Sheet1',
     printArea: printAreaPart,
-    printPageMode: 'all',
-    printPageFrom: 1,
-    printPageTo: 1
+    printPageMode: 'custom',
+    printPageFrom: i + 1,
+    printPageTo: i + 1
   }));
 }
 
