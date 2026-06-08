@@ -2,7 +2,11 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { pingBackendHealth } from '@/lib/backend-wake';
 import {
   formatMergePdfExportOptionsSummary,
-  normalizeMergePdfExportOptions
+  MERGE_PDF_SCALE_DEFAULT,
+  MERGE_PDF_SCALE_MAX,
+  MERGE_PDF_SCALE_MIN,
+  normalizeMergePdfExportOptions,
+  normalizePdfScalePercent
 } from '@/lib/merge-pdf-export-options';
 import {
   fetchAllMergePdfExportPresets,
@@ -605,13 +609,54 @@ function MergePdfSettingsFields({
         />
         <span>인쇄 영역을 A4 한 페이지에 맞춤 (여백 유지·자동 확대/축소)</span>
       </label>
+      <div className="merge-pdf-settings-field merge-pdf-settings-field--scale">
+        <div className="merge-pdf-settings-scale-head">
+          <span className="merge-pdf-settings-label">용지 가운데 기준 스케일</span>
+          <span className="merge-pdf-settings-scale-value" aria-live="polite">
+            {normalizePdfScalePercent(draft.pdfScalePercent)}%
+          </span>
+        </div>
+        <input
+          type="range"
+          className="merge-pdf-settings-scale-range"
+          min={MERGE_PDF_SCALE_MIN}
+          max={MERGE_PDF_SCALE_MAX}
+          step={1}
+          value={normalizePdfScalePercent(draft.pdfScalePercent)}
+          aria-label="PDF 스케일 퍼센트"
+          onChange={(e) =>
+            setDraft((d) => ({
+              ...d,
+              pdfScalePercent: normalizePdfScalePercent(e.target.value)
+            }))
+          }
+        />
+        <div className="merge-pdf-settings-scale-ticks" aria-hidden>
+          <span>{MERGE_PDF_SCALE_MIN}%</span>
+          <span>{MERGE_PDF_SCALE_DEFAULT}%</span>
+          <span>{MERGE_PDF_SCALE_MAX}%</span>
+        </div>
+        <p className="merge-pdf-settings-field-hint">
+          {draft.pdfAutoFitToA4 !== false
+            ? '자동 맞춤 후 용지 가로·세로 중앙을 기준으로 추가 확대/축소합니다. 100%면 자동 맞춤만 적용됩니다.'
+            : 'Excel 인쇄 배율(%)로 적용되며, 가운데 맞춤 옵션과 함께 용지 중앙에 배치됩니다.'}
+        </p>
+        <button
+          type="button"
+          className="merge-pdf-settings-scale-reset"
+          onClick={() => setDraft((d) => ({ ...d, pdfScalePercent: MERGE_PDF_SCALE_DEFAULT }))}
+          disabled={normalizePdfScalePercent(draft.pdfScalePercent) === MERGE_PDF_SCALE_DEFAULT}
+        >
+          100%로 초기화
+        </button>
+      </div>
       <label className="merge-pdf-settings-check">
         <input
           type="checkbox"
           checked={draft.centerOnPage !== false}
           onChange={(e) => setDraft((d) => ({ ...d, centerOnPage: e.target.checked }))}
         />
-        <span>인쇄 영역을 용지 가로 가운데 맞춤</span>
+        <span>인쇄 영역을 용지 가로·세로 가운데 맞춤</span>
       </label>
     </div>
   );

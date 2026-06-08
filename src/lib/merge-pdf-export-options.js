@@ -8,7 +8,11 @@ import { normalizeMergePdfPaperSize, formatMergePdfPaperSizeLabel } from '@/lib/
 
 /** @deprecated use paperSize id */
 export const MERGE_PDF_PAPER_A4 = 'a4';
-export const MERGE_PDF_EXPORT_OPTIONS_STORAGE_KEY = 'nexvia.mergePdfExportOptions.v4';
+export const MERGE_PDF_EXPORT_OPTIONS_STORAGE_KEY = 'nexvia.mergePdfExportOptions.v5';
+
+export const MERGE_PDF_SCALE_MIN = 25;
+export const MERGE_PDF_SCALE_MAX = 200;
+export const MERGE_PDF_SCALE_DEFAULT = 100;
 
 export const DEFAULT_MERGE_PDF_EXPORT_OPTIONS = Object.freeze({
   paperSize: 'a4',
@@ -17,6 +21,8 @@ export const DEFAULT_MERGE_PDF_EXPORT_OPTIONS = Object.freeze({
   pdfAutoFitToA4: true,
   fitToWidth: true,
   fitToHeight: true,
+  /** 용지 가로·세로 가운데 기준 확대/축소 (%) — 자동 맞춤 시 추가 배율, 수동 시 Excel scale */
+  pdfScalePercent: MERGE_PDF_SCALE_DEFAULT,
   centerOnPage: true,
   printAreaMode: 'custom',
   printArea: '',
@@ -49,6 +55,12 @@ function normalizePrintPageRange(o) {
   let to = Math.max(1, parseInt(String(o.printPageTo ?? from), 10) || from);
   if (to < from) to = from;
   return { printPageMode: mode, printPageFrom: from, printPageTo: to };
+}
+
+export function normalizePdfScalePercent(raw) {
+  const n = parseInt(String(raw ?? MERGE_PDF_SCALE_DEFAULT), 10);
+  if (!Number.isFinite(n)) return MERGE_PDF_SCALE_DEFAULT;
+  return Math.max(MERGE_PDF_SCALE_MIN, Math.min(MERGE_PDF_SCALE_MAX, n));
 }
 
 function normalizePrintSheetNames(o) {
@@ -131,6 +143,7 @@ export function normalizeMergePdfExportOptions(raw) {
   else if (!eaRaw && hasSelections) mergeExportAddon = 'pdfAddon';
 
   const pdfAutoFitToA4 = o.pdfAutoFitToA4 !== false;
+  const pdfScalePercent = normalizePdfScalePercent(o.pdfScalePercent);
   const fitToWidth = pdfAutoFitToA4 || o.fitToWidth === true;
   const fitToHeight = pdfAutoFitToA4 || o.fitToHeight === true;
   const userOrientation =
@@ -161,9 +174,10 @@ export function normalizeMergePdfExportOptions(raw) {
     paperSizeId: paper.excelPaperSizeId,
     orientation: inferredOrientation,
     pdfAutoFitToA4,
+    pdfScalePercent,
     fitToWidth,
     fitToHeight,
-    centerOnPage: true,
+    centerOnPage: o.centerOnPage !== false,
     singlePageSheet: o.singlePageSheet === true,
     printAreaMode: hasSelections ? 'custom' : 'auto',
     printArea: hasSelections && parsedArea ? parsedArea : '',
@@ -182,6 +196,7 @@ export function loadMergePdfExportOptions() {
     const raw = localStorage.getItem(MERGE_PDF_EXPORT_OPTIONS_STORAGE_KEY);
     if (!raw) {
       for (const legacyKey of [
+        'nexvia.mergePdfExportOptions.v4',
         'nexvia.mergePdfExportOptions.v3',
         'nexvia.mergePdfExportOptions.v2',
         'nexvia.mergePdfExportOptions.v1'
@@ -215,7 +230,9 @@ export function formatMergePdfExportOptionsSummary(opts) {
     : o.fitToWidth
       ? '· 가로 1페이지'
       : '';
-  const center = o.centerOnPage ? '· 가로·세로 가운데' : '';
+  const center = o.centerOnPage ? '· 가운데 맞춤' : '';
+  const scale =
+    o.pdfScalePercent !== MERGE_PDF_SCALE_DEFAULT ? `· ${o.pdfScalePercent}%` : '';
   const selCount = o.printAreaSelections?.length || 0;
   const area =
     selCount > 1
@@ -227,6 +244,6 @@ export function formatMergePdfExportOptionsSummary(opts) {
     o.printSheetNames?.length > 1 ? `· 시트 ${o.printSheetNames.length}개` : '';
   const paperLabel = formatMergePdfPaperSizeLabel(o.paperSize);
   const exportMode = mergeExportAddonSummaryLabel(o.mergeExportAddon);
-  return `${exportMode} · ${paperLabel} ${orient}${fit}${center} ${area}${sheet}`;
+  return `${exportMode} · ${paperLabel} ${orient}${fit}${scale}${center} ${area}${sheet}`;
 }
 
