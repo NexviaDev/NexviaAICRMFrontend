@@ -63,6 +63,10 @@ function formatBusinessNumberInput(value) {
   return `${digits.slice(0, 3)}-${digits.slice(3, 5)}-${digits.slice(5, 10)}`;
 }
 
+function formatSubBusinessNumberInput(value) {
+  return String(value || '').replace(/\D/g, '').slice(0, 4);
+}
+
 const STATUS_OPTIONS = [
   { value: 'active', label: '활성' },
   { value: 'inactive', label: '비활성' },
@@ -156,9 +160,14 @@ export default function AddCompanyModal({
   const [form, setForm] = useState({
     name: '',
     representativeName: '',
+    representativeEmail: '',
     industry: '',
+    businessType: '',
+    businessItem: '',
     businessNumber: '',
+    subBusinessNumber: '',
     address: '',
+    addressDetail: '',
     latitude: null,
     longitude: null,
     memo: '',
@@ -244,9 +253,14 @@ export default function AddCompanyModal({
       ...prev,
       name: company.name ?? '',
       representativeName: company.representativeName ?? '',
+      representativeEmail: company.representativeEmail ?? '',
       industry: company.industry ?? '',
+      businessType: company.businessType ?? '',
+      businessItem: company.businessItem ?? '',
       businessNumber: company.businessNumber != null ? formatBusinessNumberInput(String(company.businessNumber)) : '',
+      subBusinessNumber: company.subBusinessNumber != null ? formatSubBusinessNumberInput(String(company.subBusinessNumber)) : '',
       address: company.address ?? '',
+      addressDetail: company.addressDetail ?? '',
       latitude: company.latitude ?? null,
       longitude: company.longitude ?? null,
       memo: company.memo ?? '',
@@ -966,6 +980,8 @@ export default function AddCompanyModal({
     const { name, value } = e.target;
     if (name === 'businessNumber') {
       setForm((prev) => ({ ...prev, businessNumber: formatBusinessNumberInput(value) }));
+    } else if (name === 'subBusinessNumber') {
+      setForm((prev) => ({ ...prev, subBusinessNumber: formatSubBusinessNumberInput(value) }));
     } else if (name === 'latitude' || name === 'longitude') {
       const num = value.trim() === '' ? null : Number(value);
       setForm((prev) => ({ ...prev, [name]: Number.isFinite(num) ? num : value }));
@@ -1054,9 +1070,14 @@ export default function AddCompanyModal({
     const body = {
       name: form.name.trim(),
       representativeName: form.representativeName.trim() || undefined,
+      representativeEmail: form.representativeEmail.trim() || undefined,
       industry: form.industry.trim() || undefined,
+      businessType: form.businessType.trim() || undefined,
+      businessItem: form.businessItem.trim() || undefined,
       businessNumber: (form.businessNumber || '').replace(/-/g, '').trim() || undefined,
+      subBusinessNumber: form.subBusinessNumber.trim() || undefined,
       address: addressTrimmed || undefined,
+      addressDetail: form.addressDetail.trim() || undefined,
       latitude: latitudeNum != null ? latitudeNum : undefined,
       longitude: longitudeNum != null ? longitudeNum : undefined,
       memo: form.memo.trim() || undefined,
@@ -1390,6 +1411,28 @@ export default function AddCompanyModal({
             <label className="add-company-label" htmlFor="add-company-industry">업종</label>
             <input id="add-company-industry" name="industry" type="text" value={form.industry} onChange={handleChange} className="add-company-input" placeholder="예: 제조업, 도소매, IT 서비스" autoComplete="organization-title" />
           </div>
+          <div className="add-company-field">
+            <label className="add-company-label" htmlFor="add-company-business-type">업태</label>
+            <input id="add-company-business-type" name="businessType" type="text" value={form.businessType} onChange={handleChange} className="add-company-input" placeholder="예: 도매 및 소매업" />
+          </div>
+          <div className="add-company-field">
+            <label className="add-company-label" htmlFor="add-company-business-item">종목</label>
+            <input id="add-company-business-item" name="businessItem" type="text" value={form.businessItem} onChange={handleChange} className="add-company-input" placeholder="예: 컴퓨터 프로그램 개발·공급" />
+          </div>
+          <div className="add-company-field">
+            <label className="add-company-label" htmlFor="add-company-sub-business-number">종사업장 번호</label>
+            <input
+              id="add-company-sub-business-number"
+              name="subBusinessNumber"
+              type="text"
+              inputMode="numeric"
+              maxLength={4}
+              value={form.subBusinessNumber}
+              onChange={handleChange}
+              className="add-company-input"
+              placeholder="0001"
+            />
+          </div>
           <div className="add-company-row-representative-assignee">
             <div className="add-company-field add-company-field-representative">
               <label className="add-company-label" htmlFor="add-company-representative">대표자명</label>
@@ -1418,6 +1461,19 @@ export default function AddCompanyModal({
                 </button>
               </div>
             </div>
+          </div>
+          <div className="add-company-field" style={{ gridColumn: '1 / -1' }}>
+            <label className="add-company-label" htmlFor="add-company-representative-email">대표이사 이메일</label>
+            <input
+              id="add-company-representative-email"
+              name="representativeEmail"
+              type="email"
+              autoComplete="email"
+              value={form.representativeEmail}
+              onChange={handleChange}
+              className="add-company-input"
+              placeholder="ceo@customer.com"
+            />
           </div>
           <div className="add-company-field">
             <label className="add-company-label" htmlFor="add-company-status">상태 키값</label>
@@ -1485,6 +1541,18 @@ export default function AddCompanyModal({
                 </div>
               )}
             </div>
+          </div>
+          <div className="add-company-field">
+            <label className="add-company-label" htmlFor="add-company-address-detail">상세주소</label>
+            <input
+              id="add-company-address-detail"
+              name="addressDetail"
+              type="text"
+              value={form.addressDetail}
+              onChange={handleChange}
+              className="add-company-input"
+              placeholder="동·호수 등 상세주소"
+            />
           </div>
           <div className="add-company-lat-row add-company-lat-row--hidden" aria-hidden="true">
             <div className="add-company-field">

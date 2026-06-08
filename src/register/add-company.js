@@ -9,6 +9,11 @@ function formatBusinessNumberInput(value) {
   return `${digits.slice(0, 3)}-${digits.slice(3, 5)}-${digits.slice(5, 10)}`;
 }
 
+/** 종사업장 번호: 숫자만, 최대 4자리 */
+function formatSubBusinessNumberInput(value) {
+  return String(value || '').replace(/\D/g, '').slice(0, 4);
+}
+
 /**
  * 회사 추가 모달 (회원가입 등에서 사용)
  * 회사명, 주소, 상세주소, 사업자 번호, 대표자 성함 필수
@@ -19,6 +24,10 @@ export default function AddCompany({ isOpen, onClose, onSuccess, setError }) {
   const [addressDetail, setAddressDetail] = useState('');
   const [businessNumber, setBusinessNumber] = useState('');
   const [representativeName, setRepresentativeName] = useState('');
+  const [representativeEmail, setRepresentativeEmail] = useState('');
+  const [businessType, setBusinessType] = useState('');
+  const [businessItem, setBusinessItem] = useState('');
+  const [subBusinessNumber, setSubBusinessNumber] = useState('');
   const [loading, setLoading] = useState(false);
 
   const resetForm = () => {
@@ -27,6 +36,10 @@ export default function AddCompany({ isOpen, onClose, onSuccess, setError }) {
     setAddressDetail('');
     setBusinessNumber('');
     setRepresentativeName('');
+    setRepresentativeEmail('');
+    setBusinessType('');
+    setBusinessItem('');
+    setSubBusinessNumber('');
   };
 
   const handleClose = () => {
@@ -59,6 +72,10 @@ export default function AddCompany({ isOpen, onClose, onSuccess, setError }) {
         addressDetail: ad,
         businessNumber: bn,
         representativeName: rn,
+        representativeEmail: representativeEmail.trim(),
+        businessType: businessType.trim(),
+        businessItem: businessItem.trim(),
+        subBusinessNumber: subBusinessNumber.trim(),
         isNewDraft: true
       });
       handleClose();
@@ -105,6 +122,38 @@ export default function AddCompany({ isOpen, onClose, onSuccess, setError }) {
           <div className="add-company-field">
             <label htmlFor="ac-representative">대표자 성함 *</label>
             <input id="ac-representative" type="text" value={representativeName} onChange={(e) => setRepresentativeName(e.target.value)} placeholder="대표자 성함" required />
+          </div>
+          <div className="add-company-field">
+            <label htmlFor="ac-representative-email">대표이사 이메일</label>
+            <input
+              id="ac-representative-email"
+              type="email"
+              autoComplete="email"
+              value={representativeEmail}
+              onChange={(e) => setRepresentativeEmail(e.target.value)}
+              placeholder="ceo@company.com"
+            />
+          </div>
+          <div className="add-company-field">
+            <label htmlFor="ac-business-type">업태</label>
+            <input id="ac-business-type" type="text" value={businessType} onChange={(e) => setBusinessType(e.target.value)} placeholder="예: 도매 및 소매업" />
+          </div>
+          <div className="add-company-field">
+            <label htmlFor="ac-business-item">종목</label>
+            <input id="ac-business-item" type="text" value={businessItem} onChange={(e) => setBusinessItem(e.target.value)} placeholder="예: 컴퓨터 프로그램 개발·공급" />
+          </div>
+          <div className="add-company-field">
+            <label htmlFor="ac-sub-business-number">종사업장 번호</label>
+            <input
+              id="ac-sub-business-number"
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength={4}
+              value={subBusinessNumber}
+              onChange={(e) => setSubBusinessNumber(formatSubBusinessNumberInput(e.target.value))}
+              placeholder="0001"
+            />
           </div>
           <div className="add-company-actions">
             <button type="button" className="add-company-btn add-company-btn-cancel" onClick={handleClose}>취소</button>

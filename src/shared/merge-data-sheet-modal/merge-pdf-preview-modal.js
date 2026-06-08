@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import './merge-pdf-preview-modal.css';
 
 export default function MergePdfPreviewModal({
@@ -8,10 +10,24 @@ export default function MergePdfPreviewModal({
   error,
   caption
 }) {
-  if (!open) return null;
+  const [frameError, setFrameError] = useState('');
 
-  return (
-    <div className="merge-pdf-preview-root" role="dialog" aria-modal="true" aria-labelledby="merge-pdf-preview-title">
+  useEffect(() => {
+    if (!open) setFrameError('');
+  }, [open, pdfObjectUrl]);
+
+  if (!open || typeof document === 'undefined') return null;
+
+  const displayError = error || frameError;
+  const pdfSrc = pdfObjectUrl && !loading && !displayError ? pdfObjectUrl : '';
+
+  return createPortal(
+    <div
+      className="merge-pdf-preview-root"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="merge-pdf-preview-title"
+    >
       <button type="button" className="merge-pdf-preview-backdrop" aria-label="닫기" onClick={onClose} />
       <div className="merge-pdf-preview-panel">
         <header className="merge-pdf-preview-head">
@@ -35,14 +51,29 @@ export default function MergePdfPreviewModal({
             <span>PDF를 만드는 중입니다… (서버 변환)</span>
           </div>
         ) : null}
-        {error ? (
+        {displayError ? (
           <p className="merge-pdf-preview-error" role="alert">
-            {error}
+            {displayError}
           </p>
         ) : null}
-        {!loading && !error && pdfObjectUrl ? (
+        {pdfSrc ? (
           <div className="merge-pdf-preview-frame-wrap">
-            <iframe className="merge-pdf-preview-frame" src={pdfObjectUrl} title="PDF 미리보기" />
+            <object
+              className="merge-pdf-preview-object"
+              data={pdfSrc}
+              type="application/pdf"
+              aria-label="PDF 미리보기"
+            >
+              <iframe
+                className="merge-pdf-preview-frame"
+                src={pdfSrc}
+                title="PDF 미리보기"
+                onError={() => setFrameError('브라우저에서 PDF를 표시하지 못했습니다. 새 탭에서 열어 보세요.')}
+              />
+            </object>
+            <a className="merge-pdf-preview-open-tab" href={pdfSrc} target="_blank" rel="noopener noreferrer">
+              새 탭에서 열기
+            </a>
           </div>
         ) : null}
         <footer className="merge-pdf-preview-foot">
@@ -51,6 +82,7 @@ export default function MergePdfPreviewModal({
           </button>
         </footer>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

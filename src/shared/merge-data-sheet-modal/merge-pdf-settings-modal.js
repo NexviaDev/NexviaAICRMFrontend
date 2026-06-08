@@ -593,18 +593,25 @@ function MergePdfSettingsFields({
       <label className="merge-pdf-settings-check">
         <input
           type="checkbox"
-          checked={draft.centerOnPage !== false}
-          onChange={(e) => setDraft((d) => ({ ...d, centerOnPage: e.target.checked }))}
+          checked={draft.pdfAutoFitToA4 !== false}
+          onChange={(e) =>
+            setDraft((d) => ({
+              ...d,
+              pdfAutoFitToA4: e.target.checked,
+              fitToWidth: e.target.checked ? true : d.fitToWidth,
+              fitToHeight: e.target.checked ? true : d.fitToHeight
+            }))
+          }
         />
-        <span>인쇄 영역을 용지 가로 가운데 맞춤 (A4 여백 유지)</span>
+        <span>인쇄 영역을 A4 한 페이지에 맞춤 (여백 유지·자동 확대/축소)</span>
       </label>
       <label className="merge-pdf-settings-check">
         <input
           type="checkbox"
-          checked={draft.fitToWidth}
-          onChange={(e) => setDraft((d) => ({ ...d, fitToWidth: e.target.checked }))}
+          checked={draft.centerOnPage !== false}
+          onChange={(e) => setDraft((d) => ({ ...d, centerOnPage: e.target.checked }))}
         />
-        <span>가로 1페이지 너비에 맞춤 (오른쪽 잘림 방지)</span>
+        <span>인쇄 영역을 용지 가로 가운데 맞춤</span>
       </label>
     </div>
   );

@@ -307,6 +307,131 @@
   line-height: 1.45;
 }
 
+.company-info-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.company-info-card-head .company-overview-section-title {
+  margin-bottom: 0;
+}
+
+.co-company-profile-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid #c8dff0;
+  border-radius: 0.5rem;
+  background: #f4faf9;
+  color: #2c5282;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.co-company-profile-edit-btn:hover {
+  background: #e8f4f2;
+  border-color: #76b7b2;
+}
+
+.co-company-profile-edit-btn .material-symbols-outlined {
+  font-size: 1rem;
+}
+
+.co-company-profile-message {
+  margin-bottom: 0.75rem;
+}
+
+.co-company-profile-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.co-company-profile-field {
+  display: grid;
+  grid-template-columns: 6rem 1fr;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.co-company-profile-field label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.co-company-profile-field input {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  background: #fff;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.co-company-profile-field input:focus {
+  outline: none;
+  border-color: #76b7b2;
+  box-shadow: 0 0 0 2px rgba(118, 183, 178, 0.2);
+}
+
+.co-company-profile-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.co-company-profile-cancel-btn {
+  padding: 0.45rem 0.9rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  background: #fff;
+  color: #64748b;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.co-company-profile-cancel-btn:hover:not(:disabled) {
+  background: #f8fafc;
+}
+
+.co-company-profile-save-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.45rem 0.9rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: #76b7b2;
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.co-company-profile-save-btn:hover:not(:disabled) {
+  filter: brightness(0.96);
+}
+
+.co-company-profile-save-btn:disabled,
+.co-company-profile-cancel-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.co-company-profile-save-btn .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
 .company-info-list {
   margin: 0;
   display: flex;

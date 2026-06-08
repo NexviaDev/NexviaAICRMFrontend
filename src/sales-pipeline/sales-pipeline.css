@@ -1007,9 +1007,23 @@
   border-color: rgba(29, 40, 58, 0.25);
 }
 
+/* 드래그 중 원본 카드 — opacity 낮추면 고객사명(헤드) 글자가 순간 사라진 것처럼 보임 */
 .sp-card-dragging {
-  opacity: 0.4;
-  transform: scale(0.98);
+  opacity: 1;
+  transform: scale(0.99);
+  border-style: dashed;
+  border-color: rgba(74, 122, 154, 0.5);
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 0 0 2px rgba(44, 100, 133, 0.1);
+}
+
+.sp-card-dragging.sp-card--lucid {
+  border-left-style: dashed;
+}
+
+.sp-card-dragging .sp-kanban-card-field--head .sp-kanban-card-field-val,
+.sp-card-dragging .sp-kanban-card-field--head .sp-kanban-card-field-val-inner {
+  color: #2c3437;
 }
 
 .sp-card-top {
@@ -1159,7 +1173,7 @@
 
 /* Lucid editorial cards (데스크톱 칸반) — sales-pipeline22; 필드 그리드는 카드에 직접(중첩 래퍼 없음) */
 .sp-card--stage-patching {
-  opacity: 0.62;
+  opacity: 0.92;
   pointer-events: none;
   cursor: wait;
 }

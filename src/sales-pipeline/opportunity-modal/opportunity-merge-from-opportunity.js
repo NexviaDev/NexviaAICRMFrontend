@@ -23,6 +23,7 @@ import {
   rowHasCustomerMergeFieldContent
 } from '@/lib/merge-our-forced-fields';
 import { resolveOrgChartFromListTemplates } from '@/lib/org-chart-tree-utils';
+import { customerCompanyToMergeRow as companyToMergeRow } from '@/lib/merge-customer-company-row';
 import {
   buildOpportunityMergeSourceOptions,
   groupOpportunityMergeSourceOptions,
@@ -191,32 +192,6 @@ function profileTagForMergeZip(selectedFieldPresetId, fieldGuide, fieldPresets) 
   const slug = sanitizeDownloadFileStem(raw.replace(/\s+/g, '_')).replace(/_+/g, '_');
   if (!slug) return '';
   return `_${slug}`;
-}
-
-function firstEmployeePhone(c) {
-  const list = Array.isArray(c.employeeList) ? c.employeeList : [];
-  for (const e of list) {
-    const p = String(e?.phone || '').trim();
-    if (p) return p;
-  }
-  return '';
-}
-
-function companyToMergeRow(c) {
-  if (!c) return null;
-  const companyPhone = String(c.phone || '').trim();
-  return {
-    companyName: c.name || '',
-    representativeName: c.representativeName || '',
-    businessNumber: c.businessNumber || '',
-    phone: companyPhone || firstEmployeePhone(c),
-    address: c.address || '',
-    memo: c.memo || '',
-    productLines: '',
-    fileLabel: '',
-    issueDate: '',
-    _sourceCompanyId: c._id
-  };
 }
 
 const MERGE_SHEET_MAIL_ROW_KEYS = ['_mailTo', '_mailCc', '_mailSubject', '_mailBody'];

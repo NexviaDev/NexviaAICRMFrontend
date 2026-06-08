@@ -396,6 +396,7 @@ export default function SalesPipeline() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [dragId, setDragId] = useState(null);
+  const kanbanDragGhostRef = useRef(null);
   /** 칸반 드래그로 단계 PATCH 중인 기회 id (중복 드롭 방지) */
   const [stagePatchingId, setStagePatchingId] = useState(null);
   /** Won / Lost / Abandoned 결과 구역 클릭 시 목록 모달 (인라인 펼침 대신) */
@@ -886,15 +887,46 @@ export default function SalesPipeline() {
   }, [productFilterOptions]);
 
   /* ---- Drag & Drop ---- */
+  const cleanupKanbanDragGhost = useCallback(() => {
+    const ghost = kanbanDragGhostRef.current;
+    if (ghost?.parentNode) ghost.parentNode.removeChild(ghost);
+    kanbanDragGhostRef.current = null;
+  }, []);
+
   const handleDragStart = (e, id) => {
     setDragId(id);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', id);
-    e.currentTarget.classList.add('sp-card-dragging');
+    const card = e.currentTarget;
+    cleanupKanbanDragGhost();
+    try {
+      const ghost = card.cloneNode(true);
+      ghost.classList.remove('sp-card-dragging', 'sp-card--stage-patching');
+      ghost.setAttribute('aria-hidden', 'true');
+      ghost.style.cssText = [
+        'position:fixed',
+        'left:-10000px',
+        'top:0',
+        `width:${card.offsetWidth}px`,
+        'opacity:1',
+        'transform:none',
+        'pointer-events:none',
+        'z-index:-1'
+      ].join(';');
+      document.body.appendChild(ghost);
+      kanbanDragGhostRef.current = ghost;
+      const ox = Number.isFinite(e.nativeEvent?.offsetX) ? e.nativeEvent.offsetX : Math.round(card.offsetWidth / 2);
+      const oy = Number.isFinite(e.nativeEvent?.offsetY) ? e.nativeEvent.offsetY : 24;
+      e.dataTransfer.setDragImage(ghost, ox, oy);
+    } catch {
+      cleanupKanbanDragGhost();
+    }
+    card.classList.add('sp-card-dragging');
   };
 
   const handleDragEnd = (e) => {
     e.currentTarget.classList.remove('sp-card-dragging');
+    cleanupKanbanDragGhost();
     setDragId(null);
   };
 

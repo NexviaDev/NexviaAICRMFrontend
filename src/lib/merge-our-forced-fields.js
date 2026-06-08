@@ -12,9 +12,15 @@ export const OUR_MERGE_FIELD_PRESETS = [
   { key: 'ourCompanyName', label: '자사 회사명', example: '(주)넥스비아', valueKind: 'text' },
   { key: 'ourBusinessNumber', label: '자사 사업자등록번호', example: '123-45-67890', valueKind: 'text' },
   { key: 'ourRepresentativeName', label: '자사 대표자명', example: '홍길동', valueKind: 'text' },
+  { key: 'ourRepresentativeEmail', label: '자사 대표이사 이메일', example: 'ceo@company.com', valueKind: 'text' },
   { key: 'ourAddress', label: '자사 주소', example: '서울특별시 …', valueKind: 'text' },
   { key: 'ourAddressDetail', label: '자사 상세주소', example: '00동 000호', valueKind: 'text' },
   { key: 'ourFullAddress', label: '자사 전체 주소', example: '서울특별시 … 00동', valueKind: 'text' },
+  { key: 'ourBusinessType', label: '자사 업태', example: '도매 및 소매업', valueKind: 'text' },
+  { key: 'ourBusinessItem', label: '자사 종목', example: '컴퓨터 프로그램 개발·공급', valueKind: 'text' },
+  { key: 'ourSubBusinessNumber', label: '자사 종사업장 번호', example: '0001', valueKind: 'text' },
+  { key: 'ourMonth', label: '자사 발행 월 (KST)', example: '6', valueKind: 'text' },
+  { key: 'ourDay', label: '자사 발행 일 (KST)', example: '7', valueKind: 'text' },
   { key: 'ourPhone', label: '자사·담당 연락처', example: '010-1234-5678', valueKind: 'text' },
   { key: 'ourStaffName', label: '자사 담당자명', example: '김담당', valueKind: 'text' },
   { key: 'ourStaffEmail', label: '자사 담당 이메일', example: 'user@company.com', valueKind: 'text' },
@@ -35,6 +41,18 @@ function joinAddress(addr, detail) {
   return `${a} ${d}`;
 }
 
+/** 세금계산서 등 — KST 기준 월·일 (앞자리 0 없음) */
+function resolveKstMonthDayParts(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Seoul',
+    month: 'numeric',
+    day: 'numeric'
+  }).formatToParts(date);
+  const month = parts.find((p) => p.type === 'month')?.value || '';
+  const day = parts.find((p) => p.type === 'day')?.value || '';
+  return { month, day };
+}
+
 /** @param {object|null} user crm_user */
 /** @param {object|null} company list-templates-bundle.company */
 export function resolveOurForcedMergeValues(user, company, opts = {}) {
@@ -50,13 +68,20 @@ export function resolveOurForcedMergeValues(user, company, opts = {}) {
     resolveOrgChartFromListTemplates(c.listTemplates) ||
     null;
   const department = explicitDept || (deptRaw ? resolveDepartmentDisplayFromChart(orgRoot, deptRaw) : '');
+  const { month, day } = resolveKstMonthDayParts();
   return {
     ourCompanyName: String(c.name || u.companyName || '').trim(),
     ourBusinessNumber: String(c.businessNumber || u.companyBusinessNumber || '').trim(),
     ourRepresentativeName: String(c.representativeName || '').trim(),
+    ourRepresentativeEmail: String(c.representativeEmail || '').trim(),
     ourAddress: address,
     ourAddressDetail: addressDetail,
     ourFullAddress: joinAddress(address, addressDetail),
+    ourBusinessType: String(c.businessType || '').trim(),
+    ourBusinessItem: String(c.businessItem || '').trim(),
+    ourSubBusinessNumber: String(c.subBusinessNumber || '').trim(),
+    ourMonth: month,
+    ourDay: day,
     ourPhone: String(u.phone || '').trim(),
     ourStaffName: String(u.name || '').trim(),
     ourStaffEmail: String(u.email || '').trim(),

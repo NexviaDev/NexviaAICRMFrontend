@@ -46,6 +46,10 @@ export default function Register() {
   const [companyConfirmed, setCompanyConfirmed] = useState(false);
   const [companyBusinessNumber, setCompanyBusinessNumber] = useState('');
   const [companyRepresentativeName, setCompanyRepresentativeName] = useState('');
+  const [companyRepresentativeEmail, setCompanyRepresentativeEmail] = useState('');
+  const [companyBusinessType, setCompanyBusinessType] = useState('');
+  const [companyBusinessItem, setCompanyBusinessItem] = useState('');
+  const [companySubBusinessNumber, setCompanySubBusinessNumber] = useState('');
   const [companyNeedsCreate, setCompanyNeedsCreate] = useState(false);
 
   const [error, setError] = useState('');
@@ -306,12 +310,20 @@ export default function Register() {
     const addressDetail = typeof company === 'object' && company ? (company.addressDetail ?? '') : '';
     const businessNumber = typeof company === 'object' && company ? (company.businessNumber ?? '') : '';
     const representativeName = typeof company === 'object' && company ? (company.representativeName ?? '') : '';
+    const representativeEmail = typeof company === 'object' && company ? (company.representativeEmail ?? '') : '';
+    const bizType = typeof company === 'object' && company ? (company.businessType ?? '') : '';
+    const bizItem = typeof company === 'object' && company ? (company.businessItem ?? '') : '';
+    const subBn = typeof company === 'object' && company ? (company.subBusinessNumber ?? '') : '';
     const isNewDraft = !!(typeof company === 'object' && company?.isNewDraft);
     const companyId = typeof company === 'object' && company ? (company._id || company.id || '') : '';
     setCompanyName(name);
     setCompanyConfirmed(true);
     setCompanyBusinessNumber(businessNumber);
     setCompanyRepresentativeName(representativeName);
+    setCompanyRepresentativeEmail(representativeEmail);
+    setCompanyBusinessType(bizType);
+    setCompanyBusinessItem(bizItem);
+    setCompanySubBusinessNumber(subBn);
     setCompanyNeedsCreate(isNewDraft);
     setSelectedCompanyId(isNewDraft ? '' : String(companyId || ''));
     setDepartmentOptions([]);
@@ -490,6 +502,10 @@ export default function Register() {
           companyDepartment: departmentValue,
           companyBusinessNumber: companyBusinessNumber.trim(),
           companyRepresentativeName: companyNeedsCreate ? companyRepresentativeName.trim() : '',
+          companyRepresentativeEmail: companyNeedsCreate ? companyRepresentativeEmail.trim() : '',
+          companyBusinessType: companyNeedsCreate ? companyBusinessType.trim() : '',
+          companyBusinessItem: companyNeedsCreate ? companyBusinessItem.trim() : '',
+          companySubBusinessNumber: companyNeedsCreate ? companySubBusinessNumber.trim() : '',
           createCompanyOnSave: companyNeedsCreate,
           ...(!companyNeedsCreate && String(selectedCompanyId || '').trim()
             ? { companyId: String(selectedCompanyId).trim() }
@@ -588,6 +604,10 @@ export default function Register() {
         companyDepartment: departmentValue,
         companyBusinessNumber: companyBusinessNumber.trim(),
         companyRepresentativeName: companyNeedsCreate ? companyRepresentativeName.trim() : '',
+        companyRepresentativeEmail: companyNeedsCreate ? companyRepresentativeEmail.trim() : '',
+        companyBusinessType: companyNeedsCreate ? companyBusinessType.trim() : '',
+        companyBusinessItem: companyNeedsCreate ? companyBusinessItem.trim() : '',
+        companySubBusinessNumber: companyNeedsCreate ? companySubBusinessNumber.trim() : '',
         createCompanyOnSave: companyNeedsCreate,
         ...(!companyNeedsCreate && String(selectedCompanyId || '').trim()
           ? { companyId: String(selectedCompanyId).trim() }

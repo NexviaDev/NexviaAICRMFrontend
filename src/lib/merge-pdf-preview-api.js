@@ -2,6 +2,26 @@ import { pingBackendHealth } from '@/lib/backend-wake';
 import { getUserVisibleApiError } from '@/lib/api-error';
 import { normalizeMergePdfExportOptions } from '@/lib/merge-pdf-export-options';
 
+async function readPdfPreviewBlobFromResponse(res, emptyMessage) {
+  const raw = await res.blob();
+  if (!raw || raw.size < 80) {
+    throw new Error(emptyMessage);
+  }
+  const ct = String(res.headers.get('Content-Type') || raw.type || '').toLowerCase();
+  if (ct.includes('json')) {
+    const text = await raw.text();
+    try {
+      const data = JSON.parse(text);
+      throw new Error(getUserVisibleApiError(data, 'PDF 미리보기 생성에 실패했습니다.'));
+    } catch (parseErr) {
+      if (parseErr?.message && !String(parseErr.message).includes('JSON')) throw parseErr;
+      throw new Error('PDF 미리보기 응답이 올바르지 않습니다.');
+    }
+  }
+  if (raw.type === 'application/pdf') return raw;
+  return new Blob([raw], { type: 'application/pdf' });
+}
+
 /**
  * PDF 미리보기용 — plan 후 PDF 항목 인덱스로 run 1회, Blob 반환.
  * @param {{ apiBase: string, getAuthHeader: () => object, rowJobs: object[], fieldPresetId?: string, pdfExportOptions?: object }} params
@@ -56,11 +76,7 @@ export async function fetchMergePdfPreviewBlob({
     const data = await res.json().catch(() => ({}));
     throw new Error(getUserVisibleApiError(data, 'PDF 미리보기 생성에 실패했습니다.'));
   }
-  const blob = await res.blob();
-  if (!blob || blob.size < 80) {
-    throw new Error('PDF 미리보기 파일이 비어 있습니다.');
-  }
-  return blob;
+  return readPdfPreviewBlobFromResponse(res, 'PDF 미리보기 파일이 비어 있습니다.');
 }
 
 /**
@@ -94,9 +110,5 @@ export async function fetchTemplatePdfPreviewBlob({
     const data = await res.json().catch(() => ({}));
     throw new Error(getUserVisibleApiError(data, 'PDF 미리보기 생성에 실패했습니다.'));
   }
-  const blob = await res.blob();
-  if (!blob || blob.size < 80) {
-    throw new Error('PDF 미리보기 파일이 비어 있습니다.');
-  }
-  return blob;
+  return readPdfPreviewBlobFromResponse(res, 'PDF 미리보기 파일이 비어 있습니다.');
 }

@@ -1497,6 +1497,38 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                           </td>
                         </tr>
                       ) : null}
+                      {companyToShow.representativeEmail ? (
+                        <tr>
+                          <th scope="row">대표이사 이메일</th>
+                          <td>
+                            <span className="contact-detail-profile-plain">{companyToShow.representativeEmail}</span>
+                          </td>
+                        </tr>
+                      ) : null}
+                      {companyToShow.businessType ? (
+                        <tr>
+                          <th scope="row">업태</th>
+                          <td>
+                            <span className="contact-detail-profile-plain">{companyToShow.businessType}</span>
+                          </td>
+                        </tr>
+                      ) : null}
+                      {companyToShow.businessItem ? (
+                        <tr>
+                          <th scope="row">종목</th>
+                          <td>
+                            <span className="contact-detail-profile-plain">{companyToShow.businessItem}</span>
+                          </td>
+                        </tr>
+                      ) : null}
+                      {companyToShow.subBusinessNumber ? (
+                        <tr>
+                          <th scope="row">종사업장 번호</th>
+                          <td>
+                            <span className="contact-detail-profile-plain">{companyToShow.subBusinessNumber}</span>
+                          </td>
+                        </tr>
+                      ) : null}
                       {companyToShow.industry ? (
                         <tr>
                           <th scope="row">업종</th>
@@ -1510,6 +1542,14 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                           <th scope="row">주소</th>
                           <td>
                             <span className="contact-detail-profile-plain">{companyToShow.address}</span>
+                          </td>
+                        </tr>
+                      ) : null}
+                      {companyToShow.addressDetail ? (
+                        <tr>
+                          <th scope="row">상세주소</th>
+                          <td>
+                            <span className="contact-detail-profile-plain">{companyToShow.addressDetail}</span>
                           </td>
                         </tr>
                       ) : null}
@@ -1540,6 +1580,30 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                             <span>대표: {companyToShow.representativeName}</span>
                           </div>
                         )}
+                        {companyToShow.representativeEmail && (
+                          <div className="customer-company-detail-meta-item">
+                            <span className="material-symbols-outlined">mail</span>
+                            <span>대표이사 이메일: {companyToShow.representativeEmail}</span>
+                          </div>
+                        )}
+                        {companyToShow.businessType && (
+                          <div className="customer-company-detail-meta-item">
+                            <span className="material-symbols-outlined">storefront</span>
+                            <span>업태: {companyToShow.businessType}</span>
+                          </div>
+                        )}
+                        {companyToShow.businessItem && (
+                          <div className="customer-company-detail-meta-item">
+                            <span className="material-symbols-outlined">category</span>
+                            <span>종목: {companyToShow.businessItem}</span>
+                          </div>
+                        )}
+                        {companyToShow.subBusinessNumber && (
+                          <div className="customer-company-detail-meta-item">
+                            <span className="material-symbols-outlined">pin</span>
+                            <span>종사업장 번호: {companyToShow.subBusinessNumber}</span>
+                          </div>
+                        )}
                         {companyToShow.industry && (
                           <div className="customer-company-detail-meta-item">
                             <span className="material-symbols-outlined">domain</span>
@@ -1550,6 +1614,12 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
                           <div className="customer-company-detail-meta-item full">
                             <span className="material-symbols-outlined">location_on</span>
                             <span>{companyToShow.address}</span>
+                          </div>
+                        )}
+                        {companyToShow.addressDetail && (
+                          <div className="customer-company-detail-meta-item full">
+                            <span className="material-symbols-outlined">home</span>
+                            <span>상세주소: {companyToShow.addressDetail}</span>
                           </div>
                         )}
                       </div>

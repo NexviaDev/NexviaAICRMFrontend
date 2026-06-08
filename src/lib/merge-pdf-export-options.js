@@ -13,7 +13,10 @@ export const MERGE_PDF_EXPORT_OPTIONS_STORAGE_KEY = 'nexvia.mergePdfExportOption
 export const DEFAULT_MERGE_PDF_EXPORT_OPTIONS = Object.freeze({
   paperSize: 'a4',
   orientation: 'portrait',
-  fitToWidth: false,
+  /** A4 여백 안에 인쇄 영역 전체가 보이도록 가로·세로 맞춤 (기본 켜짐) */
+  pdfAutoFitToA4: true,
+  fitToWidth: true,
+  fitToHeight: true,
   centerOnPage: true,
   printAreaMode: 'custom',
   printArea: '',
@@ -127,14 +130,40 @@ export function normalizeMergePdfExportOptions(raw) {
   else if (eaRaw === 'pdfAddon' || eaRaw === 'preferPdf') mergeExportAddon = 'pdfAddon';
   else if (!eaRaw && hasSelections) mergeExportAddon = 'pdfAddon';
 
+  const pdfAutoFitToA4 = o.pdfAutoFitToA4 !== false;
+  const fitToWidth = pdfAutoFitToA4 || o.fitToWidth === true;
+  const fitToHeight = pdfAutoFitToA4 || o.fitToHeight === true;
+  const userOrientation =
+    String(o.orientation || 'portrait').toLowerCase() === 'landscape' ? 'landscape' : 'portrait';
+  let inferredOrientation = userOrientation;
+  let maxColSpan = 0;
+  let maxRowSpan = 0;
+  for (const sel of printAreaSelections) {
+    const area = String(sel?.printArea || '').trim().toUpperCase();
+    const m = area.match(/^([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?$/);
+    if (!m) continue;
+    const colToNum = (c) => {
+      let n = 0;
+      for (const ch of c) n = n * 26 + (ch.charCodeAt(0) - 64);
+      return n;
+    };
+    const c1 = colToNum(m[1]);
+    const c2 = colToNum(m[3] || m[1]);
+    const r1 = parseInt(m[2], 10);
+    const r2 = parseInt(m[4] || m[2], 10);
+    maxColSpan = Math.max(maxColSpan, Math.abs(c2 - c1) + 1);
+    maxRowSpan = Math.max(maxRowSpan, Math.abs(r2 - r1) + 1);
+  }
+  if (maxColSpan >= 18 || maxColSpan / Math.max(maxRowSpan, 1) >= 1.15) inferredOrientation = 'landscape';
+  else if (maxRowSpan / Math.max(maxColSpan, 1) >= 1.35) inferredOrientation = 'portrait';
   return {
     paperSize: paper.id,
     paperSizeId: paper.excelPaperSizeId,
-    orientation:
-      String(o.orientation || 'portrait').toLowerCase() === 'landscape' ? 'landscape' : 'portrait',
-    fitToWidth: o.fitToWidth === true,
-    pdfAutoFitToA4: o.pdfAutoFitToA4 === true,
-    centerOnPage: o.centerOnPage !== false,
+    orientation: inferredOrientation,
+    pdfAutoFitToA4,
+    fitToWidth,
+    fitToHeight,
+    centerOnPage: true,
     singlePageSheet: o.singlePageSheet === true,
     printAreaMode: hasSelections ? 'custom' : 'auto',
     printArea: hasSelections && parsedArea ? parsedArea : '',
@@ -181,8 +210,12 @@ export function saveMergePdfExportOptions(opts) {
 export function formatMergePdfExportOptionsSummary(opts) {
   const o = normalizeMergePdfExportOptions(opts);
   const orient = o.orientation === 'portrait' ? '세로' : '가로';
-  const fit = o.fitToWidth ? '· 가로 1페이지' : '';
-  const center = o.centerOnPage ? '· 가운데 맞춤' : '';
+  const fit = o.pdfAutoFitToA4
+    ? '· A4 한 페이지 맞춤'
+    : o.fitToWidth
+      ? '· 가로 1페이지'
+      : '';
+  const center = o.centerOnPage ? '· 가로·세로 가운데' : '';
   const selCount = o.printAreaSelections?.length || 0;
   const area =
     selCount > 1

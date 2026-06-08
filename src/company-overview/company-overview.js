@@ -58,6 +58,17 @@ function resolveDeptDisplay(orgChartRoot, stored) {
   return s;
 }
 
+function formatBusinessNumberInput(value) {
+  const digits = String(value || '').replace(/\D/g, '').slice(0, 10);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 5) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  return `${digits.slice(0, 3)}-${digits.slice(3, 5)}-${digits.slice(5, 10)}`;
+}
+
+function formatSubBusinessNumberInput(value) {
+  return String(value || '').replace(/\D/g, '').slice(0, 4);
+}
+
 function formatSubscriptionDate(iso) {
   if (!iso) return '—';
   try {
@@ -225,6 +236,10 @@ export default function CompanyOverview() {
   const [handoverViewerCanConsent, setHandoverViewerCanConsent] = useState(false);
   const [handoverApprovingKey, setHandoverApprovingKey] = useState('');
   const [handoverActionError, setHandoverActionError] = useState('');
+  const [companyProfileEditing, setCompanyProfileEditing] = useState(false);
+  const [companyProfileForm, setCompanyProfileForm] = useState(null);
+  const [companyProfileSaving, setCompanyProfileSaving] = useState(false);
+  const [companyProfileMessage, setCompanyProfileMessage] = useState('');
   const [employeeColumnOrder, setEmployeeColumnOrder] = useState(() => {
     const saved = getSavedTemplate(COMPANY_OVERVIEW_EMPLOYEE_LIST_ID);
     return normalizeEmployeeColumnOrder(saved?.columnOrder, COMPANY_OVERVIEW_EMPLOYEE_COLUMN_KEYS);
@@ -611,7 +626,53 @@ export default function CompanyOverview() {
     setActionError('');
     void mind.removeNodes(removable).catch(() => { });
   }, [canManageRoles]);
-  const fullAddress = [company.address, company.addressDetail].filter(Boolean).join(' ');
+  const openCompanyProfileEdit = useCallback(() => {
+    setCompanyProfileMessage('');
+    setCompanyProfileForm({
+      name: String(company.name || '').trim(),
+      businessNumber: String(company.businessNumber || '').trim(),
+      representativeName: String(company.representativeName || '').trim(),
+      representativeEmail: String(company.representativeEmail || '').trim(),
+      address: String(company.address || '').trim(),
+      addressDetail: String(company.addressDetail || '').trim(),
+      businessType: String(company.businessType || '').trim(),
+      businessItem: String(company.businessItem || '').trim(),
+      subBusinessNumber: String(company.subBusinessNumber || '').trim()
+    });
+    setCompanyProfileEditing(true);
+  }, [company]);
+
+  const cancelCompanyProfileEdit = useCallback(() => {
+    setCompanyProfileEditing(false);
+    setCompanyProfileForm(null);
+    setCompanyProfileMessage('');
+  }, []);
+
+  const saveCompanyProfile = useCallback(async () => {
+    if (!companyProfileForm) return;
+    setCompanyProfileSaving(true);
+    setCompanyProfileMessage('');
+    setActionError('');
+    try {
+      const res = await fetch(`${API_BASE}/companies/profile`, {
+        method: 'PATCH',
+        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(companyProfileForm)
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(out.error || '소속 회사 정보 저장에 실패했습니다.');
+      setData((prev) => (prev
+        ? { ...prev, company: { ...prev.company, ...(out.company || {}) } }
+        : prev));
+      setCompanyProfileEditing(false);
+      setCompanyProfileForm(null);
+      setCompanyProfileMessage('저장되었습니다. 변경 내용은 공지사항에 등록되어 직원들이 확인할 수 있습니다.');
+    } catch (e) {
+      setActionError(e.message || '소속 회사 정보 저장에 실패했습니다.');
+    } finally {
+      setCompanyProfileSaving(false);
+    }
+  }, [companyProfileForm]);
   const isPendingUser = me.role === 'pending';
   /** 구독·시트 블록: Admin·Owner (레거시 senior 포함) */
   const canSeeSubscriptionSection = ['owner', 'admin', 'senior'].includes(me.role);
@@ -989,20 +1050,186 @@ export default function CompanyOverview() {
         </p>
         {actionError && <p className="company-overview-error company-overview-inline-error">{actionError}</p>}
         <section className="company-overview-card company-info-card">
-          <h2 className="company-overview-section-title">
-            <span className="material-symbols-outlined">business</span>
-            소속 회사
-          </h2>
-          <dl className="company-info-list">
-            <div className="company-info-row">
-              <dt>회사명</dt>
-              <dd>{company.name || '—'}</dd>
+          <div className="company-info-card-head">
+            <h2 className="company-overview-section-title">
+              <span className="material-symbols-outlined">business</span>
+              소속 회사
+            </h2>
+            {canManageRoles && !companyProfileEditing ? (
+              <button
+                type="button"
+                className="co-company-profile-edit-btn"
+                onClick={openCompanyProfileEdit}
+                title="소속 회사 정보 수정"
+              >
+                <span className="material-symbols-outlined">edit</span>
+                수정
+              </button>
+            ) : null}
+          </div>
+          {companyProfileMessage ? (
+            <p className="company-overview-request-message co-company-profile-message" role="status">
+              {companyProfileMessage}
+            </p>
+          ) : null}
+          {companyProfileEditing && companyProfileForm ? (
+            <div className="co-company-profile-edit">
+              <div className="co-company-profile-field">
+                <label htmlFor="co-profile-name">회사명</label>
+                <input
+                  id="co-profile-name"
+                  type="text"
+                  value={companyProfileForm.name}
+                  onChange={(e) => setCompanyProfileForm((f) => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+              <div className="co-company-profile-field">
+                <label htmlFor="co-profile-bn">사업자번호</label>
+                <input
+                  id="co-profile-bn"
+                  type="text"
+                  inputMode="numeric"
+                  value={companyProfileForm.businessNumber}
+                  onChange={(e) => setCompanyProfileForm((f) => ({
+                    ...f,
+                    businessNumber: formatBusinessNumberInput(e.target.value)
+                  }))}
+                  placeholder="000-00-00000"
+                />
+              </div>
+              <div className="co-company-profile-field">
+                <label htmlFor="co-profile-rep">대표자</label>
+                <input
+                  id="co-profile-rep"
+                  type="text"
+                  value={companyProfileForm.representativeName}
+                  onChange={(e) => setCompanyProfileForm((f) => ({ ...f, representativeName: e.target.value }))}
+                />
+              </div>
+              <div className="co-company-profile-field">
+                <label htmlFor="co-profile-rep-email">대표이사 이메일</label>
+                <input
+                  id="co-profile-rep-email"
+                  type="email"
+                  autoComplete="email"
+                  value={companyProfileForm.representativeEmail}
+                  onChange={(e) => setCompanyProfileForm((f) => ({ ...f, representativeEmail: e.target.value }))}
+                  placeholder="ceo@company.com"
+                />
+              </div>
+              <div className="co-company-profile-field">
+                <label htmlFor="co-profile-address">주소</label>
+                <input
+                  id="co-profile-address"
+                  type="text"
+                  value={companyProfileForm.address}
+                  onChange={(e) => setCompanyProfileForm((f) => ({ ...f, address: e.target.value }))}
+                />
+              </div>
+              <div className="co-company-profile-field">
+                <label htmlFor="co-profile-address-detail">상세주소</label>
+                <input
+                  id="co-profile-address-detail"
+                  type="text"
+                  value={companyProfileForm.addressDetail}
+                  onChange={(e) => setCompanyProfileForm((f) => ({ ...f, addressDetail: e.target.value }))}
+                />
+              </div>
+              <div className="co-company-profile-field">
+                <label htmlFor="co-profile-biz-type">업태</label>
+                <input
+                  id="co-profile-biz-type"
+                  type="text"
+                  value={companyProfileForm.businessType}
+                  onChange={(e) => setCompanyProfileForm((f) => ({ ...f, businessType: e.target.value }))}
+                  placeholder="예: 도매 및 소매업"
+                />
+              </div>
+              <div className="co-company-profile-field">
+                <label htmlFor="co-profile-biz-item">종목</label>
+                <input
+                  id="co-profile-biz-item"
+                  type="text"
+                  value={companyProfileForm.businessItem}
+                  onChange={(e) => setCompanyProfileForm((f) => ({ ...f, businessItem: e.target.value }))}
+                  placeholder="예: 컴퓨터 프로그램 개발·공급"
+                />
+              </div>
+              <div className="co-company-profile-field">
+                <label htmlFor="co-profile-sub-bn">종사업장 번호</label>
+                <input
+                  id="co-profile-sub-bn"
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={4}
+                  value={companyProfileForm.subBusinessNumber}
+                  onChange={(e) => setCompanyProfileForm((f) => ({
+                    ...f,
+                    subBusinessNumber: formatSubBusinessNumberInput(e.target.value)
+                  }))}
+                  placeholder="0001"
+                />
+              </div>
+              <div className="co-company-profile-actions">
+                <button
+                  type="button"
+                  className="co-company-profile-cancel-btn"
+                  onClick={cancelCompanyProfileEdit}
+                  disabled={companyProfileSaving}
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  className="co-company-profile-save-btn"
+                  onClick={saveCompanyProfile}
+                  disabled={companyProfileSaving}
+                >
+                  <span className="material-symbols-outlined">save</span>
+                  {companyProfileSaving ? '저장 중…' : '저장'}
+                </button>
+              </div>
             </div>
-            <div className="company-info-row">
-              <dt>주소</dt>
-              <dd>{fullAddress || '—'}</dd>
-            </div>
-          </dl>
+          ) : (
+            <dl className="company-info-list">
+              <div className="company-info-row">
+                <dt>회사명</dt>
+                <dd>{company.name || '—'}</dd>
+              </div>
+              <div className="company-info-row">
+                <dt>사업자번호</dt>
+                <dd>{company.businessNumber || '—'}</dd>
+              </div>
+              <div className="company-info-row">
+                <dt>대표자</dt>
+                <dd>{company.representativeName || '—'}</dd>
+              </div>
+              <div className="company-info-row">
+                <dt>대표이사 이메일</dt>
+                <dd>{company.representativeEmail || '—'}</dd>
+              </div>
+              <div className="company-info-row">
+                <dt>주소</dt>
+                <dd>{company.address || '—'}</dd>
+              </div>
+              <div className="company-info-row">
+                <dt>상세주소</dt>
+                <dd>{company.addressDetail || '—'}</dd>
+              </div>
+              <div className="company-info-row">
+                <dt>업태</dt>
+                <dd>{company.businessType || '—'}</dd>
+              </div>
+              <div className="company-info-row">
+                <dt>종목</dt>
+                <dd>{company.businessItem || '—'}</dd>
+              </div>
+              <div className="company-info-row">
+                <dt>종사업장 번호</dt>
+                <dd>{company.subBusinessNumber || '—'}</dd>
+              </div>
+            </dl>
+          )}
         </section>
 
         {showHandoverConsentCard && (

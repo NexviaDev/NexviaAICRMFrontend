@@ -79,6 +79,7 @@ import {
   rowHasCustomerMergeFieldContent
 } from '@/lib/merge-our-forced-fields';
 import { resolveOrgChartFromListTemplates } from '@/lib/org-chart-tree-utils';
+import { customerCompanyToMergeRow as companyToMergeRow } from '@/lib/merge-customer-company-row';
 import './quotation-doc-merge.css';
 
 /** 데이터 시트를 처음 열 때 만들 빈 행 수 */
@@ -237,33 +238,6 @@ function profileTagForMergeZip(selectedFieldPresetId, fieldGuide, fieldPresets) 
   const slug = sanitizeDownloadFileStem(raw.replace(/\s+/g, '_')).replace(/_+/g, '_');
   if (!slug) return '';
   return `_${slug}`;
-}
-
-function firstEmployeePhone(c) {
-  const list = Array.isArray(c.employeeList) ? c.employeeList : [];
-  for (const e of list) {
-    const p = String(e?.phone || '').trim();
-    if (p) return p;
-  }
-  return '';
-}
-
-/** 고객사 목록/검색 모달에서 받은 업체 → 메일머지 행 */
-function companyToMergeRow(c) {
-  if (!c) return null;
-  const companyPhone = String(c.phone || '').trim();
-  return {
-    companyName: c.name || '',
-    representativeName: c.representativeName || '',
-    businessNumber: c.businessNumber || '',
-    phone: companyPhone || firstEmployeePhone(c),
-    address: c.address || '',
-    memo: c.memo || '',
-    productLines: '',
-    fileLabel: '',
-    issueDate: '',
-    _sourceCompanyId: c._id
-  };
 }
 
 function rowForApi(row) {
@@ -1826,6 +1800,7 @@ export default function QuotationDocMerge({ runtime = MERGE_RUNTIME_TENANT } = {
       setPdfPreviewCaption(
         `${templatePrepareMode === 'edit' ? '양식 설정' : '양식 등록'} 미리보기 · ${previewLabel} · ${formatMergePdfExportOptionsSummary(pdfOpts)}`
       );
+      setTemplateUploadPreparePdfOpen(false);
       setPdfPreviewOpen(true);
       setPdfPreviewLoading(true);
       try {

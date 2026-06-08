@@ -926,22 +926,57 @@ function lineChartYMargin(value, extents) {
   return Math.round(plotBottom - ((v - extents.vMin) / span) * plotH);
 }
 
+function clampLineChartCpY(cpY, y0, y1) {
+  const lo = Math.min(y0, y1);
+  const hi = Math.max(y0, y1);
+  return Math.max(lo, Math.min(hi, cpY));
+}
+
+/** 구간 단위 단조 접선 — 평탄 직전은 0, 변화 구간은 구간 기울기 */
+function lineChartSegmentTangents(y0, y1, dx, prevY) {
+  const slope = Math.abs(dx) < 1e-9 ? 0 : (y1 - y0) / dx;
+  const m0 = y0 === prevY ? 0 : slope;
+  return { m0, m1: slope };
+}
+
+/**
+ * 꺾은선 path — 평탄 구간은 직선(L), 변화 구간만 단조 Bézier(C).
+ * 0 아래로 내려가지 않고 마지막 포인트까지 반드시 연결.
+ */
 function buildLinePathD(series, getY) {
   if (!Array.isArray(series) || series.length === 0) return '';
   const n = series.length;
+  const xs = series.map((_, idx) => lineChartX(idx, n));
+  const ys = series.map((item) => getY(Number(item?.value) || 0));
+
   if (n === 1) {
-    const v = Number(series[0]?.value) || 0;
-    const x = lineChartX(0, 1);
-    const y = getY(v);
-    return `M${x},${y}L${x},${y}`;
+    return `M${xs[0]},${ys[0]}L${xs[0]},${ys[0]}`;
   }
-  return series
-    .map((item, idx) => {
-      const x = lineChartX(idx, n);
-      const y = getY(Number(item?.value) || 0);
-      return `${idx === 0 ? 'M' : 'L'}${x},${y}`;
-    })
-    .join(' ');
+
+  let d = `M${xs[0]},${ys[0]}`;
+
+  for (let i = 0; i < n - 1; i += 1) {
+    const x0 = xs[i];
+    const y0 = ys[i];
+    const x1 = xs[i + 1];
+    const y1 = ys[i + 1];
+    const prevY = i > 0 ? ys[i - 1] : y0;
+
+    if (y0 === y1) {
+      d += `L${x1},${y1}`;
+      continue;
+    }
+
+    const dx = x1 - x0;
+    const { m0, m1 } = lineChartSegmentTangents(y0, y1, dx, prevY);
+    const cp1x = Math.round(x0 + dx / 3);
+    const cp1y = Math.round(clampLineChartCpY(y0 + (m0 * dx) / 3, y0, y1));
+    const cp2x = Math.round(x1 - dx / 3);
+    const cp2y = Math.round(clampLineChartCpY(y1 - (m1 * dx) / 3, y0, y1));
+    d += ` C${cp1x},${cp1y} ${cp2x},${cp2y} ${x1},${y1}`;
+  }
+
+  return d;
 }
 
 function chartSeriesAllZero(raw) {
@@ -1023,6 +1058,7 @@ function WeeklyLeadCountLineChart({ series, title }) {
             strokeWidth="3"
             strokeLinecap="round"
             strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
           />
         ) : null}
         {cur.map((item, idx) => {
@@ -1117,6 +1153,7 @@ function MarginLineChartWithTooltips({
             strokeDasharray="7 5"
             strokeLinecap="round"
             strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
           />
         ) : null}
         {dCur ? (
@@ -1127,6 +1164,7 @@ function MarginLineChartWithTooltips({
             strokeWidth="3"
             strokeLinecap="round"
             strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
           />
         ) : null}
         {cur.map((item, idx) => {
@@ -1241,6 +1279,7 @@ function ProductSalesLinesChartWithTooltips({ products, currency, title, formatV
               strokeWidth={nPts <= 3 ? 3 : 2.5}
               strokeLinecap="round"
               strokeLinejoin="round"
+              vectorEffect="non-scaling-stroke"
             />
           );
         })}
