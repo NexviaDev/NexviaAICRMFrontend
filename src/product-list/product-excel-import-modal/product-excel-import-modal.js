@@ -7,10 +7,7 @@ import { pingBackendHealth } from '@/lib/backend-wake';
 import ProductImportMappingModal from './product-import-mapping-modal';
 import ProductImportResultModal from './product-import-result-modal';
 import ProductExcelRawPreviewModal from './product-excel-raw-preview-modal';
-import {
-  buildExcelSourceOptions,
-  previewExcelMappedValue
-} from '../../customer-companies/customer-companies-excel-import-modal/excel-import-mapping-utils';
+import { buildExcelSourceOptions } from '../../customer-companies/customer-companies-excel-import-modal/excel-import-mapping-utils';
 import {
   buildProductTargetOptions,
   countInvalidProductExcelDraftCells,
@@ -21,6 +18,7 @@ import {
   mergeCustomFieldMappingRows,
   normalizeExcelRowsBillingForPreview,
   parseExcelFileToRows,
+  previewProductMappedValue,
   productMappingCanProceed,
   productRowStatus,
   resolveProductExcelColumnKey
@@ -183,7 +181,7 @@ export default function ProductExcelImportModal({
   const summary = useMemo(() => {
     let err = 0;
     rows.forEach((row) => {
-      const prev = previewExcelMappedValue(sampleRow, row);
+      const prev = previewProductMappedValue(sampleRow, row);
       const st = productRowStatus(row, prev);
       if (st.type === 'err') err += 1;
     });

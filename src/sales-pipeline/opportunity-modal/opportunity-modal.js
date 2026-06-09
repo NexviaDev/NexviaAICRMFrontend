@@ -44,6 +44,8 @@ import {
 } from '@/lib/sales-opportunity-form-shared';
 import { getUserVisibleApiError } from '@/lib/api-error';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
+import { PriceWithKrwHint } from '@/lib/currency-price-display';
+import { useExchangeRates } from '@/lib/use-exchange-rates';
 import { buildStageForecastPercentMap } from '../pipeline-forecast-utils';
 import { resolveDepartmentDisplayFromChart } from '@/lib/org-chart-tree-utils';
 import {
@@ -194,6 +196,12 @@ export default function OpportunityModal({
     return buildPipelineStageSelectOptionsFromDefinitions(pipelineStageDefinitions);
   }, [stageOptions, pipelineStageDefinitions]);
   const firstStageValue = stageSelectOptions[0]?.value || 'NewLead';
+  const {
+    dealBasRMap,
+    exchangeRatesFrozen,
+    frozenAt,
+    toggleExchangeRatesFreeze
+  } = useExchangeRates({ getAuthHeader, pollMs: 120000, respectSessionFreeze: true });
   const [form, setForm] = useState(() => ({
     customerCompanyId: '',
     customerCompanyName: '',
@@ -2151,14 +2159,9 @@ export default function OpportunityModal({
   const computeTotalFinalAmount = () =>
     lineItems.reduce((sum, line) => sum + computeLineFinalAmount(line), 0);
 
-  const formatCurrencyDisplay = (num, currency) => {
-    const n = Number(num);
-    if (!Number.isFinite(n)) return '—';
-    const s = n.toLocaleString();
-    if (currency === 'USD') return `${s} 달러`;
-    if (currency === 'JPY') return `${s} 엔`;
-    return `${s} 원`;
-  };
+  const renderCurrencyAmount = (num, currency = form.currency) => (
+    <PriceWithKrwHint amount={num} currency={currency || 'KRW'} dealBasRMap={dealBasRMap} />
+  );
 
   const computeTotalDeduction = () =>
     lineItems.reduce((sum, line) => sum + computeLineDeduction(line), 0);
@@ -3127,7 +3130,22 @@ export default function OpportunityModal({
               </div>
             </div>
           </div>
-          <div className="opp-modal-header-actions" role="group" aria-label="문서 메일머지">
+          <div className="opp-modal-header-actions" role="group" aria-label="문서 메일머지·환율">
+            <button
+              type="button"
+              className={`opp-exchange-sync-btn${exchangeRatesFrozen ? ' is-frozen' : ''}`}
+              onClick={toggleExchangeRatesFreeze}
+              title={
+                exchangeRatesFrozen
+                  ? `환율 환산값이 고정되어 있습니다${frozenAt ? ` (${new Date(frozenAt).toLocaleString('ko-KR')})` : ''}. 클릭하면 최신 환율과 다시 동기화합니다.`
+                  : '최신 환율 자동 갱신을 중지하고, 현재 환산값만 유지합니다.'
+              }
+            >
+              <span className="material-symbols-outlined" aria-hidden style={{ fontSize: '1rem' }}>
+                {exchangeRatesFrozen ? 'lock' : 'sync'}
+              </span>
+              {exchangeRatesFrozen ? '통화 환율 고정 중' : '통화 환율 동기화 중지'}
+            </button>
             <button
               type="button"
               className="opp-save-btn"
@@ -3181,7 +3199,7 @@ export default function OpportunityModal({
                         <span className="opp-modal-summary-dash-label">수주금액</span>
                         <div className="opp-modal-summary-dash-value">
                           {lineItems.length > 0
-                            ? formatCurrencyDisplay(computeTotalFinalAmount(), form.currency)
+                            ? renderCurrencyAmount(computeTotalFinalAmount(), form.currency)
                             : '—'}
                         </div>
                       </div>
@@ -3192,7 +3210,7 @@ export default function OpportunityModal({
                         <span className="opp-modal-summary-dash-label">마진 합계</span>
                         <div className="opp-modal-summary-dash-value">
                           {lineItems.length > 0 && netMarginAfterCommission != null
-                            ? formatCurrencyDisplay(netMarginAfterCommission, form.currency)
+                            ? renderCurrencyAmount(netMarginAfterCommission, form.currency)
                             : '—'}
                         </div>
                       </div>
@@ -3208,7 +3226,7 @@ export default function OpportunityModal({
                         {forecastExpectedRevenue != null && Number.isFinite(forecastPctForStage) ? (
                           <>
                             <div className="opp-modal-summary-dash-value opp-modal-summary-dash-value--forecast">
-                              {formatCurrencyDisplay(forecastExpectedRevenue, form.currency)}
+                              {renderCurrencyAmount(forecastExpectedRevenue, form.currency)}
                             </div>
                             <div className="opp-modal-summary-dash-meta">
                               {forecastStageLabel} · {forecastPctForStage}%
@@ -4550,20 +4568,20 @@ export default function OpportunityModal({
                                     <span className="opp-basic-info-sheet-label">차감</span>
                                     <div className="opp-basic-info-sheet-cell">
                                       <span className="opp-basic-info-sheet-field opp-basic-info-sheet-field--readonly">
-                                        - {formatCurrencyDisplay(computeLineDeduction(line), form.currency)}
+                                        - {renderCurrencyAmount(computeLineDeduction(line), form.currency)}
                                       </span>
                                   </div>
                                     <span className="opp-basic-info-sheet-label">최종</span>
                                     <div className="opp-basic-info-sheet-cell">
                                       <span className="opp-basic-info-sheet-field opp-basic-info-sheet-field--readonly opp-products-summary-val--main">
-                                        {formatCurrencyDisplay(lineFinal, form.currency)}
+                                        {renderCurrencyAmount(lineFinal, form.currency)}
                                       </span>
                                   </div>
                                     <span className="opp-basic-info-sheet-label">순마진</span>
                                     <div className="opp-basic-info-sheet-cell">
                                       <span className="opp-basic-info-sheet-field opp-basic-info-sheet-field--readonly opp-products-summary-val--margin">
                                       {line.productId && productById[line.productId] && lineNetShown != null
-                                        ? formatCurrencyDisplay(lineNetShown, form.currency)
+                                        ? renderCurrencyAmount(lineNetShown, form.currency)
                                         : '—'}
                                     </span>
                                   </div>
@@ -4576,13 +4594,13 @@ export default function OpportunityModal({
                               <span className="opp-basic-info-sheet-label">차감</span>
                               <div className="opp-basic-info-sheet-cell">
                                 <span className="opp-basic-info-sheet-field opp-basic-info-sheet-field--readonly">
-                                  - {formatCurrencyDisplay(computeTotalDeduction(), form.currency)}
+                                  - {renderCurrencyAmount(computeTotalDeduction(), form.currency)}
                                 </span>
                                 </div>
                               <span className="opp-basic-info-sheet-label">마진</span>
                               <div className="opp-basic-info-sheet-cell">
                                 <span className="opp-basic-info-sheet-field opp-basic-info-sheet-field--readonly opp-products-summary-val--margin">
-                                    {netMarginAfterCommission != null ? formatCurrencyDisplay(netMarginAfterCommission, form.currency) : '—'}
+                                    {netMarginAfterCommission != null ? renderCurrencyAmount(netMarginAfterCommission, form.currency) : '—'}
                                   </span>
                               </div>
                                 </div>
@@ -4596,7 +4614,7 @@ export default function OpportunityModal({
                                 <div className="opp-basic-info-sheet-cell">
                                   <span className="opp-basic-info-sheet-field opp-basic-info-sheet-field--readonly opp-products-summary-val--forecast">
                                     <span className="opp-products-summary-forecast-meta">{forecastStageLabel} · {forecastPctForStage}%</span>
-                                      {formatCurrencyDisplay(forecastExpectedRevenue, form.currency)}
+                                      {renderCurrencyAmount(forecastExpectedRevenue, form.currency)}
                                     </span>
                                   </div>
                               </div>
@@ -4605,7 +4623,7 @@ export default function OpportunityModal({
                               <span className="opp-basic-info-sheet-label">전체 최종</span>
                               <div className="opp-basic-info-sheet-cell">
                                 <span className="opp-basic-info-sheet-field opp-basic-info-sheet-field--readonly opp-products-summary-val--hero">
-                                  {formatCurrencyDisplay(computeTotalFinalAmount(), form.currency)}
+                                  {renderCurrencyAmount(computeTotalFinalAmount(), form.currency)}
                                 </span>
                               </div>
                             </div>

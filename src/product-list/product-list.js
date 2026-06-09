@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AddProductModal from './add-product-modal/add-product-modal';
-import ProductDetailModal from './product-detail-modal/product-detail-modal';
 import ProductExcelImportModal from './product-excel-import-modal/product-excel-import-modal';
 import ListTemplateModal from '../components/list-template-modal/list-template-modal';
 import {
@@ -25,6 +24,9 @@ import { pingBackendHealth } from '@/lib/backend-wake';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { listPriceFromProduct } from '@/lib/product-price-utils';
 import { formatProductBillingDisplay } from '@/lib/product-billing-utils';
+import { getCurrencySelectLabel, getCurrencySymbol } from '@/lib/exchange-rate-currency-options';
+import { convertAmountToKrw, formatKrwConvertedLabel } from '@/lib/exchange-rate-convert';
+import { useExchangeRates } from '@/lib/use-exchange-rates';
 const LIST_ID = LIST_IDS.PRODUCT_LIST;
 const LIMIT = 10;
 /** 검색 모달: 페이지네이션 UI 숨김 — 한 번에 더 많이 불러옴 */
@@ -38,6 +40,30 @@ const DETAIL_ID_PARAM = 'id';
 const STATUS_LABELS = { Active: '활성', EndOfLife: 'End of Life', Draft: '초안' };
 const BILLING_LABELS = { Monthly: '월간', Annual: '연간', Perpetual: '영구' };
 const CUSTOM_FIELDS_PREFIX = 'customFields.';
+
+/** 소비자가·순마진·유통가·유통시 순마진 등 가격/마진 열 배경 강조 */
+const PRODUCT_PRICING_HIGHLIGHT_KEYS = new Set([
+  'price',
+  'consumerMargin',
+  'channelPrice',
+  'channelMargin'
+]);
+
+function normalizeProductColLabel(label) {
+  return String(label || '').replace(/\s+/g, '').toLowerCase();
+}
+
+function isProductPricingHighlightColumn(col) {
+  if (!col?.key) return false;
+  if (PRODUCT_PRICING_HIGHLIGHT_KEYS.has(col.key)) return true;
+  const norm = normalizeProductColLabel(col.label);
+  if (!norm) return false;
+  if (norm.includes('소비자가')) return true;
+  if (norm.includes('유통시순마진') || norm.includes('유통순마진')) return true;
+  if (norm.includes('유통가')) return true;
+  if (norm.includes('순마진')) return true;
+  return false;
+}
 
 /** API JSON의 _id(ObjectId/문자열)와 Set 비교 시 동일하게 문자열로 통일 */
 function productIdKey(id) {
@@ -68,8 +94,37 @@ function getAuthHeader() {
 
 function formatPrice(price, currency) {
   if (price == null) return '—';
-  const sym = currency === 'USD' ? '$' : '₩';
+  const sym = getCurrencySymbol(currency);
   return `${sym}${Number(price).toLocaleString()}`;
+}
+
+function renderPriceWithKrwHint(amount, currency, dealBasRMap, { dashed = false } = {}) {
+  if (dashed) {
+    return <span className="product-list-price">-</span>;
+  }
+  const main = formatPrice(amount, currency);
+  if (main === '—') {
+    return <span className="product-list-price">{main}</span>;
+  }
+  const code = String(currency || 'KRW').trim().toUpperCase();
+  const n = Number(amount);
+  const krw = convertAmountToKrw(amount, currency, dealBasRMap);
+  const krwLabel = code !== 'KRW' && Number.isFinite(n) && n !== 0 && krw != null
+    ? formatKrwConvertedLabel(krw)
+    : null;
+
+  if (!krwLabel) {
+    return <span className="product-list-price">{main}</span>;
+  }
+
+  return (
+    <div className="product-list-price-stack">
+      <span className="product-list-price">{main}</span>
+      <span className="product-list-price-krw-hint" title="환율 고시 매매기준율 기준 환산">
+        약 {krwLabel}
+      </span>
+    </div>
+  );
 }
 
 /** 유통시 순 마진(금액) = 유통가 − 원가 — 영업 기회「유통시 순 마진 기준」가격(channelPrice)과 동일 축 */
@@ -140,6 +195,10 @@ export default function ProductList({
   const [bulkCopyLoading, setBulkCopyLoading] = useState(false);
   const [selectAllLoading, setSelectAllLoading] = useState(false);
   const [excelImportSeed, setExcelImportSeed] = useState(null);
+  const { dealBasRMap: exchangeDealBasRMap } = useExchangeRates({
+    getAuthHeader,
+    respectSessionFreeze: true
+  });
   const selectionAnchorIdxRef = useRef(null);
   const headerSelectAllRef = useRef(null);
 
@@ -427,7 +486,7 @@ export default function ProductList({
     if (key === 'channelPrice') return Number(row.channelPrice) || 0;
     if (key === 'consumerMargin') return getConsumerMargin(row);
     if (key === 'channelMargin') return getChannelMargin(row);
-    if (key === 'currency') return (row.currency || '').toLowerCase();
+    if (key === 'currency') return getCurrencySelectLabel(row.currency).toLowerCase();
     if (key === 'billingType') return (row.billingType || '').toLowerCase();
     if (key === 'status') return (row.status || '').toLowerCase();
     if (key.startsWith(CUSTOM_FIELDS_PREFIX)) {
@@ -673,7 +732,7 @@ export default function ProductList({
           유통가: row.channelPrice ?? '',
           '순 마진': getConsumerMargin(row),
           '유통시 순 마진': shouldDashChannelMargin(row) ? '-' : getChannelMargin(row),
-          통화: row.currency || '',
+          통화: row.currency ? getCurrencySelectLabel(row.currency) : '',
           결제주기: formatProductBillingDisplay(row.billingType, row.billingInterval),
           상태: row.status ? STATUS_LABELS[row.status] || row.status : '',
           수정일: row.updatedAt ? new Date(row.updatedAt).toLocaleString('ko-KR') : ''
@@ -751,11 +810,15 @@ export default function ProductList({
         <div className={`pl-mcard-grid ${isEol ? 'pl-mcard-grid--muted' : ''}`}>
           <div className="pl-mcard-metric">
             <span className="pl-mcard-metric-label">원가</span>
-            <span className="pl-mcard-metric-val">{formatPrice(row.costPrice, row.currency)}</span>
+            <span className="pl-mcard-metric-val">
+              {renderPriceWithKrwHint(row.costPrice, row.currency, exchangeDealBasRMap)}
+            </span>
           </div>
           <div className="pl-mcard-metric">
             <span className="pl-mcard-metric-label">소비자가</span>
-            <span className="pl-mcard-metric-val">{formatPrice(listPriceFromProduct(row), row.currency)}</span>
+            <span className="pl-mcard-metric-val">
+              {renderPriceWithKrwHint(listPriceFromProduct(row), row.currency, exchangeDealBasRMap)}
+            </span>
           </div>
           <div className="pl-mcard-metric">
             <span className="pl-mcard-metric-label">순 마진</span>
@@ -929,6 +992,7 @@ export default function ProductList({
                       key={col.key}
                       className={[
                         'list-template-th-sortable',
+                        isProductPricingHighlightColumn(col) ? 'pl-col-pricing-highlight' : '',
                         dragOverKey === col.key ? 'list-template-drag-over' : ''
                       ].filter(Boolean).join(' ')}
                       draggable
@@ -977,7 +1041,10 @@ export default function ProductList({
                         />
                       </td>
                       {displayColumns.map((col) => (
-                        <td key={col.key}>
+                        <td
+                          key={col.key}
+                          className={isProductPricingHighlightColumn(col) ? 'pl-col-pricing-highlight' : undefined}
+                        >
                           {col.key === 'name' && (
                             <div className="product-list-cell-name">
                               <span className="product-list-name">{row.name || '—'}</span>
@@ -990,7 +1057,11 @@ export default function ProductList({
                           )}
                           {col.key === 'version' && <span className="product-list-version">{row.version || '—'}</span>}
                           {col.key === 'code' && <span className="text-muted">{row.code || '—'}</span>}
-                          {col.key === 'currency' && <span>{row.currency || '—'}</span>}
+                          {col.key === 'currency' && (
+                            <span className="product-list-currency-label" title={row.currency || undefined}>
+                              {row.currency ? getCurrencySelectLabel(row.currency) : '—'}
+                            </span>
+                          )}
                           {col.key === 'billingType' && (
                             <span className="product-list-billing">
                               {formatProductBillingDisplay(row.billingType, row.billingInterval)}
@@ -998,7 +1069,7 @@ export default function ProductList({
                           )}
                           {col.key === 'price' && (
                             <div className="product-list-pricing">
-                              <span className="product-list-price">{formatPrice(listPriceFromProduct(row), row.currency)}</span>
+                              {renderPriceWithKrwHint(listPriceFromProduct(row), row.currency, exchangeDealBasRMap)}
                               {row.billingType && !template.visible?.billingType && (
                                 <span className="product-list-billing">
                                   {formatProductBillingDisplay(row.billingType, row.billingInterval)}
@@ -1007,18 +1078,21 @@ export default function ProductList({
                             </div>
                           )}
                           {col.key === 'costPrice' && (
-                            <span className="product-list-price">{formatPrice(row.costPrice, row.currency)}</span>
+                            renderPriceWithKrwHint(row.costPrice, row.currency, exchangeDealBasRMap)
                           )}
                           {col.key === 'channelPrice' && (
-                            <span className="product-list-price">{formatPrice(row.channelPrice, row.currency)}</span>
+                            renderPriceWithKrwHint(row.channelPrice, row.currency, exchangeDealBasRMap)
                           )}
                           {col.key === 'consumerMargin' && (
-                            <span className="product-list-price">{formatPrice(getConsumerMargin(row), row.currency)}</span>
+                            renderPriceWithKrwHint(getConsumerMargin(row), row.currency, exchangeDealBasRMap)
                           )}
                           {col.key === 'channelMargin' && (
-                            <span className="product-list-price">
-                              {shouldDashChannelMargin(row) ? '-' : formatPrice(getChannelMargin(row), row.currency)}
-                            </span>
+                            renderPriceWithKrwHint(
+                              getChannelMargin(row),
+                              row.currency,
+                              exchangeDealBasRMap,
+                              { dashed: shouldDashChannelMargin(row) }
+                            )
                           )}
                           {col.key === 'status' && (
                             <span className={`status-badge status-${row.status === 'Active' ? 'active' : row.status === 'EndOfLife' ? 'eol' : 'draft'}`}>
@@ -1117,10 +1191,12 @@ export default function ProductList({
         />
       )}
       {isDetailOpen && detailProduct && (
-        <ProductDetailModal
+        <AddProductModal
           product={detailProduct}
+          presentation="slide"
+          initialMode="view"
           onClose={closeDetail}
-          onUpdated={() => { fetchList(pagination.page); }}
+          onSaved={() => { fetchList(pagination.page); }}
           onDelete={canDeleteProduct ? handleDelete : undefined}
         />
       )}

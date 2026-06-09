@@ -1,5 +1,4 @@
-import { previewExcelMappedValue } from '../../customer-companies/customer-companies-excel-import-modal/excel-import-mapping-utils';
-import { opportunityMappingRowStatus } from './opportunity-excel-import-utils';
+import { opportunityMappingRowStatus, previewOpportunityMappedValue } from './opportunity-excel-import-utils';
 import '../../sales-pipeline/opportunity-modal/opportunity-modal.css';
 import '../../shared/excel-import-mapping-modal.css';
 import './opportunity-excel-import.css';
@@ -123,7 +122,7 @@ export default function OpportunityExcelImportMappingModal({
 
               <div className="excel-import-map-rows">
                 {rows.map((row) => {
-                  const preview = previewExcelMappedValue(sampleRow, row);
+                  const preview = previewOpportunityMappedValue(sampleRow, row);
                   const status = opportunityMappingRowStatus(row, preview);
                   const isConst = row.sourceType === 'constant';
                   return (

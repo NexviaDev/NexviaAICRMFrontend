@@ -537,6 +537,12 @@
   padding-right: 0.5rem !important;
 }
 
+.customer-companies-page .crm-list-sheet.data-table thead th.cc-th-check,
+.customer-companies-page .crm-list-sheet.data-table thead th.cc-th-favorite {
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+}
+
 .cc-th-check input,
 .cc-td-check input {
   width: 1rem;

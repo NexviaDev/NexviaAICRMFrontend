@@ -67,6 +67,28 @@
   box-shadow: none;
 }
 
+/* 고객사·연락처·제품 목록 — 헤더 폰트·높이 확대 */
+.customer-companies-page .crm-list-sheet.data-table thead th,
+.customer-company-employees-page .crm-list-sheet.data-table thead th,
+.product-list-page .crm-list-sheet.data-table thead th {
+  padding: 1rem 1.5rem;
+  font-size: 0.875rem;
+  line-height: 1.35;
+  letter-spacing: 0.02em;
+}
+
+.customer-companies-page .crm-list-sheet.data-table thead th .list-template-sort-icon,
+.customer-company-employees-page .crm-list-sheet.data-table thead th .list-template-sort-icon,
+.product-list-page .crm-list-sheet.data-table thead th .list-template-sort-icon {
+  font-size: 1.125rem;
+}
+
+.customer-companies-page .crm-list-sheet.data-table thead th .list-template-drag-handle,
+.customer-company-employees-page .crm-list-sheet.data-table thead th .list-template-drag-handle,
+.product-list-page .crm-list-sheet.data-table thead th .list-template-drag-handle {
+  font-size: 1.125rem;
+}
+
 .crm-list-sheet.data-table tbody td {
   text-align: left;
   vertical-align: middle;

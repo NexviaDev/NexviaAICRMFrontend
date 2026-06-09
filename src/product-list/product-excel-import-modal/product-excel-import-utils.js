@@ -4,9 +4,25 @@
 import * as XLSX from 'xlsx';
 import {
   readExcelMappedCell,
-  resolveExcelRowHeaderKey
+  resolveExcelRowHeaderKey,
+  previewExcelMappedValue
 } from '../../customer-companies/customer-companies-excel-import-modal/excel-import-mapping-utils';
 import { normalizeBillingInterval, parseBillingIntervalInput } from '@/lib/product-billing-utils';
+import {
+  getCurrencyMeta,
+  getCurrencySelectLabel,
+  PRODUCT_CURRENCY_SELECT_OPTIONS
+} from '@/lib/exchange-rate-currency-options';
+
+export const PRODUCT_PRICE_TARGET_KEYS = new Set([
+  'product.listPrice',
+  'product.costPrice',
+  'product.channelPrice'
+]);
+
+const PRODUCT_CURRENCY_CODE_SET = new Set(
+  PRODUCT_CURRENCY_SELECT_OPTIONS.map((o) => o.value)
+);
 
 export const MAX_PRODUCT_EXCEL_ROWS = 500;
 
@@ -28,7 +44,7 @@ export const PRODUCT_TARGET_OPTIONS_FALLBACK = [
   { value: 'product.listPrice', label: '소비자가(listPrice)' },
   { value: 'product.costPrice', label: '원가' },
   { value: 'product.channelPrice', label: '유통가' },
-  { value: 'product.currency', label: '통화 (KRW/USD)' },
+  { value: 'product.currency', label: '통화' },
   { value: 'product.billingType', label: '결제 주기 (월간·연간·영구)' },
   { value: 'product.billingInterval', label: '결제 기간 수 (연간=년, 월간=개월)' },
   { value: 'product.status', label: '상태 (활성·EOL·초안)' }
@@ -211,7 +227,7 @@ function readMapped(excelRow, mappingRows, targetKey) {
 }
 
 /** 엑셀·미리보기 문자열(₩, 원, 쉼표 등) 또는 숫자 셀 → API 금액 */
-function parsePriceNum(val) {
+export function parsePriceNum(val) {
   if (typeof val === 'number' && Number.isFinite(val)) return val;
   const s = String(val ?? '').trim();
   if (!s) return 0;
@@ -219,6 +235,105 @@ function parsePriceNum(val) {
   if (!cleaned || cleaned === '-' || cleaned === '.') return 0;
   const n = parseFloat(cleaned);
   return Number.isFinite(n) ? n : 0;
+}
+
+function formatPriceWhileTyping(raw) {
+  const s = String(raw).replace(/,/g, '');
+  if (s === '') return '';
+  if (s === '.') return '.';
+  const dot = s.indexOf('.');
+  const intRaw = dot === -1 ? s : s.slice(0, dot);
+  const decRaw = dot === -1 ? '' : s.slice(dot + 1).replace(/\./g, '');
+  if (!/^\d*$/.test(intRaw) || !/^\d*$/.test(decRaw)) {
+    return formatPriceExcelInputDisplay(parsePriceNum(raw));
+  }
+  const intFmt = intRaw === '' ? '' : intRaw.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  if (dot === -1) return intFmt;
+  return `${intFmt}.${decRaw}`;
+}
+
+/** 미리보기·입력 표시 — 기호(₩$원 등) 제거, 천 단위 쉼표 유지 */
+export function formatPriceExcelInputDisplay(raw) {
+  const s = String(raw ?? '').trim();
+  if (!s) return '';
+  if (!/\d/.test(s)) return '';
+  const n = parsePriceNum(raw);
+  return n.toLocaleString('ko-KR', {
+    maximumFractionDigits: 4,
+    minimumFractionDigits: 0
+  });
+}
+
+/** 입력 중 — 숫자·쉼표·소수점만 남기고 쉼표 포맷 */
+export function sanitizePriceExcelInput(raw) {
+  const s = String(raw ?? '').trim();
+  if (!s) return '';
+  const digitsOnly = s.replace(/,/g, '').replace(/[^\d.]/g, '');
+  return formatPriceWhileTyping(digitsOnly);
+}
+
+/**
+ * 엑셀 통화 문자열 → ISO 코드
+ * @returns {{ code: string, recognized: boolean, empty: boolean }}
+ */
+export function resolveCurrencyCode(raw) {
+  const s = String(raw ?? '').trim();
+  if (!s) return { code: 'KRW', recognized: true, empty: true };
+
+  const u = s.toUpperCase();
+  if (PRODUCT_CURRENCY_CODE_SET.has(u)) {
+    return { code: u, recognized: true, empty: false };
+  }
+
+  if (u === 'WON' || s.includes('원화') || (s.includes('원') && !s.includes('달러'))) {
+    return { code: 'KRW', recognized: true, empty: false };
+  }
+  if (u === '$' || u === 'US$' || u === 'USD' || (s.includes('달러') && s.includes('미국'))) {
+    return { code: 'USD', recognized: true, empty: false };
+  }
+  if (u === '€' || u === 'EUR' || s.includes('유로')) {
+    return { code: 'EUR', recognized: true, empty: false };
+  }
+  if (s.includes('엔') || (u === '¥' && s.includes('일본'))) {
+    return { code: 'JPY', recognized: true, empty: false };
+  }
+  if (s.includes('위안') || (u === '¥' && s.includes('중국'))) {
+    return { code: 'CNY', recognized: true, empty: false };
+  }
+  if (u === '£' || u === 'GBP' || s.includes('파운드')) {
+    return { code: 'GBP', recognized: true, empty: false };
+  }
+
+  for (const opt of PRODUCT_CURRENCY_SELECT_OPTIONS) {
+    if (u.includes(opt.value)) {
+      return { code: opt.value, recognized: true, empty: false };
+    }
+    const meta = getCurrencyMeta(opt.value);
+    if (meta.currencyName && s.includes(meta.currencyName)) {
+      return { code: opt.value, recognized: true, empty: false };
+    }
+    if (meta.symbol && meta.symbol.length <= 3 && s.includes(meta.symbol)) {
+      return { code: opt.value, recognized: true, empty: false };
+    }
+  }
+
+  return { code: 'KRW', recognized: false, empty: false };
+}
+
+/** 매핑 미리보기 — 가격·통화 필드 포맷 */
+export function previewProductMappedValue(sampleRow, mappingRow) {
+  const raw = previewExcelMappedValue(sampleRow, mappingRow);
+  const tk = String(mappingRow?.targetKey || '');
+  if (PRODUCT_PRICE_TARGET_KEYS.has(tk)) {
+    const formatted = formatPriceExcelInputDisplay(raw);
+    return formatted || raw || '';
+  }
+  if (tk === 'product.currency') {
+    if (!raw || !String(raw).trim()) return '';
+    const { code, recognized } = resolveCurrencyCode(raw);
+    return recognized ? getCurrencySelectLabel(code) : String(raw);
+  }
+  return raw;
 }
 
 export function normalizeBilling(raw) {
@@ -339,31 +454,61 @@ export function formatBillingPreviewCellValue(billingType, billingInterval = 1) 
 }
 
 /** 미리보기 진입 시 결제 주기 열을 한글(1년·1개월·영구)로 정규화 */
-export function normalizeExcelRowsBillingForPreview(excelRows, mappingRows) {
-  const billingKey = resolveProductExcelColumnKey(mappingRows, 'product.billingType');
-  if (!billingKey) return (excelRows || []).map((r) => ({ ...r }));
-
-  const intervalKey = resolveProductExcelColumnKey(mappingRows, 'product.billingInterval');
+function normalizeExcelRowsPricesAndCurrencyForPreview(excelRows, mappingRows) {
+  const currencyKey = resolveProductExcelColumnKey(mappingRows, 'product.currency');
+  const priceTargets = ['product.listPrice', 'product.costPrice', 'product.channelPrice'];
 
   return (excelRows || []).map((row) => {
     const next = { ...row };
-    const bKey = resolveExcelRowHeaderKey(row, billingKey) || billingKey;
-    const billingRaw = String(next[bKey] ?? '').trim();
-    const iKey = intervalKey ? resolveExcelRowHeaderKey(row, intervalKey) || intervalKey : '';
-    const intervalRaw = iKey ? String(next[iKey] ?? '').trim() : '';
-
-    const parsed = parseProductBillingValue(billingRaw, intervalRaw);
-    if (!parsed) return next;
-
-    if (intervalKey) {
-      next[bKey] =
-        parsed.billingType === 'Perpetual' ? '영구' : parsed.billingType === 'Annual' ? '연간' : '월간';
-      next[iKey] = parsed.billingType === 'Perpetual' ? '' : String(parsed.billingInterval);
-    } else {
-      next[bKey] = formatBillingPreviewCellValue(parsed.billingType, parsed.billingInterval);
+    for (const target of priceTargets) {
+      const colKey = resolveProductExcelColumnKey(mappingRows, target);
+      if (!colKey) continue;
+      const h = resolveExcelRowHeaderKey(row, colKey) || colKey;
+      const raw = next[h];
+      if (raw != null && String(raw).trim() !== '') {
+        next[h] = formatPriceExcelInputDisplay(raw);
+      }
+    }
+    if (currencyKey) {
+      const h = resolveExcelRowHeaderKey(row, currencyKey) || currencyKey;
+      const raw = next[h];
+      if (raw != null && String(raw).trim() !== '') {
+        const { code, recognized } = resolveCurrencyCode(raw);
+        if (recognized) next[h] = code;
+      }
     }
     return next;
   });
+}
+
+export function normalizeExcelRowsBillingForPreview(excelRows, mappingRows) {
+  const billingKey = resolveProductExcelColumnKey(mappingRows, 'product.billingType');
+  const baseRows = (excelRows || []).map((r) => ({ ...r }));
+  const intervalKey = resolveProductExcelColumnKey(mappingRows, 'product.billingInterval');
+
+  const billingNormalized = !billingKey
+    ? baseRows
+    : baseRows.map((row) => {
+        const next = { ...row };
+        const bKey = resolveExcelRowHeaderKey(row, billingKey) || billingKey;
+        const billingRaw = String(next[bKey] ?? '').trim();
+        const iKey = intervalKey ? resolveExcelRowHeaderKey(row, intervalKey) || intervalKey : '';
+        const intervalRaw = iKey ? String(next[iKey] ?? '').trim() : '';
+
+        const parsed = parseProductBillingValue(billingRaw, intervalRaw);
+        if (!parsed) return next;
+
+        if (intervalKey) {
+          next[bKey] =
+            parsed.billingType === 'Perpetual' ? '영구' : parsed.billingType === 'Annual' ? '연간' : '월간';
+          next[iKey] = parsed.billingType === 'Perpetual' ? '' : String(parsed.billingInterval);
+        } else {
+          next[bKey] = formatBillingPreviewCellValue(parsed.billingType, parsed.billingInterval);
+        }
+        return next;
+      });
+
+  return normalizeExcelRowsPricesAndCurrencyForPreview(billingNormalized, mappingRows);
 }
 
 export function billingIntervalCellIsValid(raw, billingTypeHint = 'Monthly') {
@@ -410,9 +555,7 @@ export function normalizeStatus(raw) {
 }
 
 export function normalizeCurrency(raw) {
-  const s = String(raw ?? '').trim().toUpperCase();
-  if (s === 'USD' || s === '$' || s.includes('달러')) return 'USD';
-  return 'KRW';
+  return resolveCurrencyCode(raw).code;
 }
 
 /**
@@ -539,12 +682,9 @@ function statusCellIsValid(raw) {
 }
 
 function currencyCellIsValid(raw) {
-  const s = String(raw ?? '').trim();
-  if (!s) return true;
-  const u = s.toUpperCase();
-  if (u === 'KRW' || u === 'USD' || u === '$') return true;
-  if (s.includes('달러') || s.includes('원')) return true;
-  return false;
+  const r = resolveCurrencyCode(raw);
+  if (r.empty) return true;
+  return r.recognized;
 }
 
 /** 미리보기 — 붉은 칸(등록 전 수정 필요) 건수 */
@@ -600,10 +740,10 @@ export const PRODUCT_STATUS_PREVIEW_OPTIONS = [
   { value: 'Draft', label: '초안 (Draft)' }
 ];
 
-export const PRODUCT_CURRENCY_PREVIEW_OPTIONS = [
-  { value: 'KRW', label: 'KRW (원)' },
-  { value: 'USD', label: 'USD ($)' }
-];
+export const PRODUCT_CURRENCY_PREVIEW_OPTIONS = PRODUCT_CURRENCY_SELECT_OPTIONS.map((opt) => ({
+  value: opt.value,
+  label: opt.label
+}));
 
 /** 매핑 행 상태 (import-mapping UI) */
 export function productRowStatus(row, preview) {

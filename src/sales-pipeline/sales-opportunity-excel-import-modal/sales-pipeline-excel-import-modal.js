@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { readSpreadsheetFileToRows } from '@/lib/spreadsheet-file-read';
 import { API_BASE } from '@/config';
 import { pingBackendHealth } from '@/lib/backend-wake';
-import { buildExcelSourceOptions, previewExcelMappedValue } from '../../customer-companies/customer-companies-excel-import-modal/excel-import-mapping-utils';
+import { buildExcelSourceOptions } from '../../customer-companies/customer-companies-excel-import-modal/excel-import-mapping-utils';
 import OpportunityExcelImportMappingModal from './opportunity-excel-import-mapping-modal';
 import OpportunityExcelRawPreviewModal from './opportunity-excel-raw-preview-modal';
 import { buildParticipantDirectoryFromOverview } from '@/lib/participant-directory-merge';
@@ -18,6 +18,7 @@ import {
   buildBulkImportPayloadFromPreviewRow,
   mappingCanProceed,
   opportunityMappingRowStatus,
+  previewOpportunityMappedValue,
   toApiMappings,
   getPipelineStageOptionsForImport,
   getOppStageExcelMapping,
@@ -282,7 +283,7 @@ export default function SalesPipelineExcelImportModal({ open, onClose, onImporte
   const summary = useMemo(() => {
     let err = 0;
     rows.forEach((row) => {
-      const preview = previewExcelMappedValue(sampleRow, row);
+      const preview = previewOpportunityMappedValue(sampleRow, row);
       const st = opportunityMappingRowStatus(row, preview);
       if (st.type === 'err') err += 1;
     });

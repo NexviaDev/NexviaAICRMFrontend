@@ -2,6 +2,7 @@
  * 드롭존 목록 모달 — opportunity-modal 과 동일 Tableau·파스텔 톤
  * (그라데이션 없음 · --primary / --opp-tableau-* 계열)
  */
+@import '../../shared/crm-price-display.css';
 .sp-dz-list-modal-overlay {
   background: rgba(15, 23, 42, 0.5);
   backdrop-filter: blur(4px);
@@ -95,6 +96,20 @@
   color: #334155;
   background: var(--dz-tableau-stripe);
   border-color: var(--dz-tableau-border);
+}
+
+.sp-dz-list-modal-sub--frozen {
+  color: #8a6a3a;
+  background: #fdf6ec;
+  border-color: #e8d4b8;
+}
+
+.sp-dz-data-table__td--money .crm-price-krw-hint {
+  font-size: 0.68rem;
+}
+
+.sp-dz-data-table__td--totals.sp-dz-data-table__td--money .crm-price-main {
+  font-weight: 700;
 }
 
 .sp-dz-list-modal-title-block {

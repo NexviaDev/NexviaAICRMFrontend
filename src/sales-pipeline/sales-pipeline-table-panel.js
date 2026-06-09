@@ -25,8 +25,11 @@ import {
   reorderColumnKeysAt,
   DZ_COL_DRAG_MIME,
   DZ_COL_MIN_WIDTH_DATA_PX,
-  DZ_COL_MIN_WIDTH_ROWNUM_PX
+  DZ_COL_MIN_WIDTH_ROWNUM_PX,
+  PIPELINE_MONEY_DISPLAY_KEYS,
+  getPipelineMoneyForColumn
 } from './drop-zone-list-modal/drop-zone-list-modal';
+import { PriceWithKrwHint, formatPriceWithKrwHintText } from '@/lib/currency-price-display';
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -71,6 +74,7 @@ export default function SalesPipelineTablePanel({
   stageForecastPercent,
   stageLabels: stageLabelsProp,
   canViewAdminContent,
+  dealBasRMap = {},
   onOpenEdit,
   onDragStart,
   onDragEnd,
@@ -620,7 +624,23 @@ export default function SalesPipelineTablePanel({
                             stageLabels,
                             canViewAdminContent
                           );
-                          const node = text || '\u00A0';
+                          const fp = stageForecastPercent[opp.stage];
+                          const moneyInfo =
+                            canViewAdminContent && PIPELINE_MONEY_DISPLAY_KEYS.has(colKey)
+                              ? getPipelineMoneyForColumn(colKey, flatRow, fp)
+                              : null;
+                          const node = moneyInfo ? (
+                            <PriceWithKrwHint
+                              amount={moneyInfo.amount}
+                              currency={moneyInfo.currency}
+                              dealBasRMap={dealBasRMap}
+                            />
+                          ) : (
+                            text || '\u00A0'
+                          );
+                          const titleText = moneyInfo
+                            ? formatPriceWithKrwHintText(moneyInfo.amount, moneyInfo.currency, dealBasRMap)
+                            : text;
                           const kStyle = listColumnValueInlineStyle(columnCellStyles, colKey);
                           return (
                             <td
@@ -628,7 +648,7 @@ export default function SalesPipelineTablePanel({
                               className={`sp-dz-data-table__td sp-pl-data-table__td${
                                 flatRow.kind === 'line' ? ' sp-dz-data-table__td--tree-line-indent' : ''
                               }${colKey === 'productName' ? ' sp-dz-data-table__td--product-name' : ''}`}
-                              title={text}
+                              title={titleText}
                             >
                               <span className="list-col-value-style" style={kStyle || undefined}>
                                 {node}

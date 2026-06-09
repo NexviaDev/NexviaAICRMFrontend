@@ -28,13 +28,56 @@ import {
   isExcelMetaHeaderKey,
   OPP_EXCEL_ROW_META_ASSIGNEE_ID,
   OPP_EXCEL_ROW_META_COMPANY_ID,
-  OPP_EXCEL_ROW_META_FORCE_IMPORT
+  OPP_EXCEL_ROW_META_FORCE_IMPORT,
+  resolveCurrencyValue,
+  OPP_CURRENCY_PREVIEW_OPTIONS,
+  OPP_PRICE_TARGET_KEYS
 } from './opportunity-excel-import-utils';
+import {
+  formatPriceExcelInputDisplay,
+  sanitizePriceExcelInput
+} from '../../product-list/product-excel-import-modal/product-excel-import-utils';
 import '../../sales-pipeline/opportunity-modal/opportunity-modal.css';
 import '../../shared/excel-import-mapping-modal.css';
 import './opportunity-excel-import.css';
 
 const DISPLAY_MAX_ROWS = 200;
+
+function CurrencyExcelCell({ raw, saving, onPick }) {
+  const cellRaw = raw == null ? '' : String(raw);
+  const resolved = resolveCurrencyValue(cellRaw);
+  const selectValue = resolved.valid ? resolved.value : '';
+
+  return (
+    <select
+      className={`opp-excel-raw-cell-select opp-excel-raw-cell-select--currency ${!resolved.valid && cellRaw ? 'is-invalid' : ''}`}
+      value={selectValue || 'KRW'}
+      onChange={(e) => {
+        const v = e.target.value;
+        if (!v) return;
+        onPick(v);
+      }}
+      disabled={saving}
+      aria-invalid={!resolved.valid && Boolean(cellRaw)}
+      title={
+        !resolved.valid && cellRaw
+          ? `「${cellRaw}」은 등록 가능한 통화 코드가 아닙니다.`
+          : undefined
+      }
+    >
+      {!resolved.valid && cellRaw ? (
+        <option value="" disabled>
+          {cellRaw} (목록에 없음)
+        </option>
+      ) : null}
+      {OPP_CURRENCY_PREVIEW_OPTIONS.map((opt) => (
+        <option key={opt.value} value={opt.value}>
+          {opt.label}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 function StageExcelCell({ raw, stageOptions, saving, onPick }) {
   const cellRaw = raw == null ? '' : String(raw);
@@ -560,7 +603,8 @@ export default function OpportunityExcelRawPreviewModal({
                             col.targetKey === 'opp.channelDistributor' ||
                             col.targetKey === 'opp.assignedToName' ||
                             col.targetKey === 'opp.snapshotCompanyName' ||
-                            col.targetKey === 'opp.productName'
+                            col.targetKey === 'opp.productName' ||
+                            col.targetKey === 'opp.currency'
                               ? 'opp-excel-raw-preview-th--stage'
                               : ''
                           }
@@ -583,6 +627,9 @@ export default function OpportunityExcelRawPreviewModal({
                           ) : null}
                           {col.targetKey === 'opp.assignedToName' ? (
                             <span className="opp-excel-raw-preview-th-badge">사내 담당</span>
+                          ) : null}
+                          {col.targetKey === 'opp.currency' ? (
+                            <span className="opp-excel-raw-preview-th-badge">통화</span>
                           ) : null}
                         </th>
                       ))}
@@ -662,6 +709,22 @@ export default function OpportunityExcelRawPreviewModal({
                                   onTextChange={(v) => handleCell(idx, h, v)}
                                   onOpenPicker={() => setAssigneePickerRow(idx)}
                                   onForceRow={() => onForceImportRow?.(idx)}
+                                />
+                              ) : tk === 'opp.currency' ? (
+                                <CurrencyExcelCell
+                                  raw={cellRaw}
+                                  saving={saving}
+                                  onPick={(v) => handleCell(idx, h, v)}
+                                />
+                              ) : OPP_PRICE_TARGET_KEYS.has(tk) ? (
+                                <input
+                                  type="text"
+                                  className="opp-excel-raw-cell-input"
+                                  value={formatPriceExcelInputDisplay(cellRaw) || cellRaw}
+                                  onChange={(e) => handleCell(idx, h, sanitizePriceExcelInput(e.target.value))}
+                                  disabled={saving}
+                                  aria-label={`${idx + 1}행 ${col.label}`}
+                                  inputMode="decimal"
                                 />
                               ) : (
                                 <input

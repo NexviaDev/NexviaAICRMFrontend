@@ -1,0 +1,60 @@
+.crm-price-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+}
+
+.crm-price-main {
+  font-weight: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.crm-price-krw-hint {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-muted, #6b7280);
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.sp-kanban-card-field--money .crm-price-stack,
+.sp-dz-data-table__td .crm-price-stack,
+.sp-mobile-deal-value .crm-price-stack {
+  align-items: flex-start;
+}
+
+.sp-mobile-deal-value-wrap .crm-price-krw-hint,
+.sp-card-metric-inline .crm-price-krw-hint {
+  font-size: 0.68rem;
+}
+
+.opp-modal-summary-dash-value .crm-price-stack {
+  align-items: flex-start;
+}
+
+.opp-exchange-sync-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid #d4e4f4;
+  background: #f0f7fc;
+  color: #3d6f8f;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.opp-exchange-sync-btn:hover {
+  background: #e4f0fa;
+}
+
+.opp-exchange-sync-btn.is-frozen {
+  border-color: #e8d4b8;
+  background: #fdf6ec;
+  color: #8a6a3a;
+}

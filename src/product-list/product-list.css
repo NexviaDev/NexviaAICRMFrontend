@@ -166,6 +166,35 @@
   font-size: inherit;
 }
 
+.product-list-price-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+}
+
+.product-list-price-krw-hint {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.pl-mcard-metric-val .product-list-price-stack {
+  align-items: flex-end;
+}
+
+.pl-mcard-metric-val .product-list-price-krw-hint {
+  font-size: 0.68rem;
+}
+
+.product-list-currency-label {
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--text, #1e3344);
+}
+
 .product-list-billing {
   font-size: inherit;
   text-transform: uppercase;
@@ -176,6 +205,28 @@
 .product-list-row-eol .product-list-name,
 .product-list-row-eol .product-list-uid,
 .product-list-row-eol .product-list-version,
+/* 소비자가·순마진·유통가·유통시 순마진 열 — 파스텔 배경 강조 */
+.product-list-page .crm-list-sheet.data-table thead th.pl-col-pricing-highlight {
+  background: #6a94b8;
+  box-shadow: inset 0 -2px 0 rgba(255, 255, 255, 0.18);
+}
+
+.product-list-page .crm-list-sheet.data-table tbody td.pl-col-pricing-highlight {
+  background: #f3f8e8;
+}
+
+.product-list-page .crm-list-sheet.data-table tbody tr.crm-list-sheet-row--stripe-a td.pl-col-pricing-highlight {
+  background: #eaf2dc;
+}
+
+.product-list-page .crm-list-sheet.data-table tbody tr:hover td.pl-col-pricing-highlight {
+  background: #e2ecd4;
+}
+
+.product-list-page .crm-list-sheet.data-table tbody tr.product-list-row-eol td.pl-col-pricing-highlight {
+  background: #eef2e8;
+}
+
 .product-list-row-eol .product-list-price,
 .product-list-row-eol .product-list-billing {
   opacity: 0.7;
@@ -366,6 +417,12 @@
   }
 }
 
+/* 본문 셀 높이·여백 — customer-companies .data-table 과 동일 */
+.product-list-page .crm-list-sheet.data-table tbody td:not(.pl-td-checkbox) {
+  padding: 1rem 1.5rem;
+  font-size: 0.875rem;
+}
+
 .product-list-page .crm-list-sheet th:not(.pl-th-checkbox),
 .product-list-page .crm-list-sheet td:not(.pl-td-checkbox) {
   min-width: 6rem;
@@ -375,7 +432,7 @@
   white-space: normal;
   word-break: break-word;
   overflow-wrap: anywhere;
-  vertical-align: top;
+  vertical-align: middle;
 }
 
 .product-list-page .crm-list-sheet .product-list-cell-name {
@@ -474,11 +531,18 @@
 /* 행 선택 · 일괄 삭제 모달 */
 .product-list-page .crm-list-sheet thead th.pl-th-checkbox,
 .product-list-page .crm-list-sheet tbody td.pl-td-checkbox {
-  width: 2.75rem;
+  width: 3rem;
   text-align: center !important;
   vertical-align: middle;
-  padding-left: 0.35rem !important;
-  padding-right: 0.35rem !important;
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+  padding-left: 0.5rem !important;
+  padding-right: 0.5rem !important;
+}
+
+.product-list-page .crm-list-sheet thead th.pl-th-checkbox {
+  padding-top: 1rem;
+  padding-bottom: 1rem;
 }
 
 .product-list-page .pl-th-checkbox {

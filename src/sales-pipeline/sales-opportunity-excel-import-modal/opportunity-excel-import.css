@@ -269,6 +269,16 @@
   box-shadow: 0 0 0 2px rgba(44, 123, 182, 0.15);
 }
 
+.opp-excel-raw-cell-select--currency {
+  min-width: 9rem;
+  max-width: 16rem;
+}
+
+.opp-excel-raw-cell-input--price {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
 .opp-excel-raw-preview-th--stage {
   background: rgba(238, 244, 250, 0.95) !important;
 }

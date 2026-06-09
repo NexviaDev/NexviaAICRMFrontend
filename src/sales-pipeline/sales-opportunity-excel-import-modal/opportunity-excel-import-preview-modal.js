@@ -1,5 +1,9 @@
 import { useMemo, useCallback } from 'react';
-import { revalidatePreviewRow, getPipelineStageOptionsForImport } from './opportunity-excel-import-utils';
+import {
+  revalidatePreviewRow,
+  getPipelineStageOptionsForImport,
+  OPP_CURRENCY_PREVIEW_OPTIONS
+} from './opportunity-excel-import-utils';
 
 function rowCanBulkImport(row) {
   return row?.isValid || row?.forceImport;
@@ -19,7 +23,7 @@ export default function OpportunityExcelImportPreviewModal({
   onUpdateRow
 }) {
   const stageOptions = getPipelineStageOptionsForImport(meta);
-  const currencies = meta?.currencies || ['KRW', 'USD', 'JPY'];
+  const currencyOptions = OPP_CURRENCY_PREVIEW_OPTIONS;
   const priceBasisOptions = meta?.priceBasisOptions || [
     { value: 'consumer', label: '다이렉트' },
     { value: 'channel', label: '유통' }
@@ -244,9 +248,9 @@ export default function OpportunityExcelImportPreviewModal({
                       onChange={(e) => patchRow(row.rowIndex, { currency: e.target.value })}
                       disabled={saving}
                     >
-                      {currencies.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
+                      {currencyOptions.map((c) => (
+                        <option key={c.value} value={c.value}>
+                          {c.label}
                         </option>
                       ))}
                     </select>

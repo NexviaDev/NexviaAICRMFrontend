@@ -7,6 +7,13 @@ import {
   scheduleCustomDatesColumnTitle
 } from '@/lib/sales-opportunity-schedule-labels';
 import { financeCustomFieldsColumnTitle } from '@/lib/sales-opportunity-finance-labels';
+import {
+  PriceWithKrwHint,
+  formatPriceWithKrwHintText,
+  formatAppliedExchangeRateLabel
+} from '@/lib/currency-price-display';
+import { convertAmountToKrw } from '@/lib/exchange-rate-convert';
+import { useExchangeRates } from '@/lib/use-exchange-rates';
 import { resolvePipelineStageLabel } from '../pipeline-stage-labels';
 import './drop-zone-list-modal.css';
 
@@ -281,6 +288,54 @@ function computeOppNetMargin(opp) {
   if (costPerUnit == null) return null;
   const qty = Math.max(0, Number(opp.quantity) || 1);
   return Math.round(toMoneyNumber(opp.value) - costPerUnit * qty);
+}
+
+/** 파이프라인 표·칸반 — 통화 기호+원화 힌트 표시 대상 금액 열 */
+const PIPELINE_MONEY_DISPLAY_KEYS = new Set([
+  'value',
+  'contractAmount',
+  'invoiceAmount',
+  'unitPrice',
+  'discountValue',
+  'discountAmount',
+  'productListPriceSnapshot',
+  'productCostPriceSnapshot',
+  'productChannelPriceSnapshot',
+  '__dz_net_margin',
+  '__dz_forecast_expected'
+]);
+
+/** @returns {{ amount: number, currency: string } | null} */
+function getPipelineMoneyForColumn(colKey, flatRow, forecastPercent) {
+  const opp = flatRow?.opp;
+  if (!opp) return null;
+  const currency = opp.currency || 'KRW';
+
+  if (flatRow.kind === 'line') {
+    if (!LINE_ITEM_MONEY_KEYS.has(colKey)) return null;
+    const val = flatRow.line?.[colKey];
+    if (val == null || val === '') return null;
+    const n = Number(val);
+    if (!Number.isFinite(n)) return null;
+    return { amount: n, currency };
+  }
+
+  if (colKey === '__dz_net_margin') {
+    const m = computeOppNetMargin(opp);
+    return m != null ? { amount: m, currency } : null;
+  }
+  if (colKey === '__dz_forecast_expected') {
+    const fp = forecastPercent;
+    if (!Number.isFinite(fp)) return null;
+    return { amount: Math.round(toMoneyNumber(opp.value) * (fp / 100)), currency };
+  }
+  if (!PIPELINE_MONEY_DISPLAY_KEYS.has(colKey)) return null;
+
+  const val = opp[colKey];
+  if (val == null || val === '') return null;
+  const n = Number(val);
+  if (!Number.isFinite(n)) return null;
+  return { amount: n, currency };
 }
 
 /** 통화 기호 없이 숫자만(엑셀 느낌) */
@@ -884,6 +939,54 @@ function getOppNumericContributionForTotals(colKey, opp, forecastPercent, canVie
   return null;
 }
 
+function toKrwForTotals(amount, currency, dealBasRMap) {
+  const code = String(currency || 'KRW').trim().toUpperCase();
+  const n = Number(amount);
+  if (!Number.isFinite(n)) return 0;
+  if (code === 'KRW') return Math.round(n);
+  const krw = convertAmountToKrw(n, code, dealBasRMap);
+  return krw != null ? Math.round(krw) : 0;
+}
+
+/** 금액 열 합계 — 통화별 원화 환산 후 합산 */
+function computeMoneyColumnTotalKrw(colKey, opps, forecastPercent, canViewAdminContent, dealBasRMap) {
+  if (!PIPELINE_MONEY_DISPLAY_KEYS.has(colKey)) return null;
+  if (!canViewAdminContent) return null;
+  if (!opps.length) return null;
+  let sum = 0;
+  let had = false;
+  const foreignCurrencies = new Set();
+  for (const opp of opps) {
+    const v = getOppNumericContributionForTotals(colKey, opp, forecastPercent, canViewAdminContent);
+    if (v == null || !Number.isFinite(v)) continue;
+    const cur = String(opp.currency || 'KRW').trim().toUpperCase();
+    if (cur !== 'KRW') foreignCurrencies.add(cur);
+    sum += toKrwForTotals(v, cur, dealBasRMap);
+    had = true;
+  }
+  if (!had) return null;
+  return {
+    type: 'money',
+    krw: sum,
+    hadForeign: foreignCurrencies.size > 0,
+    foreignCurrencies: [...foreignCurrencies]
+  };
+}
+
+function buildTotalsKrwExtraHint(hadForeign, foreignCurrencies, dealBasRMap, exchangeRatesFrozen, frozenAt) {
+  if (!hadForeign) return null;
+  let hint = '외화 환산 포함 합계';
+  if (exchangeRatesFrozen && foreignCurrencies.length) {
+    const rateParts = foreignCurrencies
+      .map((c) =>
+        formatAppliedExchangeRateLabel(c, dealBasRMap, { frozen: true, frozenAt })
+      )
+      .filter(Boolean);
+    if (rateParts.length) hint += ` · ${rateParts.join(' · ')}`;
+  }
+  return hint;
+}
+
 function formatTotalsAggregateForColumn(colKey, opps, forecastPercent, canViewAdminContent) {
   if (!opps.length) return '\u00A0';
   let sum = 0;
@@ -1336,6 +1439,11 @@ export default function DropZoneListModal({
   const columnSettingsBusyRef = useRef(false);
   const [columnSettingsSaving, setColumnSettingsSaving] = useState(false);
 
+  const { dealBasRMap, exchangeRatesFrozen, frozenAt } = useExchangeRates({
+    getAuthHeader,
+    respectSessionFreeze: true
+  });
+
   const defaultYearStr = String(new Date().getFullYear());
   const yearSelectValues = buildYearSelectValues(Number(defaultYearStr));
 
@@ -1589,15 +1697,26 @@ export default function DropZoneListModal({
   const totalsByColumn = useMemo(() => {
     const out = {};
     for (const colKey of columnKeys) {
-      out[colKey] = formatTotalsAggregateForColumn(
+      const krwTotal = computeMoneyColumnTotalKrw(
         colKey,
         sortedFiltered,
         forecastPercent,
-        canViewAdminContent
+        canViewAdminContent,
+        dealBasRMap
       );
+      if (krwTotal) {
+        out[colKey] = krwTotal;
+      } else {
+        out[colKey] = formatTotalsAggregateForColumn(
+          colKey,
+          sortedFiltered,
+          forecastPercent,
+          canViewAdminContent
+        );
+      }
     }
     return out;
-  }, [columnKeys, sortedFiltered, forecastPercent, canViewAdminContent]);
+  }, [columnKeys, sortedFiltered, forecastPercent, canViewAdminContent, dealBasRMap]);
 
   const dataTableRef = useRef(null);
   const [measuredColWidths, setMeasuredColWidths] = useState(null);
@@ -1847,6 +1966,19 @@ export default function DropZoneListModal({
               </h2>
               {Number.isFinite(forecastPercent) ? (
                 <span className="sp-dz-list-modal-sub">Forecast {forecastPercent}%</span>
+              ) : null}
+              {exchangeRatesFrozen ? (
+                <span className="sp-dz-list-modal-sub sp-dz-list-modal-sub--frozen" title="기회 모달에서 고정한 환율이 적용됩니다">
+                  환율 고정 중
+                  {frozenAt
+                    ? ` · ${new Date(frozenAt).toLocaleString('ko-KR', {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}`
+                    : ''}
+                </span>
               ) : null}
             </div>
           </div>
@@ -2314,15 +2446,40 @@ export default function DropZoneListModal({
                           </td>
                           {columnKeys.map((colKey) => {
                             const { text, node } = renderDisplayRowCell(colKey, flatRow, forecastPercent);
+                            const moneyInfo =
+                              canViewAdminContent && PIPELINE_MONEY_DISPLAY_KEYS.has(colKey)
+                                ? getPipelineMoneyForColumn(colKey, flatRow, forecastPercent)
+                                : null;
+                            const cellNode = moneyInfo ? (
+                              <PriceWithKrwHint
+                                amount={moneyInfo.amount}
+                                currency={moneyInfo.currency}
+                                dealBasRMap={dealBasRMap}
+                                exchangeRatesFrozen={exchangeRatesFrozen}
+                                frozenAt={frozenAt}
+                              />
+                            ) : (
+                              node
+                            );
+                            const titleText = moneyInfo
+                              ? formatPriceWithKrwHintText(
+                                  moneyInfo.amount,
+                                  moneyInfo.currency,
+                                  dealBasRMap,
+                                  { exchangeRatesFrozen, frozenAt }
+                                )
+                              : text;
                             return (
                               <td
                                 key={colKey}
                                 className={`sp-dz-data-table__td${
                                   flatRow.kind === 'line' ? ' sp-dz-data-table__td--tree-line-indent' : ''
-                                }${colKey === 'productName' ? ' sp-dz-data-table__td--product-name' : ''}`}
-                                title={text}
+                                }${colKey === 'productName' ? ' sp-dz-data-table__td--product-name' : ''}${
+                                  moneyInfo ? ' sp-dz-data-table__td--money' : ''
+                                }`}
+                                title={titleText}
                               >
-                                {node}
+                                {cellNode}
                               </td>
                             );
                           })}
@@ -2352,11 +2509,42 @@ export default function DropZoneListModal({
                           </td>
                           {columnKeys.map((colKey) => {
                             const t = totalsByColumn[colKey];
+                            if (t && typeof t === 'object' && t.type === 'money') {
+                              const extraHint = buildTotalsKrwExtraHint(
+                                t.hadForeign,
+                                t.foreignCurrencies,
+                                dealBasRMap,
+                                exchangeRatesFrozen,
+                                frozenAt
+                              );
+                              const titleText = formatPriceWithKrwHintText(
+                                t.krw,
+                                'KRW',
+                                dealBasRMap,
+                                { exchangeRatesFrozen, frozenAt, extraKrwHint: extraHint }
+                              );
+                              return (
+                                <td
+                                  key={`tot-${colKey}`}
+                                  className="sp-dz-data-table__td sp-dz-data-table__td--totals sp-dz-data-table__td--money"
+                                  title={titleText}
+                                >
+                                  <PriceWithKrwHint
+                                    amount={t.krw}
+                                    currency="KRW"
+                                    dealBasRMap={dealBasRMap}
+                                    exchangeRatesFrozen={exchangeRatesFrozen}
+                                    frozenAt={frozenAt}
+                                    extraKrwHint={extraHint}
+                                  />
+                                </td>
+                              );
+                            }
                             return (
                               <td
                                 key={`tot-${colKey}`}
                                 className="sp-dz-data-table__td sp-dz-data-table__td--totals"
-                                title={t}
+                                title={typeof t === 'string' ? t : ''}
                               >
                                 {t || '\u00A0'}
                               </td>
@@ -2381,5 +2569,7 @@ export {
   columnHeaderLabel,
   COLUMN_LABELS,
   DROPZONE_DEFAULT_COLUMN_ORDER,
-  isPersonalPurchaseOpp
+  isPersonalPurchaseOpp,
+  PIPELINE_MONEY_DISPLAY_KEYS,
+  getPipelineMoneyForColumn
 };

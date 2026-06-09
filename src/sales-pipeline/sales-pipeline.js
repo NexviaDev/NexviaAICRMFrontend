@@ -38,6 +38,12 @@ import {
   fetchSalesOpportunityFinanceFieldContext,
   SALES_OPPORTUNITY_FINANCE_DEFS_CHANGED
 } from '@/lib/sales-opportunity-finance-labels';
+import { PriceWithKrwHint } from '@/lib/currency-price-display';
+import { useExchangeRates } from '@/lib/use-exchange-rates';
+import {
+  getPipelineMoneyForColumn,
+  PIPELINE_MONEY_DISPLAY_KEYS
+} from './drop-zone-list-modal/drop-zone-list-modal';
 
 const SALES_PIPELINE_LIST_ID = LIST_IDS.SALES_PIPELINE;
 const MODAL_PARAM = 'oppModal';
@@ -154,12 +160,6 @@ function cardSubtitleLine(opp) {
   return '—';
 }
 
-function formatCurrency(value, currency) {
-  if (!value && value !== 0) return currency === 'KRW' ? '₩0' : '$0';
-  if (currency === 'USD') return '$' + Number(value).toLocaleString();
-  if (currency === 'JPY') return '¥' + Number(value).toLocaleString();
-  return '₩' + Number(value).toLocaleString();
-}
 
 /** 단계 Forecast(%) 적용 예상 매출 합(표시 통화는 열의 첫 기회 통화, 없으면 KRW) */
 function sumForecastExpectedAmount(items, forecastPercent) {
@@ -270,21 +270,32 @@ function computeOppNetMargin(opp) {
   return Math.round(toMoneyNumber(opp.value) - costPerUnit * qty);
 }
 
-function renderOppAdminCardFooter(opp, forecastPercentMap) {
+function renderOppAdminCardFooter(opp, forecastPercentMap, dealBasRMap) {
   const m = computeOppNetMargin(opp);
   const fp = forecastPercentMap ? forecastPercentMap[opp.stage] : null;
-  const marginVal = m != null ? formatCurrency(m, opp.currency) : '—';
-  const forecastVal =
-    Number.isFinite(fp) && fp != null ? formatCurrency(Math.round(toMoneyNumber(opp.value) * (fp / 100)), opp.currency) : '—';
+  const forecastAmt =
+    Number.isFinite(fp) && fp != null ? Math.round(toMoneyNumber(opp.value) * (fp / 100)) : null;
   return (
     <div className="sp-card-metrics-inline" aria-label="순마진·Forecast 예상 금액">
       <div className="sp-card-metric-inline">
         <span className="sp-card-net-margin-label">순마진</span>
-        <span className="sp-card-net-margin-value">{marginVal}</span>
+        <span className="sp-card-net-margin-value">
+          {m != null ? (
+            <PriceWithKrwHint amount={m} currency={opp.currency} dealBasRMap={dealBasRMap} />
+          ) : (
+            '—'
+          )}
+        </span>
       </div>
       <div className="sp-card-metric-inline sp-card-metric-inline--forecast">
         <span className="sp-card-net-margin-label">Forecast 예상 금액</span>
-        <span className="sp-card-net-margin-value">{forecastVal}</span>
+        <span className="sp-card-net-margin-value">
+          {forecastAmt != null ? (
+            <PriceWithKrwHint amount={forecastAmt} currency={opp.currency} dealBasRMap={dealBasRMap} />
+          ) : (
+            '—'
+          )}
+        </span>
       </div>
     </div>
   );
@@ -409,6 +420,7 @@ export default function SalesPipeline() {
   const productOptionsPrimedRef = useRef(false);
   const assigneeOptionsPrimedRef = useRef(false);
   const [healthPinged, setHealthPinged] = useState(false);
+  const { dealBasRMap } = useExchangeRates({ getAuthHeader, respectSessionFreeze: true });
   const [listMeta, setListMeta] = useState(null);
   const [stageDefinitions, setStageDefinitions] = useState([]);
   const [showStagesModal, setShowStagesModal] = useState(false);
@@ -1046,9 +1058,9 @@ export default function SalesPipeline() {
   /** 관리자·대표: 금액·단계 관리·기회 삭제 등 (Manager 제외) */
   const canViewAdminContent = isAdminOrAboveRole(getStoredCrmUser()?.role);
 
-  const formatOppValue = (opp) => {
+  const renderOppValue = (opp) => {
     if (!canViewAdminContent) return '—';
-    return formatCurrency(opp.value, opp.currency);
+    return <PriceWithKrwHint amount={opp.value} currency={opp.currency} dealBasRMap={dealBasRMap} />;
   };
 
   const activeMobileStage =
@@ -1145,6 +1157,10 @@ export default function SalesPipeline() {
             const kStyle = listColumnValueInlineStyle(pipelineListTemplate.columnCellStyles, colKey);
             const isProductNameCol = colKey === 'productName';
             const label = columnHeaderLabel(colKey, scheduleFieldLabelByKey, financeFieldLabelByKey);
+            const moneyInfo =
+              canViewAdminContent && PIPELINE_MONEY_DISPLAY_KEYS.has(colKey)
+                ? getPipelineMoneyForColumn(colKey, { opp, kind: 'summary' }, fp)
+                : null;
             const valTitle = isPersonalCompanyCell
               ? `${text} (개인 구매)`
               : text === ''
@@ -1181,6 +1197,12 @@ export default function SalesPipeline() {
                       </span>
                       <span className="sp-kanban-card-personal-tag">개인 구매</span>
                     </>
+                  ) : moneyInfo ? (
+                    <PriceWithKrwHint
+                      amount={moneyInfo.amount}
+                      currency={moneyInfo.currency}
+                      dealBasRMap={dealBasRMap}
+                    />
                   ) : (
                     <span
                       className={`sp-kanban-card-field-val-inner${spanFull ? ' sp-kanban-card-field-val-inner--wrap' : ''}`}
@@ -1456,7 +1478,12 @@ export default function SalesPipeline() {
                     {mobileForecastSum != null ? (
                       <span className="sp-mobile-deals-forecast-expected">
                         {' '}
-                        · 예상 {formatCurrency(mobileForecastSum, mobileColCurrency)}
+                        · 예상{' '}
+                        <PriceWithKrwHint
+                          amount={mobileForecastSum}
+                          currency={mobileColCurrency}
+                          dealBasRMap={dealBasRMap}
+                        />
                       </span>
                     ) : null}
                   </p>
@@ -1514,8 +1541,10 @@ export default function SalesPipeline() {
                               </div>
                             </div>
                             <div className="sp-mobile-deal-value-wrap">
-                              <p className="sp-mobile-deal-value">{formatOppValue(opp)}</p>
-                              {canViewAdminContent ? renderOppAdminCardFooter(opp, stageForecastPercent) : null}
+                              <p className="sp-mobile-deal-value">{renderOppValue(opp)}</p>
+                              {canViewAdminContent
+                                ? renderOppAdminCardFooter(opp, stageForecastPercent, dealBasRMap)
+                                : null}
                             </div>
                           </div>
                           {canViewAdminContent ? (
@@ -1550,6 +1579,7 @@ export default function SalesPipeline() {
                 stageForecastPercent={stageForecastPercent}
                 stageLabels={stageLabels}
                 canViewAdminContent={canViewAdminContent}
+                dealBasRMap={dealBasRMap}
                 onOpenEdit={openEditModal}
                 onDragStart={handleDragStart}
                 onDragEnd={handleDragEnd}
@@ -1605,7 +1635,12 @@ export default function SalesPipeline() {
                                   className="sp-kanban-forecast-expected"
                                   title={`이 단계 카드 금액 합 × Forecast ${fp}%`}
                                 >
-                                  예상 매출 {formatCurrency(forecastExpectedSum, colCurrency)}
+                                  예상 매출{' '}
+                                  <PriceWithKrwHint
+                                    amount={forecastExpectedSum}
+                                    currency={colCurrency}
+                                    dealBasRMap={dealBasRMap}
+                                  />
                                 </span>
                               ) : null}
                             </div>
@@ -1657,7 +1692,12 @@ export default function SalesPipeline() {
                             ) : null}
                             {dzForecastSum != null ? (
                               <span className="sp-dz-forecast-expected" title={`금액 합 × Forecast ${dzFp}%`}>
-                                예상 {formatCurrency(dzForecastSum, dzCurrency)}
+                                예상{' '}
+                                <PriceWithKrwHint
+                                  amount={dzForecastSum}
+                                  currency={dzCurrency}
+                                  dealBasRMap={dealBasRMap}
+                                />
                               </span>
                             ) : null}
                           </span>

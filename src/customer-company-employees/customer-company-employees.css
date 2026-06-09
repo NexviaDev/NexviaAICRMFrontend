@@ -427,6 +427,12 @@
   padding-right: 0 !important;
 }
 
+.customer-company-employees-page .crm-list-sheet.data-table thead th.cce-th-check,
+.customer-company-employees-page .crm-list-sheet.data-table thead th.cce-th-favorite {
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+}
+
 .cce-th-favorite-icon {
   color: #d9dce8;
   font-size: 1.15rem;

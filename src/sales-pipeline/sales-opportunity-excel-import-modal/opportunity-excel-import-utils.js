@@ -12,8 +12,24 @@ import {
 import { OPPORTUNITY_PRICE_BASIS_OPTIONS } from '@/lib/product-price-utils';
 import {
   readExcelMappedCell,
-  normalizeExcelHeaderKey
+  normalizeExcelHeaderKey,
+  previewExcelMappedValue
 } from '../../customer-companies/customer-companies-excel-import-modal/excel-import-mapping-utils';
+import {
+  resolveCurrencyCode,
+  formatPriceExcelInputDisplay
+} from '../../product-list/product-excel-import-modal/product-excel-import-utils';
+import {
+  getCurrencySelectLabel,
+  PRODUCT_CURRENCY_SELECT_OPTIONS
+} from '@/lib/exchange-rate-currency-options';
+
+export const OPP_PRICE_TARGET_KEYS = new Set(['opp.unitPrice', 'opp.value', 'opp.contractAmount']);
+
+export const OPP_CURRENCY_PREVIEW_OPTIONS = PRODUCT_CURRENCY_SELECT_OPTIONS.map((opt) => ({
+  value: opt.value,
+  label: opt.label
+}));
 
 export const OPP_EXCEL_REQUIRED_TARGETS = new Set(['opp.title', 'opp.stage']);
 
@@ -549,15 +565,27 @@ export function stageKeyForExcelCell(raw, stageOptions) {
   return resolved.valid ? resolved.value : '';
 }
 
-export function resolveCurrencyValue(raw, currencies) {
+export function resolveCurrencyValue(raw, _currencies) {
+  const { code, recognized, empty } = resolveCurrencyCode(raw);
+  if (empty) return { value: 'KRW', valid: true };
+  if (recognized) return { value: code, valid: true };
   const s = String(raw || '').trim().toUpperCase();
-  if (!s) return { value: 'KRW', valid: true };
-  const list = Array.isArray(currencies) ? currencies : ['KRW', 'USD', 'JPY'];
-  if (list.includes(s)) return { value: s, valid: true };
-  if (s === '원' || s === '₩') return { value: 'KRW', valid: true };
-  if (s === '$' || s === '달러') return { value: 'USD', valid: true };
-  if (s === '엔' || s === '¥') return { value: 'JPY', valid: true };
-  return { value: s, valid: false };
+  return { value: s || code, valid: false };
+}
+
+/** 매핑 미리보기 — 가격·통화 필드 포맷 */
+export function previewOpportunityMappedValue(sampleRow, mappingRow) {
+  const raw = previewExcelMappedValue(sampleRow, mappingRow);
+  const tk = String(mappingRow?.targetKey || '');
+  if (OPP_PRICE_TARGET_KEYS.has(tk)) {
+    return formatPriceExcelInputDisplay(raw) || raw || '';
+  }
+  if (tk === 'opp.currency') {
+    if (!raw || !String(raw).trim()) return '';
+    const { code, recognized } = resolveCurrencyCode(raw);
+    return recognized ? getCurrencySelectLabel(code) : String(raw);
+  }
+  return raw;
 }
 
 export function resolvePriceBasisValue(raw) {

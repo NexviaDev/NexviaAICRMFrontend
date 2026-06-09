@@ -1,7 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import CustomFieldsSection from '../../shared/custom-fields-section';
+import CustomFieldsDisplay from '../../shared/custom-fields-display';
 import CustomFieldsManageModal from '../../shared/custom-fields-manage-modal/custom-fields-manage-modal';
 import { listPriceFromProduct } from '@/lib/product-price-utils';
+import { formatProductBillingDisplay } from '@/lib/product-billing-utils';
 import { getPresetCategoryAvatar } from '../product-category-avatar-config';
 import './add-product-modal.css';
 
@@ -20,6 +22,13 @@ import {
   parseExcelFileToRows
 } from '../product-excel-import-modal/product-excel-import-utils';
 import '../../customer-companies/customer-companies-excel-import-modal/customer-companies-excel-import-modal.css';
+import {
+  getCurrencySelectLabel,
+  getCurrencySymbol,
+  resolveProductCurrencySelectOptions
+} from '@/lib/exchange-rate-currency-options';
+
+const STATUS_LABELS = { Active: '활성', EndOfLife: 'End of Life', Draft: '초안' };
 const STATUS_OPTIONS = [
   { value: 'Active', label: '활성' },
   { value: 'EndOfLife', label: 'End of Life' },
@@ -73,14 +82,59 @@ function getCategoryTriggerLabel(categoryKey, categoryOther) {
   return opt?.label || categoryKey;
 }
 
-const CURRENCY_OPTIONS = [
-  { value: 'KRW', label: '원' },
-  { value: 'USD', label: '달러' }
-];
-
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+/** 복제 시 _id 등 제거 */
+function productToDuplicateDraft(source) {
+  if (!source) return null;
+  const { _id, __v, createdAt, updatedAt, companyId, ...rest } = source;
+  return {
+    ...rest,
+    customFields: source.customFields && typeof source.customFields === 'object'
+      ? { ...source.customFields }
+      : {}
+  };
+}
+
+function formatPriceView(price, currency) {
+  if (price == null) return '—';
+  const sym = getCurrencySymbol(currency);
+  return `${sym}${Number(price).toLocaleString()}`;
+}
+
+function resolveInitialPanelMode({ product, variant, initialMode }) {
+  if (!product) return 'create';
+  if (variant === 'duplicate') return 'duplicate';
+  if (initialMode === 'view') return 'view';
+  if (product._id) return 'edit';
+  return 'create';
+}
+
+function applyProductToFormState(product, savedNew) {
+  const cat = parseCategoryFromStored(product?.category);
+  return {
+    form: {
+      name: product?.name ?? '',
+      code: product?.code ?? '',
+      version: product?.version ?? '',
+      currency: product?.currency ?? 'KRW',
+      billingType: product?.billingType ?? savedNew?.billingType ?? 'Monthly',
+      billingInterval: normalizeBillingInterval(
+        product?.billingType ?? savedNew?.billingType ?? 'Monthly',
+        product?.billingInterval ?? savedNew?.billingInterval ?? 1
+      ),
+      status: product?.status ?? 'Active',
+      customFields: product?.customFields ? { ...product.customFields } : {}
+    },
+    listPriceInput: formatPriceDisplay(listPriceFromProduct(product)),
+    costPriceInput: formatPriceDisplay(Number(product?.costPrice) || 0),
+    channelPriceInput: formatPriceDisplay(Number(product?.channelPrice) || 0),
+    categoryKey: cat.key,
+    categoryOther: cat.other
+  };
 }
 
 /** 표시용: 천 단위 쉼표 (소수점 유지, 최대 소수 자릿수 제한) */
@@ -123,51 +177,61 @@ export default function AddProductModal({
   onSaved,
   presentation = 'centered',
   variant,
+  /** create | view | edit | duplicate — 목록 행 클릭 시 view */
+  initialMode,
+  onDelete,
   /** 2행 이상 엑셀 시 일괄 등록 모달로 넘김 (제품 목록에서만 전달) */
   onOpenBulkImport
 }) {
-  const isEdit = !!product?._id;
-  const isDuplicate = variant === 'duplicate';
+  const [panelMode, setPanelMode] = useState(() => resolveInitialPanelMode({ product, variant, initialMode }));
+  const isViewMode = panelMode === 'view';
+  const isEdit = panelMode === 'edit' && !!product?._id;
+  const isDuplicate = panelMode === 'duplicate';
+  const isDetailSlideFlow = presentation === 'slide' && initialMode === 'view';
   /** 신규 제품 등록(목록에서 열기)일 때만 listTemplates.addProductModal 저장·복원 */
-  const isNewProductRegistration = !isEdit && !isDuplicate;
+  const isNewProductRegistration = panelMode === 'create';
   const canManageCustomFieldDefinitions = isAdminOrAboveRole(getStoredCrmUser()?.role);
-  const isSlidePanel = (isEdit || isDuplicate) && presentation === 'slide';
-  const showExcelDrop = !isEdit && typeof onOpenBulkImport === 'function';
+  const isSlidePanel = presentation === 'slide' && (isViewMode || isEdit || isDuplicate);
+  const showExcelDrop = panelMode === 'create' && typeof onOpenBulkImport === 'function';
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [form, setForm] = useState(() => {
     const savedNew = isNewProductRegistration ? getSavedAddProductModalDefaults() : null;
-    return {
-      name: product?.name ?? '',
-      code: product?.code ?? '',
-      version: product?.version ?? '',
-      currency: product?.currency ?? 'KRW',
-      billingType: product?.billingType ?? savedNew?.billingType ?? 'Monthly',
-      billingInterval: normalizeBillingInterval(
-        product?.billingType ?? savedNew?.billingType ?? 'Monthly',
-        product?.billingInterval ?? savedNew?.billingInterval ?? 1
-      ),
-      status: product?.status ?? 'Active',
-      customFields: product?.customFields ? { ...product.customFields } : {}
-    };
+    return applyProductToFormState(product, savedNew).form;
   });
   const [customDefinitions, setCustomDefinitions] = useState([]);
   const [showCustomFieldsModal, setShowCustomFieldsModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [listPriceInput, setListPriceInput] = useState(() => formatPriceDisplay(listPriceFromProduct(product)));
-  const [costPriceInput, setCostPriceInput] = useState(() => formatPriceDisplay(Number(product?.costPrice) || 0));
-  const [channelPriceInput, setChannelPriceInput] = useState(() => formatPriceDisplay(Number(product?.channelPrice) || 0));
+  const [listPriceInput, setListPriceInput] = useState(() => {
+    const savedNew = isNewProductRegistration ? getSavedAddProductModalDefaults() : null;
+    return applyProductToFormState(product, savedNew).listPriceInput;
+  });
+  const [costPriceInput, setCostPriceInput] = useState(() => {
+    const savedNew = isNewProductRegistration ? getSavedAddProductModalDefaults() : null;
+    return applyProductToFormState(product, savedNew).costPriceInput;
+  });
+  const [channelPriceInput, setChannelPriceInput] = useState(() => {
+    const savedNew = isNewProductRegistration ? getSavedAddProductModalDefaults() : null;
+    return applyProductToFormState(product, savedNew).channelPriceInput;
+  });
   const [categoryKey, setCategoryKey] = useState(() => {
-    if (isEdit || isDuplicate) return parseCategoryFromStored(product?.category).key;
-    return getSavedAddProductModalDefaults().categoryKey;
+    if (panelMode === 'create') return getSavedAddProductModalDefaults().categoryKey;
+    return applyProductToFormState(product, null).categoryKey;
   });
   const [categoryOther, setCategoryOther] = useState(() => {
-    if (isEdit || isDuplicate) return parseCategoryFromStored(product?.category).other;
-    return getSavedAddProductModalDefaults().categoryOther;
+    if (panelMode === 'create') return getSavedAddProductModalDefaults().categoryOther;
+    return applyProductToFormState(product, null).categoryOther;
   });
+  const [formProductId, setFormProductId] = useState(isDuplicate ? null : product?._id ?? null);
   const [categoryOpen, setCategoryOpen] = useState(false);
   const categoryPickerRef = useRef(null);
   const excelFileInputRef = useRef(null);
   const [excelDragOver, setExcelDragOver] = useState(false);
+  const currencySelectOptions = useMemo(
+    () => resolveProductCurrencySelectOptions(form.currency),
+    [form.currency]
+  );
 
   const fetchCustomDefinitions = async () => {
     try {
@@ -182,30 +246,59 @@ export default function AddProductModal({
   }, []);
 
   useEffect(() => {
-    setListPriceInput(formatPriceDisplay(listPriceFromProduct(product)));
-    setCostPriceInput(formatPriceDisplay(Number(product?.costPrice) || 0));
-    setChannelPriceInput(formatPriceDisplay(Number(product?.channelPrice) || 0));
-  }, [product?._id, product?.price, product?.listPrice, product?.costPrice, product?.channelPrice]);
+    if (panelMode !== 'view' || !product) return;
+    const next = applyProductToFormState(product, null);
+    setForm(next.form);
+    setListPriceInput(next.listPriceInput);
+    setCostPriceInput(next.costPriceInput);
+    setChannelPriceInput(next.channelPriceInput);
+    setCategoryKey(next.categoryKey);
+    setCategoryOther(next.categoryOther);
+    setFormProductId(product._id ?? null);
+  }, [
+    panelMode,
+    product?._id,
+    product?.updatedAt,
+    product?.name,
+    product?.price,
+    product?.listPrice,
+    product?.costPrice,
+    product?.channelPrice,
+    product?.currency,
+    product?.category,
+    product?.version,
+    product?.billingType,
+    product?.billingInterval,
+    product?.status
+  ]);
 
   useEffect(() => {
-    if (!isEdit && !isDuplicate) return;
-    const p = parseCategoryFromStored(product?.category);
-    setCategoryKey(p.key);
-    setCategoryOther(p.other);
-  }, [isEdit, isDuplicate, product?._id, product?.category]);
+    if (panelMode !== 'duplicate' || !product) return;
+    const draft = productToDuplicateDraft(product);
+    const next = applyProductToFormState(draft, null);
+    setForm(next.form);
+    setListPriceInput(next.listPriceInput);
+    setCostPriceInput(next.costPriceInput);
+    setChannelPriceInput(next.channelPriceInput);
+    setCategoryKey(next.categoryKey);
+    setCategoryOther(next.categoryOther);
+    setFormProductId(null);
+  }, [panelMode, product?._id]);
 
   /** 신규 등록 모달이 열릴 때마다 마운트되며, 초기 state에서 listTemplates.addProductModal 복원됨. 저장 시 변경분만 서버·crm_user 갱신. */
 
   useEffect(() => {
     const onKey = (e) => {
       if (e.key !== 'Escape') return;
-      if (showCustomFieldsModal) setShowCustomFieldsModal(false);
+      if (showDeleteConfirm) setShowDeleteConfirm(false);
+      else if (showCustomFieldsModal) setShowCustomFieldsModal(false);
       else if (categoryOpen) setCategoryOpen(false);
+      else if ((panelMode === 'edit' || panelMode === 'duplicate') && isDetailSlideFlow) setPanelMode('view');
       else onClose?.();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, showCustomFieldsModal, categoryOpen]);
+  }, [onClose, showCustomFieldsModal, categoryOpen, showDeleteConfirm, panelMode, isDetailSlideFlow]);
 
   useEffect(() => {
     if (!categoryOpen) return;
@@ -315,7 +408,7 @@ export default function AddProductModal({
     const addModalSnapshot = isNewProductRegistration ? getSavedAddProductModalDefaults() : null;
     setSaving(true);
     try {
-      const url = isEdit ? `${API_BASE}/products/${product._id}` : `${API_BASE}/products`;
+      const url = isEdit ? `${API_BASE}/products/${formProductId || product._id}` : `${API_BASE}/products`;
       const method = isEdit ? 'PATCH' : 'POST';
       const categoryPayload =
         categoryKey === 'other'
@@ -367,8 +460,13 @@ export default function AddProductModal({
           }
         }
       }
-      onSaved?.();
-      onClose?.();
+      if (isEdit && isDetailSlideFlow) {
+        onSaved?.();
+        setPanelMode('view');
+      } else {
+        onSaved?.();
+        onClose?.();
+      }
     } catch (_) {
       setError('서버에 연결할 수 없습니다.');
     } finally {
@@ -376,7 +474,170 @@ export default function AddProductModal({
     }
   };
 
+  const startEdit = () => {
+    if (!product?._id) return;
+    setPanelMode('edit');
+    setFormProductId(product._id);
+    setError('');
+  };
+
+  const startDuplicate = () => {
+    if (!product) return;
+    setPanelMode('duplicate');
+    setError('');
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!product || !onDelete) return;
+    setDeleting(true);
+    try {
+      await onDelete(product);
+    } finally {
+      setDeleting(false);
+      setShowDeleteConfirm(false);
+    }
+  };
+
+  const handleFormDismiss = () => {
+    if ((panelMode === 'edit' || panelMode === 'duplicate') && isDetailSlideFlow) {
+      setPanelMode('view');
+      setError('');
+      return;
+    }
+    onClose?.();
+  };
+
   const categoryTriggerAvatar = getPresetCategoryAvatar(categoryKey);
+
+  if (!product && panelMode !== 'create') return null;
+
+  if (isViewMode && product) {
+    const statusClass = product.status === 'Active' ? 'active' : product.status === 'EndOfLife' ? 'eol' : 'draft';
+    const catParsed = parseCategoryFromStored(product.category);
+    const categoryDisplay = catParsed.key
+      ? getCategoryTriggerLabel(catParsed.key, catParsed.other)
+      : '—';
+
+    return (
+      <div className={`add-product-modal-overlay ${isSlidePanel ? 'add-product-modal-overlay--slide' : ''}`}>
+        <div className={`add-product-modal add-product-modal--view ${isSlidePanel ? 'add-product-modal--slide' : ''}`}>
+          <header className="product-detail-header">
+            <div className="product-detail-header-title">
+              <h2>제품 세부정보</h2>
+            </div>
+            <div className="product-detail-header-actions">
+              {onSaved ? (
+                <button type="button" className="product-detail-icon-btn" onClick={startEdit} title="수정">
+                  <span className="material-symbols-outlined">edit</span>
+                </button>
+              ) : null}
+              {onSaved ? (
+                <button type="button" className="product-detail-icon-btn" onClick={startDuplicate} title="복제하여 새 제품 등록">
+                  <span className="material-symbols-outlined">content_copy</span>
+                </button>
+              ) : null}
+              {onDelete ? (
+                <button
+                  type="button"
+                  className="product-detail-icon-btn product-detail-delete-btn"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  title="삭제"
+                >
+                  <span className="material-symbols-outlined">delete</span>
+                </button>
+              ) : null}
+              <button type="button" className="product-detail-icon-btn" onClick={onClose} aria-label="닫기">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+          </header>
+
+          {showDeleteConfirm ? (
+            <div className="product-detail-delete-confirm">
+              <span className="material-symbols-outlined">warning</span>
+              <p>이 제품을 삭제하시겠습니까?<br />삭제된 제품은 복구할 수 없습니다.</p>
+              <div className="product-detail-delete-confirm-btns">
+                <button
+                  type="button"
+                  className="product-detail-confirm-cancel"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  disabled={deleting}
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  className="product-detail-confirm-delete"
+                  onClick={() => void handleDeleteConfirm()}
+                  disabled={deleting}
+                >
+                  {deleting ? '삭제 중...' : '삭제'}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="product-detail-body">
+            <section className="product-detail-card">
+              <div className="product-detail-icon-wrap">
+                <span className="material-symbols-outlined">inventory_2</span>
+              </div>
+              <div className="product-detail-info">
+                <div className="product-detail-name-row">
+                  <h1 className="product-detail-name">{product.name || '—'}</h1>
+                  <span className={`product-detail-status-badge status-${statusClass}`}>
+                    {STATUS_LABELS[product.status] || product.status}
+                  </span>
+                </div>
+                {product.code ? (
+                  <p className="product-detail-uid">UID: {product.code}</p>
+                ) : null}
+              </div>
+            </section>
+
+            <section className="product-detail-section">
+              <h3 className="product-detail-section-title">기본 정보</h3>
+              <dl className="product-detail-dl">
+                <div className="product-detail-dl-row">
+                  <dt>카테고리</dt>
+                  <dd>{categoryDisplay}</dd>
+                </div>
+                <div className="product-detail-dl-row">
+                  <dt>버전</dt>
+                  <dd>{product.version || '—'}</dd>
+                </div>
+                <div className="product-detail-dl-row">
+                  <dt>소비자가</dt>
+                  <dd>{formatPriceView(listPriceFromProduct(product), product.currency)}</dd>
+                </div>
+                <div className="product-detail-dl-row">
+                  <dt>원가</dt>
+                  <dd>{formatPriceView(product.costPrice, product.currency)}</dd>
+                </div>
+                <div className="product-detail-dl-row">
+                  <dt>유통가</dt>
+                  <dd>{formatPriceView(product.channelPrice, product.currency)}</dd>
+                </div>
+                <div className="product-detail-dl-row">
+                  <dt>결제 주기</dt>
+                  <dd>{formatProductBillingDisplay(product.billingType, product.billingInterval)}</dd>
+                </div>
+                <div className="product-detail-dl-row">
+                  <dt>통화</dt>
+                  <dd>{product.currency ? getCurrencySelectLabel(product.currency) : '—'}</dd>
+                </div>
+              </dl>
+            </section>
+            <CustomFieldsDisplay
+              definitions={customDefinitions}
+              values={product.customFields || {}}
+              className="product-detail-custom-fields"
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`add-product-modal-overlay ${isSlidePanel ? 'add-product-modal-overlay--slide' : ''}`}>
@@ -394,7 +655,7 @@ export default function AddProductModal({
                   : '시스템에 새로운 제품 정보를 입력합니다.'}
             </p>
           </div>
-          <button type="button" className="add-product-modal-close" onClick={onClose} aria-label="닫기">
+          <button type="button" className="add-product-modal-close" onClick={handleFormDismiss} aria-label="닫기">
             <span className="material-symbols-outlined">close</span>
           </button>
         </div>
@@ -619,7 +880,7 @@ export default function AddProductModal({
                       className="add-product-modal-currency-select"
                       aria-label="통화"
                     >
-                      {CURRENCY_OPTIONS.map((c) => (
+                      {currencySelectOptions.map((c) => (
                         <option key={c.value} value={c.value}>{c.label}</option>
                       ))}
                     </select>
@@ -741,7 +1002,7 @@ export default function AddProductModal({
               </button>
             ) : null}
             <div className="add-product-modal-footer-actions">
-              <button type="button" className="add-product-modal-cancel" onClick={onClose}>취소</button>
+              <button type="button" className="add-product-modal-cancel" onClick={handleFormDismiss}>취소</button>
               <button type="submit" className="add-product-modal-save" disabled={saving}>
                 <span className="material-symbols-outlined add-product-modal-save-icon">save</span>
                 {saving ? '저장 중…' : '제품 저장'}

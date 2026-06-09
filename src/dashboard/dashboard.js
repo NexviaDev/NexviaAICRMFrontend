@@ -32,6 +32,19 @@ import HomeFullViewModal from './home-full-view-modal';
 import ProjectFormModal from '@/project/project-form-modal';
 import '@/project/project-form-modal.css';
 import { buildParticipantDirectoryFromOverview } from '@/lib/participant-directory-merge';
+import { getCurrencySymbol } from '@/lib/exchange-rate-currency-options';
+import { useExchangeRates } from '@/lib/use-exchange-rates';
+import {
+  DASHBOARD_DISPLAY_CURRENCY,
+  toKrwAmount,
+  mergeCurrencySeriesMapToKrw,
+  sumCurrencyBreakdownToKrw,
+  computeKrwInsightKpiFromGraphs,
+  mergeProductSalesRowsToKrw,
+  sumForecastTotalsKrw,
+  rebuildContributionBarKrw,
+  formatLeaderboardRevenueKrw
+} from '@/lib/dashboard-krw-aggregate';
 
 /** 프로젝트 KPI에서 편집 모달 열 때 단계 옵션(프로젝트 칸반 기본과 동일) */
 const HOME_PROJECT_KPI_STAGE_OPTIONS = [
@@ -183,7 +196,16 @@ const DEFAULT_ACTIVE_STAGES = [
 const DROP_ZONE_STAGES = ['Lost', 'Abandoned'];
 /** 수주 완료 열 — sales-pipeline.js `boardStages`(activeStages에서 Won 제외)와 맞춤. 진행 중 딜 카운트에 넣지 않음 */
 const CLOSED_WON_STAGE = 'Won';
-const CURRENCY_SYMBOLS = { KRW: '₩', USD: '$', JPY: '¥' };
+/** 대시보드 금액 — 항상 원화 환산 후 ₩ 표기만 */
+function DashboardKrwCell({ amount, currency, dealBasRMap }) {
+  const krw = toKrwAmount(amount, currency, dealBasRMap);
+  return <span className="crm-price-main">{formatCurrency(krw, DASHBOARD_DISPLAY_CURRENCY)}</span>;
+}
+
+function dashboardKrwLabel(amount, currency, dealBasRMap) {
+  return formatCurrency(toKrwAmount(amount, currency, dealBasRMap), DASHBOARD_DISPLAY_CURRENCY);
+}
+
 const PIPELINE_STEP_HINTS = {
   NewLead: '잠재 고객 발굴',
   Contacted: '초기 미팅 완료',
@@ -196,9 +218,9 @@ const PIPELINE_STEP_HINTS = {
 
 function formatCurrency(value, currency) {
   const code = String(currency || 'KRW').toUpperCase();
-  const prefix = CURRENCY_SYMBOLS[code] || `${code} `;
-  if (!value) return `${prefix}0`;
-  return prefix + Number(value).toLocaleString();
+  const sym = getCurrencySymbol(code);
+  if (!value && value !== 0) return `${sym}0`;
+  return `${sym}${Number(value).toLocaleString()}`;
 }
 
 function formatRevenueCompact(value) {
@@ -450,14 +472,9 @@ function formatLeadContact(lead) {
   return formatPhone(digits);
 }
 
-function formatWonRevenue(w) {
-  const entries = Object.entries(w || {}).filter(([, amount]) => Number(amount) > 0);
-  if (entries.length === 0) return formatCurrency(0, 'KRW');
-  const parts = [];
-  for (const [currency, amount] of entries) {
-    parts.push(formatCurrency(amount, currency));
-  }
-  return parts.join(' · ');
+function formatWonRevenue(w, dealBasRMap) {
+  const krw = sumCurrencyBreakdownToKrw(w, dealBasRMap);
+  return formatCurrency(krw, DASHBOARD_DISPLAY_CURRENCY);
 }
 
 /** 서버가 비교 기준이 없을 때 null/생략을 주는지 — 0을 임의로 넣어 비교한 값은 표시하지 않음 */
@@ -605,16 +622,9 @@ function useTweenedDualSeries(curA, curB, animEpoch, durationMs) {
 }
 
 /** 통화별 합계 — 순마진 등 음수·0 구분 표시 */
-function formatDashboardCurrencyTotals(w) {
-  const entries = Object.entries(w || {}).filter(
-    ([, amount]) => Number(amount) !== 0 && Number.isFinite(Number(amount))
-  );
-  if (entries.length === 0) return formatCurrency(0, 'KRW');
-  const parts = [];
-  for (const [currency, amount] of entries) {
-    parts.push(formatCurrency(amount, currency));
-  }
-  return parts.join(' · ');
+function formatDashboardCurrencyTotals(w, dealBasRMap) {
+  const krw = sumCurrencyBreakdownToKrw(w, dealBasRMap);
+  return formatCurrency(krw, DASHBOARD_DISPLAY_CURRENCY);
 }
 
 /** 세일즈 파이프라인 수주(Won) 집계용 시점: 판매일 우선, 없으면 수정일 */
@@ -1109,6 +1119,7 @@ function MarginLineChartWithTooltips({
   marginLinePrev,
   currency,
   title,
+  dealBasRMap = {},
   strokeCurrent = MARGIN_LINE_CURRENT,
   strokePrev = MARGIN_LINE_PREV
 }) {
@@ -1201,8 +1212,8 @@ function MarginLineChartWithTooltips({
         {hoverIdx != null && cur[hoverIdx] ? (
           <>
             <strong>{cur[hoverIdx].label}</strong>
-            <div>올해: {formatCurrency(Number(cur[hoverIdx].value) || 0, currency)}</div>
-            <div>전년: {formatCurrency(prev[hoverIdx] != null ? Number(prev[hoverIdx].value) : 0, currency)}</div>
+            <div>올해: {formatCurrency(Number(cur[hoverIdx].value) || 0, DASHBOARD_DISPLAY_CURRENCY)}</div>
+            <div>전년: {formatCurrency(prev[hoverIdx] != null ? Number(prev[hoverIdx].value) : 0, DASHBOARD_DISPLAY_CURRENCY)}</div>
           </>
         ) : null}
       </HomeChartCursorTooltipPortal>
@@ -1837,6 +1848,10 @@ export default function Dashboard() {
   const dataRef = useRef(null);
   dataRef.current = data;
   const [loading, setLoading] = useState(true);
+  const { dealBasRMap, exchangeRatesFrozen } = useExchangeRates({
+    getAuthHeader,
+    respectSessionFreeze: true
+  });
   /** 필터·기간만 바꿀 때: 전역 스켈레톤 대신 툴바 옆 경량 표시 */
   const [dashboardDataBusy, setDashboardDataBusy] = useState(false);
   const [leadChannelsLoading, setLeadChannelsLoading] = useState(true);
@@ -2610,7 +2625,8 @@ export default function Dashboard() {
         ? data.insightLeaderFilters.departments
         : [];
       const baseBar = data?.homeContributionBar;
-      const segments = Array.isArray(baseBar?.segments) ? baseBar.segments : [];
+      const krwBar = rebuildContributionBarKrw(baseBar, dealBasRMap);
+      const segments = Array.isArray(krwBar?.segments) ? krwBar.segments : [];
       let resolver = null;
       const ensureResolver = async () => {
         if (!resolver) {
@@ -2802,6 +2818,7 @@ export default function Dashboard() {
     data?.insightLeaderFilters?.users,
     data?.insightLeaderFilters?.departments,
     data?.homeContributionBar,
+    dealBasRMap,
     dashboardRefreshTick
   ]);
 
@@ -3151,15 +3168,18 @@ export default function Dashboard() {
   const prefersReducedMotion = usePrefersReducedMotion();
   const insightAnimMs = prefersReducedMotion ? 0 : 520;
 
-  const graphCurrencies = useMemo(() => {
-    const currencies = Array.isArray(stats.salesGraphs?.currencies)
-      ? stats.salesGraphs.currencies.filter(Boolean)
-      : [];
-    return currencies.length > 0 ? currencies : ['KRW'];
-  }, [stats.salesGraphs]);
+  /** 대시보드는 모든 통화를 원화 환산 후 합산해 표시 (동기화 중지 시 고정 환율 적용) */
+  const selectedGraphCurrency = DASHBOARD_DISPLAY_CURRENCY;
 
-  /** 통화 선택 UI 제거 — API 통화 목록의 첫 통화로 그래프 표시 */
-  const selectedGraphCurrency = graphCurrencies[0] || 'KRW';
+  const krwInsightKpi = useMemo(
+    () => computeKrwInsightKpiFromGraphs(stats.salesGraphs, dealBasRMap),
+    [stats.salesGraphs, dealBasRMap]
+  );
+
+  const homeContributionBarKrw = useMemo(
+    () => rebuildContributionBarKrw(data?.homeContributionBar, dealBasRMap),
+    [data?.homeContributionBar, dealBasRMap]
+  );
 
   const homeProjectCounts = useMemo(() => {
     let done = 0;
@@ -3174,20 +3194,33 @@ export default function Dashboard() {
   const kpiAnimSrc = stats.kpiSummary;
   const revNum =
     Number(
+      krwInsightKpi?.revenue?.orderValueTotal ??
+      krwInsightKpi?.revenue?.primaryTotal ??
       kpiAnimSrc?.revenue?.orderValueTotal ??
-      kpiAnimSrc?.revenue?.primaryTotal ??
-      kpiAnimSrc?.revenue?.last6Total ??
       0
     ) || 0;
-  const gmRateNum = kpiAnimSrc?.grossMargin?.ratePct ?? 0;
-  const goalNum = Number(kpiAnimSrc?.goal?.collectedAmount) || 0;
+  const gmRateNum = krwInsightKpi?.grossMargin?.ratePct ?? kpiAnimSrc?.grossMargin?.ratePct ?? 0;
+  const goalCollectedKrw = useMemo(() => {
+    const byCur =
+      kpiAnimSrc?.goal?.collectedTotalsByCurrency ||
+      stats.taskCompletionMeta?.collectedTotalsByCurrency ||
+      {};
+    const fromMap = sumCurrencyBreakdownToKrw(byCur, dealBasRMap);
+    if (fromMap > 0) return fromMap;
+    return toKrwAmount(
+      kpiAnimSrc?.goal?.collectedAmount,
+      kpiAnimSrc?.primaryCurrency || DASHBOARD_DISPLAY_CURRENCY,
+      dealBasRMap
+    );
+  }, [kpiAnimSrc, stats.taskCompletionMeta, dealBasRMap]);
+  const goalNum = goalCollectedKrw;
   const goalCompletionNum = Number(kpiAnimSrc?.goal?.taskCompletion) || 0;
   const leadNum = kpiAnimSrc?.newLeads?.count ?? kpiAnimSrc?.newLeads?.count30d ?? 0;
-  const revFcRaw = kpiAnimSrc?.revenue?.forecastVsPct;
-  const gmFcRaw = kpiAnimSrc?.grossMargin?.forecastVsPP;
+  const revFcRaw = krwInsightKpi?.revenue?.forecastVsPct ?? kpiAnimSrc?.revenue?.forecastVsPct;
+  const gmFcRaw = krwInsightKpi?.grossMargin?.forecastVsPP ?? kpiAnimSrc?.grossMargin?.forecastVsPP;
   const leadFcRaw = kpiAnimSrc?.newLeads?.forecastVsPct;
-  const revYoyRaw = kpiAnimSrc?.revenue?.yoyPct;
-  const gmYoyRaw = kpiAnimSrc?.grossMargin?.yoyPP;
+  const revYoyRaw = krwInsightKpi?.revenue?.yoyPct ?? kpiAnimSrc?.revenue?.yoyPct;
+  const gmYoyRaw = krwInsightKpi?.grossMargin?.yoyPP ?? kpiAnimSrc?.grossMargin?.yoyPP;
   const leadYoyRaw = kpiAnimSrc?.newLeads?.yoyPct;
   const goalYoyRaw = kpiAnimSrc?.goal?.yoyPct;
 
@@ -3244,7 +3277,7 @@ export default function Dashboard() {
 
   const homeKpiCards = useMemo(() => {
     const kpi = stats.kpiSummary;
-    const cur = kpi?.primaryCurrency || selectedGraphCurrency || 'KRW';
+    const cur = DASHBOARD_DISPLAY_CURRENCY;
     if (!kpi) {
       return [
         { key: 'rev', skeleton: true },
@@ -3260,7 +3293,13 @@ export default function Dashboard() {
     const nl = kpi.newLeads;
     const meta = kpi.kpiMeta || {};
     const revTotal =
-      Number(rev?.orderValueTotal ?? rev?.primaryTotal ?? rev?.last6Total ?? 0) || 0;
+      Number(
+        krwInsightKpi?.revenue?.orderValueTotal ??
+        rev?.orderValueTotal ??
+        rev?.primaryTotal ??
+        rev?.last6Total ??
+        0
+      ) || 0;
     const revenueYoyLabel = meta.revenueYoyLabel || '전년 동기 대비';
     const leadHint = meta.leadHint || '해당 기간 신규 기회(생성일 기준)';
     const leadSeqLabel = meta.leadSeqLabel || '직전 구간 대비';
@@ -3288,7 +3327,7 @@ export default function Dashboard() {
         key: 'gm',
         title: '매출 총이익률',
         hint: meta.marginHint || '순마진÷수주액',
-        value: `${gm?.ratePct ?? 0}%`,
+        value: `${krwInsightKpi?.grossMargin?.ratePct ?? gm?.ratePct ?? 0}%`,
         icon: 'percent',
         showForecast: true,
         showPeriod: true,
@@ -3304,7 +3343,7 @@ export default function Dashboard() {
         title: '수금 완료 · 세일즈 완료율',
         hint: '',
         goalFootnoteModel: buildGoalKpiFootnoteModel(stats),
-        value: formatCurrency(Number(goal?.collectedAmount) || 0, cur),
+        value: formatCurrency(goalCollectedKrw, DASHBOARD_DISPLAY_CURRENCY),
         icon: 'account_balance_wallet',
         showForecast: true,
         showPeriod: true,
@@ -3354,7 +3393,7 @@ export default function Dashboard() {
         periodMode: 'deltaPct'
       }
     ];
-  }, [stats.kpiSummary, stats.taskCompletionMeta, selectedGraphCurrency, homeProjectCounts, isCompanyWideInsight]);
+  }, [stats.kpiSummary, stats.taskCompletionMeta, krwInsightKpi, goalCollectedKrw, dealBasRMap, homeProjectCounts, isCompanyWideInsight]);
 
   const pipelineColumns = useMemo(() => {
     const byStage = pipelineSummary?.byStage && typeof pipelineSummary.byStage === 'object'
@@ -3381,25 +3420,28 @@ export default function Dashboard() {
       wonLeaderboardMode === 'week'
         ? pipelineSummary?.wonLeaderboard?.week
         : pipelineSummary?.wonLeaderboard?.month;
-    if (Array.isArray(bucket?.rows)) return bucket.rows;
-    return [];
-  }, [pipelineSummary, wonLeaderboardMode]);
+    if (!Array.isArray(bucket?.rows)) return [];
+    return bucket.rows.map((row) => ({
+      ...row,
+      revenueDisplay: formatLeaderboardRevenueKrw(row, dealBasRMap, formatCurrency)
+    }));
+  }, [pipelineSummary, wonLeaderboardMode, dealBasRMap]);
 
   const consumerRaw = useMemo(
-    () => stats.salesGraphs?.consumerByCurrency?.[selectedGraphCurrency] || [],
-    [stats.salesGraphs, selectedGraphCurrency]
+    () => mergeCurrencySeriesMapToKrw(stats.salesGraphs?.consumerByCurrency, dealBasRMap),
+    [stats.salesGraphs, dealBasRMap]
   );
   const consumerPrevRaw = useMemo(
-    () => stats.salesGraphs?.consumerPrevYearByCurrency?.[selectedGraphCurrency] || [],
-    [stats.salesGraphs, selectedGraphCurrency]
+    () => mergeCurrencySeriesMapToKrw(stats.salesGraphs?.consumerPrevYearByCurrency, dealBasRMap),
+    [stats.salesGraphs, dealBasRMap]
   );
   const netMarginRaw = useMemo(
-    () => stats.salesGraphs?.netMarginByCurrency?.[selectedGraphCurrency] || [],
-    [stats.salesGraphs, selectedGraphCurrency]
+    () => mergeCurrencySeriesMapToKrw(stats.salesGraphs?.netMarginByCurrency, dealBasRMap),
+    [stats.salesGraphs, dealBasRMap]
   );
   const netMarginPrevRaw = useMemo(
-    () => stats.salesGraphs?.netMarginPrevYearByCurrency?.[selectedGraphCurrency] || [],
-    [stats.salesGraphs, selectedGraphCurrency]
+    () => mergeCurrencySeriesMapToKrw(stats.salesGraphs?.netMarginPrevYearByCurrency, dealBasRMap),
+    [stats.salesGraphs, dealBasRMap]
   );
   const [consumerTween, consumerPrevTween] = useTweenedDualSeries(
     consumerRaw,
@@ -3434,10 +3476,12 @@ export default function Dashboard() {
   const productSalesTopN = Number(stats.productSalesGraphs?.topN) || 8;
   const productSalesRows = useMemo(
     () =>
-      Array.isArray(stats.productSalesGraphs?.wonValueByProductByCurrency?.[selectedGraphCurrency])
-        ? stats.productSalesGraphs.wonValueByProductByCurrency[selectedGraphCurrency]
-        : [],
-    [stats.productSalesGraphs, selectedGraphCurrency]
+      mergeProductSalesRowsToKrw(
+        stats.productSalesGraphs?.wonValueByProductByCurrency,
+        dealBasRMap,
+        Number(stats.productSalesGraphs?.topN) || 8
+      ),
+    [stats.productSalesGraphs, dealBasRMap]
   );
   const productQtyRows = useMemo(
     () =>
@@ -3648,7 +3692,7 @@ export default function Dashboard() {
                     tip={
                       <>
                         <strong>{item.label}</strong>
-                        <span>{formatCurrency(item.value, selectedGraphCurrency)}</span>
+                        <span>{formatCurrency(item.value, DASHBOARD_DISPLAY_CURRENCY)}</span>
                       </>
                     }
                   >
@@ -3683,7 +3727,7 @@ export default function Dashboard() {
                   tip={
                     <>
                       <strong>{item.label}</strong>
-                      <span>{formatCurrency(item.value, selectedGraphCurrency)}</span>
+                      <span>{formatCurrency(item.value, DASHBOARD_DISPLAY_CURRENCY)}</span>
                     </>
                   }
                 >
@@ -3780,6 +3824,7 @@ export default function Dashboard() {
                   marginLinePrev={marginLinePrev}
                   currency={selectedGraphCurrency}
                   title={title}
+                  dealBasRMap={dealBasRMap}
                 />
                 <div className="home-line-chart-legend" aria-hidden>
                   <span>
@@ -3810,6 +3855,7 @@ export default function Dashboard() {
                 marginLinePrev={consumerLinePrev}
                 currency={selectedGraphCurrency}
                 title={title}
+                dealBasRMap={dealBasRMap}
                 strokeCurrent={CONSUMER_LINE_COLOR}
                 strokePrev={CONSUMER_LINE_PREV}
               />
@@ -3888,6 +3934,7 @@ export default function Dashboard() {
                 products={prows}
                 currency={selectedGraphCurrency}
                 title="제품군 판매"
+                formatValue={(v) => formatCurrency(Number(v) || 0, DASHBOARD_DISPLAY_CURRENCY)}
               />
               <HomeProductChartLegend items={prows} />
               <div
@@ -3918,11 +3965,11 @@ export default function Dashboard() {
                           <strong>{lab}</strong>
                           {prows.map((p) => (
                             <div key={`tt-${String(p.key)}-${j}`}>
-                              {p.label}: {formatCurrency(Number(p.series[j]?.value) || 0, selectedGraphCurrency)}
+                              {p.label}: {formatCurrency(Number(p.series[j]?.value) || 0, DASHBOARD_DISPLAY_CURRENCY)}
                             </div>
                           ))}
                           <div className="home-product-sales-tooltip-sum">
-                            합계: {formatCurrency(total, selectedGraphCurrency)}
+                            합계: {formatCurrency(total, DASHBOARD_DISPLAY_CURRENCY)}
                           </div>
                         </>
                       }
@@ -4454,8 +4501,16 @@ export default function Dashboard() {
                 aria-label="핵심 실적 요약"
               >
                 {homeKpiCards.map((card) => {
-                  const gmNonMarginAmount = Number(stats.kpiSummary?.grossMargin?.nonMarginAmount || 0);
-                  const gmNetMarginTotal = Number(stats.kpiSummary?.grossMargin?.netMarginTotal || 0);
+                  const gmNonMarginAmount = Number(
+                    krwInsightKpi?.grossMargin?.nonMarginAmount ??
+                    stats.kpiSummary?.grossMargin?.nonMarginAmount ??
+                    0
+                  );
+                  const gmNetMarginTotal = Number(
+                    krwInsightKpi?.grossMargin?.netMarginTotal ??
+                    stats.kpiSummary?.grossMargin?.netMarginTotal ??
+                    0
+                  );
                   if (card.skeleton) {
                     return (
                       <div key={card.key} className="home-kpi-card home-kpi-card--skeleton" aria-busy="true">
@@ -4468,16 +4523,33 @@ export default function Dashboard() {
                   }
                   const showForecast = card.showForecast === true;
                   const showPeriod = card.showPeriod === true;
-                  const curD = stats.kpiSummary?.primaryCurrency || selectedGraphCurrency || 'KRW';
+                  const curD = DASHBOARD_DISPLAY_CURRENCY;
                   const projectDoneCount = homeProjectCounts.done;
                   const projectActiveCount = homeProjectCounts.active;
                   const projectTotalCount = homeProjectCounts.total;
                   let displayMain = card.value;
+                  let displayMainNode = null;
                   if (!dashboardShellBlocking) {
-                    if (card.key === 'rev') displayMain = formatCurrency(Math.round(revAnim), curD);
-                    else if (card.key === 'gm') displayMain = `${gmRateAnim.toFixed(1)}%`;
-                    else if (card.key === 'goal')
+                    if (card.key === 'rev') {
+                      displayMain = formatCurrency(Math.round(revAnim), curD);
+                      displayMainNode = (
+                        <DashboardKrwCell
+                          amount={Math.round(revAnim)}
+                          currency={curD}
+                          dealBasRMap={dealBasRMap}
+                        />
+                      );
+                    } else if (card.key === 'gm') displayMain = `${gmRateAnim.toFixed(1)}%`;
+                    else if (card.key === 'goal') {
                       displayMain = formatCurrency(Math.round(goalAnim), curD);
+                      displayMainNode = (
+                        <DashboardKrwCell
+                          amount={Math.round(goalAnim)}
+                          currency={curD}
+                          dealBasRMap={dealBasRMap}
+                        />
+                      );
+                    }
                     else if (card.key === 'lead') displayMain = `${Math.round(leadAnim)}건`;
                     else if (card.key === 'project') {
                       displayMain = homeProjectPreviewLoading
@@ -4732,7 +4804,9 @@ export default function Dashboard() {
                           {card.icon}
                         </span>
                       </div>
-                      <p className="home-kpi-card-value home-kpi-card-value--insight-anim">{dashboardShellBlocking ? '—' : displayMain}</p>
+                      <p className="home-kpi-card-value home-kpi-card-value--insight-anim">
+                        {dashboardShellBlocking ? '—' : displayMainNode || displayMain}
+                      </p>
                       {card.key === 'goal' ? (
                         <>
                           <p className="home-kpi-card-target-amount">
@@ -4753,14 +4827,20 @@ export default function Dashboard() {
                         <p className="home-kpi-card-target-amount">
                           {dashboardShellBlocking
                             ? '—'
-                            : `순마진 ${formatCurrency(
-                              Math.round(
-                                gmNetMarginTotal > 0 || stats.kpiSummary?.grossMargin?.netMarginTotal != null
-                                  ? gmNetMarginTotal
-                                  : Math.max(0, Math.round(revNum) - gmNonMarginAmount)
-                              ),
-                              curD
-                            )}`}
+                            : (
+                              <>
+                                순마진{' '}
+                                <DashboardKrwCell
+                                  amount={Math.round(
+                                    gmNetMarginTotal > 0 || stats.kpiSummary?.grossMargin?.netMarginTotal != null
+                                      ? gmNetMarginTotal
+                                      : Math.max(0, Math.round(revNum) - gmNonMarginAmount)
+                                  )}
+                                  currency={curD}
+                                  dealBasRMap={dealBasRMap}
+                                />
+                              </>
+                            )}
                         </p>
                       ) : null}
                       {card.key === 'goal' && card.goalFootnoteModel ? (
@@ -5055,27 +5135,27 @@ export default function Dashboard() {
                   )}
                 </section>
               ) : null}
-              {!dashboardShellBlocking && data?.homeContributionBar?.segments?.length ? (
+              {!dashboardShellBlocking && homeContributionBarKrw?.segments?.length ? (
                 <section className="home-contribution-panel" aria-labelledby="home-contribution-title">
                   <div className="home-contribution-head home-contribution-head--row">
-                    <h3 id="home-contribution-title">{data.homeContributionBar.title}</h3>
+                    <h3 id="home-contribution-title">{homeContributionBarKrw.title}</h3>
                     <button
                       type="button"
                       className="home-contribution-calc-detail-btn"
                       onClick={() =>
                         setHomeContributionCalcModal({
                           kind: 'share',
-                          mode: data.homeContributionBar.mode === 'user' ? 'user' : 'team'
+                          mode: homeContributionBarKrw.mode === 'user' ? 'user' : 'team'
                         })
                       }
                     >
                       자세히 보기
                     </button>
                   </div>
-                  {data.homeContributionBar.mode === 'team' ? (
+                  {homeContributionBarKrw.mode === 'team' ? (
                     <div className="home-contribution-split-wrap">
                       <div className="home-contribution-split-bar" role="list" aria-label="팀별 순마진 비중">
-                        {data.homeContributionBar.segments.map((seg) => (
+                        {homeContributionBarKrw.segments.map((seg) => (
                           <div
                             key={`share-split-${seg.id}`}
                             role="listitem"
@@ -5094,7 +5174,7 @@ export default function Dashboard() {
                   ) : (
                     <div className="home-contribution-split-wrap">
                       <div className="home-contribution-split-bar" role="list" aria-label="순마진 비중">
-                        {data.homeContributionBar.segments.map((seg) => (
+                        {homeContributionBarKrw.segments.map((seg) => (
                           <div
                             key={`share-split-${seg.id}`}
                             role="listitem"
@@ -5211,11 +5291,12 @@ export default function Dashboard() {
                         </thead>
                         <tbody>
                           {(() => {
-                            const totals = sumForecastTotalsForRows(
+                            const totals = sumForecastTotalsKrw(
                               forecastActiveRows,
-                              homeForecastActiveFilters.product
+                              homeForecastActiveFilters.product,
+                              dealBasRMap,
+                              getForecastRowDisplayForProductFilter
                             );
-                            const sumCurrency = String(forecastActiveRows[0]?.currency || 'KRW').toUpperCase();
                             return (
                               <>
                                 {forecastActivePreviewRows.map((row) => {
@@ -5240,15 +5321,15 @@ export default function Dashboard() {
                                   >
                                     <td>{row.companyLabel}</td>
                                     <td>{renderSoftwareLabelCell(d.softwareLabel)}</td>
-                                    <td>{formatCurrency(d.unitPrice, row.currency)}</td>
+                                    <td><DashboardKrwCell amount={d.unitPrice} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
                                     <td>{d.quantity}</td>
-                                    <td>{formatCurrency(d.finalPrice, row.currency)}</td>
-                                    <td>{formatCurrency(d.forecastAmount, row.currency)}</td>
+                                    <td><DashboardKrwCell amount={d.finalPrice} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
+                                    <td><DashboardKrwCell amount={d.forecastAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
                                     <td>{formatForecastExpectedMonthCell(row.targetMonth)}</td>
-                                    <td>{formatCurrency(d.contractAmount, row.currency)}</td>
-                                    <td>{formatCurrency(d.invoiceAmount, row.currency)}</td>
-                                    <td>{formatCurrency(d.collectedAmount, row.currency)}</td>
-                                    <td>{formatCurrency(d.marginAmount, row.currency)}</td>
+                                    <td><DashboardKrwCell amount={d.contractAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
+                                    <td><DashboardKrwCell amount={d.invoiceAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
+                                    <td><DashboardKrwCell amount={d.collectedAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
+                                    <td><DashboardKrwCell amount={d.marginAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
                                   </tr>
                                   );
                                 })}
@@ -5265,15 +5346,15 @@ export default function Dashboard() {
                                 ) : null}
                                 <tr className="home-forecast-total-row">
                                   <td colSpan={2}>합계</td>
-                                  <td>{formatCurrency(totals.unitPrice, sumCurrency)}</td>
+                                  <td><DashboardKrwCell amount={totals.unitPrice} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
                                   <td>{Number(totals.quantity || 0).toLocaleString('ko-KR')}</td>
-                                  <td>{formatCurrency(totals.finalPrice, sumCurrency)}</td>
-                                  <td>{formatCurrency(totals.forecast, sumCurrency)}</td>
+                                  <td><DashboardKrwCell amount={totals.finalPrice} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
+                                  <td><DashboardKrwCell amount={totals.forecast} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
                                   <td>—</td>
-                                  <td>{formatCurrency(totals.contract, sumCurrency)}</td>
-                                  <td>{formatCurrency(totals.invoice, sumCurrency)}</td>
-                                  <td>{formatCurrency(totals.collected, sumCurrency)}</td>
-                                  <td>{formatCurrency(totals.margin, sumCurrency)}</td>
+                                  <td><DashboardKrwCell amount={totals.contract} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
+                                  <td><DashboardKrwCell amount={totals.invoice} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
+                                  <td><DashboardKrwCell amount={totals.collected} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
+                                  <td><DashboardKrwCell amount={totals.margin} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
                                 </tr>
                               </>
                             );
@@ -5330,11 +5411,12 @@ export default function Dashboard() {
                         </thead>
                         <tbody>
                           {(() => {
-                            const totals = sumForecastTotalsForRows(
+                            const totals = sumForecastTotalsKrw(
                               forecastCompletedRows,
-                              homeForecastCompletedFilters.product
+                              homeForecastCompletedFilters.product,
+                              dealBasRMap,
+                              getForecastRowDisplayForProductFilter
                             );
-                            const sumCurrency = String(forecastCompletedRows[0]?.currency || 'KRW').toUpperCase();
                             return (
                               <>
                                 {forecastCompletedPreviewRows.map((row) => {
@@ -5359,15 +5441,15 @@ export default function Dashboard() {
                                   >
                                     <td>{row.companyLabel}</td>
                                     <td>{renderSoftwareLabelCell(d.softwareLabel)}</td>
-                                    <td>{formatCurrency(d.unitPrice, row.currency)}</td>
+                                    <td><DashboardKrwCell amount={d.unitPrice} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
                                     <td>{d.quantity}</td>
-                                    <td>{formatCurrency(d.finalPrice, row.currency)}</td>
-                                    <td>{formatCurrency(d.forecastAmount, row.currency)}</td>
+                                    <td><DashboardKrwCell amount={d.finalPrice} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
+                                    <td><DashboardKrwCell amount={d.forecastAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
                                     <td>{formatForecastExpectedMonthCell(row.targetMonth)}</td>
-                                    <td>{formatCurrency(d.contractAmount, row.currency)}</td>
-                                    <td>{formatCurrency(d.invoiceAmount, row.currency)}</td>
-                                    <td>{formatCurrency(d.collectedAmount, row.currency)}</td>
-                                    <td>{formatCurrency(d.marginAmount, row.currency)}</td>
+                                    <td><DashboardKrwCell amount={d.contractAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
+                                    <td><DashboardKrwCell amount={d.invoiceAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
+                                    <td><DashboardKrwCell amount={d.collectedAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
+                                    <td><DashboardKrwCell amount={d.marginAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
                                   </tr>
                                   );
                                 })}
@@ -5384,15 +5466,15 @@ export default function Dashboard() {
                                 ) : null}
                                 <tr className="home-forecast-total-row">
                                   <td colSpan={2}>합계</td>
-                                  <td>{formatCurrency(totals.unitPrice, sumCurrency)}</td>
+                                  <td><DashboardKrwCell amount={totals.unitPrice} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
                                   <td>{Number(totals.quantity || 0).toLocaleString('ko-KR')}</td>
-                                  <td>{formatCurrency(totals.finalPrice, sumCurrency)}</td>
-                                  <td>{formatCurrency(totals.forecast, sumCurrency)}</td>
+                                  <td><DashboardKrwCell amount={totals.finalPrice} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
+                                  <td><DashboardKrwCell amount={totals.forecast} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
                                   <td>—</td>
-                                  <td>{formatCurrency(totals.contract, sumCurrency)}</td>
-                                  <td>{formatCurrency(totals.invoice, sumCurrency)}</td>
-                                  <td>{formatCurrency(totals.collected, sumCurrency)}</td>
-                                  <td>{formatCurrency(totals.margin, sumCurrency)}</td>
+                                  <td><DashboardKrwCell amount={totals.contract} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
+                                  <td><DashboardKrwCell amount={totals.invoice} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
+                                  <td><DashboardKrwCell amount={totals.collected} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
+                                  <td><DashboardKrwCell amount={totals.margin} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
                                 </tr>
                               </>
                             );
@@ -5444,8 +5526,8 @@ export default function Dashboard() {
                               <tr key={row.key}>
                                 <td>{row.label}</td>
                                 <td>{row.orderCount}</td>
-                                <td>{formatWonRevenue(row.revenueByCurrency)}</td>
-                                <td>{formatDashboardCurrencyTotals(row.netMarginByCurrency)}</td>
+                                <td>{formatWonRevenue(row.revenueByCurrency, dealBasRMap)}</td>
+                                <td>{formatDashboardCurrencyTotals(row.netMarginByCurrency, dealBasRMap)}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -5762,36 +5844,37 @@ export default function Dashboard() {
                       >
                         <td>{row.companyLabel}</td>
                         <td>{renderSoftwareLabelCell(d.softwareLabel)}</td>
-                        <td>{formatCurrency(d.unitPrice, row.currency)}</td>
+                        <td><DashboardKrwCell amount={d.unitPrice} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
                         <td>{d.quantity}</td>
-                        <td>{formatCurrency(d.finalPrice, row.currency)}</td>
-                        <td>{formatCurrency(d.forecastAmount, row.currency)}</td>
+                        <td><DashboardKrwCell amount={d.finalPrice} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
+                        <td><DashboardKrwCell amount={d.forecastAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
                         <td>{formatForecastExpectedMonthCell(row.targetMonth)}</td>
-                        <td>{formatCurrency(d.contractAmount, row.currency)}</td>
-                        <td>{formatCurrency(d.invoiceAmount, row.currency)}</td>
-                        <td>{formatCurrency(d.collectedAmount, row.currency)}</td>
-                        <td>{formatCurrency(d.marginAmount, row.currency)}</td>
+                        <td><DashboardKrwCell amount={d.contractAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
+                        <td><DashboardKrwCell amount={d.invoiceAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
+                        <td><DashboardKrwCell amount={d.collectedAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
+                        <td><DashboardKrwCell amount={d.marginAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
                       </tr>
                       );
                     })}
                     {(() => {
-                      const totals = sumForecastTotalsForRows(
+                      const totals = sumForecastTotalsKrw(
                         forecastActiveRows,
-                        homeForecastActiveFilters.product
+                        homeForecastActiveFilters.product,
+                        dealBasRMap,
+                        getForecastRowDisplayForProductFilter
                       );
-                      const sumCurrency = String(forecastActiveRows[0]?.currency || 'KRW').toUpperCase();
                       return (
                         <tr className="home-forecast-total-row">
                           <td colSpan={2}>합계</td>
-                          <td>{formatCurrency(totals.unitPrice, sumCurrency)}</td>
+                          <td><DashboardKrwCell amount={totals.unitPrice} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
                           <td>{Number(totals.quantity || 0).toLocaleString('ko-KR')}</td>
-                          <td>{formatCurrency(totals.finalPrice, sumCurrency)}</td>
-                          <td>{formatCurrency(totals.forecast, sumCurrency)}</td>
+                          <td><DashboardKrwCell amount={totals.finalPrice} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
+                          <td><DashboardKrwCell amount={totals.forecast} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
                           <td>—</td>
-                          <td>{formatCurrency(totals.contract, sumCurrency)}</td>
-                          <td>{formatCurrency(totals.invoice, sumCurrency)}</td>
-                          <td>{formatCurrency(totals.collected, sumCurrency)}</td>
-                          <td>{formatCurrency(totals.margin, sumCurrency)}</td>
+                          <td><DashboardKrwCell amount={totals.contract} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
+                          <td><DashboardKrwCell amount={totals.invoice} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
+                          <td><DashboardKrwCell amount={totals.collected} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
+                          <td><DashboardKrwCell amount={totals.margin} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
                         </tr>
                       );
                     })()}
@@ -5847,38 +5930,39 @@ export default function Dashboard() {
                       >
                         <td>{row.companyLabel}</td>
                         <td>{renderSoftwareLabelCell(d.softwareLabel)}</td>
-                        <td>{formatCurrency(d.unitPrice, row.currency)}</td>
+                        <td><DashboardKrwCell amount={d.unitPrice} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
                         <td>{d.quantity}</td>
-                        <td>{formatCurrency(d.finalPrice, row.currency)}</td>
+                        <td><DashboardKrwCell amount={d.finalPrice} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
                         <td>{Number.isFinite(row.probabilityPct) ? `${row.probabilityPct}%` : '—'}</td>
-                        <td>{formatCurrency(d.forecastAmount, row.currency)}</td>
+                        <td><DashboardKrwCell amount={d.forecastAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
                         <td>{formatForecastExpectedMonthCell(row.targetMonth)}</td>
-                        <td>{formatCurrency(d.contractAmount, row.currency)}</td>
-                        <td>{formatCurrency(d.invoiceAmount, row.currency)}</td>
-                        <td>{formatCurrency(d.collectedAmount, row.currency)}</td>
-                        <td>{formatCurrency(d.marginAmount, row.currency)}</td>
+                        <td><DashboardKrwCell amount={d.contractAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
+                        <td><DashboardKrwCell amount={d.invoiceAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
+                        <td><DashboardKrwCell amount={d.collectedAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
+                        <td><DashboardKrwCell amount={d.marginAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
                       </tr>
                       );
                     })}
                     {(() => {
-                      const totals = sumForecastTotalsForRows(
+                      const totals = sumForecastTotalsKrw(
                         forecastCompletedRows,
-                        homeForecastCompletedFilters.product
+                        homeForecastCompletedFilters.product,
+                        dealBasRMap,
+                        getForecastRowDisplayForProductFilter
                       );
-                      const sumCurrency = String(forecastCompletedRows[0]?.currency || 'KRW').toUpperCase();
                       return (
                         <tr className="home-forecast-total-row">
                           <td colSpan={2}>합계</td>
-                          <td>{formatCurrency(totals.unitPrice, sumCurrency)}</td>
+                          <td><DashboardKrwCell amount={totals.unitPrice} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
                           <td>{Number(totals.quantity || 0).toLocaleString('ko-KR')}</td>
-                          <td>{formatCurrency(totals.finalPrice, sumCurrency)}</td>
+                          <td><DashboardKrwCell amount={totals.finalPrice} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
                           <td>—</td>
-                          <td>{formatCurrency(totals.forecast, sumCurrency)}</td>
+                          <td><DashboardKrwCell amount={totals.forecast} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
                           <td>—</td>
-                          <td>{formatCurrency(totals.contract, sumCurrency)}</td>
-                          <td>{formatCurrency(totals.invoice, sumCurrency)}</td>
-                          <td>{formatCurrency(totals.collected, sumCurrency)}</td>
-                          <td>{formatCurrency(totals.margin, sumCurrency)}</td>
+                          <td><DashboardKrwCell amount={totals.contract} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
+                          <td><DashboardKrwCell amount={totals.invoice} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
+                          <td><DashboardKrwCell amount={totals.collected} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
+                          <td><DashboardKrwCell amount={totals.margin} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
                         </tr>
                       );
                     })()}

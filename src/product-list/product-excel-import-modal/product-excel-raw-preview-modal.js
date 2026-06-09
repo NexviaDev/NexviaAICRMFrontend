@@ -9,11 +9,13 @@ import {
   buildBillingPeriodPreviewOptions,
   countInvalidProductExcelDraftCells,
   formatBillingPreviewCellValue,
+  formatPriceExcelInputDisplay,
   parseProductBillingValue,
   billingIntervalCellIsValid,
   billingPeriodCellIsValid,
   normalizeStatus,
-  normalizeCurrency,
+  resolveCurrencyCode,
+  sanitizePriceExcelInput,
   PRODUCT_BILLING_PREVIEW_OPTIONS,
   PRODUCT_STATUS_PREVIEW_OPTIONS,
   PRODUCT_CURRENCY_PREVIEW_OPTIONS,
@@ -142,27 +144,27 @@ function StatusExcelCell({ raw, saving, onPick }) {
 
 function CurrencyExcelCell({ raw, saving, onPick }) {
   const cellRaw = raw == null ? '' : String(raw);
-  const normalized = normalizeCurrency(cellRaw);
-  const valid = !cellRaw.trim() || ['KRW', 'USD'].includes(normalized) || cellRaw === '$';
+  const resolved = resolveCurrencyCode(cellRaw);
+  const valid = resolved.empty || resolved.recognized;
 
   return (
     <select
-      className={`opp-excel-raw-cell-select ${!valid ? 'is-invalid' : ''}`}
-      value={valid && normalized ? normalized : ''}
+      className={`opp-excel-raw-cell-select opp-excel-raw-cell-select--currency ${!valid ? 'is-invalid' : ''}`}
+      value={valid && !resolved.empty ? resolved.code : ''}
       onChange={(e) => {
         const v = e.target.value;
         if (v) onPick(v);
       }}
       disabled={saving}
       aria-invalid={!valid}
-      title={!valid && cellRaw ? `「${cellRaw}」은 KRW·USD만 선택할 수 있습니다.` : undefined}
+      title={!valid && cellRaw ? `「${cellRaw}」은 지원 통화 목록에서 선택해 주세요.` : undefined}
     >
       {!valid && cellRaw ? (
         <option value="" disabled>
           {cellRaw} (목록에 없음)
         </option>
       ) : (
-        <option value="">(기본: KRW)</option>
+        <option value="">(기본: ₩ 원화)</option>
       )}
       {PRODUCT_CURRENCY_PREVIEW_OPTIONS.map((o) => (
         <option key={o.value} value={o.value}>
@@ -170,6 +172,24 @@ function CurrencyExcelCell({ raw, saving, onPick }) {
         </option>
       ))}
     </select>
+  );
+}
+
+function PriceExcelCell({ raw, saving, onChange }) {
+  const display = formatPriceExcelInputDisplay(raw);
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      autoComplete="off"
+      className="opp-excel-raw-cell-input opp-excel-raw-cell-input--price"
+      value={display}
+      onChange={(e) => onChange(sanitizePriceExcelInput(e.target.value))}
+      disabled={saving}
+      placeholder="0"
+      title="₩, $, 원 등 기호는 제거되고 숫자·쉼표만 표시됩니다"
+    />
   );
 }
 
@@ -268,6 +288,23 @@ export default function ProductExcelRawPreviewModal({
   const currencyColumnKey = useMemo(
     () => resolveProductExcelColumnKey(mappingRows, 'product.currency'),
     [mappingRows]
+  );
+  const listPriceColumnKey = useMemo(
+    () => resolveProductExcelColumnKey(mappingRows, 'product.listPrice'),
+    [mappingRows]
+  );
+  const costPriceColumnKey = useMemo(
+    () => resolveProductExcelColumnKey(mappingRows, 'product.costPrice'),
+    [mappingRows]
+  );
+  const channelPriceColumnKey = useMemo(
+    () => resolveProductExcelColumnKey(mappingRows, 'product.channelPrice'),
+    [mappingRows]
+  );
+
+  const isPriceColumnKey = useCallback(
+    (h) => h === listPriceColumnKey || h === costPriceColumnKey || h === channelPriceColumnKey,
+    [listPriceColumnKey, costPriceColumnKey, channelPriceColumnKey]
   );
 
   const invalidCounts = useMemo(
@@ -395,7 +432,8 @@ export default function ProductExcelRawPreviewModal({
                             h === billingColumnKey ||
                             h === billingIntervalColumnKey ||
                             h === statusColumnKey ||
-                            h === currencyColumnKey
+                            h === currencyColumnKey ||
+                            isPriceColumnKey(h)
                               ? 'opp-excel-raw-preview-th--stage'
                               : ''
                           }
@@ -415,6 +453,9 @@ export default function ProductExcelRawPreviewModal({
                           ) : null}
                           {h === currencyColumnKey ? (
                             <span className="opp-excel-raw-preview-th-badge">통화</span>
+                          ) : null}
+                          {isPriceColumnKey(h) ? (
+                            <span className="opp-excel-raw-preview-th-badge">금액</span>
                           ) : null}
                         </th>
                         );
@@ -470,6 +511,12 @@ export default function ProductExcelRawPreviewModal({
                                 raw={cellRaw}
                                 saving={saving}
                                 onPick={(v) => handleCell(idx, h, v)}
+                              />
+                            ) : isPriceColumnKey(h) ? (
+                              <PriceExcelCell
+                                raw={cellRaw}
+                                saving={saving}
+                                onChange={(v) => handleCell(idx, h, v)}
                               />
                             ) : (
                               <input
