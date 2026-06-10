@@ -34,7 +34,12 @@ import {
 import { formatProductBillingDisplay } from '@/lib/product-billing-utils';
 import { useExchangeRates } from '@/lib/use-exchange-rates';
 import { buildExchangeRateFormulaBuiltin } from '@/lib/exchange-rate-formula-builtin';
-import { computeCustomFieldFormulas, formatFormulaDisplayValue } from '@/lib/custom-field-formula';
+import { computeCustomFieldFormulas } from '@/lib/custom-field-formula';
+import {
+  formatCustomFieldDisplayValue,
+  getCustomFieldDisplayFormatClass,
+  normalizeCustomFieldDefinition
+} from '@/lib/custom-field-display-format';
 const LIST_ID = LIST_IDS.PRODUCT_LIST;
 const LIMIT = 10;
 /** 검색 모달: 페이지네이션 UI 숨김 — 한 번에 더 많이 불러옴 */
@@ -72,21 +77,48 @@ function buildProductFormulaContext(row, definitions = [], exchangeCtx = null) {
   };
 }
 
-/** DB에 저장 전 제품·수식 필드도 가격 기준으로 실시간 계산 */
+function findProductCustomFieldDef(definitions, fieldKey) {
+  const fk = String(fieldKey || '').trim();
+  if (!fk) return null;
+  return (
+    definitions.find((d) => d?.key === fk) ||
+    definitions.find((d) => String(d?.key || '').trim().toLowerCase() === fk.toLowerCase()) ||
+    null
+  );
+}
+
+/** 저장값은 그대로 — 표시형식(options.displayFormat)만 적용 */
 function resolveProductCustomFieldDisplay(row, fieldKey, definitions = [], exchangeCtx = null) {
-  const def = definitions.find((d) => d.key === fieldKey);
-  const stored = row?.customFields?.[fieldKey];
-  if (def?.type === 'formula') {
+  const def = findProductCustomFieldDef(definitions, fieldKey);
+  if (!def) return null;
+  const normalizedDef = normalizeCustomFieldDefinition(def);
+
+  let rawValue;
+  if (normalizedDef.type === 'formula') {
     const computed = computeCustomFieldFormulas(
       definitions,
       buildProductFormulaContext(row, definitions, exchangeCtx)
     );
-    const val = computed[fieldKey];
-    if (val == null) return null;
-    return formatFormulaDisplayValue(val) ?? String(val);
+    rawValue = computed[fieldKey];
+    if (rawValue == null) return null;
+  } else {
+    rawValue = row?.customFields?.[fieldKey];
+    if (rawValue === undefined || rawValue === null || rawValue === '') return null;
   }
-  if (stored !== undefined && stored !== null && stored !== '') return String(stored);
-  return null;
+
+  return formatCustomFieldDisplayValue(rawValue, normalizedDef, { currency: row?.currency || 'KRW' });
+}
+
+function renderProductCustomFieldCell(row, fieldKey, definitions, exchangeCtx) {
+  const def = findProductCustomFieldDef(definitions, fieldKey);
+  const normalizedDef = def ? normalizeCustomFieldDefinition(def) : null;
+  const v = resolveProductCustomFieldDisplay(row, fieldKey, definitions, exchangeCtx);
+  const fmtClass = normalizedDef ? getCustomFieldDisplayFormatClass(normalizedDef) : '';
+  return (
+    <span className={`product-list-custom-field-value text-muted${fmtClass ? ` ${fmtClass}` : ''}`}>
+      {v != null && v !== '' ? v : '—'}
+    </span>
+  );
 }
 
 function resolveProductCustomFieldSortValue(row, fieldKey, definitions = [], exchangeCtx = null) {
@@ -355,9 +387,12 @@ export default function ProductList({
   /** 제품 커스텀 필드 정의 API → 열 설정·표시에 사용 (재사용: 마운트 시 + 설정 버튼 클릭 시 최신 반영) */
   const fetchProductCustomFieldColumnDefs = useCallback(async () => {
     await pingBackendHealth(getAuthHeader);
-    const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=product`, { headers: getAuthHeader() });
+    const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=product&_=${Date.now()}`, {
+      headers: getAuthHeader(),
+      cache: 'no-store'
+    });
     const data = await res.json().catch(() => ({}));
-    const defs = Array.isArray(data?.items) ? data.items : [];
+    const defs = (Array.isArray(data?.items) ? data.items : []).map(normalizeCustomFieldDefinition);
     return {
       definitions: defs,
       columns: defs.map((d) => ({ key: `${CUSTOM_FIELDS_PREFIX}${d.key}`, label: d.label || d.key || '' }))
@@ -407,6 +442,15 @@ export default function ProductList({
       setCustomFieldColumns([]);
     }
   }, [fetchProductCustomFieldColumnDefs]);
+
+  useEffect(() => {
+    const onDefsChanged = (e) => {
+      if (e?.detail?.entityType && e.detail.entityType !== 'product') return;
+      void loadProductCustomFieldColumns();
+    };
+    window.addEventListener('nexvia-custom-field-definitions-changed', onDefsChanged);
+    return () => window.removeEventListener('nexvia-custom-field-definitions-changed', onDefsChanged);
+  }, [loadProductCustomFieldColumns]);
 
   const runSearch = (e) => {
     e?.preventDefault();
@@ -1155,11 +1199,13 @@ export default function ProductList({
                               {STATUS_LABELS[row.status] || row.status}
                             </span>
                           )}
-                          {col.key.startsWith(CUSTOM_FIELDS_PREFIX) && (() => {
-                            const fk = col.key.slice(CUSTOM_FIELDS_PREFIX.length);
-                            const v = resolveProductCustomFieldDisplay(row, fk, productCustomFieldDefinitions, productFormulaExchangeCtx);
-                            return <span className="text-muted">{v != null && v !== '' ? v : '—'}</span>;
-                          })()}
+                          {col.key.startsWith(CUSTOM_FIELDS_PREFIX) &&
+                            renderProductCustomFieldCell(
+                              row,
+                              col.key.slice(CUSTOM_FIELDS_PREFIX.length),
+                              productCustomFieldDefinitions,
+                              productFormulaExchangeCtx
+                            )}
                         </td>
                       ))}
                     </tr>
@@ -1249,7 +1295,10 @@ export default function ProductList({
       {showCustomFieldsManageModal && canManageCustomFieldDefinitions && (
         <CustomFieldsManageModal
           entityType="product"
-          onClose={() => setShowCustomFieldsManageModal(false)}
+          onClose={() => {
+            setShowCustomFieldsManageModal(false);
+            void loadProductCustomFieldColumns();
+          }}
           onFieldAdded={() => loadProductCustomFieldColumns()}
           onDefinitionsUpdated={() => loadProductCustomFieldColumns()}
           apiBase={API_BASE}

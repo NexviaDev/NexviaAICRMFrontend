@@ -1,19 +1,10 @@
 import { useMemo } from 'react';
-import { computeCustomFieldFormulas, formatFormulaDisplayValue, formatFormulaExpressionForLabel } from '@/lib/custom-field-formula';
+import { computeCustomFieldFormulas, formatFormulaExpressionForLabel } from '@/lib/custom-field-formula';
+import { formatCustomFieldDisplayValue } from '@/lib/custom-field-display-format';
 import './custom-fields-display.css';
 
-function formatDisplayValue(def, value) {
-  if (value === undefined || value === null) return '—';
-  if (def.type === 'checkbox') return value ? '예' : '아니오';
-  if (def.type === 'multiselect' && Array.isArray(value)) {
-    return value.length ? value.join(', ') : '—';
-  }
-  if (def.type === 'formula') {
-    const formatted = formatFormulaDisplayValue(value);
-    return formatted != null ? formatted : '—';
-  }
-  if (typeof value === 'string' && !value.trim()) return '—';
-  return String(value);
+function formatDisplayValue(def, value, context = {}) {
+  return formatCustomFieldDisplayValue(value, def, context);
 }
 
 export default function CustomFieldsDisplay({
@@ -65,7 +56,7 @@ export default function CustomFieldsDisplay({
                 <span className="custom-fields-display-formula-badge">함수</span>
               ) : null}
             </dt>
-            <dd>{formatDisplayValue(def, value)}</dd>
+            <dd>{formatDisplayValue(def, value, formulaContext?.displayContext || {})}</dd>
           </div>
         ))}
       </dl>

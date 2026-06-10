@@ -14,6 +14,15 @@ import {
   FORMULA_FUNCTION_CATALOG,
   FORMULA_FUNCTION_GROUP_LABELS
 } from '@/lib/custom-field-formula';
+import {
+  CUSTOM_FIELD_DISPLAY_FORMATS,
+  DISPLAY_FORMAT_CURRENCY_PRODUCT,
+  mergeDisplayFormatIntoOptions,
+  normalizeCustomFieldDisplayFormat,
+  normalizeDisplayFormatCurrency,
+  usesDisplayFormatCurrency
+} from '@/lib/custom-field-display-format';
+import DisplayFormatCurrencyPicker from '@/shared/display-format-currency-picker/display-format-currency-picker';
 import './custom-fields-manage-modal.css';
 
 const FORMULA_FN_GROUP_ORDER = ['accounting', 'general', 'advanced'];
@@ -29,7 +38,40 @@ const FORMULA_ENTITY_TYPES = new Set(['product', 'customerCompany', 'contact']);
 
 const FORMULA_OPERATORS = ['+', '-', '*', '/'];
 
-function defToEditDraft(def) {
+function dispatchCustomFieldDefinitionsChanged(entityType) {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(
+    new CustomEvent('nexvia-custom-field-definitions-changed', { detail: { entityType } })
+  );
+}
+
+function DisplayFormatSelect({ value, onChange, id, className = '', disabled = false, compact = false }) {
+  const fmt = normalizeCustomFieldDisplayFormat(value);
+  const selected = CUSTOM_FIELD_DISPLAY_FORMATS.find((f) => f.value === fmt);
+  return (
+    <select
+      id={id}
+      className={`custom-fields-manage-display-format-select${compact ? ' custom-fields-manage-display-format-select--compact' : ''}${className ? ` ${className}` : ''}`}
+      value={fmt}
+      onChange={(e) => onChange(e.target.value)}
+      disabled={disabled}
+      title={selected?.hint || '표시형식'}
+      aria-label="표시형식"
+    >
+      {CUSTOM_FIELD_DISPLAY_FORMATS.map((f) => (
+        <option key={f.value} value={f.value} title={f.hint}>
+          {f.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function defaultDisplayFormatCurrency(entityType) {
+  return entityType === 'product' ? DISPLAY_FORMAT_CURRENCY_PRODUCT : 'KRW';
+}
+
+function defToEditDraft(def, entityType = 'product') {
   if (!def) return null;
   const isSelect = def.type === 'select' || def.type === 'multiselect';
   return {
@@ -43,12 +85,15 @@ function defToEditDraft(def) {
     selectListInput: Array.isArray(def.options?.choices) ? def.options.choices.join(', ') : '',
     useSelectList: isSelect,
     useMultiSelect: def.type === 'multiselect',
-    scheduleEditableBeforeWon: !!def.options?.editableBeforeWon
+    scheduleEditableBeforeWon: !!def.options?.editableBeforeWon,
+    displayFormat: normalizeCustomFieldDisplayFormat(def.options?.displayFormat),
+    displayFormatCurrency:
+      def.options?.displayFormatCurrency || defaultDisplayFormatCurrency(entityType)
   };
 }
 
-function buildRowDraftsFromDefinitions(defs = []) {
-  return Object.fromEntries(defs.map((d) => [String(d._id), defToEditDraft(d)]));
+function buildRowDraftsFromDefinitions(defs = [], entityType = 'product') {
+  return Object.fromEntries(defs.map((d) => [String(d._id), defToEditDraft(d, entityType)]));
 }
 
 function isRowDraftDirty(def, draft, entityType) {
@@ -67,6 +112,15 @@ function isRowDraftDirty(def, draft, entityType) {
   }
   if (entityType === 'salesOpportunitySchedule') {
     return !!def.options?.editableBeforeWon !== !!draft.scheduleEditableBeforeWon;
+  }
+  if (normalizeCustomFieldDisplayFormat(def.options?.displayFormat) !== normalizeCustomFieldDisplayFormat(draft.displayFormat)) {
+    return true;
+  }
+  if (
+    normalizeDisplayFormatCurrency(def.options?.displayFormatCurrency, def.options?.displayFormat) !==
+    normalizeDisplayFormatCurrency(draft.displayFormatCurrency, draft.displayFormat)
+  ) {
+    return true;
   }
   if (def.type !== 'formula' && def.type !== 'select' && def.type !== 'multiselect') {
     return (def.type || 'text') !== (draft.type || 'text');
@@ -89,6 +143,7 @@ function buildUpdateBody(def, draft, entityType, definitions) {
   if (!label) return { error: '표시 이름을 입력해 주세요.' };
 
   const body = { label, required: !!draft.required };
+  let optionsBase = def.options && typeof def.options === 'object' ? { ...def.options } : null;
 
   if (draft.type === 'formula') {
     const parsed = parseFormulaInput(draft.expression);
@@ -102,35 +157,33 @@ function buildUpdateBody(def, draft, entityType, definitions) {
     );
     if (!check.ok) return { error: check.error || '수식이 올바르지 않습니다.' };
     body.type = 'formula';
-    body.options = { expression: parsed.expression };
-    return { body };
-  }
-
-  if (def.type === 'formula') {
+    optionsBase = { expression: parsed.expression };
+  } else if (def.type === 'formula') {
     body.type = draft.type || 'text';
-    body.options = null;
-    return { body };
-  }
-
-  if (entityType === 'salesOpportunitySchedule') {
-    body.options = draft.scheduleEditableBeforeWon ? { editableBeforeWon: true } : null;
-    return { body };
-  }
-
-  if (def.type === 'select' || def.type === 'multiselect') {
+    optionsBase = null;
+  } else if (entityType === 'salesOpportunitySchedule') {
+    optionsBase = draft.scheduleEditableBeforeWon ? { editableBeforeWon: true } : null;
+  } else if (def.type === 'select' || def.type === 'multiselect') {
     const choices = String(draft.selectListInput || '')
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
     if (!choices.length) return { error: '선택 목록을 하나 이상 입력해 주세요.' };
-    body.options = { choices };
-    return { body };
-  }
-
-  if (def.type !== 'formula' && def.type !== 'select' && def.type !== 'multiselect') {
+    optionsBase = { choices };
+  } else if (def.type !== 'formula' && def.type !== 'select' && def.type !== 'multiselect') {
     body.type = draft.type;
+    if (optionsBase) {
+      delete optionsBase.expression;
+      delete optionsBase.choices;
+      delete optionsBase.editableBeforeWon;
+    }
   }
 
+  body.options = mergeDisplayFormatIntoOptions(
+    optionsBase,
+    draft.displayFormat,
+    draft.displayFormatCurrency
+  );
   return { body };
 }
 
@@ -147,6 +200,8 @@ function buildNewFieldPayload({
   selectListInput,
   newRequired,
   scheduleEditableBeforeWon,
+  displayFormat,
+  displayFormatCurrency,
   order
 }) {
   const type = isFormulaMode
@@ -166,6 +221,11 @@ function buildNewFieldPayload({
       choices: selectListInput.split(',').map((s) => s.trim()).filter(Boolean)
     };
   }
+  optionsPayload = mergeDisplayFormatIntoOptions(
+    optionsPayload,
+    displayFormat,
+    displayFormatCurrency
+  );
   const body = {
     entityType,
     key: 'field_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
@@ -205,7 +265,7 @@ function validateNewFieldForm({
 
 /**
  * 추가 필드 관리 전용 모달.
- * 필드 추가 → 서버 즉시 저장 · 하단 확인 → 모달 닫기.
+ * 목록 수정은 로컬 초안 → 하단 「확인」에서 일괄 저장 · 신규 필드 추가는 즉시 저장.
  */
 export default function CustomFieldsManageModal({
   entityType,
@@ -238,8 +298,12 @@ export default function CustomFieldsManageModal({
   const [deletingId, setDeletingId] = useState(null);
   const [rowDrafts, setRowDrafts] = useState({});
   const [rowErrors, setRowErrors] = useState({});
-  const [savingEditId, setSavingEditId] = useState(null);
+  const [confirmSaving, setConfirmSaving] = useState(false);
   const [scheduleEditableBeforeWon, setScheduleEditableBeforeWon] = useState(false);
+  const [newDisplayFormat, setNewDisplayFormat] = useState('general');
+  const [newDisplayFormatCurrency, setNewDisplayFormatCurrency] = useState(() =>
+    defaultDisplayFormatCurrency(entityType)
+  );
 
   const formulaFieldOptions = useMemo(
     () => buildFormulaFieldPickerOptions(entityType, definitions),
@@ -264,6 +328,16 @@ export default function CustomFieldsManageModal({
 
   const parsedFormula = useMemo(() => parseFormulaInput(formulaInput), [formulaInput]);
   const isFormulaMode = parsedFormula.isFormula;
+
+  const hasPendingListChanges = useMemo(
+    () =>
+      definitions.some((def) => {
+        const sid = String(def._id);
+        const draft = rowDrafts[sid] || defToEditDraft(def, entityType);
+        return isRowDraftDirty(def, draft, entityType);
+      }),
+    [definitions, rowDrafts, entityType]
+  );
 
   const inlineFieldTypes = useMemo(
     () => (canUseFormula ? [...FIELD_TYPES, { value: 'formula', label: '함수' }] : FIELD_TYPES),
@@ -295,11 +369,14 @@ export default function CustomFieldsManageModal({
 
   const fetchDefinitions = async () => {
     try {
-      const res = await fetch(listUrl, { headers: getAuthHeader() });
+      const res = await fetch(`${listUrl}&_=${Date.now()}`, {
+        headers: getAuthHeader(),
+        cache: 'no-store'
+      });
       const data = await res.json().catch(() => ({}));
       if (res.ok && Array.isArray(data.items)) {
         setDefinitions(data.items);
-        setRowDrafts(buildRowDraftsFromDefinitions(data.items));
+        setRowDrafts(buildRowDraftsFromDefinitions(data.items, entityType));
         setRowErrors({});
       }
     } catch (_) {}
@@ -382,6 +459,8 @@ export default function CustomFieldsManageModal({
     setUseMultiSelect(false);
     setSelectListInput('');
     setScheduleEditableBeforeWon(false);
+    setNewDisplayFormat('general');
+    setNewDisplayFormatCurrency(defaultDisplayFormatCurrency(entityType));
     resetFormulaState();
   };
 
@@ -419,6 +498,8 @@ export default function CustomFieldsManageModal({
       selectListInput,
       newRequired,
       scheduleEditableBeforeWon,
+      displayFormat: newDisplayFormat,
+      displayFormatCurrency: newDisplayFormatCurrency,
       order: definitions.length
     });
     setAddingField(true);
@@ -436,6 +517,7 @@ export default function CustomFieldsManageModal({
       await fetchDefinitions();
       onFieldAdded?.();
       onDefinitionsUpdated?.();
+      dispatchCustomFieldDefinitionsChanged(entityType);
       if (entityType === 'salesOpportunitySchedule') dispatchSalesOpportunityScheduleDefsChanged();
       if (entityType === 'salesOpportunityFinance') dispatchSalesOpportunityFinanceDefsChanged();
       resetNewFieldForm();
@@ -446,7 +528,65 @@ export default function CustomFieldsManageModal({
     }
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
+    const dirtyDefs = definitions.filter((def) => {
+      const sid = String(def._id);
+      const draft = rowDrafts[sid] || defToEditDraft(def, entityType);
+      return isRowDraftDirty(def, draft, entityType);
+    });
+
+    if (!dirtyDefs.length) {
+      onClose();
+      return;
+    }
+
+    setConfirmSaving(true);
+    setRowErrors({});
+    const nextErrors = {};
+    let savedCount = 0;
+
+    for (const def of dirtyDefs) {
+      const sid = String(def._id);
+      const draft = rowDrafts[sid] || defToEditDraft(def, entityType);
+      const built = buildUpdateBody(def, draft, entityType, definitions);
+      if (built.error) {
+        nextErrors[sid] = built.error;
+        continue;
+      }
+      try {
+        const res = await fetch(`${apiBase}/custom-field-definitions/${def._id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+          body: JSON.stringify(built.body)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          nextErrors[sid] = data.error || `"${def.label || '필드'}" 저장에 실패했습니다.`;
+          continue;
+        }
+        savedCount += 1;
+      } catch (_) {
+        nextErrors[sid] = '서버에 연결할 수 없습니다.';
+      }
+    }
+
+    setConfirmSaving(false);
+
+    if (Object.keys(nextErrors).length) {
+      setRowErrors(nextErrors);
+      if (savedCount > 0) {
+        await fetchDefinitions();
+        onDefinitionsUpdated?.();
+        dispatchCustomFieldDefinitionsChanged(entityType);
+      }
+      return;
+    }
+
+    await fetchDefinitions();
+    onDefinitionsUpdated?.();
+    dispatchCustomFieldDefinitionsChanged(entityType);
+    if (entityType === 'salesOpportunitySchedule') dispatchSalesOpportunityScheduleDefsChanged();
+    if (entityType === 'salesOpportunityFinance') dispatchSalesOpportunityFinanceDefsChanged();
     onClose();
   };
 
@@ -472,6 +612,7 @@ export default function CustomFieldsManageModal({
         });
         fetchDefinitions();
         onDefinitionsUpdated?.();
+        dispatchCustomFieldDefinitionsChanged(entityType);
         if (entityType === 'salesOpportunitySchedule') dispatchSalesOpportunityScheduleDefsChanged();
         if (entityType === 'salesOpportunityFinance') dispatchSalesOpportunityFinanceDefsChanged();
       } else {
@@ -482,42 +623,6 @@ export default function CustomFieldsManageModal({
       alert('서버에 연결할 수 없습니다.');
     } finally {
       setDeletingId(null);
-    }
-  };
-
-  const handleSaveRow = async (def) => {
-    if (!def?._id) return;
-    const sid = String(def._id);
-    const draft = rowDrafts[sid];
-    if (!draft) return;
-
-    const built = buildUpdateBody(def, draft, entityType, definitions);
-    if (built.error) {
-      setRowErrors((prev) => ({ ...prev, [sid]: built.error }));
-      return;
-    }
-
-    setSavingEditId(def._id);
-    setRowErrors((prev) => ({ ...prev, [sid]: '' }));
-    try {
-      const res = await fetch(`${apiBase}/custom-field-definitions/${def._id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify(built.body)
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setRowErrors((prev) => ({ ...prev, [sid]: data.error || '수정에 실패했습니다.' }));
-        return;
-      }
-      fetchDefinitions();
-      onDefinitionsUpdated?.();
-      if (entityType === 'salesOpportunitySchedule') dispatchSalesOpportunityScheduleDefsChanged();
-      if (entityType === 'salesOpportunityFinance') dispatchSalesOpportunityFinanceDefsChanged();
-    } catch (_) {
-      setRowErrors((prev) => ({ ...prev, [sid]: '서버에 연결할 수 없습니다.' }));
-    } finally {
-      setSavingEditId(null);
     }
   };
 
@@ -716,6 +821,32 @@ export default function CustomFieldsManageModal({
               </div>
               ) : null}
 
+              <div className="custom-fields-manage-field">
+                <label htmlFor="custom-field-display-format">표시형식</label>
+                <DisplayFormatSelect
+                  id="custom-field-display-format"
+                  value={newDisplayFormat}
+                  onChange={(v) => {
+                    setNewDisplayFormat(v);
+                    if (!usesDisplayFormatCurrency(v)) {
+                      setNewDisplayFormatCurrency(defaultDisplayFormatCurrency(entityType));
+                    }
+                  }}
+                />
+                {usesDisplayFormatCurrency(newDisplayFormat) ? (
+                  <DisplayFormatCurrencyPicker
+                    id="custom-field-display-format-currency"
+                    entityType={entityType}
+                    value={newDisplayFormatCurrency}
+                    onChange={setNewDisplayFormatCurrency}
+                  />
+                ) : null}
+                <p className="custom-fields-manage-hint">
+                  목록·상세 화면 표시만 바꿉니다. 저장값·수식 계산에는 영향 없습니다. 회계·통화는 환율 화면과
+                  동일한 통화 목록을 사용합니다.
+                </p>
+              </div>
+
               <div className="custom-fields-manage-field custom-fields-manage-field--required">
                 <label className="custom-fields-manage-checkbox-label">
                   <input type="checkbox" checked={newRequired} onChange={(e) => setNewRequired(e.target.checked)} />
@@ -788,17 +919,17 @@ export default function CustomFieldsManageModal({
               <div className="custom-fields-manage-list">
                 <h4>추가된 필드</h4>
                 <p className="custom-fields-manage-list-hint">
-                  필드 추가 시 즉시 저장되며 오른쪽 수식 패널에 반영됩니다. 타입에서 「함수」로 전환·해제(글자/숫자 등)가 가능합니다. 값을 수정한 뒤 ✓ 를 눌러 저장하세요.
+                  아래 필드는 수정만 모아 두었다가 하단 「확인」을 누를 때 일괄 저장됩니다. 신규 필드 추가는 위 폼에서 즉시 등록됩니다.
                 </p>
                 <ul>
                   {definitions.map((def) => {
                     const sid = String(def._id);
-                    const draft = rowDrafts[sid] || defToEditDraft(def);
+                    const draft = rowDrafts[sid] || defToEditDraft(def, entityType);
                     const draftType = draft.type || def.type || 'text';
                     const isFormulaDraft = draftType === 'formula';
                     const dirty = isRowDraftDirty(def, draft, entityType);
                     const rowError = rowErrors[sid];
-                    const saving = String(savingEditId) === sid;
+                    const rowDisabled = confirmSaving || !!deletingId;
                     return (
                       <li key={def._id} className={`custom-fields-manage-list-item${dirty ? ' custom-fields-manage-list-item--dirty' : ''}`}>
                         <div className="custom-fields-manage-list-row">
@@ -850,6 +981,27 @@ export default function CustomFieldsManageModal({
                               ))}
                             </select>
                           ) : null}
+                          <DisplayFormatSelect
+                            compact
+                            value={draft.displayFormat}
+                            onChange={(v) => {
+                              const patch = { displayFormat: v };
+                              if (!usesDisplayFormatCurrency(v)) {
+                                patch.displayFormatCurrency = defaultDisplayFormatCurrency(entityType);
+                              }
+                              updateRowDraft(def._id, patch);
+                            }}
+                            disabled={rowDisabled}
+                          />
+                          {usesDisplayFormatCurrency(draft.displayFormat) ? (
+                            <DisplayFormatCurrencyPicker
+                              compact
+                              entityType={entityType}
+                              value={draft.displayFormatCurrency}
+                              onChange={(v) => updateRowDraft(def._id, { displayFormatCurrency: v })}
+                              disabled={rowDisabled}
+                            />
+                          ) : null}
                           <label className="custom-fields-manage-list-required" title="필수">
                             <input
                               type="checkbox"
@@ -861,19 +1013,9 @@ export default function CustomFieldsManageModal({
                           <div className="custom-fields-manage-list-actions">
                             <button
                               type="button"
-                              className={`custom-fields-manage-list-save-btn${dirty ? ' is-active' : ''}`}
-                              onClick={() => handleSaveRow(def)}
-                              disabled={!dirty || saving || !!deletingId}
-                              aria-label={`${def.label} 저장`}
-                              title={dirty ? '변경 저장' : '변경 없음'}
-                            >
-                              <span className="material-symbols-outlined">{saving ? 'hourglass_empty' : 'check'}</span>
-                            </button>
-                            <button
-                              type="button"
                               className="custom-fields-manage-list-delete"
                               onClick={() => handleDelete(def._id)}
-                              disabled={!!deletingId || saving}
+                              disabled={rowDisabled}
                               aria-label={`${def.label} 삭제`}
                             >
                               <span className="material-symbols-outlined">delete</span>
@@ -914,13 +1056,18 @@ export default function CustomFieldsManageModal({
             )}
           </div>
           <footer className="custom-fields-manage-footer">
+            {hasPendingListChanges ? (
+              <p className="custom-fields-manage-footer-hint" role="status">
+                변경된 필드가 있습니다. 확인을 누르면 일괄 저장됩니다.
+              </p>
+            ) : null}
             <button
               type="button"
               className="custom-fields-manage-add-btn"
-              onClick={handleConfirm}
-              disabled={addingField}
+              onClick={() => void handleConfirm()}
+              disabled={addingField || confirmSaving || !!deletingId}
             >
-              {addingField ? '등록 중…' : '확인'}
+              {confirmSaving ? '저장 중…' : hasPendingListChanges ? '변경 저장' : '확인'}
             </button>
           </footer>
         </div>

@@ -379,9 +379,9 @@ const scrollRevealVariants = {
   },
   revealMask: {
     hidden:
-      "translate-y-12 opacity-0 blur-[8px] [clip-path:inset(0_0_100%_0_round_28px)]",
+      "translate-y-12 opacity-0 blur-[8px] [clip-path:inset(0_0_100%_0_round_0_0_28px_28px)]",
     visible:
-      "translate-y-0 opacity-100 blur-0 [clip-path:inset(0_0_0%_0_round_28px)]",
+      "translate-y-0 opacity-100 blur-0 [clip-path:inset(0_0_0%_0)]",
   },
   bloom: {
     hidden: "scale-[0.88] opacity-0 blur-[16px]",

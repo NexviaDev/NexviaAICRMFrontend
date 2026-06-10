@@ -383,13 +383,22 @@
 .custom-fields-manage-footer {
   flex-shrink: 0;
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.75rem;
   padding: 0.75rem 1.25rem;
   border-top: 1px solid var(--card-border);
   background: #f8fbfd;
   border-radius: 0 0 0.75rem 0.75rem;
+}
+
+.custom-fields-manage-footer-hint {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  font-size: 0.78rem;
+  color: #5a7282;
+  line-height: 1.45;
 }
 
 .custom-fields-manage-modal-desc {
@@ -663,7 +672,8 @@
 
 .custom-fields-manage-list-name-input,
 .custom-fields-manage-list-expr-input,
-.custom-fields-manage-list-type-select {
+.custom-fields-manage-list-type-select,
+.custom-fields-manage-display-format-select {
   min-width: 0;
   height: 2.25rem;
   padding: 0 0.65rem;
@@ -692,9 +702,31 @@
   flex: 0 1 5.5rem;
 }
 
+.custom-fields-manage-display-format-select {
+  width: 100%;
+  height: 2.35rem;
+  padding: 0 0.65rem;
+  border: 1px solid #d8e2ea;
+  border-radius: 0.45rem;
+  background: #fff;
+  font-size: 0.8125rem;
+  color: var(--text);
+  box-sizing: border-box;
+}
+
+.custom-fields-manage-display-format-select--compact {
+  flex: 0 1 6.5rem;
+  width: auto;
+  height: 2.25rem;
+  font-size: 0.75rem;
+  color: #4a6575;
+  background: #f7fafc;
+}
+
 .custom-fields-manage-list-name-input:focus,
 .custom-fields-manage-list-expr-input:focus,
-.custom-fields-manage-list-type-select:focus {
+.custom-fields-manage-list-type-select:focus,
+.custom-fields-manage-display-format-select:focus {
   outline: none;
   border-color: #9ebfd1;
   box-shadow: 0 0 0 2px rgba(158, 191, 209, 0.25);

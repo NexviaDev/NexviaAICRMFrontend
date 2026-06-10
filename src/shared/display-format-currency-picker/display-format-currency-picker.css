@@ -1,0 +1,81 @@
+.df-currency-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.df-currency-picker--compact {
+  flex: 0 1 11rem;
+}
+
+.df-currency-picker-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #6a8494;
+}
+
+.df-currency-picker-select-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.df-currency-picker-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 2.25rem;
+  padding: 0 0.55rem;
+  border: 1px solid #d8e2ea;
+  border-radius: 0.45rem;
+  background: #fff;
+  font-size: 0.78rem;
+  color: var(--text);
+  box-sizing: border-box;
+}
+
+.df-currency-picker--compact .df-currency-picker-label {
+  display: none;
+}
+
+.df-currency-picker--compact .df-currency-picker-select {
+  height: 2.25rem;
+  font-size: 0.72rem;
+  background: #f7fafc;
+}
+
+.df-currency-picker-select:focus {
+  outline: none;
+  border-color: #9ebfd1;
+  box-shadow: 0 0 0 2px rgba(158, 191, 209, 0.25);
+}
+
+.df-currency-picker-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+  padding: 0.2rem 0.45rem;
+  border-radius: 0.35rem;
+  background: #eef4f8;
+  border: 1px solid #d4e2eb;
+}
+
+.df-currency-picker-preview--product {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #4a7285;
+}
+
+.df-currency-picker-preview-code {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #2c6485;
+}
+
+.df-currency-flag-img {
+  display: block;
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
