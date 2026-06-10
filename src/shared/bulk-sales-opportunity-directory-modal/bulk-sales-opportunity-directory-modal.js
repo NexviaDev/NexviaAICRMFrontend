@@ -4,6 +4,11 @@ import ParticipantModal from '@/shared/participant-modal/participant-modal';
 import CustomFieldsManageModal from '@/shared/custom-fields-manage-modal/custom-fields-manage-modal';
 import { API_BASE } from '@/config';
 import { pingBackendHealth } from '@/lib/backend-wake';
+import { useExchangeRates } from '@/lib/use-exchange-rates';
+import {
+  buildAvailableCurrencyCodesFromDealBasRMap,
+  resolveProductCurrencySelectOptions
+} from '@/lib/exchange-rate-currency-options';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { resolveDepartmentDisplayFromChart } from '@/lib/org-chart-tree-utils';
 import { buildStageForecastPercentMap } from '@/sales-pipeline/pipeline-forecast-utils';
@@ -105,6 +110,15 @@ export default function BulkSalesOpportunityDirectoryModal({
   }));
   const [contactByCompanyId, setContactByCompanyId] = useState({});
   const [employeesByCompanyId, setEmployeesByCompanyId] = useState({});
+
+  const { dealBasRMap } = useExchangeRates({ getAuthHeader, pollMs: 0 });
+  const currencySelectOptions = useMemo(
+    () =>
+      resolveProductCurrencySelectOptions(form.currency, {
+        availableCodes: buildAvailableCurrencyCodesFromDealBasRMap(dealBasRMap)
+      }),
+    [form.currency, dealBasRMap]
+  );
   const [employeesLoading, setEmployeesLoading] = useState(false);
   const [personalPurchase, setPersonalPurchase] = useState(mode === 'employees');
   const [saving, setSaving] = useState(false);
@@ -718,9 +732,11 @@ export default function BulkSalesOpportunityDirectoryModal({
                 value={form.currency}
                 onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value }))}
               >
-                <option value="KRW">KRW</option>
-                <option value="USD">USD</option>
-                <option value="JPY">JPY</option>
+                {currencySelectOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
               </select>
             </label>
             <label className="bulk-opp-dir-label">

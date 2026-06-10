@@ -626,3 +626,151 @@
   color: #b91c1c;
   font-weight: 700;
 }
+
+/* 제품 엑셀 미리보기 — 수식 패널·셀 미리보기 */
+.opp-excel-raw-preview-body-layout {
+  display: flex;
+  gap: 0.75rem;
+  flex: 1;
+  min-height: 0;
+  padding: 0 1.25rem 0.75rem;
+}
+
+.opp-excel-raw-preview-body-layout .opp-excel-raw-preview-wrap--modal {
+  flex: 1;
+  min-width: 0;
+}
+
+.pl-excel-formula-panel {
+  flex: 0 0 18.5rem;
+  max-width: 22rem;
+  align-self: stretch;
+  max-height: 100%;
+}
+
+.opp-excel-raw-formula-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 8.5rem;
+}
+
+.opp-excel-raw-cell-input.is-formula {
+  border-color: #93c5fd;
+  background: #f8fbff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.6875rem;
+}
+
+.opp-excel-raw-formula-preview {
+  align-self: flex-end;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: #2563eb;
+  white-space: nowrap;
+}
+
+/* 엑셀 미리보기 — Alt+드래그 셀 선택 */
+.opp-excel-raw-preview-scroll.is-alt-dragging {
+  user-select: none;
+  cursor: cell;
+}
+
+.opp-excel-raw-preview-scroll.is-alt-dragging input,
+.opp-excel-raw-preview-scroll.is-alt-dragging select,
+.opp-excel-raw-preview-scroll.is-alt-dragging button,
+.opp-excel-raw-preview-scroll.is-alt-dragging textarea {
+  pointer-events: none;
+}
+
+.opp-excel-raw-preview-table td.opp-excel-grid-cell {
+  position: relative;
+  vertical-align: top;
+  padding: 0.2rem 0.25rem;
+}
+
+.opp-excel-raw-preview-table td.opp-excel-grid-cell.is-selected {
+  background: #eef4ff;
+}
+
+.opp-excel-raw-preview-table td.opp-excel-grid-cell.is-active {
+  box-shadow: inset 0 0 0 2px #7ba3d4;
+}
+
+.opp-excel-raw-preview-table td.opp-excel-grid-cell.is-selected:not(.is-active) {
+  box-shadow: inset 0 0 0 1px #b8cce8;
+}
+
+.opp-excel-raw-preview-table td.opp-excel-grid-cell.is-locked {
+  background: #f8fafc;
+}
+
+.opp-excel-raw-cell-select-list {
+  width: 100%;
+  min-width: 6.5rem;
+}
+
+.opp-excel-raw-multiselect-wrap {
+  position: relative;
+  min-width: 7rem;
+}
+
+.opp-excel-raw-multiselect-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+  width: 100%;
+  min-height: 1.85rem;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.35rem;
+  background: #fff;
+  font-size: 0.75rem;
+  color: #334155;
+  cursor: pointer;
+}
+
+.opp-excel-raw-multiselect-trigger:hover:not(:disabled) {
+  border-color: #93c5fd;
+  background: #f8fbff;
+}
+
+.opp-excel-raw-multiselect-trigger:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.opp-excel-raw-multiselect-trigger.is-invalid {
+  border-color: #f87171;
+  background: #fff5f5;
+}
+
+.opp-excel-raw-multiselect-dropdown {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  max-height: 10rem;
+  overflow: auto;
+  border: 1px solid #dbeafe;
+  border-radius: 0.35rem;
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+  padding: 0.25rem 0;
+}
+
+.opp-excel-raw-multiselect-option {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.45rem;
+  font-size: 0.72rem;
+  color: #334155;
+  cursor: pointer;
+}
+
+.opp-excel-raw-multiselect-option:hover {
+  background: #f1f5f9;
+}

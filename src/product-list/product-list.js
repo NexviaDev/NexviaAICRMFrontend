@@ -16,6 +16,7 @@ import './product-list-responsive.css';
 import '@/shared/crm-list-sheet-table.css';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import ListPaginationButtons from '@/components/list-pagination-buttons/list-pagination-buttons';
+import CustomFieldsManageModal from '@/shared/custom-fields-manage-modal/custom-fields-manage-modal';
 
 import * as XLSX from 'xlsx';
 
@@ -23,10 +24,17 @@ import { API_BASE } from '@/config';
 import { pingBackendHealth } from '@/lib/backend-wake';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { listPriceFromProduct } from '@/lib/product-price-utils';
+import { mergeResolvedProductRow } from '@/lib/product-field-formulas';
+import {
+  getConsumerMargin,
+  getChannelMargin,
+  shouldDashChannelMargin,
+  getConsumerMarginPercent
+} from '@/lib/product-margin';
 import { formatProductBillingDisplay } from '@/lib/product-billing-utils';
-import { getCurrencySelectLabel, getCurrencySymbol } from '@/lib/exchange-rate-currency-options';
-import { convertAmountToKrw, formatKrwConvertedLabel } from '@/lib/exchange-rate-convert';
 import { useExchangeRates } from '@/lib/use-exchange-rates';
+import { buildExchangeRateFormulaBuiltin } from '@/lib/exchange-rate-formula-builtin';
+import { computeCustomFieldFormulas, formatFormulaDisplayValue } from '@/lib/custom-field-formula';
 const LIST_ID = LIST_IDS.PRODUCT_LIST;
 const LIMIT = 10;
 /** 검색 모달: 페이지네이션 UI 숨김 — 한 번에 더 많이 불러옴 */
@@ -40,6 +48,60 @@ const DETAIL_ID_PARAM = 'id';
 const STATUS_LABELS = { Active: '활성', EndOfLife: 'End of Life', Draft: '초안' };
 const BILLING_LABELS = { Monthly: '월간', Annual: '연간', Perpetual: '영구' };
 const CUSTOM_FIELDS_PREFIX = 'customFields.';
+
+function buildProductFormulaContext(row, definitions = [], exchangeCtx = null) {
+  const fxBuiltIn = exchangeCtx
+    ? buildExchangeRateFormulaBuiltin(
+        exchangeCtx.usdSummary,
+        exchangeCtx.dealBasRMap,
+        row?.currency,
+        { profile: exchangeCtx.pricingProfile }
+      )
+    : {};
+  return {
+    entityType: 'product',
+    builtIn: {
+      listPrice: listPriceFromProduct(row),
+      price: listPriceFromProduct(row),
+      costPrice: Number(row?.costPrice) || 0,
+      channelPrice: Number(row?.channelPrice) || 0,
+      ...fxBuiltIn
+    },
+    customFields: row?.customFields || {},
+    definitions
+  };
+}
+
+/** DB에 저장 전 제품·수식 필드도 가격 기준으로 실시간 계산 */
+function resolveProductCustomFieldDisplay(row, fieldKey, definitions = [], exchangeCtx = null) {
+  const def = definitions.find((d) => d.key === fieldKey);
+  const stored = row?.customFields?.[fieldKey];
+  if (def?.type === 'formula') {
+    const computed = computeCustomFieldFormulas(
+      definitions,
+      buildProductFormulaContext(row, definitions, exchangeCtx)
+    );
+    const val = computed[fieldKey];
+    if (val == null) return null;
+    return formatFormulaDisplayValue(val) ?? String(val);
+  }
+  if (stored !== undefined && stored !== null && stored !== '') return String(stored);
+  return null;
+}
+
+function resolveProductCustomFieldSortValue(row, fieldKey, definitions = [], exchangeCtx = null) {
+  const def = definitions.find((d) => d.key === fieldKey);
+  if (def?.type === 'formula') {
+    const computed = computeCustomFieldFormulas(
+      definitions,
+      buildProductFormulaContext(row, definitions, exchangeCtx)
+    );
+    const val = computed[fieldKey];
+    return val != null ? val : '';
+  }
+  const v = row?.customFields?.[fieldKey];
+  return (v !== undefined && v !== null ? String(v) : '').toLowerCase();
+}
 
 /** 소비자가·순마진·유통가·유통시 순마진 등 가격/마진 열 배경 강조 */
 const PRODUCT_PRICING_HIGHLIGHT_KEYS = new Set([
@@ -92,67 +154,16 @@ function getAuthHeader() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-function formatPrice(price, currency) {
+function formatPrice(price) {
   if (price == null) return '—';
-  const sym = getCurrencySymbol(currency);
-  return `${sym}${Number(price).toLocaleString()}`;
+  return Number(price).toLocaleString();
 }
 
-function renderPriceWithKrwHint(amount, currency, dealBasRMap, { dashed = false } = {}) {
+function renderPriceCell(amount, { dashed = false } = {}) {
   if (dashed) {
     return <span className="product-list-price">-</span>;
   }
-  const main = formatPrice(amount, currency);
-  if (main === '—') {
-    return <span className="product-list-price">{main}</span>;
-  }
-  const code = String(currency || 'KRW').trim().toUpperCase();
-  const n = Number(amount);
-  const krw = convertAmountToKrw(amount, currency, dealBasRMap);
-  const krwLabel = code !== 'KRW' && Number.isFinite(n) && n !== 0 && krw != null
-    ? formatKrwConvertedLabel(krw)
-    : null;
-
-  if (!krwLabel) {
-    return <span className="product-list-price">{main}</span>;
-  }
-
-  return (
-    <div className="product-list-price-stack">
-      <span className="product-list-price">{main}</span>
-      <span className="product-list-price-krw-hint" title="환율 고시 매매기준율 기준 환산">
-        약 {krwLabel}
-      </span>
-    </div>
-  );
-}
-
-/** 유통시 순 마진(금액) = 유통가 − 원가 — 영업 기회「유통시 순 마진 기준」가격(channelPrice)과 동일 축 */
-function getChannelMargin(row) {
-  return (Number(row.channelPrice) || 0) - (Number(row.costPrice) || 0);
-}
-
-/** 유통가가 0이거나 원가 이하이면 유통시 순마진은 표시하지 않음(하이픈) */
-function shouldDashChannelMargin(row) {
-  const chRaw = Number(row.channelPrice);
-  const ch = Number.isFinite(chRaw) ? chRaw : 0;
-  const cost = Number(row.costPrice);
-  const costNum = Number.isFinite(cost) ? cost : 0;
-  if (ch === 0) return true;
-  if (ch <= costNum) return true;
-  return false;
-}
-
-/** 순 마진(금액) = 소비자가 − 원가 — 영업 기회「순 마진 기준」가격(listPrice/price)과 동일 축 */
-function getConsumerMargin(row) {
-  return (Number(listPriceFromProduct(row)) || 0) - (Number(row.costPrice) || 0);
-}
-
-/** 소비자가 대비 순 마진율(%) — 모바일 카드 표시용 */
-function getConsumerMarginPercent(row) {
-  const lp = Number(listPriceFromProduct(row)) || 0;
-  if (lp <= 0) return null;
-  return (getConsumerMargin(row) / lp) * 100;
+  return <span className="product-list-price">{formatPrice(amount)}</span>;
 }
 
 /**
@@ -184,6 +195,7 @@ export default function ProductList({
   const [loading, setLoading] = useState(true);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [customFieldColumns, setCustomFieldColumns] = useState([]);
+  const [productCustomFieldDefinitions, setProductCustomFieldDefinitions] = useState([]);
   const [template, setTemplate] = useState(() => getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID)));
   const [dragOverKey, setDragOverKey] = useState(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -195,10 +207,23 @@ export default function ProductList({
   const [bulkCopyLoading, setBulkCopyLoading] = useState(false);
   const [selectAllLoading, setSelectAllLoading] = useState(false);
   const [excelImportSeed, setExcelImportSeed] = useState(null);
-  const { dealBasRMap: exchangeDealBasRMap } = useExchangeRates({
+  const [showCustomFieldsManageModal, setShowCustomFieldsManageModal] = useState(false);
+  const {
+    dealBasRMap: exchangeDealBasRMap,
+    usdSummary: exchangeUsdSummary,
+    pricingProfile: exchangePricingProfile
+  } = useExchangeRates({
     getAuthHeader,
     respectSessionFreeze: true
   });
+  const productFormulaExchangeCtx = useMemo(
+    () => ({
+      dealBasRMap: exchangeDealBasRMap,
+      usdSummary: exchangeUsdSummary,
+      pricingProfile: exchangePricingProfile
+    }),
+    [exchangeDealBasRMap, exchangeUsdSummary, exchangePricingProfile]
+  );
   const selectionAnchorIdxRef = useRef(null);
   const headerSelectAllRef = useRef(null);
 
@@ -244,6 +269,7 @@ export default function ProductList({
   const me = useMemo(() => getStoredCrmUser(), []);
   const canExportExcel = isAdminOrAboveRole(me?.role);
   const canDeleteProduct = isAdminOrAboveRole(me?.role);
+  const canManageCustomFieldDefinitions = isAdminOrAboveRole(me?.role);
 
   const detailId = searchParams.get(DETAIL_ID_PARAM);
   const modalParam = searchParams.get(MODAL_PARAM);
@@ -332,35 +358,55 @@ export default function ProductList({
     const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=product`, { headers: getAuthHeader() });
     const data = await res.json().catch(() => ({}));
     const defs = Array.isArray(data?.items) ? data.items : [];
-    return defs.map((d) => ({ key: `${CUSTOM_FIELDS_PREFIX}${d.key}`, label: d.label || d.key || '' }));
+    return {
+      definitions: defs,
+      columns: defs.map((d) => ({ key: `${CUSTOM_FIELDS_PREFIX}${d.key}`, label: d.label || d.key || '' }))
+    };
   }, []);
 
   /** 제품 커스텀 필드 정의 → 리스트 템플릿 열에 반영 (열 설정 모달·표시 순서) */
   useEffect(() => {
     let cancelled = false;
     fetchProductCustomFieldColumnDefs()
-      .then((extra) => {
+      .then(({ columns, definitions }) => {
         if (cancelled) return;
-        setCustomFieldColumns(extra);
-        setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), extra));
+        setProductCustomFieldDefinitions(definitions);
+        setCustomFieldColumns(columns);
+        setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), columns));
       })
       .catch(() => {
-        if (!cancelled) setCustomFieldColumns([]);
+        if (!cancelled) {
+          setProductCustomFieldDefinitions([]);
+          setCustomFieldColumns([]);
+        }
       });
     return () => { cancelled = true; };
   }, [fetchProductCustomFieldColumnDefs]);
 
   const openListColumnSettings = useCallback(async () => {
     try {
-      const extra = await fetchProductCustomFieldColumnDefs();
-      setCustomFieldColumns(extra);
-      setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), extra));
+      const { columns, definitions } = await fetchProductCustomFieldColumnDefs();
+      setProductCustomFieldDefinitions(definitions);
+      setCustomFieldColumns(columns);
+      setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), columns));
       setSettingsOpen(true);
     } catch (_) {
       setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), customFieldColumns));
       setSettingsOpen(true);
     }
   }, [fetchProductCustomFieldColumnDefs, customFieldColumns]);
+
+  const loadProductCustomFieldColumns = useCallback(async () => {
+    try {
+      const { columns, definitions } = await fetchProductCustomFieldColumnDefs();
+      setProductCustomFieldDefinitions(definitions);
+      setCustomFieldColumns(columns);
+      setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), columns));
+    } catch {
+      setProductCustomFieldDefinitions([]);
+      setCustomFieldColumns([]);
+    }
+  }, [fetchProductCustomFieldColumnDefs]);
 
   const runSearch = (e) => {
     e?.preventDefault();
@@ -486,28 +532,32 @@ export default function ProductList({
     if (key === 'channelPrice') return Number(row.channelPrice) || 0;
     if (key === 'consumerMargin') return getConsumerMargin(row);
     if (key === 'channelMargin') return getChannelMargin(row);
-    if (key === 'currency') return getCurrencySelectLabel(row.currency).toLowerCase();
+    if (key === 'currency') return (row.currency || '').toLowerCase();
     if (key === 'billingType') return (row.billingType || '').toLowerCase();
     if (key === 'status') return (row.status || '').toLowerCase();
     if (key.startsWith(CUSTOM_FIELDS_PREFIX)) {
       const fk = key.slice(CUSTOM_FIELDS_PREFIX.length);
-      const v = row.customFields?.[fk];
-      return (v !== undefined && v !== null ? String(v) : '').toLowerCase();
+      return resolveProductCustomFieldSortValue(row, fk, productCustomFieldDefinitions, productFormulaExchangeCtx);
     }
     return '';
-  }, []);
+  }, [productCustomFieldDefinitions]);
+
+  const resolvedItems = useMemo(
+    () => items.map((row) => mergeResolvedProductRow(row, productFormulaExchangeCtx, productCustomFieldDefinitions)),
+    [items, productFormulaExchangeCtx, productCustomFieldDefinitions]
+  );
 
   const sortedItems = useMemo(() => {
-    if (!sortKey) return items;
+    if (!sortKey) return resolvedItems;
     const dir = sortDir === 'asc' ? 1 : -1;
-    return [...items].sort((a, b) => {
+    return [...resolvedItems].sort((a, b) => {
       const va = getSortValue(a, sortKey);
       const vb = getSortValue(b, sortKey);
       if (va < vb) return -1 * dir;
       if (va > vb) return 1 * dir;
       return 0;
     });
-  }, [items, sortKey, sortDir, getSortValue]);
+  }, [resolvedItems, sortKey, sortDir, getSortValue]);
 
   const handleSortColumn = useCallback((key) => {
     setSort((prev) => {
@@ -714,7 +764,7 @@ export default function ProductList({
         alert('보낼 제품이 없습니다.');
         return;
       }
-      const customKeys = new Set();
+      const customKeys = new Set(productCustomFieldDefinitions.map((d) => d.key));
       rows.forEach((r) => {
         if (r.customFields && typeof r.customFields === 'object') {
           Object.keys(r.customFields).forEach((k) => customKeys.add(k));
@@ -732,15 +782,15 @@ export default function ProductList({
           유통가: row.channelPrice ?? '',
           '순 마진': getConsumerMargin(row),
           '유통시 순 마진': shouldDashChannelMargin(row) ? '-' : getChannelMargin(row),
-          통화: row.currency ? getCurrencySelectLabel(row.currency) : '',
+          통화: row.currency || '',
           결제주기: formatProductBillingDisplay(row.billingType, row.billingInterval),
           상태: row.status ? STATUS_LABELS[row.status] || row.status : '',
           수정일: row.updatedAt ? new Date(row.updatedAt).toLocaleString('ko-KR') : ''
         };
         sortedCustomKeys.forEach((fk) => {
           const colName = customFieldLabelByKey[fk] || `커스텀_${fk}`;
-          const v = row.customFields?.[fk];
-          o[colName] = v !== undefined && v !== null && v !== '' ? String(v) : '';
+          const v = resolveProductCustomFieldDisplay(row, fk, productCustomFieldDefinitions, productFormulaExchangeCtx);
+          o[colName] = v != null && v !== '' ? String(v) : '';
         });
         return o;
       });
@@ -754,7 +804,7 @@ export default function ProductList({
     } finally {
       setExportExcelLoading(false);
     }
-  }, [fetchAllProductsForExport, customFieldLabelByKey]);
+  }, [fetchAllProductsForExport, customFieldLabelByKey, productCustomFieldDefinitions]);
 
   const renderMobileCard = (row, idx) => {
     const mp = getConsumerMarginPercent(row);
@@ -811,13 +861,13 @@ export default function ProductList({
           <div className="pl-mcard-metric">
             <span className="pl-mcard-metric-label">원가</span>
             <span className="pl-mcard-metric-val">
-              {renderPriceWithKrwHint(row.costPrice, row.currency, exchangeDealBasRMap)}
+              {renderPriceCell(row.costPrice)}
             </span>
           </div>
           <div className="pl-mcard-metric">
             <span className="pl-mcard-metric-label">소비자가</span>
             <span className="pl-mcard-metric-val">
-              {renderPriceWithKrwHint(listPriceFromProduct(row), row.currency, exchangeDealBasRMap)}
+              {renderPriceCell(listPriceFromProduct(row))}
             </span>
           </div>
           <div className="pl-mcard-metric">
@@ -889,6 +939,17 @@ export default function ProductList({
                 >
                   <span className="material-symbols-outlined">download</span>
                   {exportExcelLoading ? '준비 중…' : '보내기'}
+                </button>
+              ) : null}
+              {canManageCustomFieldDefinitions ? (
+                <button
+                  type="button"
+                  className="btn-outline product-list-excel-btn"
+                  onClick={() => setShowCustomFieldsManageModal(true)}
+                  title="제품에 쓸 사용자 정의 필드를 추가합니다"
+                >
+                  <span className="material-symbols-outlined">playlist_add</span>
+                  필드 추가
                 </button>
               ) : null}
               <button type="button" className="btn-primary" onClick={openAdd}>
@@ -1059,7 +1120,7 @@ export default function ProductList({
                           {col.key === 'code' && <span className="text-muted">{row.code || '—'}</span>}
                           {col.key === 'currency' && (
                             <span className="product-list-currency-label" title={row.currency || undefined}>
-                              {row.currency ? getCurrencySelectLabel(row.currency) : '—'}
+                              {row.currency || '—'}
                             </span>
                           )}
                           {col.key === 'billingType' && (
@@ -1069,7 +1130,7 @@ export default function ProductList({
                           )}
                           {col.key === 'price' && (
                             <div className="product-list-pricing">
-                              {renderPriceWithKrwHint(listPriceFromProduct(row), row.currency, exchangeDealBasRMap)}
+                              {renderPriceCell(listPriceFromProduct(row))}
                               {row.billingType && !template.visible?.billingType && (
                                 <span className="product-list-billing">
                                   {formatProductBillingDisplay(row.billingType, row.billingInterval)}
@@ -1078,21 +1139,16 @@ export default function ProductList({
                             </div>
                           )}
                           {col.key === 'costPrice' && (
-                            renderPriceWithKrwHint(row.costPrice, row.currency, exchangeDealBasRMap)
+                            renderPriceCell(row.costPrice)
                           )}
                           {col.key === 'channelPrice' && (
-                            renderPriceWithKrwHint(row.channelPrice, row.currency, exchangeDealBasRMap)
+                            renderPriceCell(row.channelPrice)
                           )}
                           {col.key === 'consumerMargin' && (
-                            renderPriceWithKrwHint(getConsumerMargin(row), row.currency, exchangeDealBasRMap)
+                            renderPriceCell(getConsumerMargin(row))
                           )}
                           {col.key === 'channelMargin' && (
-                            renderPriceWithKrwHint(
-                              getChannelMargin(row),
-                              row.currency,
-                              exchangeDealBasRMap,
-                              { dashed: shouldDashChannelMargin(row) }
-                            )
+                            renderPriceCell(getChannelMargin(row), { dashed: shouldDashChannelMargin(row) })
                           )}
                           {col.key === 'status' && (
                             <span className={`status-badge status-${row.status === 'Active' ? 'active' : row.status === 'EndOfLife' ? 'eol' : 'draft'}`}>
@@ -1101,8 +1157,8 @@ export default function ProductList({
                           )}
                           {col.key.startsWith(CUSTOM_FIELDS_PREFIX) && (() => {
                             const fk = col.key.slice(CUSTOM_FIELDS_PREFIX.length);
-                            const v = row.customFields?.[fk];
-                            return <span className="text-muted">{v !== undefined && v !== null && v !== '' ? String(v) : '—'}</span>;
+                            const v = resolveProductCustomFieldDisplay(row, fk, productCustomFieldDefinitions, productFormulaExchangeCtx);
+                            return <span className="text-muted">{v != null && v !== '' ? v : '—'}</span>;
                           })()}
                         </td>
                       ))}
@@ -1188,6 +1244,16 @@ export default function ProductList({
           onSave={saveTemplate}
           onReset={resetTemplate}
           onClose={() => setSettingsOpen(false)}
+        />
+      )}
+      {showCustomFieldsManageModal && canManageCustomFieldDefinitions && (
+        <CustomFieldsManageModal
+          entityType="product"
+          onClose={() => setShowCustomFieldsManageModal(false)}
+          onFieldAdded={() => loadProductCustomFieldColumns()}
+          onDefinitionsUpdated={() => loadProductCustomFieldColumns()}
+          apiBase={API_BASE}
+          getAuthHeader={getAuthHeader}
         />
       )}
       {isDetailOpen && detailProduct && (

@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { computeCustomFieldFormulas, formatFormulaDisplayValue, formatFormulaExpressionForLabel } from '@/lib/custom-field-formula';
 import './custom-fields-section.css';
 
 /**
  * 추가된 필드 값 입력만 표시 (정의 추가/삭제는 custom-fields-manage-modal에서).
- * 다중 선택: 드롭다운으로 표시, 각 옵션 왼쪽에 체크박스(높이 중앙 정렬).
+ * formulaContext.builtIn — 엔티티 기본 숫자 필드(원가·소비자가 등)
  */
 export default function CustomFieldsSection({
   definitions = [],
@@ -11,11 +12,21 @@ export default function CustomFieldsSection({
   onChangeValues,
   fieldClassName = '',
   hideTitle = false,
-  /** e.g. `opp-input` — native controls only (checkbox excluded). */
-  inputClassName = ''
+  inputClassName = '',
+  formulaContext = null
 }) {
   const [openMultiselectKey, setOpenMultiselectKey] = useState(null);
   const multiselectRef = useRef(null);
+
+  const computedFormulas = useMemo(() => {
+    if (!formulaContext) return {};
+    return computeCustomFieldFormulas(definitions, {
+      builtIn: formulaContext.builtIn || {},
+      customFields: values,
+      entityType: formulaContext.entityType,
+      definitions
+    });
+  }, [definitions, formulaContext, values]);
 
   useEffect(() => {
     if (openMultiselectKey == null) return;
@@ -51,6 +62,13 @@ export default function CustomFieldsSection({
 
   if (!definitions || definitions.length === 0) return null;
 
+  const visibleDefs = definitions.filter((def) => {
+    if (def.type !== 'formula') return true;
+    return computedFormulas[def.key] != null;
+  });
+
+  if (visibleDefs.length === 0) return null;
+
   return (
     <>
       {!hideTitle ? (
@@ -58,7 +76,7 @@ export default function CustomFieldsSection({
           <span className="custom-fields-section-label">추가된 필드</span>
         </div>
       ) : null}
-      {definitions.map((def) => {
+      {visibleDefs.map((def) => {
         const key = def.key;
         const val = values[key];
         const displayValue = val !== undefined && val !== null ? val : '';
@@ -67,6 +85,30 @@ export default function CustomFieldsSection({
         const required = !!def.required;
         const choices = (def.options && def.options.choices) || [];
         const isMultiselectOpen = openMultiselectKey === key;
+
+        if (def.type === 'formula') {
+          const computed = computedFormulas[key];
+          const formatted = formatFormulaDisplayValue(computed);
+          if (formatted == null) return null;
+          return (
+            <div key={def._id} className={`${fieldClassName} custom-fields-value-row custom-fields-value-row--formula`.trim()}>
+              <div className="custom-fields-value-input-wrap">
+                <span className="custom-fields-value-label">
+                  {label}{required ? ' *' : ''}
+                  {def.options?.expression ? (
+                    <span className="custom-fields-formula-expression-label">
+                      {formatFormulaExpressionForLabel(def.options.expression)}
+                    </span>
+                  ) : null}
+                </span>
+                <div className="custom-fields-formula-display">
+                  <span className="custom-fields-formula-value">{formatted}</span>
+                  <span className="custom-fields-formula-badge">함수</span>
+                </div>
+              </div>
+            </div>
+          );
+        }
 
         return (
           <div key={def._id} className={`${fieldClassName} custom-fields-value-row`.trim()}>

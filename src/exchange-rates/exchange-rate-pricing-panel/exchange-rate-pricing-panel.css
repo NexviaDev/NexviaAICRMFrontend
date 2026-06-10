@@ -1,0 +1,274 @@
+.er-pricing-panel {
+  flex: 1 1 100%;
+  min-width: min(100%, 520px);
+  max-width: 100%;
+  border: 1px solid #8fbf98;
+  border-radius: 0.35rem;
+  overflow: hidden;
+  background: #fff;
+}
+
+.er-pricing-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.55rem 0.65rem 0.45rem;
+  background: #eef8f0;
+  border-bottom: 1px solid #b8d9be;
+}
+
+.er-pricing-panel-title {
+  margin: 0;
+  font-family: 'Manrope', 'Inter', system-ui, sans-serif;
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: #2f5a3a;
+}
+
+.er-pricing-panel-sub {
+  margin: 0.2rem 0 0;
+  font-size: 0.68rem;
+  color: #4a6350;
+  line-height: 1.4;
+}
+
+.er-pricing-panel-sub strong {
+  font-weight: 700;
+  color: #2f5a3a;
+}
+
+.er-pricing-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.er-pricing-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.35rem 0.75rem;
+  border: none;
+  border-radius: 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.er-pricing-btn .material-symbols-outlined {
+  font-size: 0.95rem;
+}
+
+.er-pricing-btn--edit {
+  background: #7aab88;
+  color: #f8fcf9;
+}
+
+.er-pricing-btn--save {
+  background: #2c6485;
+  color: #f5f9ff;
+}
+
+.er-pricing-btn--cancel {
+  background: #7a8f9a;
+  color: #f8fbfd;
+}
+
+.er-pricing-btn:hover:not(:disabled) {
+  opacity: 0.92;
+}
+
+.er-pricing-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.er-pricing-table-wrap {
+  overflow-x: auto;
+}
+
+.er-pricing-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+  table-layout: fixed;
+}
+
+.er-pricing-table--grid {
+  min-width: 560px;
+}
+
+.er-pricing-table--grid th,
+.er-pricing-table--grid td {
+  border: 1px solid #4a7d56;
+  padding: 0.38rem 0.45rem;
+  vertical-align: middle;
+  text-align: center;
+}
+
+/* 1행·1열 — 녹색 헤더 (캡처 레이아웃) */
+.er-pricing-grid-corner,
+.er-pricing-grid-col-head,
+.er-pricing-grid-row-head {
+  font-weight: 800;
+  color: #f5fbf6;
+  background: #5a9468;
+  white-space: nowrap;
+}
+
+.er-pricing-grid-corner {
+  width: 4.5rem;
+}
+
+.er-pricing-grid-col-head {
+  font-size: 0.72rem;
+}
+
+.er-pricing-grid-col-head--pickable {
+  cursor: copy;
+}
+
+.er-pricing-grid-col-head--pickable:hover,
+.er-pricing-grid-col-head--pickable:focus-visible {
+  background: #4a8458;
+  outline: none;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.35);
+}
+
+.er-pricing-grid-row-head {
+  width: 4.5rem;
+}
+
+.er-pricing-grid-cell {
+  background: #fff;
+  color: #2c3437;
+  text-align: center;
+}
+
+.er-pricing-grid-cell--formula {
+  font-size: 0.7rem;
+  color: #3a4a3e;
+}
+
+.er-pricing-grid-cell--result {
+  font-weight: 700;
+  color: #1f3d28;
+}
+
+.er-pricing-col--active {
+  background: #eef8f0 !important;
+  box-shadow: inset 0 0 0 2px rgba(90, 148, 104, 0.45);
+}
+
+.er-pricing-formula-edit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+}
+
+.er-pricing-param-input {
+  width: 4.2rem;
+  padding: 0.15rem 0.35rem;
+  border: 1px solid #9ec4a6;
+  border-radius: 0.25rem;
+  background: #f8fcf9;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-align: center;
+  color: #2f5a3a;
+}
+
+.er-pricing-param-input--usd {
+  width: 4.8rem;
+}
+
+.er-pricing-param-input--pct {
+  width: 3.4rem;
+}
+
+.er-pricing-param-input:focus {
+  outline: 2px solid rgba(90, 148, 104, 0.35);
+  outline-offset: 1px;
+}
+
+.er-pricing-formula-code {
+  display: inline-block;
+  max-width: 100%;
+  font-family: ui-monospace, 'Cascadia Code', monospace;
+  font-size: 0.68rem;
+  color: #2f4a38;
+  word-break: break-word;
+  text-align: center;
+}
+
+.er-pricing-formula-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 0.22rem 0.35rem;
+  border: 1px solid #9ec4a6;
+  border-radius: 0.25rem;
+  background: #f8fcf9;
+  font-family: ui-monospace, 'Cascadia Code', monospace;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  color: #2f4a38;
+  text-align: center;
+}
+
+.er-pricing-formula-input:focus {
+  outline: 2px solid rgba(90, 148, 104, 0.35);
+  outline-offset: 1px;
+}
+
+.er-pricing-formula-hint {
+  margin: 0;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.66rem;
+  color: #4a6350;
+  line-height: 1.45;
+  background: #f3faf4;
+  border-bottom: 1px solid #d4e8d7;
+}
+
+.er-pricing-formula-hint code {
+  font-size: 0.65rem;
+  color: #2f5a3a;
+}
+
+.er-pricing-panel-note {
+  margin: 0;
+  padding: 0.45rem 0.65rem 0.55rem;
+  font-size: 0.66rem;
+  color: #5a7060;
+  line-height: 1.45;
+  background: #f6fbf7;
+  border-top: 1px solid #d4e8d7;
+}
+
+.er-pricing-panel-msg {
+  margin: 0;
+  padding: 0.35rem 0.65rem 0.55rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.er-pricing-panel-msg--error {
+  color: #8a3f3f;
+}
+
+.er-pricing-panel-msg--ok {
+  color: #2f6a42;
+}
+
+@media (min-width: 768px) {
+  .er-pricing-panel {
+    flex: 1 1 100%;
+    min-width: min(100%, 640px);
+  }
+}

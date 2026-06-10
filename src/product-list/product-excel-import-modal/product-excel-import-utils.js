@@ -9,20 +9,94 @@ import {
 } from '../../customer-companies/customer-companies-excel-import-modal/excel-import-mapping-utils';
 import { normalizeBillingInterval, parseBillingIntervalInput } from '@/lib/product-billing-utils';
 import {
+  parseFormulaInput,
+  getDefinitionFormulaDefaultDisplay,
+  computeCustomFieldFormulas,
+  evaluateFormulaExpression
+} from '@/lib/custom-field-formula';
+import {
+  normalizeCustomFieldsForApiSave,
+  normalizeCustomFieldsForFormula,
+  normalizeFormulaBuiltInNumbers,
+  parseNumericFieldValue,
+  parseNumericFieldValueOrZero
+} from '@/lib/numeric-field-value';
+import { buildExchangeRateFormulaBuiltin } from '@/lib/exchange-rate-formula-builtin';
+import {
+  buildLiveProductDraft,
+  buildProductFieldPayload,
+  buildProductFormulaCatalogGroups,
+  buildProductFormulaPickerOptions,
+  resolveProductFieldValues
+} from '@/lib/product-field-formulas';
+import {
   getCurrencyMeta,
   getCurrencySelectLabel,
-  PRODUCT_CURRENCY_SELECT_OPTIONS
+  PRODUCT_CURRENCY_SELECT_OPTIONS,
+  resolveProductCurrencySelectOptions
 } from '@/lib/exchange-rate-currency-options';
 
 export const PRODUCT_PRICE_TARGET_KEYS = new Set([
   'product.listPrice',
   'product.costPrice',
-  'product.channelPrice'
+  'product.channelPrice',
+  'product.consumerMargin',
+  'product.channelMargin'
 ]);
 
-const PRODUCT_CURRENCY_CODE_SET = new Set(
-  PRODUCT_CURRENCY_SELECT_OPTIONS.map((o) => o.value)
-);
+/** 수식(=…) 입력 가능한 매핑 대상 */
+export const PRODUCT_FORMULA_CAPABLE_TARGET_KEYS = new Set([
+  'product.listPrice',
+  'product.costPrice',
+  'product.channelPrice',
+  'product.consumerMargin',
+  'product.channelMargin'
+]);
+
+export const PRODUCT_FORMULA_TARGET_TO_FIELD = {
+  'product.listPrice': 'listPrice',
+  'product.costPrice': 'costPrice',
+  'product.channelPrice': 'channelPrice',
+  'product.consumerMargin': 'consumerMargin',
+  'product.channelMargin': 'channelMargin'
+};
+
+const PRODUCT_CUSTOM_FIELD_TARGET_PREFIX = 'product.customFields.';
+
+export function productCustomFieldKeyFromTarget(targetKey) {
+  const tk = String(targetKey || '');
+  if (!tk.startsWith(PRODUCT_CUSTOM_FIELD_TARGET_PREFIX)) return '';
+  return tk.slice(PRODUCT_CUSTOM_FIELD_TARGET_PREFIX.length);
+}
+
+/** 수식 입력·미리보기 UI — 내장 금액 필드 + type=formula|number 추가 필드 */
+export function isProductFormulaCapableTarget(targetKey, customDefinitions = []) {
+  const tk = String(targetKey || '');
+  if (PRODUCT_FORMULA_CAPABLE_TARGET_KEYS.has(tk)) return true;
+  const ck = productCustomFieldKeyFromTarget(tk);
+  if (!ck) return false;
+  const def = (customDefinitions || []).find((d) => d?.key === ck);
+  return def?.type === 'formula' || def?.type === 'number';
+}
+
+function productCustomFieldDefFromTarget(targetKey, customDefinitions = []) {
+  const ck = productCustomFieldKeyFromTarget(targetKey);
+  if (!ck) return null;
+  return (customDefinitions || []).find((d) => d?.key === ck) || null;
+}
+
+export { buildProductFormulaCatalogGroups, buildProductFormulaPickerOptions };
+
+function resolveCurrencySelectOptions(allowedCodes = null) {
+  if (allowedCodes instanceof Set && allowedCodes.size > 0) {
+    return resolveProductCurrencySelectOptions('', { availableCodes: allowedCodes });
+  }
+  return PRODUCT_CURRENCY_SELECT_OPTIONS;
+}
+
+function resolveCurrencyCodeSet(allowedCodes = null) {
+  return new Set(resolveCurrencySelectOptions(allowedCodes).map((o) => o.value));
+}
 
 export const MAX_PRODUCT_EXCEL_ROWS = 500;
 
@@ -44,6 +118,8 @@ export const PRODUCT_TARGET_OPTIONS_FALLBACK = [
   { value: 'product.listPrice', label: '소비자가(listPrice)' },
   { value: 'product.costPrice', label: '원가' },
   { value: 'product.channelPrice', label: '유통가' },
+  { value: 'product.consumerMargin', label: '순 마진' },
+  { value: 'product.channelMargin', label: '유통시 순 마진' },
   { value: 'product.currency', label: '통화' },
   { value: 'product.billingType', label: '결제 주기 (월간·연간·영구)' },
   { value: 'product.billingInterval', label: '결제 기간 수 (연간=년, 월간=개월)' },
@@ -138,6 +214,20 @@ export function createInitialProductMappingRows(excelHeaders, customFieldDefs = 
     {
       id: id(),
       sourceType: 'field',
+      sourceKey: matchHeader(h, ['순마진', '순 마진', 'consumermargin', 'consumer margin', 'margin']),
+      constantValue: '',
+      targetKey: 'product.consumerMargin'
+    },
+    {
+      id: id(),
+      sourceType: 'field',
+      sourceKey: matchHeader(h, ['유통시 순마진', '유통시 순 마진', '유통마진', 'channelmargin', 'channel margin']),
+      constantValue: '',
+      targetKey: 'product.channelMargin'
+    },
+    {
+      id: id(),
+      sourceType: 'field',
       sourceKey: matchHeader(h, ['통화', 'currency', 'cur']),
       constantValue: '',
       targetKey: 'product.currency'
@@ -207,21 +297,116 @@ export function createInitialProductMappingRows(excelHeaders, customFieldDefs = 
   return rows;
 }
 
-function readMappedValue(excelRow, mappingRows, targetKey) {
-  const m = (mappingRows || []).find((r) => String(r?.targetKey || '') === targetKey);
-  if (!m) return '';
-  if (m.sourceType === 'constant') {
-    const cv = m.constantValue;
-    return cv == null ? '' : cv;
-  }
-  if (!m.sourceKey) return '';
-  const v = excelRow && typeof excelRow === 'object' ? excelRow[m.sourceKey] : undefined;
-  if (v == null || v === '') return '';
-  return v;
+/** 열 미연결 시 미리보기·등록용 가상 열 키 */
+export function productPreviewCellKey(targetKey) {
+  return `__preview:${String(targetKey || '').trim()}`;
 }
 
-function readMapped(excelRow, mappingRows, targetKey) {
-  const v = readMappedValue(excelRow, mappingRows, targetKey);
+export function isProductPreviewCellKey(key) {
+  return String(key || '').startsWith('__preview:');
+}
+
+function getProductFieldExcelMapping(mappingRows, targetKey) {
+  const row = (mappingRows || []).find((r) => String(r?.targetKey || '') === targetKey);
+  if (!row) return { mode: 'missing' };
+  if (row.sourceType === 'constant') {
+    return { mode: 'constant', sourceKey: '', constantValue: String(row.constantValue ?? '').trim() };
+  }
+  return { mode: 'field', sourceKey: String(row.sourceKey ?? '').trim(), constantValue: '' };
+}
+
+const PRODUCT_HEADER_GUESS = {
+  'product.name': ['제품명', 'name', 'productname', '제품', 'product'],
+  'product.code': ['발주코드', '코드', 'code', 'uid', '제품코드', '제품 코드', 'sku'],
+  'product.category': ['카테고리', 'category', '분류', '카테고리 분류', '카테고리분류', '분류명'],
+  'product.version': ['버전', 'version', 'ver'],
+  'product.listPrice': ['소비자가', 'listprice', 'list price', 'srp', 'dsrp', '가격', 'price', '판매가', 'msrp'],
+  'product.costPrice': ['원가', 'cost', 'costprice', '매입가'],
+  'product.channelPrice': ['제공가', '유통가', 'channel', 'channelprice', '유통 가격'],
+  'product.consumerMargin': ['순마진', '순 마진', 'consumermargin', 'consumer margin', 'margin'],
+  'product.channelMargin': ['유통시 순마진', '유통시 순 마진', '유통마진', 'channelmargin', 'channel margin'],
+  'product.currency': ['통화', 'currency', 'cur'],
+  'product.billingType': ['결제주기', 'billing', 'billingtype', 'billing type', '월간', '연간', '영구'],
+  'product.billingInterval': ['결제기간', 'billinginterval', 'billing interval', '기간수', '계약기간', '계약 기간'],
+  'product.status': ['상태', 'status']
+};
+
+export function guessProductExcelSourceKey(targetKey, headers, customFieldDefs = []) {
+  const list = Array.isArray(headers) ? headers : [];
+  const rules = PRODUCT_HEADER_GUESS[targetKey];
+  if (rules) {
+    const hit = matchHeader(list, rules);
+    if (hit) return hit;
+  }
+  if (String(targetKey || '').startsWith('product.customFields.')) {
+    const ck = targetKey.slice('product.customFields.'.length);
+    const def = (customFieldDefs || []).find((d) => d?.key === ck);
+    const label = String(def?.label || ck || '').trim();
+    return matchHeader(list, [label, ck, `커스텀_${ck}`, `추가_${label}`].filter(Boolean));
+  }
+  return '';
+}
+
+function resolveProductExcelFieldColumnKey(headers, mapping, targetKey, customFieldDefs) {
+  if (mapping?.mode === 'constant') return '';
+  if (mapping?.mode === 'field' && mapping.sourceKey) return mapping.sourceKey;
+  const guessed = guessProductExcelSourceKey(targetKey, headers, customFieldDefs);
+  if (guessed) return guessed;
+  if (mapping?.mode === 'field' || mapping?.mode === 'missing') return productPreviewCellKey(targetKey);
+  return '';
+}
+
+/** 미리보기·등록 공통 — 대상 필드별 엑셀 열(또는 가상 열) 키 */
+export function resolveProductFieldExcelKey(mappingRows, targetKey, excelHeaders = [], customFieldDefs = []) {
+  const mapping = getProductFieldExcelMapping(mappingRows, targetKey);
+  if (mapping.mode === 'constant') {
+    return {
+      mode: 'constant',
+      excelKey: productPreviewCellKey(targetKey),
+      constantValue: mapping.constantValue
+    };
+  }
+  const hdrs = Array.isArray(excelHeaders) ? excelHeaders : [];
+  const excelKey =
+    resolveProductExcelFieldColumnKey(hdrs, mapping, targetKey, customFieldDefs) ||
+    productPreviewCellKey(targetKey);
+  return { mode: 'field', excelKey, constantValue: '' };
+}
+
+/** 미리보기 셀 원값 — 엑셀·가상열·필드 정의 수식 순 */
+export function readProductExcelPreviewCellRaw(
+  excelRow,
+  mappingRows,
+  targetKey,
+  customDefinitions = [],
+  excelHeaders = []
+) {
+  const hdrs =
+    excelHeaders && excelHeaders.length
+      ? excelHeaders
+      : excelRow
+        ? Object.keys(excelRow).filter((k) => k && !String(k).startsWith('__'))
+        : [];
+  const resolved = resolveProductFieldExcelKey(mappingRows, targetKey, hdrs, customDefinitions);
+  if (resolved.mode === 'constant') return String(resolved.constantValue ?? '');
+
+  let raw = readExcelMappedCell(excelRow, resolved.excelKey);
+  if (raw != null && String(raw).trim() !== '') return String(raw);
+
+  if (!isProductPreviewCellKey(resolved.excelKey)) {
+    const previewRaw = readExcelMappedCell(excelRow, productPreviewCellKey(targetKey));
+    if (previewRaw != null && String(previewRaw).trim() !== '') return String(previewRaw);
+  }
+
+  return getDefinitionFormulaDefaultDisplay(targetKey, customDefinitions);
+}
+
+function readMappedValue(excelRow, mappingRows, targetKey, customDefinitions = [], excelHeaders = []) {
+  return readProductExcelPreviewCellRaw(excelRow, mappingRows, targetKey, customDefinitions, excelHeaders);
+}
+
+function readMapped(excelRow, mappingRows, targetKey, customDefinitions = [], excelHeaders = []) {
+  const v = readMappedValue(excelRow, mappingRows, targetKey, customDefinitions, excelHeaders);
   if (v === '' || v == null) return '';
   return String(v).trim();
 }
@@ -231,14 +416,13 @@ export function parsePriceNum(val) {
   if (typeof val === 'number' && Number.isFinite(val)) return val;
   const s = String(val ?? '').trim();
   if (!s) return 0;
-  const cleaned = s.replace(/,/g, '').replace(/[^\d.-]/g, '');
-  if (!cleaned || cleaned === '-' || cleaned === '.') return 0;
-  const n = parseFloat(cleaned);
-  return Number.isFinite(n) ? n : 0;
+  if (isExcelFormulaInput(s)) return 0;
+  return parseNumericFieldValueOrZero(s);
 }
 
 function formatPriceWhileTyping(raw) {
   const s = String(raw).replace(/,/g, '');
+  if (s.trimStart().startsWith('=')) return String(raw);
   if (s === '') return '';
   if (s === '.') return '.';
   const dot = s.indexOf('.');
@@ -252,11 +436,34 @@ function formatPriceWhileTyping(raw) {
   return `${intFmt}.${decRaw}`;
 }
 
+/** 엑셀·미리보기 — 수식(=…) 문자열 여부 */
+export function isExcelFormulaInput(raw) {
+  return parseFormulaInput(raw).isFormula;
+}
+
+/** 미리보기·입력 표시 — 수식은 그대로, 숫자는 기호 제거·쉼표 */
+export function formatFormulaCapableExcelInputDisplay(raw) {
+  const s = String(raw ?? '').trim();
+  if (!s) return '';
+  if (isExcelFormulaInput(s)) return s;
+  if (s.trimStart().startsWith('=')) return String(raw ?? '').trimStart();
+  return formatPriceExcelInputDisplay(raw);
+}
+
+/** 입력 중 — 수식은 유지, 숫자만 sanitize */
+export function sanitizeFormulaCapableExcelInput(raw) {
+  const s = String(raw ?? '');
+  if (isExcelFormulaInput(s)) return s;
+  if (s.trimStart().startsWith('=')) return s;
+  return sanitizePriceExcelInput(raw);
+}
+
 /** 미리보기·입력 표시 — 기호(₩$원 등) 제거, 천 단위 쉼표 유지 */
 export function formatPriceExcelInputDisplay(raw) {
   const s = String(raw ?? '').trim();
   if (!s) return '';
-  if (!/\d/.test(s)) return '';
+  if (isExcelFormulaInput(s)) return s;
+  if (!/\d/.test(s)) return s;
   const n = parsePriceNum(raw);
   return n.toLocaleString('ko-KR', {
     maximumFractionDigits: 4,
@@ -268,43 +475,62 @@ export function formatPriceExcelInputDisplay(raw) {
 export function sanitizePriceExcelInput(raw) {
   const s = String(raw ?? '').trim();
   if (!s) return '';
+  if (isExcelFormulaInput(s)) return s;
+  if (s.trimStart().startsWith('=')) return String(raw ?? '');
   const digitsOnly = s.replace(/,/g, '').replace(/[^\d.]/g, '');
   return formatPriceWhileTyping(digitsOnly);
 }
 
 /**
  * 엑셀 통화 문자열 → ISO 코드
+ * @param {string} raw
+ * @param {{ allowedCodes?: Set<string>|null }} [opts] Exim dealBasR 기준 허용 통화 (KRW 포함)
  * @returns {{ code: string, recognized: boolean, empty: boolean }}
  */
-export function resolveCurrencyCode(raw) {
+export function resolveCurrencyCode(raw, opts = {}) {
+  const { allowedCodes = null } = opts;
+  const selectOptions = resolveCurrencySelectOptions(allowedCodes);
+  const codeSet = resolveCurrencyCodeSet(allowedCodes);
   const s = String(raw ?? '').trim();
   if (!s) return { code: 'KRW', recognized: true, empty: true };
 
   const u = s.toUpperCase();
-  if (PRODUCT_CURRENCY_CODE_SET.has(u)) {
+  if (codeSet.has(u)) {
     return { code: u, recognized: true, empty: false };
   }
 
   if (u === 'WON' || s.includes('원화') || (s.includes('원') && !s.includes('달러'))) {
-    return { code: 'KRW', recognized: true, empty: false };
+    return codeSet.has('KRW')
+      ? { code: 'KRW', recognized: true, empty: false }
+      : { code: 'KRW', recognized: false, empty: false };
   }
   if (u === '$' || u === 'US$' || u === 'USD' || (s.includes('달러') && s.includes('미국'))) {
-    return { code: 'USD', recognized: true, empty: false };
+    return codeSet.has('USD')
+      ? { code: 'USD', recognized: true, empty: false }
+      : { code: 'USD', recognized: false, empty: false };
   }
   if (u === '€' || u === 'EUR' || s.includes('유로')) {
-    return { code: 'EUR', recognized: true, empty: false };
+    return codeSet.has('EUR')
+      ? { code: 'EUR', recognized: true, empty: false }
+      : { code: 'EUR', recognized: false, empty: false };
   }
   if (s.includes('엔') || (u === '¥' && s.includes('일본'))) {
-    return { code: 'JPY', recognized: true, empty: false };
+    return codeSet.has('JPY')
+      ? { code: 'JPY', recognized: true, empty: false }
+      : { code: 'JPY', recognized: false, empty: false };
   }
   if (s.includes('위안') || (u === '¥' && s.includes('중국'))) {
-    return { code: 'CNY', recognized: true, empty: false };
+    return codeSet.has('CNY')
+      ? { code: 'CNY', recognized: true, empty: false }
+      : { code: 'CNY', recognized: false, empty: false };
   }
   if (u === '£' || u === 'GBP' || s.includes('파운드')) {
-    return { code: 'GBP', recognized: true, empty: false };
+    return codeSet.has('GBP')
+      ? { code: 'GBP', recognized: true, empty: false }
+      : { code: 'GBP', recognized: false, empty: false };
   }
 
-  for (const opt of PRODUCT_CURRENCY_SELECT_OPTIONS) {
+  for (const opt of selectOptions) {
     if (u.includes(opt.value)) {
       return { code: opt.value, recognized: true, empty: false };
     }
@@ -325,7 +551,7 @@ export function previewProductMappedValue(sampleRow, mappingRow) {
   const raw = previewExcelMappedValue(sampleRow, mappingRow);
   const tk = String(mappingRow?.targetKey || '');
   if (PRODUCT_PRICE_TARGET_KEYS.has(tk)) {
-    const formatted = formatPriceExcelInputDisplay(raw);
+    const formatted = formatFormulaCapableExcelInputDisplay(raw);
     return formatted || raw || '';
   }
   if (tk === 'product.currency') {
@@ -454,26 +680,41 @@ export function formatBillingPreviewCellValue(billingType, billingInterval = 1) 
 }
 
 /** 미리보기 진입 시 결제 주기 열을 한글(1년·1개월·영구)로 정규화 */
-function normalizeExcelRowsPricesAndCurrencyForPreview(excelRows, mappingRows) {
+function normalizeExcelRowsPricesAndCurrencyForPreview(
+  excelRows,
+  mappingRows,
+  allowedCodes = null,
+  customDefinitions = []
+) {
   const currencyKey = resolveProductExcelColumnKey(mappingRows, 'product.currency');
-  const priceTargets = ['product.listPrice', 'product.costPrice', 'product.channelPrice'];
+  const priceTargets = [
+    'product.listPrice',
+    'product.costPrice',
+    'product.channelPrice',
+    'product.consumerMargin',
+    'product.channelMargin'
+  ];
+  const numericCustomTargets = (customDefinitions || [])
+    .filter((d) => d?.key && (d.type === 'number' || d.type === 'formula'))
+    .map((d) => `${PRODUCT_CUSTOM_FIELD_TARGET_PREFIX}${d.key}`);
+  const currencyOpts = allowedCodes ? { allowedCodes } : {};
 
   return (excelRows || []).map((row) => {
     const next = { ...row };
-    for (const target of priceTargets) {
+    for (const target of [...priceTargets, ...numericCustomTargets]) {
       const colKey = resolveProductExcelColumnKey(mappingRows, target);
       if (!colKey) continue;
       const h = resolveExcelRowHeaderKey(row, colKey) || colKey;
       const raw = next[h];
       if (raw != null && String(raw).trim() !== '') {
-        next[h] = formatPriceExcelInputDisplay(raw);
+        next[h] = formatFormulaCapableExcelInputDisplay(raw);
       }
     }
     if (currencyKey) {
       const h = resolveExcelRowHeaderKey(row, currencyKey) || currencyKey;
       const raw = next[h];
       if (raw != null && String(raw).trim() !== '') {
-        const { code, recognized } = resolveCurrencyCode(raw);
+        const { code, recognized } = resolveCurrencyCode(raw, currencyOpts);
         if (recognized) next[h] = code;
       }
     }
@@ -481,7 +722,12 @@ function normalizeExcelRowsPricesAndCurrencyForPreview(excelRows, mappingRows) {
   });
 }
 
-export function normalizeExcelRowsBillingForPreview(excelRows, mappingRows) {
+export function normalizeExcelRowsBillingForPreview(
+  excelRows,
+  mappingRows,
+  allowedCodes = null,
+  customDefinitions = []
+) {
   const billingKey = resolveProductExcelColumnKey(mappingRows, 'product.billingType');
   const baseRows = (excelRows || []).map((r) => ({ ...r }));
   const intervalKey = resolveProductExcelColumnKey(mappingRows, 'product.billingInterval');
@@ -508,7 +754,12 @@ export function normalizeExcelRowsBillingForPreview(excelRows, mappingRows) {
         return next;
       });
 
-  return normalizeExcelRowsPricesAndCurrencyForPreview(billingNormalized, mappingRows);
+  return normalizeExcelRowsPricesAndCurrencyForPreview(
+    billingNormalized,
+    mappingRows,
+    allowedCodes,
+    customDefinitions
+  );
 }
 
 export function billingIntervalCellIsValid(raw, billingTypeHint = 'Monthly') {
@@ -554,54 +805,348 @@ export function normalizeStatus(raw) {
   return 'Active';
 }
 
-export function normalizeCurrency(raw) {
-  return resolveCurrencyCode(raw).code;
+export function normalizeCurrency(raw, allowedCodes = null) {
+  return resolveCurrencyCode(raw, allowedCodes ? { allowedCodes } : {}).code;
+}
+
+function readExcelRowCustomFields(excelRow, mappingRows, customDefinitions = [], excelHeaders = []) {
+  const customFields = {};
+  const keys = new Set();
+  for (const d of customDefinitions || []) {
+    if (d?.key) keys.add(d.key);
+  }
+  for (const r of mappingRows || []) {
+    const tk = String(r?.targetKey || '');
+    if (!tk.startsWith(PRODUCT_CUSTOM_FIELD_TARGET_PREFIX)) continue;
+    keys.add(tk.slice(PRODUCT_CUSTOM_FIELD_TARGET_PREFIX.length));
+  }
+  for (const ck of keys) {
+    const tk = `${PRODUCT_CUSTOM_FIELD_TARGET_PREFIX}${ck}`;
+    const val = readMapped(excelRow, mappingRows, tk, customDefinitions, excelHeaders);
+    if (val !== '') customFields[ck] = val;
+  }
+  return customFields;
+}
+
+/** 수식 계산용 customFields — formula 셀 =… 제외, number만 숫자화(text 등은 원문 유지) */
+function customFieldsForFormulaContext(rawCustomFields = {}, customDefinitions = []) {
+  return normalizeCustomFieldsForFormula(rawCustomFields, customDefinitions);
+}
+
+function buildProductExcelCustomFormulaContext(resolvedProduct, customFieldsInput, exchangeCtx, customDefinitions) {
+  const fxBuiltIn = exchangeCtx
+    ? buildExchangeRateFormulaBuiltin(
+        exchangeCtx.usdSummary,
+        exchangeCtx.dealBasRMap,
+        resolvedProduct?.currency,
+        { profile: exchangeCtx.pricingProfile }
+      )
+    : {};
+  const rawBuiltIn = {
+    listPrice: resolvedProduct?.listPrice ?? 0,
+    price: resolvedProduct?.price ?? resolvedProduct?.listPrice ?? 0,
+    costPrice: resolvedProduct?.costPrice ?? 0,
+    channelPrice: resolvedProduct?.channelPrice ?? 0,
+    consumerMargin: resolvedProduct?.consumerMargin ?? 0,
+    channelMargin: resolvedProduct?.channelMargin ?? 0,
+    ...fxBuiltIn
+  };
+  return {
+    entityType: 'product',
+    definitions: customDefinitions || [],
+    builtIn: normalizeFormulaBuiltInNumbers(rawBuiltIn),
+    customFields: normalizeCustomFieldsForFormula(customFieldsInput || {}, customDefinitions)
+  };
+}
+
+function resolveProductExcelCustomFields(
+  excelRow,
+  mappingRows,
+  resolvedProduct,
+  rawCustomFields,
+  exchangeCtx,
+  customDefinitions,
+  excelHeaders
+) {
+  const manual = customFieldsForFormulaContext(rawCustomFields, customDefinitions);
+  const ctx = buildProductExcelCustomFormulaContext(
+    resolvedProduct,
+    manual,
+    exchangeCtx,
+    customDefinitions
+  );
+  const fieldTypes = {};
+  for (const d of customDefinitions || []) {
+    if (d?.key) fieldTypes[d.key] = d.type;
+  }
+  const formulaEvalCtx = (computed) => ({
+    ...ctx,
+    computedFormulas: computed,
+    fieldTypes,
+    definitions: customDefinitions
+  });
+
+  let computed = computeCustomFieldFormulas(customDefinitions, ctx);
+
+  for (const def of customDefinitions || []) {
+    if (def?.type !== 'formula' || !def.key) continue;
+    const tk = `${PRODUCT_CUSTOM_FIELD_TARGET_PREFIX}${def.key}`;
+    const cellRaw = readMapped(excelRow, mappingRows, tk, customDefinitions, excelHeaders);
+    const parsed = parseFormulaInput(cellRaw);
+    if (!parsed.isFormula || !parsed.expression) continue;
+    const val = evaluateFormulaExpression(parsed.expression, formulaEvalCtx(computed));
+    if (val != null && Number.isFinite(Number(val))) {
+      computed[def.key] = Number(val);
+    }
+  }
+
+  const formulaDefs = (customDefinitions || []).filter(
+    (d) => d?.type === 'formula' && d?.options?.expression
+  );
+  const maxPass = formulaDefs.length + 2;
+  for (let pass = 0; pass < maxPass; pass += 1) {
+    let changed = false;
+    for (const def of formulaDefs) {
+      const tk = `${PRODUCT_CUSTOM_FIELD_TARGET_PREFIX}${def.key}`;
+      const cellRaw = readMapped(excelRow, mappingRows, tk, customDefinitions, excelHeaders);
+      if (parseFormulaInput(cellRaw).isFormula) continue;
+      const val = evaluateFormulaExpression(def.options.expression, formulaEvalCtx(computed));
+      if (val == null || !Number.isFinite(Number(val))) continue;
+      if (computed[def.key] !== val) {
+        computed[def.key] = val;
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+
+  const merged = { ...(rawCustomFields || {}) };
+  for (const def of customDefinitions || []) {
+    if (def?.type === 'formula' && def.key) delete merged[def.key];
+  }
+  for (const [key, val] of Object.entries(computed)) {
+    if (val == null || !Number.isFinite(Number(val))) continue;
+    merged[key] = val;
+  }
+  for (const def of customDefinitions || []) {
+    if (def?.type !== 'number' || !def.key) continue;
+    if (merged[def.key] == null || merged[def.key] === '') continue;
+    const n = parseNumericFieldValue(merged[def.key], { fieldType: 'number', rejectFormula: true });
+    if (n != null) merged[def.key] = n;
+  }
+  return merged;
+}
+
+function readExcelRowFormulaInputs(excelRow, mappingRows, customDefinitions = [], excelHeaders = []) {
+  const readInput = (targetKey) =>
+    readMapped(excelRow, mappingRows, targetKey, customDefinitions, excelHeaders);
+  return {
+    name: readInput('product.name'),
+    code: readInput('product.code'),
+    version: readInput('product.version'),
+    category: readInput('product.category'),
+    listPrice: readInput('product.listPrice'),
+    costPrice: readInput('product.costPrice'),
+    channelPrice: readInput('product.channelPrice'),
+    consumerMargin: readInput('product.consumerMargin'),
+    channelMargin: readInput('product.channelMargin'),
+    billingInterval: readInput('product.billingInterval') || '1',
+    customFields: readExcelRowCustomFields(excelRow, mappingRows, customDefinitions, excelHeaders)
+  };
+}
+
+/** 미리보기 — 행 단위 수식 재계산 결과 */
+export function resolveProductExcelRow(excelRow, mappingRows, exchangeCtx = null, customDefinitions = [], opts = {}) {
+  const { allowedCodes = null } = opts;
+  const excelHeaders = excelRow ? Object.keys(excelRow).filter((k) => k && !String(k).startsWith('__')) : [];
+  const inputs = readExcelRowFormulaInputs(excelRow, mappingRows, customDefinitions, excelHeaders);
+  const currency = normalizeCurrency(
+    readMapped(excelRow, mappingRows, 'product.currency', customDefinitions, excelHeaders),
+    allowedCodes
+  );
+  const draft = buildLiveProductDraft({
+    nameInput: inputs.name,
+    codeInput: inputs.code,
+    versionInput: inputs.version,
+    categoryKey: 'other',
+    categoryOther: inputs.category,
+    listPriceInput: inputs.listPrice,
+    costPriceInput: inputs.costPrice,
+    channelPriceInput: inputs.channelPrice,
+    consumerMarginInput: inputs.consumerMargin,
+    channelMarginInput: inputs.channelMargin,
+    billingIntervalInput: inputs.billingInterval,
+    currency,
+    customFields: inputs.customFields,
+    parsePriceInput: parsePriceNum
+  });
+  let resolved = resolveProductFieldValues(draft, exchangeCtx, customDefinitions);
+  let customFields = resolveProductExcelCustomFields(
+    excelRow,
+    mappingRows,
+    { ...resolved, currency },
+    inputs.customFields,
+    exchangeCtx,
+    customDefinitions,
+    excelHeaders
+  );
+
+  const formulaDefCount = (customDefinitions || []).filter((d) => d?.type === 'formula').length;
+  const builtinFormulaCount = Object.keys(draft.fieldFormulas || {}).length;
+  const maxPass = formulaDefCount + builtinFormulaCount + 8;
+
+  function snapshot() {
+    return JSON.stringify({
+      listPrice: resolved.listPrice,
+      costPrice: resolved.costPrice,
+      channelPrice: resolved.channelPrice,
+      consumerMargin: resolved.consumerMargin,
+      channelMargin: resolved.channelMargin,
+      customFields
+    });
+  }
+
+  for (let pass = 0; pass < maxPass; pass += 1) {
+    const prev = snapshot();
+    resolved = resolveProductFieldValues(
+      { ...draft, customFields: { ...inputs.customFields, ...customFields } },
+      exchangeCtx,
+      customDefinitions,
+      { computedCustomFields: customFields }
+    );
+    customFields = resolveProductExcelCustomFields(
+      excelRow,
+      mappingRows,
+      { ...resolved, currency },
+      inputs.customFields,
+      exchangeCtx,
+      customDefinitions,
+      excelHeaders
+    );
+    if (snapshot() === prev) break;
+  }
+
+  return { ...resolved, currency, customFields };
+}
+
+export function formatResolvedExcelFormulaPreview(value) {
+  if (value == null || value === '') return '—';
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '—';
+  return n.toLocaleString('ko-KR', { maximumFractionDigits: 4, minimumFractionDigits: 0 });
 }
 
 /**
- * 매핑 행 + 엑셀 한 줄 → POST /products body (add-product-modal과 동일 필드)
+ * 엑셀 미리보기 — 셀 인식값(등록·함수 계산과 동일 기준)
+ * @returns {string|null} null이면 미리보기 줄 숨김
  */
-export function excelRowToProductBody(excelRow, mappingRows) {
-  const get = (k) => readMapped(excelRow, mappingRows, k);
+export function resolveExcelCellResolvedPreview(cellRaw, col, rowResolved = {}, customDefinitions = []) {
+  const raw = String(cellRaw ?? '').trim();
+  if (!raw) return null;
 
-  const name = get('product.name');
-  const code = get('product.code');
-  const category = get('product.category');
-  const version = get('product.version');
-  const listP = parsePriceNum(readMappedValue(excelRow, mappingRows, 'product.listPrice'));
-  const costP = parsePriceNum(readMappedValue(excelRow, mappingRows, 'product.costPrice'));
-  const channelP = parsePriceNum(readMappedValue(excelRow, mappingRows, 'product.channelPrice'));
-
-  const customFields = {};
-  for (const r of mappingRows || []) {
-    const tk = String(r?.targetKey || '');
-    if (!tk.startsWith('product.customFields.')) continue;
-    const ck = tk.slice('product.customFields.'.length);
-    if (!ck) continue;
-    const val = readMapped(excelRow, mappingRows, tk);
-    if (val !== '') customFields[ck] = val;
+  const tk = col?.targetKey;
+  const builtInKey = PRODUCT_FORMULA_TARGET_TO_FIELD[tk];
+  if (builtInKey) {
+    if (isExcelFormulaInput(raw)) {
+      return formatResolvedExcelFormulaPreview(rowResolved?.[builtInKey]);
+    }
+    return formatResolvedExcelFormulaPreview(parsePriceNum(cellRaw));
   }
 
-  const billingRaw = get('product.billingType');
-  const intervalRaw = get('product.billingInterval');
+  const customKey = productCustomFieldKeyFromTarget(tk);
+  if (!customKey) return null;
+
+  const def = productCustomFieldDefFromTarget(tk, customDefinitions);
+  if (!def) return null;
+
+  if (def.type === 'formula') {
+    if (isExcelFormulaInput(raw)) {
+      return formatResolvedExcelFormulaPreview(rowResolved?.customFields?.[customKey]);
+    }
+    return formatResolvedExcelFormulaPreview(
+      parseNumericFieldValue(cellRaw, { fieldType: 'number', rejectFormula: true })
+    );
+  }
+
+  if (def.type === 'number') {
+    return formatResolvedExcelFormulaPreview(
+      parseNumericFieldValue(cellRaw, { fieldType: 'number', rejectFormula: true })
+    );
+  }
+
+  return null;
+}
+
+/**
+ * 매핑 행 + 엑셀 한 줄 → POST /products body (fieldFormulas·마진 스냅샷 포함)
+ * @param {{ allowedCodes?: Set<string>|null, exchangeCtx?: object|null, customDefinitions?: Array }} [opts]
+ */
+export function excelRowToProductBody(excelRow, mappingRows, opts = {}) {
+  const { allowedCodes = null, exchangeCtx = null, customDefinitions = [] } = opts;
+  const excelHeaders = excelRow ? Object.keys(excelRow).filter((k) => k && !String(k).startsWith('__')) : [];
+  const inputs = readExcelRowFormulaInputs(excelRow, mappingRows, customDefinitions, excelHeaders);
+  const currency = normalizeCurrency(
+    readMapped(excelRow, mappingRows, 'product.currency', customDefinitions, excelHeaders),
+    allowedCodes
+  );
+
+  const payload = buildProductFieldPayload({
+    inputs: {
+      name: inputs.name,
+      code: inputs.code,
+      version: inputs.version,
+      listPrice: inputs.listPrice,
+      costPrice: inputs.costPrice,
+      channelPrice: inputs.channelPrice,
+      consumerMargin: inputs.consumerMargin,
+      channelMargin: inputs.channelMargin,
+      billingInterval: inputs.billingInterval,
+      customFields: inputs.customFields
+    },
+    categoryKey: 'other',
+    categoryOther: inputs.category,
+    currency,
+    definitions: customDefinitions,
+    exchangeCtx,
+    parsePriceInput: parsePriceNum
+  });
+
+  if (!payload.ok) {
+    return {
+      __formulaError: payload.error || '수식 또는 금액 입력을 확인해 주세요.',
+      name: String(inputs.name || '').trim()
+    };
+  }
+
+  const billingRaw = readMapped(excelRow, mappingRows, 'product.billingType', customDefinitions, excelHeaders);
+  const intervalRaw = readMapped(excelRow, mappingRows, 'product.billingInterval', customDefinitions, excelHeaders);
   const parsed = parseProductBillingValue(billingRaw, intervalRaw);
   const billingType = parsed?.billingType || 'Monthly';
-  const billingInterval = parsed?.billingInterval ?? 1;
+  const billingInterval = parsed?.billingInterval ?? payload.body.billingInterval ?? 1;
+
+  const resolvedRow = resolveProductExcelRow(excelRow, mappingRows, exchangeCtx, customDefinitions, {
+    allowedCodes
+  });
+  const resolvedCustomRaw =
+    resolvedRow?.customFields && typeof resolvedRow.customFields === 'object'
+      ? resolvedRow.customFields
+      : {};
+  const resolvedCustom = normalizeCustomFieldsForApiSave(resolvedCustomRaw, customDefinitions);
 
   return {
-    name: name.trim(),
-    code: code || undefined,
-    category: category || undefined,
-    version: version || undefined,
-    listPrice: listP,
-    costPrice: costP,
-    channelPrice: channelP,
-    price: listP,
-    currency: normalizeCurrency(get('product.currency')),
+    ...payload.body,
+    listPrice: resolvedRow.listPrice,
+    price: resolvedRow.listPrice,
+    costPrice: resolvedRow.costPrice,
+    channelPrice: resolvedRow.channelPrice,
+    consumerMargin: resolvedRow.consumerMargin,
+    channelMargin: resolvedRow.channelMargin,
+    billingInterval: resolvedRow.billingInterval ?? payload.body.billingInterval,
+    currency,
     billingType,
     billingInterval,
-    status: normalizeStatus(get('product.status')),
-    customFields: Object.keys(customFields).length ? customFields : undefined
+    status: normalizeStatus(readMapped(excelRow, mappingRows, 'product.status', customDefinitions, excelHeaders)),
+    customFields: Object.keys(resolvedCustom).length ? resolvedCustom : undefined
   };
 }
 
@@ -610,26 +1155,49 @@ export function isExcelRowEffectivelyEmpty(excelRow) {
   return !Object.values(excelRow).some((v) => v != null && String(v).trim() !== '');
 }
 
-/** 미리보기 표 — 매핑된 엑셀 열만, 헤더는 CRM 대상 필드 라벨 */
-export function buildProductExcelPreviewColumns(mappingRows, targetOptions) {
+/** 미리보기 표 — CRM 매핑 가능 필드 전부(미연결 포함), 헤더는 CRM 라벨 */
+export function buildProductExcelPreviewColumns(mappingRows, targetOptions, excelHeaders = [], customFieldDefs = []) {
   const labelMap = new Map();
   for (const o of targetOptions || []) {
     if (o?.value) labelMap.set(o.value, o.label || o.value);
   }
-  const seen = new Set();
+  const hdrs = Array.isArray(excelHeaders) ? excelHeaders : [];
+  const seenTargets = new Set();
   const cols = [];
-  for (const row of mappingRows || []) {
-    if (row?.sourceType === 'constant') continue;
-    const excelKey = String(row?.sourceKey ?? '').trim();
-    if (!excelKey || seen.has(excelKey)) continue;
-    const targetKey = String(row?.targetKey ?? '').trim();
-    if (!targetKey) continue;
-    seen.add(excelKey);
+  const optionTargets = (targetOptions || []).map((o) => String(o?.value ?? '').trim()).filter(Boolean);
+  const targets = optionTargets.length
+    ? optionTargets
+    : (mappingRows || [])
+        .filter((r) => r?.sourceType !== 'constant')
+        .map((r) => String(r?.targetKey ?? '').trim())
+        .filter(Boolean);
+
+  for (const targetKey of targets) {
+    if (!targetKey || seenTargets.has(targetKey)) continue;
+    seenTargets.add(targetKey);
+
+    const resolved = resolveProductFieldExcelKey(mappingRows, targetKey, hdrs, customFieldDefs);
+    if (resolved.mode === 'constant') {
+      cols.push({
+        targetKey,
+        excelKey: resolved.excelKey,
+        label: labelMap.get(targetKey) || targetKey,
+        excelTitle: `고정값 (${resolved.constantValue ?? ''})`,
+        isConstant: true,
+        constantValue: String(resolved.constantValue ?? '')
+      });
+      continue;
+    }
+
+    const excelKey = resolved.excelKey;
     cols.push({
-      excelKey,
       targetKey,
+      excelKey,
       label: labelMap.get(targetKey) || targetKey,
-      excelTitle: excelKey
+      excelTitle: isProductPreviewCellKey(excelKey)
+        ? '열 미연결 · 미리보기에서 직접 입력'
+        : excelKey,
+      isPreviewOnly: isProductPreviewCellKey(excelKey)
     });
   }
   return cols;
@@ -681,8 +1249,8 @@ function statusCellIsValid(raw) {
   return false;
 }
 
-function currencyCellIsValid(raw) {
-  const r = resolveCurrencyCode(raw);
+function currencyCellIsValid(raw, allowedCodes = null) {
+  const r = resolveCurrencyCode(raw, allowedCodes ? { allowedCodes } : {});
   if (r.empty) return true;
   return r.recognized;
 }
@@ -690,7 +1258,7 @@ function currencyCellIsValid(raw) {
 /** 미리보기 — 붉은 칸(등록 전 수정 필요) 건수 */
 export function countInvalidProductExcelDraftCells(
   rows,
-  { nameColumnKey, billingColumnKey, billingIntervalColumnKey, statusColumnKey, currencyColumnKey }
+  { nameColumnKey, billingColumnKey, billingIntervalColumnKey, statusColumnKey, currencyColumnKey, allowedCodes = null }
 ) {
   let nameMissing = 0;
   let billing = 0;
@@ -716,7 +1284,7 @@ export function countInvalidProductExcelDraftCells(
       billingInterval += 1;
     }
     if (statusColumnKey && !statusCellIsValid(readExcelMappedCell(row, statusColumnKey))) status += 1;
-    if (currencyColumnKey && !currencyCellIsValid(readExcelMappedCell(row, currencyColumnKey))) currency += 1;
+    if (currencyColumnKey && !currencyCellIsValid(readExcelMappedCell(row, currencyColumnKey), allowedCodes)) currency += 1;
   }
   return {
     total: nameMissing + billing + billingInterval + status + currency,
@@ -740,6 +1308,7 @@ export const PRODUCT_STATUS_PREVIEW_OPTIONS = [
   { value: 'Draft', label: '초안 (Draft)' }
 ];
 
+/** @deprecated buildEximAvailableCurrencyPreviewOptions(dealBasRMap) 사용 */
 export const PRODUCT_CURRENCY_PREVIEW_OPTIONS = PRODUCT_CURRENCY_SELECT_OPTIONS.map((opt) => ({
   value: opt.value,
   label: opt.label

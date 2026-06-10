@@ -21,10 +21,13 @@
 
 .custom-fields-manage-modal {
   position: fixed;
-  inset: 1rem;
-  max-width: 36rem;
-  max-height: 90vh;
-  margin: auto;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(36rem, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  height: auto;
+  margin: 0;
   background: var(--card);
   border-radius: 0.75rem;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
@@ -33,18 +36,307 @@
   display: flex;
   flex-direction: column;
   animation: cfManageModalIn 0.2s ease-out;
+  overflow: hidden;
+}
+
+.custom-fields-manage-modal--formula {
+  width: min(76rem, calc(100vw - 2rem));
+  max-width: none;
+}
+
+.custom-fields-manage-form-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(26rem, 34rem);
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.custom-fields-manage-form-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.custom-fields-manage-form--with-formula .custom-fields-manage-field {
+  margin-bottom: 0.75rem;
+}
+
+.custom-fields-manage-form--with-formula .custom-fields-manage-field--required {
+  margin-bottom: 0;
+  margin-top: auto;
+}
+
+.custom-fields-manage-form--with-formula .custom-fields-manage-formula-panel {
+  margin-bottom: 0.75rem;
+}
+
+/* 왼쪽(form-main) 높이에 맞추되, 긴 함수 목록은 행 높이를 밀어 올리지 않음 */
+.custom-fields-manage-formula-fields-panel {
+  position: sticky;
+  top: 0;
+  height: 0;
+  min-height: 100%;
+  align-self: stretch;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.75rem 0.8rem;
+  border-radius: 0.625rem;
+  background: #eef4f8;
+  border: 1px solid #c5d8e4;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.custom-fields-manage-formula-panel-col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  max-height: 100%;
+  padding: 0.5rem 0.55rem;
+  border-radius: 0.5rem;
+  background: #f8fbfd;
+  border: 1px solid #d4e3ec;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.custom-fields-manage-formula-fields-title,
+.custom-fields-manage-formula-fields-hint {
+  flex-shrink: 0;
+}
+
+.custom-fields-manage-formula-panel-scroll {
+  flex: 1 1 0;
+  min-height: 0;
+  margin-top: 0.15rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
+}
+
+.custom-fields-manage-formula-fields-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.15rem 0.1rem 0.35rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.custom-fields-manage-formula-fn-group {
+  margin: 0 0 0.65rem;
+}
+
+.custom-fields-manage-formula-fn-group:last-child {
+  margin-bottom: 0;
+}
+
+.custom-fields-manage-formula-fn-group-label {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0 0 0.4rem;
+  padding: 0.25rem 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #3d6278;
+  background: #e8f2f8;
+  border-radius: 0.35rem;
+  line-height: 1.3;
+}
+
+.custom-fields-manage-formula-fn-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0.1rem 0.15rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.custom-fields-manage-formula-fn-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #c8d9e4;
+  border-radius: 0.5rem;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+
+.custom-fields-manage-formula-fn-btn:hover {
+  background: #e3f0f7;
+  border-color: #8eb8cf;
+  box-shadow: 0 1px 4px rgba(44, 100, 133, 0.08);
+}
+
+.custom-fields-manage-formula-fn-name {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: #1e5573;
+  line-height: 1.2;
+}
+
+.custom-fields-manage-formula-fn-desc {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #4a6578;
+  line-height: 1.35;
+}
+
+.custom-fields-manage-formula-fn-example {
+  font-size: 0.75rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: #6b8496;
+  line-height: 1.3;
+  word-break: break-all;
+}
+
+.custom-fields-manage-formula-fields-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: #2f4f62;
+  letter-spacing: 0.02em;
+}
+
+.custom-fields-manage-formula-fields-hint {
+  margin: 0 0 0.55rem;
+  font-size: 0.8125rem;
+  color: #5a7282;
+  line-height: 1.4;
+}
+
+.custom-fields-manage-formula-field-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  width: 100%;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #c8d9e4;
+  border-radius: 0.5rem;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.custom-fields-manage-formula-field-btn:hover {
+  background: #e3f0f7;
+  border-color: #8eb8cf;
+}
+
+.custom-fields-manage-formula-field-btn-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.3;
+}
+
+.custom-fields-manage-formula-field-btn-desc {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: #6a8494;
+  line-height: 1.35;
+}
+
+.custom-fields-manage-formula-field-btn-type {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #5a7282;
+}
+
+.custom-fields-manage-formula-input {
+  width: 100%;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.45rem;
+  font-family: ui-monospace, monospace;
+  font-size: 0.875rem;
+  background: #fff;
+  color: var(--text);
+  box-sizing: border-box;
+}
+
+.custom-fields-manage-formula-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 22%, transparent);
+}
+
+.custom-fields-manage-formula-mode-badge {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #2c6485;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.35rem;
+  background: #dceaf2;
+  align-self: flex-start;
+}
+
+@media (max-width: 640px) {
+  .custom-fields-manage-modal--formula {
+    width: min(36rem, calc(100vw - 2rem));
+  }
+
+  .custom-fields-manage-form-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .custom-fields-manage-formula-fields-panel {
+    position: static;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    overflow: visible;
+  }
+
+  .custom-fields-manage-formula-panel-col {
+    max-height: none;
+    height: auto;
+  }
+
+  .custom-fields-manage-formula-panel-scroll {
+    max-height: 11rem;
+    flex: none;
+  }
+
+  .custom-fields-manage-form--with-formula .custom-fields-manage-field--required {
+    margin-top: 0;
+  }
+
+  .custom-fields-manage-footer {
+    padding: 0.65rem 1rem;
+  }
 }
 
 @keyframes cfManageModalIn {
-  from { opacity: 0; transform: scale(0.98); }
-  to { opacity: 1; transform: scale(1); }
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.98); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 }
 
 .custom-fields-manage-inner {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  max-height: calc(100vh - 2rem);
   min-height: 0;
+  overflow: hidden;
 }
 
 .custom-fields-manage-header {
@@ -82,10 +374,22 @@
 }
 
 .custom-fields-manage-body {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 1.25rem;
+  padding: 1rem 1.25rem;
+}
+
+.custom-fields-manage-footer {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid var(--card-border);
+  background: #f8fbfd;
+  border-radius: 0 0 0.75rem 0.75rem;
 }
 
 .custom-fields-manage-modal-desc {
@@ -159,6 +463,64 @@
   color: var(--text);
 }
 
+.custom-fields-manage-field--label-row .custom-fields-manage-label-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.custom-fields-manage-field--label-row .custom-fields-manage-label-row input[type="text"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.custom-fields-manage-apply-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+  padding: 0 0.85rem;
+  min-height: 2.375rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #3d8a62;
+  background: #e8f5ee;
+  border: 1px solid #9ecfb8;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.custom-fields-manage-apply-btn:hover:not(:disabled) {
+  background: #d8efe3;
+  border-color: #7fbf9a;
+}
+
+.custom-fields-manage-apply-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.custom-fields-manage-apply-btn .material-symbols-outlined {
+  font-size: 1.125rem;
+}
+
+.custom-fields-manage-apply-btn-text {
+  line-height: 1;
+}
+
+@media (max-width: 480px) {
+  .custom-fields-manage-apply-btn-text {
+    display: none;
+  }
+
+  .custom-fields-manage-apply-btn {
+    padding: 0 0.65rem;
+  }
+}
+
 .custom-fields-manage-choices-input {
   margin-top: 0.5rem;
 }
@@ -174,8 +536,9 @@
 }
 
 .custom-fields-manage-add-btn {
-  margin-top: 0.5rem;
-  padding: 0.5rem 1rem;
+  margin-top: 0;
+  padding: 0.55rem 1.25rem;
+  min-width: 6.5rem;
   font-size: 0.875rem;
   font-weight: 600;
   color: #fff;
@@ -202,9 +565,15 @@
 }
 
 .custom-fields-manage-list h4 {
-  margin: 0 0 0.5rem;
+  margin: 0 0 0.25rem;
   font-size: 0.8125rem;
   font-weight: 600;
+  color: var(--text-muted);
+}
+
+.custom-fields-manage-list-hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.75rem;
   color: var(--text-muted);
 }
 
@@ -212,42 +581,212 @@
   list-style: none;
   margin: 0;
   padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .custom-fields-manage-list-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid var(--card-border);
-  font-size: 0.875rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #e3eaf2;
+  border-radius: 0.625rem;
+  background: #fafcfd;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
-.custom-fields-manage-list-item:last-child {
-  border-bottom: none;
+.custom-fields-manage-list-item--dirty {
+  border-color: #b8d4e4;
+  background: #f4f9fc;
+  box-shadow: 0 0 0 1px rgba(184, 212, 228, 0.35);
 }
 
-.custom-fields-manage-list-label {
+.custom-fields-manage-list-item--pending {
+  border-style: dashed;
+  border-color: #b8dcc8;
+  background: #f6fbf8;
+}
+
+.custom-fields-manage-list-type-badge--pending {
+  color: #3d8a62;
+  background: #e8f5ee;
+}
+
+.custom-fields-manage-list-pending-name {
   flex: 1;
+  min-width: 5rem;
+  font-size: 0.875rem;
   font-weight: 500;
   color: var(--text);
 }
 
-.custom-fields-manage-list-meta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 0.1rem;
+.custom-fields-manage-list-pending-expr {
+  flex: 1;
+  min-width: 6rem;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.custom-fields-manage-list-type {
+.custom-fields-manage-list-pending-required {
+  flex-shrink: 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: #8a6a3d;
+  background: #f5f0e8;
+  padding: 0.15rem 0.4rem;
+  border-radius: 0.35rem;
+}
+
+.custom-fields-manage-list-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.custom-fields-manage-list-type-badge {
+  flex-shrink: 0;
+  padding: 0.2rem 0.45rem;
+  border-radius: 0.35rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  color: #5a7282;
+  background: #e8eef2;
+}
+
+.custom-fields-manage-list-type-badge--formula {
+  color: #3d6278;
+  background: #dceaf2;
+}
+
+.custom-fields-manage-list-name-input,
+.custom-fields-manage-list-expr-input,
+.custom-fields-manage-list-type-select {
+  min-width: 0;
+  height: 2.25rem;
+  padding: 0 0.65rem;
+  border: 1px solid #d8e2ea;
+  border-radius: 0.45rem;
+  background: #fff;
+  font-size: 0.8125rem;
+  color: var(--text);
+  box-sizing: border-box;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.custom-fields-manage-list-name-input {
+  flex: 0 1 7.5rem;
+  min-width: 5.5rem;
+}
+
+.custom-fields-manage-list-expr-input {
+  flex: 1 1 10rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.78rem;
+  color: #2c6485;
+}
+
+.custom-fields-manage-list-type-select {
+  flex: 0 1 5.5rem;
+}
+
+.custom-fields-manage-list-name-input:focus,
+.custom-fields-manage-list-expr-input:focus,
+.custom-fields-manage-list-type-select:focus {
+  outline: none;
+  border-color: #9ebfd1;
+  box-shadow: 0 0 0 2px rgba(158, 191, 209, 0.25);
+}
+
+.custom-fields-manage-list-required {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.custom-fields-manage-list-required input {
+  width: auto;
+  margin: 0;
+}
+
+.custom-fields-manage-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.custom-fields-manage-list-save-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border: 1px solid #d5e3eb;
+  border-radius: 0.45rem;
+  background: #fff;
+  color: #94a3b8;
+  cursor: not-allowed;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.custom-fields-manage-list-save-btn.is-active:not(:disabled) {
+  border-color: #9ecfb8;
+  background: #e8f5ee;
+  color: #3d8a62;
+  cursor: pointer;
+}
+
+.custom-fields-manage-list-save-btn.is-active:not(:disabled):hover {
+  background: #d8efe3;
+  border-color: #7fbf9a;
+}
+
+.custom-fields-manage-list-save-btn .material-symbols-outlined {
+  font-size: 1.125rem;
+}
+
+.custom-fields-manage-list-subrow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed #e3eaf2;
+}
+
+.custom-fields-manage-list-subrow-label {
   font-size: 0.75rem;
   color: var(--text-muted);
 }
 
-.custom-fields-manage-list-timing {
-  font-size: 0.6875rem;
-  color: var(--text-muted);
+.custom-fields-manage-list-subrow-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.custom-fields-manage-list-subrow-radio input {
+  margin: 0;
+}
+
+.custom-fields-manage-list-row-error {
+  margin: 0.45rem 0 0;
+  font-size: 0.75rem;
+  color: #b45309;
 }
 
 .custom-fields-manage-list-delete {
@@ -267,4 +806,90 @@
 
 .custom-fields-manage-list-delete .material-symbols-outlined {
   font-size: 1.125rem;
+}
+
+.custom-fields-manage-formula-panel {
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.5rem;
+  background: #f4f8fa;
+  border: 1px solid rgba(172, 179, 183, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.custom-fields-manage-formula-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.custom-fields-manage-formula-row select {
+  flex: 1;
+  min-width: 0;
+}
+
+.custom-fields-manage-formula-insert-btn {
+  flex-shrink: 0;
+  padding: 0.45rem 0.75rem;
+  border: none;
+  border-radius: 0.4rem;
+  background: #c5dce8;
+  color: #2c6485;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.custom-fields-manage-formula-insert-btn:hover {
+  opacity: 0.92;
+}
+
+.custom-fields-manage-formula-ops {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.custom-fields-manage-formula-op-btn {
+  min-width: 2rem;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid rgba(172, 179, 183, 0.35);
+  border-radius: 0.35rem;
+  background: #fff;
+  color: #2c6485;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.custom-fields-manage-formula-op-btn:hover {
+  background: #e8f1f6;
+}
+
+.custom-fields-manage-formula-textarea {
+  width: 100%;
+  min-height: 4.5rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.45rem;
+  font-family: ui-monospace, monospace;
+  font-size: 0.82rem;
+  resize: vertical;
+}
+
+.custom-fields-manage-formula-error {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #9a4545;
+}
+
+.custom-fields-manage-list-formula {
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, monospace;
+  font-size: 0.72rem;
+  color: var(--text-muted);
 }

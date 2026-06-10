@@ -19,6 +19,8 @@ export function readFrozenExchangeRatesFromStorage() {
     if (parsed?.dealBasRMap && typeof parsed.dealBasRMap === 'object') {
       return {
         dealBasRMap: parsed.dealBasRMap,
+        usdSummary: parsed.usdSummary || null,
+        pricingProfile: parsed.pricingProfile || null,
         frozenAt: parsed.frozenAt || null
       };
     }
@@ -28,12 +30,14 @@ export function readFrozenExchangeRatesFromStorage() {
   return null;
 }
 
-export function writeFrozenExchangeRatesToStorage(dealBasRMap) {
+export function writeFrozenExchangeRatesToStorage(dealBasRMap, usdSummary = null, pricingProfile = null) {
   try {
     sessionStorage.setItem(
       EXCHANGE_RATES_FREEZE_STORAGE_KEY,
       JSON.stringify({
         dealBasRMap,
+        usdSummary,
+        pricingProfile,
         frozenAt: new Date().toISOString()
       })
     );
@@ -66,6 +70,8 @@ export function useExchangeRates({
   respectSessionFreeze = true
 } = {}) {
   const [liveDealBasRMap, setLiveDealBasRMap] = useState({});
+  const [liveUsdSummary, setLiveUsdSummary] = useState(null);
+  const [livePricingProfile, setLivePricingProfile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [frozenSnapshot, setFrozenSnapshot] = useState(() =>
     respectSessionFreeze ? readFrozenExchangeRatesFromStorage() : null
@@ -74,6 +80,10 @@ export function useExchangeRates({
 
   const exchangeRatesFrozen = Boolean(frozenSnapshot?.dealBasRMap);
   const dealBasRMap = exchangeRatesFrozen ? frozenSnapshot.dealBasRMap : liveDealBasRMap;
+  const usdSummary = exchangeRatesFrozen ? frozenSnapshot?.usdSummary ?? null : liveUsdSummary;
+  const pricingProfile = exchangeRatesFrozen
+    ? frozenSnapshot?.pricingProfile ?? livePricingProfile
+    : livePricingProfile;
 
   const fetchRates = useCallback(async () => {
     if (!enabled) return;
@@ -89,6 +99,12 @@ export function useExchangeRates({
       if (Array.isArray(data.rows)) {
         setLiveDealBasRMap(buildDealBasRMapFromRows(data.rows));
       }
+      if (data.usdSummary && typeof data.usdSummary === 'object') {
+        setLiveUsdSummary(data.usdSummary);
+      }
+      if (data.pricingProfile && typeof data.pricingProfile === 'object') {
+        setLivePricingProfile(data.pricingProfile);
+      }
     } catch {
       /* 환율 없으면 원화 환산 힌트만 생략 */
     } finally {
@@ -98,10 +114,15 @@ export function useExchangeRates({
 
   const freezeExchangeRates = useCallback(() => {
     const snap = { ...liveDealBasRMap };
-    const next = { dealBasRMap: snap, frozenAt: new Date().toISOString() };
+    const next = {
+      dealBasRMap: snap,
+      usdSummary: liveUsdSummary,
+      pricingProfile: livePricingProfile,
+      frozenAt: new Date().toISOString()
+    };
     setFrozenSnapshot(next);
-    writeFrozenExchangeRatesToStorage(snap);
-  }, [liveDealBasRMap]);
+    writeFrozenExchangeRatesToStorage(snap, liveUsdSummary, livePricingProfile);
+  }, [liveDealBasRMap, liveUsdSummary, livePricingProfile]);
 
   const resumeExchangeRates = useCallback(() => {
     setFrozenSnapshot(null);
@@ -150,7 +171,10 @@ export function useExchangeRates({
 
   return {
     dealBasRMap,
+    usdSummary,
+    pricingProfile,
     liveDealBasRMap,
+    liveUsdSummary,
     loading,
     exchangeRatesFrozen,
     frozenAt: frozenSnapshot?.frozenAt || null,

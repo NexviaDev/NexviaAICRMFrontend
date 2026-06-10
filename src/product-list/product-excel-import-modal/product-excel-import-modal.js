@@ -4,6 +4,11 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { API_BASE } from '@/config';
 import { pingBackendHealth } from '@/lib/backend-wake';
+import { useExchangeRates } from '@/lib/use-exchange-rates';
+import {
+  buildAvailableCurrencyCodesFromDealBasRMap,
+  buildEximAvailableCurrencyPreviewOptions
+} from '@/lib/exchange-rate-currency-options';
 import ProductImportMappingModal from './product-import-mapping-modal';
 import ProductImportResultModal from './product-import-result-modal';
 import ProductExcelRawPreviewModal from './product-excel-raw-preview-modal';
@@ -53,6 +58,20 @@ export default function ProductExcelImportModal({
   const [excelRowsDraft, setExcelRowsDraft] = useState([]);
   const [importResult, setImportResult] = useState(null);
   const appliedInitialRef = useRef(false);
+
+  const { dealBasRMap, usdSummary, pricingProfile } = useExchangeRates({ getAuthHeader, pollMs: 0 });
+  const formulaExchangeCtx = useMemo(
+    () => ({ dealBasRMap, usdSummary, pricingProfile }),
+    [dealBasRMap, usdSummary, pricingProfile]
+  );
+  const currencyAllowedCodes = useMemo(
+    () => buildAvailableCurrencyCodesFromDealBasRMap(dealBasRMap),
+    [dealBasRMap]
+  );
+  const currencyPreviewOptions = useMemo(
+    () => buildEximAvailableCurrencyPreviewOptions(dealBasRMap),
+    [dealBasRMap]
+  );
 
   useEffect(() => {
     if (!open) {
@@ -195,10 +214,10 @@ export default function ProductExcelImportModal({
       setSaveMsg('제품명 매핑을 완료하고 엑셀 파일을 업로드해 주세요.');
       return;
     }
-    setExcelRowsDraft(normalizeExcelRowsBillingForPreview(excelRows, rows));
+    setExcelRowsDraft(normalizeExcelRowsBillingForPreview(excelRows, rows, currencyAllowedCodes, customDefs));
     setStep('excel-raw');
     setSaveMsg(null);
-  }, [rows, excelRows]);
+  }, [rows, excelRows, currencyAllowedCodes, customDefs]);
 
   const onRawCellChange = useCallback((rowIndex, header, value) => {
     setExcelRowsDraft((prev) =>
@@ -230,8 +249,22 @@ export default function ProductExcelImportModal({
             skipped += 1;
             continue;
           }
-          const body = excelRowToProductBody(excelRow, rows);
+          const body = excelRowToProductBody(excelRow, rows, {
+            allowedCodes: currencyAllowedCodes,
+            exchangeCtx: formulaExchangeCtx,
+            customDefinitions: customDefs
+          });
           const name = String(body.name || '').trim();
+          if (body.__formulaError) {
+            failed += 1;
+            failedItems.push({
+              rowIndex,
+              name: name || `(행 ${rowIndex + 1})`,
+              error: body.__formulaError
+            });
+            i += 1;
+            continue;
+          }
           if (!name) {
             skipped += 1;
             continue;
@@ -287,7 +320,7 @@ export default function ProductExcelImportModal({
         setSaving(false);
       }
     },
-    [excelRows, rows, excelFileName, onImported]
+    [excelRows, rows, excelFileName, onImported, currencyAllowedCodes, formulaExchangeCtx, customDefs]
   );
 
   const registerFromExcelRawPreview = useCallback(() => {
@@ -302,7 +335,8 @@ export default function ProductExcelImportModal({
       billingColumnKey,
       billingIntervalColumnKey,
       statusColumnKey,
-      currencyColumnKey
+      currencyColumnKey,
+      allowedCodes: currencyAllowedCodes
     });
     if (invalid.total > 0) {
       const parts = [];
@@ -316,7 +350,7 @@ export default function ProductExcelImportModal({
     }
     setSaveMsg(null);
     void runImport(sourceRows);
-  }, [excelRowsDraft, excelRows, rows, runImport]);
+  }, [excelRowsDraft, excelRows, rows, runImport, currencyAllowedCodes]);
 
   const handleConfirmResult = useCallback(() => {
     setImportResult(null);
@@ -351,6 +385,10 @@ export default function ProductExcelImportModal({
           onRawCellChange(rowIndex, header, value);
         }}
         saveMsg={saveMsg}
+        currencyPreviewOptions={currencyPreviewOptions}
+        currencyAllowedCodes={currencyAllowedCodes}
+        customDefinitions={customDefs}
+        formulaExchangeCtx={formulaExchangeCtx}
       />
     );
   }

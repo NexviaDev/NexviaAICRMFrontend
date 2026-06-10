@@ -2,18 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { API_BASE } from '@/config';
 import { getCurrencyFlagSources } from '../exchange-rate-flags';
 import ExchangeRateLineChart from '../exchange-rate-line-chart';
+import { RATE_PERIODS } from '../exchange-rate-chart-params.js';
 import './exchange-rate-history-modal.css';
-
-export const RATE_CHART_PARAM = 'rateChart';
-export const RATE_PERIOD_PARAM = 'ratePeriod';
-
-export const RATE_PERIODS = [
-  { id: 'daily', label: '일별' },
-  { id: 'monthly', label: '월별' },
-  { id: 'quarterly', label: '분기별' },
-  { id: 'semiannual', label: '반기별' },
-  { id: 'yearly', label: '연도별' }
-];
 
 function getAuthHeader() {
   const token = localStorage.getItem('crm_token');
@@ -52,7 +42,7 @@ function CurrencyFlagSmall({ code, country }) {
   );
 }
 
-export default function ExchangeRateHistoryModal({ catalogId, period, onClose, onPeriodChange }) {
+function ExchangeRateHistoryModal({ catalogId, period, onClose, onPeriodChange }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -110,7 +100,7 @@ export default function ExchangeRateHistoryModal({ catalogId, period, onClose, o
               </span>
             </h2>
             <p className="er-history-sub">
-              매매기준율(KRW) · {periodLabel} · KST 기준 · 같은 날 30분 갱신 시 해당 일자 데이터가
+              매매기준율(KRW) · {periodLabel} · KST 기준 · 같은 날 5분 갱신 시 해당 일자 데이터가
               갱신되고, 날짜가 바뀌면 이력에 누적됩니다.
             </p>
           </div>
@@ -187,3 +177,5 @@ export default function ExchangeRateHistoryModal({ catalogId, period, onClose, o
     </div>
   );
 }
+
+export default ExchangeRateHistoryModal;

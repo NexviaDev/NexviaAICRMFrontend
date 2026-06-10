@@ -39,3 +39,25 @@
   margin: 0;
   color: var(--text, #1e293b);
 }
+
+.custom-fields-display-formula-badge {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 0.25rem;
+  background: #e8eef2;
+  color: #5a7282;
+  font-size: 0.65rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.custom-fields-display .custom-fields-formula-expression-label {
+  margin-left: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #7a8f9e;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  letter-spacing: -0.01em;
+  vertical-align: middle;
+}

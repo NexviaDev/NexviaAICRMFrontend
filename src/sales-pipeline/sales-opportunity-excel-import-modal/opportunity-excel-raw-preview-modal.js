@@ -1,12 +1,17 @@
-import { useMemo, useCallback, useState } from 'react';
+import { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import ParticipantModal from '@/shared/participant-modal/participant-modal';
 import CustomerCompanySearchModal from '@/customer-companies/customer-company-search-modal/customer-company-search-modal';
+import { useExcelGridClipboard } from '@/lib/use-excel-grid-clipboard';
 import {
   readExcelMappedCell,
   resolveExcelRowHeaderKey
 } from '../../customer-companies/customer-companies-excel-import-modal/excel-import-mapping-utils';
 import { OPPORTUNITY_PRICE_BASIS_OPTIONS } from '@/lib/product-price-utils';
+import {
+  sanitizePriceExcelInput,
+  formatPriceExcelInputDisplay
+} from '../../product-list/product-excel-import-modal/product-excel-import-utils';
 import {
   resolveStageValue,
   countInvalidExcelDraftCells,
@@ -29,24 +34,22 @@ import {
   OPP_EXCEL_ROW_META_ASSIGNEE_ID,
   OPP_EXCEL_ROW_META_COMPANY_ID,
   OPP_EXCEL_ROW_META_FORCE_IMPORT,
+  readOpportunityExcelPreviewCellRaw,
   resolveCurrencyValue,
-  OPP_CURRENCY_PREVIEW_OPTIONS,
   OPP_PRICE_TARGET_KEYS
 } from './opportunity-excel-import-utils';
-import {
-  formatPriceExcelInputDisplay,
-  sanitizePriceExcelInput
-} from '../../product-list/product-excel-import-modal/product-excel-import-utils';
+import '../../shared/custom-fields-section.css';
 import '../../sales-pipeline/opportunity-modal/opportunity-modal.css';
 import '../../shared/excel-import-mapping-modal.css';
 import './opportunity-excel-import.css';
 
 const DISPLAY_MAX_ROWS = 200;
 
-function CurrencyExcelCell({ raw, saving, onPick }) {
+function CurrencyExcelCell({ raw, saving, onPick, currencyPreviewOptions, allowedCodes }) {
   const cellRaw = raw == null ? '' : String(raw);
-  const resolved = resolveCurrencyValue(cellRaw);
+  const resolved = resolveCurrencyValue(cellRaw, allowedCodes);
   const selectValue = resolved.valid ? resolved.value : '';
+  const options = currencyPreviewOptions?.length ? currencyPreviewOptions : [{ value: 'KRW', label: '₩(원화-한국)' }];
 
   return (
     <select
@@ -70,7 +73,7 @@ function CurrencyExcelCell({ raw, saving, onPick }) {
           {cellRaw} (목록에 없음)
         </option>
       ) : null}
-      {OPP_CURRENCY_PREVIEW_OPTIONS.map((opt) => (
+      {options.map((opt) => (
         <option key={opt.value} value={opt.value}>
           {opt.label}
         </option>
@@ -327,6 +330,108 @@ function ProductExcelCell({ raw, meta, saving, onTextChange }) {
   );
 }
 
+/** 추가 필드 — 선택 목록 (custom-fields-section과 동일 choices) */
+function SelectListExcelCell({ raw, choices, saving, onPick }) {
+  const cellRaw = raw == null ? '' : String(raw);
+  const list = Array.isArray(choices) ? choices : [];
+  const trimmed = cellRaw.trim();
+  const valid = !trimmed || list.includes(trimmed);
+
+  return (
+    <select
+      className={`opp-excel-raw-cell-select opp-excel-raw-cell-select-list ${!valid ? 'is-invalid' : ''}`}
+      value={valid && trimmed ? trimmed : ''}
+      onChange={(e) => onPick(e.target.value)}
+      disabled={saving}
+      aria-invalid={!valid}
+      title={!valid && trimmed ? `「${trimmed}」은 선택 목록에 없습니다.` : undefined}
+    >
+      {!valid && trimmed ? (
+        <option value="" disabled>
+          {trimmed} (목록에 없음)
+        </option>
+      ) : (
+        <option value="">선택</option>
+      )}
+      {list.map((c) => (
+        <option key={c} value={c}>
+          {c}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function parseMultiselectRaw(raw) {
+  return String(raw ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function MultiselectExcelCell({ raw, choices, saving, isOpen, onToggleOpen, onChange, wrapRef }) {
+  const list = Array.isArray(choices) ? choices : [];
+  const selected = parseMultiselectRaw(raw);
+  const invalid = selected.some((v) => !list.includes(v));
+  const triggerLabel =
+    selected.length === 0
+      ? '선택'
+      : selected.length === 1
+        ? selected[0]
+        : selected.length === 2
+          ? `${selected[0]}, ${selected[1]}`
+          : `${selected[0]} 외 ${selected.length - 1}개`;
+
+  const toggle = (choice) => {
+    const arr = [...selected];
+    const idx = arr.indexOf(choice);
+    if (idx === -1) arr.push(choice);
+    else arr.splice(idx, 1);
+    onChange(arr.join(', '));
+  };
+
+  return (
+    <div className="opp-excel-raw-multiselect-wrap" ref={wrapRef}>
+      <button
+        type="button"
+        className={`opp-excel-raw-multiselect-trigger${invalid ? ' is-invalid' : ''}`}
+        onClick={() => onToggleOpen()}
+        disabled={saving}
+        aria-expanded={isOpen}
+        aria-haspopup="listbox"
+      >
+        <span>{triggerLabel}</span>
+        <span className="material-symbols-outlined" style={{ fontSize: '1rem' }} aria-hidden>
+          {isOpen ? 'expand_less' : 'expand_more'}
+        </span>
+      </button>
+      {isOpen ? (
+        <div className="opp-excel-raw-multiselect-dropdown" role="listbox">
+          {list.map((c) => (
+            <label key={c} className="opp-excel-raw-multiselect-option" role="option">
+              <input
+                type="checkbox"
+                checked={selected.includes(c)}
+                onChange={() => toggle(c)}
+                disabled={saving}
+              />
+              <span>{c}</span>
+            </label>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function sanitizeOppPasteValue(targetKey, raw) {
+  const text = String(raw ?? '').trim();
+  if (OPP_PRICE_TARGET_KEYS.has(targetKey)) {
+    return sanitizePriceExcelInput(text);
+  }
+  return text;
+}
+
 /**
  * 매핑 다음 단계 — 매핑된 CRM 대상 필드 기준으로 표시하고, 셀 값(엑셀 원본)을 수정할 수 있습니다.
  */
@@ -357,10 +462,16 @@ export default function OpportunityExcelRawPreviewModal({
   overviewEmployees,
   teamMembersForPicker,
   currentUser,
-  defaultUserId
+  defaultUserId,
+  currencyPreviewOptions = [],
+  currencyAllowedCodes = null,
+  financeFieldDefs = [],
+  scheduleFieldDefs = []
 }) {
   const [assigneePickerRow, setAssigneePickerRow] = useState(null);
   const [companyPickerRow, setCompanyPickerRow] = useState(null);
+  const [openMultiselect, setOpenMultiselect] = useState(null);
+  const multiselectWrapRef = useRef(null);
 
   const saveMsgIsError =
     saveMsg && (saveMsg.includes('실패') || saveMsg.includes('필요') || saveMsg.includes('없습니다') || saveMsg.includes('수정'));
@@ -480,10 +591,264 @@ export default function OpportunityExcelRawPreviewModal({
     [displayRows, onCellChange]
   );
 
-  const previewCellRaw = useCallback((row, col) => {
-    if (col?.isConstant) return col.constantValue ?? '';
-    return readExcelMappedCell(row, col?.excelKey);
-  }, []);
+  const previewCellRaw = useCallback(
+    (row, col) => {
+      if (col?.isConstant) return col.constantValue ?? '';
+      return readOpportunityExcelPreviewCellRaw(
+        row,
+        mappingRows,
+        col?.targetKey,
+        formulaFieldDefinitions,
+        headers
+      );
+    },
+    [mappingRows, formulaFieldDefinitions, headers]
+  );
+
+  const formulaFieldDefinitions = useMemo(
+    () => [...(financeFieldDefs || []), ...(scheduleFieldDefs || [])],
+    [financeFieldDefs, scheduleFieldDefs]
+  );
+
+  const financeFieldDefByTargetKey = useMemo(() => {
+    const map = new Map();
+    for (const def of financeFieldDefs || []) {
+      if (!def?.key) continue;
+      map.set(`opp.financeCustomFields.${def.key}`, def);
+    }
+    return map;
+  }, [financeFieldDefs]);
+
+  const getGridCellValue = useCallback(
+    (rowIndex, colIndex) => {
+      const col = displayColumns[colIndex];
+      const row = displayRows[rowIndex];
+      if (!col || !row) return '';
+      return String(previewCellRaw(row, col) ?? '');
+    },
+    [displayColumns, displayRows, previewCellRaw]
+  );
+
+  const setGridCellValue = useCallback(
+    (rowIndex, colIndex, value) => {
+      const col = displayColumns[colIndex];
+      if (!col || col.isConstant) return;
+      handleCell(rowIndex, col.excelKey, value);
+    },
+    [displayColumns, handleCell]
+  );
+
+  const isGridCellEditable = useCallback(
+    (rowIndex, colIndex) => {
+      const col = displayColumns[colIndex];
+      return Boolean(col && !col.isConstant);
+    },
+    [displayColumns]
+  );
+
+  const sanitizeGridPaste = useCallback(
+    (rowIndex, colIndex, raw) => {
+      const col = displayColumns[colIndex];
+      if (!col) return String(raw ?? '').trim();
+      return sanitizeOppPasteValue(col.targetKey, raw);
+    },
+    [displayColumns]
+  );
+
+  const {
+    gridRootRef,
+    isCellSelected,
+    isCellActive,
+    isAltDragging
+  } = useExcelGridClipboard({
+    rowCount: displayRows.length,
+    colCount: displayColumns.length,
+    disabled: saving,
+    getCellValue: getGridCellValue,
+    setCellValue: setGridCellValue,
+    isCellEditable: isGridCellEditable,
+    sanitizePasteValue: sanitizeGridPaste
+  });
+
+  useEffect(() => {
+    if (openMultiselect == null) return;
+    const onDocClick = (e) => {
+      if (multiselectWrapRef.current && !multiselectWrapRef.current.contains(e.target)) {
+        setOpenMultiselect(null);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [openMultiselect]);
+
+  const renderDataCell = useCallback(
+    (row, idx, col, cellRaw) => {
+      const h = col.excelKey;
+      const tk = col.targetKey;
+      const financeDef = financeFieldDefByTargetKey.get(tk);
+
+      if (col.isConstant) {
+        return (
+          <input
+            type="text"
+            className="opp-excel-raw-cell-input is-locked"
+            value={cellRaw}
+            readOnly
+            disabled
+            aria-label={`${idx + 1}행 ${col.label} (고정값)`}
+          />
+        );
+      }
+      if (tk === 'opp.stage') {
+        return (
+          <StageExcelCell
+            raw={cellRaw}
+            stageOptions={stageOptions}
+            saving={saving}
+            onPick={(v) => handleCell(idx, h, v)}
+          />
+        );
+      }
+      if (tk === 'opp.unitPriceBasis') {
+        return (
+          <PriceBasisExcelCell
+            raw={cellRaw}
+            distributorRaw={channelColumnKey ? readExcelMappedCell(row, channelColumnKey) : ''}
+            saving={saving}
+            onPick={(v) => handleCell(idx, h, v)}
+          />
+        );
+      }
+      if (tk === 'opp.channelDistributor') {
+        return (
+          <ChannelDistributorExcelCell
+            raw={cellRaw}
+            priceBasisRaw={priceBasisColumnKey ? readExcelMappedCell(row, priceBasisColumnKey) : ''}
+            channelDistributors={channelDistributors}
+            saving={saving}
+            onPick={(v) => handleCell(idx, h, v)}
+          />
+        );
+      }
+      if (tk === 'opp.snapshotCompanyName') {
+        return (
+          <CompanyExcelCell
+            raw={cellRaw}
+            row={row}
+            companyCol={h}
+            customerCompanies={customerCompanies}
+            saving={saving}
+            onTextChange={(v) => handleCell(idx, h, v)}
+            onOpenPicker={() => setCompanyPickerRow(idx)}
+            onForceRow={() => onForceImportRow?.(idx)}
+          />
+        );
+      }
+      if (tk === 'opp.productName') {
+        return (
+          <ProductExcelCell
+            raw={cellRaw}
+            meta={{ products: products || [], customerCompanies }}
+            saving={saving}
+            onTextChange={(v) => handleCell(idx, h, v)}
+          />
+        );
+      }
+      if (tk === 'opp.assignedToName') {
+        return (
+          <AssigneeExcelCell
+            raw={cellRaw}
+            row={row}
+            assignCol={h}
+            overviewEmployees={overviewEmployees}
+            defaultUserId={defaultUserId}
+            saving={saving}
+            onTextChange={(v) => handleCell(idx, h, v)}
+            onOpenPicker={() => setAssigneePickerRow(idx)}
+            onForceRow={() => onForceImportRow?.(idx)}
+          />
+        );
+      }
+      if (tk === 'opp.currency') {
+        return (
+          <CurrencyExcelCell
+            raw={cellRaw}
+            saving={saving}
+            onPick={(v) => handleCell(idx, h, v)}
+            currencyPreviewOptions={currencyPreviewOptions}
+            allowedCodes={currencyAllowedCodes}
+          />
+        );
+      }
+      if (financeDef?.type === 'select') {
+        const choices = financeDef.options?.choices || [];
+        return (
+          <SelectListExcelCell
+            raw={cellRaw}
+            choices={choices}
+            saving={saving}
+            onPick={(v) => handleCell(idx, h, v)}
+          />
+        );
+      }
+      if (financeDef?.type === 'multiselect') {
+        const choices = financeDef.options?.choices || [];
+        const msKey = `${idx}:${col.targetKey}`;
+        const isOpen = openMultiselect?.key === msKey;
+        return (
+          <MultiselectExcelCell
+            raw={cellRaw}
+            choices={choices}
+            saving={saving}
+            isOpen={isOpen}
+            wrapRef={isOpen ? multiselectWrapRef : null}
+            onToggleOpen={() => setOpenMultiselect(isOpen ? null : { key: msKey })}
+            onChange={(v) => handleCell(idx, h, v)}
+          />
+        );
+      }
+      if (OPP_PRICE_TARGET_KEYS.has(tk)) {
+        return (
+          <input
+            type="text"
+            className="opp-excel-raw-cell-input"
+            value={formatPriceExcelInputDisplay(cellRaw) || cellRaw}
+            onChange={(e) => handleCell(idx, h, sanitizePriceExcelInput(e.target.value))}
+            disabled={saving}
+            aria-label={`${idx + 1}행 ${col.label}`}
+            inputMode="decimal"
+          />
+        );
+      }
+      return (
+        <input
+          type="text"
+          className="opp-excel-raw-cell-input"
+          value={cellRaw}
+          onChange={(e) => handleCell(idx, h, e.target.value)}
+          disabled={saving}
+          aria-label={`${idx + 1}행 ${col.label}`}
+        />
+      );
+    },
+    [
+      channelColumnKey,
+      priceBasisColumnKey,
+      channelDistributors,
+      customerCompanies,
+      products,
+      overviewEmployees,
+      defaultUserId,
+      currencyPreviewOptions,
+      currencyAllowedCodes,
+      financeFieldDefByTargetKey,
+      openMultiselect,
+      stageOptions,
+      saving,
+      handleCell,
+      onForceImportRow
+    ]
+  );
 
   const pickerSelected = useMemo(() => {
     if (assigneePickerRow == null) return [];
@@ -564,10 +929,10 @@ export default function OpportunityExcelRawPreviewModal({
         <div className="opp-excel-raw-preview-modal-body">
           <div className="opp-excel-raw-preview-intro-bar">
             <span>
-              <strong>매핑 대상 필드</strong> 전부 표시(열 미연결은 직접 입력) · 헤더 위에 마우스를 올리면 원본 엑셀 열 ·{' '}
-              <strong>고객사</strong>는 CRM 목록과 대조(없으면 돋보기로 검색·추가) ·{' '}
-              <strong>단계·가격기준·유통사·사내담당자</strong>는 목록만 선택 · 잘못된 값은{' '}
-              <strong style={{ color: '#b91c1c' }}>붉게</strong> 표시 · 해소 후 <strong>일괄 등록</strong>
+              <strong>CRM 매핑 가능 필드</strong> 전부 표시 · <strong>Alt</strong> 누른 채 드래그 → 범위 선택 ·{' '}
+              <strong>Esc</strong> 선택 해제 · <strong>Ctrl+C / Ctrl+V</strong> 복사·붙여넣기(엑셀 TSV) ·{' '}
+              <strong>고객사</strong> CRM 대조 · <strong>단계·가격기준·선택목록 필드</strong>은 드롭다운 · 잘못된 값{' '}
+              <strong style={{ color: '#b91c1c' }}>붉게</strong> · 해소 후 <strong>일괄 등록</strong>
             </span>
           </div>
           {stageMapping?.mode === 'constant' ? (
@@ -583,7 +948,10 @@ export default function OpportunityExcelRawPreviewModal({
                 {truncated ? `표시 ${DISPLAY_MAX_ROWS}행 / 전체 ${total}행` : `전체 ${total}행 · 스크롤로 확인`}
               </span>
             </div>
-            <div className="opp-excel-raw-preview-scroll opp-excel-raw-preview-scroll--fill">
+            <div
+              className={`opp-excel-raw-preview-scroll opp-excel-raw-preview-scroll--fill${isAltDragging ? ' is-alt-dragging' : ''}`}
+              ref={gridRootRef}
+            >
               {displayColumns.length === 0 ? (
                 <p className="opp-excel-raw-preview-empty">
                   표시할 대상 필드가 없습니다. 매핑 단계로 돌아가 주세요.
@@ -604,7 +972,9 @@ export default function OpportunityExcelRawPreviewModal({
                             col.targetKey === 'opp.assignedToName' ||
                             col.targetKey === 'opp.snapshotCompanyName' ||
                             col.targetKey === 'opp.productName' ||
-                            col.targetKey === 'opp.currency'
+                            col.targetKey === 'opp.currency' ||
+                            financeFieldDefByTargetKey.get(col.targetKey)?.type === 'select' ||
+                            financeFieldDefByTargetKey.get(col.targetKey)?.type === 'multiselect'
                               ? 'opp-excel-raw-preview-th--stage'
                               : ''
                           }
@@ -631,115 +1001,40 @@ export default function OpportunityExcelRawPreviewModal({
                           {col.targetKey === 'opp.currency' ? (
                             <span className="opp-excel-raw-preview-th-badge">통화</span>
                           ) : null}
+                          {financeFieldDefByTargetKey.get(col.targetKey)?.type === 'select' ||
+                          financeFieldDefByTargetKey.get(col.targetKey)?.type === 'multiselect' ? (
+                            <span className="opp-excel-raw-preview-th-badge">선택목록</span>
+                          ) : null}
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {displayRows.map((row, idx) => (
-                        <tr key={idx}>
-                          <td className="opp-excel-raw-preview-td-num">{idx + 1}</td>
-                          {displayColumns.map((col) => {
-                            const h = col.excelKey;
-                            const cellRaw = previewCellRaw(row, col);
-                            const tk = col.targetKey;
-                            return (
-                            <td key={col.targetKey}>
-                              {col.isConstant ? (
-                                <input
-                                  type="text"
-                                  className="opp-excel-raw-cell-input is-locked"
-                                  value={cellRaw}
-                                  readOnly
-                                  disabled
-                                  aria-label={`${idx + 1}행 ${col.label} (고정값)`}
-                                />
-                              ) : tk === 'opp.stage' ? (
-                                <StageExcelCell
-                                  raw={cellRaw}
-                                  stageOptions={stageOptions}
-                                  saving={saving}
-                                  onPick={(v) => handleCell(idx, h, v)}
-                                />
-                              ) : tk === 'opp.unitPriceBasis' ? (
-                                <PriceBasisExcelCell
-                                  raw={cellRaw}
-                                  distributorRaw={
-                                    channelColumnKey ? readExcelMappedCell(row, channelColumnKey) : ''
-                                  }
-                                  saving={saving}
-                                  onPick={(v) => handleCell(idx, h, v)}
-                                />
-                              ) : tk === 'opp.channelDistributor' ? (
-                                <ChannelDistributorExcelCell
-                                  raw={cellRaw}
-                                  priceBasisRaw={
-                                    priceBasisColumnKey ? readExcelMappedCell(row, priceBasisColumnKey) : ''
-                                  }
-                                  channelDistributors={channelDistributors}
-                                  saving={saving}
-                                  onPick={(v) => handleCell(idx, h, v)}
-                                />
-                              ) : tk === 'opp.snapshotCompanyName' ? (
-                                <CompanyExcelCell
-                                  raw={cellRaw}
-                                  row={row}
-                                  companyCol={h}
-                                  customerCompanies={customerCompanies}
-                                  saving={saving}
-                                  onTextChange={(v) => handleCell(idx, h, v)}
-                                  onOpenPicker={() => setCompanyPickerRow(idx)}
-                                  onForceRow={() => onForceImportRow?.(idx)}
-                                />
-                              ) : tk === 'opp.productName' ? (
-                                <ProductExcelCell
-                                  raw={cellRaw}
-                                  meta={{ products: products || [], customerCompanies }}
-                                  saving={saving}
-                                  onTextChange={(v) => handleCell(idx, h, v)}
-                                />
-                              ) : tk === 'opp.assignedToName' ? (
-                                <AssigneeExcelCell
-                                  raw={cellRaw}
-                                  row={row}
-                                  assignCol={h}
-                                  overviewEmployees={overviewEmployees}
-                                  defaultUserId={defaultUserId}
-                                  saving={saving}
-                                  onTextChange={(v) => handleCell(idx, h, v)}
-                                  onOpenPicker={() => setAssigneePickerRow(idx)}
-                                  onForceRow={() => onForceImportRow?.(idx)}
-                                />
-                              ) : tk === 'opp.currency' ? (
-                                <CurrencyExcelCell
-                                  raw={cellRaw}
-                                  saving={saving}
-                                  onPick={(v) => handleCell(idx, h, v)}
-                                />
-                              ) : OPP_PRICE_TARGET_KEYS.has(tk) ? (
-                                <input
-                                  type="text"
-                                  className="opp-excel-raw-cell-input"
-                                  value={formatPriceExcelInputDisplay(cellRaw) || cellRaw}
-                                  onChange={(e) => handleCell(idx, h, sanitizePriceExcelInput(e.target.value))}
-                                  disabled={saving}
-                                  aria-label={`${idx + 1}행 ${col.label}`}
-                                  inputMode="decimal"
-                                />
-                              ) : (
-                                <input
-                                  type="text"
-                                  className="opp-excel-raw-cell-input"
-                                  value={cellRaw}
-                                  onChange={(e) => handleCell(idx, h, e.target.value)}
-                                  disabled={saving}
-                                  aria-label={`${idx + 1}행 ${col.label}`}
-                                />
-                              )}
+                      <tr key={idx}>
+                        <td className="opp-excel-raw-preview-td-num">{idx + 1}</td>
+                        {displayColumns.map((col, colIdx) => {
+                          const cellRaw = previewCellRaw(row, col);
+                          const cellClass = [
+                            'opp-excel-grid-cell',
+                            col.isConstant ? 'is-locked' : '',
+                            isCellSelected(idx, colIdx) ? 'is-selected' : '',
+                            isCellActive(idx, colIdx) ? 'is-active' : ''
+                          ]
+                            .filter(Boolean)
+                            .join(' ');
+                          return (
+                            <td
+                              key={col.targetKey}
+                              className={cellClass}
+                              data-grid-row={idx}
+                              data-grid-col={colIdx}
+                            >
+                              {renderDataCell(row, idx, col, cellRaw)}
                             </td>
-                            );
-                          })}
-                        </tr>
+                          );
+                        })}
+                      </tr>
                     ))}
                   </tbody>
                 </table>

@@ -1,28 +1,43 @@
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useRef, useLayoutEffect } from 'react';
+import { useExcelGridClipboard } from '@/lib/use-excel-grid-clipboard';
 import {
   readExcelMappedCell,
   resolveExcelRowHeaderKey
 } from '../../customer-companies/customer-companies-excel-import-modal/excel-import-mapping-utils';
 import { parseBillingIntervalInput } from '@/lib/product-billing-utils';
 import {
+  insertFormulaFunctionAtCursor,
+  insertFormulaInputFieldAtCursor
+} from '@/lib/custom-field-formula';
+import { getFormulaFieldTypeHint } from '@/lib/custom-field-formula-catalog';
+import {
   buildProductExcelPreviewColumns,
   buildBillingPeriodPreviewOptions,
+  buildProductFormulaCatalogGroups,
+  buildProductFormulaPickerOptions,
+  collectProductExcelDraftHeaders,
   countInvalidProductExcelDraftCells,
   formatBillingPreviewCellValue,
-  formatPriceExcelInputDisplay,
+  formatFormulaCapableExcelInputDisplay,
+  resolveExcelCellResolvedPreview,
+  isExcelFormulaInput,
+  isProductPreviewCellKey,
   parseProductBillingValue,
   billingIntervalCellIsValid,
   billingPeriodCellIsValid,
   normalizeStatus,
   resolveCurrencyCode,
-  sanitizePriceExcelInput,
+  sanitizeFormulaCapableExcelInput,
   PRODUCT_BILLING_PREVIEW_OPTIONS,
+  isProductFormulaCapableTarget,
   PRODUCT_STATUS_PREVIEW_OPTIONS,
-  PRODUCT_CURRENCY_PREVIEW_OPTIONS,
-  resolveProductExcelColumnKey
+  readProductExcelPreviewCellRaw,
+  resolveProductExcelColumnKey,
+  resolveProductExcelRow
 } from './product-excel-import-utils';
 import '../../sales-pipeline/opportunity-modal/opportunity-modal.css';
 import '../../shared/excel-import-mapping-modal.css';
+import '../../shared/custom-fields-manage-modal/custom-fields-manage-modal.css';
 import '../../sales-pipeline/sales-opportunity-excel-import-modal/opportunity-excel-import.css';
 
 const DISPLAY_MAX_ROWS = 200;
@@ -142,10 +157,11 @@ function StatusExcelCell({ raw, saving, onPick }) {
   );
 }
 
-function CurrencyExcelCell({ raw, saving, onPick }) {
+function CurrencyExcelCell({ raw, saving, onPick, currencyPreviewOptions, allowedCodes }) {
   const cellRaw = raw == null ? '' : String(raw);
-  const resolved = resolveCurrencyCode(cellRaw);
+  const resolved = resolveCurrencyCode(cellRaw, allowedCodes ? { allowedCodes } : {});
   const valid = resolved.empty || resolved.recognized;
+  const options = currencyPreviewOptions?.length ? currencyPreviewOptions : [{ value: 'KRW', label: '₩(원화-한국)' }];
 
   return (
     <select
@@ -166,7 +182,7 @@ function CurrencyExcelCell({ raw, saving, onPick }) {
       ) : (
         <option value="">(기본: ₩ 원화)</option>
       )}
-      {PRODUCT_CURRENCY_PREVIEW_OPTIONS.map((o) => (
+      {options.map((o) => (
         <option key={o.value} value={o.value}>
           {o.label}
         </option>
@@ -175,21 +191,36 @@ function CurrencyExcelCell({ raw, saving, onPick }) {
   );
 }
 
-function PriceExcelCell({ raw, saving, onChange }) {
-  const display = formatPriceExcelInputDisplay(raw);
+function FormulaCapablePriceExcelCell({ raw, saving, preview, onChange, onCaptureFocus }) {
+  const display = formatFormulaCapableExcelInputDisplay(raw);
+  const isFormula = isExcelFormulaInput(String(raw ?? ''));
 
   return (
-    <input
-      type="text"
-      inputMode="decimal"
-      autoComplete="off"
-      className="opp-excel-raw-cell-input opp-excel-raw-cell-input--price"
-      value={display}
-      onChange={(e) => onChange(sanitizePriceExcelInput(e.target.value))}
-      disabled={saving}
-      placeholder="0"
-      title="₩, $, 원 등 기호는 제거되고 숫자·쉼표만 표시됩니다"
-    />
+    <div className="opp-excel-raw-formula-cell">
+      <input
+        type="text"
+        inputMode="decimal"
+        autoComplete="off"
+        className={`opp-excel-raw-cell-input opp-excel-raw-cell-input--price${isFormula ? ' is-formula' : ''}`}
+        value={display}
+        onChange={(e) => onChange(sanitizeFormulaCapableExcelInput(e.target.value))}
+        onFocus={onCaptureFocus}
+        onClick={onCaptureFocus}
+        onSelect={onCaptureFocus}
+        onKeyUp={onCaptureFocus}
+        disabled={saving}
+        placeholder="0 또는 =[제품 소비자가]-[제품 원가]"
+        title={isFormula ? '수식 — 오른쪽 패널에서 필드·함수 삽입' : '숫자 또는 = 수식 입력'}
+      />
+      {preview != null ? (
+        <span
+          className="opp-excel-raw-formula-preview"
+          title={isFormula ? '수식 결과 미리보기' : '인식된 숫자 값 (등록·함수 계산 기준)'}
+        >
+          {preview}
+        </span>
+      ) : null}
+    </div>
   );
 }
 
@@ -254,20 +285,35 @@ export default function ProductExcelRawPreviewModal({
   onClose,
   onProceed,
   onCellChange,
-  saveMsg
+  saveMsg,
+  currencyPreviewOptions = [],
+  currencyAllowedCodes = null,
+  customDefinitions = [],
+  formulaExchangeCtx = null
 }) {
+  const activeFormulaCellRef = useRef(null);
+  const pendingCaretRef = useRef(null);
+
+  const formulaFieldOptions = useMemo(
+    () => buildProductFormulaPickerOptions(customDefinitions),
+    [customDefinitions]
+  );
+  const formulaCatalogGroups = useMemo(() => buildProductFormulaCatalogGroups(), []);
+
   const saveMsgIsError =
     saveMsg && (saveMsg.includes('실패') || saveMsg.includes('필요') || saveMsg.includes('없습니다') || saveMsg.includes('수정'));
-
-  const displayColumns = useMemo(
-    () => buildProductExcelPreviewColumns(mappingRows, targetOptions),
-    [mappingRows, targetOptions]
-  );
 
   const displayRows = useMemo(() => {
     const list = Array.isArray(rows) ? rows : [];
     return list.length > DISPLAY_MAX_ROWS ? list.slice(0, DISPLAY_MAX_ROWS) : list;
   }, [rows]);
+
+  const excelHeaders = useMemo(() => collectProductExcelDraftHeaders(displayRows), [displayRows]);
+
+  const displayColumns = useMemo(
+    () => buildProductExcelPreviewColumns(mappingRows, targetOptions, excelHeaders, customDefinitions),
+    [mappingRows, targetOptions, excelHeaders, customDefinitions]
+  );
 
   const nameColumnKey = useMemo(
     () => resolveProductExcelColumnKey(mappingRows, 'product.name'),
@@ -289,23 +335,75 @@ export default function ProductExcelRawPreviewModal({
     () => resolveProductExcelColumnKey(mappingRows, 'product.currency'),
     [mappingRows]
   );
-  const listPriceColumnKey = useMemo(
-    () => resolveProductExcelColumnKey(mappingRows, 'product.listPrice'),
-    [mappingRows]
-  );
-  const costPriceColumnKey = useMemo(
-    () => resolveProductExcelColumnKey(mappingRows, 'product.costPrice'),
-    [mappingRows]
-  );
-  const channelPriceColumnKey = useMemo(
-    () => resolveProductExcelColumnKey(mappingRows, 'product.channelPrice'),
-    [mappingRows]
+
+  const isFormulaCapableColumn = useCallback(
+    (col) => isProductFormulaCapableTarget(col?.targetKey, customDefinitions),
+    [customDefinitions]
   );
 
-  const isPriceColumnKey = useCallback(
-    (h) => h === listPriceColumnKey || h === costPriceColumnKey || h === channelPriceColumnKey,
-    [listPriceColumnKey, costPriceColumnKey, channelPriceColumnKey]
+  const isFormulaCapableExcelKey = useCallback(
+    (excelKey) => {
+      const col = displayColumns.find((c) => c.excelKey === excelKey);
+      return col ? isFormulaCapableColumn(col) : false;
+    },
+    [displayColumns, isFormulaCapableColumn]
   );
+
+  const rowResolved = useMemo(
+    () => displayRows.map((row) =>
+      resolveProductExcelRow(row, mappingRows, formulaExchangeCtx, customDefinitions, {
+        allowedCodes: currencyAllowedCodes
+      })
+    ),
+    [displayRows, mappingRows, formulaExchangeCtx, customDefinitions, currencyAllowedCodes]
+  );
+
+  const captureFormulaFocus = useCallback((rowIndex, header, raw, e) => {
+    const el = e?.target;
+    activeFormulaCellRef.current = {
+      rowIndex,
+      header,
+      raw: String(raw ?? ''),
+      selectionStart: el && typeof el.selectionStart === 'number' ? el.selectionStart : String(raw ?? '').length,
+      selectionEnd: el && typeof el.selectionEnd === 'number' ? el.selectionEnd : String(raw ?? '').length,
+      inputEl: el
+    };
+  }, []);
+
+  const applyFormulaTransform = useCallback((transformFn) => {
+    const active = activeFormulaCellRef.current;
+    if (!active || typeof onCellChange !== 'function') return;
+    const cur = String(active.raw ?? '');
+    const start = active.selectionStart ?? cur.length;
+    const end = active.selectionEnd ?? start;
+    const { value, caret } = transformFn(cur, start, end);
+    onCellChange(active.rowIndex, active.header, value);
+    activeFormulaCellRef.current = {
+      ...active,
+      raw: value,
+      selectionStart: caret,
+      selectionEnd: caret
+    };
+    pendingCaretRef.current = { el: active.inputEl, caret };
+  }, [onCellChange]);
+
+  const handleInsertFormulaFieldLabel = useCallback((label) => {
+    applyFormulaTransform((cur, start, end) => insertFormulaInputFieldAtCursor(cur, label, start, end));
+  }, [applyFormulaTransform]);
+
+  const handleInsertFormulaFunctionName = useCallback((fnName) => {
+    applyFormulaTransform((cur, start, end) => insertFormulaFunctionAtCursor(cur, fnName, start, end));
+  }, [applyFormulaTransform]);
+
+  useLayoutEffect(() => {
+    const pending = pendingCaretRef.current;
+    if (!pending?.el) return;
+    pendingCaretRef.current = null;
+    pending.el.focus?.({ preventScroll: true });
+    if (typeof pending.caret === 'number') {
+      pending.el.setSelectionRange?.(pending.caret, pending.caret);
+    }
+  });
 
   const invalidCounts = useMemo(
     () =>
@@ -314,19 +412,95 @@ export default function ProductExcelRawPreviewModal({
         billingColumnKey,
         billingIntervalColumnKey,
         statusColumnKey,
-        currencyColumnKey
+        currencyColumnKey,
+        allowedCodes: currencyAllowedCodes
       }),
-    [rows, nameColumnKey, billingColumnKey, billingIntervalColumnKey, statusColumnKey, currencyColumnKey]
+    [
+      rows,
+      nameColumnKey,
+      billingColumnKey,
+      billingIntervalColumnKey,
+      statusColumnKey,
+      currencyColumnKey,
+      currencyAllowedCodes
+    ]
   );
 
   const handleCell = useCallback(
     (rowIndex, sourceKey, value) => {
       const row = displayRows[rowIndex];
-      const actualKey = resolveExcelRowHeaderKey(row, sourceKey);
+      const actualKey = isProductPreviewCellKey(sourceKey)
+        ? sourceKey
+        : resolveExcelRowHeaderKey(row, sourceKey);
       onCellChange?.(rowIndex, actualKey, value);
     },
     [displayRows, onCellChange]
   );
+
+  const previewCellRaw = useCallback(
+    (row, col) => {
+      if (col?.isConstant) return col.constantValue ?? '';
+      return readProductExcelPreviewCellRaw(
+        row,
+        mappingRows,
+        col?.targetKey,
+        customDefinitions,
+        excelHeaders
+      );
+    },
+    [mappingRows, customDefinitions, excelHeaders]
+  );
+
+  const getGridCellValue = useCallback(
+    (rowIndex, colIndex) => {
+      const col = displayColumns[colIndex];
+      const row = displayRows[rowIndex];
+      if (!col || !row) return '';
+      return String(previewCellRaw(row, col) ?? '');
+    },
+    [displayColumns, displayRows, previewCellRaw]
+  );
+
+  const setGridCellValue = useCallback(
+    (rowIndex, colIndex, value) => {
+      const col = displayColumns[colIndex];
+      if (!col) return;
+      handleCell(rowIndex, col.excelKey, value);
+    },
+    [displayColumns, handleCell]
+  );
+
+  const isGridCellEditable = useCallback(
+    (rowIndex, colIndex) => Boolean(displayColumns[colIndex]),
+    [displayColumns]
+  );
+
+  const sanitizeGridPaste = useCallback(
+    (rowIndex, colIndex, raw) => {
+      const col = displayColumns[colIndex];
+      if (!col) return String(raw ?? '').trim();
+      if (isProductFormulaCapableTarget(col.targetKey, customDefinitions)) {
+        return sanitizeFormulaCapableExcelInput(raw);
+      }
+      return String(raw ?? '').trim();
+    },
+    [displayColumns, customDefinitions]
+  );
+
+  const {
+    gridRootRef,
+    isCellSelected,
+    isCellActive,
+    isAltDragging
+  } = useExcelGridClipboard({
+    rowCount: displayRows.length,
+    colCount: displayColumns.length,
+    disabled: saving,
+    getCellValue: getGridCellValue,
+    setCellValue: setGridCellValue,
+    isCellEditable: isGridCellEditable,
+    sanitizePasteValue: sanitizeGridPaste
+  });
 
   if (!open) return null;
 
@@ -393,8 +567,10 @@ export default function ProductExcelRawPreviewModal({
         <div className="opp-excel-raw-preview-modal-body">
           <div className="opp-excel-raw-preview-intro-bar">
             <span>
-              <strong>매핑한 대상 필드</strong> 기준 표시(헤더 위에 마우스를 올리면 원본 엑셀 열 이름) · 셀을 직접 수정 ·{' '}
-              <strong>제품명</strong> 필수 · 결제주기는 <strong>1Y→1년, 1M→1개월, P→영구</strong>로 표시 · 상태·통화는 목록 선택 · 잘못된 값은{' '}
+              <strong>매핑한 대상 필드</strong> 기준 표시 · <strong>Alt</strong> 누른 채 드래그 → 범위 선택 ·{' '}
+              <strong>Esc</strong> 선택 해제 · <strong>Ctrl+C / Ctrl+V</strong> 복사·붙여넣기(엑셀 TSV) · 셀 직접 수정 ·{' '}
+              <strong>제품명</strong> 필수 · 금액·마진 셀은 <strong>=[제품 소비자가]-[제품 원가]</strong> 수식 가능 · 오른쪽{' '}
+              <strong>필드·함수</strong> 패널로 삽입 · 결제주기는 <strong>1Y→1년, 1M→1개월, P→영구</strong> · 잘못된 값은{' '}
               <strong style={{ color: '#b91c1c' }}>붉게</strong> 표시 · 해소 후 <strong>일괄 등록</strong>
             </span>
           </div>
@@ -404,6 +580,7 @@ export default function ProductExcelRawPreviewModal({
             </p>
           ) : null}
 
+          <div className="opp-excel-raw-preview-body-layout">
           <div className="opp-excel-raw-preview-wrap opp-excel-raw-preview-wrap--modal">
             <div className="opp-excel-raw-preview-head">
               <h4>등록 예정 데이터</h4>
@@ -411,7 +588,10 @@ export default function ProductExcelRawPreviewModal({
                 {truncated ? `표시 ${DISPLAY_MAX_ROWS}행 / 전체 ${total}행` : `전체 ${total}행 · 스크롤로 확인`}
               </span>
             </div>
-            <div className="opp-excel-raw-preview-scroll opp-excel-raw-preview-scroll--fill">
+            <div
+              className={`opp-excel-raw-preview-scroll opp-excel-raw-preview-scroll--fill${isAltDragging ? ' is-alt-dragging' : ''}`}
+              ref={gridRootRef}
+            >
               {displayColumns.length === 0 ? (
                 <p className="opp-excel-raw-preview-empty">
                   매핑된 열이 없습니다. 매핑 단계에서 엑셀 열을 대상 필드에 연결해 주세요.
@@ -433,7 +613,7 @@ export default function ProductExcelRawPreviewModal({
                             h === billingIntervalColumnKey ||
                             h === statusColumnKey ||
                             h === currencyColumnKey ||
-                            isPriceColumnKey(h)
+                            isFormulaCapableExcelKey(h)
                               ? 'opp-excel-raw-preview-th--stage'
                               : ''
                           }
@@ -454,8 +634,8 @@ export default function ProductExcelRawPreviewModal({
                           {h === currencyColumnKey ? (
                             <span className="opp-excel-raw-preview-th-badge">통화</span>
                           ) : null}
-                          {isPriceColumnKey(h) ? (
-                            <span className="opp-excel-raw-preview-th-badge">금액</span>
+                          {isFormulaCapableExcelKey(h) ? (
+                            <span className="opp-excel-raw-preview-th-badge">금액·수식</span>
                           ) : null}
                         </th>
                         );
@@ -466,11 +646,23 @@ export default function ProductExcelRawPreviewModal({
                     {displayRows.map((row, idx) => (
                       <tr key={idx}>
                         <td className="opp-excel-raw-preview-td-num">{idx + 1}</td>
-                        {displayColumns.map((col) => {
+                        {displayColumns.map((col, colIdx) => {
                           const h = col.excelKey;
-                          const cellRaw = readExcelMappedCell(row, h);
+                          const cellRaw = previewCellRaw(row, col);
+                          const cellClass = [
+                            'opp-excel-grid-cell',
+                            isCellSelected(idx, colIdx) ? 'is-selected' : '',
+                            isCellActive(idx, colIdx) ? 'is-active' : ''
+                          ]
+                            .filter(Boolean)
+                            .join(' ');
                           return (
-                          <td key={h}>
+                          <td
+                            key={col.targetKey || h}
+                            className={cellClass}
+                            data-grid-row={idx}
+                            data-grid-col={colIdx}
+                          >
                             {h === nameColumnKey ? (
                               <NameExcelCell
                                 raw={cellRaw}
@@ -511,12 +703,21 @@ export default function ProductExcelRawPreviewModal({
                                 raw={cellRaw}
                                 saving={saving}
                                 onPick={(v) => handleCell(idx, h, v)}
+                                currencyPreviewOptions={currencyPreviewOptions}
+                                allowedCodes={currencyAllowedCodes}
                               />
-                            ) : isPriceColumnKey(h) ? (
-                              <PriceExcelCell
+                            ) : isFormulaCapableColumn(col) ? (
+                              <FormulaCapablePriceExcelCell
                                 raw={cellRaw}
                                 saving={saving}
+                                preview={resolveExcelCellResolvedPreview(
+                                  cellRaw,
+                                  col,
+                                  rowResolved[idx],
+                                  customDefinitions
+                                )}
                                 onChange={(v) => handleCell(idx, h, v)}
+                                onCaptureFocus={(e) => captureFormulaFocus(idx, h, cellRaw, e)}
                               />
                             ) : (
                               <input
@@ -537,6 +738,64 @@ export default function ProductExcelRawPreviewModal({
                 </table>
               )}
             </div>
+          </div>
+
+          <aside className="custom-fields-manage-formula-fields-panel pl-excel-formula-panel" aria-label="수식 필드·함수">
+            <div className="custom-fields-manage-formula-panel-col custom-fields-manage-formula-panel-col--fields">
+              <h4 className="custom-fields-manage-formula-fields-title">필드</h4>
+              <p className="custom-fields-manage-formula-fields-hint">금액·마진 셀 포커스 후 클릭하여 삽입</p>
+              <div className="custom-fields-manage-formula-panel-scroll">
+                <ul className="custom-fields-manage-formula-fields-list">
+                  {formulaFieldOptions.map((opt) => (
+                    <li key={opt.key}>
+                      <button
+                        type="button"
+                        className="custom-fields-manage-formula-field-btn"
+                        onClick={() => handleInsertFormulaFieldLabel(opt.label)}
+                        disabled={saving}
+                      >
+                        <span className="custom-fields-manage-formula-field-btn-label">{opt.label}</span>
+                        {opt.subtitle ? (
+                          <span className="custom-fields-manage-formula-field-btn-desc">{opt.subtitle}</span>
+                        ) : null}
+                        <span className="custom-fields-manage-formula-field-btn-type">
+                          {getFormulaFieldTypeHint(opt.fieldType)}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <div className="custom-fields-manage-formula-panel-col custom-fields-manage-formula-panel-col--fn">
+              <h4 className="custom-fields-manage-formula-fields-title">함수</h4>
+              <p className="custom-fields-manage-formula-fields-hint">회계·금액 함수가 먼저 표시됩니다</p>
+              <div className="custom-fields-manage-formula-panel-scroll">
+                {formulaCatalogGroups.map((group) => (
+                  <section key={group.id} className="custom-fields-manage-formula-fn-group">
+                    <p className="custom-fields-manage-formula-fn-group-label">{group.label}</p>
+                    <ul className="custom-fields-manage-formula-fn-list">
+                      {group.items.map((fn) => (
+                        <li key={fn.name}>
+                          <button
+                            type="button"
+                            className="custom-fields-manage-formula-fn-btn"
+                            title={fn.example}
+                            onClick={() => handleInsertFormulaFunctionName(fn.name)}
+                            disabled={saving}
+                          >
+                            <span className="custom-fields-manage-formula-fn-name">{fn.name}</span>
+                            <span className="custom-fields-manage-formula-fn-desc">{fn.desc}</span>
+                            <span className="custom-fields-manage-formula-fn-example">{fn.example}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ))}
+              </div>
+            </div>
+          </aside>
           </div>
 
           {saveMsg ? (

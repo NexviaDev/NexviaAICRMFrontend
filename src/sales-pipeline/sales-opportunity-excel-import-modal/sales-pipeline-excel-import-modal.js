@@ -5,6 +5,11 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { readSpreadsheetFileToRows } from '@/lib/spreadsheet-file-read';
 import { API_BASE } from '@/config';
 import { pingBackendHealth } from '@/lib/backend-wake';
+import { useExchangeRates } from '@/lib/use-exchange-rates';
+import {
+  buildAvailableCurrencyCodesFromDealBasRMap,
+  buildEximAvailableCurrencyPreviewOptions
+} from '@/lib/exchange-rate-currency-options';
 import { buildExcelSourceOptions } from '../../customer-companies/customer-companies-excel-import-modal/excel-import-mapping-utils';
 import OpportunityExcelImportMappingModal from './opportunity-excel-import-mapping-modal';
 import OpportunityExcelRawPreviewModal from './opportunity-excel-raw-preview-modal';
@@ -63,6 +68,16 @@ export default function SalesPipelineExcelImportModal({ open, onClose, onImporte
   /** 검색·추가로 확정한 고객사 — excel-import-meta 목록에 병합 */
   const [extraCustomerCompanies, setExtraCustomerCompanies] = useState([]);
   const fileInputRef = useRef(null);
+
+  const { dealBasRMap } = useExchangeRates({ getAuthHeader, pollMs: 0 });
+  const currencyAllowedCodes = useMemo(
+    () => buildAvailableCurrencyCodesFromDealBasRMap(dealBasRMap),
+    [dealBasRMap]
+  );
+  const currencyPreviewOptions = useMemo(
+    () => buildEximAvailableCurrencyPreviewOptions(dealBasRMap),
+    [dealBasRMap]
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -203,9 +218,10 @@ export default function SalesPipelineExcelImportModal({ open, onClose, onImporte
       customerCompanies: customerCompaniesForImport,
       _overviewEmployees: overviewEmployees,
       _currentUserId: uid,
-      _currentUserName: uname
+      _currentUserName: uname,
+      allowedCurrencyCodes: currencyAllowedCodes
     };
-  }, [meta, overviewEmployees, currentUser, customerCompaniesForImport]);
+  }, [meta, overviewEmployees, currentUser, customerCompaniesForImport, currencyAllowedCodes]);
 
   const defaultUserId = metaWithEmployees?._currentUserId || '';
 
@@ -564,6 +580,10 @@ export default function SalesPipelineExcelImportModal({ open, onClose, onImporte
         teamMembersForPicker={teamMembersForPicker}
         currentUser={currentUser}
         defaultUserId={defaultUserId}
+        financeFieldDefs={meta?.financeFieldDefs || []}
+        scheduleFieldDefs={meta?.scheduleFieldDefs || []}
+        currencyPreviewOptions={currencyPreviewOptions}
+        currencyAllowedCodes={currencyAllowedCodes}
       />
     );
   }

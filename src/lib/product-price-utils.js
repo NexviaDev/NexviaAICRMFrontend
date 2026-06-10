@@ -1,14 +1,21 @@
-/** 제품 소비자가 — 기존 문서는 listPrice 없이 price만 있을 수 있음 */
+/**
+ * 제품 소비자가 — 기존 문서는 listPrice 없이 price만 있을 수 있음
+ * ₩, $, 원, 쉼표 등 표시 문자는 제거 후 숫자만 사용
+ */
+import { parseNumericFieldValueOrZero } from './numeric-field-value';
+
 export function listPriceFromProduct(p) {
   if (!p) return 0;
-  if (p.listPrice != null && Number.isFinite(Number(p.listPrice))) return Number(p.listPrice);
-  return Number(p.price) || 0;
+  if (p.listPrice != null && p.listPrice !== '') {
+    return parseNumericFieldValueOrZero(p.listPrice);
+  }
+  return parseNumericFieldValueOrZero(p.price);
 }
 
 /** 제품 유통가 (제품 목록·유통 세일즈와 동일 축) */
 export function channelPriceFromProduct(p) {
   if (!p) return 0;
-  return Number(p.channelPrice) || 0;
+  return parseNumericFieldValueOrZero(p.channelPrice);
 }
 
 /**

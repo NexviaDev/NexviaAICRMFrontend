@@ -1,6 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
 import CustomerCompanySearchModal from '../../customer-companies/customer-company-search-modal/customer-company-search-modal';
 import CustomFieldsSection from '../../shared/custom-fields-section';
+import { mergeCustomFieldsForSave } from '@/lib/custom-field-formula';
 import AssigneePickerModal from '../../company-overview/assignee-picker-modal/assignee-picker-modal';
 import '../../customer-companies/add-company-modal/add-company-modal.css';
 import './add-customer-company-employees-modal.css';
@@ -286,6 +287,10 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
   const [showAssigneePicker, setShowAssigneePicker] = useState(false);
   const [companyEmployeesForDisplay, setCompanyEmployeesForDisplay] = useState([]);
   const [customDefinitions, setCustomDefinitions] = useState([]);
+  const customFieldFormulaContext = useMemo(() => ({
+    entityType: 'contact',
+    builtIn: {}
+  }), []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [showCompanySearchModal, setShowCompanySearchModal] = useState(false);
@@ -1375,7 +1380,12 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
           payload.companyName = (f.company || '').trim();
         }
       }
-      if (f.customFields && Object.keys(f.customFields).length) payload.customFields = f.customFields;
+      const mergedCustom = mergeCustomFieldsForSave(
+        customDefinitions,
+        f.customFields,
+        customFieldFormulaContext
+      );
+      if (mergedCustom) payload.customFields = mergedCustom;
       payload.assigneeUserIds = Array.isArray(f.assigneeUserIds) ? f.assigneeUserIds : [];
       if (forceCreateDespiteContactDuplicate) {
         payload.forceCreateDespiteContactDuplicate = true;
@@ -1915,6 +1925,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
             <CustomFieldsSection
               definitions={customDefinitions}
               values={form.customFields || {}}
+              formulaContext={customFieldFormulaContext}
               onChangeValues={(key, value) => setForm((prev) => ({
                 ...prev,
                 customFields: { ...(prev.customFields || {}), [key]: value }

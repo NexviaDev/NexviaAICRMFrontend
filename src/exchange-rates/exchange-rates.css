@@ -28,7 +28,7 @@
 
 .exchange-rates-content {
   padding: 1.1rem 1rem 2.5rem;
-  max-width: 1280px;
+  max-width: 100%;
   margin: 0 auto;
 }
 
@@ -156,7 +156,9 @@
 .exchange-rates-table-wrap {
   border: 1px solid var(--er-border);
   border-radius: 0.2rem;
-  overflow: visible;
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
 }
 
 .exchange-rates-table {
@@ -168,8 +170,13 @@
   background: #fff;
 }
 
+.exchange-rates-table--exim-full {
+  min-width: 720px;
+}
+
 .exchange-rates-table thead th {
   position: sticky;
+  top: 0;
   border: 1px solid var(--er-border);
   padding: 0.35rem 0.55rem;
   font-weight: 700;
@@ -182,23 +189,20 @@
   box-shadow: 0 1px 0 rgba(197, 211, 220, 0.85);
 }
 
-.exchange-rates-head-row-1 th {
-  top: 0;
-  z-index: 4;
-}
-
-.exchange-rates-head-row-2 th {
-  top: var(--er-thead-row1-height);
-  z-index: 3;
-  background: var(--er-head-sub);
-  font-size: 0.72rem;
-  font-weight: 600;
-  box-shadow: 0 2px 4px rgba(44, 52, 55, 0.06);
-}
-
-.exchange-rates-th-currency {
+.exchange-rates-th-text,
+.exchange-rates-td-text {
   text-align: left;
-  min-width: 9rem;
+  min-width: 7.5rem;
+  max-width: 11rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.exchange-rates-th-code,
+.exchange-rates-td-code {
+  text-align: left;
+  min-width: 5.5rem;
 }
 
 .exchange-rates-th-num,
@@ -298,6 +302,60 @@
 .exchange-rates-row--missing .exchange-rates-td-deal {
   color: var(--er-on-variant);
   font-weight: 500;
+}
+
+.exchange-rates-pick-hint {
+  margin: 0 0 0.55rem;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.72rem;
+  color: #2a4a5e;
+  background: rgba(184, 212, 240, 0.28);
+  border: 1px solid rgba(44, 100, 133, 0.18);
+  border-radius: 0.35rem;
+}
+
+.exchange-rates-pick-hint code {
+  font-size: 0.7rem;
+  color: #2c6485;
+}
+
+.exchange-rates-row--formula-pick {
+  cursor: default;
+}
+
+.exchange-rates-td-pickable {
+  cursor: copy;
+  background: rgba(201, 230, 204, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(90, 148, 104, 0.35);
+}
+
+.exchange-rates-td-pickable:hover {
+  background: rgba(184, 220, 188, 0.55);
+}
+
+.exchange-rates-td-pickable:focus-visible {
+  outline: 2px solid rgba(90, 148, 104, 0.45);
+  outline-offset: -2px;
+}
+
+/* 수식 [필드] 참조 — 엑셀 스타일 색상 (CSS 변수는 JS에서 주입) */
+.exchange-rates-td-ref {
+  background: var(--er-ref-bg, rgba(255, 230, 205, 0.55)) !important;
+  box-shadow: inset 0 0 0 2px var(--er-ref-border, rgba(190, 140, 80, 0.45));
+  font-weight: 700;
+  color: var(--er-ref-accent, #2c3437);
+}
+
+.exchange-rates-td-ref--row {
+  box-shadow: inset 3px 0 0 var(--er-ref-border, rgba(190, 140, 80, 0.55));
+}
+
+.exchange-rates-td-pickable.exchange-rates-td-ref {
+  cursor: copy;
+}
+
+.exchange-rates-th-ref {
+  box-shadow: inset 0 -3px 0 var(--er-ref-border, rgba(190, 140, 80, 0.55));
 }
 
 .exchange-rates-empty {

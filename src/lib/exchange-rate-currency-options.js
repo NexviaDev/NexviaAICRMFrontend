@@ -129,14 +129,52 @@ export function getCurrencySelectLabel(code) {
   return formatCurrencySelectLabel(getCurrencyMeta(normalized));
 }
 
-/** 편집 중 DB에만 있는 코드가 있으면 목록 끝에 보존 */
-export function resolveProductCurrencySelectOptions(currentValue) {
+/** 수출입은행 AP01 고시가 있는 통화만 — KRW 항상 포함 */
+export function buildAvailableCurrencyCodesFromDealBasRMap(dealBasRMap) {
+  const codes = new Set(['KRW']);
+  for (const [code, rate] of Object.entries(dealBasRMap || {})) {
+    const normalized = String(code || '').trim().toUpperCase();
+    const n = Number(rate);
+    if (normalized && Number.isFinite(n) && n > 0) codes.add(normalized);
+  }
+  return codes;
+}
+
+/** 셀렉트·엑셀 미리보기용 — Exim dealBasR 기준 필터 */
+export function buildEximAvailableCurrencySelectOptions(dealBasRMap, currentValue = '') {
+  const availableCodes = buildAvailableCurrencyCodesFromDealBasRMap(dealBasRMap);
+  return resolveProductCurrencySelectOptions(currentValue, { availableCodes });
+}
+
+export function buildEximAvailableCurrencyPreviewOptions(dealBasRMap, currentValue = '') {
+  return buildEximAvailableCurrencySelectOptions(dealBasRMap, currentValue).map((opt) => ({
+    value: opt.value,
+    label: opt.label
+  }));
+}
+
+/**
+ * @param {string} currentValue
+ * @param {{ availableCodes?: Set<string>|string[]|null }} [opts] 환율 고시가 있는 통화만 (KRW 항상 포함)
+ */
+export function resolveProductCurrencySelectOptions(currentValue, opts = {}) {
   const normalized = String(currentValue || '').trim().toUpperCase();
-  if (!normalized || PRODUCT_CURRENCY_SELECT_OPTIONS.some((opt) => opt.value === normalized)) {
-    return PRODUCT_CURRENCY_SELECT_OPTIONS;
+  let base = PRODUCT_CURRENCY_SELECT_OPTIONS;
+
+  const { availableCodes = null } = opts;
+  if (availableCodes instanceof Set && availableCodes.size > 0) {
+    base = base.filter((opt) => availableCodes.has(opt.value));
+  } else if (Array.isArray(availableCodes) && availableCodes.length > 0) {
+    const set = new Set(availableCodes.map((c) => String(c || '').trim().toUpperCase()).filter(Boolean));
+    set.add('KRW');
+    base = base.filter((opt) => set.has(opt.value));
+  }
+
+  if (!normalized || base.some((opt) => opt.value === normalized)) {
+    return base;
   }
   return [
-    ...PRODUCT_CURRENCY_SELECT_OPTIONS,
+    ...base,
     {
       value: normalized,
       label: getCurrencySelectLabel(normalized),

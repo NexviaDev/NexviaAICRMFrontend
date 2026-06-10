@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import CustomFieldsSection from '../../shared/custom-fields-section';
+import { mergeCustomFieldsForSave } from '@/lib/custom-field-formula';
 import AssigneePickerModal from '../../company-overview/assignee-picker-modal/assignee-picker-modal';
 import CompanyImportPreviewModal from './company-import-preview-modal';
 import './add-company-modal.css';
@@ -179,6 +180,15 @@ export default function AddCompanyModal({
   const [companyEmployeesForDisplay, setCompanyEmployeesForDisplay] = useState([]); // 담당자 input 표시용 이름 매핑
   const [assigneeDisplayText, setAssigneeDisplayText] = useState(undefined); // 수기 수정 가능 (undefined면 선택된 ID 기준 표시)
   const [customDefinitions, setCustomDefinitions] = useState([]);
+  const customFieldFormulaContext = useMemo(() => ({
+    entityType: 'customerCompany',
+    builtIn: {
+      latitude:
+        form.latitude != null && Number.isFinite(Number(form.latitude)) ? Number(form.latitude) : null,
+      longitude:
+        form.longitude != null && Number.isFinite(Number(form.longitude)) ? Number(form.longitude) : null
+    }
+  }), [form.latitude, form.longitude]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -1082,7 +1092,16 @@ export default function AddCompanyModal({
       longitude: longitudeNum != null ? longitudeNum : undefined,
       memo: form.memo.trim() || undefined,
       status: (form.status && String(form.status).trim()) || 'active',
-      customFields: form.customFields && Object.keys(form.customFields).length ? form.customFields : undefined,
+      customFields: mergeCustomFieldsForSave(
+        customDefinitions,
+        form.customFields,
+        {
+          builtIn: {
+            latitude: latitudeNum,
+            longitude: longitudeNum
+          }
+        }
+      ),
       assigneeUserIds: Array.isArray(form.assigneeUserIds) ? form.assigneeUserIds : []
     };
     if (!isEdit && forceCreateDespiteSimilar) {
@@ -1578,6 +1597,7 @@ export default function AddCompanyModal({
           <CustomFieldsSection
             definitions={customDefinitions}
             values={form.customFields || {}}
+            formulaContext={customFieldFormulaContext}
             onChangeValues={(key, value) => setForm((prev) => ({
               ...prev,
               customFields: { ...(prev.customFields || {}), [key]: value }

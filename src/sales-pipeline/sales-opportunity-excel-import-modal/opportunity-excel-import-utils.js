@@ -10,6 +10,7 @@ import {
   priceBasisLabelsForValue
 } from '@/lib/sales-opportunity-form-shared';
 import { OPPORTUNITY_PRICE_BASIS_OPTIONS } from '@/lib/product-price-utils';
+import { getDefinitionFormulaDefaultDisplay } from '@/lib/custom-field-formula';
 import {
   readExcelMappedCell,
   normalizeExcelHeaderKey,
@@ -67,8 +68,26 @@ function resolveExcelFieldColumnKey(headers, mapping, targetKey, guessFn) {
   if (mapping?.mode === 'field' && mapping.sourceKey) return mapping.sourceKey;
   const guessed = guessFn ? guessFn(headers) : guessOpportunityExcelSourceKey(targetKey, headers);
   if (guessed) return guessed;
-  if (mapping?.mode === 'field') return opportunityPreviewCellKey(targetKey);
+  if (mapping?.mode === 'field' || mapping?.mode === 'missing') return opportunityPreviewCellKey(targetKey);
   return '';
+}
+
+/** 미리보기·등록 공통 — 대상 필드별 엑셀 열(또는 가상 열) 키 */
+export function resolveOpportunityFieldExcelKey(mappingRows, targetKey, excelHeaders = []) {
+  const mapping = getOppFieldExcelMapping(mappingRows, targetKey);
+  if (mapping.mode === 'constant') {
+    return {
+      mode: 'constant',
+      excelKey: opportunityPreviewCellKey(targetKey),
+      constantValue: mapping.constantValue
+    };
+  }
+  const hdrs = Array.isArray(excelHeaders) ? excelHeaders : [];
+  const excelKey =
+    resolveExcelFieldColumnKey(hdrs, mapping, targetKey, () =>
+      guessOpportunityExcelSourceKey(targetKey, hdrs)
+    ) || opportunityPreviewCellKey(targetKey);
+  return { mode: 'field', excelKey, constantValue: '' };
 }
 
 export function newMappingRowId() {
@@ -141,17 +160,37 @@ export function autoGuessMappingSourceKeys(rows, headers) {
   });
 }
 
-export function readMappedValuesFromExcelRow(excelRow, mappings) {
+export function readMappedValuesFromExcelRow(excelRow, mappings, targetOptions, fieldDefinitions = []) {
   const vals = {};
-  for (const m of mappings || []) {
-    const key = m.targetKey;
+  const hdrs = excelRow
+    ? Object.keys(excelRow).filter((k) => !isExcelMetaHeaderKey(k))
+    : [];
+  const mappingList = mappings || [];
+  const targets = (targetOptions || []).map((o) => o.value).filter(Boolean);
+  const keysToRead = targets.length
+    ? targets
+    : mappingList.map((m) => m.targetKey).filter(Boolean);
+
+  for (const key of keysToRead) {
     if (!key || !String(key).startsWith('opp.')) continue;
-    const raw =
-      m.sourceType === 'constant'
-        ? m.constantValue ?? ''
-        : readExcelMappedCell(excelRow, m.sourceKey || '') ||
-          readExcelMappedCell(excelRow, opportunityPreviewCellKey(key));
+    const resolved = resolveOpportunityFieldExcelKey(mappingList, key, hdrs);
+    let raw = '';
+    if (resolved.mode === 'constant') {
+      raw = resolved.constantValue ?? '';
+    } else {
+      raw = readExcelMappedCell(excelRow, resolved.excelKey);
+      if (!isOpportunityPreviewCellKey(resolved.excelKey)) {
+        const previewRaw = readExcelMappedCell(excelRow, opportunityPreviewCellKey(key));
+        if (previewRaw != null && String(previewRaw).trim() !== '') {
+          raw = previewRaw;
+        }
+      }
+    }
     vals[key] = raw == null ? '' : String(raw).trim();
+    if (!vals[key]) {
+      const defDefault = getDefinitionFormulaDefaultDisplay(key, fieldDefinitions);
+      if (defDefault) vals[key] = defDefault;
+    }
   }
   return vals;
 }
@@ -203,7 +242,7 @@ export function getOppStageExcelMapping(mappingRows) {
   return getOppFieldExcelMapping(mappingRows, 'opp.stage');
 }
 
-/** 미리보기 표 — 매핑 대상 필드 전부(열 미선택 포함), 헤더는 CRM 라벨 */
+/** 미리보기 표 — CRM 매핑 가능 필드 전부(매핑 단계 미연결·미등록 포함), 헤더는 CRM 라벨 */
 export function buildOpportunityExcelPreviewColumns(mappingRows, targetOptions, excelHeaders = []) {
   const labelMap = new Map();
   for (const o of targetOptions || []) {
@@ -212,29 +251,29 @@ export function buildOpportunityExcelPreviewColumns(mappingRows, targetOptions, 
   const hdrs = Array.isArray(excelHeaders) ? excelHeaders : [];
   const seenTargets = new Set();
   const cols = [];
-  for (const row of mappingRows || []) {
-    const targetKey = String(row?.targetKey ?? '').trim();
+  const optionTargets = (targetOptions || []).map((o) => String(o?.value ?? '').trim()).filter(Boolean);
+  const targets = optionTargets.length
+    ? optionTargets
+    : (mappingRows || []).map((r) => String(r?.targetKey ?? '').trim()).filter(Boolean);
+
+  for (const targetKey of targets) {
     if (!targetKey || seenTargets.has(targetKey)) continue;
     seenTargets.add(targetKey);
 
-    if (row.sourceType === 'constant') {
+    const resolved = resolveOpportunityFieldExcelKey(mappingRows, targetKey, hdrs);
+    if (resolved.mode === 'constant') {
       cols.push({
         targetKey,
-        excelKey: opportunityPreviewCellKey(targetKey),
+        excelKey: resolved.excelKey,
         label: labelMap.get(targetKey) || targetKey,
-        excelTitle: `고정값 (${row.constantValue ?? ''})`,
+        excelTitle: `고정값 (${resolved.constantValue ?? ''})`,
         isConstant: true,
-        constantValue: String(row.constantValue ?? '')
+        constantValue: String(resolved.constantValue ?? '')
       });
       continue;
     }
 
-    const mapping = getOppFieldExcelMapping(mappingRows, targetKey);
-    const excelKey = resolveExcelFieldColumnKey(hdrs, mapping, targetKey, () =>
-      guessOpportunityExcelSourceKey(targetKey, hdrs)
-    );
-    if (!excelKey) continue;
-
+    const excelKey = resolved.excelKey;
     cols.push({
       targetKey,
       excelKey,
@@ -246,6 +285,34 @@ export function buildOpportunityExcelPreviewColumns(mappingRows, targetOptions, 
     });
   }
   return cols;
+}
+
+/** 미리보기 셀 원값 — 엑셀·가상열·필드 정의 수식 순 */
+export function readOpportunityExcelPreviewCellRaw(
+  excelRow,
+  mappingRows,
+  targetKey,
+  fieldDefinitions = [],
+  excelHeaders = []
+) {
+  const hdrs =
+    excelHeaders && excelHeaders.length
+      ? excelHeaders
+      : excelRow
+        ? Object.keys(excelRow).filter((k) => !isExcelMetaHeaderKey(k))
+        : [];
+  const resolved = resolveOpportunityFieldExcelKey(mappingRows, targetKey, hdrs);
+  if (resolved.mode === 'constant') return String(resolved.constantValue ?? '');
+
+  let raw = readExcelMappedCell(excelRow, resolved.excelKey);
+  if (raw != null && String(raw).trim() !== '') return String(raw);
+
+  if (!isOpportunityPreviewCellKey(resolved.excelKey)) {
+    const previewRaw = readExcelMappedCell(excelRow, opportunityPreviewCellKey(targetKey));
+    if (previewRaw != null && String(previewRaw).trim() !== '') return String(previewRaw);
+  }
+
+  return getDefinitionFormulaDefaultDisplay(targetKey, fieldDefinitions);
 }
 
 export function resolveStageValue(raw, stageOptions) {
@@ -565,8 +632,9 @@ export function stageKeyForExcelCell(raw, stageOptions) {
   return resolved.valid ? resolved.value : '';
 }
 
-export function resolveCurrencyValue(raw, _currencies) {
-  const { code, recognized, empty } = resolveCurrencyCode(raw);
+export function resolveCurrencyValue(raw, allowedCodes = null) {
+  const opts = allowedCodes instanceof Set ? { allowedCodes } : {};
+  const { code, recognized, empty } = resolveCurrencyCode(raw, opts);
   if (empty) return { value: 'KRW', valid: true };
   if (recognized) return { value: code, valid: true };
   const s = String(raw || '').trim().toUpperCase();
@@ -880,11 +948,15 @@ export function resolveChannelDistributor(raw, meta, priceBasis) {
 }
 
 export function buildPreviewRowFromExcelRow(excelRow, rowIndex, mappings, meta) {
-  const vals = readMappedValuesFromExcelRow(excelRow, mappings);
+  const fieldDefinitions = [
+    ...(meta?.financeFieldDefs || []),
+    ...(meta?.scheduleFieldDefs || [])
+  ];
+  const vals = readMappedValuesFromExcelRow(excelRow, mappings, meta?.mappableFields, fieldDefinitions);
   const title = (vals['opp.title'] || '').trim();
   const stageOptions = getPipelineStageOptionsForImport(meta);
   const stageRes = resolveStageValue(vals['opp.stage'], stageOptions);
-  const currencyRes = resolveCurrencyValue(vals['opp.currency'], meta?.currencies);
+  const currencyRes = resolveCurrencyValue(vals['opp.currency'], meta?.allowedCurrencyCodes);
   let basisRes = resolvePriceBasisValue(vals['opp.unitPriceBasis']);
   const companyNameRaw = vals['opp.snapshotCompanyName'];
   const hasContactInfo = Boolean(
@@ -1040,7 +1112,7 @@ export function collectInvalidCells(row) {
 export function revalidatePreviewRow(row, meta) {
   const stageOptions = getPipelineStageOptionsForImport(meta);
   const stageRes = resolveStageValue(row.stage, stageOptions);
-  const currencyRes = resolveCurrencyValue(row.currency, meta?.currencies);
+  const currencyRes = resolveCurrencyValue(row.currency, meta?.allowedCurrencyCodes);
   const basisRes = resolvePriceBasisValue(row.unitPriceBasis);
   const companyDraft = resolveCustomerCompanyInExcelDraft(
     row.customerCompanyName,

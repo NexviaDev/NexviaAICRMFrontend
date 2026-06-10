@@ -17,6 +17,10 @@
   animation: addProductOverlayIn 0.2s ease-out;
 }
 
+.add-product-modal-overlay:has(.add-product-modal--with-formula-picker) {
+  padding: 1rem 1.25rem;
+}
+
 .add-product-modal-overlay--slide {
   justify-content: flex-end;
   align-items: stretch;
@@ -94,7 +98,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
-  padding: 1.5rem 2rem;
+  padding: 1.25rem 1.75rem;
   border-bottom: 1px solid var(--card-border);
   background: color-mix(in srgb, var(--bg-light, #f0f4f7) 50%, transparent);
 }
@@ -139,14 +143,14 @@
 }
 
 .add-product-modal-body {
-  padding: 2rem;
+  padding: 1.5rem 1.75rem;
   overflow-y: auto;
   flex: 1;
   min-height: 0;
 }
 
 .add-product-modal-error {
-  margin: 0 0 1.25rem;
+  margin: 0 0 1rem;
   padding: 0.625rem 0.75rem;
   font-size: 0.875rem;
   color: var(--danger);
@@ -155,7 +159,7 @@
 }
 
 .add-product-modal-section {
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
 }
 
 .add-product-modal-section:last-of-type {
@@ -166,7 +170,7 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.875rem;
 }
 
 .add-product-modal-section-accent {
@@ -179,6 +183,10 @@
 
 .add-product-modal-section-accent--tertiary {
   background: var(--pastel-mint-strong, #3f6750);
+}
+
+.add-product-modal-section-accent--custom {
+  background: #7a9bb5;
 }
 
 .add-product-modal-section-title {
@@ -194,30 +202,30 @@
   color: var(--pastel-mint-strong, #335b45);
 }
 
+.add-product-modal-section-title--custom {
+  color: #4a6578;
+}
+
 .add-product-modal-grid {
   display: grid;
-  gap: 1.5rem;
+  gap: 1rem;
 }
 
 @media (min-width: 768px) {
   .add-product-modal-grid--basic {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
   }
 
-  /* 6열: 소비자가(4) + 상태(2) / 원가(3) + 유통가(3) / 결제 주기(6) */
   .add-product-modal-grid--pricing {
     grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 
+  .add-product-modal-grid--custom {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .add-product-modal-grid--basic .add-product-modal-field--span2 {
-    grid-column: span 2;
-  }
-
-  .add-product-modal-grid--pricing .add-product-modal-field--span2 {
-    grid-column: span 4;
-  }
-
-  .add-product-modal-grid--pricing .add-product-modal-field--pricing-status {
     grid-column: span 2;
   }
 
@@ -228,12 +236,19 @@
   .add-product-modal-grid--pricing .add-product-modal-field--billing-full {
     grid-column: 1 / -1;
   }
+
+  .add-product-modal-grid--custom .add-product-modal-field--custom {
+    min-width: 0;
+  }
 }
 
 .add-product-modal-field--category {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  grid-template-rows: auto 2.75rem;
+  gap: 0.375rem;
+}
+
+.add-product-modal-field--category:has(.add-product-modal-category-other) {
+  grid-template-rows: auto 2.75rem auto auto;
 }
 
 .add-product-modal-field--category .add-product-modal-category-other {
@@ -282,10 +297,15 @@
   flex-shrink: 0;
 }
 
-/* 트리거 버튼: 리스트 카드와 동일 크기 */
+/* 트리거 버튼: 폼 입력 높이에 맞춤 */
 .add-product-modal .add-product-category-avatar--trigger.pl-mcard-icon {
-  width: 3rem;
-  height: 3rem;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.45rem;
+}
+
+.add-product-modal .add-product-category-avatar--trigger.pl-mcard-icon .material-symbols-outlined {
+  font-size: 1rem;
 }
 
 /* 드롭다운 행: 약간 작게 */
@@ -309,14 +329,16 @@
 }
 
 .add-product-category-avatar-placeholder.add-product-category-avatar--trigger {
-  width: 3rem;
-  height: 3rem;
-  border-radius: 0.75rem;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.45rem;
 }
 
 .add-product-modal-category-picker {
   position: relative;
   width: 100%;
+  height: 2.75rem;
+  min-height: 2.75rem;
 }
 
 .add-product-modal-category-trigger {
@@ -324,15 +346,18 @@
   align-items: center;
   gap: 0.5rem;
   width: 100%;
-  padding: 0.75rem 1rem;
+  height: 100%;
+  min-height: 0;
+  padding: 0 0.875rem;
   font-size: 0.875rem;
   border: 1px solid var(--card-border);
   border-radius: 0.5rem;
-  background: transparent;
+  background: var(--surface-container-lowest, #fff);
   color: var(--text);
   text-align: left;
   cursor: pointer;
   transition: box-shadow 0.2s, border-color 0.2s;
+  box-sizing: border-box;
 }
 
 .add-product-modal-category-trigger:hover {
@@ -405,7 +430,60 @@
 }
 
 .add-product-modal-field {
+  display: grid;
+  grid-template-rows: auto 2.75rem;
+  gap: 0.375rem;
   margin-bottom: 0;
+  min-width: 0;
+  align-content: start;
+}
+
+.add-product-modal-field--billing-full {
+  grid-template-rows: auto auto;
+}
+
+.add-product-modal-field--custom {
+  grid-template-rows: auto;
+  gap: 0;
+}
+
+.add-product-modal-field--formula-margin {
+  grid-template-rows: auto;
+  align-self: end;
+  min-height: 2.75rem;
+  justify-content: end;
+}
+
+.add-product-modal-builtin-formula-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem 0.35rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  line-height: 1.35;
+}
+
+.add-product-modal-builtin-formula-name {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-left: 0.125rem;
+}
+
+.add-product-modal-field--formula-margin .custom-fields-formula-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.3rem;
+  background: #dceaf2;
+  color: #5a7282;
+  line-height: 1.2;
+}
+
+.add-product-modal-field.custom-fields-value-row--formula {
+  grid-template-rows: auto;
+  gap: 0;
 }
 
 .add-product-modal-field .add-product-modal-label,
@@ -414,19 +492,63 @@
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--text-muted);
-  margin-bottom: 0.375rem;
+  margin: 0;
   margin-left: 0.125rem;
+  line-height: 1.3;
 }
 
 .add-product-modal-field label .required {
   color: var(--danger);
 }
 
+.add-product-modal-field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.add-product-modal-field-label-row label {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+
+.add-product-modal-formula-preview {
+  flex: 0 1 auto;
+  max-width: 58%;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #2c6485;
+  background: #e8f2f8;
+  border: 1px solid #c5d8e4;
+  border-radius: 0.35rem;
+  padding: 0.2rem 0.5rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
+}
+
+.add-product-modal-billing-interval .add-product-modal-field-label-row {
+  flex: 0 0 auto;
+  min-width: 2.5rem;
+}
+
+.add-product-modal-billing-interval .add-product-modal-formula-preview {
+  max-width: 12rem;
+}
+
 .add-product-modal-input-icon-wrap {
   position: relative;
+  height: 2.75rem;
+  min-height: 2.75rem;
 }
 
 .add-product-modal-input-icon-wrap input {
+  height: 100%;
   padding-right: 2.5rem;
 }
 
@@ -448,13 +570,37 @@
 .add-product-modal-field input:not([type="checkbox"]):not([type="radio"]),
 .add-product-modal-field select {
   width: 100%;
-  padding: 0.75rem 1rem;
+  height: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0 0.875rem;
   font-size: 0.875rem;
+  line-height: 1.25;
   border: 1px solid var(--card-border);
   border-radius: 0.5rem;
-  background: transparent;
+  background: var(--surface-container-lowest, #fff);
   color: var(--text);
   transition: box-shadow 0.2s, border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.add-product-modal-price-currency-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+  height: 2.75rem;
+  min-height: 2.75rem;
+}
+
+.add-product-modal-price-currency-row > input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  min-height: 0;
+}
+
+.add-product-modal-price-currency-row > select {
+  height: 100%;
+  min-height: 0;
 }
 
 .add-product-modal-field input::placeholder {
@@ -466,17 +612,6 @@
   outline: none;
   border-color: var(--primary);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 22%, transparent);
-}
-
-.add-product-modal-price-currency-row {
-  display: flex;
-  gap: 0.5rem;
-  align-items: stretch;
-}
-
-.add-product-modal-price-currency-row > input {
-  flex: 1;
-  min-width: 0;
 }
 
 .add-product-modal-currency-select {
@@ -493,23 +628,32 @@
   padding: 0.25rem;
   border-radius: 0.5rem;
   background: var(--surface-container-high, #e3e9ed);
-  min-height: 3rem;
+  height: 2.75rem;
+  min-height: 2.75rem;
+  max-height: 2.75rem;
   align-items: stretch;
   gap: 0.125rem;
+  box-sizing: border-box;
+}
+
+.add-product-modal-segmented--billing {
+  flex: 1 1 14rem;
+  min-width: 0;
 }
 
 .add-product-modal-segment {
   flex: 1;
   border: none;
   border-radius: 0.375rem;
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: var(--text-muted);
   background: transparent;
   cursor: pointer;
   transition: background 0.15s, color 0.15s, box-shadow 0.15s;
   white-space: nowrap;
-  padding: 0 0.35rem;
+  padding: 0 0.5rem;
+  min-height: 2.25rem;
 }
 
 .add-product-modal-segment.is-active {
@@ -526,47 +670,45 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.75rem 1rem;
-}
-
-.add-product-modal-radio-row {
-  display: flex;
-  flex-wrap: nowrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.25rem 0;
-  min-height: 2.75rem;
-  flex: 1 1 12rem;
+  gap: 0.625rem;
 }
 
 .add-product-modal-billing-interval {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.35rem 0.65rem;
+  gap: 0.35rem;
+  padding: 0 0.5rem;
+  height: 2.75rem;
+  min-height: 2.75rem;
+  max-height: 2.75rem;
   border-radius: 0.5rem;
   background: var(--surface-container-low, #f0f4f7);
   border: 1px solid var(--card-border, rgba(172, 179, 183, 0.35));
   flex-shrink: 0;
+  box-sizing: border-box;
 }
 
 .add-product-modal-billing-interval-label {
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
   color: var(--text-muted, #6b7280);
   margin: 0;
   white-space: nowrap;
+  line-height: 1;
 }
 
 .add-product-modal-billing-interval-input {
-  width: 3.25rem;
-  padding: 0.3rem 0.4rem;
-  font-size: 0.875rem;
+  width: 2.25rem;
+  height: 1.5rem;
+  padding: 0 0.2rem;
+  font-size: 0.8125rem;
+  line-height: 1;
   text-align: center;
   border: 1px solid var(--card-border, rgba(172, 179, 183, 0.45));
-  border-radius: 0.375rem;
+  border-radius: 0.3rem;
   background: var(--surface-container-lowest, #fff);
   color: var(--text);
+  box-sizing: border-box;
 }
 
 .add-product-modal-billing-interval-input:focus {
@@ -576,49 +718,46 @@
 }
 
 .add-product-modal-billing-interval-unit {
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   color: var(--text);
   white-space: nowrap;
-}
-
-.add-product-modal-radio {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  flex: 1 1 0;
-  min-width: 0;
-  cursor: pointer;
-  font-size: 0.8125rem;
-  color: var(--text);
-  margin: 0;
   line-height: 1;
 }
 
-.add-product-modal-radio span {
-  white-space: nowrap;
-  line-height: 1;
-  margin: 0;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
+/* 추가된 필드 — 모달 그리드 안 정렬 */
+.add-product-modal-section--custom .custom-fields-value-row {
+  margin-top: 0;
 }
 
-.add-product-modal-radio input[type="radio"] {
-  flex-shrink: 0;
-  width: 1rem;
-  height: 1rem;
-  margin: 0;
-  padding: 0;
-  border: none;
-  vertical-align: middle;
-  accent-color: var(--primary);
-  cursor: pointer;
-  align-self: center;
-}
-
-.add-product-modal-radio.is-checked span {
+.add-product-modal .custom-fields-value-input-wrap > label,
+.add-product-modal .custom-fields-value-label {
+  display: block;
+  font-size: 0.75rem;
   font-weight: 600;
+  color: var(--text-muted);
+  margin: 0 0 0.375rem 0.125rem;
+  line-height: 1.3;
+}
+
+.add-product-modal .custom-fields-value-input-wrap input[type="text"],
+.add-product-modal .custom-fields-value-input-wrap input[type="number"],
+.add-product-modal .custom-fields-value-input-wrap input[type="date"],
+.add-product-modal .custom-fields-value-input-wrap select {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.625rem 0.875rem;
+  font-size: 0.875rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--surface-container-lowest, #fff);
+  color: var(--text);
+  box-sizing: border-box;
+}
+
+.add-product-modal .custom-fields-multiselect-trigger {
+  min-height: 2.75rem;
+  padding: 0.625rem 0.875rem;
+  background: var(--surface-container-lowest, #fff);
 }
 
 .add-product-modal-footer {
@@ -626,7 +765,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 1.5rem 2rem;
+  padding: 1.25rem 1.75rem;
   border-top: 1px solid var(--card-border);
   flex-shrink: 0;
   background: var(--surface-container-low, #f0f4f7);
@@ -950,6 +1089,12 @@
   font-size: 0.875rem;
   color: var(--text-muted);
   flex: 0 0 6rem;
+  min-width: 0;
+}
+
+.product-detail-dl-row dt:has(.custom-fields-formula-expression-label) {
+  flex: 1 1 auto;
+  max-width: 58%;
 }
 
 .product-detail-dl-row dd {
@@ -957,4 +1102,132 @@
   font-size: 0.875rem;
   font-weight: 500;
   color: var(--text);
+}
+
+.add-product-modal--with-formula-picker {
+  max-width: min(90rem, calc(100vw - 2.5rem));
+  width: 100%;
+}
+
+.add-product-modal--slide.add-product-modal--with-formula-picker {
+  max-width: min(90rem, calc(100vw - 1rem));
+  width: min(90rem, calc(100vw - 1rem));
+}
+
+.add-product-modal-body-layout {
+  display: grid;
+  grid-template-columns: minmax(22rem, 1fr) minmax(42rem, 48rem);
+  gap: 1.5rem;
+  align-items: stretch;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  padding: 0 0.35rem;
+}
+
+.add-product-modal-body-layout .add-product-modal-body {
+  padding: 1.25rem 1.35rem 1.5rem 1.75rem;
+}
+
+.add-product-modal-body {
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.add-product-modal-formula-hint {
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: #4a6575;
+  background: #eef4f8;
+  border: 1px solid #d4e3ec;
+  border-radius: 0.5rem;
+}
+
+.add-product-modal-formula-hint strong {
+  color: #2c6485;
+}
+
+.add-product-modal-formula-picker-panel.custom-fields-manage-formula-fields-panel {
+  position: sticky;
+  top: 0;
+  height: auto;
+  min-height: 100%;
+  align-self: stretch;
+  padding: 1rem 1.15rem;
+  gap: 1rem;
+  margin: 1.25rem 1.25rem 1.5rem 0;
+  min-width: 0;
+}
+
+.add-product-modal-formula-picker-panel .custom-fields-manage-formula-panel-col {
+  padding: 0.75rem 0.9rem;
+  min-width: 19rem;
+}
+
+.add-product-modal-formula-picker-panel .custom-fields-manage-formula-fields-list,
+.add-product-modal-formula-picker-panel .custom-fields-manage-formula-fn-list {
+  gap: 0.55rem;
+  padding-right: 0.2rem;
+}
+
+.add-product-modal-formula-picker-panel .custom-fields-manage-formula-field-btn {
+  padding: 0.6rem 0.85rem;
+}
+
+.add-product-modal-formula-picker-panel .custom-fields-manage-formula-fn-btn {
+  padding: 0.65rem 0.9rem;
+  gap: 0.28rem;
+}
+
+.add-product-modal-formula-picker-panel .custom-fields-manage-formula-fn-desc {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.add-product-modal-formula-picker-panel .custom-fields-manage-formula-fn-example {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+.add-product-modal-input--formula {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.84rem;
+  background: #f8fbfd;
+  border-color: #b8d0df;
+}
+
+@media (max-width: 1200px) {
+  .add-product-modal--with-formula-picker {
+    max-width: calc(100vw - 1.5rem);
+  }
+
+  .add-product-modal-body-layout {
+    grid-template-columns: minmax(18rem, 1fr) minmax(36rem, 42rem);
+    gap: 1.15rem;
+  }
+}
+
+@media (max-width: 960px) {
+  .add-product-modal-body-layout {
+    grid-template-columns: 1fr;
+    padding: 0;
+  }
+
+  .add-product-modal-body-layout .add-product-modal-body {
+    padding: 1.5rem 1.75rem;
+  }
+
+  .add-product-modal-formula-picker-panel.custom-fields-manage-formula-fields-panel {
+    position: relative;
+    min-height: 320px;
+    max-height: none;
+    margin: 0 1.25rem 1.25rem;
+  }
+
+  .add-product-modal-formula-picker-panel .custom-fields-manage-formula-panel-col {
+    min-width: 0;
+  }
 }
