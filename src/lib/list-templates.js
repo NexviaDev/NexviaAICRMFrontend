@@ -745,7 +745,7 @@ export async function patchListTemplate(listId, fields = {}) {
  * (신규 메뉴 누락·PWA 구버전 번들 이슈 완화)
  */
 /** 사이드바 기본 순서·구조를 다시 적용할 때마다 1 올림(저장된 순서 무시 = 초기화) */
-export const SIDEBAR_MENU_EPOCH = 12;
+export const SIDEBAR_MENU_EPOCH = 13;
 
 function dedupeRoutesPreserveOrder(paths) {
   const seen = new Set();

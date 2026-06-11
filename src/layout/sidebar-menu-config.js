@@ -8,7 +8,6 @@ export const SIDEBAR_CATEGORY_ITEMS = [
   { key: 'outside', label: '사외 업무', icon: 'globe' },
   { key: 'schedule', label: '일정', icon: 'event' },
   { key: 'etc', label: '기타', icon: 'more_horiz' },
-  { key: 'videomeeting', label: '화상 회의', icon: 'videocam' },
   {
     key: 'remote',
     label: '원격지원',
@@ -38,7 +37,14 @@ export const SIDEBAR_SUBMENU_ITEMS = [
   { to: '/quotation-doc-merge', icon: 'merge_type', label: '문서 메일머지', category: 'etc' },
   { to: '/subscription', icon: 'subscriptions', label: '구독관리', category: 'etc' },
   { to: '/exchange-rates', icon: 'currency_exchange', label: '환율', category: 'etc' },
-  { to: '/video-meetings', icon: 'videocam', label: '화상 회의', category: 'videomeeting' }
+  {
+    to: '/video-meetings',
+    icon: 'videocam',
+    label: '화상 회의',
+    category: 'etc',
+    beta: true,
+    adminSiteAccessOnly: true
+  }
 ];
 
 export const SIDEBAR_SUBMENU_BY_CATEGORY = SIDEBAR_CATEGORY_ITEMS.reduce((acc, category) => {

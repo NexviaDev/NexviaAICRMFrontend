@@ -16,7 +16,6 @@ import {
   SIDEBAR_SUBMENU_BY_CATEGORY as SUBMENU_BY_CATEGORY
 } from './sidebar-menu-config';
 
-/** 화상 회의 — 대분류 `videomeeting`(사이드바 왼쪽 아이콘 열 하단) · 하위 `/video-meetings` */
 import { API_BASE } from '@/config';
 import { resolveDepartmentDisplayFromChart } from '@/lib/org-chart-tree-utils';
 import { useSidebarPush } from './use-sidebar-push';
@@ -37,6 +36,14 @@ const NEXVIA_LOGO_CDN_URL =
 const SUBMENU_BY_TO = Object.fromEntries(SUBMENU_ITEMS.map((item) => [item.to, item]));
 
 const SUBMENU_DROP_ZONE = 'submenu';
+
+function SidebarMenuBetaBadge() {
+  return (
+    <span className="sidebar-beta-badge" aria-label="베타 기능">
+      베타
+    </span>
+  );
+}
 
 function pathMatchesMenuItem(to, pathname) {
   if (to === '/dashboard') return pathname === '/dashboard';
@@ -69,6 +76,9 @@ function canShowMenuByRole(user, item) {
   if (item.to === '/subscription') {
     const r = user?.role;
     return r === 'owner' || r === 'admin' || r === 'senior';
+  }
+  if (item.adminSiteAccessOnly) {
+    return !!user?.adminSiteAccess;
   }
   return true;
 }
@@ -438,6 +448,7 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
                         }}
                       >
                         <span className="sidebar-link-label">{item.label}</span>
+                        {item.beta ? <SidebarMenuBetaBadge /> : null}
                         {isLocked ? (
                           <span className="material-symbols-outlined sidebar-lock-icon" aria-hidden>
                             lock
@@ -465,6 +476,7 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
                         }}
                       >
                         <span className="sidebar-link-label">{item.label}</span>
+                        {item.beta ? <SidebarMenuBetaBadge /> : null}
                         {isLocked ? (
                           <span className="material-symbols-outlined sidebar-lock-icon" aria-hidden>
                             lock

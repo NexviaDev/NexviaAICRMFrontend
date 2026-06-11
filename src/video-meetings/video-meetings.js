@@ -29,6 +29,14 @@ function formatDate(d) {
   );
 }
 
+function VideoMeetingsBetaBadge() {
+  return (
+    <span className="vm-beta-badge" aria-label="베타 기능">
+      베타
+    </span>
+  );
+}
+
 function getDateParts(d) {
   const date = new Date(d);
   if (Number.isNaN(date.getTime())) return { month: '—', day: '—' };
@@ -279,7 +287,9 @@ export default function VideoMeetings() {
       {isMobile ? (
         <div className="vm-m-top" aria-label="화상 회의">
           <div className="vm-m-top-row">
-            <h1 className="vm-m-title">화상 회의</h1>
+            <h1 className="vm-m-title">
+              화상 회의 <VideoMeetingsBetaBadge />
+            </h1>
             <PageHeaderNotifyChat noWrapper buttonClassName="vm-m-icon-btn" />
           </div>
           <form onSubmit={handleSearch} className="vm-m-search">
@@ -302,7 +312,9 @@ export default function VideoMeetings() {
       ) : (
         <header className="page-header customer-companies-header">
           <div className="customer-companies-header-main">
-            <h1 className="page-title">화상 회의</h1>
+            <h1 className="page-title">
+              화상 회의 <VideoMeetingsBetaBadge />
+            </h1>
           </div>
           <div className="header-search">
             <form onSubmit={handleSearch} className="header-search-form">

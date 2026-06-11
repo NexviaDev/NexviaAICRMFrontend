@@ -48,6 +48,44 @@
 
   color: var(--text, #1e293b);
 
+  display: inline-flex;
+
+  align-items: center;
+
+  gap: 0.45rem;
+
+  flex-wrap: wrap;
+
+}
+
+
+
+.vm-beta-badge {
+
+  display: inline-flex;
+
+  align-items: center;
+
+  padding: 0.15rem 0.5rem;
+
+  border-radius: 999px;
+
+  font-size: 0.62rem;
+
+  font-weight: 700;
+
+  letter-spacing: 0.04em;
+
+  line-height: 1.25;
+
+  background: #dceefb;
+
+  color: #2c6485;
+
+  border: 1px solid rgba(44, 100, 133, 0.18);
+
+  vertical-align: middle;
+
 }
 
 
@@ -937,6 +975,14 @@
   font-weight: 700;
 
   color: var(--text, #1e293b);
+
+  display: inline-flex;
+
+  align-items: center;
+
+  gap: 0.4rem;
+
+  flex-wrap: wrap;
 
 }
 

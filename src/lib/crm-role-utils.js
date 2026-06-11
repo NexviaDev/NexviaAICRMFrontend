@@ -20,6 +20,11 @@ export function isAdminOrAboveRole(role) {
   return r === 'owner' || r === 'admin' || r === 'senior';
 }
 
+/** MongoDB User.adminSiteAccess — 관리자 사이트(/admin) 부여 계정 */
+export function hasAdminSiteAccess(user) {
+  return !!user?.adminSiteAccess;
+}
+
 /** 백엔드 requireManagerOrAbove: Owner · Admin · Manager (구 practitioner) */
 export function isManagerOrAboveRole(role) {
   const r = norm(role);

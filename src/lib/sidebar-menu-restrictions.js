@@ -3,14 +3,25 @@ import {
   SIDEBAR_SUBMENU_ITEMS,
   SIDEBAR_SUBMENU_BY_CATEGORY
 } from '@/layout/sidebar-menu-config';
+import { hasAdminSiteAccess } from '@/lib/crm-role-utils';
 
 export { SIDEBAR_CATEGORY_ITEMS, SIDEBAR_SUBMENU_ITEMS, SIDEBAR_SUBMENU_BY_CATEGORY };
+
+const ADMIN_SITE_ACCESS_MENU_PATHS = new Set(
+  SIDEBAR_SUBMENU_ITEMS.filter((item) => item.adminSiteAccessOnly).map((item) => item.to)
+);
+
+function isAdminSiteAccessMenuBlocked(user, menuTo) {
+  if (!ADMIN_SITE_ACCESS_MENU_PATHS.has(menuTo)) return false;
+  return !hasAdminSiteAccess(user);
+}
 
 /** 권한 대기 계정은 사내 현황은 항상 표시 */
 export function isSidebarMenuHiddenForUser(user, menuTo) {
   const to = String(menuTo || '').trim();
   if (!to) return false;
   if (user?.role === 'pending' && to === '/company-overview') return false;
+  if (isAdminSiteAccessMenuBlocked(user, to)) return true;
   const hidden = user?.hiddenSidebarMenus;
   if (!Array.isArray(hidden) || hidden.length === 0) return false;
   return hidden.includes(to);
