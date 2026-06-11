@@ -16,6 +16,7 @@ const CompanyOverview = lazy(() => import('../company-overview/company-overview'
 const SalesPipeline = lazy(() => import('../sales-pipeline/sales-pipeline'));
 const ProductList = lazy(() => import('../product-list/product-list'));
 const MeetingMinutes = lazy(() => import('../meeting-minutes/meeting-minutes'));
+const VideoMeetings = lazy(() => import('../video-meetings/video-meetings'));
 const EApproval = lazy(() => import('../e-approval/e-approval'));
 const Kpi = lazy(() => import('../kpi/kpi'));
 const AiVoice = lazy(() => import('../ai-voice/ai-voice'));
@@ -88,6 +89,7 @@ export default function MainAppRoutes() {
       <Route path="product-list" element={<PendingRestrictedRoute><ProductList /></PendingRestrictedRoute>} />
       <Route path="lead-capture" element={<PendingRestrictedRoute><LeadCapture /></PendingRestrictedRoute>} />
       <Route path="meeting-minutes" element={<PendingRestrictedRoute><MeetingMinutes /></PendingRestrictedRoute>} />
+      <Route path="video-meetings" element={<PendingRestrictedRoute><VideoMeetings /></PendingRestrictedRoute>} />
       <Route path="e-approval" element={<PendingRestrictedRoute><EApproval /></PendingRestrictedRoute>} />
       <Route path="ai-voice" element={<PendingRestrictedRoute><AiVoice /></PendingRestrictedRoute>} />
       <Route path="email" element={<PendingRestrictedRoute><Email /></PendingRestrictedRoute>} />

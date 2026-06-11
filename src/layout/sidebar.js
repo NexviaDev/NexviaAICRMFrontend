@@ -15,6 +15,8 @@ import {
   SIDEBAR_SUBMENU_ITEMS as SUBMENU_ITEMS,
   SIDEBAR_SUBMENU_BY_CATEGORY as SUBMENU_BY_CATEGORY
 } from './sidebar-menu-config';
+
+/** 화상 회의 — 대분류 `videomeeting`(사이드바 왼쪽 아이콘 열 하단) · 하위 `/video-meetings` */
 import { API_BASE } from '@/config';
 import { resolveDepartmentDisplayFromChart } from '@/lib/org-chart-tree-utils';
 import { useSidebarPush } from './use-sidebar-push';

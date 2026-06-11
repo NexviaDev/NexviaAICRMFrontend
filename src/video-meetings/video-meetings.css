@@ -1,0 +1,1049 @@
+.video-meetings-page {
+
+  background: var(--bg-light, #f7f9fb);
+
+}
+
+
+
+/* 헤더 — customer-companies.js 와 동일 패턴 */
+
+.video-meetings-page .page-header {
+
+  overflow: visible;
+
+  min-height: 4rem;
+
+  height: auto;
+
+  align-items: center;
+
+  flex-wrap: wrap;
+
+  row-gap: 0.5rem;
+
+  justify-content: flex-start;
+
+}
+
+
+
+.video-meetings-page .customer-companies-header-main {
+
+  flex-shrink: 0;
+
+  min-width: 0;
+
+}
+
+
+
+.video-meetings-page .customer-companies-header .page-title {
+
+  margin: 0;
+
+  font-size: 1.25rem;
+
+  font-weight: 700;
+
+  color: var(--text, #1e293b);
+
+}
+
+
+
+.video-meetings-page .customer-companies-header .header-search {
+
+  flex: 1;
+
+  min-width: 0;
+
+  max-width: none;
+
+  overflow: visible;
+
+}
+
+
+
+.video-meetings-page .header-search-form {
+
+  position: relative;
+
+  flex: 1;
+
+  min-width: 0;
+
+}
+
+
+
+.video-meetings-page .header-search-form input {
+
+  width: 100%;
+
+  padding: 0.5rem 1rem 0.5rem 2.5rem;
+
+  border: none;
+
+  border-radius: 0.5rem;
+
+  background: var(--bg-light);
+
+  font-size: 0.875rem;
+
+}
+
+
+
+.video-meetings-page .customer-companies-header-tools {
+
+  display: flex;
+
+  align-items: center;
+
+  gap: 0.75rem;
+
+  margin-left: auto;
+
+  flex-shrink: 0;
+
+  flex-wrap: wrap;
+
+}
+
+
+
+.video-meetings-page .vm-header-add-btn .material-symbols-outlined {
+
+  font-size: 1.15rem;
+
+}
+
+
+
+.video-meetings-page .vm-header-btn-label {
+
+  font-size: 0.875rem;
+
+}
+
+
+
+/* 본문 — 고객사 목록처럼 가로 전체 사용 */
+
+.video-meetings-page .page-content {
+
+  flex: 1;
+
+  min-height: 0;
+
+  overflow-y: auto;
+
+  overflow-x: hidden;
+
+  padding: 0;
+
+}
+
+
+
+.vm-page-inner {
+
+  width: 100%;
+
+  max-width: none;
+
+  padding: 1.25rem 2rem 2rem;
+
+  box-sizing: border-box;
+
+}
+
+
+
+.vm-config-banner {
+
+  display: flex;
+
+  align-items: flex-start;
+
+  gap: 0.5rem;
+
+  margin: 0 0 0.75rem;
+
+  padding: 0.75rem 1rem;
+
+  border-radius: 0.75rem;
+
+  background: #eef4f8;
+
+  border: 1px solid rgba(0, 101, 145, 0.18);
+
+  color: #43474e;
+
+  font-size: 0.82rem;
+
+  line-height: 1.45;
+
+}
+
+
+
+.vm-config-banner .material-symbols-outlined {
+
+  font-size: 1.1rem;
+
+  color: #006591;
+
+  flex-shrink: 0;
+
+}
+
+
+
+.vm-copy-notice {
+
+  margin: 0 0 0.75rem;
+
+  font-size: 0.8rem;
+
+  color: #006591;
+
+  font-weight: 600;
+
+}
+
+
+
+.vm-schedule-content {
+
+  width: 100%;
+
+}
+
+
+
+.vm-schedule-section {
+
+  margin-bottom: 2rem;
+
+}
+
+
+
+.vm-schedule-section-head {
+
+  display: flex;
+
+  align-items: center;
+
+  gap: 0.55rem;
+
+  margin-bottom: 1rem;
+
+}
+
+
+
+.vm-schedule-section-head h2 {
+
+  margin: 0;
+
+  font-size: 1.1rem;
+
+  font-weight: 700;
+
+  color: var(--text, #1e293b);
+
+}
+
+
+
+.vm-schedule-count {
+
+  font-size: 0.78rem;
+
+  font-weight: 600;
+
+  color: #74777f;
+
+  padding: 0.15rem 0.55rem;
+
+  border-radius: 999px;
+
+  background: #e6e8ea;
+
+}
+
+
+
+.vm-schedule-dot {
+
+  width: 0.5rem;
+
+  height: 0.5rem;
+
+  border-radius: 50%;
+
+  background: #c4c6cf;
+
+  flex-shrink: 0;
+
+}
+
+
+
+.vm-schedule-dot--live {
+
+  background: #39b8fd;
+
+  box-shadow: 0 0 8px rgba(57, 184, 253, 0.45);
+
+}
+
+
+
+.vm-schedule-card-list {
+
+  display: flex;
+
+  flex-direction: column;
+
+  gap: 1rem;
+
+}
+
+
+
+.vm-schedule-card {
+
+  display: flex;
+
+  flex-wrap: wrap;
+
+  align-items: center;
+
+  justify-content: space-between;
+
+  gap: 1.25rem;
+
+  padding: 1.25rem 1.35rem;
+
+  border-radius: 0.75rem;
+
+  background: var(--card, #fff);
+
+  border: 1px solid var(--card-border, rgba(196, 198, 207, 0.45));
+
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+
+}
+
+
+
+.vm-schedule-card:hover {
+
+  transform: translateY(-1px);
+
+  box-shadow: 0 4px 14px rgba(44, 100, 133, 0.1);
+
+}
+
+
+
+.vm-schedule-card-main {
+
+  display: flex;
+
+  gap: 1.25rem;
+
+  align-items: flex-start;
+
+  min-width: 0;
+
+  flex: 1;
+
+}
+
+
+
+.vm-schedule-date {
+
+  flex-shrink: 0;
+
+  width: 3.75rem;
+
+  height: 3.75rem;
+
+  border-radius: 0.65rem;
+
+  display: flex;
+
+  flex-direction: column;
+
+  align-items: center;
+
+  justify-content: center;
+
+  background: #e6e8ea;
+
+  color: #002045;
+
+}
+
+
+
+.vm-schedule-date--active {
+
+  background: #c9e6ff;
+
+  color: #004666;
+
+}
+
+
+
+.vm-schedule-date-month {
+
+  font-size: 0.68rem;
+
+  font-weight: 600;
+
+}
+
+
+
+.vm-schedule-date-day {
+
+  font-size: 1.25rem;
+
+  font-weight: 800;
+
+  line-height: 1.1;
+
+}
+
+
+
+.vm-schedule-card-title {
+
+  margin: 0 0 0.4rem;
+
+  font-size: 1rem;
+
+  font-weight: 700;
+
+  color: var(--text, #1e293b);
+
+}
+
+
+
+.vm-schedule-card-meta {
+
+  display: flex;
+
+  flex-wrap: wrap;
+
+  gap: 0.75rem 1.1rem;
+
+  font-size: 0.82rem;
+
+  color: var(--text-muted, #64748b);
+
+}
+
+
+
+.vm-schedule-card-meta span {
+
+  display: inline-flex;
+
+  align-items: center;
+
+  gap: 0.3rem;
+
+}
+
+
+
+.vm-schedule-card-meta .material-symbols-outlined {
+
+  font-size: 1rem;
+
+  color: #94a3b8;
+
+}
+
+
+
+.vm-schedule-card-desc {
+
+  margin: 0.5rem 0 0;
+
+  font-size: 0.82rem;
+
+  color: #94a3b8;
+
+  line-height: 1.45;
+
+}
+
+
+
+.vm-schedule-card-actions {
+
+  display: flex;
+
+  align-items: center;
+
+  gap: 0.65rem;
+
+  flex-shrink: 0;
+
+}
+
+
+
+.vm-schedule-btn-outline,
+
+.vm-schedule-btn-join {
+
+  border-radius: 0.5rem;
+
+  padding: 0.5rem 1rem;
+
+  font-size: 0.82rem;
+
+  font-weight: 700;
+
+  cursor: pointer;
+
+}
+
+
+
+.vm-schedule-btn-outline {
+
+  border: 1px solid var(--card-border, #c4c6cf);
+
+  background: #fff;
+
+  color: var(--text, #1e293b);
+
+}
+
+
+
+.vm-schedule-btn-outline:hover {
+
+  background: var(--bg-light, #f2f4f6);
+
+}
+
+
+
+.vm-schedule-btn-join {
+
+  border: none;
+
+  background: var(--primary, #5c6bc0);
+
+  color: #fff;
+
+}
+
+
+
+.vm-schedule-btn-join:hover {
+
+  opacity: 0.92;
+
+}
+
+
+
+.vm-schedule-ended-label {
+
+  font-size: 0.82rem;
+
+  font-weight: 600;
+
+  color: #94a3b8;
+
+}
+
+
+
+.vm-schedule-empty-inline {
+
+  padding: 1.5rem;
+
+  border-radius: 0.75rem;
+
+  background: var(--card, #fff);
+
+  border: 1px dashed var(--card-border, #c4c6cf);
+
+  text-align: center;
+
+  color: var(--text-muted, #64748b);
+
+}
+
+
+
+.vm-schedule-empty-inline p {
+
+  margin: 0 0 0.75rem;
+
+}
+
+
+
+.vm-history-table-wrap {
+
+  border-radius: 0.75rem;
+
+  overflow: hidden;
+
+  border: 1px solid var(--card-border, rgba(196, 198, 207, 0.45));
+
+  background: var(--card, #fff);
+
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+
+}
+
+
+
+.vm-history-table {
+
+  width: 100%;
+
+  border-collapse: collapse;
+
+  text-align: left;
+
+}
+
+
+
+.vm-history-table thead tr {
+
+  background: var(--bg-light, #eceef0);
+
+  border-bottom: 1px solid var(--card-border, rgba(196, 198, 207, 0.35));
+
+}
+
+
+
+.vm-history-table th {
+
+  padding: 0.85rem 1.25rem;
+
+  font-size: 0.78rem;
+
+  font-weight: 600;
+
+  color: var(--text-muted, #64748b);
+
+}
+
+
+
+.vm-history-table td {
+
+  padding: 0.85rem 1.25rem;
+
+  font-size: 0.85rem;
+
+  color: var(--text-muted, #64748b);
+
+  border-top: 1px solid rgba(196, 198, 207, 0.2);
+
+}
+
+
+
+.vm-history-table tbody tr:hover {
+
+  background: rgba(92, 107, 192, 0.04);
+
+}
+
+
+
+.vm-history-title {
+
+  font-weight: 700;
+
+  color: var(--text, #1e293b);
+
+}
+
+
+
+.vm-history-desc {
+
+  margin-top: 0.2rem;
+
+  font-size: 0.78rem;
+
+  color: #94a3b8;
+
+}
+
+
+
+.vm-status-badge {
+
+  display: inline-flex;
+
+  padding: 0.2rem 0.55rem;
+
+  border-radius: 999px;
+
+  font-size: 0.72rem;
+
+  font-weight: 700;
+
+}
+
+
+
+.vm-status-badge--active {
+
+  background: #c9e6ff;
+
+  color: #004666;
+
+}
+
+
+
+.vm-status-badge--ended {
+
+  background: #e6e8ea;
+
+  color: #74777f;
+
+}
+
+
+
+.vm-empty,
+
+.vm-empty-card {
+
+  text-align: center;
+
+  color: var(--text-muted, #64748b);
+
+  padding: 2.5rem 1rem;
+
+}
+
+
+
+.vm-empty-card {
+
+  display: flex;
+
+  flex-direction: column;
+
+  align-items: center;
+
+  gap: 0.75rem;
+
+  background: var(--card, #fff);
+
+  border-radius: 0.75rem;
+
+  border: 1px solid var(--card-border, rgba(196, 198, 207, 0.35));
+
+}
+
+
+
+.vm-empty-icon {
+
+  font-size: 2.5rem;
+
+  color: #c4c6cf;
+
+}
+
+
+
+.vm-empty-btn {
+
+  margin-top: 0.5rem;
+
+}
+
+
+
+.vm-pagination-bar {
+
+  padding: 1rem 0 0;
+
+  border-top: 1px solid var(--card-border, rgba(196, 198, 207, 0.3));
+
+  display: flex;
+
+  justify-content: center;
+
+}
+
+
+
+.vm-fab {
+
+  position: fixed;
+
+  right: 1.25rem;
+
+  bottom: 1.25rem;
+
+  z-index: 40;
+
+  width: 3.25rem;
+
+  height: 3.25rem;
+
+  border: none;
+
+  border-radius: 50%;
+
+  background: var(--primary, #5c6bc0);
+
+  color: #fff;
+
+  box-shadow: 0 4px 14px rgba(68, 108, 133, 0.28);
+
+  display: inline-flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  cursor: pointer;
+
+}
+
+
+
+.vm-fab .material-symbols-outlined {
+
+  font-size: 1.4rem;
+
+}
+
+
+
+.vm-room-loading-overlay {
+
+  position: fixed;
+
+  inset: 0;
+
+  z-index: 1250;
+
+  display: flex;
+
+  flex-direction: column;
+
+  align-items: center;
+
+  justify-content: center;
+
+  gap: 0.75rem;
+
+  background: rgba(247, 249, 251, 0.94);
+
+  color: #43474e;
+
+  font-size: 0.9rem;
+
+}
+
+
+
+.vm-room-loading-spinner {
+
+  width: 2rem;
+
+  height: 2rem;
+
+  border: 3px solid rgba(0, 101, 145, 0.2);
+
+  border-top-color: #006591;
+
+  border-radius: 50%;
+
+  animation: vm-spin 0.8s linear infinite;
+
+}
+
+
+
+@keyframes vm-spin {
+
+  to {
+
+    transform: rotate(360deg);
+
+  }
+
+}
+
+
+
+/* 모바일 */
+
+.vm-m-top {
+
+  padding: 1rem 1rem 0.5rem;
+
+}
+
+
+
+.vm-m-top-row {
+
+  display: flex;
+
+  align-items: center;
+
+  justify-content: space-between;
+
+  gap: 0.75rem;
+
+}
+
+
+
+.vm-m-title {
+
+  margin: 0;
+
+  font-size: 1.15rem;
+
+  font-weight: 700;
+
+  color: var(--text, #1e293b);
+
+}
+
+
+
+.vm-m-search {
+
+  display: flex;
+
+  align-items: center;
+
+  gap: 0.5rem;
+
+  margin-top: 0.75rem;
+
+  padding: 0.55rem 0.75rem;
+
+  border-radius: 0.5rem;
+
+  border: 1px solid var(--card-border, rgba(196, 198, 207, 0.45));
+
+  background: #fff;
+
+}
+
+
+
+.vm-m-search input {
+
+  flex: 1;
+
+  border: none;
+
+  outline: none;
+
+  font-size: 0.88rem;
+
+  background: transparent;
+
+}
+
+
+
+.vm-m-search-icon {
+
+  color: #94a3b8;
+
+  font-size: 1.2rem;
+
+}
+
+
+
+.vm-m-summary {
+
+  margin: 0.65rem 0 0;
+
+  font-size: 0.8rem;
+
+  color: #94a3b8;
+
+}
+
+
+
+.vm-page-content--mobile .vm-page-inner {
+
+  padding: 1rem;
+
+}
+
+
+
+.vm-page-content--mobile .vm-schedule-card {
+
+  flex-direction: column;
+
+  align-items: stretch;
+
+}
+
+
+
+.vm-page-content--mobile .vm-schedule-card-actions {
+
+  justify-content: flex-end;
+
+}
+
+
+
+@media (max-width: 768px) {
+
+  .video-meetings-page .vm-header-btn-label {
+
+    display: none;
+
+  }
+
+
+
+  .vm-history-table-wrap {
+
+    overflow-x: auto;
+
+  }
+
+}
+
+
