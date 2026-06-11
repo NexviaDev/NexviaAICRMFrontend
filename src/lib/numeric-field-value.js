@@ -3,7 +3,7 @@
  * ₩, $, 원, %, 쉼표 등 문자는 제거하고 숫자만 사용
  */
 
-function looksLikeFormulaInput(raw) {
+export function looksLikeFormulaInput(raw) {
   const s = String(raw ?? '').trim();
   if (!s) return false;
   if (s.startsWith('=')) return true;

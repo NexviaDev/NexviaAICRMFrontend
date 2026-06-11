@@ -9,8 +9,10 @@ import {
   getEffectiveTemplate,
   patchListTemplate,
   resetListTemplate,
-  patchProductSearchModalUsage
+  patchProductSearchModalUsage,
+  resolveListDisplayColumns
 } from '../lib/list-templates';
+import { listColumnValueInlineStyle } from '@/lib/list-column-cell-styles';
 import './product-list.css';
 import './product-list-responsive.css';
 import '@/shared/crm-list-sheet-table.css';
@@ -24,7 +26,7 @@ import { API_BASE } from '@/config';
 import { pingBackendHealth } from '@/lib/backend-wake';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { listPriceFromProduct } from '@/lib/product-price-utils';
-import { parseNumericFieldValueOrZero } from '@/lib/numeric-field-value';
+import { looksLikeFormulaInput, parseNumericFieldValueOrZero } from '@/lib/numeric-field-value';
 import { filterActiveCustomFieldDefinitions } from '@/lib/custom-field-definition-utils';
 import { mergeResolvedProductRow } from '@/lib/product-field-formulas';
 import {
@@ -39,6 +41,7 @@ import { buildExchangeRateFormulaBuiltin } from '@/lib/exchange-rate-formula-bui
 import { computeCustomFieldFormulas } from '@/lib/custom-field-formula';
 import {
   formatCustomFieldDisplayValue,
+  getCustomFieldDisplayFormat,
   getCustomFieldDisplayFormatClass,
   normalizeCustomFieldDefinition,
   readCustomFieldStoredValue
@@ -82,8 +85,16 @@ function buildProductFormulaContext(row, definitions = [], exchangeCtx = null) {
   };
 }
 
+function normalizeProductListCustomFieldKey(colKey) {
+  let k = String(colKey || '').trim();
+  while (k.startsWith(CUSTOM_FIELDS_PREFIX)) {
+    k = k.slice(CUSTOM_FIELDS_PREFIX.length);
+  }
+  return k;
+}
+
 function findProductCustomFieldDef(definitions, fieldKey) {
-  const fk = String(fieldKey || '').trim();
+  const fk = normalizeProductListCustomFieldKey(fieldKey);
   if (!fk) return null;
   return (
     definitions.find((d) => d?.key === fk) ||
@@ -92,34 +103,80 @@ function findProductCustomFieldDef(definitions, fieldKey) {
   );
 }
 
+function buildProductCustomFieldDefMaps(definitions = []) {
+  const byKey = new Map();
+  const byLabel = new Map();
+  for (const def of definitions) {
+    const normalized = normalizeCustomFieldDefinition(def);
+    const key = String(normalized?.key || '').trim();
+    if (key) byKey.set(key.toLowerCase(), normalized);
+    const labelNorm = normalizeProductColLabel(normalized?.label || key);
+    if (labelNorm && getCustomFieldDisplayFormat(normalized) !== 'general') {
+      if (!byLabel.has(labelNorm)) byLabel.set(labelNorm, normalized);
+    }
+  }
+  return { byKey, byLabel };
+}
+
+/** 열(기본·추가)에 연결된 표시형식 정의 — 저장값은 변경하지 않음 */
+function findListColumnDisplayFormatDef(col, fieldKey, defMaps) {
+  if (col?.customFieldDef) {
+    const normalized = normalizeCustomFieldDefinition(col.customFieldDef);
+    if (getCustomFieldDisplayFormat(normalized) !== 'general') return normalized;
+  }
+  const fk = normalizeProductListCustomFieldKey(fieldKey || col?.fieldKey || col?.key);
+  if (fk && defMaps?.byKey?.has(fk.toLowerCase())) {
+    const def = defMaps.byKey.get(fk.toLowerCase());
+    if (getCustomFieldDisplayFormat(def) !== 'general') return def;
+  }
+  const labelNorm = normalizeProductColLabel(col?.label);
+  if (labelNorm && defMaps?.byLabel?.has(labelNorm)) {
+    return defMaps.byLabel.get(labelNorm);
+  }
+  return null;
+}
+
+function resolveFormulaCustomFieldRawValue(row, defKey, fieldKey, definitions, exchangeCtx) {
+  const computed = computeCustomFieldFormulas(
+    definitions,
+    buildProductFormulaContext(row, definitions, exchangeCtx)
+  );
+  const computedVal = computed[defKey] ?? computed[fieldKey];
+  const stored = readCustomFieldStoredValue(row?.customFields, defKey);
+  if (computedVal != null && computedVal !== '') return computedVal;
+  if (stored != null && stored !== '' && !looksLikeFormulaInput(String(stored))) return stored;
+  return computedVal ?? stored;
+}
+
 /** 저장값은 그대로 — 표시형식(options.displayFormat)만 적용 */
-function resolveProductCustomFieldDisplay(row, fieldKey, definitions = [], exchangeCtx = null) {
-  const def = findProductCustomFieldDef(definitions, fieldKey);
+function resolveProductCustomFieldDisplay(
+  row,
+  fieldKey,
+  definitions = [],
+  exchangeCtx = null,
+  defOverride = null
+) {
+  const def = defOverride || findProductCustomFieldDef(definitions, fieldKey);
   if (!def) return null;
   const normalizedDef = normalizeCustomFieldDefinition(def);
-  const defKey = normalizedDef.key || fieldKey;
+  const defKey = normalizedDef.key || normalizeProductListCustomFieldKey(fieldKey);
 
-  let rawValue = readCustomFieldStoredValue(row?.customFields, defKey);
+  let rawValue;
   if (normalizedDef.type === 'formula') {
-    if (rawValue === undefined || rawValue === null || rawValue === '') {
-      const computed = computeCustomFieldFormulas(
-        definitions,
-        buildProductFormulaContext(row, definitions, exchangeCtx)
-      );
-      rawValue = computed[defKey] ?? computed[fieldKey];
-    }
+    rawValue = resolveFormulaCustomFieldRawValue(row, defKey, fieldKey, definitions, exchangeCtx);
     if (rawValue === undefined || rawValue === null || rawValue === '') return null;
-  } else if (rawValue === undefined || rawValue === null || rawValue === '') {
-    return null;
+  } else {
+    rawValue = readCustomFieldStoredValue(row?.customFields, defKey);
+    if (rawValue === undefined || rawValue === null || rawValue === '') return null;
   }
 
   return formatCustomFieldDisplayValue(rawValue, normalizedDef, { currency: row?.currency || 'KRW' });
 }
 
-function renderProductCustomFieldCell(row, fieldKey, definitions, exchangeCtx) {
-  const def = findProductCustomFieldDef(definitions, fieldKey);
+function renderProductCustomFieldCell(row, fieldKey, definitions, exchangeCtx, defOverride = null) {
+  const def = defOverride || findProductCustomFieldDef(definitions, fieldKey);
   const normalizedDef = def ? normalizeCustomFieldDefinition(def) : null;
-  const v = resolveProductCustomFieldDisplay(row, fieldKey, definitions, exchangeCtx);
+  const v = resolveProductCustomFieldDisplay(row, fieldKey, definitions, exchangeCtx, normalizedDef);
   const fmtClass = normalizedDef ? getCustomFieldDisplayFormatClass(normalizedDef) : '';
   return (
     <span className={`product-list-custom-field-value text-muted${fmtClass ? ` ${fmtClass}` : ''}`}>
@@ -131,15 +188,8 @@ function renderProductCustomFieldCell(row, fieldKey, definitions, exchangeCtx) {
 function resolveProductCustomFieldSortValue(row, fieldKey, definitions = [], exchangeCtx = null) {
   const def = findProductCustomFieldDef(definitions, fieldKey);
   if (def?.type === 'formula') {
-    const defKey = def.key || fieldKey;
-    let val = readCustomFieldStoredValue(row?.customFields, defKey);
-    if (val === undefined || val === null || val === '') {
-      const computed = computeCustomFieldFormulas(
-        definitions,
-        buildProductFormulaContext(row, definitions, exchangeCtx)
-      );
-      val = computed[defKey] ?? computed[fieldKey];
-    }
+    const defKey = def.key || normalizeProductListCustomFieldKey(fieldKey);
+    const val = resolveFormulaCustomFieldRawValue(row, defKey, fieldKey, definitions, exchangeCtx);
     return val != null && val !== '' ? val : '';
   }
   const v = readCustomFieldStoredValue(row?.customFields, fieldKey);
@@ -202,11 +252,32 @@ function formatPrice(price) {
   return Number(price).toLocaleString();
 }
 
-function renderPriceCell(amount, { dashed = false } = {}) {
+function renderPriceCell(amount, { dashed = false, row = null, displayDef = null } = {}) {
   if (dashed) {
     return <span className="product-list-price">-</span>;
   }
+  if (displayDef && amount != null && row) {
+    const formatted = formatCustomFieldDisplayValue(amount, displayDef, { currency: row.currency || 'KRW' });
+    if (formatted !== '—') {
+      const fmtClass = getCustomFieldDisplayFormatClass(displayDef);
+      return (
+        <span className={`product-list-price${fmtClass ? ` ${fmtClass}` : ''}`}>
+          {formatted}
+        </span>
+      );
+    }
+  }
   return <span className="product-list-price">{formatPrice(amount)}</span>;
+}
+
+function wrapProductListCellContent(content, colKey, columnCellStyles) {
+  const valStyle = listColumnValueInlineStyle(columnCellStyles, colKey);
+  if (!valStyle) return content;
+  return (
+    <span className="list-col-value-style" style={valStyle}>
+      {content}
+    </span>
+  );
 }
 
 /**
@@ -271,8 +342,21 @@ export default function ProductList({
     () => productCustomFieldDefinitions.map((d) => normalizeCustomFieldDefinition(d)),
     [productCustomFieldDefinitions]
   );
+  const productCustomFieldDefMaps = useMemo(
+    () => buildProductCustomFieldDefMaps(normalizedProductCustomFieldDefinitions),
+    [normalizedProductCustomFieldDefinitions]
+  );
   const selectionAnchorIdxRef = useRef(null);
   const headerSelectAllRef = useRef(null);
+  const customFieldColumnsRef = useRef([]);
+
+  useEffect(() => {
+    customFieldColumnsRef.current = customFieldColumns;
+  }, [customFieldColumns]);
+
+  const applyProductListTemplate = useCallback((saved, columns = customFieldColumnsRef.current) => {
+    return getEffectiveTemplate(LIST_ID, saved ?? getSavedTemplate(LIST_ID), columns);
+  }, []);
 
   const sortKey = sort.key;
   const sortDir = sort.dir;
@@ -412,7 +496,12 @@ export default function ProductList({
     );
     return {
       definitions: defs,
-      columns: defs.map((d) => ({ key: `${CUSTOM_FIELDS_PREFIX}${d.key}`, label: d.label || d.key || '' }))
+      columns: defs.map((d) => ({
+        key: `${CUSTOM_FIELDS_PREFIX}${d.key}`,
+        label: d.label || d.key || '',
+        fieldKey: d.key,
+        customFieldDef: d
+      }))
     };
   }, []);
 
@@ -424,41 +513,46 @@ export default function ProductList({
         if (cancelled) return;
         setProductCustomFieldDefinitions(definitions);
         setCustomFieldColumns(columns);
-        setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), columns));
+        customFieldColumnsRef.current = columns;
+        setTemplate(applyProductListTemplate(getSavedTemplate(LIST_ID), columns));
       })
       .catch(() => {
         if (!cancelled) {
           setProductCustomFieldDefinitions([]);
           setCustomFieldColumns([]);
+          customFieldColumnsRef.current = [];
         }
       });
     return () => { cancelled = true; };
-  }, [fetchProductCustomFieldColumnDefs]);
+  }, [fetchProductCustomFieldColumnDefs, applyProductListTemplate]);
 
   const openListColumnSettings = useCallback(async () => {
     try {
       const { columns, definitions } = await fetchProductCustomFieldColumnDefs();
       setProductCustomFieldDefinitions(definitions);
       setCustomFieldColumns(columns);
-      setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), columns));
+      customFieldColumnsRef.current = columns;
+      setTemplate(applyProductListTemplate(getSavedTemplate(LIST_ID), columns));
       setSettingsOpen(true);
     } catch (_) {
-      setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), customFieldColumns));
+      setTemplate(applyProductListTemplate(getSavedTemplate(LIST_ID), customFieldColumnsRef.current));
       setSettingsOpen(true);
     }
-  }, [fetchProductCustomFieldColumnDefs, customFieldColumns]);
+  }, [fetchProductCustomFieldColumnDefs, applyProductListTemplate]);
 
   const loadProductCustomFieldColumns = useCallback(async () => {
     try {
       const { columns, definitions } = await fetchProductCustomFieldColumnDefs();
       setProductCustomFieldDefinitions(definitions);
       setCustomFieldColumns(columns);
-      setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), columns));
+      customFieldColumnsRef.current = columns;
+      setTemplate(applyProductListTemplate(getSavedTemplate(LIST_ID), columns));
     } catch {
       setProductCustomFieldDefinitions([]);
       setCustomFieldColumns([]);
+      customFieldColumnsRef.current = [];
     }
-  }, [fetchProductCustomFieldColumnDefs]);
+  }, [fetchProductCustomFieldColumnDefs, applyProductListTemplate]);
 
   useEffect(() => {
     const onDefsChanged = (e) => {
@@ -537,22 +631,24 @@ export default function ProductList({
   const saveTemplate = useCallback(async (payload) => {
     try {
       const data = await patchListTemplate(LIST_ID, payload);
-      const next = getEffectiveTemplate(LIST_ID, data.listTemplates?.[LIST_ID] || payload, customFieldColumns);
-      setTemplate(next);
+      const saved = data.listTemplates?.[LIST_ID] || payload;
+      setTemplate(applyProductListTemplate(saved, customFieldColumnsRef.current));
     } catch (err) {
       alert(err.message || '저장에 실패했습니다.');
     }
-  }, [customFieldColumns]);
+  }, [applyProductListTemplate]);
 
   const resetTemplate = useCallback(async () => {
     try {
       const data = await resetListTemplate(LIST_ID);
-      setTemplate(getEffectiveTemplate(LIST_ID, data.listTemplates?.[LIST_ID] || null, customFieldColumns));
+      setTemplate(
+        applyProductListTemplate(data.listTemplates?.[LIST_ID] || null, customFieldColumnsRef.current)
+      );
     } catch (err) {
       alert(err.message || '초기화에 실패했습니다.');
       throw err;
     }
-  }, [customFieldColumns]);
+  }, [applyProductListTemplate]);
 
   const handleHeaderDragStart = (e, key) => {
     e.dataTransfer.setData('text/plain', key);
@@ -577,10 +673,22 @@ export default function ProductList({
     saveTemplate({ columnOrder: order, visible: template.visible, columnCellStyles: template.columnCellStyles });
   };
 
-  /** 제품명·코드는 항상 별도 열 (이름 열 아래 UID 중복 표시 없음) */
-  const displayColumns = template.columns.filter(
-    (c) => c.key === 'code' || template.visible[c.key]
+  /** columnOrder·visible·커스텀 열 정의를 합쳐 실제 표시 열 구성 (코드 열은 항상 표시) */
+  const displayColumns = useMemo(
+    () =>
+      resolveListDisplayColumns(LIST_ID, template, customFieldColumns, {
+        forceVisibleKeys: ['code']
+      }),
+    [template, customFieldColumns]
   );
+  const listTemplateModalColumns = useMemo(() => {
+    const byKey = new Map();
+    for (const c of template.columns || []) byKey.set(c.key, c);
+    for (const c of customFieldColumns || []) {
+      if (c?.key) byKey.set(c.key, { ...byKey.get(c.key), ...c });
+    }
+    return [...byKey.values()];
+  }, [template.columns, customFieldColumns]);
   const colSpan = Math.max(1, displayColumns.length + 1);
 
   const getSortValue = useCallback((row, key) => {
@@ -1175,69 +1283,111 @@ export default function ProductList({
                           aria-label={`${row.name || '제품'} 선택`}
                         />
                       </td>
-                      {displayColumns.map((col) => (
+                      {displayColumns.map((col) => {
+                        const customFieldKey = col.key.startsWith(CUSTOM_FIELDS_PREFIX)
+                          ? normalizeProductListCustomFieldKey(col.key)
+                          : null;
+                        const columnDisplayDef = findListColumnDisplayFormatDef(
+                          col,
+                          customFieldKey,
+                          productCustomFieldDefMaps
+                        );
+                        return (
                         <td
                           key={col.key}
                           className={isProductPricingHighlightColumn(col) ? 'pl-col-pricing-highlight' : undefined}
                         >
-                          {col.key === 'name' && (
-                            <div className="product-list-cell-name">
-                              <span className="product-list-name">{row.name || '—'}</span>
-                            </div>
+                          {wrapProductListCellContent(
+                            (() => {
+                              if (col.key === 'name') {
+                                return (
+                                  <div className="product-list-cell-name">
+                                    <span className="product-list-name">{row.name || '—'}</span>
+                                  </div>
+                                );
+                              }
+                              if (col.key === 'category') {
+                                return row.category ? (
+                                  <span className="product-list-category-badge">{row.category}</span>
+                                ) : (
+                                  '—'
+                                );
+                              }
+                              if (col.key === 'version') {
+                                return <span className="product-list-version">{row.version || '—'}</span>;
+                              }
+                              if (col.key === 'code') {
+                                return <span className="text-muted">{row.code || '—'}</span>;
+                              }
+                              if (col.key === 'currency') {
+                                return (
+                                  <span className="product-list-currency-label" title={row.currency || undefined}>
+                                    {row.currency || '—'}
+                                  </span>
+                                );
+                              }
+                              if (col.key === 'billingType') {
+                                return (
+                                  <span className="product-list-billing">
+                                    {formatProductBillingDisplay(row.billingType, row.billingInterval)}
+                                  </span>
+                                );
+                              }
+                              if (col.key === 'price') {
+                                return (
+                                  <div className="product-list-pricing">
+                                    {renderPriceCell(listPriceFromProduct(row), {
+                                      row,
+                                      displayDef: columnDisplayDef
+                                    })}
+                                    {row.billingType && !template.visible?.billingType && (
+                                      <span className="product-list-billing">
+                                        {formatProductBillingDisplay(row.billingType, row.billingInterval)}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              }
+                              if (col.key === 'costPrice') {
+                                return renderPriceCell(row.costPrice, { row, displayDef: columnDisplayDef });
+                              }
+                              if (col.key === 'channelPrice') {
+                                return renderPriceCell(row.channelPrice, { row, displayDef: columnDisplayDef });
+                              }
+                              if (col.key === 'consumerMargin') {
+                                return renderPriceCell(getConsumerMargin(row), { row, displayDef: columnDisplayDef });
+                              }
+                              if (col.key === 'channelMargin') {
+                                return renderPriceCell(getChannelMargin(row), {
+                                  dashed: shouldDashChannelMargin(row),
+                                  row,
+                                  displayDef: columnDisplayDef
+                                });
+                              }
+                              if (col.key === 'status') {
+                                return (
+                                  <span className={`status-badge status-${row.status === 'Active' ? 'active' : row.status === 'EndOfLife' ? 'eol' : 'draft'}`}>
+                                    {STATUS_LABELS[row.status] || row.status}
+                                  </span>
+                                );
+                              }
+                              if (customFieldKey) {
+                                return renderProductCustomFieldCell(
+                                  row,
+                                  customFieldKey,
+                                  normalizedProductCustomFieldDefinitions,
+                                  productFormulaExchangeCtx,
+                                  columnDisplayDef
+                                );
+                              }
+                              return '—';
+                            })(),
+                            col.key,
+                            template.columnCellStyles
                           )}
-                          {col.key === 'category' && (
-                            row.category ? (
-                              <span className="product-list-category-badge">{row.category}</span>
-                            ) : '—'
-                          )}
-                          {col.key === 'version' && <span className="product-list-version">{row.version || '—'}</span>}
-                          {col.key === 'code' && <span className="text-muted">{row.code || '—'}</span>}
-                          {col.key === 'currency' && (
-                            <span className="product-list-currency-label" title={row.currency || undefined}>
-                              {row.currency || '—'}
-                            </span>
-                          )}
-                          {col.key === 'billingType' && (
-                            <span className="product-list-billing">
-                              {formatProductBillingDisplay(row.billingType, row.billingInterval)}
-                            </span>
-                          )}
-                          {col.key === 'price' && (
-                            <div className="product-list-pricing">
-                              {renderPriceCell(listPriceFromProduct(row))}
-                              {row.billingType && !template.visible?.billingType && (
-                                <span className="product-list-billing">
-                                  {formatProductBillingDisplay(row.billingType, row.billingInterval)}
-                                </span>
-                              )}
-                            </div>
-                          )}
-                          {col.key === 'costPrice' && (
-                            renderPriceCell(row.costPrice)
-                          )}
-                          {col.key === 'channelPrice' && (
-                            renderPriceCell(row.channelPrice)
-                          )}
-                          {col.key === 'consumerMargin' && (
-                            renderPriceCell(getConsumerMargin(row))
-                          )}
-                          {col.key === 'channelMargin' && (
-                            renderPriceCell(getChannelMargin(row), { dashed: shouldDashChannelMargin(row) })
-                          )}
-                          {col.key === 'status' && (
-                            <span className={`status-badge status-${row.status === 'Active' ? 'active' : row.status === 'EndOfLife' ? 'eol' : 'draft'}`}>
-                              {STATUS_LABELS[row.status] || row.status}
-                            </span>
-                          )}
-                          {col.key.startsWith(CUSTOM_FIELDS_PREFIX) &&
-                            renderProductCustomFieldCell(
-                              row,
-                              col.key.slice(CUSTOM_FIELDS_PREFIX.length),
-                              normalizedProductCustomFieldDefinitions,
-                              productFormulaExchangeCtx
-                            )}
                         </td>
-                      ))}
+                        );
+                      })}
                     </tr>
                   ))
                 )}
@@ -1313,7 +1463,7 @@ export default function ProductList({
       {settingsOpen && (
         <ListTemplateModal
           listId={LIST_ID}
-          columns={template.columns}
+          columns={listTemplateModalColumns}
           visible={template.visible}
           columnOrder={template.columnOrder}
           columnCellStyles={template.columnCellStyles}

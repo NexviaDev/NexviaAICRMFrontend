@@ -13,7 +13,8 @@ import {
   mergeStepResultsIntoFieldValues,
   PRICING_STEP_DEFS,
   buildFormulaRefColorMaps,
-  buildStepResultToken
+  buildStepResultToken,
+  normalizeExchangeRateStepFormula
 } from '@/lib/exchange-rate-formula-fields';
 import './exchange-rate-pricing-panel.css';
 
@@ -98,19 +99,25 @@ export default function ExchangeRatePricingPanel({
         }
       }
 
+      let mergedCurrent = '';
       setProfile((prev) => {
         const next = normalizeExchangeRatePricingProfile(prev);
-        const current = String(next.stepFormulas[stepId] || '');
-        const before = current.slice(0, start);
-        const after = current.slice(end);
+        mergedCurrent = String(next.stepFormulas[stepId] || '');
+        const before = mergedCurrent.slice(0, start);
+        const after = mergedCurrent.slice(end);
+        const rawMerged = `${before}${token}${after}`;
         next.stepFormulas = {
           ...next.stepFormulas,
-          [stepId]: `${before}${token}${after}`
+          [stepId]: normalizeExchangeRateStepFormula(rawMerged)
         };
         return next;
       });
 
-      const newPos = start + token.length;
+      const rawMerged = `${mergedCurrent.slice(0, start)}${token}${mergedCurrent.slice(end)}`;
+      const normalizedMerged = normalizeExchangeRateStepFormula(rawMerged);
+      const equalsAdded =
+        normalizedMerged.startsWith('=') && !rawMerged.trimStart().startsWith('=') ? 1 : 0;
+      const newPos = start + token.length + equalsAdded;
       formulaSelectionRef.current[stepId] = { start: newPos, end: newPos };
       pendingCaretRef.current = { stepId, pos: newPos };
       setSaveOk('');
@@ -150,7 +157,8 @@ export default function ExchangeRatePricingPanel({
 
   const handleFormulaChange = useCallback((stepId, e) => {
     captureInputSelection(stepId, e.target, formulaSelectionRef);
-    const value = e.target.value;
+    const raw = e.target.value;
+    const value = raw.trim() === '' ? '' : normalizeExchangeRateStepFormula(raw);
     setProfile((prev) => {
       const next = normalizeExchangeRatePricingProfile(prev);
       next.stepFormulas = { ...next.stepFormulas, [stepId]: value };

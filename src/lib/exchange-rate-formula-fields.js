@@ -32,12 +32,26 @@ export const STEP_RESULT_FIELD_LABELS = {
 
 export const REFERENCE_USD_FIELD_LABEL = '기준USD';
 
+/** Excel 스타일 — 평가·치환 전 선행 = 제거 */
+export function stripExchangeRateFormulaPrefix(raw) {
+  let s = String(raw || '').trim();
+  while (s.startsWith('=')) s = s.slice(1).trim();
+  return s;
+}
+
+/** 저장·표시용 — 맨 앞 = 보장 */
+export function normalizeExchangeRateStepFormula(raw) {
+  const body = stripExchangeRateFormulaPrefix(raw);
+  if (!body) return '';
+  return `=${body}`;
+}
+
 export const DEFAULT_STEP_FORMULAS = {
-  orderRate: 'dec([USD-보내실 때]*1.02,2)',
-  rpiRate: 'dec([발주환율]*1.03,2)',
-  supplyCost: 'round([기준USD]*[RPI환율])',
-  consumerPrice: 'round([공급원가]/(1-0.25))',
-  vat: 'round([산정 소비자가]*0.10)'
+  orderRate: '=dec([USD-보내실 때]*1.02,2)',
+  rpiRate: '=dec([발주환율]*1.03,2)',
+  supplyCost: '=round([기준USD]*[RPI환율])',
+  consumerPrice: '=round([공급원가]/(1-0.25))',
+  vat: '=round([산정 소비자가]*0.10)'
 };
 
 const REF_PATTERN = /\[([^\]]+)\]/g;
@@ -187,7 +201,7 @@ export function splitFormulaExpressionParts(expression, refColorIndex = new Map(
 }
 
 export function substituteFormulaRefs(expression, fieldValues = {}) {
-  const expr = String(expression || '').trim();
+  const expr = stripExchangeRateFormulaPrefix(expression);
   if (!expr) return { ok: false };
   let replaced = expr;
   for (const ref of extractFormulaRefs(expr)) {
@@ -207,7 +221,7 @@ export function evaluateExchangeRateStepFormula(expression, fieldValues = {}) {
 }
 
 export function validateExchangeRateStepFormula(expression, fieldValues = {}) {
-  const expr = String(expression || '').trim();
+  const expr = stripExchangeRateFormulaPrefix(expression);
   if (!expr) return { ok: false, error: '수식을 입력해 주세요.' };
   const sub = substituteFormulaRefs(expr, fieldValues);
   if (!sub.ok) {

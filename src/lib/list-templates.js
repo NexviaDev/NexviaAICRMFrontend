@@ -434,6 +434,37 @@ export function getEffectiveTemplate(listId, saved, extraColumns = []) {
 }
 
 /**
+ * 저장된 columnOrder·visible 기준으로 실제 표에 그릴 열 목록 (순서 유지).
+ * template.columns에 없어도 defaults·extraColumns에서 key로 보강합니다.
+ * @param {string} listId
+ * @param {{ columnOrder?: string[], columns?: { key: string, label?: string }[], visible?: Record<string, boolean> }} template
+ * @param {{ key: string, label?: string }[]} [extraColumns]
+ * @param {{ forceVisibleKeys?: string[] }} [options]
+ */
+export function resolveListDisplayColumns(listId, template, extraColumns = [], options = {}) {
+  const { forceVisibleKeys = [] } = options;
+  const forced = new Set(forceVisibleKeys);
+  const defaults = DEFAULT_COLUMNS[listId] || [];
+  const byKey = new Map();
+  for (const c of defaults) byKey.set(c.key, c);
+  for (const c of extraColumns || []) {
+    if (c?.key) byKey.set(c.key, { ...byKey.get(c.key), ...c });
+  }
+  for (const c of template?.columns || []) {
+    if (c?.key) byKey.set(c.key, { ...byKey.get(c.key), ...c });
+  }
+  const order =
+    Array.isArray(template?.columnOrder) && template.columnOrder.length
+      ? template.columnOrder
+      : (template?.columns || []).map((c) => c.key);
+  const visible = template?.visible || {};
+  return order
+    .map((key) => byKey.get(key))
+    .filter(Boolean)
+    .filter((c) => forced.has(c.key) || visible[c.key]);
+}
+
+/**
  * 제품 검색 모달: 저장된 order(자주 선택한 순) 기준으로 정렬, 나머지는 제품명 가나다
  * @param {{ _id?: unknown, name?: string }[]} items
  * @param {string[]} orderIds — 사용 빈도 내림차순 id 배열

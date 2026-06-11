@@ -799,6 +799,13 @@
   gap: 0.5rem;
 }
 
+.product-list-price.crm-custom-field-display--money {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: #2c6485;
+  letter-spacing: -0.01em;
+}
+
 .product-list-custom-field-value {
   display: inline-block;
   white-space: nowrap;
