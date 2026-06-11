@@ -3,6 +3,7 @@
  * 수식에서 [costPrice] 형태로 참조
  */
 import { EXCHANGE_RATE_FORMULA_BUILTIN } from '@/lib/exchange-rate-formula-builtin';
+import { filterActiveCustomFieldDefinitions } from '@/lib/custom-field-definition-utils';
 
 export const FORMULA_ELIGIBLE_CUSTOM_TYPES = new Set(['number', 'text', 'checkbox', 'formula']);
 
@@ -51,7 +52,7 @@ export function buildFormulaFieldPickerOptions(entityType, definitions = [], exc
       fieldType: fxMeta ? 'exchange' : 'builtin'
     });
   }
-  for (const d of definitions || []) {
+  for (const d of filterActiveCustomFieldDefinitions(definitions)) {
     if (!d?.key || d.key === excludeKey || seenKeys.has(d.key)) continue;
     if (!FORMULA_ELIGIBLE_CUSTOM_TYPES.has(d.type)) continue;
     const label = String(d.label || d.key).trim();

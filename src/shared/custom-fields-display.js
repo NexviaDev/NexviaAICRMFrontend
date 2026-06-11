@@ -1,10 +1,14 @@
 import { useMemo } from 'react';
 import { computeCustomFieldFormulas, formatFormulaExpressionForLabel } from '@/lib/custom-field-formula';
-import { formatCustomFieldDisplayValue } from '@/lib/custom-field-display-format';
+import {
+  formatCustomFieldDisplayValue,
+  normalizeCustomFieldDefinition
+} from '@/lib/custom-field-display-format';
+import { filterActiveCustomFieldDefinitions } from '@/lib/custom-field-definition-utils';
 import './custom-fields-display.css';
 
 function formatDisplayValue(def, value, context = {}) {
-  return formatCustomFieldDisplayValue(value, def, context);
+  return formatCustomFieldDisplayValue(value, normalizeCustomFieldDefinition(def), context);
 }
 
 export default function CustomFieldsDisplay({
@@ -14,19 +18,24 @@ export default function CustomFieldsDisplay({
   className = '',
   formulaContext = null
 }) {
+  const activeDefinitions = useMemo(
+    () => filterActiveCustomFieldDefinitions(definitions),
+    [definitions]
+  );
+
   const computedFormulas = useMemo(() => {
     if (!formulaContext) return {};
-    return computeCustomFieldFormulas(definitions, {
+    return computeCustomFieldFormulas(activeDefinitions, {
       builtIn: formulaContext.builtIn || {},
       customFields: values,
       entityType: formulaContext.entityType,
-      definitions
+      definitions: activeDefinitions
     });
-  }, [definitions, formulaContext, values]);
+  }, [activeDefinitions, formulaContext, values]);
 
-  if (!definitions || definitions.length === 0) return null;
+  if (!activeDefinitions || activeDefinitions.length === 0) return null;
 
-  const entries = definitions
+  const entries = activeDefinitions
     .map((def) => {
       if (def.type === 'formula') {
         const computed = computedFormulas[def.key];

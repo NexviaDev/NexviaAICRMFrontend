@@ -18,6 +18,7 @@ import {
   CUSTOM_FIELD_DISPLAY_FORMATS,
   DISPLAY_FORMAT_CURRENCY_PRODUCT,
   mergeDisplayFormatIntoOptions,
+  normalizeCustomFieldDefinition,
   normalizeCustomFieldDisplayFormat,
   normalizeDisplayFormatCurrency,
   usesDisplayFormatCurrency
@@ -37,6 +38,11 @@ const FIELD_TYPES = [
 const FORMULA_ENTITY_TYPES = new Set(['product', 'customerCompany', 'contact']);
 
 const FORMULA_OPERATORS = ['+', '-', '*', '/'];
+
+function buildDeleteConfirmMessage(label, customMessage) {
+  const head = customMessage || `「${label || '필드'}」 필드를 삭제하시겠습니까?`;
+  return `${head}\n\n삭제하면 기존 데이터·수식·목록·엑셀 연동 등에 문제가 생길 수 있습니다.\n가능하면 삭제 대신 비활성화(눈 아이콘)를 권장합니다.\n\n그래도 삭제하시겠습니까?`;
+}
 
 function dispatchCustomFieldDefinitionsChanged(entityType) {
   if (typeof window === 'undefined') return;
@@ -73,22 +79,23 @@ function defaultDisplayFormatCurrency(entityType) {
 
 function defToEditDraft(def, entityType = 'product') {
   if (!def) return null;
-  const isSelect = def.type === 'select' || def.type === 'multiselect';
+  const normalized = normalizeCustomFieldDefinition(def);
+  const isSelect = normalized.type === 'select' || normalized.type === 'multiselect';
   return {
-    label: def.label || '',
-    required: !!def.required,
-    type: def.type || 'text',
+    label: normalized.label || '',
+    required: !!normalized.required,
+    type: normalized.type || 'text',
     expression:
-      def.type === 'formula' && def.options?.expression
-        ? formatFormulaExpressionForLabel(def.options.expression)
+      normalized.type === 'formula' && normalized.options?.expression
+        ? formatFormulaExpressionForLabel(normalized.options.expression)
         : '',
-    selectListInput: Array.isArray(def.options?.choices) ? def.options.choices.join(', ') : '',
+    selectListInput: Array.isArray(normalized.options?.choices) ? normalized.options.choices.join(', ') : '',
     useSelectList: isSelect,
-    useMultiSelect: def.type === 'multiselect',
-    scheduleEditableBeforeWon: !!def.options?.editableBeforeWon,
-    displayFormat: normalizeCustomFieldDisplayFormat(def.options?.displayFormat),
+    useMultiSelect: normalized.type === 'multiselect',
+    scheduleEditableBeforeWon: !!normalized.options?.editableBeforeWon,
+    displayFormat: normalizeCustomFieldDisplayFormat(normalized.options?.displayFormat),
     displayFormatCurrency:
-      def.options?.displayFormatCurrency || defaultDisplayFormatCurrency(entityType)
+      normalized.options?.displayFormatCurrency || defaultDisplayFormatCurrency(entityType)
   };
 }
 
@@ -98,32 +105,36 @@ function buildRowDraftsFromDefinitions(defs = [], entityType = 'product') {
 
 function isRowDraftDirty(def, draft, entityType) {
   if (!def || !draft) return false;
-  if (String(def.label || '').trim() !== String(draft.label || '').trim()) return true;
-  if (!!def.required !== !!draft.required) return true;
+  const normalized = normalizeCustomFieldDefinition(def);
+  if (String(normalized.label || '').trim() !== String(draft.label || '').trim()) return true;
+  if (!!normalized.required !== !!draft.required) return true;
   if (draft.type === 'formula') {
-    if (def.type !== 'formula') return true;
-    const orig = formatFormulaExpressionForLabel(def.options?.expression || '');
+    if (normalized.type !== 'formula') return true;
+    const orig = formatFormulaExpressionForLabel(normalized.options?.expression || '');
     return orig !== String(draft.expression || '').trim();
   }
-  if (def.type === 'formula' && draft.type !== 'formula') return true;
-  if (def.type === 'select' || def.type === 'multiselect') {
-    const origChoices = (def.options?.choices || []).join(', ');
+  if (normalized.type === 'formula' && draft.type !== 'formula') return true;
+  if (normalized.type === 'select' || normalized.type === 'multiselect') {
+    const origChoices = (normalized.options?.choices || []).join(', ');
     return origChoices !== String(draft.selectListInput || '').trim();
   }
   if (entityType === 'salesOpportunitySchedule') {
-    return !!def.options?.editableBeforeWon !== !!draft.scheduleEditableBeforeWon;
+    return !!normalized.options?.editableBeforeWon !== !!draft.scheduleEditableBeforeWon;
   }
-  if (normalizeCustomFieldDisplayFormat(def.options?.displayFormat) !== normalizeCustomFieldDisplayFormat(draft.displayFormat)) {
+  if (
+    normalizeCustomFieldDisplayFormat(normalized.options?.displayFormat) !==
+    normalizeCustomFieldDisplayFormat(draft.displayFormat)
+  ) {
     return true;
   }
   if (
-    normalizeDisplayFormatCurrency(def.options?.displayFormatCurrency, def.options?.displayFormat) !==
+    normalizeDisplayFormatCurrency(normalized.options?.displayFormatCurrency, normalized.options?.displayFormat) !==
     normalizeDisplayFormatCurrency(draft.displayFormatCurrency, draft.displayFormat)
   ) {
     return true;
   }
-  if (def.type !== 'formula' && def.type !== 'select' && def.type !== 'multiselect') {
-    return (def.type || 'text') !== (draft.type || 'text');
+  if (normalized.type !== 'formula' && normalized.type !== 'select' && normalized.type !== 'multiselect') {
+    return (normalized.type || 'text') !== (draft.type || 'text');
   }
   return false;
 }
@@ -143,7 +154,10 @@ function buildUpdateBody(def, draft, entityType, definitions) {
   if (!label) return { error: '표시 이름을 입력해 주세요.' };
 
   const body = { label, required: !!draft.required };
-  let optionsBase = def.options && typeof def.options === 'object' ? { ...def.options } : null;
+  const normalizedDef = normalizeCustomFieldDefinition(def);
+  let optionsBase = normalizedDef.options && typeof normalizedDef.options === 'object'
+    ? { ...normalizedDef.options }
+    : null;
 
   if (draft.type === 'formula') {
     const parsed = parseFormulaInput(draft.expression);
@@ -296,6 +310,7 @@ export default function CustomFieldsManageModal({
   const formulaSelectionRef = useRef({ start: 0, end: 0 });
   const pendingCaretRef = useRef(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [togglingId, setTogglingId] = useState(null);
   const [rowDrafts, setRowDrafts] = useState({});
   const [rowErrors, setRowErrors] = useState({});
   const [confirmSaving, setConfirmSaving] = useState(false);
@@ -375,8 +390,9 @@ export default function CustomFieldsManageModal({
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && Array.isArray(data.items)) {
-        setDefinitions(data.items);
-        setRowDrafts(buildRowDraftsFromDefinitions(data.items, entityType));
+        const items = data.items.map((d) => normalizeCustomFieldDefinition(d));
+        setDefinitions(items);
+        setRowDrafts(buildRowDraftsFromDefinitions(items, entityType));
         setRowErrors({});
       }
     } catch (_) {}
@@ -590,9 +606,9 @@ export default function CustomFieldsManageModal({
     onClose();
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (id, label) => {
     if (!id) return;
-    if (deleteConfirmMessage && !window.confirm(deleteConfirmMessage)) return;
+    if (!window.confirm(buildDeleteConfirmMessage(label, deleteConfirmMessage))) return;
     setDeletingId(id);
     try {
       const res = await fetch(`${apiBase}/custom-field-definitions/${id}`, {
@@ -623,6 +639,33 @@ export default function CustomFieldsManageModal({
       alert('서버에 연결할 수 없습니다.');
     } finally {
       setDeletingId(null);
+    }
+  };
+
+  const handleToggleDisabled = async (def) => {
+    if (!def?._id) return;
+    const nextDisabled = !def.disabled;
+    setTogglingId(def._id);
+    try {
+      const res = await fetch(`${apiBase}/custom-field-definitions/${def._id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+        body: JSON.stringify({ disabled: nextDisabled })
+      });
+      if (res.ok) {
+        await fetchDefinitions();
+        onDefinitionsUpdated?.();
+        dispatchCustomFieldDefinitionsChanged(entityType);
+        if (entityType === 'salesOpportunitySchedule') dispatchSalesOpportunityScheduleDefsChanged();
+        if (entityType === 'salesOpportunityFinance') dispatchSalesOpportunityFinanceDefsChanged();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || (nextDisabled ? '비활성화에 실패했습니다.' : '활성화에 실패했습니다.'));
+      }
+    } catch (_) {
+      alert('서버에 연결할 수 없습니다.');
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -920,6 +963,7 @@ export default function CustomFieldsManageModal({
                 <h4>추가된 필드</h4>
                 <p className="custom-fields-manage-list-hint">
                   아래 필드는 수정만 모아 두었다가 하단 「확인」을 누를 때 일괄 저장됩니다. 신규 필드 추가는 위 폼에서 즉시 등록됩니다.
+                  비활성화(눈 아이콘)하면 입력·목록에서 숨기며, 삭제보다 안전합니다.
                 </p>
                 <ul>
                   {definitions.map((def) => {
@@ -929,9 +973,13 @@ export default function CustomFieldsManageModal({
                     const isFormulaDraft = draftType === 'formula';
                     const dirty = isRowDraftDirty(def, draft, entityType);
                     const rowError = rowErrors[sid];
-                    const rowDisabled = confirmSaving || !!deletingId;
+                    const rowDisabled = confirmSaving || !!deletingId || !!togglingId;
+                    const isInactive = !!def.disabled;
                     return (
-                      <li key={def._id} className={`custom-fields-manage-list-item${dirty ? ' custom-fields-manage-list-item--dirty' : ''}`}>
+                      <li
+                        key={def._id}
+                        className={`custom-fields-manage-list-item${dirty ? ' custom-fields-manage-list-item--dirty' : ''}${isInactive ? ' custom-fields-manage-list-item--inactive' : ''}`}
+                      >
                         <div className="custom-fields-manage-list-row">
                           <span className={`custom-fields-manage-list-type-badge${isFormulaDraft ? ' custom-fields-manage-list-type-badge--formula' : ''}`}>
                             {getDefTypeLabel({ ...def, type: draftType })}
@@ -1013,8 +1061,21 @@ export default function CustomFieldsManageModal({
                           <div className="custom-fields-manage-list-actions">
                             <button
                               type="button"
+                              className={`custom-fields-manage-list-toggle${isInactive ? ' is-inactive' : ' is-active'}`}
+                              onClick={() => handleToggleDisabled(def)}
+                              disabled={rowDisabled}
+                              title={isInactive ? '활성화 — 입력·목록에 다시 표시' : '비활성화 — 입력·목록에서 숨김 (삭제보다 안전)'}
+                              aria-label={isInactive ? `${def.label} 활성화` : `${def.label} 비활성화`}
+                              aria-pressed={!isInactive}
+                            >
+                              <span className="material-symbols-outlined">
+                                {isInactive ? 'visibility_off' : 'visibility'}
+                              </span>
+                            </button>
+                            <button
+                              type="button"
                               className="custom-fields-manage-list-delete"
-                              onClick={() => handleDelete(def._id)}
+                              onClick={() => handleDelete(def._id, def.label)}
                               disabled={rowDisabled}
                               aria-label={`${def.label} 삭제`}
                             >
@@ -1065,7 +1126,7 @@ export default function CustomFieldsManageModal({
               type="button"
               className="custom-fields-manage-add-btn"
               onClick={() => void handleConfirm()}
-              disabled={addingField || confirmSaving || !!deletingId}
+              disabled={addingField || confirmSaving || !!deletingId || !!togglingId}
             >
               {confirmSaving ? '저장 중…' : hasPendingListChanges ? '변경 저장' : '확인'}
             </button>

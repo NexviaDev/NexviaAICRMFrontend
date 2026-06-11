@@ -24,6 +24,8 @@ import { API_BASE } from '@/config';
 import { pingBackendHealth } from '@/lib/backend-wake';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { listPriceFromProduct } from '@/lib/product-price-utils';
+import { parseNumericFieldValueOrZero } from '@/lib/numeric-field-value';
+import { filterActiveCustomFieldDefinitions } from '@/lib/custom-field-definition-utils';
 import { mergeResolvedProductRow } from '@/lib/product-field-formulas';
 import {
   getConsumerMargin,
@@ -38,7 +40,8 @@ import { computeCustomFieldFormulas } from '@/lib/custom-field-formula';
 import {
   formatCustomFieldDisplayValue,
   getCustomFieldDisplayFormatClass,
-  normalizeCustomFieldDefinition
+  normalizeCustomFieldDefinition,
+  readCustomFieldStoredValue
 } from '@/lib/custom-field-display-format';
 const LIST_ID = LIST_IDS.PRODUCT_LIST;
 const LIMIT = 10;
@@ -68,8 +71,10 @@ function buildProductFormulaContext(row, definitions = [], exchangeCtx = null) {
     builtIn: {
       listPrice: listPriceFromProduct(row),
       price: listPriceFromProduct(row),
-      costPrice: Number(row?.costPrice) || 0,
-      channelPrice: Number(row?.channelPrice) || 0,
+      costPrice: parseNumericFieldValueOrZero(row?.costPrice),
+      channelPrice: parseNumericFieldValueOrZero(row?.channelPrice),
+      consumerMargin: Number.isFinite(Number(row?.consumerMargin)) ? Number(row.consumerMargin) : undefined,
+      channelMargin: Number.isFinite(Number(row?.channelMargin)) ? Number(row.channelMargin) : undefined,
       ...fxBuiltIn
     },
     customFields: row?.customFields || {},
@@ -92,18 +97,20 @@ function resolveProductCustomFieldDisplay(row, fieldKey, definitions = [], excha
   const def = findProductCustomFieldDef(definitions, fieldKey);
   if (!def) return null;
   const normalizedDef = normalizeCustomFieldDefinition(def);
+  const defKey = normalizedDef.key || fieldKey;
 
-  let rawValue;
+  let rawValue = readCustomFieldStoredValue(row?.customFields, defKey);
   if (normalizedDef.type === 'formula') {
-    const computed = computeCustomFieldFormulas(
-      definitions,
-      buildProductFormulaContext(row, definitions, exchangeCtx)
-    );
-    rawValue = computed[fieldKey];
-    if (rawValue == null) return null;
-  } else {
-    rawValue = row?.customFields?.[fieldKey];
+    if (rawValue === undefined || rawValue === null || rawValue === '') {
+      const computed = computeCustomFieldFormulas(
+        definitions,
+        buildProductFormulaContext(row, definitions, exchangeCtx)
+      );
+      rawValue = computed[defKey] ?? computed[fieldKey];
+    }
     if (rawValue === undefined || rawValue === null || rawValue === '') return null;
+  } else if (rawValue === undefined || rawValue === null || rawValue === '') {
+    return null;
   }
 
   return formatCustomFieldDisplayValue(rawValue, normalizedDef, { currency: row?.currency || 'KRW' });
@@ -122,17 +129,21 @@ function renderProductCustomFieldCell(row, fieldKey, definitions, exchangeCtx) {
 }
 
 function resolveProductCustomFieldSortValue(row, fieldKey, definitions = [], exchangeCtx = null) {
-  const def = definitions.find((d) => d.key === fieldKey);
+  const def = findProductCustomFieldDef(definitions, fieldKey);
   if (def?.type === 'formula') {
-    const computed = computeCustomFieldFormulas(
-      definitions,
-      buildProductFormulaContext(row, definitions, exchangeCtx)
-    );
-    const val = computed[fieldKey];
-    return val != null ? val : '';
+    const defKey = def.key || fieldKey;
+    let val = readCustomFieldStoredValue(row?.customFields, defKey);
+    if (val === undefined || val === null || val === '') {
+      const computed = computeCustomFieldFormulas(
+        definitions,
+        buildProductFormulaContext(row, definitions, exchangeCtx)
+      );
+      val = computed[defKey] ?? computed[fieldKey];
+    }
+    return val != null && val !== '' ? val : '';
   }
-  const v = row?.customFields?.[fieldKey];
-  return (v !== undefined && v !== null ? String(v) : '').toLowerCase();
+  const v = readCustomFieldStoredValue(row?.customFields, fieldKey);
+  return v !== undefined && v !== null ? String(v).toLowerCase() : '';
 }
 
 /** 소비자가·순마진·유통가·유통시 순마진 등 가격/마진 열 배경 강조 */
@@ -255,6 +266,10 @@ export default function ProductList({
       pricingProfile: exchangePricingProfile
     }),
     [exchangeDealBasRMap, exchangeUsdSummary, exchangePricingProfile]
+  );
+  const normalizedProductCustomFieldDefinitions = useMemo(
+    () => productCustomFieldDefinitions.map((d) => normalizeCustomFieldDefinition(d)),
+    [productCustomFieldDefinitions]
   );
   const selectionAnchorIdxRef = useRef(null);
   const headerSelectAllRef = useRef(null);
@@ -392,7 +407,9 @@ export default function ProductList({
       cache: 'no-store'
     });
     const data = await res.json().catch(() => ({}));
-    const defs = (Array.isArray(data?.items) ? data.items : []).map(normalizeCustomFieldDefinition);
+    const defs = filterActiveCustomFieldDefinitions(
+      (Array.isArray(data?.items) ? data.items : []).map(normalizeCustomFieldDefinition)
+    );
     return {
       definitions: defs,
       columns: defs.map((d) => ({ key: `${CUSTOM_FIELDS_PREFIX}${d.key}`, label: d.label || d.key || '' }))
@@ -581,14 +598,22 @@ export default function ProductList({
     if (key === 'status') return (row.status || '').toLowerCase();
     if (key.startsWith(CUSTOM_FIELDS_PREFIX)) {
       const fk = key.slice(CUSTOM_FIELDS_PREFIX.length);
-      return resolveProductCustomFieldSortValue(row, fk, productCustomFieldDefinitions, productFormulaExchangeCtx);
+      return resolveProductCustomFieldSortValue(
+        row,
+        fk,
+        normalizedProductCustomFieldDefinitions,
+        productFormulaExchangeCtx
+      );
     }
     return '';
-  }, [productCustomFieldDefinitions]);
+  }, [normalizedProductCustomFieldDefinitions, productFormulaExchangeCtx]);
 
   const resolvedItems = useMemo(
-    () => items.map((row) => mergeResolvedProductRow(row, productFormulaExchangeCtx, productCustomFieldDefinitions)),
-    [items, productFormulaExchangeCtx, productCustomFieldDefinitions]
+    () =>
+      items.map((row) =>
+        mergeResolvedProductRow(row, productFormulaExchangeCtx, normalizedProductCustomFieldDefinitions)
+      ),
+    [items, productFormulaExchangeCtx, normalizedProductCustomFieldDefinitions]
   );
 
   const sortedItems = useMemo(() => {
@@ -833,7 +858,12 @@ export default function ProductList({
         };
         sortedCustomKeys.forEach((fk) => {
           const colName = customFieldLabelByKey[fk] || `커스텀_${fk}`;
-          const v = resolveProductCustomFieldDisplay(row, fk, productCustomFieldDefinitions, productFormulaExchangeCtx);
+          const v = resolveProductCustomFieldDisplay(
+            row,
+            fk,
+            normalizedProductCustomFieldDefinitions,
+            productFormulaExchangeCtx
+          );
           o[colName] = v != null && v !== '' ? String(v) : '';
         });
         return o;
@@ -848,7 +878,7 @@ export default function ProductList({
     } finally {
       setExportExcelLoading(false);
     }
-  }, [fetchAllProductsForExport, customFieldLabelByKey, productCustomFieldDefinitions]);
+  }, [fetchAllProductsForExport, customFieldLabelByKey, normalizedProductCustomFieldDefinitions, productFormulaExchangeCtx]);
 
   const renderMobileCard = (row, idx) => {
     const mp = getConsumerMarginPercent(row);
@@ -1203,7 +1233,7 @@ export default function ProductList({
                             renderProductCustomFieldCell(
                               row,
                               col.key.slice(CUSTOM_FIELDS_PREFIX.length),
-                              productCustomFieldDefinitions,
+                              normalizedProductCustomFieldDefinitions,
                               productFormulaExchangeCtx
                             )}
                         </td>

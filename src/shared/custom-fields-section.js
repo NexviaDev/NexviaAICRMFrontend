@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { computeCustomFieldFormulas, formatFormulaDisplayValue, formatFormulaExpressionForLabel } from '@/lib/custom-field-formula';
+import { filterActiveCustomFieldDefinitions } from '@/lib/custom-field-definition-utils';
 import './custom-fields-section.css';
 
 /**
@@ -18,15 +19,20 @@ export default function CustomFieldsSection({
   const [openMultiselectKey, setOpenMultiselectKey] = useState(null);
   const multiselectRef = useRef(null);
 
+  const activeDefinitions = useMemo(
+    () => filterActiveCustomFieldDefinitions(definitions),
+    [definitions]
+  );
+
   const computedFormulas = useMemo(() => {
     if (!formulaContext) return {};
-    return computeCustomFieldFormulas(definitions, {
+    return computeCustomFieldFormulas(activeDefinitions, {
       builtIn: formulaContext.builtIn || {},
       customFields: values,
       entityType: formulaContext.entityType,
-      definitions
+      definitions: activeDefinitions
     });
-  }, [definitions, formulaContext, values]);
+  }, [activeDefinitions, formulaContext, values]);
 
   useEffect(() => {
     if (openMultiselectKey == null) return;
@@ -60,9 +66,9 @@ export default function CustomFieldsSection({
     return `${arr[0]} 외 ${arr.length - 1}개`;
   };
 
-  if (!definitions || definitions.length === 0) return null;
+  if (!activeDefinitions || activeDefinitions.length === 0) return null;
 
-  const visibleDefs = definitions.filter((def) => {
+  const visibleDefs = activeDefinitions.filter((def) => {
     if (def.type !== 'formula') return true;
     return computedFormulas[def.key] != null;
   });

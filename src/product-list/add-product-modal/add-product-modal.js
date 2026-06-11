@@ -11,6 +11,7 @@ import {
   PRODUCT_BUILTIN_MARGIN_EXPRESSIONS
 } from '@/lib/product-margin';
 import { mergeCustomFieldsForSave } from '@/lib/custom-field-formula';
+import { normalizeCustomFieldDefinition } from '@/lib/custom-field-display-format';
 import { formatProductBillingDisplay } from '@/lib/product-billing-utils';
 import { getPresetCategoryAvatar } from '../product-category-avatar-config';
 import './add-product-modal.css';
@@ -40,6 +41,7 @@ import {
   buildProductFieldPayload,
   buildProductFormulaCatalogGroups,
   buildProductFormulaPickerOptions,
+  buildProductFormInputsFromStored,
   isProductFieldFormulaInput,
   mergeResolvedProductRow,
   productFieldInputFromStored,
@@ -131,6 +133,7 @@ function applyProductToFormState(product, savedNew) {
   const cat = parseCategoryFromStored(product?.category);
   const priceFmt = { formatPriceDisplay: (n) => formatPriceDisplay(n) };
   const categoryFromFormula = product?.fieldFormulas?.category;
+  const inputs = buildProductFormInputsFromStored(product, priceFmt);
   return {
     form: {
       currency: product?.currency ?? 'KRW',
@@ -142,15 +145,7 @@ function applyProductToFormState(product, savedNew) {
       status: product?.status ?? 'Active',
       customFields: product?.customFields ? { ...product.customFields } : {}
     },
-    nameInput: productFieldInputFromStored('name', product, priceFmt),
-    codeInput: productFieldInputFromStored('code', product, priceFmt),
-    versionInput: productFieldInputFromStored('version', product, priceFmt),
-    listPriceInput: productFieldInputFromStored('listPrice', product, priceFmt),
-    costPriceInput: productFieldInputFromStored('costPrice', product, priceFmt),
-    channelPriceInput: productFieldInputFromStored('channelPrice', product, priceFmt),
-    consumerMarginInput: productFieldInputFromStored('consumerMargin', product, priceFmt),
-    channelMarginInput: productFieldInputFromStored('channelMargin', product, priceFmt),
-    billingIntervalInput: productFieldInputFromStored('billingInterval', product, priceFmt),
+    ...inputs,
     categoryKey: categoryFromFormula ? 'other' : cat.key,
     categoryOther: categoryFromFormula
       ? productFieldInputFromStored('category', product, priceFmt)
@@ -320,6 +315,7 @@ export default function AddProductModal({
     return applyProductToFormState(product, null).categoryOther;
   });
   const [formProductId, setFormProductId] = useState(isDuplicate ? null : product?._id ?? null);
+  const [loadedProduct, setLoadedProduct] = useState(null);
   const [categoryOpen, setCategoryOpen] = useState(false);
   const categoryPickerRef = useRef(null);
   const excelFileInputRef = useRef(null);
@@ -338,6 +334,26 @@ export default function AddProductModal({
     () => ({ usdSummary, dealBasRMap, pricingProfile }),
     [usdSummary, dealBasRMap, pricingProfile]
   );
+
+  const productForForm = loadedProduct || product;
+
+  const syncFormFromProduct = (sourceProduct, savedNew = null) => {
+    if (!sourceProduct) return;
+    const next = applyProductToFormState(sourceProduct, savedNew);
+    setForm(next.form);
+    setNameInput(next.nameInput);
+    setCodeInput(next.codeInput);
+    setVersionInput(next.versionInput);
+    setListPriceInput(next.listPriceInput);
+    setCostPriceInput(next.costPriceInput);
+    setChannelPriceInput(next.channelPriceInput);
+    setConsumerMarginInput(next.consumerMarginInput);
+    setChannelMarginInput(next.channelMarginInput);
+    setBillingIntervalInput(next.billingIntervalInput);
+    setCategoryKey(next.categoryKey);
+    setCategoryOther(next.categoryOther);
+    if (sourceProduct._id) setFormProductId(sourceProduct._id);
+  };
 
   const liveProductDraft = useMemo(
     () => buildLiveProductDraft({
@@ -443,9 +459,14 @@ export default function AddProductModal({
 
   const fetchCustomDefinitions = async () => {
     try {
-      const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=product`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=product&_=${Date.now()}`, {
+        headers: getAuthHeader(),
+        cache: 'no-store'
+      });
       const data = await res.json().catch(() => ({}));
-      if (res.ok && Array.isArray(data.items)) setCustomDefinitions(data.items);
+      if (res.ok && Array.isArray(data.items)) {
+        setCustomDefinitions(data.items.map((d) => normalizeCustomFieldDefinition(d)));
+      }
     } catch (_) {}
   };
 
@@ -454,56 +475,51 @@ export default function AddProductModal({
   }, []);
 
   useEffect(() => {
-    if (panelMode !== 'view' || !product) return;
-    const next = applyProductToFormState(product, null);
-    setForm(next.form);
-    setNameInput(next.nameInput);
-    setCodeInput(next.codeInput);
-    setVersionInput(next.versionInput);
-    setListPriceInput(next.listPriceInput);
-    setCostPriceInput(next.costPriceInput);
-    setChannelPriceInput(next.channelPriceInput);
-    setConsumerMarginInput(next.consumerMarginInput);
-    setChannelMarginInput(next.channelMarginInput);
-    setBillingIntervalInput(next.billingIntervalInput);
-    setCategoryKey(next.categoryKey);
-    setCategoryOther(next.categoryOther);
-    setFormProductId(product._id ?? null);
+    if (!product?._id) {
+      setLoadedProduct(null);
+      return undefined;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/products/${product._id}`, { headers: getAuthHeader() });
+        const data = await res.json().catch(() => null);
+        if (!cancelled && res.ok && data) setLoadedProduct(data);
+      } catch {
+        if (!cancelled) setLoadedProduct(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [product?._id, product?.updatedAt]);
+
+  useEffect(() => {
+    if (!productForForm || panelMode !== 'view') return;
+    syncFormFromProduct(productForForm, null);
   }, [
     panelMode,
-    product?._id,
-    product?.updatedAt,
-    product?.name,
-    product?.price,
-    product?.listPrice,
-    product?.costPrice,
-    product?.channelPrice,
-    product?.currency,
-    product?.category,
-    product?.version,
-    product?.billingType,
-    product?.billingInterval,
-    product?.status
+    productForForm?._id,
+    productForForm?.updatedAt,
+    JSON.stringify(productForForm?.fieldFormulas || {})
+  ]);
+
+  useEffect(() => {
+    if (!loadedProduct?._id || panelMode !== 'edit') return;
+    syncFormFromProduct(loadedProduct, null);
+  }, [
+    panelMode,
+    loadedProduct?._id,
+    loadedProduct?.updatedAt,
+    JSON.stringify(loadedProduct?.fieldFormulas || {})
   ]);
 
   useEffect(() => {
     if (panelMode !== 'duplicate' || !product) return;
     const draft = productToDuplicateDraft(product);
-    const next = applyProductToFormState(draft, null);
-    setForm(next.form);
-    setNameInput(next.nameInput);
-    setCodeInput(next.codeInput);
-    setVersionInput(next.versionInput);
-    setListPriceInput(next.listPriceInput);
-    setCostPriceInput(next.costPriceInput);
-    setChannelPriceInput(next.channelPriceInput);
-    setConsumerMarginInput(next.consumerMarginInput);
-    setChannelMarginInput(next.channelMarginInput);
-    setBillingIntervalInput(next.billingIntervalInput);
-    setCategoryKey(next.categoryKey);
-    setCategoryOther(next.categoryOther);
+    syncFormFromProduct(draft, null);
     setFormProductId(null);
-  }, [panelMode, product?._id]);
+  }, [panelMode, product?._id, JSON.stringify(product?.fieldFormulas || {})]);
 
   /** 신규 등록 모달이 열릴 때마다 마운트되며, 초기 state에서 listTemplates.addProductModal 복원됨. 저장 시 변경분만 서버·crm_user 갱신. */
 
@@ -538,21 +554,24 @@ export default function AddProductModal({
   };
 
   const applyExcelDraftToForm = (draft) => {
-    setForm((prev) => ({
-      ...prev,
-      ...draft.form,
-      customFields: { ...(prev.customFields || {}), ...(draft.form.customFields || {}) }
-    }));
-    setNameInput(draft.form?.name ?? draft.name ?? '');
-    setCodeInput(draft.form?.code ?? draft.code ?? '');
-    setVersionInput(draft.form?.version ?? draft.version ?? '');
-    setListPriceInput(formatPriceDisplay(draft.listPrice));
-    setCostPriceInput(formatPriceDisplay(draft.costPrice));
-    setChannelPriceInput(formatPriceDisplay(draft.channelPrice));
-    setBillingIntervalInput(String(draft.form?.billingInterval ?? draft.billingInterval ?? 1));
-    const cat = parseCategoryFromStored(draft.categoryRaw);
-    setCategoryKey(cat.key);
-    setCategoryOther(cat.other);
+    const productLike = {
+      name: draft.form?.name ?? draft.name ?? '',
+      code: draft.form?.code ?? draft.code ?? '',
+      version: draft.form?.version ?? draft.version ?? '',
+      category: draft.categoryRaw ?? draft.form?.category ?? draft.category ?? '',
+      listPrice: draft.listPrice,
+      costPrice: draft.costPrice,
+      channelPrice: draft.channelPrice,
+      consumerMargin: draft.consumerMargin,
+      channelMargin: draft.channelMargin,
+      billingInterval: draft.form?.billingInterval ?? draft.billingInterval ?? 1,
+      currency: draft.form?.currency ?? draft.currency ?? 'KRW',
+      billingType: draft.form?.billingType ?? draft.billingType ?? 'Monthly',
+      status: draft.form?.status ?? draft.status ?? 'Active',
+      customFields: draft.form?.customFields ?? draft.customFields ?? {},
+      fieldFormulas: draft.fieldFormulas ?? {}
+    };
+    syncFormFromProduct(productLike, isNewProductRegistration ? getSavedAddProductModalDefaults() : null);
     setError('');
   };
 
@@ -703,6 +722,7 @@ export default function AddProductModal({
 
   const startEdit = () => {
     if (!product?._id) return;
+    syncFormFromProduct(productForForm || product, null);
     setPanelMode('edit');
     setFormProductId(product._id);
     setError('');
@@ -874,6 +894,7 @@ export default function AddProductModal({
               className="product-detail-custom-fields"
               formulaContext={{
                 entityType: 'product',
+                displayContext: { currency: product.currency || 'KRW' },
                 builtIn: {
                   listPrice: listPriceFromProduct(product),
                   price: listPriceFromProduct(product),

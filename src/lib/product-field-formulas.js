@@ -15,6 +15,7 @@ import {
 } from '@/lib/numeric-field-value';
 import { FORMULA_FUNCTION_CATALOG, FORMULA_FUNCTION_GROUP_LABELS } from '@/lib/formula-expression-evaluator';
 import { buildFormulaFieldPickerOptions } from '@/lib/custom-field-formula-catalog';
+import { normalizeCustomFieldDefOptions } from '@/lib/custom-field-display-format';
 
 export const PRODUCT_FORMULA_NUMERIC_KEYS = [
   'listPrice',
@@ -75,11 +76,22 @@ function literalProductFieldValue(product, fieldKey) {
   }
 }
 
+export function normalizeProductFieldFormulas(product) {
+  const raw = product?.fieldFormulas;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out = {};
+  for (const key of PRODUCT_FORMULA_KEYS) {
+    const expr = raw[key];
+    if (expr == null || expr === '') continue;
+    const parsed = parseFormulaInput(expr);
+    if (parsed.isFormula && parsed.expression) out[key] = parsed.expression;
+  }
+  return out;
+}
+
 /** DB fieldFormulas + 저장값 → 폼 입력 문자열 */
 export function productFieldInputFromStored(fieldKey, product, { formatPriceDisplay } = {}) {
-  const formulas = product?.fieldFormulas && typeof product.fieldFormulas === 'object'
-    ? product.fieldFormulas
-    : {};
+  const formulas = normalizeProductFieldFormulas(product);
   const expr = formulas[fieldKey];
   if (expr) return formatFormulaExpressionForLabel(expr);
   if (fieldKey === 'consumerMargin' || fieldKey === 'channelMargin') {
@@ -110,6 +122,22 @@ export function extractFieldFormulasFromInputs(inputs = {}) {
     if (parsed.isFormula && parsed.expression) out[key] = parsed.expression;
   }
   return out;
+}
+
+/** 수정·엑셀 초안 등 — 저장된 fieldFormulas를 폼 입력 문자열로 복원 */
+export function buildProductFormInputsFromStored(product, { formatPriceDisplay } = {}) {
+  return {
+    nameInput: productFieldInputFromStored('name', product, { formatPriceDisplay }),
+    codeInput: productFieldInputFromStored('code', product, { formatPriceDisplay }),
+    versionInput: productFieldInputFromStored('version', product, { formatPriceDisplay }),
+    listPriceInput: productFieldInputFromStored('listPrice', product, { formatPriceDisplay }),
+    costPriceInput: productFieldInputFromStored('costPrice', product, { formatPriceDisplay }),
+    channelPriceInput: productFieldInputFromStored('channelPrice', product, { formatPriceDisplay }),
+    consumerMarginInput: productFieldInputFromStored('consumerMargin', product, { formatPriceDisplay }),
+    channelMarginInput: productFieldInputFromStored('channelMargin', product, { formatPriceDisplay }),
+    billingIntervalInput: productFieldInputFromStored('billingInterval', product, { formatPriceDisplay }),
+    fieldFormulas: normalizeProductFieldFormulas(product)
+  };
 }
 
 export function buildLiveProductDraft({
@@ -221,9 +249,7 @@ function buildEvalContext(product, exchangeCtx, definitions, resolvedNumeric, op
  */
 export function resolveProductFieldValues(product, exchangeCtx = null, definitions = [], opts = {}) {
   const { computedCustomFields = {} } = opts;
-  const formulas = product?.fieldFormulas && typeof product.fieldFormulas === 'object'
-    ? product.fieldFormulas
-    : {};
+  const formulas = normalizeProductFieldFormulas(product);
   const hasFormula = Object.keys(formulas).length > 0;
   const resolved = {
     name: String(product?.name ?? ''),
@@ -457,8 +483,19 @@ export function buildProductFieldPayload({
   };
 }
 
+function hasCustomFormulaDefinitions(definitions = []) {
+  return (definitions || []).some((d) => {
+    if (d?.type !== 'formula') return false;
+    const opts = normalizeCustomFieldDefOptions(d.options);
+    return !!String(opts?.expression || '').trim();
+  });
+}
+
 export function mergeResolvedProductRow(row, exchangeCtx, definitions) {
-  if (!row?.fieldFormulas || !Object.keys(row.fieldFormulas).length) return row;
+  const formulas = normalizeProductFieldFormulas(row);
+  const hasBuiltinFormulas = Object.keys(formulas).length > 0;
+  const hasCustomFormulas = hasCustomFormulaDefinitions(definitions);
+  if (!hasBuiltinFormulas && !hasCustomFormulas) return row;
   const resolved = resolveProductFormulasUnified(row, exchangeCtx, definitions);
   return {
     ...row,

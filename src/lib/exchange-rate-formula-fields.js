@@ -67,7 +67,7 @@ export function buildReferenceUsdToken() {
   return `[${REFERENCE_USD_FIELD_LABEL}]`;
 }
 
-export function buildRateFieldValuesFromRows(rows, referenceUsdAmount = 100) {
+export function buildRateFieldValuesFromRows(rows, referenceUsdAmount = 1) {
   const values = {};
   const usd = num(referenceUsdAmount);
   if (usd != null) values[REFERENCE_USD_FIELD_LABEL] = usd;

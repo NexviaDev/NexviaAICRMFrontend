@@ -1135,6 +1135,7 @@ export function excelRowToProductBody(excelRow, mappingRows, opts = {}) {
 
   return {
     ...payload.body,
+    fieldFormulas: payload.body.fieldFormulas || {},
     listPrice: resolvedRow.listPrice,
     price: resolvedRow.listPrice,
     costPrice: resolvedRow.costPrice,
@@ -1352,9 +1353,12 @@ export function excelObjectToProductFormDraft(rowObj, customFieldDefs = []) {
       status: body.status || 'Active',
       customFields: body.customFields && typeof body.customFields === 'object' ? { ...body.customFields } : {}
     },
+    fieldFormulas: body.fieldFormulas && typeof body.fieldFormulas === 'object' ? { ...body.fieldFormulas } : {},
     listPrice: body.listPrice || 0,
     costPrice: body.costPrice || 0,
     channelPrice: body.channelPrice || 0,
+    consumerMargin: body.consumerMargin,
+    channelMargin: body.channelMargin,
     categoryRaw: body.category || ''
   };
 }

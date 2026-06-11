@@ -756,6 +756,55 @@
   margin-left: auto;
 }
 
+.custom-fields-manage-list-item--inactive {
+  background: #f6f9fb;
+  border-color: #e0e8ef;
+}
+
+.custom-fields-manage-list-item--inactive .custom-fields-manage-list-name-input {
+  color: #7a8a96;
+}
+
+.custom-fields-manage-list-toggle {
+  padding: 0.25rem;
+  border: none;
+  background: transparent;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.custom-fields-manage-list-toggle.is-active {
+  color: #2c6485;
+}
+
+.custom-fields-manage-list-toggle.is-active .material-symbols-outlined {
+  font-variation-settings: 'FILL' 1, 'wght' 500;
+}
+
+.custom-fields-manage-list-toggle.is-active:hover:not(:disabled) {
+  background: #e8f2f8;
+  color: #1f4f6a;
+}
+
+.custom-fields-manage-list-toggle.is-inactive {
+  color: #a8b8c4;
+}
+
+.custom-fields-manage-list-toggle.is-inactive:hover:not(:disabled) {
+  background: #eef3f7;
+  color: #7a8a96;
+}
+
+.custom-fields-manage-list-toggle .material-symbols-outlined {
+  font-size: 1.125rem;
+}
+
+.custom-fields-manage-list-toggle:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .custom-fields-manage-list-save-btn {
   display: inline-flex;
   align-items: center;

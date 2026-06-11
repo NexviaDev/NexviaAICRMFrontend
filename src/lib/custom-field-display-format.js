@@ -88,6 +88,21 @@ export function normalizeCustomFieldDefinition(def) {
   return { ...def, options };
 }
 
+/** customFields 객체에서 key 조회 (대소문자 무시 fallback) */
+export function readCustomFieldStoredValue(customFields, fieldKey) {
+  if (!customFields || typeof customFields !== 'object') return undefined;
+  const fk = String(fieldKey || '').trim();
+  if (!fk) return undefined;
+  if (Object.prototype.hasOwnProperty.call(customFields, fk)) {
+    return customFields[fk];
+  }
+  const lower = fk.toLowerCase();
+  for (const [k, v] of Object.entries(customFields)) {
+    if (String(k).trim().toLowerCase() === lower) return v;
+  }
+  return undefined;
+}
+
 export function getCustomFieldDisplayFormat(def) {
   const options = normalizeCustomFieldDefOptions(def?.options);
   return normalizeCustomFieldDisplayFormat(options?.displayFormat);

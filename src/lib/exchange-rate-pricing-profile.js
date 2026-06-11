@@ -9,7 +9,8 @@ import {
 
 export const DEFAULT_EXCHANGE_RATE_PRICING_PROFILE = {
   stepFormulas: { ...DEFAULT_STEP_FORMULAS },
-  referenceUsdAmount: 100
+  /** 1 USD 기준 — 공급원가 = round(1 × RPI환율) */
+  referenceUsdAmount: 1
 };
 
 function num(v) {
@@ -33,7 +34,7 @@ function migrateLegacyProfile(src) {
   const rpiMult = num(src?.rpiRateMult);
   const margin = num(src?.defaultMarginRate);
   const vat = num(src?.vatRate);
-  const refUsd = clampUsdAmount(src?.referenceUsdAmount, 100);
+  const refUsd = clampUsdAmount(src?.referenceUsdAmount, 1);
   return {
     stepFormulas: {
       orderRate: orderMult != null ? `dec([USD-보내실 때]*${orderMult},2)` : DEFAULT_STEP_FORMULAS.orderRate,

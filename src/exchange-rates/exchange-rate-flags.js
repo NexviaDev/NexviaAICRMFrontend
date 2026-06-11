@@ -1,5 +1,6 @@
 /** ISO 3166-1 alpha-2 — CRM 환율 58통화 대표 국기 (flagcdn.com) */
 const CURRENCY_FLAG_REGION = {
+  KRW: 'KR',
   USD: 'US',
   EUR: 'EU',
   JPY: 'JP',
