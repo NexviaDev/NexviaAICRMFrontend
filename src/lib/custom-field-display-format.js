@@ -19,7 +19,7 @@ export const CUSTOM_FIELD_DISPLAY_FORMATS = [
   { value: 'shortDate', label: '간단한 날짜', hint: '2026-06-09' },
   { value: 'longDate', label: '자세한 날짜', hint: '2026년 6월 9일 화요일' },
   { value: 'time', label: '시간', hint: '14:30:00' },
-  { value: 'percentage', label: '백분율', hint: '0.1 → 10%' },
+  { value: 'percentage', label: '백분율', hint: '5 → 5%' },
   { value: 'fraction', label: '분수', hint: '0.5 → 1/2' },
   { value: 'scientific', label: '지수', hint: '1.23e+4' },
   { value: 'text', label: '텍스트', hint: '입력값 그대로' }
@@ -261,7 +261,7 @@ export function formatCustomFieldDisplayValue(value, def, context = {}) {
       return `${prefix}${numFmt(n)}`;
     }
     case 'percentage':
-      return `${numFmt(n * 100)}%`;
+      return `${numFmt(n)}%`;
     case 'scientific':
       return n.toExponential(2);
     case 'fraction':
