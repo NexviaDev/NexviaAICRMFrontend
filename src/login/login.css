@@ -75,12 +75,34 @@
 
 /* —— Card —— */
 .login-card-shell {
+  position: relative;
   width: 100%;
   max-width: 32rem;
   background: var(--surface-container-lowest);
   border-radius: 0.75rem;
   box-shadow: 0 40px 80px -15px rgba(44, 100, 133, 0.06);
   overflow: hidden;
+}
+
+.login-completing-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.85rem;
+  border-radius: inherit;
+  background: rgba(248, 249, 251, 0.92);
+  backdrop-filter: blur(2px);
+}
+
+.login-completing-text {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--on-surface-variant);
 }
 
 .login-card-visual {

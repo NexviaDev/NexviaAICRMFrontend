@@ -1,9 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { notifyCrmAuthChanged } from '@/lib/use-crm-token';
 import { API_BASE } from '@/config';
 import { pingBackendHealth } from '@/lib/backend-wake';
 import { storeUserWithDefaultSidebarTemplate } from '@/lib/list-templates';
+import {
+  crmUserStubFromAccessTokenClaims,
+  parseCrmAccessTokenClaims
+} from '@/lib/crm-role-utils';
 import FindIdModal from './find-id-modal';
 import './login.css';
 
@@ -38,6 +42,27 @@ const ECOSYSTEM_ICONS = [
   { icon: 'hub', title: 'Data Visualization' }
 ];
 
+function loginDestinationForRole(role) {
+  return role === 'pending' ? '/company-overview' : '/dashboard';
+}
+
+async function persistUserAndGo(user, navigate, { deferServerSync = true } = {}) {
+  const stored = await storeUserWithDefaultSidebarTemplate(user, { deferServerSync });
+  navigate(loginDestinationForRole(stored?.role), { replace: true });
+  return stored;
+}
+
+function refreshCrmUserInBackground(token) {
+  void fetch(`${API_BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+    .then((res) => res.json())
+    .then((data) => {
+      if (data?.user) {
+        void storeUserWithDefaultSidebarTemplate(data.user, { deferServerSync: true });
+      }
+    })
+    .catch(() => {});
+}
+
 export default function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -47,15 +72,16 @@ export default function Login() {
   const [loginCode, setLoginCode] = useState('');
   const [loginCodeSent, setLoginCodeSent] = useState(false);
   const [loginBusy, setLoginBusy] = useState(false);
+  const [completingLogin, setCompletingLogin] = useState(() => !!new URLSearchParams(window.location.search).get('token'));
   const [findIdOpen, setFindIdOpen] = useState(false);
+  const oauthTokenHandledRef = useRef(null);
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [searchParams]);
 
   useEffect(() => {
-    const token = searchParams.get('token');
-    if (token) return;
+    if (searchParams.get('token')) return;
     const v = searchParams.get(LEGAL_QUERY);
     if (LEGAL_VALUES.includes(v)) {
       navigate(`/legal/${v}`, { replace: true });
@@ -65,27 +91,49 @@ export default function Login() {
   useEffect(() => {
     const token = searchParams.get('token');
     const needsRegister = searchParams.get('needsRegister') === '1';
-    if (token) {
-      localStorage.setItem('crm_token', token);
-      notifyCrmAuthChanged();
-      if (needsRegister) {
-        navigate('/register?token=' + encodeURIComponent(token) + '&needsRegister=1', { replace: true });
-        return;
-      }
-      fetch(`${API_BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.user) {
-            void storeUserWithDefaultSidebarTemplate(data.user).then((user) => {
-              navigate(user.role === 'pending' ? '/company-overview' : '/dashboard', { replace: true });
-            });
-          }
-        })
-        .catch(() => setError('로그인 정보를 불러오지 못했습니다.'));
+    if (!token) return;
+    if (oauthTokenHandledRef.current === token) return;
+    oauthTokenHandledRef.current = token;
+
+    setCompletingLogin(true);
+    localStorage.setItem('crm_token', token);
+    notifyCrmAuthChanged();
+
+    if (needsRegister) {
+      navigate('/register?token=' + encodeURIComponent(token) + '&needsRegister=1', { replace: true });
+      return;
     }
+
+    const stub = crmUserStubFromAccessTokenClaims(parseCrmAccessTokenClaims(token));
+    if (stub) {
+      void persistUserAndGo(stub, navigate).catch(() => {
+        setCompletingLogin(false);
+        setError('로그인 정보를 불러오지 못했습니다.');
+      });
+      refreshCrmUserInBackground(token);
+      return;
+    }
+
+    void fetch(`${API_BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.user) {
+          return persistUserAndGo(data.user, navigate);
+        }
+        setCompletingLogin(false);
+        setError('로그인 정보를 불러오지 못했습니다.');
+      })
+      .catch(() => {
+        setCompletingLogin(false);
+        setError('로그인 정보를 불러오지 못했습니다.');
+      });
+  }, [navigate, searchParams]);
+
+  useEffect(() => {
+    if (searchParams.get('token')) return;
     const err = searchParams.get('error');
     if (err) setError(decodeURIComponent(err));
-  }, [navigate, searchParams]);
+  }, [searchParams]);
 
   const sendLoginOtp = async () => {
     setError('');
@@ -154,9 +202,14 @@ export default function Login() {
       if (res.ok && data.token) {
         localStorage.setItem('crm_token', data.token);
         notifyCrmAuthChanged();
+        setCompletingLogin(true);
         if (data.user) {
-          const user = await storeUserWithDefaultSidebarTemplate(data.user);
-          navigate(user?.role === 'pending' ? '/company-overview' : '/dashboard', { replace: true });
+          try {
+            await persistUserAndGo(data.user, navigate);
+          } catch {
+            setCompletingLogin(false);
+            setError('로그인 정보를 저장하지 못했습니다.');
+          }
         } else {
           navigate('/dashboard', { replace: true });
         }
@@ -179,6 +232,12 @@ export default function Login() {
 
       <main className="login-main-wrap">
         <section className="login-card-shell">
+          {completingLogin ? (
+            <div className="login-completing-overlay" role="status" aria-live="polite">
+              <span className="login-inline-spinner login-inline-spinner--dark" aria-hidden />
+              <p className="login-completing-text">로그인 중…</p>
+            </div>
+          ) : null}
           <div className="login-card-visual">
             <img
               className="login-card-visual-img"

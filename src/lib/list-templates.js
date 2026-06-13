@@ -833,22 +833,31 @@ export function ensureUserSidebarDefaultTemplate(user) {
 }
 
 /** crm_user 저장 + 필요 시 서버에 기본 사이드바 동기화 */
-export async function storeUserWithDefaultSidebarTemplate(user) {
+export async function storeUserWithDefaultSidebarTemplate(user, options = {}) {
+  const deferServerSync = options.deferServerSync === true;
   const { user: next, applied } = ensureUserSidebarDefaultTemplate(user);
   localStorage.setItem('crm_user', JSON.stringify(next));
   if (applied) {
     const def = buildDefaultSidebar2LevelTemplate(SIDEBAR_MENU_EPOCH);
-    try {
-      await patchSidebarLayout({
+    const syncSidebar = () =>
+      patchSidebarLayout({
         categoryOrder: def.categoryOrder,
         itemOrdersByCategory: def.itemOrdersByCategory,
         activeCategory: def.activeCategory,
         order: def.order,
         overflow: def.overflow,
         menuEpoch: def.menuEpoch
+      }).catch(() => {
+        /* 오프라인·슬립 복구 후 Sidebar 마운트 시 재시도 */
       });
-    } catch {
-      /* 오프라인·슬립 복구 후 Sidebar 마운트 시 재시도 */
+    if (deferServerSync) {
+      void syncSidebar();
+    } else {
+      try {
+        await syncSidebar();
+      } catch {
+        /* ignore */
+      }
     }
   }
   return next;
