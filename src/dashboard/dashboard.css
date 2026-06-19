@@ -1882,6 +1882,59 @@
   outline-offset: -2px;
 }
 
+/* Forecast·완료 표 — 열 너비 드래그 리사이즈 (listTemplates.homeDashboard.forecastColumnWidths) */
+.home-chart-panel .home-forecast-table-wrap .home-forecast-table.crm-list-sheet--resizable,
+.home-modal-forecast .home-forecast-table-wrap .home-forecast-table.crm-list-sheet--resizable {
+  table-layout: fixed;
+  width: max(var(--crm-list-table-width, 100%), 100%);
+  min-width: 100%;
+}
+
+.home-forecast-table.crm-list-sheet--resizable thead th.home-forecast-th-resizable {
+  position: relative;
+  padding-right: 1.35rem;
+}
+
+.home-forecast-table.crm-list-sheet--resizable thead th .list-template-th-content {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-forecast-table.crm-list-sheet--resizable tbody td:not(.crm-list-sheet-fill-td):not(.crm-list-sheet-fill-td-span) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 0;
+}
+
+.home-forecast-table.crm-list-sheet--resizable thead th.crm-list-sheet-fill-th,
+.home-forecast-table.crm-list-sheet--resizable tbody td.crm-list-sheet-fill-td,
+.home-forecast-table.crm-list-sheet--resizable tbody td.crm-list-sheet-fill-td-span {
+  max-width: none;
+  overflow: visible;
+  white-space: normal;
+  border-right: none;
+}
+
+.home-forecast-table.crm-list-sheet--resizable .home-forecast-total-row td {
+  background: #f4f8ff;
+}
+
+.home-forecast-table.crm-list-sheet--resizable tbody tr.crm-list-sheet-row--stripe-a td:not(.crm-list-sheet-fill-td):not(.crm-list-sheet-fill-td-span) {
+  background: #eef4fa;
+}
+
+.home-forecast-table.crm-list-sheet--resizable tbody tr.crm-list-sheet-row--stripe-b td:not(.crm-list-sheet-fill-td):not(.crm-list-sheet-fill-td-span) {
+  background: #ffffff;
+}
+
+.home-forecast-table.crm-list-sheet--resizable tbody tr.home-forecast-data-row:hover td,
+.home-forecast-table.crm-list-sheet--resizable tbody tr.home-forecast-table-row-click:hover td {
+  background: rgba(78, 121, 167, 0.12);
+}
+
 .home-reps-body .data-table tbody tr:focus-within td {
   background: rgba(78, 121, 167, 0.12);
 }

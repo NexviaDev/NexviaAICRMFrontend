@@ -1106,8 +1106,7 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    overflow-x: hidden;
-    overflow-y: auto;
+    overflow: hidden;
     padding: 0;
   }
 
@@ -1119,32 +1118,48 @@
   }
 
   .customer-company-employees-page .panel.table-panel {
-    flex: 0 0 auto;
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    overflow: visible;
+    overflow: hidden;
     margin-bottom: 0;
     background: var(--card);
     border-radius: 0;
     box-shadow: none;
   }
 
+  .customer-company-employees-page .crm-list-table-stack {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
   .customer-company-employees-page .table-wrap {
-    flex: 0 0 auto;
-    overflow: visible;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
     background: var(--card);
     isolation: isolate;
   }
 
-  .customer-company-employees-page .pagination-bar {
+  .customer-company-employees-page .crm-list-pagination-bar {
     flex-shrink: 0;
     margin-top: 0;
     background: var(--card);
   }
 
   .customer-company-employees-page .crm-list-sheet-scroll {
-    flex: 0 0 auto;
+    flex: 1;
+    min-height: 0;
     max-height: none;
+    overflow: scroll;
+    scrollbar-gutter: stable both-edges;
+    border-bottom: none;
   }
 
   .customer-company-employees-page .crm-list-sheet-scroll .crm-list-sheet tbody td {

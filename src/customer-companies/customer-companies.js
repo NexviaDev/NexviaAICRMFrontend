@@ -22,6 +22,19 @@ import {
 import './customer-companies.css';
 import './customer-companies-responsive.css';
 import '@/shared/crm-list-sheet-table.css';
+import {
+  useCrmListColumnResize,
+  CrmListColgroup,
+  CrmListColumnResizeHandle
+} from '@/components/crm-list-column-resize/crm-list-column-resize';
+import {
+  useCrmListSheetFillerRowCount,
+  crmListSheetColSpanWithFill,
+  CrmListSheetFillHeaderCell,
+  CrmListSheetFillBodyCell,
+  CrmListSheetFillerRows
+} from '@/components/crm-list-sheet-fill/crm-list-sheet-fill';
+import { LIST_COLUMN_FIXED_WIDTH_PX } from '@/lib/list-column-widths';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import ListPaginationButtons from '@/components/list-pagination-buttons/list-pagination-buttons';
 import * as XLSX from 'xlsx';
@@ -79,6 +92,7 @@ export default function CustomerCompanies({
   const [selectAllLoading, setSelectAllLoading] = useState(false);
   const [lastCheckedIndex, setLastCheckedIndex] = useState(null);
   const headerSelectAllRef = useRef(null);
+  const listSheetScrollRef = useRef(null);
   /** 상세 삭제 등으로 페이지가 바뀔 때 다음 목록 요청만 로딩 표시 없이 */
   const listFetchSilentOnceRef = useRef(false);
   const me = useMemo(() => getStoredCrmUser(), []);
@@ -397,11 +411,35 @@ export default function CustomerCompanies({
     if (fromIdx === -1 || toIdx === -1) return;
     order.splice(fromIdx, 1);
     order.splice(toIdx, 0, fromKey);
-    saveTemplate({ columnOrder: order, visible: template.visible, columnCellStyles: template.columnCellStyles });
+    saveTemplate({
+      columnOrder: order,
+      visible: template.visible,
+      columnCellStyles: template.columnCellStyles,
+      columnWidths: template.columnWidths
+    });
   };
 
   const displayColumns = template.columns.filter((c) => template.visible[c.key]);
   const colSpan = Math.max(1, displayColumns.length);
+  const displayColumnKeys = useMemo(() => displayColumns.map((c) => c.key), [displayColumns]);
+
+  const persistColumnWidths = useCallback(
+    (columnWidths) =>
+      saveTemplate({
+        columnOrder: template.columnOrder,
+        visible: template.visible,
+        columnCellStyles: template.columnCellStyles,
+        columnWidths
+      }),
+    [saveTemplate, template.columnOrder, template.visible, template.columnCellStyles]
+  );
+
+  const { getWidthPx, tableWidthPx, startResize, isResizing } = useCrmListColumnResize({
+    columnWidths: template.columnWidths,
+    displayColumnKeys,
+    onPersistWidths: persistColumnWidths,
+    leadingColWidthsPx: [LIST_COLUMN_FIXED_WIDTH_PX.__rowCheckbox__]
+  });
 
   const getSortValue = useCallback((row, key) => {
     if (key === 'name') return (row.name || '').toLowerCase();
@@ -436,6 +474,10 @@ export default function CustomerCompanies({
       return 0;
     });
   }, [items, sortKey, sortDir, getSortValue]);
+
+  const listSheetBodyRowCount = loading || sortedItems.length === 0 ? 1 : sortedItems.length;
+  const listSheetFillRowCount = useCrmListSheetFillerRowCount(listSheetScrollRef, listSheetBodyRowCount);
+  const listSheetTableColSpan = crmListSheetColSpanWithFill(colSpan + 1);
 
   const companiesForBulkSalesModal = useMemo(
     () =>
@@ -1098,16 +1140,19 @@ export default function CustomerCompanies({
               </>
             )}
           </div>
+          <div className="crm-list-table-stack">
           <div className="table-wrap">
-            <div className="crm-list-sheet-scroll">
+            <div className="crm-list-sheet-scroll" ref={listSheetScrollRef}>
             <div className="crm-list-sheet-table-wrap">
-            <table className="data-table crm-list-sheet">
-              <colgroup>
-                <col style={{ width: '3rem' }} />
-                {displayColumns.map((col) => (
-                  <col key={col.key} style={col.key === '_favorite' ? { width: '3.25rem' } : undefined} />
-                ))}
-              </colgroup>
+            <table
+              className="data-table crm-list-sheet crm-list-sheet--resizable"
+              style={{ '--crm-list-table-width': `${tableWidthPx}px` }}
+            >
+              <CrmListColgroup
+                leadingCols={[{ key: '__rowCheckbox__', widthPx: LIST_COLUMN_FIXED_WIDTH_PX.__rowCheckbox__ }]}
+                displayColumns={displayColumns}
+                getWidthPx={getWidthPx}
+              />
               <thead>
                 <tr>
                   <th className="cc-th-check">
@@ -1133,7 +1178,7 @@ export default function CustomerCompanies({
                     <th
                       key={col.key}
                       className={`${col.key === '_favorite' ? 'cc-th-favorite' : ''} ${dragOverKey === col.key ? 'list-template-drag-over' : ''} ${col.key !== '_favorite' ? 'list-template-th-sortable' : ''}`}
-                      draggable
+                      draggable={!isResizing}
                       onDragStart={(e) => handleHeaderDragStart(e, col.key)}
                       onDragOver={(e) => handleHeaderDragOver(e, col.key)}
                       onDragLeave={handleHeaderDragLeave}
@@ -1153,15 +1198,17 @@ export default function CustomerCompanies({
                           )}
                         </span>
                       )}
+                      <CrmListColumnResizeHandle columnKey={col.key} onResizeStart={startResize} />
                     </th>
                   ))}
+                  <CrmListSheetFillHeaderCell />
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={colSpan + 1} className="text-center">불러오는 중...</td></tr>
+                  <tr><td colSpan={listSheetTableColSpan} className="text-center">불러오는 중...</td></tr>
                 ) : sortedItems.length === 0 ? (
-                  <tr><td colSpan={colSpan + 1} className="text-center">등록된 고객사가 없습니다.</td></tr>
+                  <tr><td colSpan={listSheetTableColSpan} className="text-center">등록된 고객사가 없습니다.</td></tr>
                 ) : (
                   sortedItems.map((row, idx) => (
                     <tr
@@ -1249,16 +1296,22 @@ export default function CustomerCompanies({
                           </td>
                         );
                       })}
+                      <CrmListSheetFillBodyCell />
                     </tr>
                   ))
                 )}
+                <CrmListSheetFillerRows
+                  count={listSheetFillRowCount}
+                  colSpan={listSheetTableColSpan}
+                  stripeStartIndex={listSheetBodyRowCount}
+                />
               </tbody>
             </table>
             </div>
             </div>
           </div>
           {!isSearchModal ? (
-          <div className="pagination-bar">
+          <div className="pagination-bar crm-list-pagination-bar">
             <p className="pagination-info">
               <strong>{pagination.total}</strong>개 중 <strong>{items.length ? (pagination.page - 1) * pagination.limit + 1 : 0}</strong>–<strong>{(pagination.page - 1) * pagination.limit + items.length}</strong>건 표시
             </p>
@@ -1269,6 +1322,7 @@ export default function CustomerCompanies({
             />
           </div>
           ) : null}
+          </div>
         </div>
       </div>
       {settingsOpen && (

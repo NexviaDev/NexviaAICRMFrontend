@@ -29,6 +29,10 @@ import OpportunityModal from '@/sales-pipeline/opportunity-modal/opportunity-mod
 import '@/sales-pipeline/opportunity-modal/opportunity-modal.css';
 import HomeLeadDetailModal from './home-lead-detail-modal';
 import HomeFullViewModal from './home-full-view-modal';
+import {
+  HomeForecastTable,
+  getHomeForecastColumnWidthsFromUser
+} from './home-forecast-table';
 import ProjectFormModal from '@/project/project-form-modal';
 import '@/project/project-form-modal.css';
 import { buildParticipantDirectoryFromOverview } from '@/lib/participant-directory-merge';
@@ -936,56 +940,26 @@ function lineChartYMargin(value, extents) {
   return Math.round(plotBottom - ((v - extents.vMin) / span) * plotH);
 }
 
-function clampLineChartCpY(cpY, y0, y1) {
-  const lo = Math.min(y0, y1);
-  const hi = Math.max(y0, y1);
-  return Math.max(lo, Math.min(hi, cpY));
-}
-
-/** 구간 단위 단조 접선 — 평탄 직전은 0, 변화 구간은 구간 기울기 */
-function lineChartSegmentTangents(y0, y1, dx, prevY) {
-  const slope = Math.abs(dx) < 1e-9 ? 0 : (y1 - y0) / dx;
-  const m0 = y0 === prevY ? 0 : slope;
-  return { m0, m1: slope };
-}
-
 /**
- * 꺾은선 path — 평탄 구간은 직선(L), 변화 구간만 단조 Bézier(C).
- * 0 아래로 내려가지 않고 마지막 포인트까지 반드시 연결.
+ * 꺾은선(polyline) — 포인트를 직선으로만 연결.
+ * 스플라인 보간 시 평탄 구간(동일 값)에서 곡선이 0선 아래로 내려가는 현상을 방지합니다.
  */
 function buildLinePathD(series, getY) {
   if (!Array.isArray(series) || series.length === 0) return '';
   const n = series.length;
-  const xs = series.map((_, idx) => lineChartX(idx, n));
-  const ys = series.map((item) => getY(Number(item?.value) || 0));
+  const points = series.map((item, idx) => ({
+    x: lineChartX(idx, n),
+    y: getY(Number(item?.value) || 0)
+  }));
 
   if (n === 1) {
-    return `M${xs[0]},${ys[0]}L${xs[0]},${ys[0]}`;
+    return `M${points[0].x},${points[0].y}`;
   }
 
-  let d = `M${xs[0]},${ys[0]}`;
-
-  for (let i = 0; i < n - 1; i += 1) {
-    const x0 = xs[i];
-    const y0 = ys[i];
-    const x1 = xs[i + 1];
-    const y1 = ys[i + 1];
-    const prevY = i > 0 ? ys[i - 1] : y0;
-
-    if (y0 === y1) {
-      d += `L${x1},${y1}`;
-      continue;
-    }
-
-    const dx = x1 - x0;
-    const { m0, m1 } = lineChartSegmentTangents(y0, y1, dx, prevY);
-    const cp1x = Math.round(x0 + dx / 3);
-    const cp1y = Math.round(clampLineChartCpY(y0 + (m0 * dx) / 3, y0, y1));
-    const cp2x = Math.round(x1 - dx / 3);
-    const cp2y = Math.round(clampLineChartCpY(y1 - (m1 * dx) / 3, y0, y1));
-    d += ` C${cp1x},${cp1y} ${cp2x},${cp2y} ${x1},${y1}`;
+  let d = `M${points[0].x},${points[0].y}`;
+  for (let i = 1; i < n; i += 1) {
+    d += `L${points[i].x},${points[i].y}`;
   }
-
   return d;
 }
 
@@ -2076,6 +2050,9 @@ export default function Dashboard() {
     probability: '',
     targetMonth: ''
   });
+  const [homeForecastColumnWidths, setHomeForecastColumnWidths] = useState(() =>
+    getHomeForecastColumnWidthsFromUser(getSavedHomeDashboardTemplate())
+  );
   /** 홈 KPI — 프로젝트 카드 (/api/projects, 완료 후 진행 순) */
   const [homeProjectPreview, setHomeProjectPreview] = useState([]);
   const [homeProjectPreviewLoading, setHomeProjectPreviewLoading] = useState(false);
@@ -2122,6 +2099,9 @@ export default function Dashboard() {
             }
             if (hd.quantityChartMode === 'bar' || hd.quantityChartMode === 'line') {
               setQuantityChartMode(hd.quantityChartMode);
+            }
+            if (hd.forecastColumnWidths && typeof hd.forecastColumnWidths === 'object') {
+              setHomeForecastColumnWidths({ ...hd.forecastColumnWidths });
             }
           }
           setInsightAccess({
@@ -3553,6 +3533,11 @@ export default function Dashboard() {
     () => forecastActiveRows.slice(0, HOME_FORECAST_PREVIEW_MAX),
     [forecastActiveRows]
   );
+
+  const persistHomeForecastColumnWidths = useCallback((widths) => {
+    setHomeForecastColumnWidths(widths);
+    patchHomeDashboardTemplate({ forecastColumnWidths: widths }).catch(() => {});
+  }, []);
 
   /** 인사이트 툴바(회사·팀·개인·부서·직원·KPI 기간) 변경 시에만 초기화 — `forecastPipelineRows` 참조만 바뀌는 갱신에 필터가 풀리지 않게 함 */
   useEffect(() => {
@@ -5273,94 +5258,19 @@ export default function Dashboard() {
                     ) : forecastActiveRows.length === 0 ? (
                       <p className="home-leader-breakdown-empty">선택한 필터에 맞는 진행 중 기회가 없습니다.</p>
                     ) : (
-                      <table className="home-leader-breakdown-table home-forecast-table">
-                        <thead>
-                          <tr>
-                            <th scope="col">업체명</th>
-                            <th scope="col">제안 소프트웨어</th>
-                            <th scope="col">금액</th>
-                            <th scope="col">수량</th>
-                            <th scope="col">최종 가격</th>
-                            <th scope="col">Forcast</th>
-                            <th scope="col">목표 월</th>
-                            <th scope="col">계약금액</th>
-                            <th scope="col">계산서 금액</th>
-                            <th scope="col">수금 완료 금액</th>
-                            <th scope="col">마진 금액</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(() => {
-                            const totals = sumForecastTotalsKrw(
-                              forecastActiveRows,
-                              homeForecastActiveFilters.product,
-                              dealBasRMap,
-                              getForecastRowDisplayForProductFilter
-                            );
-                            return (
-                              <>
-                                {forecastActivePreviewRows.map((row) => {
-                                  const d = getForecastRowDisplayForProductFilter(
-                                    row,
-                                    homeForecastActiveFilters.product
-                                  );
-                                  return (
-                                  <tr
-                                    key={row.id}
-                                    className="home-forecast-data-row"
-                                    tabIndex={0}
-                                    role="button"
-                                    aria-label={`기회 ${row.companyLabel} 상세`}
-                                    onClick={() => openHomeEditOpportunity(row.id)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter' || e.key === ' ') {
-                                        e.preventDefault();
-                                        openHomeEditOpportunity(row.id);
-                                      }
-                                    }}
-                                  >
-                                    <td>{row.companyLabel}</td>
-                                    <td>{renderSoftwareLabelCell(d.softwareLabel)}</td>
-                                    <td><DashboardKrwCell amount={d.unitPrice} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
-                                    <td>{d.quantity}</td>
-                                    <td><DashboardKrwCell amount={d.finalPrice} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
-                                    <td><DashboardKrwCell amount={d.forecastAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
-                                    <td>{formatForecastExpectedMonthCell(row.targetMonth)}</td>
-                                    <td><DashboardKrwCell amount={d.contractAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
-                                    <td><DashboardKrwCell amount={d.invoiceAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
-                                    <td><DashboardKrwCell amount={d.collectedAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
-                                    <td><DashboardKrwCell amount={d.marginAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
-                                  </tr>
-                                  );
-                                })}
-                                {forecastActiveRows.length > forecastActivePreviewRows.length ? (
-                                  <tr className="home-forecast-more-row">
-                                    <td colSpan={11}>
-                                      <span className="home-forecast-more-dots" aria-hidden>
-                                        <span>.</span>
-                                        <span>.</span>
-                                        <span>.</span>
-                                      </span>
-                                    </td>
-                                  </tr>
-                                ) : null}
-                                <tr className="home-forecast-total-row">
-                                  <td colSpan={2}>합계</td>
-                                  <td><DashboardKrwCell amount={totals.unitPrice} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
-                                  <td>{Number(totals.quantity || 0).toLocaleString('ko-KR')}</td>
-                                  <td><DashboardKrwCell amount={totals.finalPrice} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
-                                  <td><DashboardKrwCell amount={totals.forecast} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
-                                  <td>—</td>
-                                  <td><DashboardKrwCell amount={totals.contract} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
-                                  <td><DashboardKrwCell amount={totals.invoice} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
-                                  <td><DashboardKrwCell amount={totals.collected} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
-                                  <td><DashboardKrwCell amount={totals.margin} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
-                                </tr>
-                              </>
-                            );
-                          })()}
-                        </tbody>
-                      </table>
+                      <HomeForecastTable
+                        rows={forecastActivePreviewRows}
+                        totalRows={forecastActiveRows}
+                        productFilter={homeForecastActiveFilters.product}
+                        dealBasRMap={dealBasRMap}
+                        columnWidths={homeForecastColumnWidths}
+                        onPersistColumnWidths={persistHomeForecastColumnWidths}
+                        getRowDisplay={getForecastRowDisplayForProductFilter}
+                        formatTargetMonth={formatForecastExpectedMonthCell}
+                        renderSoftwareLabel={renderSoftwareLabelCell}
+                        onRowClick={openHomeEditOpportunity}
+                        showMoreDots={forecastActiveRows.length > forecastActivePreviewRows.length}
+                      />
                     )}
                   </div>
                   </div>
@@ -5393,94 +5303,19 @@ export default function Dashboard() {
                     ) : forecastCompletedRows.length === 0 ? (
                       <p className="home-leader-breakdown-empty">선택한 필터에 맞는 완료 기회가 없습니다.</p>
                     ) : (
-                      <table className="home-leader-breakdown-table home-forecast-table">
-                        <thead>
-                          <tr>
-                            <th scope="col">업체명</th>
-                            <th scope="col">제안 소프트웨어</th>
-                            <th scope="col">금액</th>
-                            <th scope="col">수량</th>
-                            <th scope="col">최종 가격</th>
-                            <th scope="col">Forcast</th>
-                            <th scope="col">목표 월</th>
-                            <th scope="col">계약금액</th>
-                            <th scope="col">계산서 금액</th>
-                            <th scope="col">수금 완료 금액</th>
-                            <th scope="col">마진 금액</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(() => {
-                            const totals = sumForecastTotalsKrw(
-                              forecastCompletedRows,
-                              homeForecastCompletedFilters.product,
-                              dealBasRMap,
-                              getForecastRowDisplayForProductFilter
-                            );
-                            return (
-                              <>
-                                {forecastCompletedPreviewRows.map((row) => {
-                                  const d = getForecastRowDisplayForProductFilter(
-                                    row,
-                                    homeForecastCompletedFilters.product
-                                  );
-                                  return (
-                                  <tr
-                                    key={`done-${row.id}`}
-                                    className="home-forecast-data-row"
-                                    tabIndex={0}
-                                    role="button"
-                                    aria-label={`기회 ${row.companyLabel} 상세`}
-                                    onClick={() => openHomeEditOpportunity(row.id)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter' || e.key === ' ') {
-                                        e.preventDefault();
-                                        openHomeEditOpportunity(row.id);
-                                      }
-                                    }}
-                                  >
-                                    <td>{row.companyLabel}</td>
-                                    <td>{renderSoftwareLabelCell(d.softwareLabel)}</td>
-                                    <td><DashboardKrwCell amount={d.unitPrice} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
-                                    <td>{d.quantity}</td>
-                                    <td><DashboardKrwCell amount={d.finalPrice} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
-                                    <td><DashboardKrwCell amount={d.forecastAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
-                                    <td>{formatForecastExpectedMonthCell(row.targetMonth)}</td>
-                                    <td><DashboardKrwCell amount={d.contractAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
-                                    <td><DashboardKrwCell amount={d.invoiceAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
-                                    <td><DashboardKrwCell amount={d.collectedAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
-                                    <td><DashboardKrwCell amount={d.marginAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
-                                  </tr>
-                                  );
-                                })}
-                                {forecastCompletedRows.length > forecastCompletedPreviewRows.length ? (
-                                  <tr className="home-forecast-more-row">
-                                    <td colSpan={11}>
-                                      <span className="home-forecast-more-dots" aria-hidden>
-                                        <span>.</span>
-                                        <span>.</span>
-                                        <span>.</span>
-                                      </span>
-                                    </td>
-                                  </tr>
-                                ) : null}
-                                <tr className="home-forecast-total-row">
-                                  <td colSpan={2}>합계</td>
-                                  <td><DashboardKrwCell amount={totals.unitPrice} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
-                                  <td>{Number(totals.quantity || 0).toLocaleString('ko-KR')}</td>
-                                  <td><DashboardKrwCell amount={totals.finalPrice} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
-                                  <td><DashboardKrwCell amount={totals.forecast} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
-                                  <td>—</td>
-                                  <td><DashboardKrwCell amount={totals.contract} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
-                                  <td><DashboardKrwCell amount={totals.invoice} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
-                                  <td><DashboardKrwCell amount={totals.collected} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
-                                  <td><DashboardKrwCell amount={totals.margin} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
-                                </tr>
-                              </>
-                            );
-                          })()}
-                        </tbody>
-                      </table>
+                      <HomeForecastTable
+                        rows={forecastCompletedPreviewRows}
+                        totalRows={forecastCompletedRows}
+                        productFilter={homeForecastCompletedFilters.product}
+                        dealBasRMap={dealBasRMap}
+                        columnWidths={homeForecastColumnWidths}
+                        onPersistColumnWidths={persistHomeForecastColumnWidths}
+                        getRowDisplay={getForecastRowDisplayForProductFilter}
+                        formatTargetMonth={formatForecastExpectedMonthCell}
+                        renderSoftwareLabel={renderSoftwareLabelCell}
+                        onRowClick={openHomeEditOpportunity}
+                        showMoreDots={forecastCompletedRows.length > forecastCompletedPreviewRows.length}
+                      />
                     )}
                   </div>
                   </div>
@@ -5808,78 +5643,18 @@ export default function Dashboard() {
               <p className="home-leader-breakdown-empty">선택한 필터에 맞는 진행 중 기회가 없습니다.</p>
             ) : (
               <div className="home-forecast-table-wrap">
-                <table className="home-leader-breakdown-table home-forecast-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">업체명</th>
-                      <th scope="col">제안 소프트웨어</th>
-                      <th scope="col">금액</th>
-                      <th scope="col">수량</th>
-                      <th scope="col">최종 가격</th>
-                      <th scope="col">Forcast</th>
-                      <th scope="col">목표 월</th>
-                      <th scope="col">계약금액</th>
-                      <th scope="col">계산서 금액</th>
-                      <th scope="col">수금 완료 금액</th>
-                      <th scope="col">마진 금액</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {forecastActiveRows.map((row) => {
-                      const d = getForecastRowDisplayForProductFilter(row, homeForecastActiveFilters.product);
-                      return (
-                      <tr
-                        key={`modal-forecast-${row.id}`}
-                        className="home-forecast-table-row-click"
-                        tabIndex={0}
-                        role="button"
-                        aria-label={`기회 ${row.companyLabel} 상세`}
-                        onClick={() => openHomeEditOpportunity(row.id)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            openHomeEditOpportunity(row.id);
-                          }
-                        }}
-                      >
-                        <td>{row.companyLabel}</td>
-                        <td>{renderSoftwareLabelCell(d.softwareLabel)}</td>
-                        <td><DashboardKrwCell amount={d.unitPrice} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
-                        <td>{d.quantity}</td>
-                        <td><DashboardKrwCell amount={d.finalPrice} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
-                        <td><DashboardKrwCell amount={d.forecastAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
-                        <td>{formatForecastExpectedMonthCell(row.targetMonth)}</td>
-                        <td><DashboardKrwCell amount={d.contractAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
-                        <td><DashboardKrwCell amount={d.invoiceAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
-                        <td><DashboardKrwCell amount={d.collectedAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
-                        <td><DashboardKrwCell amount={d.marginAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
-                      </tr>
-                      );
-                    })}
-                    {(() => {
-                      const totals = sumForecastTotalsKrw(
-                        forecastActiveRows,
-                        homeForecastActiveFilters.product,
-                        dealBasRMap,
-                        getForecastRowDisplayForProductFilter
-                      );
-                      return (
-                        <tr className="home-forecast-total-row">
-                          <td colSpan={2}>합계</td>
-                          <td><DashboardKrwCell amount={totals.unitPrice} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
-                          <td>{Number(totals.quantity || 0).toLocaleString('ko-KR')}</td>
-                          <td><DashboardKrwCell amount={totals.finalPrice} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
-                          <td><DashboardKrwCell amount={totals.forecast} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
-                          <td>—</td>
-                          <td><DashboardKrwCell amount={totals.contract} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
-                          <td><DashboardKrwCell amount={totals.invoice} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
-                          <td><DashboardKrwCell amount={totals.collected} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
-                          <td><DashboardKrwCell amount={totals.margin} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
-                        </tr>
-                      );
-                    })()}
-                  </tbody>
-                </table>
+                <HomeForecastTable
+                  rows={forecastActiveRows}
+                  productFilter={homeForecastActiveFilters.product}
+                  dealBasRMap={dealBasRMap}
+                  columnWidths={homeForecastColumnWidths}
+                  onPersistColumnWidths={persistHomeForecastColumnWidths}
+                  getRowDisplay={getForecastRowDisplayForProductFilter}
+                  formatTargetMonth={formatForecastExpectedMonthCell}
+                  renderSoftwareLabel={renderSoftwareLabelCell}
+                  onRowClick={openHomeEditOpportunity}
+                  dataRowClassName="home-forecast-table-row-click"
+                />
               </div>
             )}
           </div>
@@ -5893,81 +5668,18 @@ export default function Dashboard() {
               <p className="home-leader-breakdown-empty">선택한 필터에 맞는 완료 기회가 없습니다.</p>
             ) : (
               <div className="home-forecast-table-wrap">
-                <table className="home-leader-breakdown-table home-forecast-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">업체명</th>
-                      <th scope="col">제안 소프트웨어</th>
-                      <th scope="col">금액</th>
-                      <th scope="col">수량</th>
-                      <th scope="col">최종 가격</th>
-                      <th scope="col">확률</th>
-                      <th scope="col">Forcast</th>
-                      <th scope="col">목표 월</th>
-                      <th scope="col">계약금액</th>
-                      <th scope="col">계산서 금액</th>
-                      <th scope="col">수금 완료 금액</th>
-                      <th scope="col">마진 금액</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {forecastCompletedRows.map((row) => {
-                      const d = getForecastRowDisplayForProductFilter(row, homeForecastCompletedFilters.product);
-                      return (
-                      <tr
-                        key={`modal-completed-${row.id}`}
-                        className="home-forecast-data-row"
-                        tabIndex={0}
-                        role="button"
-                        aria-label={`기회 ${row.companyLabel} 상세`}
-                        onClick={() => openHomeEditOpportunity(row.id)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            openHomeEditOpportunity(row.id);
-                          }
-                        }}
-                      >
-                        <td>{row.companyLabel}</td>
-                        <td>{renderSoftwareLabelCell(d.softwareLabel)}</td>
-                        <td><DashboardKrwCell amount={d.unitPrice} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
-                        <td>{d.quantity}</td>
-                        <td><DashboardKrwCell amount={d.finalPrice} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
-                        <td>{Number.isFinite(row.probabilityPct) ? `${row.probabilityPct}%` : '—'}</td>
-                        <td><DashboardKrwCell amount={d.forecastAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
-                        <td>{formatForecastExpectedMonthCell(row.targetMonth)}</td>
-                        <td><DashboardKrwCell amount={d.contractAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
-                        <td><DashboardKrwCell amount={d.invoiceAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
-                        <td><DashboardKrwCell amount={d.collectedAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
-                        <td><DashboardKrwCell amount={d.marginAmount} currency={row.currency} dealBasRMap={dealBasRMap} /></td>
-                      </tr>
-                      );
-                    })}
-                    {(() => {
-                      const totals = sumForecastTotalsKrw(
-                        forecastCompletedRows,
-                        homeForecastCompletedFilters.product,
-                        dealBasRMap,
-                        getForecastRowDisplayForProductFilter
-                      );
-                      return (
-                        <tr className="home-forecast-total-row">
-                          <td colSpan={2}>합계</td>
-                          <td><DashboardKrwCell amount={totals.unitPrice} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
-                          <td>{Number(totals.quantity || 0).toLocaleString('ko-KR')}</td>
-                          <td><DashboardKrwCell amount={totals.finalPrice} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
-                          <td>—</td>
-                          <td><DashboardKrwCell amount={totals.forecast} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
-                          <td>—</td>
-                          <td><DashboardKrwCell amount={totals.contract} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
-                          <td><DashboardKrwCell amount={totals.invoice} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
-                          <td><DashboardKrwCell amount={totals.collected} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
-                          <td><DashboardKrwCell amount={totals.margin} currency={DASHBOARD_DISPLAY_CURRENCY} dealBasRMap={dealBasRMap} /></td>
-                        </tr>
-                      );
-                    })()}
-                  </tbody>
-                </table>
+                <HomeForecastTable
+                  rows={forecastCompletedRows}
+                  productFilter={homeForecastCompletedFilters.product}
+                  dealBasRMap={dealBasRMap}
+                  columnWidths={homeForecastColumnWidths}
+                  onPersistColumnWidths={persistHomeForecastColumnWidths}
+                  getRowDisplay={getForecastRowDisplayForProductFilter}
+                  formatTargetMonth={formatForecastExpectedMonthCell}
+                  renderSoftwareLabel={renderSoftwareLabelCell}
+                  onRowClick={openHomeEditOpportunity}
+                  showProbabilityColumn
+                />
               </div>
             )}
           </div>

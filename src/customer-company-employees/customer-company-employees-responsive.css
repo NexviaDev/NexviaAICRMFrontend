@@ -338,7 +338,7 @@
   }
 
   /* 모바일: 카드만 표시, 테이블 숨김 */
-  .customer-company-employees-page .table-wrap {
+  .customer-company-employees-page .crm-list-table-stack .table-wrap {
     display: none;
   }
 

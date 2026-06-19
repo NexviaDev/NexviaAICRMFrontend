@@ -362,16 +362,16 @@
     min-width: 0;
     display: flex;
     flex-direction: column;
-    overflow-x: hidden;
-    overflow-y: auto;
+    overflow: hidden;
     padding: 0;
   }
 
   .product-list-page:not(.product-list-page--search-modal) .panel.table-panel {
-    flex: 0 0 auto;
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    overflow: visible;
+    overflow: hidden;
     margin-bottom: 0;
     background: var(--card);
     border-radius: 0;
@@ -379,22 +379,37 @@
     border: none;
   }
 
+  .product-list-page:not(.product-list-page--search-modal) .crm-list-table-stack {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
   .product-list-page:not(.product-list-page--search-modal) .table-wrap {
-    flex: 0 0 auto;
-    overflow: visible;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
     background: var(--card);
     isolation: isolate;
   }
 
-  .product-list-page:not(.product-list-page--search-modal) .crm-list-sheet-scroll {
-    flex: 0 0 auto;
-    max-height: none;
-  }
-
-  .product-list-page:not(.product-list-page--search-modal) .pagination-bar {
+  .product-list-page:not(.product-list-page--search-modal) .crm-list-pagination-bar {
     flex-shrink: 0;
     margin-top: 0;
     background: var(--card);
+  }
+
+  .product-list-page:not(.product-list-page--search-modal) .crm-list-sheet-scroll {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    overflow: scroll;
+    scrollbar-gutter: stable both-edges;
+    border-bottom: none;
   }
 
   .product-list-page:not(.product-list-page--search-modal) .crm-list-sheet-scroll .crm-list-sheet thead th {
@@ -423,8 +438,8 @@
   font-size: 0.875rem;
 }
 
-.product-list-page .crm-list-sheet th:not(.pl-th-checkbox),
-.product-list-page .crm-list-sheet td:not(.pl-td-checkbox) {
+.product-list-page .crm-list-sheet:not(.crm-list-sheet--resizable) th:not(.pl-th-checkbox),
+.product-list-page .crm-list-sheet:not(.crm-list-sheet--resizable) td:not(.pl-td-checkbox) {
   min-width: 6rem;
 }
 
@@ -496,6 +511,14 @@
   font-size: 1rem;
   margin-left: 0.25rem;
   vertical-align: middle;
+}
+
+.product-list-page--search-modal .crm-list-table-stack {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .product-list-page--search-modal .table-wrap {

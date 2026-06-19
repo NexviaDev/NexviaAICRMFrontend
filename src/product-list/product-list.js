@@ -13,6 +13,19 @@ import {
   resolveListDisplayColumns
 } from '../lib/list-templates';
 import { listColumnValueInlineStyle } from '@/lib/list-column-cell-styles';
+import {
+  useCrmListColumnResize,
+  CrmListColgroup,
+  CrmListColumnResizeHandle
+} from '@/components/crm-list-column-resize/crm-list-column-resize';
+import {
+  useCrmListSheetFillerRowCount,
+  crmListSheetColSpanWithFill,
+  CrmListSheetFillHeaderCell,
+  CrmListSheetFillBodyCell,
+  CrmListSheetFillerRows
+} from '@/components/crm-list-sheet-fill/crm-list-sheet-fill';
+import { LIST_COLUMN_FIXED_WIDTH_PX } from '@/lib/list-column-widths';
 import './product-list.css';
 import './product-list-responsive.css';
 import '@/shared/crm-list-sheet-table.css';
@@ -348,6 +361,7 @@ export default function ProductList({
   );
   const selectionAnchorIdxRef = useRef(null);
   const headerSelectAllRef = useRef(null);
+  const listSheetScrollRef = useRef(null);
   const customFieldColumnsRef = useRef([]);
 
   useEffect(() => {
@@ -670,7 +684,12 @@ export default function ProductList({
     if (fromIdx === -1 || toIdx === -1) return;
     order.splice(fromIdx, 1);
     order.splice(toIdx, 0, fromKey);
-    saveTemplate({ columnOrder: order, visible: template.visible, columnCellStyles: template.columnCellStyles });
+    saveTemplate({
+      columnOrder: order,
+      visible: template.visible,
+      columnCellStyles: template.columnCellStyles,
+      columnWidths: template.columnWidths
+    });
   };
 
   /** columnOrder·visible·커스텀 열 정의를 합쳐 실제 표시 열 구성 (코드 열은 항상 표시) */
@@ -690,6 +709,25 @@ export default function ProductList({
     return [...byKey.values()];
   }, [template.columns, customFieldColumns]);
   const colSpan = Math.max(1, displayColumns.length + 1);
+  const displayColumnKeys = useMemo(() => displayColumns.map((c) => c.key), [displayColumns]);
+
+  const persistColumnWidths = useCallback(
+    (columnWidths) =>
+      saveTemplate({
+        columnOrder: template.columnOrder,
+        visible: template.visible,
+        columnCellStyles: template.columnCellStyles,
+        columnWidths
+      }),
+    [saveTemplate, template.columnOrder, template.visible, template.columnCellStyles]
+  );
+
+  const { getWidthPx, tableWidthPx, startResize, isResizing } = useCrmListColumnResize({
+    columnWidths: template.columnWidths,
+    displayColumnKeys,
+    onPersistWidths: persistColumnWidths,
+    leadingColWidthsPx: [LIST_COLUMN_FIXED_WIDTH_PX.__rowCheckbox__]
+  });
 
   const getSortValue = useCallback((row, key) => {
     if (key === 'name') return (row.name || '').toLowerCase();
@@ -735,6 +773,10 @@ export default function ProductList({
       return 0;
     });
   }, [resolvedItems, sortKey, sortDir, getSortValue]);
+
+  const listSheetBodyRowCount = loading || sortedItems.length === 0 ? 1 : sortedItems.length;
+  const listSheetFillRowCount = useCrmListSheetFillerRowCount(listSheetScrollRef, listSheetBodyRowCount);
+  const listSheetTableColSpan = crmListSheetColSpanWithFill(colSpan);
 
   const handleSortColumn = useCallback((key) => {
     setSort((prev) => {
@@ -1204,10 +1246,19 @@ export default function ProductList({
               </div>
             )}
           </div>
+          <div className="crm-list-table-stack">
           <div className="table-wrap">
-            <div className="crm-list-sheet-scroll">
+            <div className="crm-list-sheet-scroll" ref={listSheetScrollRef}>
             <div className="crm-list-sheet-table-wrap">
-            <table className="data-table crm-list-sheet">
+            <table
+              className="data-table crm-list-sheet crm-list-sheet--resizable"
+              style={{ '--crm-list-table-width': `${tableWidthPx}px` }}
+            >
+              <CrmListColgroup
+                leadingCols={[{ key: '__rowCheckbox__', widthPx: LIST_COLUMN_FIXED_WIDTH_PX.__rowCheckbox__ }]}
+                displayColumns={displayColumns}
+                getWidthPx={getWidthPx}
+              />
               <thead>
                 <tr>
                   <th className="pl-th-checkbox" scope="col" aria-label="검색·필터 결과 전체 선택">
@@ -1238,7 +1289,7 @@ export default function ProductList({
                         isProductPricingHighlightColumn(col) ? 'pl-col-pricing-highlight' : '',
                         dragOverKey === col.key ? 'list-template-drag-over' : ''
                       ].filter(Boolean).join(' ')}
-                      draggable
+                      draggable={!isResizing}
                       onDragStart={(e) => handleHeaderDragStart(e, col.key)}
                       onDragOver={(e) => handleHeaderDragOver(e, col.key)}
                       onDragLeave={handleHeaderDragLeave}
@@ -1254,15 +1305,17 @@ export default function ProductList({
                           </span>
                         )}
                       </span>
+                      <CrmListColumnResizeHandle columnKey={col.key} onResizeStart={startResize} />
                     </th>
                   ))}
+                  <CrmListSheetFillHeaderCell />
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={colSpan} className="text-center">불러오는 중...</td></tr>
+                  <tr><td colSpan={listSheetTableColSpan} className="text-center">불러오는 중...</td></tr>
                 ) : sortedItems.length === 0 ? (
-                  <tr><td colSpan={colSpan} className="text-center">등록된 제품이 없습니다.</td></tr>
+                  <tr><td colSpan={listSheetTableColSpan} className="text-center">등록된 제품이 없습니다.</td></tr>
                 ) : (
                   sortedItems.map((row, rowIdx) => (
                     <tr
@@ -1388,16 +1441,22 @@ export default function ProductList({
                         </td>
                         );
                       })}
+                      <CrmListSheetFillBodyCell />
                     </tr>
                   ))
                 )}
+                <CrmListSheetFillerRows
+                  count={listSheetFillRowCount}
+                  colSpan={listSheetTableColSpan}
+                  stripeStartIndex={listSheetBodyRowCount}
+                />
               </tbody>
             </table>
             </div>
             </div>
           </div>
           {!isSearchModal ? (
-            <div className="pagination-bar">
+            <div className="pagination-bar crm-list-pagination-bar">
               <p className="pagination-info">
                 <strong>{pagination.total}</strong>개 중 <strong>{items.length ? (pagination.page - 1) * pagination.limit + 1 : 0}</strong>–<strong>{(pagination.page - 1) * pagination.limit + items.length}</strong>건 표시
               </p>
@@ -1408,6 +1467,7 @@ export default function ProductList({
               />
             </div>
           ) : null}
+          </div>
         </div>
         {isSearchModal ? (
           <div className="product-list-search-modal-footer" role="group" aria-label="제품 선택">

@@ -34,11 +34,333 @@
   background: #a8bdd4;
 }
 
+/* 고객사·연락처·제품 목록 — 테이블 패널 안에서 세로·가로 스크롤 항상 표시 */
+@media (min-width: 769px) {
+  .customer-companies-page .page-content,
+  .customer-company-employees-page .page-content,
+  .product-list-page:not(.product-list-page--search-modal) .page-content {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .customer-companies-page .page-content > .cc-selection-action-bar,
+  .customer-companies-page .page-content > .cc-search-modal-merge-batch-bar,
+  .customer-company-employees-page .page-content > .cce-action-bar,
+  .product-list-page .page-content > .cce-action-bar {
+    flex-shrink: 0;
+  }
+
+  .customer-companies-page .panel.table-panel,
+  .customer-company-employees-page .panel.table-panel,
+  .product-list-page:not(.product-list-page--search-modal) .panel.table-panel {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .customer-companies-page .crm-list-table-stack,
+  .customer-company-employees-page .crm-list-table-stack,
+  .product-list-page:not(.product-list-page--search-modal) .crm-list-table-stack {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .customer-companies-page .table-wrap,
+  .customer-company-employees-page .table-wrap,
+  .product-list-page:not(.product-list-page--search-modal) .table-wrap {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .customer-companies-page .crm-list-sheet-scroll,
+  .customer-company-employees-page .crm-list-sheet-scroll,
+  .product-list-page:not(.product-list-page--search-modal) .crm-list-sheet-scroll {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    overflow: scroll;
+    scrollbar-gutter: stable both-edges;
+    border-bottom: none;
+  }
+
+  .customer-companies-page .crm-list-pagination-bar,
+  .customer-company-employees-page .crm-list-pagination-bar,
+  .product-list-page:not(.product-list-page--search-modal) .crm-list-pagination-bar {
+    flex-shrink: 0;
+    margin-top: 0;
+    border: 1px solid rgba(78, 121, 167, 0.22);
+    border-top: 1px solid var(--card-border, #e2e8f0);
+    background: var(--card, #fff);
+  }
+}
+
 .crm-list-sheet-table-wrap {
-  display: inline-block;
+  display: block;
+  width: 100%;
   min-width: 100%;
   box-sizing: border-box;
   vertical-align: top;
+}
+
+/* 열 너비 = colgroup 픽셀 합계 고정 + 오른쪽 여백은 fill 열이 흡수 */
+.crm-list-sheet.data-table.crm-list-sheet--resizable {
+  table-layout: fixed;
+  width: max(var(--crm-list-table-width, 100%), 100%);
+  min-width: 100%;
+  max-width: none;
+}
+
+col.crm-list-sheet-fill-col {
+  width: auto;
+}
+
+.crm-list-sheet-fill-th {
+  padding: 0;
+  width: auto;
+  max-width: none;
+  min-width: 0;
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+  border-bottom: 1px solid var(--crm-list-sheet-header-border);
+  background: var(--crm-list-sheet-header);
+}
+
+.crm-list-sheet-fill-td {
+  padding: 0;
+  width: auto;
+  max-width: none;
+  min-width: 0;
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+  border-bottom: 1px solid var(--crm-list-sheet-border);
+}
+
+.crm-list-sheet-fill-td-span {
+  width: auto;
+  max-width: none;
+  min-width: 0;
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+  border-bottom: 1px solid var(--crm-list-sheet-border);
+  min-height: 3.25rem;
+}
+
+.crm-list-sheet.data-table.crm-list-sheet--resizable thead th,
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td {
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.crm-list-sheet.data-table.crm-list-sheet--resizable thead th.cc-th-check,
+.crm-list-sheet.data-table.crm-list-sheet--resizable thead th.cc-th-favorite,
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td.cc-td-check,
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td.cc-td-favorite,
+.crm-list-sheet.data-table.crm-list-sheet--resizable thead th.cce-th-check,
+.crm-list-sheet.data-table.crm-list-sheet--resizable thead th.cce-th-favorite,
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td.cce-td-check,
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td.cce-td-favorite,
+.crm-list-sheet.data-table.crm-list-sheet--resizable thead th.pl-th-checkbox,
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td.pl-td-checkbox {
+  min-width: auto;
+}
+
+.crm-list-sheet.data-table.crm-list-sheet--resizable .product-list-cell-name {
+  min-width: 0;
+}
+
+.crm-list-sheet.data-table.crm-list-sheet--resizable thead th {
+  position: relative;
+  overflow: hidden;
+}
+
+.crm-list-sheet.data-table.crm-list-sheet--resizable thead th.list-template-th-sortable,
+.crm-list-sheet.data-table.crm-list-sheet--resizable thead th:not(.cc-th-favorite):not(.cce-th-favorite):not(.cc-th-check):not(.cce-th-check):not(.pl-th-checkbox) {
+  padding-right: 1.35rem;
+}
+
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 0;
+}
+
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td.cc-td-check,
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td.cc-td-favorite,
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td.pl-td-checkbox,
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td.cce-td-check,
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td.cce-td-favorite,
+.crm-list-sheet.data-table.crm-list-sheet--resizable thead th.cc-th-check,
+.crm-list-sheet.data-table.crm-list-sheet--resizable thead th.cc-th-favorite,
+.crm-list-sheet.data-table.crm-list-sheet--resizable thead th.pl-th-checkbox,
+.crm-list-sheet.data-table.crm-list-sheet--resizable thead th.cce-th-check,
+.crm-list-sheet.data-table.crm-list-sheet--resizable thead th.cce-th-favorite,
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td.crm-list-sheet-fill-td,
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td.crm-list-sheet-fill-td-span,
+.crm-list-sheet.data-table.crm-list-sheet--resizable thead th.crm-list-sheet-fill-th {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  max-width: none;
+}
+
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td .list-col-value-style {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td .cell-user,
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td .cc-name-cell,
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td .cce-name-cell {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td .cc-name-cell-avatar,
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td .cce-name-cell-avatar {
+  flex-shrink: 0;
+}
+
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td .cc-name-cell-text,
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td .cce-name-cell-text {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td .cc-name-cell-text .font-semibold,
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td .cce-name-cell-text .font-semibold {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td .cce-contact-cell,
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td .cce-email-cell {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 100%;
+  min-width: 0;
+  vertical-align: middle;
+}
+
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td .cce-phone-text,
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td .cce-email-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: normal;
+}
+
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td:has(.product-list-cell-name) {
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td .product-list-cell-name,
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td .product-list-name,
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td .product-list-uid {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
+}
+
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td .product-list-pricing {
+  display: inline-flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td .product-list-price,
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td .product-list-billing {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crm-list-sheet.data-table.crm-list-sheet--resizable thead th .list-template-th-content {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-right: 4px;
+}
+
+.crm-list-col-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 12px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 3;
+  touch-action: none;
+}
+
+.crm-list-col-resize-handle::before {
+  content: '';
+  position: absolute;
+  top: 22%;
+  bottom: 22%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  border-radius: 1px;
+  background: transparent;
+  transition: background 0.12s ease, width 0.12s ease;
+}
+
+.crm-list-col-resize-handle:hover::before,
+.crm-list-sheet.data-table.crm-list-sheet--resizable thead th:hover .crm-list-col-resize-handle::before,
+body.crm-list-col-resizing .crm-list-col-resize-handle::before {
+  width: 3px;
+  background: rgba(205, 229, 255, 0.95);
+  box-shadow: 0 0 0 1px rgba(44, 100, 133, 0.12);
+}
+
+body.crm-list-col-resizing .crm-list-col-resize-handle::before {
+  background: #a0d5fb;
+}
+
+body.crm-list-col-resizing,
+body.crm-list-col-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
 }
 
 .crm-list-sheet.data-table {

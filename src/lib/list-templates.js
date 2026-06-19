@@ -1,6 +1,6 @@
 /**
  * 리스트 컬럼 템플릿: User listTemplates와 기본 컬럼 정의.
- * customerCompanies, customerCompanyEmployees, productList 열 순서·표시 여부,
+ * customerCompanies, customerCompanyEmployees, productList 열 순서·표시 여부·열 너비(columnWidths),
  * calendar 보기(월/주/일), salesPipeline 필터 저장/복원, 홈 대시보드 인사이트(homeDashboard),
  * 드롭존 목록(dropZoneListModal): columnOrder, showScheduleCustomDateColumns, scheduleCustomDateColumnVisibility(키별 숨김=false만 저장).
  * 메일 작성 AI 문장 다듬기(guided_rewrite 5축) — listTemplates.emailComposeModal.guidedRewrite
@@ -33,7 +33,7 @@ export const LIST_IDS = {
   CUSTOMER_COMPANY_DETAIL_MODAL: 'customerCompanyDetailModal',
   /** 연락처 상세 모달 표시 — listTemplates.customerCompanyEmployeesDetailModal { presentation: 'side' | 'center' } */
   CUSTOMER_COMPANY_EMPLOYEES_DETAIL_MODAL: 'customerCompanyEmployeesDetailModal',
-  /** 홈 일일 대시보드 — listTemplates.homeDashboard { companyWideInsight, kpiPeriod, consumerChartMode, marginChartMode, productChartMode, quantityChartMode, … } */
+  /** 홈 일일 대시보드 — listTemplates.homeDashboard { companyWideInsight, kpiPeriod, consumerChartMode, marginChartMode, productChartMode, quantityChartMode, forecastColumnWidths, … } */
   HOME_DASHBOARD: 'homeDashboard',
   /** 결과 드롭존 목록 표 열 순서 — listTemplates.dropZoneListModal { columnOrder } */
   DROP_ZONE_LIST_MODAL: 'dropZoneListModal',
@@ -122,7 +122,7 @@ export function getSavedHomeDashboardTemplate() {
 
 /**
  * PATCH /api/auth/list-templates — listId: homeDashboard (부분 갱신, 서버에서 기존 값과 병합)
- * @param {object} patch — kpiPeriod, companyWideInsight, leaderInsightViewKind, insightDeptId, insightUserId, consumerChartMode, marginChartMode, productChartMode, quantityChartMode
+ * @param {object} patch — kpiPeriod, companyWideInsight, leaderInsightViewKind, insightDeptId, insightUserId, consumerChartMode, marginChartMode, productChartMode, quantityChartMode, forecastColumnWidths
  */
 export async function patchHomeDashboardTemplate(patch) {
   if (!patch || typeof patch !== 'object') {
@@ -398,7 +398,7 @@ export async function patchAddProductModalDefaults({ categoryKey, categoryOther,
  */
 export function getEffectiveTemplate(listId, saved, extraColumns = []) {
   const defaults = DEFAULT_COLUMNS[listId];
-  if (!defaults) return { columnOrder: [], visible: {}, columns: [], columnCellStyles: {} };
+  if (!defaults) return { columnOrder: [], visible: {}, columns: [], columnCellStyles: {}, columnWidths: {} };
   const defaultOrder = defaults.map((c) => c.key);
   const extraOrder = (Array.isArray(extraColumns) ? extraColumns : []).map((c) => c.key);
   const allOrder = [...defaultOrder];
@@ -430,7 +430,11 @@ export function getEffectiveTemplate(listId, saved, extraColumns = []) {
     saved?.columnCellStyles && typeof saved.columnCellStyles === 'object' && !Array.isArray(saved.columnCellStyles)
       ? { ...saved.columnCellStyles }
       : {};
-  return { columnOrder: order, visible, columns, columnCellStyles };
+  const columnWidths =
+    saved?.columnWidths && typeof saved.columnWidths === 'object' && !Array.isArray(saved.columnWidths)
+      ? { ...saved.columnWidths }
+      : {};
+  return { columnOrder: order, visible, columns, columnCellStyles, columnWidths };
 }
 
 /**
@@ -697,14 +701,16 @@ export async function resetListTemplate(listId, extraColumns = []) {
       return patchListTemplate(listId, {
         columnOrder: [...d.columnOrder],
         visible: { ...d.visible },
-        columnCellStyles: {}
+        columnCellStyles: {},
+        columnWidths: {}
       });
     }
     const defaults = getEffectiveTemplate(listId, null, extraColumns);
     return patchListTemplate(listId, {
       columnOrder: defaults.columnOrder,
       visible: defaults.visible,
-      columnCellStyles: {}
+      columnCellStyles: {},
+      columnWidths: {}
     });
   }
   const res = await fetch(`${API_BASE}/auth/list-templates/section/${encodeURIComponent(listId)}`, {
