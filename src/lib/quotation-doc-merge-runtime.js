@@ -18,6 +18,7 @@ export const MERGE_RUNTIME_TENANT = {
   pageSubtitle: null,
   showRegistrationScopePicker: true,
   allowDeleteTemplate: (template, canDeleteByRole) => canDeleteByRole && !template?.isCommon,
+  allowEditTemplateProfile: (template) => !template?.isCommon,
   getAuthHeaders: () => getCrmAuthHeader(),
   showCommonTemplateBadge: true
 };
@@ -31,6 +32,7 @@ export const MERGE_RUNTIME_ADMIN_COMMON = {
   pageSubtitle: '등록한 양식은 모든 회사 CRM에서 공통으로 표시됩니다.',
   showRegistrationScopePicker: false,
   allowDeleteTemplate: () => true,
+  allowEditTemplateProfile: () => true,
   getAuthHeaders: (opts = {}) => getAdminSiteFetchHeaders({ json: !opts.formData }),
   showCommonTemplateBadge: false,
   forceCanManageMergeFields: true

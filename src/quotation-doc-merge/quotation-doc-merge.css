@@ -344,6 +344,18 @@
   background: #e4edfc;
 }
 
+.qdm-template-row--profile-readonly {
+  cursor: default;
+}
+
+.qdm-template-row--profile-readonly:hover {
+  background: inherit;
+}
+
+.qdm-table.qdm-table--excel .qdm-template-row--profile-readonly:hover .qdm-excel-td:not(.qdm-excel-td--gutter):not(.qdm-excel-td--actions) {
+  background: inherit;
+}
+
 /* 등록 양식 표: 엑셀 격자 + 행 선택(파스텔, 그라데이션 없음) */
 .qdm-kbd {
   display: inline-block;

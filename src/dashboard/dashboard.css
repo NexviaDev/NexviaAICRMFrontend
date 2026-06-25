@@ -1568,6 +1568,15 @@
   grid-column: 1 / -1;
 }
 
+/* Forecast·완료 표 — crm-list-sheet-table.css(나중 로드)보다 thead 색상 우선 */
+.home-page,
+.home-modal-forecast {
+  --crm-list-sheet-header: #4e79a7;
+  --crm-list-sheet-stripe: #eef4fa;
+  --crm-list-sheet-border: rgba(78, 121, 167, 0.14);
+  --crm-list-sheet-header-border: rgba(78, 121, 167, 0.2);
+}
+
 /* Forecast·Todo·우수 담당자 — 그리드/스택 안에서는 바깥 margin 없음 */
 .panel.home-chart-panel.home-forecast-panel,
 .panel.home-chart-panel.home-todo-panel,
@@ -1794,7 +1803,8 @@
   font-size: 0.8125rem;
 }
 
-.home-chart-panel .home-forecast-table thead th,
+.home-chart-panel .home-forecast-table.crm-list-sheet.data-table thead th,
+.home-modal-forecast .home-forecast-table.crm-list-sheet.data-table thead th,
 .home-reps-body .data-table th {
   padding: 0.55rem 0.7rem;
   font-size: 0.72rem;
@@ -1807,7 +1817,8 @@
   text-align: left;
 }
 
-.home-chart-panel .home-forecast-table thead th:last-child {
+.home-chart-panel .home-forecast-table.crm-list-sheet.data-table thead th:last-child,
+.home-modal-forecast .home-forecast-table.crm-list-sheet.data-table thead th:last-child {
   border-right: none;
 }
 

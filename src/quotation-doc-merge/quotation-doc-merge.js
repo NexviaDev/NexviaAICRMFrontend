@@ -82,6 +82,9 @@ import { resolveOrgChartFromListTemplates } from '@/lib/org-chart-tree-utils';
 import { customerCompanyToMergeRow as companyToMergeRow } from '@/lib/merge-customer-company-row';
 import './quotation-doc-merge.css';
 
+const MERGE_COMMON_TEMPLATE_PROFILE_READONLY_MSG =
+  '공통 양식의 PDF·메일 설정은 Nexvia Admin(/admin/quotation-doc-merge)에서만 변경할 수 있습니다.';
+
 /** 데이터 시트를 처음 열 때 만들 빈 행 수 */
 const MERGE_SHEET_INITIAL_ROWS = 200;
 /** 붙여넣기·고객사 불러오기 등으로 늘릴 수 있는 행 상한 */
@@ -376,6 +379,15 @@ export default function QuotationDocMerge({ runtime = MERGE_RUNTIME_TENANT } = {
   const canDeleteTemplateByRole = isAdminOrAboveRole(me?.role);
   const canManageMergeFields =
     runtime.forceCanManageMergeFields === true || isManagerOrAboveRole(me?.role);
+  const canEditTemplateProfile = useCallback(
+    (template) => {
+      if (typeof runtime.allowEditTemplateProfile === 'function') {
+        return runtime.allowEditTemplateProfile(template);
+      }
+      return true;
+    },
+    [runtime]
+  );
   const mergeApiBase = `${API_BASE}${runtime.apiPrefix}`;
   const getAuthHeader = useCallback((opts) => runtime.getAuthHeaders(opts), [runtime]);
   const sheetUrlParam = runtime.sheetUrlParam;
@@ -658,6 +670,10 @@ export default function QuotationDocMerge({ runtime = MERGE_RUNTIME_TENANT } = {
   const openTemplateEditPrepare = useCallback(
     async (template) => {
       if (!template?._id) return;
+      if (!canEditTemplateProfile(template)) {
+        window.alert(MERGE_COMMON_TEMPLATE_PROFILE_READONLY_MSG);
+        return;
+      }
       const tid = String(template._id);
       setSelectedTemplateId(tid);
       setTemplatePrepareMode('edit');
@@ -688,7 +704,7 @@ export default function QuotationDocMerge({ runtime = MERGE_RUNTIME_TENANT } = {
       setTemplateUploadPrepareScope('company');
       setTemplateUploadPrepareOpen(true);
     },
-    [loadFieldPresets, loadFieldGuide, getAuthHeader, templateProfilesById]
+    [loadFieldPresets, loadFieldGuide, getAuthHeader, templateProfilesById, canEditTemplateProfile]
   );
 
   const closeTemplateUploadPrepare = useCallback(() => {
@@ -803,6 +819,10 @@ export default function QuotationDocMerge({ runtime = MERGE_RUNTIME_TENANT } = {
       ? String(templatePrepareEditingTemplate._id)
       : '';
     if (!tid) return;
+    if (!canEditTemplateProfile(templatePrepareEditingTemplate)) {
+      window.alert(MERGE_COMMON_TEMPLATE_PROFILE_READONLY_MSG);
+      return;
+    }
     if (!mergeFieldsSheet.length) {
       window.alert('문서 치환 항목을 불러온 뒤 저장할 수 있습니다. 필드 구성을 확인하거나 치환 항목 편집에서 항목을 추가해 주세요.');
       return;
@@ -868,7 +888,8 @@ export default function QuotationDocMerge({ runtime = MERGE_RUNTIME_TENANT } = {
     mergeMailFallback,
     mergeFieldsSheet,
     runtime.apiPrefix,
-    runtime.showRegistrationScopePicker
+    runtime.showRegistrationScopePicker,
+    canEditTemplateProfile
   ]);
 
   const saveTemplateUploadPrepare = useCallback(async () => {
@@ -2319,6 +2340,7 @@ export default function QuotationDocMerge({ runtime = MERGE_RUNTIME_TENANT } = {
                       {templates.map((t, idx) => {
                         const isDefault = String(t._id) === String(selectedTemplateId);
                         const isRangeSelected = templateRowSelectedIds.has(String(t._id));
+                        const templateProfileEditable = canEditTemplateProfile(t);
                         return (
                           <tr
                             key={t._id}
@@ -2327,16 +2349,22 @@ export default function QuotationDocMerge({ runtime = MERGE_RUNTIME_TENANT } = {
                               'qdm-template-row',
                               'qdm-template-row--excel',
                               isDefault ? 'qdm-template-row--default' : '',
-                              isRangeSelected ? 'qdm-template-row--range-selected' : ''
+                              isRangeSelected ? 'qdm-template-row--range-selected' : '',
+                              !templateProfileEditable ? 'qdm-template-row--profile-readonly' : ''
                             ]
                               .filter(Boolean)
                               .join(' ')}
                             onClick={(e) => {
                               if (e.target.closest('button')) return;
                               if (e.target.closest('.qdm-excel-td--gutter')) return;
+                              if (!templateProfileEditable) return;
                               void openTemplateEditPrepare(t);
                             }}
-                            title="행 클릭: PDF·메일 설정 편집. # 열: 선택·드래그."
+                            title={
+                              templateProfileEditable
+                                ? '행 클릭: PDF·메일 설정 편집. # 열: 선택·드래그.'
+                                : '공통 양식 — PDF·메일 설정은 Admin에서만 변경. 파일 받기는 사용 가능.'
+                            }
                           >
                             <td
                               className="qdm-excel-td qdm-excel-td--gutter"
