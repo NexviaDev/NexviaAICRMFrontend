@@ -2,6 +2,7 @@
  * 제품 목록(product-list.js)에서 URL ?modal=excel-import 로 열립니다.
  */
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { API_BASE } from '@/config';
 import { pingBackendHealth } from '@/lib/backend-wake';
 import { useExchangeRates } from '@/lib/use-exchange-rates';
@@ -28,11 +29,6 @@ import {
   productRowStatus,
   resolveProductExcelColumnKey
 } from './product-excel-import-utils';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function newRowId() {
   return `row-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -83,7 +79,7 @@ export default function ProductExcelImportModal({
       return;
     }
     let cancelled = false;
-    fetch(`${API_BASE}/custom-field-definitions?entityType=product`, { headers: getAuthHeader() })
+    fetch(`${API_BASE}/custom-field-definitions?entityType=product`, crmFetchInit())
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return;
@@ -272,15 +268,12 @@ export default function ProductExcelImportModal({
           if (i > 0 && i % 20 === 0) {
             await pingBackendHealth(getAuthHeader);
           }
-          const res = await fetch(`${API_BASE}/products`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-            body: JSON.stringify({
+          const res = await fetch(`${API_BASE}/products`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
               ...body,
               createSource: 'excel-import',
               skipCatalogRenewalCalendar: true
-            })
-          });
+             })
+          }));
           if (res.ok) {
             ok += 1;
             if (successSamples.length < 10) {

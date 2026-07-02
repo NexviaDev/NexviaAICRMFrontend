@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { API_BASE } from '@/config';
 import {
   buildPricingStepRows,
@@ -17,11 +18,6 @@ import {
   normalizeExchangeRateStepFormula
 } from '@/lib/exchange-rate-formula-fields';
 import './exchange-rate-pricing-panel.css';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function captureInputSelection(stepId, el, selectionStore) {
   if (!el || typeof el.selectionStart !== 'number') return;

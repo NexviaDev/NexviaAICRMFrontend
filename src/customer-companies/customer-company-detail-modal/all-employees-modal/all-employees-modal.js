@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import AddContactModal from '../../../customer-company-employees/add-customer-company-employees-modal/add-customer-company-employees-modal';
 import SmsDraftModal, { phoneToSmsHref } from '../../../customer-company-employees/sms-draft-modal/sms-draft-modal';
 import EmailComposeModal from '../../../email/email-compose-modal.jsx';
@@ -7,11 +8,6 @@ import './all-employees-modal.css';
 
 import { API_BASE } from '@/config';
 const LIMIT = 200;
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 /** 고객사 세부 모달 내 "전체 직원 목록" 모달 - DB 조회, 체크박스(Shift 범위 선택), 직원 추가, 연락처 가지고 오기 */
 export default function AllEmployeesModal({ employees: initialEmployees, customerCompany, onClose, onSelectContact, onRefreshEmployees }) {
@@ -31,7 +27,7 @@ export default function AllEmployeesModal({ employees: initialEmployees, custome
     setLoading(true);
     try {
       const params = new URLSearchParams({ customerCompanyId: companyId, limit: String(LIMIT) });
-      const res = await fetch(`${API_BASE}/customer-company-employees?${params}`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/customer-company-employees?${params}`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (res.ok) setList(data.items || []);
       else setList([]);

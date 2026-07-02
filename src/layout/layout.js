@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import { Outlet, useLocation, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { API_BASE } from '@/config';
 import { getPendingExcelImportJobs, removePendingExcelImportJob } from '@/lib/cc-excel-import-jobs';
@@ -55,7 +56,7 @@ export default function Layout({ embeddedContent = null }) {
 
   /** 로그인 후 모든 화면에서 포그라운드 푸시 수신(공지 페이지만이 아님) */
   useEffect(() => {
-    const crmToken = localStorage.getItem('crm_token');
+    const crmToken = getCrmToken();
     if (!crmToken) return undefined;
     let cleanup = null;
     bindPushForegroundNotifications((payload) => {
@@ -89,7 +90,7 @@ export default function Layout({ embeddedContent = null }) {
 
   /** 허용된 기기·OS 설정에서 알림 재허용·앱 복귀 시 FCM 토큰 갱신 */
   useEffect(() => {
-    const crmToken = localStorage.getItem('crm_token');
+    const crmToken = getCrmToken();
     if (!crmToken || typeof Notification === 'undefined') return undefined;
     const onResume = () => {
       if (document.visibilityState !== 'visible') return;
@@ -114,12 +115,10 @@ export default function Layout({ embeddedContent = null }) {
   const isProjectGantt = location.pathname === '/project' && searchParams.get('view') === 'gantt';
 
   useEffect(() => {
-    const token = localStorage.getItem('crm_token');
+    const token = getCrmToken();
     if (!token) return;
     let cancelled = false;
-    fetch(`${API_BASE}/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
+    fetch(`${API_BASE}/auth/me`, crmFetchInit())
       .then((res) => res.json().catch(() => ({})))
       .then((data) => {
         if (cancelled || !data?.user) return;
@@ -142,7 +141,7 @@ export default function Layout({ embeddedContent = null }) {
 
   /** 로그인·계정 전환 시 푸시 등록을 현재 사용자와 맞춤 */
   useEffect(() => {
-    const crmToken = localStorage.getItem('crm_token');
+    const crmToken = getCrmToken();
     if (!crmToken || !currentUser?._id) return undefined;
     let cancelled = false;
     void syncPushRegistrationForSession(currentUser).catch(() => {
@@ -178,7 +177,7 @@ export default function Layout({ embeddedContent = null }) {
   }, [location.search, location.pathname, navigate]);
 
   useEffect(() => {
-    const token = localStorage.getItem('crm_token');
+    const token = getCrmToken();
     if (!token) return undefined;
 
     let cancelled = false;
@@ -187,7 +186,7 @@ export default function Layout({ embeddedContent = null }) {
       for (const { jobId } of pending) {
         try {
           const res = await fetch(`${API_BASE}/customer-companies/import-excel/jobs/${jobId}`, {
-            headers: { Authorization: `Bearer ${token}` },
+            headers: { ...getCrmAuthHeaders() },
             credentials: 'include'
           });
           const data = await res.json().catch(() => ({}));

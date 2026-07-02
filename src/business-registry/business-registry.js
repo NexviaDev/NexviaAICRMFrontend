@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import { API_BASE } from '@/config';
 import './business-registry.css';
 
@@ -11,11 +12,6 @@ function normalizeBusinessNumber(raw) {
 
 function toBusinessNumberDigits(raw) {
   return String(raw || '').replace(/\D/g, '').slice(0, 10);
-}
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 export default function BusinessRegistryPage() {
@@ -40,11 +36,8 @@ export default function BusinessRegistryPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_BASE}/business-registry/status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ b_no: candidateNumbers })
-      });
+      const res = await fetch(`${API_BASE}/business-registry/status`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ b_no: candidateNumbers  })
+      }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '사업자 상태를 조회하지 못했습니다.');
       setRows(Array.isArray(data.items) ? data.items : []);

@@ -1,13 +1,21 @@
 /**
- * 관리자 API는 항상 일반 CRM 로그인(crm_token)과 같은 사용자여야 합니다.
- * Authorization: 관리자 JWT, X-Crm-Authorization: CRM JWT
+ * 관리자 API — CRM 인증은 HttpOnly 쿠키(credentials:include), 관리자 JWT는 Authorization
  */
 export function getAdminSiteFetchHeaders({ json = true } = {}) {
   const admin = localStorage.getItem('admin_site_token');
-  const crm = localStorage.getItem('crm_token');
   const headers = {};
   if (json) headers['Content-Type'] = 'application/json';
   if (admin) headers.Authorization = `Bearer ${admin}`;
-  if (crm) headers['X-Crm-Authorization'] = `Bearer ${crm}`;
   return headers;
+}
+
+export function adminSiteFetchInit(extra = {}) {
+  return {
+    credentials: 'include',
+    ...extra,
+    headers: {
+      ...getAdminSiteFetchHeaders(),
+      ...(extra.headers || {})
+    }
+  };
 }

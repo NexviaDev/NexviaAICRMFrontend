@@ -1,14 +1,10 @@
 import { useState, useCallback, useEffect } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import './customer-company-employees-search-modal.css';
 
 import { API_BASE } from '@/config';
 
 const RECENT_LIST_LIMIT = 10;
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 /**
  * 담당자(연락처) 검색 모달
@@ -30,7 +26,7 @@ export default function CustomerCompanyEmployeesSearchModal({ onClose, onSelect,
     try {
       const params = new URLSearchParams({ limit: String(RECENT_LIST_LIMIT) });
       if (customerCompanyId) params.set('customerCompanyId', customerCompanyId);
-      const res = await fetch(`${API_BASE}/customer-company-employees?${params}`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/customer-company-employees?${params}`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setRecentItems([]);
@@ -59,7 +55,7 @@ export default function CustomerCompanyEmployeesSearchModal({ onClose, onSelect,
       const params = new URLSearchParams({ limit: '200' });
       if (search.trim()) params.set('search', search.trim());
       if (customerCompanyId) params.set('customerCompanyId', customerCompanyId);
-      const res = await fetch(`${API_BASE}/customer-company-employees?${params}`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/customer-company-employees?${params}`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(data.error || '연락처 목록을 불러올 수 없습니다.');

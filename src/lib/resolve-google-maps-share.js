@@ -1,4 +1,5 @@
 import { API_BASE } from '@/config';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { pingBackendHealth } from '@/lib/backend-wake';
 import {
   extractMapsShareUrl,
@@ -7,11 +8,6 @@ import {
   needsMapsUrlExpand,
   parseGoogleMapsCoords
 } from '@/lib/parse-google-maps-share';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 /**
  * 구글맵 공유 텍스트 → { lat, lng, resolvedUrl? }
@@ -56,12 +52,11 @@ export async function resolveGoogleMapsShare(text, options = {}) {
 
   try {
     const res = await fetch(`${API_BASE}/api/maps-share/resolve`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...getAuthHeader()
-      },
-      body: JSON.stringify({ text: raw }),
+      ...crmFetchInit({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: raw })
+      }),
       signal: controller.signal
     });
 

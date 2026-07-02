@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { useSearchParams } from 'react-router-dom';
 import { API_BASE, BACKEND_BASE_URL } from '@/config';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
@@ -14,11 +15,6 @@ import EmailComposeModal from '../email/email-compose-modal.jsx';
 import { LeadCapturePhoneCell, LeadCaptureEmailCell } from './lead-capture-contact-cell';
 import { buildLeadCaptureEmbedSnippet } from '@/lead-capture-shared/lead-capture-embed-snippet';
 import './lead-capture.css';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function copyToClipboard(text) {
   if (!text) return false;
@@ -203,7 +199,7 @@ export default function LeadCapture() {
 
   const fetchSettings = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/lead-capture-forms/settings`, { headers: getAuthHeader(), credentials: 'include' });
+      const res = await fetch(`${API_BASE}/lead-capture-forms/settings`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (res.ok) setSettings({ apiKeyPrefix: data.apiKeyPrefix ?? null, webhookUrl: data.webhookUrl ?? null });
     } catch (_) {}
@@ -214,7 +210,7 @@ export default function LeadCapture() {
   const fetchBootstrap = useCallback(async () => {
     setError('');
     try {
-      const res = await fetch(`${API_BASE}/lead-capture-forms/bootstrap`, { headers: getAuthHeader(), credentials: 'include' });
+      const res = await fetch(`${API_BASE}/lead-capture-forms/bootstrap`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '데이터를 불러올 수 없습니다.');
       setItems(data.items || []);
@@ -236,7 +232,7 @@ export default function LeadCapture() {
   const fetchCustomFields = useCallback(async (formId) => {
     if (!formId) { setCustomFields([]); return; }
     try {
-      const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=leadCapture&leadCaptureFormId=${encodeURIComponent(formId)}`, { headers: getAuthHeader(), credentials: 'include' });
+      const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=leadCapture&leadCaptureFormId=${encodeURIComponent(formId)}`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (res.ok && Array.isArray(data.items)) setCustomFields(data.items);
       else setCustomFields([]);
@@ -246,7 +242,7 @@ export default function LeadCapture() {
   const fetchSelectedForm = useCallback(async (id) => {
     if (!id) { setSelectedForm(null); return; }
     try {
-      const res = await fetch(`${API_BASE}/lead-capture-forms/${id}`, { headers: getAuthHeader(), credentials: 'include' });
+      const res = await fetch(`${API_BASE}/lead-capture-forms/${id}`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (res.ok && data._id) setSelectedForm(data);
       else setSelectedForm(null);
@@ -257,10 +253,7 @@ export default function LeadCapture() {
     if (!formId) { setChannelLeads([]); return; }
     setChannelLeadsLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/lead-capture-forms/${formId}/leads?limit=500&page=1`, {
-        headers: getAuthHeader(),
-        credentials: 'include'
-      });
+      const res = await fetch(`${API_BASE}/lead-capture-forms/${formId}/leads?limit=500&page=1`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (res.ok && Array.isArray(data.items)) setChannelLeads(data.items);
       else setChannelLeads([]);
@@ -271,7 +264,7 @@ export default function LeadCapture() {
   const fetchList = useCallback(async () => {
     try {
       setError('');
-      const res = await fetch(`${API_BASE}/lead-capture-forms`, { headers: getAuthHeader(), credentials: 'include' });
+      const res = await fetch(`${API_BASE}/lead-capture-forms`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '목록을 불러올 수 없습니다.');
       setItems(data.items || []);
@@ -547,7 +540,7 @@ export default function LeadCapture() {
   async function handleCopyApiKey() {
     if (!settings.apiKeyPrefix) return;
     try {
-      const res = await fetch(`${API_BASE}/lead-capture-forms/reveal-api-key`, { headers: getAuthHeader(), credentials: 'include' });
+      const res = await fetch(`${API_BASE}/lead-capture-forms/reveal-api-key`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       const fullKey = res.ok && data.apiKey ? data.apiKey : null;
       if (fullKey && copyToClipboard(fullKey)) {
@@ -641,11 +634,7 @@ export default function LeadCapture() {
     if (!window.confirm(`"${def.label}" 필드를 제거할까요?`)) return;
     setRemovingFieldId(def._id);
     try {
-      const res = await fetch(`${API_BASE}/custom-field-definitions/${def._id}`, {
-        method: 'DELETE',
-        headers: getAuthHeader(),
-        credentials: 'include'
-      });
+      const res = await fetch(`${API_BASE}/custom-field-definitions/${def._id}`, crmFetchInit({ method: 'DELETE' }));
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || '제거에 실패했습니다.');
@@ -679,11 +668,7 @@ export default function LeadCapture() {
     }
     if (!window.confirm(`"${form.name}" 캡처 폼을 삭제할까요?`)) return;
     try {
-      const res = await fetch(`${API_BASE}/lead-capture-forms/${form._id}`, {
-        method: 'DELETE',
-        headers: getAuthHeader(),
-        credentials: 'include'
-      });
+      const res = await fetch(`${API_BASE}/lead-capture-forms/${form._id}`, crmFetchInit({ method: 'DELETE' }));
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || '삭제에 실패했습니다.');

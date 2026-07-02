@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { hasCrmSession, getCrmToken, crmFetchInit, fetchCrmMe, markCrmSessionActive, clearCrmSessionLocal } from '@/lib/crm-auth';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import './register.css';
 import { formatPhone, phoneDigitsOnly } from './phoneFormat';
@@ -17,12 +18,15 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export default function Register() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const tokenFromUrl = searchParams.get('token');
   const isEditMode = searchParams.get('edit') === '1';
-  /** OAuth 후 추가 정보 입력(/register?token=...)일 때만 Google API 동의 표시 */
-  const needsGoogleApiConsent = !isEditMode && !!tokenFromUrl;
+  const oauthComplete =
+    searchParams.get('needsRegister') === '1' ||
+    searchParams.get('oauth') === '1' ||
+    Boolean(searchParams.get('token'));
+  /** OAuth 후 추가 정보 입력일 때만 Google API 동의 표시 */
+  const needsGoogleApiConsent = !isEditMode && oauthComplete;
 
-  const initialMode = isEditMode || tokenFromUrl ? 'google-complete' : 'email-register';
+  const initialMode = isEditMode || oauthComplete ? 'google-complete' : 'email-register';
   const [mode, setMode] = useState(initialMode); // 'email-register' | 'google-complete'
   const [email, setEmail] = useState('');
   const [emailChecked, setEmailChecked] = useState(false);
@@ -95,16 +99,15 @@ export default function Register() {
     return () => window.removeEventListener('keydown', onKey);
   }, [legalModal]);
 
-  const tryUploadProfilePhoto = async (token, file) => {
-    if (!token || !file) return null;
-    await pingBackendHealth(() => ({ Authorization: `Bearer ${token}` }));
+  const tryUploadProfilePhoto = async (file) => {
+    if (!file) return null;
+    await pingBackendHealth();
     const formData = new FormData();
     formData.append('image', file, file.name || 'profile.jpg');
-    const res = await fetch(`${API_BASE}/auth/profile-photo`, {
+    const res = await fetch(`${API_BASE}/auth/profile-photo`, crmFetchInit({
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
       body: formData
-    });
+    }));
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || '프로필 사진 업로드에 실패했습니다.');
     return data;
@@ -180,17 +183,52 @@ export default function Register() {
     [applyAvatarFile, preventAvatarDragDefaults]
   );
 
-  const authHeader = () => {
-    const t = tokenFromUrl || localStorage.getItem('crm_token');
-    return t ? { Authorization: `Bearer ${t}` } : {};
-  };
-
-  /** DB에 사용자 없음(삭제됨)·토큰 무효 시 브라우저에 남은 세션 정리 */
   const clearStoredSession = () => {
     clearPushSessionOnLogout();
-    localStorage.removeItem('crm_token');
-    localStorage.removeItem('crm_user');
+    clearCrmSessionLocal();
   };
+
+  useEffect(() => {
+    if (!oauthComplete) return;
+    setMode('google-complete');
+    void fetchCrmMe()
+      .then(async (data) => {
+        if (!data.user) {
+          clearStoredSession();
+          setError('계정을 찾을 수 없습니다. DB에서 삭제되었거나 세션이 만료되었을 수 있습니다.');
+          navigate('/login', { replace: true });
+          return;
+        }
+        markCrmSessionActive();
+        setEmail(data.user.email || '');
+        setName(data.user.name || '');
+        applyServerAvatar(data.user.avatar);
+        setPhone(data.user.phone ? formatPhone(data.user.phone) : '');
+        setCompanyName(data.user.companyName || '');
+        setCompanyAddress(data.user.companyAddress || '');
+        setCompanyAddressDetail(data.user.companyAddressDetail || '');
+        setCompanyDepartment(data.user.companyDepartment || '');
+        setSelectedCompanyId(data.user.companyId ? String(data.user.companyId) : '');
+        setCompanyNeedsCreate(false);
+        setCompanyRepresentativeName('');
+        if (data.user.companyName) {
+          setCompanyConfirmed(true);
+          fetch(`${API_BASE}/companies/search?q=${encodeURIComponent(data.user.companyName)}&limit=5`, crmFetchInit())
+            .then((r) => r.json())
+            .then((d) => {
+              const match = (d.items || []).find((c) => c.name === data.user.companyName);
+              if (match?.businessNumber) setCompanyBusinessNumber(match.businessNumber);
+              if (match?._id || match?.id) setSelectedCompanyId(String(match._id || match.id));
+            })
+            .catch(() => {});
+        }
+      })
+      .catch(() => {
+        clearStoredSession();
+        setError('로그인 정보를 불러오지 못했습니다.');
+        navigate('/login', { replace: true });
+      });
+  }, [oauthComplete, navigate, applyServerAvatar]);
 
   const resolveDepartmentValue = (raw, options) => {
     const s = String(raw || '').trim();
@@ -211,93 +249,48 @@ export default function Register() {
   };
 
   useEffect(() => {
-    if (tokenFromUrl) {
-      setMode('google-complete');
-      fetch(`${API_BASE}/auth/me?token=${encodeURIComponent(tokenFromUrl)}`)
-        .then(async (res) => {
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok || !data.user) {
-            clearStoredSession();
-            setError(data.error || '계정을 찾을 수 없습니다. DB에서 삭제되었거나 토큰이 잘못되었을 수 있습니다.');
-            navigate('/login', { replace: true });
-            return;
-          }
-          setEmail(data.user.email || '');
-          setName(data.user.name || '');
-          applyServerAvatar(data.user.avatar);
-          setPhone(data.user.phone ? formatPhone(data.user.phone) : '');
-          setCompanyName(data.user.companyName || '');
-          setCompanyAddress(data.user.companyAddress || '');
-          setCompanyAddressDetail(data.user.companyAddressDetail || '');
-          setCompanyDepartment(data.user.companyDepartment || '');
-          setSelectedCompanyId(data.user.companyId ? String(data.user.companyId) : '');
-          setCompanyNeedsCreate(false);
-          setCompanyRepresentativeName('');
-          if (data.user.companyName) {
-            setCompanyConfirmed(true);
-            fetch(`${API_BASE}/companies/search?q=${encodeURIComponent(data.user.companyName)}&limit=5`)
-              .then((r) => r.json())
-              .then((d) => {
-                const match = (d.items || []).find((c) => c.name === data.user.companyName);
-                if (match?.businessNumber) setCompanyBusinessNumber(match.businessNumber);
-                if (match?._id || match?.id) setSelectedCompanyId(String(match._id || match.id));
-              })
-              .catch(() => {});
-          }
-        })
-        .catch(() => {
-          clearStoredSession();
-          setError('로그인 정보를 불러오지 못했습니다.');
-          navigate('/login', { replace: true });
-        });
+    if (!isEditMode) return;
+    if (!hasCrmSession()) {
+      navigate('/login', { replace: true });
+      return;
     }
-  }, [tokenFromUrl, navigate, applyServerAvatar]);
-
-  useEffect(() => {
-    if (isEditMode) {
-      if (!localStorage.getItem('crm_token')) {
+    setMode('google-complete');
+    void fetchCrmMe()
+      .then(async (data) => {
+        if (!data.user) {
+          clearStoredSession();
+          setError(data.error || '계정을 찾을 수 없습니다.');
+          navigate('/login', { replace: true });
+          return;
+        }
+        setEmail(data.user.email || '');
+        setName(data.user.name || '');
+        applyServerAvatar(data.user.avatar);
+        setPhone(data.user.phone ? formatPhone(data.user.phone) : '');
+        setCompanyName(data.user.companyName || '');
+        setCompanyAddress(data.user.companyAddress || '');
+        setCompanyAddressDetail(data.user.companyAddressDetail || '');
+        setCompanyDepartment(data.user.companyDepartment || '');
+        setSelectedCompanyId(data.user.companyId ? String(data.user.companyId) : '');
+        setCompanyNeedsCreate(false);
+        setCompanyRepresentativeName('');
+        if (data.user.companyName) {
+          setCompanyConfirmed(true);
+          fetch(`${API_BASE}/companies/search?q=${encodeURIComponent(data.user.companyName)}&limit=5`, crmFetchInit())
+            .then((r) => r.json())
+            .then((d) => {
+              const match = (d.items || []).find((c) => c.name === data.user.companyName);
+              if (match?.businessNumber) setCompanyBusinessNumber(match.businessNumber);
+              if (match?._id || match?.id) setSelectedCompanyId(String(match._id || match.id));
+            })
+            .catch(() => {});
+        }
+      })
+      .catch(() => {
+        clearStoredSession();
+        setError('내 정보를 불러오지 못했습니다.');
         navigate('/login', { replace: true });
-        return;
-      }
-      setMode('google-complete');
-      fetch(`${API_BASE}/auth/me`, { headers: authHeader() })
-        .then(async (res) => {
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok || !data.user) {
-            clearStoredSession();
-            setError(data.error || '계정을 찾을 수 없습니다.');
-            navigate('/login', { replace: true });
-            return;
-          }
-          setEmail(data.user.email || '');
-          setName(data.user.name || '');
-          applyServerAvatar(data.user.avatar);
-          setPhone(data.user.phone ? formatPhone(data.user.phone) : '');
-          setCompanyName(data.user.companyName || '');
-          setCompanyAddress(data.user.companyAddress || '');
-          setCompanyAddressDetail(data.user.companyAddressDetail || '');
-          setCompanyDepartment(data.user.companyDepartment || '');
-          setSelectedCompanyId(data.user.companyId ? String(data.user.companyId) : '');
-          setCompanyNeedsCreate(false);
-          setCompanyRepresentativeName('');
-          if (data.user.companyName) {
-            setCompanyConfirmed(true);
-            fetch(`${API_BASE}/companies/search?q=${encodeURIComponent(data.user.companyName)}&limit=5`)
-              .then((r) => r.json())
-              .then((d) => {
-                const match = (d.items || []).find((c) => c.name === data.user.companyName);
-                if (match?.businessNumber) setCompanyBusinessNumber(match.businessNumber);
-                if (match?._id || match?.id) setSelectedCompanyId(String(match._id || match.id));
-              })
-              .catch(() => {});
-          }
-        })
-        .catch(() => {
-          clearStoredSession();
-          setError('내 정보를 불러오지 못했습니다.');
-          navigate('/login', { replace: true });
-        });
-    }
+      });
   }, [isEditMode, navigate, applyServerAvatar]);
 
   const handlePhoneChange = (value) => {
@@ -488,7 +481,7 @@ export default function Register() {
     }
     try {
       await pingBackendHealth();
-      const res = await fetch(`${API_BASE}/auth/register`, {
+      const res = await fetch(`${API_BASE}/auth/register`, crmFetchInit({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -511,14 +504,14 @@ export default function Register() {
             ? { companyId: String(selectedCompanyId).trim() }
             : {})
         })
-      });
+      }));
       const data = await res.json().catch(() => ({}));
-      if (res.ok && data.token) {
-        localStorage.setItem('crm_token', data.token);
+      if (res.ok && data.user) {
+        markCrmSessionActive();
         let storedUser = data.user ? await storeUserWithDefaultSidebarTemplate(data.user) : null;
         if (avatarFile) {
           try {
-            const up = await tryUploadProfilePhoto(data.token, avatarFile);
+            const up = await tryUploadProfilePhoto(avatarFile);
             if (up?.user) {
               storedUser = await storeUserWithDefaultSidebarTemplate(up.user);
             } else if (up?.avatar && storedUser) {
@@ -594,7 +587,7 @@ export default function Register() {
       return;
     }
     try {
-      await pingBackendHealth(() => authHeader());
+      await pingBackendHealth();
       const body = {
         name: name.trim(),
         phone: phone.trim(),
@@ -613,18 +606,18 @@ export default function Register() {
           ? { companyId: String(selectedCompanyId).trim() }
           : {})
       };
-      const res = await fetch(`${API_BASE}/auth/complete-profile`, {
+      const res = await fetch(`${API_BASE}/auth/complete-profile`, crmFetchInit({
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeader() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
-      });
+      }));
       const data = await res.json().catch(() => ({}));
-      if (res.ok && data.token) {
-        localStorage.setItem('crm_token', data.token);
+      if (res.ok && data.user) {
+        markCrmSessionActive();
         let storedUser = data.user ? await storeUserWithDefaultSidebarTemplate(data.user) : null;
         if (avatarFile) {
           try {
-            const up = await tryUploadProfilePhoto(data.token, avatarFile);
+            const up = await tryUploadProfilePhoto(avatarFile);
             if (up?.user) {
               storedUser = await storeUserWithDefaultSidebarTemplate(up.user);
             } else if (up?.avatar && storedUser) {

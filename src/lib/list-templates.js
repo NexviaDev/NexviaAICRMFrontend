@@ -7,6 +7,7 @@
  */
 
 import { API_BASE } from '@/config';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { buildDefaultSidebar2LevelTemplate } from '@/layout/sidebar-menu-config';
 import {
   AI_GUIDED_AUDIENCES,
@@ -359,11 +360,6 @@ export const DEFAULT_COLUMNS = {
     { key: 'status', label: '상태' }
   ]
 };
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 /**
  * PATCH /api/auth/list-templates — 신규 제품 등록 모달만 사용 (categoryKey, categoryOther, billingType)
@@ -729,11 +725,8 @@ export async function resetListTemplate(listId, extraColumns = []) {
 /** PATCH /api/auth/list-templates 호출 후 응답의 listTemplates로 crm_user 갱신 */
 export async function patchListTemplate(listId, fields = {}) {
   const payload = { listId, ...fields };
-  const res = await fetch(`${API_BASE}/auth/list-templates`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-    body: JSON.stringify(payload)
-  });
+  const res = await fetch(`${API_BASE}/auth/list-templates`, crmFetchInit({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+   }));
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error || '저장에 실패했습니다.');
@@ -965,11 +958,8 @@ export async function patchSidebarOrder(order, overflow) {
 
 /** PATCH /api/auth/sidebar-order 호출 후 응답의 listTemplates로 crm_user 갱신 */
 export async function patchSidebarLayout(payload) {
-  const res = await fetch(`${API_BASE}/auth/sidebar-order`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-    body: JSON.stringify(payload || {})
-  });
+  const res = await fetch(`${API_BASE}/auth/sidebar-order`, crmFetchInit({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload || { })
+  }));
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(data.error || '사이드바 순서 저장에 실패했습니다.');

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import ParticipantModal from '@/shared/participant-modal/participant-modal';
 import './event-modal.css';
 
@@ -67,11 +68,6 @@ const VISIBILITY_OPTIONS = [
   }
 ];
 
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function todayStr() {
   const d = new Date();
@@ -532,7 +528,7 @@ export default function EventModal({
       const url = isGoogle
         ? `${API_BASE}/google-calendar/events/${encodeURIComponent(realId)}${googleCalendarQuery(googleCalendarId)}`
         : `${API_BASE}/calendar-events/${encodeURIComponent(realId)}`;
-      const res = await fetch(url, { headers: getAuthHeader() });
+      const res = await fetch(url, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(data.error || '일정을 불러올 수 없습니다.');
@@ -609,7 +605,7 @@ export default function EventModal({
       try {
         const res = await fetch(
           `${API_BASE}/customer-companies?search=${encodeURIComponent(q)}&limit=40`,
-          { headers: getAuthHeader() }
+          crmFetchInit()
         );
         const data = await res.json().catch(() => ({}));
         setCompanySearchResults(res.ok && Array.isArray(data.items) ? data.items : []);
@@ -634,7 +630,7 @@ export default function EventModal({
       try {
         const res = await fetch(
           `${API_BASE}/customer-company-employees?search=${encodeURIComponent(q)}&limit=40`,
-          { headers: getAuthHeader() }
+          crmFetchInit()
         );
         const data = await res.json().catch(() => ({}));
         setEmployeeSearchResults(res.ok && Array.isArray(data.items) ? data.items : []);
@@ -823,11 +819,8 @@ export default function EventModal({
       if (isAdd) {
         if (isPersonal) {
           const body = { ...formToGoogleBody(form), allDay: !!form.allDay };
-          const res = await fetch(`${API_BASE}/google-calendar/events`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-            body: JSON.stringify(body)
-          });
+          const res = await fetch(`${API_BASE}/google-calendar/events`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+           }));
           const data = await res.json().catch(() => ({}));
           if (!res.ok) { setError(data.error || '개인 일정 추가에 실패했습니다.'); return; }
           onSaved?.();
@@ -835,11 +828,8 @@ export default function EventModal({
         } else {
           if (!(await confirmSaveWithoutPushAlarm())) return;
           const body = formToCrmBody(form);
-          const res = await fetch(`${API_BASE}/calendar-events`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-            body: JSON.stringify(body)
-          });
+          const res = await fetch(`${API_BASE}/calendar-events`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+           }));
           const data = await res.json().catch(() => ({}));
           if (!res.ok) { setError(data.error || '일정 추가에 실패했습니다.'); return; }
           onSaved?.();
@@ -864,11 +854,8 @@ export default function EventModal({
       } else {
         if (!(await confirmSaveWithoutPushAlarm())) return;
         const body = formToCrmBody(form);
-        const res = await fetch(`${API_BASE}/calendar-events/${encodeURIComponent(realId)}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-          body: JSON.stringify(body)
-        });
+        const res = await fetch(`${API_BASE}/calendar-events/${encodeURIComponent(realId)}`, crmFetchInit({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+         }));
         const data = await res.json().catch(() => ({}));
         if (!res.ok) { setError(data.error || '일정 수정에 실패했습니다.'); return; }
         setEvent(data);
@@ -891,7 +878,7 @@ export default function EventModal({
       const url = isGoogle
         ? `${API_BASE}/google-calendar/events/${encodeURIComponent(realId)}${googleCalendarQuery(googleCalendarId)}`
         : `${API_BASE}/calendar-events/${encodeURIComponent(realId)}`;
-      const res = await fetch(url, { method: 'DELETE', headers: getAuthHeader() });
+      const res = await fetch(url, crmFetchInit({ method: 'DELETE' }));
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setError(data.error || '일정 삭제에 실패했습니다.');

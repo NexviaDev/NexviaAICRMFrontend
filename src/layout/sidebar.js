@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { getCrmToken, getCrmAuthHeaders, crmFetchInit, logoutCrmSession } from '@/lib/crm-auth';
 import { NavLink, useNavigate, Link, useLocation } from 'react-router-dom';
 import { notifyCrmAuthChanged } from '@/lib/use-crm-token';
 import {
@@ -24,11 +25,6 @@ import { isSidebarMenuHiddenForUser } from '@/lib/sidebar-menu-restrictions';
 import './sidebar.css';
 
 /** stacking: sidebar.css `--sidebar-z`(30) — 페이지 모달 오버레이(≥50)보다 항상 아래 */
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 const NEXVIA_LOGO_CDN_URL =
   'https://res.cloudinary.com/djcsvvhly/image/upload/v1774253552/NexviaLogo_pid8kz.png';
@@ -174,10 +170,7 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/companies/organization-chart`, {
-          headers: getAuthHeader(),
-          credentials: 'include'
-        });
+        const res = await fetch(`${API_BASE}/companies/organization-chart`, crmFetchInit());
         const json = await res.json().catch(() => ({}));
         if (!cancelled && res.ok) setOrganizationChart(json.organizationChart ?? null);
       } catch {
@@ -531,14 +524,12 @@ export default function Sidebar({ drawerOpen, onCloseDrawer, currentUser }) {
           type="button"
           className="sidebar-logout"
           disabled={logoutBusy}
-          onClick={() => {
+          onClick={async () => {
             if (logoutBusy) return;
             setLogoutBusy(true);
             onCloseDrawer?.();
             clearPushSessionOnLogout();
-            localStorage.removeItem('crm_token');
-            localStorage.removeItem('crm_user');
-            notifyCrmAuthChanged();
+            await logoutCrmSession();
             setLogoutBusy(false);
             navigate('/', { replace: true });
           }}

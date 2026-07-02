@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { useNavigate } from 'react-router-dom';
 import AllEmployeesModal from './all-employees-modal/all-employees-modal';
 import AllHistoryModal from './all-history-modal/all-history-modal';
@@ -42,11 +43,6 @@ import {
   patchCustomerCompanyDetailModalTemplate,
   patchCustomerCompanyDetailModalJournalDefaults
 } from '@/lib/list-templates';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function formatHistoryDate(d) {
   if (!d) return '';
@@ -362,7 +358,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
     if (!driveFolderName) return null;
     const r = await fetch(`${API_BASE}/drive/folders/ensure`, {
       method: 'POST',
-      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({
         folderName: driveFolderName,
@@ -395,7 +391,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
 
   const fetchCustomDefinitions = async () => {
     try {
-      const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=customerCompany`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=customerCompany`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (res.ok && Array.isArray(data.items)) setCustomDefinitions(data.items);
     } catch (_) {}
@@ -443,7 +439,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
     let cancelled = false;
     const refreshCompanyDriveFields = async () => {
       try {
-        const res = await fetch(`${API_BASE}/customer-companies/${companyId}`, { headers: getAuthHeader() });
+        const res = await fetch(`${API_BASE}/customer-companies/${companyId}`, crmFetchInit());
         const data = await res.json().catch(() => ({}));
         if (!cancelled && res.ok && data?._id) {
           setDisplayedCompany((prev) => ({ ...(prev || {}), ...data }));
@@ -479,7 +475,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
         setDriveError((prev) => prev || (err?.message || 'Drive 고객사 폴더를 준비할 수 없습니다.'));
         if (!cancelled) {
           try {
-            const res = await fetch(`${API_BASE}/customer-companies/${companyId}`, { headers: getAuthHeader() });
+            const res = await fetch(`${API_BASE}/customer-companies/${companyId}`, crmFetchInit());
             const data = await res.json().catch(() => ({}));
             const stored = data?.driveCustomerRootFolderId && String(data.driveCustomerRootFolderId).trim();
             if (res.ok && stored && isValidDriveNodeId(stored)) {
@@ -517,7 +513,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
         onSuccess: async () => {
           if (!companyId) return;
           try {
-            const res = await fetch(`${API_BASE}/customer-companies/${companyId}`, { headers: getAuthHeader() });
+            const res = await fetch(`${API_BASE}/customer-companies/${companyId}`, crmFetchInit());
             const data = await res.json().catch(() => ({}));
             if (res.ok && data?._id) setDisplayedCompany((prev) => ({ ...(prev || {}), ...data }));
           } catch (_) {}
@@ -537,7 +533,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
       try {
         await pingBackendHealth(getAuthHeader);
         const url = buildDriveFileDeleteUrl(fid, { customerCompanyId: String(companyId) });
-        const res = await fetch(url, { method: 'DELETE', headers: getAuthHeader(), credentials: 'include' });
+        const res = await fetch(url, crmFetchInit({ method: 'DELETE' }));
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           setDriveError(getUserVisibleApiError(data, '삭제에 실패했습니다.'));
@@ -548,7 +544,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
         if (certFid && certFid === fid) {
           const patchRes = await fetch(`${API_BASE}/customer-companies/${companyId}`, {
             method: 'PATCH',
-            headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+            headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
             credentials: 'include',
             body: JSON.stringify({ businessRegistrationCertificateDriveUrl: null })
           });
@@ -559,7 +555,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
             setDriveError(getUserVisibleApiError(patched, '고객사 등록증 URL을 갱신하지 못했습니다.'));
           }
         }
-        const r2 = await fetch(`${API_BASE}/customer-companies/${companyId}`, { headers: getAuthHeader() });
+        const r2 = await fetch(`${API_BASE}/customer-companies/${companyId}`, crmFetchInit());
         const data2 = await r2.json().catch(() => ({}));
         if (r2.ok && data2?._id) setDisplayedCompany((prev) => ({ ...(prev || {}), ...data2 }));
         setDriveUploadNotice('파일을 삭제했습니다.');
@@ -624,7 +620,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
     if (!companyId) return;
     setLoadingHistory(true);
     try {
-      const res = await fetch(`${API_BASE}/customer-companies/${companyId}/history`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/customer-companies/${companyId}/history`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (res.ok) setHistoryItems(data.items || []);
       else setHistoryItems([]);
@@ -639,7 +635,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
     if (!companyId) return;
     setLoadingEmployees(true);
     try {
-      const res = await fetch(`${API_BASE}/customer-company-employees?customerCompanyId=${companyId}&limit=100`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/customer-company-employees?customerCompanyId=${companyId}&limit=100`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (res.ok) setEmployees(data.items || []);
       else setEmployees([]);
@@ -654,7 +650,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
     if (!companyId) return;
     setLoadingProductSales(true);
     try {
-      const res = await fetch(`${API_BASE}/sales-opportunities?customerCompanyId=${companyId}`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/sales-opportunities?customerCompanyId=${companyId}`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.grouped) {
         const flat = (Object.values(data.grouped) || []).flat();
@@ -688,7 +684,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
   const fetchCompanyDetail = useCallback(async () => {
     if (!companyId) return null;
     try {
-      const res = await fetch(`${API_BASE}/customer-companies/${companyId}`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/customer-companies/${companyId}`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?._id) return null;
       setDisplayedCompany((prev) => ({ ...(prev || {}), ...data }));
@@ -761,10 +757,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
       return;
     }
     try {
-      const res = await fetch(`${API_BASE}/customer-companies/${companyId}/history/${historyId}`, {
-        method: 'DELETE',
-        headers: getAuthHeader()
-      });
+      const res = await fetch(`${API_BASE}/customer-companies/${companyId}/history/${historyId}`, crmFetchInit({ method: 'DELETE' }));
       if (res.ok) {
         fetchHistory();
         fetchCompanyDetail();
@@ -935,10 +928,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
     }
     setDeleting(true);
     try {
-      const res = await fetch(`${API_BASE}/customer-companies/${companyId}`, {
-        method: 'DELETE',
-        headers: getAuthHeader()
-      });
+      const res = await fetch(`${API_BASE}/customer-companies/${companyId}`, crmFetchInit({ method: 'DELETE' }));
       if (res.ok) {
         onDeleted?.();
         onClose?.();

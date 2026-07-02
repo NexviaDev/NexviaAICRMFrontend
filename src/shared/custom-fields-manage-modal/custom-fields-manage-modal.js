@@ -520,11 +520,8 @@ export default function CustomFieldsManageModal({
     });
     setAddingField(true);
     try {
-      const res = await fetch(`${apiBase}/custom-field-definitions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify(payload)
-      });
+      const res = await fetch(`${apiBase}/custom-field-definitions`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+       }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         alert(data.error || `"${label}" 필드 추가에 실패했습니다.`);
@@ -570,11 +567,8 @@ export default function CustomFieldsManageModal({
         continue;
       }
       try {
-        const res = await fetch(`${apiBase}/custom-field-definitions/${def._id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-          body: JSON.stringify(built.body)
-        });
+        const res = await fetch(`${apiBase}/custom-field-definitions/${def._id}`, crmFetchInit({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(built.body)
+         }));
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
           nextErrors[sid] = data.error || `"${def.label || '필드'}" 저장에 실패했습니다.`;
@@ -611,10 +605,7 @@ export default function CustomFieldsManageModal({
     if (!window.confirm(buildDeleteConfirmMessage(label, deleteConfirmMessage))) return;
     setDeletingId(id);
     try {
-      const res = await fetch(`${apiBase}/custom-field-definitions/${id}`, {
-        method: 'DELETE',
-        headers: getAuthHeader()
-      });
+      const res = await fetch(`${apiBase}/custom-field-definitions/${id}`, crmFetchInit({ method: 'DELETE' }));
       if (res.ok) {
         setRowDrafts((prev) => {
           const next = { ...prev };
@@ -647,11 +638,8 @@ export default function CustomFieldsManageModal({
     const nextDisabled = !def.disabled;
     setTogglingId(def._id);
     try {
-      const res = await fetch(`${apiBase}/custom-field-definitions/${def._id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ disabled: nextDisabled })
-      });
+      const res = await fetch(`${apiBase}/custom-field-definitions/${def._id}`, crmFetchInit({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ disabled: nextDisabled  })
+      }));
       if (res.ok) {
         await fetchDefinitions();
         onDefinitionsUpdated?.();

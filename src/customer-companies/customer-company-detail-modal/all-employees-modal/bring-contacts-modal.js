@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import './bring-contacts-modal.css';
 
 /**
@@ -8,11 +9,6 @@ import './bring-contacts-modal.css';
  */
 import { API_BASE } from '@/config';
 const LIMIT = 300;
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 export default function BringContactsModal({ companyId, companyName, companyAddress = '', onClose, onAssigned }) {
   const [items, setItems] = useState([]);
@@ -30,7 +26,7 @@ export default function BringContactsModal({ companyId, companyName, companyAddr
     try {
       const params = new URLSearchParams({ limit: String(LIMIT) });
       if (search.trim()) params.set('search', search.trim());
-      const res = await fetch(`${API_BASE}/customer-company-employees?${params}`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/customer-company-employees?${params}`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (res.ok) setItems(data.items || []);
       else {
@@ -100,15 +96,12 @@ export default function BringContactsModal({ companyId, companyName, companyAddr
     setAssigning(true);
     try {
       for (const id of ids) {
-        const res = await fetch(`${API_BASE}/customer-company-employees/${id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-          body: JSON.stringify({
+        const res = await fetch(`${API_BASE}/customer-company-employees/${id}`, crmFetchInit({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
             customerCompanyId: companyId,
             isIndividual: false,
             address: companyAddress != null ? String(companyAddress).trim() : ''
-          })
-        });
+           })
+        }));
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           setError(data.error || '일부 연락처 소속 변경에 실패했습니다.');

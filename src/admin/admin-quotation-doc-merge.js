@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { hasCrmSession, crmFetchInit } from '@/lib/crm-auth';
 import { API_BASE } from '@/config';
 import { MERGE_RUNTIME_ADMIN_COMMON } from '@/lib/quotation-doc-merge-runtime';
 import QuotationDocMerge from '@/quotation-doc-merge/quotation-doc-merge';
@@ -6,10 +7,6 @@ import './adminsubscription.css';
 
 const ADMIN_TOKEN_KEY = 'admin_site_token';
 const ADMIN_BOUND_USER_KEY = 'admin_site_bound_user_id';
-
-function getCrmToken() {
-  return localStorage.getItem('crm_token') || '';
-}
 
 function getStoredCrmUser() {
   try {
@@ -27,7 +24,7 @@ export default function AdminQuotationDocMerge() {
   const [token, setToken] = useState(() => localStorage.getItem(ADMIN_TOKEN_KEY) || '');
   const crmUser = getStoredCrmUser();
   const crmEmail = String(crmUser?.email || '').trim();
-  const hasCrmToken = !!getCrmToken();
+  const hasCrmToken = hasCrmSession();
   const loggedIn = !!token;
 
   const handleLogin = async (e) => {
@@ -35,15 +32,14 @@ export default function AdminQuotationDocMerge() {
     setError('');
     setLoading(true);
     try {
-      const crmToken = getCrmToken();
-      if (!crmToken) {
+      if (!hasCrmSession()) {
         throw new Error('먼저 CRM에 로그인해 주세요.');
       }
-      const res = await fetch(`${API_BASE}/admin/login`, {
+      const res = await fetch(`${API_BASE}/admin/login`, crmFetchInit({
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${crmToken}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password })
-      });
+      }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data.error || '로그인에 실패했습니다.');

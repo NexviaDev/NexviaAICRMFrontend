@@ -1,11 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import './todo-detail-modal.css';
 import { API_BASE } from '@/config';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function formatCommentDate(iso) {
   if (!iso) return '';
@@ -137,7 +133,7 @@ export default function TodoDetailModal({
     setLoadingDetail(true);
     setDetailError('');
     try {
-      const res = await fetch(`${baseUrl}/detail`, { headers: getAuthHeader(), credentials: 'include' });
+      const res = await fetch(`${baseUrl}/detail`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '상세 정보를 불러올 수 없습니다.');
       setMeta(data.meta || null);
@@ -181,14 +177,10 @@ export default function TodoDetailModal({
     setCommentBusy(true);
     setCommentError('');
     try {
-      const res = await fetch(`${baseUrl}/comments`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({
+      const res = await fetch(`${baseUrl}/comments`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
           text,
-          ...(parentCommentId ? { parentCommentId } : {})
-        })
-      });
+          ...(parentCommentId ? { parentCommentId } : {}) })
+      }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '코멘트를 등록할 수 없습니다.');
       setComments(Array.isArray(data.comments) ? data.comments : []);
@@ -211,11 +203,8 @@ export default function TodoDetailModal({
     setCommentBusy(true);
     setCommentError('');
     try {
-      const res = await fetch(`${baseUrl}/comments/${encodeURIComponent(commentId)}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ text })
-      });
+      const res = await fetch(`${baseUrl}/comments/${encodeURIComponent(commentId)}`, crmFetchInit({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text  })
+      }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '코멘트를 수정할 수 없습니다.');
       setComments(Array.isArray(data.comments) ? data.comments : []);
@@ -234,10 +223,7 @@ export default function TodoDetailModal({
     setCommentBusy(true);
     setCommentError('');
     try {
-      const res = await fetch(`${baseUrl}/comments/${encodeURIComponent(commentId)}`, {
-        method: 'DELETE',
-        headers: getAuthHeader()
-      });
+      const res = await fetch(`${baseUrl}/comments/${encodeURIComponent(commentId)}`, crmFetchInit({ method: 'DELETE' }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '코멘트를 삭제할 수 없습니다.');
       setComments(Array.isArray(data.comments) ? data.comments : []);

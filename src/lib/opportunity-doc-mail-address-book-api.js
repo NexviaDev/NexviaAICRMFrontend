@@ -5,10 +5,7 @@ import { API_BASE } from '@/config';
  * @returns {Promise<{ id: string, title: string, to: string, cc: string, createdAt?: string }[]>}
  */
 export async function fetchCompanyDocMailAddressBook(getAuthHeader) {
-  const res = await fetch(`${API_BASE}/companies/opportunity-doc-mail-address-book`, {
-    headers: { ...getAuthHeader() },
-    credentials: 'include'
-  });
+  const res = await fetch(`${API_BASE}/companies/opportunity-doc-mail-address-book`, crmFetchInit());
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || '회사 주소록을 불러오지 못했습니다.');
   return Array.isArray(data.items) ? data.items : [];
@@ -31,10 +28,7 @@ export async function putCompanyDocMailAddressBook(getAuthHeader, items) {
 }
 
 export async function fetchUserDocMailAddressBook(getAuthHeader) {
-  const res = await fetch(`${API_BASE}/auth/opportunity-doc-mail-address-book`, {
-    headers: { ...getAuthHeader() },
-    credentials: 'include'
-  });
+  const res = await fetch(`${API_BASE}/auth/opportunity-doc-mail-address-book`, crmFetchInit());
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || '개인 주소록을 불러오지 못했습니다.');
   return Array.isArray(data.items) ? data.items : [];

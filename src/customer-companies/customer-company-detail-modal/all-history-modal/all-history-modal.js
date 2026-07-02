@@ -1,13 +1,9 @@
 import { useEffect } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import './all-history-modal.css';
 
 import { API_BASE } from '@/config';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function formatHistoryDate(d) {
   if (!d) return '';
@@ -34,10 +30,7 @@ export default function AllHistoryModal({ historyItems, companyId, onClose, onRe
       return;
     }
     try {
-      const res = await fetch(`${API_BASE}/customer-companies/${companyId}/history/${historyId}`, {
-        method: 'DELETE',
-        headers: getAuthHeader()
-      });
+      const res = await fetch(`${API_BASE}/customer-companies/${companyId}/history/${historyId}`, crmFetchInit({ method: 'DELETE' }));
       if (res.ok && onRefresh) onRefresh();
     } catch (_) {}
   };

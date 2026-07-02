@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { API_BASE } from '@/config';
-import { getAdminSiteFetchHeaders } from '@/lib/admin-site-headers';
+import { adminSiteFetchInit } from '@/lib/admin-site-headers';
 import './adminsubscription.css';
 
 const ADMIN_TOKEN_KEY = 'admin_site_token';
@@ -47,9 +47,7 @@ export default function AdminNotices() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_BASE}/admin/notifications`, {
-        headers: getAdminSiteFetchHeaders()
-      });
+      const res = await fetch(`${API_BASE}/admin/notifications`, adminSiteFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (res.status === 401) {
@@ -93,11 +91,8 @@ export default function AdminNotices() {
       const targetUrl = editingId
         ? `${API_BASE}/admin/notifications/${encodeURIComponent(editingId)}`
         : `${API_BASE}/admin/notifications`;
-      const res = await fetch(targetUrl, {
-        method: editingId ? 'PATCH' : 'POST',
-        headers: getAdminSiteFetchHeaders(),
-        body: JSON.stringify(draft)
-      });
+      const res = await fetch(targetUrl, adminSiteFetchInit({ method: editingId ? 'PATCH' : 'POST', body: JSON.stringify(draft)
+       }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (res.status === 401) {
@@ -120,10 +115,7 @@ export default function AdminNotices() {
     setDeleteId(id);
     setError('');
     try {
-      const res = await fetch(`${API_BASE}/admin/notifications/${encodeURIComponent(id)}`, {
-        method: 'DELETE',
-        headers: getAdminSiteFetchHeaders()
-      });
+      const res = await fetch(`${API_BASE}/admin/notifications/${encodeURIComponent(id)}`, adminSiteFetchInit({ method: 'DELETE' }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (res.status === 401) {

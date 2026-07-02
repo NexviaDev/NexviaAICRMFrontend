@@ -1,15 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import './google-contacts-modal.css';
 
 import { API_BASE } from '@/config';
 import { startGoogleFeatureLink } from '@/lib/google-feature-link';
 
 const GCONTACTS_MSG = 'nexvia-google-contacts-import';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 /**
  * @param {Object} props
@@ -65,7 +61,7 @@ export default function GoogleContactsModal({ mode = 'single', onSelect, onBulkS
       const params = new URLSearchParams({ pageSize: '100' });
       if (query) params.set('query', query);
       if (pageToken) params.set('pageToken', pageToken);
-      const res = await fetch(`${API_BASE}/google-contacts/contacts?${params}`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/google-contacts/contacts?${params}`, crmFetchInit());
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || '연락처를 불러올 수 없습니다.');

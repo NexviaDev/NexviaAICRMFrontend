@@ -1,6 +1,5 @@
 /**
- * 배포 빌드 ID가 바뀌면 PWA·Workbox 캐시와 SW를 정리한 뒤 1회 새로고침.
- * 서버 /version.json(항상 최신)과 비교 — 옛 JS 번들만 로드된 경우에도 갱신됩니다.
+ * 배포 빌드 ID가 바뀌면 PWA·Workbox 캐시와 SW를 정리한 뒤 1회 새로고침. * 서버 /version.json(항상 최신)과 비교 — 옛 JS 번들만 로드된 경우에도 갱신됩니다.
  * crm_token·crm_user 등 로그인 데이터는 건드리지 않습니다.
  */
 
@@ -41,7 +40,11 @@ export const APP_BUILD_VERSION_BOOTSTRAP_SNIPPET = `(function(){try{var K='nexvi
 function shouldLeaveStaleLoginPage() {
   const path = window.location.pathname.replace(/\/+$/, '') || '/';
   if (path !== '/login') return false;
-  if (localStorage.getItem('crm_token')) return false;
+  try {
+    if (localStorage.getItem('crm_user')) return false;
+  } catch {
+    /* ignore */
+  }
 
   const params = new URLSearchParams(window.location.search);
   /** OAuth 콜백·약관·오류 표시 등 의미 있는 로그인 URL은 유지 */

@@ -1,14 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
+import { crmFetchInit, fetchCrmMe, markCrmSessionActive, clearCrmSessionLocal } from '@/lib/crm-auth';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { notifyCrmAuthChanged } from '@/lib/use-crm-token';
 import { API_BASE } from '@/config';
 import { pingBackendHealth } from '@/lib/backend-wake';
-import { storeUserWithDefaultSidebarTemplate } from '@/lib/list-templates';
-import {
-  crmUserStubFromAccessTokenClaims,
-  parseCrmAccessTokenClaims
-} from '@/lib/crm-role-utils';
-import FindIdModal from './find-id-modal';
+import { storeUserWithDefaultSidebarTemplate } from '@/lib/list-templates';import FindIdModal from './find-id-modal';
 import './login.css';
 
 /** Login.html — minimalist workspace header (same asset as sample design) */
@@ -22,15 +18,12 @@ const LEGAL_VALUES = /** @type {const} */ (['privacy', 'terms', 'google']);
 const getGoogleAuthUrl = () => `${API_BASE}/auth/google`;
 const getNaverAuthUrl = () => `${API_BASE}/auth/naver`;
 
-/** OAuth 시작 전 CRM 토큰 제거 — 잘못된 Callback·SPA fallback 시 이전 세션으로 대시보드 복귀 방지 */
+/** OAuth 시작 전 CRM 세션 제거 */
 function beginOAuthRedirect(authUrl) {
-  localStorage.removeItem('crm_token');
-  localStorage.removeItem('crm_user');
-  notifyCrmAuthChanged();
+  clearCrmSessionLocal();
   pingBackendHealth().catch(() => {});
   window.location.href = authUrl;
 }
-
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const ECOSYSTEM_ICONS = [
@@ -52,9 +45,8 @@ async function persistUserAndGo(user, navigate, { deferServerSync = true } = {})
   return stored;
 }
 
-function refreshCrmUserInBackground(token) {
-  void fetch(`${API_BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
-    .then((res) => res.json())
+function refreshCrmUserInBackground() {
+  void fetchCrmMe()
     .then((data) => {
       if (data?.user) {
         void storeUserWithDefaultSidebarTemplate(data.user, { deferServerSync: true });
@@ -62,7 +54,6 @@ function refreshCrmUserInBackground(token) {
     })
     .catch(() => {});
 }
-
 export default function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -72,16 +63,18 @@ export default function Login() {
   const [loginCode, setLoginCode] = useState('');
   const [loginCodeSent, setLoginCodeSent] = useState(false);
   const [loginBusy, setLoginBusy] = useState(false);
-  const [completingLogin, setCompletingLogin] = useState(() => !!new URLSearchParams(window.location.search).get('token'));
+  const [completingLogin, setCompletingLogin] = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    return p.get('oauth') === '1' || Boolean(p.get('token'));
+  });
   const [findIdOpen, setFindIdOpen] = useState(false);
-  const oauthTokenHandledRef = useRef(null);
-
+  const oauthHandledRef = useRef(false);
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [searchParams]);
 
   useEffect(() => {
-    if (searchParams.get('token')) return;
+    if (searchParams.get('oauth') === '1' || searchParams.get('token')) return;
     const v = searchParams.get(LEGAL_QUERY);
     if (LEGAL_VALUES.includes(v)) {
       navigate(`/legal/${v}`, { replace: true });
@@ -89,35 +82,25 @@ export default function Login() {
   }, [navigate, searchParams]);
 
   useEffect(() => {
-    const token = searchParams.get('token');
+    const oauth = searchParams.get('oauth') === '1';
+    const legacyToken = searchParams.get('token');
     const needsRegister = searchParams.get('needsRegister') === '1';
-    if (!token) return;
-    if (oauthTokenHandledRef.current === token) return;
-    oauthTokenHandledRef.current = token;
+    if (!oauth && !legacyToken) return;
+    if (oauthHandledRef.current) return;
+    oauthHandledRef.current = true;
 
     setCompletingLogin(true);
-    localStorage.setItem('crm_token', token);
-    notifyCrmAuthChanged();
 
     if (needsRegister) {
-      navigate('/register?token=' + encodeURIComponent(token) + '&needsRegister=1', { replace: true });
+      markCrmSessionActive();
+      navigate('/register?needsRegister=1', { replace: true });
       return;
     }
 
-    const stub = crmUserStubFromAccessTokenClaims(parseCrmAccessTokenClaims(token));
-    if (stub) {
-      void persistUserAndGo(stub, navigate).catch(() => {
-        setCompletingLogin(false);
-        setError('로그인 정보를 불러오지 못했습니다.');
-      });
-      refreshCrmUserInBackground(token);
-      return;
-    }
-
-    void fetch(`${API_BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
-      .then((res) => res.json())
+    void fetchCrmMe()
       .then((data) => {
         if (data.user) {
+          markCrmSessionActive();
           return persistUserAndGo(data.user, navigate);
         }
         setCompletingLogin(false);
@@ -130,8 +113,7 @@ export default function Login() {
   }, [navigate, searchParams]);
 
   useEffect(() => {
-    if (searchParams.get('token')) return;
-    const err = searchParams.get('error');
+    if (searchParams.get('oauth') === '1' || searchParams.get('token')) return;    const err = searchParams.get('error');
     if (err) setError(decodeURIComponent(err));
   }, [searchParams]);
 
@@ -190,32 +172,26 @@ export default function Login() {
     setLoginBusy(true);
     try {
       await pingBackendHealth();
-      const res = await fetch(`${API_BASE}/auth/login`, {
+      const res = await fetch(`${API_BASE}/auth/login`, crmFetchInit({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: eVal,
           verificationCode: code
         })
-      });
+      }));
       const data = await res.json().catch(() => ({}));
-      if (res.ok && data.token) {
-        localStorage.setItem('crm_token', data.token);
-        notifyCrmAuthChanged();
+      if (res.ok && data.user) {
+        markCrmSessionActive();
         setCompletingLogin(true);
-        if (data.user) {
-          try {
-            await persistUserAndGo(data.user, navigate);
-          } catch {
-            setCompletingLogin(false);
-            setError('로그인 정보를 저장하지 못했습니다.');
-          }
-        } else {
-          navigate('/dashboard', { replace: true });
+        try {
+          await persistUserAndGo(data.user, navigate);
+        } catch {
+          setCompletingLogin(false);
+          setError('로그인 정보를 저장하지 못했습니다.');
         }
         return;
-      }
-      setError(data.error || '로그인에 실패했습니다.');
+      }      setError(data.error || '로그인에 실패했습니다.');
     } catch (_) {
       setError('서버에 연결할 수 없습니다.');
     } finally {

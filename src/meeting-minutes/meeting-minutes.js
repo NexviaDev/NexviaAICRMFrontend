@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import AddMeetingModal from './add-meeting-modal/add-meeting-modal';
 import MeetingDetailModal from './meeting-detail-modal/meeting-detail-modal';
@@ -11,11 +12,6 @@ const MODAL_PARAM = 'modal';
 const MODAL_ADD = 'add';
 const MODAL_DETAIL = 'detail';
 const DETAIL_ID_PARAM = 'id';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function formatMeetingDate(d) {
   if (!d) return '—';
@@ -92,7 +88,7 @@ export default function MeetingMinutes() {
     }
     let cancelled = false;
     setDetailFetchLoading(true);
-    fetch(`${API_BASE}/meeting-minutes/${encodeURIComponent(detailId)}`, { headers: getAuthHeader() })
+    fetch(`${API_BASE}/meeting-minutes/${encodeURIComponent(detailId)}`, crmFetchInit())
       .then((r) => {
         if (!r.ok) return null;
         return r.json();
@@ -131,7 +127,7 @@ export default function MeetingMinutes() {
       q.set('page', page);
       q.set('limit', 20);
       if (searchInput.trim()) q.set('search', searchInput.trim());
-      const res = await fetch(`${API_BASE}/meeting-minutes?${q}`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/meeting-minutes?${q}`, crmFetchInit());
       if (res.ok) {
         const data = await res.json();
         setItems(data.items || []);

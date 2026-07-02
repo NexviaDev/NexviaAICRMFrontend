@@ -2,6 +2,7 @@
  * 연락처 목록(customer-company-employees.js)에서 URL `?modal=excel-import`일 때 열립니다.
  */
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { readSpreadsheetFileToRows } from '@/lib/spreadsheet-file-read';
 import { API_BASE } from '@/config';
 import ContactExcelImportMappingModal from './contact-excel-import-mapping-modal';
@@ -28,11 +29,6 @@ import {
   previewExcelMappedValue,
   readExcelMappedCell
 } from '../../customer-companies/customer-companies-excel-import-modal/excel-import-mapping-utils';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function newRowId() {
   return `row-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -488,14 +484,8 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
     let cancelled = false;
     (async () => {
       const [c2Res, sfRes] = await Promise.allSettled([
-        fetch(`${API_BASE}/custom-field-definitions?entityType=contact`, {
-          headers: getAuthHeader(),
-          credentials: 'include'
-        }).then((r) => r.json()),
-        fetch(`${API_BASE}/lead-capture-forms/crm-mappable-fields`, {
-          headers: getAuthHeader(),
-          credentials: 'include'
-        }).then((r) => r.json())
+        fetch(`${API_BASE}/custom-field-definitions?entityType=contact`, crmFetchInit()).then((r) => r.json()),
+        fetch(`${API_BASE}/lead-capture-forms/crm-mappable-fields`, crmFetchInit()).then((r) => r.json())
       ]);
       if (cancelled) return;
       if (c2Res.status === 'fulfilled') {
@@ -510,7 +500,7 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/companies/overview`, { headers: getAuthHeader() })
+    fetch(`${API_BASE}/companies/overview`, crmFetchInit())
       .then((r) => r.json().catch(() => ({})))
       .then((data) => {
         if (!cancelled && Array.isArray(data?.employees)) setCompanyEmployeesForDisplay(data.employees);

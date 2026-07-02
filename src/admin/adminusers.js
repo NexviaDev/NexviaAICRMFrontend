@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { API_BASE } from '@/config';
-import { getAdminSiteFetchHeaders } from '@/lib/admin-site-headers';
+import { adminSiteFetchInit } from '@/lib/admin-site-headers';
 import AdminUserDetailModal from './admin-user-detail-modal';
 import './adminsubscription.css';
 import './admin-user-detail-modal.css';
@@ -72,7 +72,7 @@ export default function AdminUsers() {
       const url = query
         ? `${API_BASE}/admin/users?search=${encodeURIComponent(query)}`
         : `${API_BASE}/admin/users`;
-      const res = await fetch(url, { headers: getAdminSiteFetchHeaders() });
+      const res = await fetch(url, adminSiteFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (res.status === 401) {
@@ -109,10 +109,7 @@ export default function AdminUsers() {
     setError('');
     setSuccessMsg('');
     try {
-      const res = await fetch(`${API_BASE}/admin/users/${encodeURIComponent(userId)}/grant-site-access`, {
-        method: 'POST',
-        headers: getAdminSiteFetchHeaders()
-      });
+      const res = await fetch(`${API_BASE}/admin/users/${encodeURIComponent(userId)}/grant-site-access`, adminSiteFetchInit({ method: 'POST' }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (res.status === 401) {

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import CustomFieldsSection from '../../shared/custom-fields-section';
 import { mergeCustomFieldsForSave } from '@/lib/custom-field-formula';
 import AssigneePickerModal from '../../company-overview/assignee-picker-modal/assignee-picker-modal';
@@ -49,11 +50,6 @@ function getPickerMarkerIcon(google) {
     strokeColor: '#333',
     strokeWeight: 2
   };
-}
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 /** 사업자번호: 숫자만 허용, 10자리까지 입력 시 123-45-67890 형식으로 자동 구분 */
@@ -236,7 +232,7 @@ export default function AddCompanyModal({
 
   const fetchCustomDefinitions = async () => {
     try {
-      const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=customerCompany`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=customerCompany`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (res.ok && Array.isArray(data.items)) setCustomDefinitions(data.items);
     } catch (_) {}
@@ -248,7 +244,7 @@ export default function AddCompanyModal({
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/companies/overview`, { headers: getAuthHeader() })
+    fetch(`${API_BASE}/companies/overview`, crmFetchInit())
       .then((r) => r.json().catch(() => ({})))
       .then((data) => {
         if (!cancelled && Array.isArray(data?.employees)) setCompanyEmployeesForDisplay(data.employees);
@@ -345,7 +341,7 @@ export default function AddCompanyModal({
     if (!driveFolderName) return null;
     const r = await fetch(`${API_BASE}/drive/folders/ensure`, {
       method: 'POST',
-      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({
         folderName: driveFolderName,
@@ -424,7 +420,7 @@ export default function AddCompanyModal({
       });
       if (cancelled) return;
       try {
-        const res = await fetch(`${API_BASE}/customer-companies/${cid}`, { headers: getAuthHeader() });
+        const res = await fetch(`${API_BASE}/customer-companies/${cid}`, crmFetchInit());
         const data = await res.json().catch(() => ({}));
         if (res.ok && data?._id) setDisplayedCompany((prev) => ({ ...(prev || {}), ...data }));
       } catch (_) {}
@@ -457,7 +453,7 @@ export default function AddCompanyModal({
         onSuccess: async () => {
           if (!companyId) return;
           try {
-            const res = await fetch(`${API_BASE}/customer-companies/${companyId}`, { headers: getAuthHeader() });
+            const res = await fetch(`${API_BASE}/customer-companies/${companyId}`, crmFetchInit());
             const data = await res.json().catch(() => ({}));
             if (res.ok && data?._id) setDisplayedCompany((prev) => ({ ...(prev || {}), ...data }));
           } catch (_) {}
@@ -478,7 +474,7 @@ export default function AddCompanyModal({
       try {
         await pingBackendHealth(getAuthHeader);
         const url = buildDriveFileDeleteUrl(fid, { customerCompanyId: companyId });
-        const res = await fetch(url, { method: 'DELETE', headers: getAuthHeader(), credentials: 'include' });
+        const res = await fetch(url, crmFetchInit({ method: 'DELETE' }));
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           setDriveError(getUserVisibleApiError(data, '삭제에 실패했습니다.'));
@@ -489,7 +485,7 @@ export default function AddCompanyModal({
         if (certFid && certFid === fid) {
           const patchRes = await fetch(`${API_BASE}/customer-companies/${companyId}`, {
             method: 'PATCH',
-            headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+            headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
             credentials: 'include',
             body: JSON.stringify({ businessRegistrationCertificateDriveUrl: null })
           });
@@ -498,7 +494,7 @@ export default function AddCompanyModal({
             setDisplayedCompany((prev) => ({ ...(prev || {}), ...patched }));
           }
         }
-        const r2 = await fetch(`${API_BASE}/customer-companies/${companyId}`, { headers: getAuthHeader() });
+        const r2 = await fetch(`${API_BASE}/customer-companies/${companyId}`, crmFetchInit());
         const data2 = await r2.json().catch(() => ({}));
         if (r2.ok && data2?._id) setDisplayedCompany((prev) => ({ ...(prev || {}), ...data2 }));
         setDriveUploadNotice('파일을 삭제했습니다.');
@@ -742,11 +738,8 @@ export default function AddCompanyModal({
       }));
       const addressTrimmed = data.address && String(data.address).trim();
       if (addressTrimmed) {
-        const geoRes = await fetch(`${API_BASE}/customer-companies/geocode`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-          body: JSON.stringify({ address: addressTrimmed })
-        });
+        const geoRes = await fetch(`${API_BASE}/customer-companies/geocode`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: addressTrimmed  })
+        }));
         const geoData = await geoRes.json().catch(() => ({}));
         if (geoRes.ok && geoData.latitude != null && geoData.longitude != null) {
           setForm((prev) => ({ ...prev, latitude: geoData.latitude, longitude: geoData.longitude }));
@@ -919,11 +912,8 @@ export default function AddCompanyModal({
           longitude: longitudeNum != null ? longitudeNum : undefined,
           assigneeUserIds
         };
-        const res = await fetch(`${API_BASE}/customer-companies`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-          body: JSON.stringify(body)
-        });
+        const res = await fetch(`${API_BASE}/customer-companies`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+         }));
         if (res.ok) ok += 1;
         else fail += 1;
       } catch {
@@ -1046,9 +1036,7 @@ export default function AddCompanyModal({
       await pingBackendHealth(getAuthHeader);
       if (!isEdit && !forceCreateDespiteSimilar) {
         const p = new URLSearchParams({ name: form.name.trim() });
-        const sRes = await fetch(`${API_BASE}/customer-companies/similar-name-candidates?${p.toString()}`, {
-          headers: getAuthHeader()
-        });
+        const sRes = await fetch(`${API_BASE}/customer-companies/similar-name-candidates?${p.toString()}`, crmFetchInit());
         const sData = await sRes.json().catch(() => ({}));
         const sim = Array.isArray(sData.similar) ? sData.similar : [];
         if (sim.length) {
@@ -1109,11 +1097,8 @@ export default function AddCompanyModal({
     }
     try {
       const url = isEdit ? `${API_BASE}/customer-companies/${company._id}` : `${API_BASE}/customer-companies`;
-      const res = await fetch(url, {
-        method: isEdit ? 'PATCH' : 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify(body)
-      });
+      const res = await fetch(url, crmFetchInit({ method: isEdit ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+       }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (res.status === 409 && data.code === 'SIMILAR_CUSTOMER_COMPANY' && Array.isArray(data.similarCustomerCompanies)) {
@@ -1143,7 +1128,7 @@ export default function AddCompanyModal({
         }
         const infoRes = await fetch(`${API_BASE}/drive/folders/ensure`, {
           method: 'POST',
-          headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+          headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({ folderName: INFORMATION_FOLDER_NAME, parentFolderId: rootFolderId })
         });
@@ -1156,11 +1141,7 @@ export default function AddCompanyModal({
           const existingFileId = getDriveFileIdFromUrl(company.businessRegistrationCertificateDriveUrl);
           if (existingFileId) {
             try {
-              await fetch(`${API_BASE}/drive/files/${encodeURIComponent(existingFileId)}`, {
-                method: 'DELETE',
-                headers: getAuthHeader(),
-                credentials: 'include'
-              });
+              await fetch(`${API_BASE}/drive/files/${encodeURIComponent(existingFileId)}`, crmFetchInit({ method: 'DELETE' }));
             } catch (_) {}
           }
         }
@@ -1171,7 +1152,7 @@ export default function AddCompanyModal({
         }
         const uploadRes = await fetch(`${API_BASE}/drive/upload`, {
           method: 'POST',
-          headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+          headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({
             name: buildCertificateDriveFileName(
@@ -1192,7 +1173,7 @@ export default function AddCompanyModal({
         }
         const patchRes = await fetch(`${API_BASE}/customer-companies/${companyIdForCert}`, {
           method: 'PATCH',
-          headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+          headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
           body: JSON.stringify({
             businessRegistrationCertificateDriveUrl: uploadData.webViewLink
           })

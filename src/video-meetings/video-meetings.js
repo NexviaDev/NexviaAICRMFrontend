@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import { useSearchParams } from 'react-router-dom';
 import CreateMeetingModal from './create-meeting-modal/create-meeting-modal';
 import VideoMeetingRoom from './video-meeting-room/video-meeting-room';
@@ -12,11 +13,6 @@ const MODAL_PARAM = 'modal';
 const MODAL_CREATE = 'create';
 const MODAL_ROOM = 'room';
 const ID_PARAM = 'id';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function formatDate(d) {
   if (!d) return '—';
@@ -148,7 +144,7 @@ export default function VideoMeetings() {
     }
     let cancelled = false;
     setRoomFetchLoading(true);
-    fetch(`${API_BASE}/video-meetings/${encodeURIComponent(roomId)}`, { headers: getAuthHeader() })
+    fetch(`${API_BASE}/video-meetings/${encodeURIComponent(roomId)}`, crmFetchInit())
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled) return;
@@ -174,7 +170,7 @@ export default function VideoMeetings() {
         q.set('page', String(page));
         q.set('limit', '20');
         if (searchInput.trim()) q.set('q', searchInput.trim());
-        const res = await fetch(`${API_BASE}/video-meetings?${q}`, { headers: getAuthHeader() });
+        const res = await fetch(`${API_BASE}/video-meetings?${q}`, crmFetchInit());
         if (res.ok) {
           const data = await res.json();
           setItems(data.items || []);
@@ -228,7 +224,7 @@ export default function VideoMeetings() {
     try {
       const res = await fetch(`${API_BASE}/video-meetings`, {
         method: 'POST',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
       const data = await res.json().catch(() => ({}));

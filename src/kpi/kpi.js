@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useState, useCallback, useRef } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { useSearchParams } from 'react-router-dom';
 import { API_BASE } from '@/config';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
@@ -186,11 +187,6 @@ function getInitials(name) {
   return `${source[0]}${source[source.length - 1]}`;
 }
 
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
 function formatNumber(value) {
   return Number(value || 0).toLocaleString('ko-KR');
 }
@@ -288,10 +284,7 @@ function yearMatrixJsonToCascadeBlock(json) {
 async function fetchKpiYearMatrix(year, scopeType, scopeId) {
   const params = new URLSearchParams({ year: String(year), scopeType });
   if (scopeType !== 'company' && scopeId) params.set('scopeId', String(scopeId));
-  const res = await fetch(`${API_BASE}/kpi/targets/year-matrix?${params.toString()}`, {
-    headers: getAuthHeader(),
-    credentials: 'include'
-  });
+  const res = await fetch(`${API_BASE}/kpi/targets/year-matrix?${params.toString()}`, crmFetchInit());
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json?.error || '목표 매트릭스를 불러오지 못했습니다.');
   return json;
@@ -1788,10 +1781,7 @@ export default function Kpi() {
     let cancelled = false;
     const fetchOverview = async () => {
       try {
-        const res = await fetch(`${API_BASE}/companies/overview`, {
-          headers: getAuthHeader(),
-          credentials: 'include'
-        });
+        const res = await fetch(`${API_BASE}/companies/overview`, crmFetchInit());
         const json = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(json?.error || '사내 현황 데이터를 불러오지 못했습니다.');
         if (!cancelled) setOverview(json);
@@ -1814,10 +1804,7 @@ export default function Kpi() {
       setLoading(true);
       setError('');
       try {
-        const res = await fetch(`${API_BASE}/kpi/dashboard?${params.toString()}`, {
-          headers: getAuthHeader(),
-          credentials: 'include'
-        });
+        const res = await fetch(`${API_BASE}/kpi/dashboard?${params.toString()}`, crmFetchInit());
         const json = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(json?.error || 'KPI 데이터를 불러오지 못했습니다.');
         if (cancelled) return;
@@ -2170,10 +2157,7 @@ export default function Kpi() {
               scopeType: 'user',
               scopeId: targetModalUserId
             });
-            const res = await fetch(`${API_BASE}/kpi/targets?${params.toString()}`, {
-              headers: getAuthHeader(),
-              credentials: 'include'
-            });
+            const res = await fetch(`${API_BASE}/kpi/targets?${params.toString()}`, crmFetchInit());
             const json = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(json?.error || '월별 개인 목표 정보를 불러오지 못했습니다.');
             return json?.target || null;
@@ -2224,10 +2208,7 @@ export default function Kpi() {
               scopeType: 'team',
               scopeId: dept
             });
-            const res = await fetch(`${API_BASE}/kpi/targets?${params.toString()}`, {
-              headers: getAuthHeader(),
-              credentials: 'include'
-            });
+            const res = await fetch(`${API_BASE}/kpi/targets?${params.toString()}`, crmFetchInit());
             const json = await res.json().catch(() => ({}));
             if (!res.ok) throw new Error(json?.error || '팀 월별 목표를 불러오지 못했습니다.');
             return json?.target || null;
@@ -2278,10 +2259,7 @@ export default function Kpi() {
                   scopeType: 'user',
                   scopeId: uid
                 });
-                const res = await fetch(`${API_BASE}/kpi/targets?${params.toString()}`, {
-                  headers: getAuthHeader(),
-                  credentials: 'include'
-                });
+                const res = await fetch(`${API_BASE}/kpi/targets?${params.toString()}`, crmFetchInit());
                 const json = await res.json().catch(() => ({}));
                 if (!res.ok) throw new Error(json?.error || '팀 누적 목표를 불러오지 못했습니다.');
                 return json?.target || null;
@@ -2640,10 +2618,7 @@ export default function Kpi() {
           scopeType: overviewParams.scopeType,
           ...(overviewParams.scopeId ? { scopeId: overviewParams.scopeId } : {})
         });
-        const res = await fetch(`${API_BASE}/kpi/targets/overview?${params.toString()}`, {
-          headers: getAuthHeader(),
-          credentials: 'include'
-        });
+        const res = await fetch(`${API_BASE}/kpi/targets/overview?${params.toString()}`, crmFetchInit());
         const json = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(json?.error || '목표 현황을 불러오지 못했습니다.');
         if (!cancelled) setTargetOverview(json);
@@ -2673,10 +2648,7 @@ export default function Kpi() {
         params.set('kpiFilterScopeType', scopeType);
         if (scopeType === 'team' && selectedScopeDepartment) params.set('kpiDepartmentId', selectedScopeDepartment);
         if (scopeType === 'user' && selectedScopeUser) params.set('kpiUserId', selectedScopeUser);
-        const res = await fetch(`${API_BASE}/kpi/checklists/summary?${params.toString()}`, {
-          headers: getAuthHeader(),
-          credentials: 'include'
-        });
+        const res = await fetch(`${API_BASE}/kpi/checklists/summary?${params.toString()}`, crmFetchInit());
         const json = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(json?.error || '체크리스트 요약을 불러오지 못했습니다.');
         if (!cancelled) setChecklistSummaryByMetric(json?.byMetric || {});
@@ -2727,10 +2699,7 @@ export default function Kpi() {
           detailParams.set('kpiFilterScopeType', scopeType);
           if (scopeType === 'team' && selectedScopeDepartment) detailParams.set('kpiDepartmentId', selectedScopeDepartment);
           if (scopeType === 'user' && selectedScopeUser) detailParams.set('kpiUserId', selectedScopeUser);
-          const detailRes = await fetch(`${API_BASE}/kpi/detail-items?${detailParams.toString()}`, {
-            headers: getAuthHeader(),
-            credentials: 'include'
-          });
+          const detailRes = await fetch(`${API_BASE}/kpi/detail-items?${detailParams.toString()}`, crmFetchInit());
           const detailJson = await detailRes.json().catch(() => ({}));
           if (!detailRes.ok) throw new Error(detailJson?.error || '상세 리스트를 불러오지 못했습니다.');
           baseItems = normalizeDetailItems(detailJson?.items || []);
@@ -2744,10 +2713,7 @@ export default function Kpi() {
           metricKey: selectedListMetric
         });
         if (checklistScope.scopeId) params.set('scopeId', checklistScope.scopeId);
-        const res = await fetch(`${API_BASE}/kpi/checklists?${params.toString()}`, {
-          headers: getAuthHeader(),
-          credentials: 'include'
-        });
+        const res = await fetch(`${API_BASE}/kpi/checklists?${params.toString()}`, crmFetchInit());
         const json = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(json?.error || '체크리스트를 불러오지 못했습니다.');
         if (cancelled) return;
@@ -2897,11 +2863,7 @@ export default function Kpi() {
         scopeType: checklistScope.scopeType
       });
       if (checklistScope.scopeId) params.set('scopeId', checklistScope.scopeId);
-      const res = await fetch(`${API_BASE}/kpi/other-performance/entries/${encodeURIComponent(raw)}?${params}`, {
-        method: 'DELETE',
-        headers: getAuthHeader(),
-        credentials: 'include'
-      });
+      const res = await fetch(`${API_BASE}/kpi/other-performance/entries/${encodeURIComponent(raw)}?${params}`, crmFetchInit({ method: 'DELETE' }));
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || '삭제에 실패했습니다.');
       setDetailChecklistMessage(json?.message || '삭제되었습니다.');

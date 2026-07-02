@@ -3,6 +3,7 @@
  * UI/상태 없음 — 단위 테스트·재사용 용이.
  */
 import { API_BASE } from '@/config';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import { sanitizeDriveFolderWebViewLink } from '@/lib/google-drive-url';
 import {
   parseNumber,
@@ -11,11 +12,7 @@ import {
 } from '@/lib/sales-opportunity-form-shared';
 import { getStoredCrmUser } from '@/lib/crm-role-utils';
 
-export function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
+export { getAuthHeader } from '@/lib/crm-auth';
 export function newDocMailAddressBookId() {
   return `dm-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -240,7 +237,7 @@ export const DRIVE_FOLDER_MIME = 'application/vnd.google-apps.folder';
 /** 담당자의 소속사 문자열로 고객사 DB에서 한 건 매칭 (정확 일치 우선) */
 export async function resolveCustomerCompanyByAffiliationName(nameTrim) {
   if (!nameTrim) return null;
-  const res = await fetch(`${API_BASE}/customer-companies?search=${encodeURIComponent(nameTrim)}&limit=40`, { headers: getAuthHeader() });
+  const res = await fetch(`${API_BASE}/customer-companies?search=${encodeURIComponent(nameTrim)}&limit=40`, crmFetchInit());
   const data = await res.json().catch(() => ({}));
   const items = Array.isArray(data.items) ? data.items : [];
   const lower = nameTrim.toLowerCase();
@@ -249,7 +246,7 @@ export async function resolveCustomerCompanyByAffiliationName(nameTrim) {
 }
 
 export async function fetchRegisteredDriveParentId() {
-  const rootRes = await fetch(`${API_BASE}/custom-field-definitions/drive-root`, { headers: getAuthHeader() });
+  const rootRes = await fetch(`${API_BASE}/custom-field-definitions/drive-root`, crmFetchInit());
   const rootJson = await rootRes.json().catch(() => ({}));
   const driveRootUrl = (rootJson.driveRootUrl != null && String(rootJson.driveRootUrl).trim()) ? String(rootJson.driveRootUrl).trim() : '';
   return getDriveFolderIdFromLink(driveRootUrl);
@@ -263,7 +260,7 @@ export async function buildContactBaseFolderName(contact) {
     let ccBn = contact.customerCompanyId?.businessNumber || '';
     if (!ccName || !ccBn) {
       try {
-        const ccRes = await fetch(`${API_BASE}/customer-companies/${ccId}`, { headers: getAuthHeader() });
+        const ccRes = await fetch(`${API_BASE}/customer-companies/${ccId}`, crmFetchInit());
         const ccData = await ccRes.json().catch(() => ({}));
         if (ccRes.ok && ccData._id) {
           ccName = ccData.name || ccName;
@@ -304,7 +301,7 @@ export async function ensureOppContactDriveRoot(contact, opts = {}) {
     const folderName = await buildContactBaseFolderName(contact);
     const r = await fetch(`${API_BASE}/drive/folders/ensure`, {
       method: 'POST',
-      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({ folderName, customerCompanyId: String(ccId) })
     });
@@ -324,7 +321,7 @@ export async function ensureOppContactDriveRoot(contact, opts = {}) {
   const baseFolderName = forcePersonal ? buildPersonalContactFolderName(contact) : await buildContactBaseFolderName(contact);
   const r = await fetch(`${API_BASE}/drive/folders/ensure`, {
     method: 'POST',
-    headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+    headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({
       folderName: baseFolderName,

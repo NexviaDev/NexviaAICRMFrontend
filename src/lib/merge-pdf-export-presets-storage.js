@@ -9,10 +9,7 @@ export function newMergePdfExportPresetId() {
 
 /** @param {() => object} getAuthHeader */
 export async function fetchCompanyMergePdfExportPresets(getAuthHeader) {
-  const res = await fetch(`${API_BASE}/companies/merge-pdf-export-presets`, {
-    headers: { ...getAuthHeader() },
-    credentials: 'include'
-  });
+  const res = await fetch(`${API_BASE}/companies/merge-pdf-export-presets`, crmFetchInit());
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || '회사 PDF 설정을 불러오지 못했습니다.');
   return Array.isArray(data.items) ? data.items : [];
@@ -33,10 +30,7 @@ export async function putCompanyMergePdfExportPresets(getAuthHeader, items) {
 
 /** @param {() => object} getAuthHeader */
 export async function fetchPersonalMergePdfExportPresets(getAuthHeader) {
-  const res = await fetch(`${API_BASE}/auth/merge-pdf-export-presets`, {
-    headers: { ...getAuthHeader() },
-    credentials: 'include'
-  });
+  const res = await fetch(`${API_BASE}/auth/merge-pdf-export-presets`, crmFetchInit());
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || '개인 PDF 설정을 불러오지 못했습니다.');
   return Array.isArray(data.items) ? data.items : [];

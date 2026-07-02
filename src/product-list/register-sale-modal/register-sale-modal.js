@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import CustomerCompanySearchModal from '../../customer-companies/customer-company-search-modal/customer-company-search-modal';
 import CustomerCompanyEmployeesSearchModal from '../../customer-company-employees/customer-company-employees-search-modal/customer-company-employees-search-modal';
 import ProductSearchModal from '../../sales-pipeline/product-search-modal/product-search-modal';
@@ -6,11 +7,6 @@ import './register-sale-modal.css';
 
 import { API_BASE } from '@/config';
 import { listPriceFromProduct } from '@/lib/product-price-utils';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 const CURRENCY_OPTIONS = [
   { value: 'KRW', label: '₩ KRW' },
@@ -172,7 +168,7 @@ export default function RegisterSaleModal({
     let cancelled = false;
     setLoadingSale(true);
     setError('');
-    fetch(`${API_BASE}/sales-opportunities/${saleId}`, { headers: getAuthHeader(), credentials: 'include' })
+    fetch(`${API_BASE}/sales-opportunities/${saleId}`, crmFetchInit())
       .then((r) => r.json().catch(() => ({})))
       .then((data) => {
         if (cancelled) return;
@@ -247,7 +243,7 @@ export default function RegisterSaleModal({
     setDriveError('');
     try {
       const params = new URLSearchParams({ pageSize: '50', folderId: folderId || 'root' });
-      const r = await fetch(`${API_BASE}/drive/files?${params}`, { headers: getAuthHeader(), credentials: 'include' });
+      const r = await fetch(`${API_BASE}/drive/files?${params}`, crmFetchInit());
       const data = await r.json().catch(() => ({}));
       if (r.ok) setDriveFiles(data.files || []);
       else setDriveError(data.error || 'Drive 목록을 불러올 수 없습니다.');
@@ -262,7 +258,7 @@ export default function RegisterSaleModal({
   const ensureTargetDriveFolder = useCallback(async () => {
     const r1 = await fetch(`${API_BASE}/drive/folders/ensure`, {
       method: 'POST',
-      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({ folderName: driveFolderName })
     });
@@ -274,7 +270,7 @@ export default function RegisterSaleModal({
     if (productFolderName) {
       const r2 = await fetch(`${API_BASE}/drive/folders/ensure`, {
         method: 'POST',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ folderName: productFolderName, parentFolderId: companyId })
       });
@@ -331,7 +327,7 @@ export default function RegisterSaleModal({
 
   const insertDriveLink = useCallback(async (fileId) => {
     try {
-      const r = await fetch(`${API_BASE}/drive/files/${fileId}`, { headers: getAuthHeader() });
+      const r = await fetch(`${API_BASE}/drive/files/${fileId}`, crmFetchInit());
       const data = await r.json().catch(() => ({}));
       if (!r.ok) return;
       const url = data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
@@ -370,7 +366,7 @@ export default function RegisterSaleModal({
           if (!contentBase64) { setDriveError(`"${file.name}" 변환 실패`); continue; }
           const r = await fetch(`${API_BASE}/drive/upload`, {
             method: 'POST',
-            headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+            headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
             credentials: 'include',
             body: JSON.stringify({
               name: file.name,
@@ -419,7 +415,7 @@ export default function RegisterSaleModal({
             }
             const up = await fetch(`${API_BASE}/drive/upload`, {
               method: 'POST',
-              headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+              headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
               credentials: 'include',
               body: JSON.stringify({
                 name: file.name,

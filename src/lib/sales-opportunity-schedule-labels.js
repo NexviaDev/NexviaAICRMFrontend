@@ -1,4 +1,5 @@
 import { API_BASE } from '@/config';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 
 /** 기회 일정 커스텀 필드 정의가 바뀌었을 때 — 파이프라인·표·열 설정 모달이 라벨 맵을 다시 받도록 */
 export const SALES_OPPORTUNITY_SCHEDULE_DEFS_CHANGED = 'nexvia-sales-opportunity-schedule-defs-changed';
@@ -12,8 +13,8 @@ export function dispatchSalesOpportunityScheduleDefsChanged() {
 }
 
 function defaultGetAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  const token = getCrmToken();
+  return token ? { ...getCrmAuthHeaders() } : {};
 }
 
 /**
@@ -77,7 +78,7 @@ export async function fetchSalesOpportunityScheduleFieldContext(getAuthHeader = 
   try {
     const res = await fetch(
       `${API_BASE}/custom-field-definitions?entityType=salesOpportunitySchedule`,
-      { headers: { ...getAuthHeader() }, credentials: 'include' }
+      crmFetchInit()
     );
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !Array.isArray(data.items)) {

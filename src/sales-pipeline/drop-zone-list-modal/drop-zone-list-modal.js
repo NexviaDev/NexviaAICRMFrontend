@@ -1,4 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { DEFAULT_SALES_PIPELINE_LIST_TEMPLATE, LIST_IDS, patchListTemplate } from '@/lib/list-templates';
 import { API_BASE } from '@/config';
 import {
@@ -18,11 +19,6 @@ import { resolvePipelineStageLabel } from '../pipeline-stage-labels';
 import './drop-zone-list-modal.css';
 
 export { resolvePipelineStageLabel };
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 /** 헤더 열 재정렬 드래그 (표 행 드래그와 구분) — 파이프라인 표에서 동일 MIME 사용 */
 export const DZ_COL_DRAG_MIME = 'application/x-sp-dz-col-reorder';

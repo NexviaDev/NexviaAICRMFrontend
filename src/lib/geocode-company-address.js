@@ -3,25 +3,18 @@
  * add-company-modal · 연락처 등록(고객사 자동 생성)에서 공용 사용.
  */
 import { API_BASE } from '@/config';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import { getGoogleMapsApiKey, loadGoogleMapsPromise, geocodeAddressWithGoogleMaps } from '@/lib/google-maps-client';
 
 const GOOGLE_MAPS_API_KEY = getGoogleMapsApiKey();
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 /** @returns {Promise<{ latitude: number, longitude: number } | null>} */
 export async function geocodeAddressForCompanySave(addressText) {
   const address = (addressText || '').trim();
   if (!address) return null;
   try {
-    const geoRes = await fetch(`${API_BASE}/customer-companies/geocode`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-      body: JSON.stringify({ address, soft: true })
-    });
+    const geoRes = await fetch(`${API_BASE}/customer-companies/geocode`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address, soft: true  })
+    }));
     const geoData = await geoRes.json().catch(() => ({}));
     if (
       geoRes.ok &&

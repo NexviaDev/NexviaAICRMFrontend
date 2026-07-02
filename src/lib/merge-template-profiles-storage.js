@@ -29,10 +29,7 @@ export function normalizeTemplateProfilesMap(profiles) {
 /** @param {() => object} getAuthHeader */
 export async function fetchMergeTemplateProfiles(getAuthHeader, apiPrefix = '/quotation-merge') {
   await pingBackendHealth();
-  const res = await fetch(`${API_BASE}${apiPrefix}/template-profiles`, {
-    headers: { ...getAuthHeader() },
-    credentials: 'include'
-  });
+  const res = await fetch(`${API_BASE}${apiPrefix}/template-profiles`, crmFetchInit());
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || '양식별 PDF·메일 설정을 불러오지 못했습니다.');
   return normalizeTemplateProfilesMap(data.profiles);

@@ -1,12 +1,8 @@
 import { useState, useEffect } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import './meeting-detail-modal.css';
 
 import { API_BASE } from '@/config';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function formatMeetingDate(d) {
   if (!d) return '—';
@@ -42,10 +38,7 @@ export default function MeetingDetailModal({ meeting, onClose, onEdit, onUpdated
   const handleDelete = async () => {
     setDeleting(true);
     try {
-      const res = await fetch(`${API_BASE}/meeting-minutes/${meeting._id}`, {
-        method: 'DELETE',
-        headers: getAuthHeader()
-      });
+      const res = await fetch(`${API_BASE}/meeting-minutes/${meeting._id}`, crmFetchInit({ method: 'DELETE' }));
       if (res.ok) {
         onDeleted?.();
         onClose?.();

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { API_BASE } from '@/config';
 import { hasUnreadNotificationBadge } from '@/lib/notification-read-state';
@@ -25,14 +26,14 @@ export default function PageHeaderNotifyChat({
   const [notifyUnread, setNotifyUnread] = useState(false);
 
   const checkUnread = useCallback(async () => {
-    const token = localStorage.getItem('crm_token');
+    const token = getCrmToken();
     if (!token) {
       setNotifyUnread(false);
       return;
     }
     try {
       const res = await fetch(`${API_BASE}/notifications/badge`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { ...getCrmAuthHeaders() }
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {

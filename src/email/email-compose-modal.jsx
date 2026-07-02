@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState, useMemo, useCallback } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { API_BASE, MAX_DRIVE_JSON_UPLOAD_BYTES } from '@/config';
 import { buildParticipantDirectoryFromOverview } from '@/lib/participant-directory-merge';
 import ParticipantModal from '@/shared/participant-modal/participant-modal';
@@ -374,11 +375,6 @@ export default function EmailComposeModal({
     [signaturePanelText]
   );
 
-  function getAuthHeader() {
-    const token = localStorage.getItem('crm_token');
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  }
-
   useEffect(() => {
     setTo(initialTo || '');
     setCc(initialCc || '');
@@ -461,7 +457,7 @@ export default function EmailComposeModal({
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/auth/me`, { headers: getAuthHeader(), credentials: 'include' })
+    fetch(`${API_BASE}/auth/me`, crmFetchInit())
       .then((r) => (r.ok ? r.json() : {}))
       .then((data) => {
         if (cancelled) return;
@@ -771,7 +767,7 @@ export default function EmailComposeModal({
       };
       const res = await fetch(`${API_BASE}/compose/ai-assist`, {
         method: 'POST',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(body)
       });
@@ -891,7 +887,7 @@ export default function EmailComposeModal({
         const contentBase64 = btoa(binary);
         const r = await fetch(`${API_BASE}/drive/upload`, {
           method: 'POST',
-          headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+          headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({
             name: file.name,
@@ -935,7 +931,7 @@ export default function EmailComposeModal({
       const params = new URLSearchParams({ pageSize: '50' });
       if (folderId) params.set('folderId', folderId);
       if (driveId) params.set('driveId', driveId);
-      const r = await fetch(`${API_BASE}/drive/files?${params}`, { headers: getAuthHeader(), credentials: 'include' });
+      const r = await fetch(`${API_BASE}/drive/files?${params}`, crmFetchInit());
       const data = await r.json().catch(() => ({}));
       if (r.ok) {
         setDriveFiles(data.files || []);
@@ -957,7 +953,7 @@ export default function EmailComposeModal({
     setDriveLoading(true);
     setDriveError('');
     try {
-      const r = await fetch(`${API_BASE}/drive/drives?pageSize=50`, { headers: getAuthHeader(), credentials: 'include' });
+      const r = await fetch(`${API_BASE}/drive/drives?pageSize=50`, crmFetchInit());
       const data = await r.json().catch(() => ({}));
       if (r.ok) {
         setDriveDrives(data.drives || []);
@@ -1177,7 +1173,7 @@ export default function EmailComposeModal({
 
   const insertDriveLink = async (fileId) => {
     try {
-      const r = await fetch(`${API_BASE}/drive/files/${fileId}`, { headers: getAuthHeader() });
+      const r = await fetch(`${API_BASE}/drive/files/${fileId}`, crmFetchInit());
       const data = await r.json().catch(() => ({}));
       if (!r.ok) return;
       const url = data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import SalesPipelineTablePanel from './sales-pipeline-table-panel';
 import { useSearchParams } from 'react-router-dom';
 import OpportunityModal from './opportunity-modal/opportunity-modal';
@@ -60,11 +61,6 @@ function getLocalTodayYearMonth() {
     year: String(now.getFullYear()),
     month: String(now.getMonth() + 1)
   };
-}
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 function getPipelineViewerUserId() {
@@ -554,7 +550,7 @@ export default function SalesPipeline() {
       }
       if (productIdsForApi.length) params.set('productId', productIdsForApi.join(','));
       if (assigneeIdsForApi.length) params.set('assignedTo', assigneeIdsForApi.join(','));
-      const res = await fetch(`${API_BASE}/sales-opportunities?${params}`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/sales-opportunities?${params}`, crmFetchInit());
       if (!res.ok) throw new Error('fetch failed');
       const data = await res.json();
       setGrouped(data.grouped || {});
@@ -619,7 +615,7 @@ export default function SalesPipeline() {
 
   const fetchStageDefinitions = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=salesPipelineStage`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=salesPipelineStage`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (res.ok && Array.isArray(data.items)) {
         setStageDefinitions(data.items);
@@ -677,8 +673,8 @@ export default function SalesPipeline() {
     (async () => {
       try {
         const [pres, ores] = await Promise.all([
-          fetch(`${API_BASE}/products?productPicker=1&limit=500`, { headers: getAuthHeader() }),
-          fetch(`${API_BASE}/companies/overview`, { headers: getAuthHeader() })
+          fetch(`${API_BASE}/products?productPicker=1&limit=500`, crmFetchInit()),
+          fetch(`${API_BASE}/companies/overview`, crmFetchInit())
         ]);
         const pdata = await pres.json().catch(() => ({}));
         const odata = await ores.json().catch(() => ({}));
@@ -989,15 +985,11 @@ export default function SalesPipeline() {
     try {
       const res = await fetch(
         `${API_BASE}/sales-opportunities/${encodeURIComponent(id)}/stage`,
-        {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-          body: JSON.stringify({
+        crmFetchInit({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
             stage: targetStage,
             renewalFollowUpLayout: 'split',
             renewalFollowUpCreateOpportunities: true
-          })
-        }
+        }) })
       );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '단계 변경에 실패했습니다.');
@@ -1023,7 +1015,7 @@ export default function SalesPipeline() {
     }
     if (!window.confirm('이 기회를 삭제하시겠습니까?')) return;
     try {
-      const res = await fetch(`${API_BASE}/sales-opportunities/${id}`, { method: 'DELETE', headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/sales-opportunities/${id}`, crmFetchInit({ method: 'DELETE' }));
       if (res.status === 403) {
         const data = await res.json().catch(() => ({}));
         window.alert(data.error || '삭제 권한이 없습니다.');

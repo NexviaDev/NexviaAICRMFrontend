@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import ParticipantModal from '@/shared/participant-modal/participant-modal';
 import CategoryManageModal from './category-manage-modal';
 import '../../calendar/event-modal/event-modal.css';
@@ -7,11 +8,6 @@ import './add-meeting-modal.css';
 import { API_BASE } from '@/config';
 import { buildParticipantDirectoryFromOverview } from '@/lib/participant-directory-merge';
 const DEFAULT_MEETING_CATEGORIES = ['주간회의', '월간 회의', '프로젝트 회의'];
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function toDatetimeLocal(d) {
   if (!d) return '';
@@ -74,7 +70,7 @@ export default function AddMeetingModal({ meeting, onClose, onSaved }) {
 
   const fetchMeetingCategories = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/companies/meeting-categories`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/companies/meeting-categories`, crmFetchInit());
       if (!res.ok) return;
       const data = await res.json().catch(() => ({}));
       const list = Array.isArray(data.categories) ? data.categories.map((v) => String(v || '').trim()).filter(Boolean) : [];
@@ -108,11 +104,8 @@ export default function AddMeetingModal({ meeting, onClose, onSaved }) {
   };
 
   const persistMeetingCategories = async (next) => {
-    const res = await fetch(`${API_BASE}/companies/meeting-categories`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-      body: JSON.stringify({ categories: next })
-    });
+    const res = await fetch(`${API_BASE}/companies/meeting-categories`, crmFetchInit({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ categories: next  })
+    }));
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || '카테고리 저장에 실패했습니다.');
     return Array.isArray(data.categories) ? data.categories : next;

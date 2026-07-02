@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { useSearchParams } from 'react-router-dom';
 import CustomerCompanyDetailModal from '../customer-companies/customer-company-detail-modal/customer-company-detail-modal';
 import MapCompanyPickerModal from './map-company-picker-modal';
@@ -40,11 +41,6 @@ const MAP_KOREA_LABEL_MARKERS = [
   { key: 'west-sea', text: '서해', lat: 36.55, lng: 124.9, className: 'map-korea-label map-korea-label-sea' },
   { key: 'dokdo', text: '독도', lat: 37.2414, lng: 131.8663, className: 'map-korea-label map-korea-label-dokdo' }
 ];
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function getCurrentUserIdFromStorage() {
   try {
@@ -598,9 +594,7 @@ export default function Map({
   const fetchFocusedCompanyOnly = useCallback(async () => {
     if (!focusCompanyId) return false;
     try {
-      const res = await fetch(`${API_BASE}/customer-companies/${encodeURIComponent(String(focusCompanyId))}`, {
-        headers: getAuthHeader()
-      });
+      const res = await fetch(`${API_BASE}/customer-companies/${encodeURIComponent(String(focusCompanyId))}`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (res.ok && data?._id) {
         setCompanies([data]);
@@ -617,7 +611,7 @@ export default function Map({
     try {
       const params = new URLSearchParams({ limit: '500' });
       if (assigneeMeOnly) params.set('assigneeMe', '1');
-      const res = await fetch(`${API_BASE}/customer-companies?${params.toString()}`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/customer-companies?${params.toString()}`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (res.ok && Array.isArray(data.items)) {
         setCompanies(data.items);

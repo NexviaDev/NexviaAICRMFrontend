@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import '../../customer-companies/add-company-modal/add-company-modal.css';
 import '../../customer-companies/customer-companies.css';
 import '../../customer-companies/customer-companies-responsive.css';
@@ -11,11 +12,6 @@ import { listColumnValueInlineStyle } from '@/lib/list-column-cell-styles';
 import { CUSTOM_FIELDS_PREFIX } from '@/lib/customer-company-search-fields';
 import { cellValue, getNameInitials, COMPANY_STATUS_LABEL } from '../../customer-companies/customer-companies-list-cells';
 import { normalizeBulkImportCompanyGroupKey } from '@/lib/bulk-import-company-group-key';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 /** add-customer-company-employees-modal.js 의 formatPhoneInput 과 동일 */
 function formatPhoneInput(value) {
@@ -255,7 +251,7 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
 
   const loadCustomFieldColumns = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=customerCompany`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=customerCompany`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       const defs = Array.isArray(data?.items) ? data.items : [];
       const extra = defs.map((d) => ({ key: `${CUSTOM_FIELDS_PREFIX}${d.key}`, label: d.label || d.key || '' }));
@@ -274,7 +270,7 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
     if (!open) return;
     let cancelled = false;
     setCompanyEmployeesLoaded(false);
-    fetch(`${API_BASE}/companies/overview`, { headers: getAuthHeader() })
+    fetch(`${API_BASE}/companies/overview`, crmFetchInit())
       .then((r) => r.json().catch(() => ({})))
       .then((data) => {
         if (!cancelled && Array.isArray(data?.employees)) setCompanyEmployees(data.employees);

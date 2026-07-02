@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE } from '@/config';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
@@ -55,7 +56,7 @@ export default function NotificationPage() {
   const canManage = useMemo(() => isAdminOrAboveRole(getStoredCrmUser()?.role), []);
 
   const loadNotifications = useCallback(async (forcedPage, options = {}) => {
-    const token = localStorage.getItem('crm_token');
+    const token = getCrmToken();
     if (!token) {
       setRows([]);
       setLoading(false);
@@ -72,7 +73,7 @@ export default function NotificationPage() {
     try {
       const res = await fetch(
         `${API_BASE}/notifications?page=${pageNum}&limit=${PAGE_SIZE}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { ...getCrmAuthHeaders() } }
       );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '공지사항을 불러오지 못했습니다.');
@@ -95,7 +96,7 @@ export default function NotificationPage() {
   }, [page]);
 
   const loadMentions = useCallback(async (forcedPage) => {
-    const token = localStorage.getItem('crm_token');
+    const token = getCrmToken();
     if (!token) {
       setMentionRows([]);
       setMentionLoading(false);
@@ -107,7 +108,7 @@ export default function NotificationPage() {
     try {
       const res = await fetch(
         `${API_BASE}/notifications/mentions?page=${pageNum}&limit=${PAGE_SIZE}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { ...getCrmAuthHeaders() } }
       );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '프로젝트 언급 알림을 불러오지 못했습니다.');
@@ -171,7 +172,7 @@ export default function NotificationPage() {
       setError('등록·수정은 대표(Owner) 또는 관리자(Admin)만 가능합니다.');
       return;
     }
-    const token = localStorage.getItem('crm_token');
+    const token = getCrmToken();
     if (!token) return;
     const title = String(form.title || '').trim();
     const content = String(form.content || '').trim();
@@ -186,7 +187,7 @@ export default function NotificationPage() {
       const method = editingId ? 'PATCH' : 'POST';
       const res = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', ...getCrmAuthHeaders() },
         body: JSON.stringify({ title, content, isPublished: true })
       });
       const data = await res.json().catch(() => ({}));
@@ -208,7 +209,7 @@ export default function NotificationPage() {
   const remove = async (id, row) => {
     if (!canManage) return;
     if (row && !isCompanyNotice(row)) return;
-    const token = localStorage.getItem('crm_token');
+    const token = getCrmToken();
     if (!token || !id) return;
     if (!window.confirm('이 공지사항을 삭제할까요? 삭제 후에는 복구되지 않습니다.')) return;
     setSaving(true);
@@ -216,7 +217,7 @@ export default function NotificationPage() {
     try {
       const res = await fetch(`${API_BASE}/notifications/${encodeURIComponent(id)}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { ...getCrmAuthHeaders() }
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '삭제에 실패했습니다.');
@@ -230,12 +231,12 @@ export default function NotificationPage() {
 
   const markInboxRead = async (item) => {
     const mentionId = String(item?._id || '').trim();
-    const token = localStorage.getItem('crm_token');
+    const token = getCrmToken();
     if (!token || !mentionId || item?.readAt) return;
     try {
       const res = await fetch(`${API_BASE}/notifications/mentions/${encodeURIComponent(mentionId)}/read`, {
         method: 'PATCH',
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { ...getCrmAuthHeaders() }
       });
       if (res.ok) {
         setMentionRows((prev) =>

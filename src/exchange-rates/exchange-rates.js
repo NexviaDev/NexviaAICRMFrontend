@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import { useSearchParams } from 'react-router-dom';
 import { API_BASE } from '@/config';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
@@ -36,11 +37,6 @@ function CurrencyFlag({ code, country }) {
 }
 
 const AUTO_POLL_MS = 5 * 60 * 1000;
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function formatKrwNumber(value) {
   if (value == null || !Number.isFinite(Number(value))) return null;
@@ -241,10 +237,7 @@ export default function ExchangeRates() {
     if (!silent) setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_BASE}/exchange-rates/latest`, {
-        headers: getAuthHeader(),
-        credentials: 'include'
-      });
+      const res = await fetch(`${API_BASE}/exchange-rates/latest`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         const hasRows = Array.isArray(data.rows) && data.rows.some((r) => r.available);

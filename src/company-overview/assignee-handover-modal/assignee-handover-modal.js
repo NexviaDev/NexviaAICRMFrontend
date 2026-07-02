@@ -1,12 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import { API_BASE } from '@/config';
 import { isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import './assignee-handover-modal.css';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 /**
  * 담당 이관 신청 — Admin 메일 승인 후 반영 (POST /api/companies/assignee-handover-requests)
@@ -134,10 +130,7 @@ export default function AssigneeHandoverModal({
 
       setSubmitting(true);
       try {
-        const res = await fetch(`${API_BASE}/companies/assignee-handover-requests`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-          body: JSON.stringify({
+        const res = await fetch(`${API_BASE}/companies/assignee-handover-requests`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
             targetType,
             targets: eligible.map((t) => ({ targetId: t.targetId })),
             fromUserId,
@@ -145,7 +138,7 @@ export default function AssigneeHandoverModal({
             consentNotifyUserIds: selectedConsentIds,
             requestReason: reasonTrim
           })
-        });
+        }));
         const json = await res.json().catch(() => ({}));
         if (!res.ok) {
           setError(json.error || '신청에 실패했습니다.');

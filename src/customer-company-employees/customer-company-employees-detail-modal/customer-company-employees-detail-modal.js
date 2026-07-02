@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import CustomFieldsDisplay from '../../shared/custom-fields-display';
 import CustomFieldsSection from '../../shared/custom-fields-section';
 import ProductSalesModal from '../../shared/product-sales-modal/product-sales-modal';
@@ -31,11 +32,6 @@ import {
   getSavedCustomerCompanyEmployeesDetailModalPresentation,
   patchCustomerCompanyEmployeesDetailModalTemplate
 } from '@/lib/list-templates';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function formatHistoryDate(d) {
   if (!d) return '';
@@ -268,7 +264,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=contact`, { headers: getAuthHeader() });
+        const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=contact`, crmFetchInit());
         const data = await res.json().catch(() => ({}));
         if (!cancelled && res.ok && Array.isArray(data.items)) setCustomDefinitions(data.items);
       } catch (_) {}
@@ -376,7 +372,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   const fetchContactDetail = useCallback(async () => {
     if (!contactId) return null;
     try {
-      const res = await fetch(`${API_BASE}/customer-company-employees/${contactId}`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/customer-company-employees/${contactId}`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?._id) return null;
       setDisplayedContact((prev) => ({ ...(prev || {}), ...data }));
@@ -402,7 +398,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
     if (!contactId) return;
     setLoadingHistory(true);
     try {
-      const res = await fetch(`${API_BASE}/customer-company-employees/${contactId}/history`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/customer-company-employees/${contactId}/history`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (res.ok) setHistoryItems(data.items || []);
       else setHistoryItems([]);
@@ -496,7 +492,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
     try {
       const params = new URLSearchParams();
       params.set('customerCompanyEmployeeId', contactId);
-      const res = await fetch(`${API_BASE}/sales-opportunities?${params}`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/sales-opportunities?${params}`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.grouped) {
         const flat = (Object.values(data.grouped) || []).flat();
@@ -571,7 +567,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
         const cfolderName = buildCompanyDriveFolderName(c);
         const r1 = await fetch(`${API_BASE}/drive/folders/ensure`, {
           method: 'POST',
-          headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+          headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({
             folderName: cfolderName,
@@ -590,7 +586,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
 
         const r2 = await fetch(`${API_BASE}/drive/folders/ensure`, {
           method: 'POST',
-          headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+          headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({
             folderName: personalFolderName,
@@ -629,7 +625,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
         return { id: data2.id, webViewLink: folderLink };
       }
 
-      const rootRes = await fetch(`${API_BASE}/custom-field-definitions/drive-root`, { headers: getAuthHeader() });
+      const rootRes = await fetch(`${API_BASE}/custom-field-definitions/drive-root`, crmFetchInit());
       const rootJson = await rootRes.json().catch(() => ({}));
       const driveRootUrl =
         rootJson.driveRootUrl != null && String(rootJson.driveRootUrl).trim() ? String(rootJson.driveRootUrl).trim() : '';
@@ -642,7 +638,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
       }
       const r = await fetch(`${API_BASE}/drive/folders/ensure`, {
         method: 'POST',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           folderName: personalFolderName,
@@ -710,7 +706,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
         setDriveUploadNotice,
         onSuccess: async () => {
           try {
-            const res = await fetch(`${API_BASE}/customer-company-employees/${contactId}`, { headers: getAuthHeader() });
+            const res = await fetch(`${API_BASE}/customer-company-employees/${contactId}`, crmFetchInit());
             const data = await res.json().catch(() => ({}));
             if (res.ok && data?._id) setDisplayedContact((prev) => ({ ...(prev || {}), ...data }));
           } catch (_) {}
@@ -730,13 +726,13 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
       try {
         await pingBackendHealth(getAuthHeader);
         const url = buildDriveFileDeleteUrl(fid, { customerCompanyEmployeeId: String(contactId) });
-        const res = await fetch(url, { method: 'DELETE', headers: getAuthHeader(), credentials: 'include' });
+        const res = await fetch(url, crmFetchInit({ method: 'DELETE' }));
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           setDriveError(data.error || '삭제에 실패했습니다.');
           return;
         }
-        const r2 = await fetch(`${API_BASE}/customer-company-employees/${contactId}`, { headers: getAuthHeader() });
+        const r2 = await fetch(`${API_BASE}/customer-company-employees/${contactId}`, crmFetchInit());
         const data2 = await r2.json().catch(() => ({}));
         if (r2.ok && data2?._id) setDisplayedContact((prev) => ({ ...(prev || {}), ...data2 }));
         setDriveUploadNotice('파일을 삭제했습니다.');
@@ -853,10 +849,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
       return;
     }
     try {
-      const res = await fetch(`${API_BASE}/customer-company-employees/${contactId}/history/${historyId}`, {
-        method: 'DELETE',
-        headers: getAuthHeader()
-      });
+      const res = await fetch(`${API_BASE}/customer-company-employees/${contactId}/history/${historyId}`, crmFetchInit({ method: 'DELETE' }));
       if (res.ok) {
         fetchHistory();
         fetchContactDetail();
@@ -934,11 +927,8 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
     setGoogleResult(null);
     setGoogleSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/google-contacts/contacts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ contacts: [payload] })
-      });
+      const res = await fetch(`${API_BASE}/google-contacts/contacts`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contacts: [payload]  })
+      }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setGoogleResult({ error: data.error || '구글 주소록 등록에 실패했습니다.', needsReauth: data.needsReauth });
@@ -978,7 +968,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
     setLoadingCompanySearch(true);
     setCompanyDropdownOpen(false);
     try {
-      const res = await fetch(`${API_BASE}/customer-companies`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/customer-companies`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setCompanyList([]); return; }
       const items = data.items || [];
@@ -1051,11 +1041,8 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
       if (editForm.customFields && Object.keys(editForm.customFields).length) {
         payload.customFields = editForm.customFields;
       }
-      const res = await fetch(`${API_BASE}/customer-company-employees/${contactId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify(payload)
-      });
+      const res = await fetch(`${API_BASE}/customer-company-employees/${contactId}`, crmFetchInit({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+       }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setEditError(data.error || '수정에 실패했습니다.');
@@ -1078,10 +1065,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
     }
     setDeleting(true);
     try {
-      const res = await fetch(`${API_BASE}/customer-company-employees/${contactId}`, {
-        method: 'DELETE',
-        headers: getAuthHeader()
-      });
+      const res = await fetch(`${API_BASE}/customer-company-employees/${contactId}`, crmFetchInit({ method: 'DELETE' }));
       if (res.ok) {
         onUpdated?.({ deletedId: String(contactId) });
         onClose?.();

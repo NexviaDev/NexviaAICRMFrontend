@@ -1,3 +1,4 @@
+import { crmFetchInit, getAuthHeader } from '@/lib/crm-auth';
 /**
  * POST /history/from-audio 가 202 + jobId 를 주면, job 완료까지 폴링 (ai-voice 상세 폴링과 유사).
  */
@@ -6,7 +7,7 @@ export async function pollJournalFromAudioJob(pollUrl, getAuthHeader, options = 
   const maxMs = options.maxMs ?? 15 * 60 * 1000;
   const start = Date.now();
   while (Date.now() - start < maxMs) {
-    const res = await fetch(pollUrl, { headers: getAuthHeader(), credentials: 'include' });
+    const res = await fetch(pollUrl, crmFetchInit());
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || '처리 상태를 불러오지 못했습니다.');
     if (data.status === 'completed') return data;

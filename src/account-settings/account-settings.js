@@ -1,15 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import { Link } from 'react-router-dom';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import { API_BASE } from '@/config';
 import { pingBackendHealth } from '@/lib/backend-wake';
 import { notifyCrmAuthChanged } from '@/lib/use-crm-token';
 import './account-settings.css';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function syncLocalUserListTemplates(listTemplates) {
   try {
@@ -33,8 +29,8 @@ export default function AccountSettings() {
     try {
       await pingBackendHealth();
       const [meRes, companyRes] = await Promise.all([
-        fetch(`${API_BASE}/auth/me`, { headers: getAuthHeader(), credentials: 'include' }),
-        fetch(`${API_BASE}/companies/list-templates-bundle`, { headers: getAuthHeader(), credentials: 'include' })
+        fetch(`${API_BASE}/auth/me`, crmFetchInit()),
+        fetch(`${API_BASE}/companies/list-templates-bundle`, crmFetchInit())
       ]);
       const meData = await meRes.json().catch(() => ({}));
       const companyData = await companyRes.json().catch(() => ({}));

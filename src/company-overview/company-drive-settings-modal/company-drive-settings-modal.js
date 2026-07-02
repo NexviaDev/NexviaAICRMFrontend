@@ -1,12 +1,8 @@
 import { useState, useEffect } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import './company-drive-settings-modal.css';
 
 import { API_BASE } from '@/config';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 /**
  * 전체 공유 드라이브 주소 설정 모달
@@ -43,7 +39,7 @@ export default function CompanyDriveSettingsModal({
     try {
       const res = await fetch(`${API_BASE}/custom-field-definitions/drive-root`, {
         method: 'PATCH',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ driveRootUrl: driveRootUrl.trim() })
       });

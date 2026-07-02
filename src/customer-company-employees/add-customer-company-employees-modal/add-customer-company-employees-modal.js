@@ -1,4 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import CustomerCompanySearchModal from '../../customer-companies/customer-company-search-modal/customer-company-search-modal';
 import CustomFieldsSection from '../../shared/custom-fields-section';
 import { mergeCustomFieldsForSave } from '@/lib/custom-field-formula';
@@ -28,11 +29,6 @@ import {
   runDriveDirectFileUpload,
   sortDriveUploadedFiles
 } from '@/shared/register-sale-docs-drive';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 /** Nexvia에 Google 계정으로 가입·로그인한 사용자(주소록 등 Google 연동 전제) */
 function currentCrmUserHasGoogleId() {
@@ -531,7 +527,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
         const cfolderName = buildCompanyDriveFolderName(c);
         const r1 = await fetch(`${API_BASE}/drive/folders/ensure`, {
           method: 'POST',
-          headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+          headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({
             folderName: cfolderName,
@@ -550,7 +546,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
 
         const r2 = await fetch(`${API_BASE}/drive/folders/ensure`, {
           method: 'POST',
-          headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+          headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({
             folderName: personalFolderName,
@@ -589,7 +585,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
         return { id: data2.id, webViewLink: folderLink };
       }
 
-      const rootRes = await fetch(`${API_BASE}/custom-field-definitions/drive-root`, { headers: getAuthHeader() });
+      const rootRes = await fetch(`${API_BASE}/custom-field-definitions/drive-root`, crmFetchInit());
       const rootJson = await rootRes.json().catch(() => ({}));
       const driveRootUrl =
         rootJson.driveRootUrl != null && String(rootJson.driveRootUrl).trim() ? String(rootJson.driveRootUrl).trim() : '';
@@ -602,7 +598,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
       }
       const r = await fetch(`${API_BASE}/drive/folders/ensure`, {
         method: 'POST',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           folderName: personalFolderName,
@@ -669,7 +665,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
       });
       if (cancelled) return;
       try {
-        const res = await fetch(`${API_BASE}/customer-company-employees/${contactId}`, { headers: getAuthHeader() });
+        const res = await fetch(`${API_BASE}/customer-company-employees/${contactId}`, crmFetchInit());
         const data = await res.json().catch(() => ({}));
         if (res.ok && data?._id) setDisplayedContact((prev) => ({ ...(prev || {}), ...data }));
       } catch (_) {}
@@ -699,7 +695,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
         setDriveUploadNotice,
         onSuccess: async () => {
           try {
-            const res = await fetch(`${API_BASE}/customer-company-employees/${contactId}`, { headers: getAuthHeader() });
+            const res = await fetch(`${API_BASE}/customer-company-employees/${contactId}`, crmFetchInit());
             const data = await res.json().catch(() => ({}));
             if (res.ok && data?._id) setDisplayedContact((prev) => ({ ...(prev || {}), ...data }));
           } catch (_) {}
@@ -724,13 +720,13 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
       try {
         await pingBackendHealth(getAuthHeader);
         const url = buildDriveFileDeleteUrl(fid, { customerCompanyEmployeeId: String(contactId) });
-        const res = await fetch(url, { method: 'DELETE', headers: getAuthHeader(), credentials: 'include' });
+        const res = await fetch(url, crmFetchInit({ method: 'DELETE' }));
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           setDriveError(data.error || '삭제에 실패했습니다.');
           return;
         }
-        const r2 = await fetch(`${API_BASE}/customer-company-employees/${contactId}`, { headers: getAuthHeader() });
+        const r2 = await fetch(`${API_BASE}/customer-company-employees/${contactId}`, crmFetchInit());
         const data2 = await r2.json().catch(() => ({}));
         if (r2.ok && data2?._id) setDisplayedContact((prev) => ({ ...(prev || {}), ...data2 }));
         setDriveUploadNotice('파일을 삭제했습니다.');
@@ -746,7 +742,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
 
   const fetchCustomDefinitions = async () => {
     try {
-      const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=contact`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=contact`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (res.ok && Array.isArray(data.items)) setCustomDefinitions(data.items);
     } catch (_) {}
@@ -768,7 +764,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/companies/overview`, { headers: getAuthHeader() })
+    fetch(`${API_BASE}/companies/overview`, crmFetchInit())
       .then((r) => r.json().catch(() => ({})))
       .then((data) => {
         if (!cancelled && Array.isArray(data?.employees)) setCompanyEmployeesForDisplay(data.employees);
@@ -1029,11 +1025,8 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
     try {
       await pingBackendHealth(getAuthHeader);
       const entries = rows.map((r) => buildBulkEntryFromImportRow(r));
-      const preRes = await fetch(`${API_BASE}/customer-company-employees/save-preflight`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ entries })
-      });
+      const preRes = await fetch(`${API_BASE}/customer-company-employees/save-preflight`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ entries  })
+      }));
       const preData = await preRes.json().catch(() => ({}));
       if (!preRes.ok) {
         setError(preData.error || '대량 등록을 미리 확인하는 데 실패했습니다.');
@@ -1180,7 +1173,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
    *  등록폴더 / [고객사명]_[사업자번호](있을 때) / [개인명]_[연락처] / business card
    */
   const performBusinessCardUpload = useCallback(async (empId, file, snapshot) => {
-    const rootRes = await fetch(`${API_BASE}/custom-field-definitions/drive-root`, { headers: getAuthHeader() });
+    const rootRes = await fetch(`${API_BASE}/custom-field-definitions/drive-root`, crmFetchInit());
     const rootJson = await rootRes.json().catch(() => ({}));
     const driveRootUrl = rootJson.driveRootUrl != null ? String(rootJson.driveRootUrl).trim() : '';
     if (!driveRootUrl) {
@@ -1200,7 +1193,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
       let ccName = snapshot.companyLabel || '';
       let ccBn = '';
       try {
-        const ccRes = await fetch(`${API_BASE}/customer-companies/${ccId}`, { headers: getAuthHeader() });
+        const ccRes = await fetch(`${API_BASE}/customer-companies/${ccId}`, crmFetchInit());
         const cc = await ccRes.json().catch(() => ({}));
         if (ccRes.ok && cc._id) {
           ccName = cc.name || ccName;
@@ -1211,7 +1204,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
       const companyFolderName = `${sanitizeFolderNamePart(ccName || '미소속', 80)}_${sanitizeFolderNamePart(bnPart, 20)}`;
       const ensureCompany = await fetch(`${API_BASE}/drive/folders/ensure`, {
         method: 'POST',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ folderName: companyFolderName, customerCompanyId: String(ccId) })
       });
@@ -1232,7 +1225,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
     const personalFolderName = buildPersonalDriveFolderName(contactLike);
     const ensurePersonal = await fetch(`${API_BASE}/drive/folders/ensure`, {
       method: 'POST',
-      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({
         folderName: personalFolderName,
@@ -1249,7 +1242,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
 
     const bcRes = await fetch(`${API_BASE}/drive/folders/ensure`, {
       method: 'POST',
-      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({ folderName: 'business card', parentFolderId: personalFolderId })
     });
@@ -1271,7 +1264,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
     };
     const uploadRes = await fetch(`${API_BASE}/drive/upload`, {
       method: 'POST',
-      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify(uploadBody)
     });
@@ -1291,7 +1284,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
     };
     const patchRes = await fetch(`${API_BASE}/customer-company-employees/${empId}`, {
       method: 'PATCH',
-      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify(patchBody)
     });
     if (!patchRes.ok) {
@@ -1444,7 +1437,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
       };
       let merged = data;
       try {
-        const detailRes = await fetch(`${API_BASE}/customer-company-employees/${empId}`, { headers: getAuthHeader() });
+        const detailRes = await fetch(`${API_BASE}/customer-company-employees/${empId}`, crmFetchInit());
         const detail = await detailRes.json().catch(() => ({}));
         if (detailRes.ok && detail._id) merged = detail;
       } catch (_) {}
@@ -1526,9 +1519,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
       if (editingEmployeeId != null && String(editingEmployeeId).trim() !== '') {
         cParams.set('excludeEmployeeId', String(editingEmployeeId));
       }
-      const cRes = await fetch(`${API_BASE}/customer-company-employees/duplicate-candidates?${cParams.toString()}`, {
-        headers: getAuthHeader()
-      });
+      const cRes = await fetch(`${API_BASE}/customer-company-employees/duplicate-candidates?${cParams.toString()}`, crmFetchInit());
       const cData = await cRes.json().catch(() => ({}));
       let contactCandidates = Array.isArray(cData.candidates) ? cData.candidates : [];
       if (editingEmployeeId != null && String(editingEmployeeId).trim() !== '') {
@@ -1541,9 +1532,7 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
       let similarCustomerCompanies = [];
       if (willCreateCompanyByName) {
         const sParams = new URLSearchParams({ name: companyNameTrimP });
-        const sRes = await fetch(`${API_BASE}/customer-companies/similar-name-candidates?${sParams.toString()}`, {
-          headers: getAuthHeader()
-        });
+        const sRes = await fetch(`${API_BASE}/customer-companies/similar-name-candidates?${sParams.toString()}`, crmFetchInit());
         const sData = await sRes.json().catch(() => ({}));
         similarCustomerCompanies = Array.isArray(sData.similar) ? sData.similar : [];
       }

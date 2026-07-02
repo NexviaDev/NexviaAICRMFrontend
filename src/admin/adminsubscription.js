@@ -1,14 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
+import { hasCrmSession, crmFetchInit } from '@/lib/crm-auth';
 import { API_BASE } from '@/config';
-import { getAdminSiteFetchHeaders } from '@/lib/admin-site-headers';
+import { adminSiteFetchInit } from '@/lib/admin-site-headers';
 import './adminsubscription.css';
 
 const ADMIN_TOKEN_KEY = 'admin_site_token';
 const ADMIN_BOUND_USER_KEY = 'admin_site_bound_user_id';
-
-function getCrmToken() {
-  return localStorage.getItem('crm_token') || '';
-}
 
 function getStoredCrmUser() {
   try {
@@ -42,7 +39,7 @@ export default function AdminSubscription() {
   const [chargingId, setChargingId] = useState(null);
   const crmUser = getStoredCrmUser();
   const crmEmail = String(crmUser?.email || '').trim();
-  const hasCrmToken = !!getCrmToken();
+  const hasCrmToken = hasCrmSession();
 
   const loggedIn = !!token;
 
@@ -50,7 +47,7 @@ export default function AdminSubscription() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_BASE}/admin/subscriptions`, { headers: getAdminSiteFetchHeaders() });
+      const res = await fetch(`${API_BASE}/admin/subscriptions`, adminSiteFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (res.status === 401) {
@@ -78,15 +75,15 @@ export default function AdminSubscription() {
     setError('');
     setLoading(true);
     try {
-      const crmToken = getCrmToken();
+      const crmToken = hasCrmSession();
       if (!crmToken) {
         throw new Error('먼저 CRM에 로그인해 주세요.');
       }
-      const res = await fetch(`${API_BASE}/admin/login`, {
+      const res = await fetch(`${API_BASE}/admin/login`, crmFetchInit({
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${crmToken}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password })
-      });
+      }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data.error || '로그인에 실패했습니다.');
@@ -109,10 +106,7 @@ export default function AdminSubscription() {
     setChargingId(companyId);
     setError('');
     try {
-      const res = await fetch(`${API_BASE}/admin/subscriptions/${encodeURIComponent(companyId)}/manual-charge`, {
-        method: 'POST',
-        headers: getAdminSiteFetchHeaders()
-      });
+      const res = await fetch(`${API_BASE}/admin/subscriptions/${encodeURIComponent(companyId)}/manual-charge`, adminSiteFetchInit({ method: 'POST' }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (res.status === 401) {

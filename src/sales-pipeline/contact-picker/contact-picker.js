@@ -1,12 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import './contact-picker.css';
 
 import { API_BASE } from '@/config';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 /**
  * 연락처(직원) 검색/선택 피커.
@@ -35,7 +31,7 @@ export default function ContactPicker({ customerCompanyId, value, onSelect, plac
     try {
       const params = new URLSearchParams({ search: text.trim(), limit: '20' });
       if (customerCompanyId) params.set('customerCompanyId', customerCompanyId);
-      const res = await fetch(`${API_BASE}/customer-company-employees?${params}`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/customer-company-employees?${params}`, crmFetchInit());
       if (res.ok) {
         const data = await res.json();
         setResults(data.items || []);

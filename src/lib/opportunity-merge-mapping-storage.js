@@ -38,10 +38,7 @@ function legacyClearCompany(companyKey) {
  * @returns {Promise<{ id: string, name: string, docKind: 'quote'|'po', presetId: string, mappings: Record<string, object|string> }[]>}
  */
 export async function fetchOpportunityMergeMappingPresets(getAuthHeader) {
-  const res = await fetch(`${API_BASE}/companies/opportunity-merge-mapping-presets`, {
-    headers: { ...getAuthHeader() },
-    credentials: 'include'
-  });
+  const res = await fetch(`${API_BASE}/companies/opportunity-merge-mapping-presets`, crmFetchInit());
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || '매핑 양식을 불러오지 못했습니다.');
   return Array.isArray(data.items) ? data.items : [];

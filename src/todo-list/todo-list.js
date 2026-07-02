@@ -1,14 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { API_BASE } from '@/config';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import AddTodoModal from './add-todo-modal/add-todo-modal';
 import TodoDetailModal from './todo-detail-modal/todo-detail-modal';
 import './todo-list.css';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 const STATUS_NEEDS_ACTION = 'needsAction';
 const STATUS_COMPLETED = 'completed';
@@ -66,7 +62,7 @@ export default function TodoList({ embedded = false, previewMax = null }) {
 
   const fetchTaskLists = useCallback(async () => {
     try {
-      const res = await fetch(`${CRM_TODO_API}/lists`, { headers: getAuthHeader(), credentials: 'include' });
+      const res = await fetch(`${CRM_TODO_API}/lists`, crmFetchInit());
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || '할 일 목록을 불러올 수 없습니다.');
@@ -91,10 +87,7 @@ export default function TodoList({ embedded = false, previewMax = null }) {
     if (!silent) setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${CRM_TODO_API}/lists/${encodeURIComponent(taskListId)}/tasks`, {
-        headers: getAuthHeader(),
-        credentials: 'include'
-      });
+      const res = await fetch(`${CRM_TODO_API}/lists/${encodeURIComponent(taskListId)}/tasks`, crmFetchInit());
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || '할 일을 불러올 수 없습니다.');
@@ -117,7 +110,7 @@ export default function TodoList({ embedded = false, previewMax = null }) {
     let cancelled = false;
     (async () => {
       try {
-        const meRes = await fetch(`${API_BASE}/auth/me`, { headers: getAuthHeader(), credentials: 'include' });
+        const meRes = await fetch(`${API_BASE}/auth/me`, crmFetchInit());
         if (!meRes.ok || cancelled) return;
         const me = await meRes.json();
         setCurrentUserId(me.user?._id || me._id);
@@ -140,8 +133,8 @@ export default function TodoList({ embedded = false, previewMax = null }) {
     (async () => {
       try {
         const [meRes, membersRes] = await Promise.all([
-          fetch(`${API_BASE}/auth/me`, { headers: getAuthHeader(), credentials: 'include' }),
-          fetch(`${API_BASE}/calendar-events/team-members`, { headers: getAuthHeader(), credentials: 'include' })
+          fetch(`${API_BASE}/auth/me`, crmFetchInit()),
+          fetch(`${API_BASE}/calendar-events/team-members`, crmFetchInit())
         ]);
         if (meRes.ok) {
           const me = await meRes.json();
@@ -173,7 +166,7 @@ export default function TodoList({ embedded = false, previewMax = null }) {
     try {
       const res = await fetch(taskPatchUrl(taskListId, task), {
         method: 'PATCH',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           status: newStatus,
@@ -197,11 +190,7 @@ export default function TodoList({ embedded = false, previewMax = null }) {
     const rowKey = taskRowKey(task);
     setDeletingId(rowKey);
     try {
-      const res = await fetch(taskPatchUrl(taskListId, task), {
-        method: 'DELETE',
-        headers: getAuthHeader(),
-        credentials: 'include'
-      });
+      const res = await fetch(taskPatchUrl(taskListId, task), crmFetchInit({ method: 'DELETE' }));
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || '삭제 실패');
@@ -221,7 +210,7 @@ export default function TodoList({ embedded = false, previewMax = null }) {
     try {
       const res = await fetch(`${CRM_TODO_API}/lists`, {
         method: 'POST',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ title: createListTitle.trim() })
       });
@@ -262,7 +251,7 @@ export default function TodoList({ embedded = false, previewMax = null }) {
       if (Array.isArray(form.participantIds) && form.participantIds.length > 0) body.participantIds = form.participantIds;
       const res = await fetch(`${CRM_TODO_API}/lists/${encodeURIComponent(listId)}/tasks`, {
         method: 'POST',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(body)
       });

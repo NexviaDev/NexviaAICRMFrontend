@@ -1,12 +1,13 @@
 import { getAdminSiteFetchHeaders } from '@/lib/admin-site-headers';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import {
   ADMIN_MERGE_DATA_SHEET_URL_PARAM,
   MERGE_DATA_SHEET_URL_PARAM
 } from '@/lib/merge-data-sheet-url';
 
 function getCrmAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  const token = getCrmToken();
+  return token ? { ...getCrmAuthHeaders() } : {};
 }
 
 /** 일반 CRM — 회사별 테넌트 양식 + 공통 양식 조회 */

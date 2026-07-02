@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { API_BASE } from '@/config';
 import { pingBackendHealth } from '@/lib/backend-wake';
 import {
@@ -7,11 +8,6 @@ import {
   notifyPipelineStagesUpdated
 } from '../pipeline-stage-labels';
 import './pipeline-stages-manage-modal.css';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 const ENTITY_TYPE = PIPELINE_STAGES_ENTITY_TYPE;
 const SYSTEM_FIXED_STAGE_KEY = 'Won';
@@ -180,11 +176,8 @@ export default function PipelineStagesManageModal({ onClose, onSaved }) {
       let idx = 0;
       for (const id of orderedIds) {
         if (idx > 0 && idx % 12 === 0) await pingBackendHealth(getAuthHeader);
-        const res = await fetch(`${API_BASE}/custom-field-definitions/${id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-          body: JSON.stringify({ order: idx })
-        });
+        const res = await fetch(`${API_BASE}/custom-field-definitions/${id}`, crmFetchInit({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ order: idx  })
+        }));
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
           alert(data.error || `순서 저장 실패 (${idx + 1}번째)`);
@@ -193,11 +186,8 @@ export default function PipelineStagesManageModal({ onClose, onSaved }) {
         idx += 1;
       }
       if (wonDefinition?._id) {
-        const wRes = await fetch(`${API_BASE}/custom-field-definitions/${wonDefinition._id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-          body: JSON.stringify({ order: orderedIds.length })
-        });
+        const wRes = await fetch(`${API_BASE}/custom-field-definitions/${wonDefinition._id}`, crmFetchInit({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ order: orderedIds.length  })
+        }));
         const wData = await wRes.json().catch(() => ({}));
         if (!wRes.ok) {
           alert(wData.error || 'Won 단계 순서 저장에 실패했습니다.');
@@ -217,7 +207,7 @@ export default function PipelineStagesManageModal({ onClose, onSaved }) {
   const fetchDefinitions = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=${ENTITY_TYPE}`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=${ENTITY_TYPE}`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (res.ok && Array.isArray(data.items)) setDefinitions(data.items);
       else setDefinitions([]);
@@ -253,11 +243,8 @@ export default function PipelineStagesManageModal({ onClose, onSaved }) {
     setForecastSavingId(id);
     try {
       await pingBackendHealth(getAuthHeader);
-      const res = await fetch(`${API_BASE}/custom-field-definitions/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ options: Object.keys(prevOpt).length ? prevOpt : null })
-      });
+      const res = await fetch(`${API_BASE}/custom-field-definitions/${id}`, crmFetchInit({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ options: Object.keys(prevOpt).length ? prevOpt : null  })
+      }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         window.alert(data.error || 'Forecast 저장에 실패했습니다.');
@@ -305,10 +292,7 @@ export default function PipelineStagesManageModal({ onClose, onSaved }) {
             return;
           }
         } else {
-          const res = await fetch(`${API_BASE}/custom-field-definitions`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-            body: JSON.stringify({
+          const res = await fetch(`${API_BASE}/custom-field-definitions`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
               entityType: ENTITY_TYPE,
               key: row.key,
               label: row.label,
@@ -316,8 +300,8 @@ export default function PipelineStagesManageModal({ onClose, onSaved }) {
               required: false,
               order: i,
               options
-            })
-          });
+             })
+          }));
           const data = await res.json().catch(() => ({}));
           if (!res.ok) {
             window.alert(data.error || `단계 ${row.key} 추가 실패`);
@@ -357,18 +341,15 @@ export default function PipelineStagesManageModal({ onClose, onSaved }) {
     }
     setAdding(true);
     try {
-      const res = await fetch(`${API_BASE}/custom-field-definitions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({
+      const res = await fetch(`${API_BASE}/custom-field-definitions`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
           entityType: ENTITY_TYPE,
           key,
           label,
           type: 'text',
           required: false,
           order: definitions.length
-        })
-      });
+         })
+      }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         alert(data.error || '단계 추가에 실패했습니다.');
@@ -395,10 +376,7 @@ export default function PipelineStagesManageModal({ onClose, onSaved }) {
     if (!window.confirm('이 단계를 삭제하시겠습니까? 해당 단계에 있는 기회는 "신규 리드 & 추가 구매건"으로 보이지 않을 수 있습니다.')) return;
     setDeletingId(id);
     try {
-      const res = await fetch(`${API_BASE}/custom-field-definitions/${id}`, {
-        method: 'DELETE',
-        headers: getAuthHeader()
-      });
+      const res = await fetch(`${API_BASE}/custom-field-definitions/${id}`, crmFetchInit({ method: 'DELETE' }));
       if (res.ok) {
         notifyStagesUpdated();
         onSaved?.();

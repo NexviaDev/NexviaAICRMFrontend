@@ -520,10 +520,7 @@ export default function QuotationDocMerge({ runtime = MERGE_RUNTIME_TENANT } = {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/companies/list-templates-bundle`, {
-          headers: { ...getAuthHeader() },
-          credentials: 'include'
-        });
+        const res = await fetch(`${API_BASE}/companies/list-templates-bundle`, crmFetchInit());
         const data = await res.json().catch(() => ({}));
         if (cancelled || !res.ok) return;
         setCompanyProfile(
@@ -549,10 +546,7 @@ export default function QuotationDocMerge({ runtime = MERGE_RUNTIME_TENANT } = {
       const q = isMergeFieldPresetMongoId(idStr) ? `?presetId=${encodeURIComponent(idStr)}` : '';
       setFieldGuideLoading(true);
       try {
-        const res = await fetch(`${mergeApiBase}/field-guide${q}`, {
-          headers: { ...getAuthHeader() },
-          credentials: 'include'
-        });
+        const res = await fetch(`${mergeApiBase}/field-guide${q}`, crmFetchInit());
         const data = await res.json().catch(() => ({}));
         if (res.ok) setFieldGuide(data);
         else setFieldGuide(null);
@@ -576,10 +570,7 @@ export default function QuotationDocMerge({ runtime = MERGE_RUNTIME_TENANT } = {
   const loadFieldPresets = useCallback(async () => {
     setFieldPresetsLoading(true);
     try {
-      const res = await fetch(`${mergeApiBase}/field-presets`, {
-        headers: { ...getAuthHeader() },
-        credentials: 'include'
-      });
+      const res = await fetch(`${mergeApiBase}/field-presets`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (res.ok) setFieldPresets(Array.isArray(data.items) ? data.items : []);
       else setFieldPresets([]);
@@ -728,10 +719,7 @@ export default function QuotationDocMerge({ runtime = MERGE_RUNTIME_TENANT } = {
     setTemplatesLoading(true);
     setTemplatesError('');
     try {
-      const res = await fetch(`${mergeApiBase}/templates`, {
-        headers: { ...getAuthHeader() },
-        credentials: 'include'
-      });
+      const res = await fetch(`${mergeApiBase}/templates`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '양식 목록을 불러오지 못했습니다.');
       const items = Array.isArray(data.items) ? data.items : [];
@@ -1223,10 +1211,7 @@ export default function QuotationDocMerge({ runtime = MERGE_RUNTIME_TENANT } = {
 
   const fetchTemplateFileBlob = async (id) => {
     await pingBackendHealth();
-    const res = await fetch(`${mergeApiBase}/templates/${id}/download`, {
-      headers: { ...getAuthHeader() },
-      credentials: 'include'
-    });
+    const res = await fetch(`${mergeApiBase}/templates/${id}/download`, crmFetchInit());
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       throw new Error(getUserVisibleApiError(data, '양식 파일을 불러오지 못했습니다.'));

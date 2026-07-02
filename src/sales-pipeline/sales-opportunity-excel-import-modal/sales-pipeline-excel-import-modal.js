@@ -2,6 +2,7 @@
  * 세일즈 파이프라인 — URL ?modal=excel-import
  */
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { readSpreadsheetFileToRows } from '@/lib/spreadsheet-file-read';
 import { API_BASE } from '@/config';
 import { pingBackendHealth } from '@/lib/backend-wake';
@@ -45,11 +46,6 @@ import {
 import '../../lead-capture/lead-capture-crm-mapping/lead-capture-crm-mapping-modal.css';
 import '../../customer-companies/customer-companies-excel-import-modal/customer-companies-excel-import-modal.css';
 
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
 export default function SalesPipelineExcelImportModal({ open, onClose, onImported }) {
   const [meta, setMeta] = useState(null);
   const [metaLoading, setMetaLoading] = useState(false);
@@ -83,7 +79,7 @@ export default function SalesPipelineExcelImportModal({ open, onClose, onImporte
     if (!open) return;
     setMetaLoading(true);
     void pingBackendHealth(getAuthHeader);
-    fetch(`${API_BASE}/sales-opportunities/excel-import-meta`, { headers: getAuthHeader(), credentials: 'include' })
+    fetch(`${API_BASE}/sales-opportunities/excel-import-meta`, crmFetchInit())
       .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
       .then(({ ok, d }) => {
         if (!ok) throw new Error(d.error || '메타 조회 실패');
@@ -130,7 +126,7 @@ export default function SalesPipelineExcelImportModal({ open, onClose, onImporte
     let cancelled = false;
     setOverviewLoading(true);
     void pingBackendHealth(getAuthHeader);
-    fetch(`${API_BASE}/companies/overview`, { headers: getAuthHeader(), credentials: 'include' })
+    fetch(`${API_BASE}/companies/overview`, crmFetchInit())
       .then((r) => r.json().then((d) => ({ ok: r.ok, d })))
       .then(({ ok, d }) => {
         if (cancelled) return;

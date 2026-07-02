@@ -1,4 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { createPortal } from 'react-dom';
 import { Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import './dashboard.css';
@@ -77,11 +78,6 @@ function getGreetingForHome() {
   if (h < 12) return '좋은 아침입니다';
   if (h < 18) return '안녕하세요';
   return '좋은 저녁입니다';
-}
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 /**
@@ -1472,10 +1468,7 @@ async function fetchHomeKpiYearMatrix(year, scopeType, scopeId = '') {
     scopeType
   });
   if (scopeType !== 'company') params.set('scopeId', String(scopeId || ''));
-  const res = await fetch(`${API_BASE}/kpi/targets/year-matrix?${params.toString()}`, {
-    headers: getAuthHeader(),
-    credentials: 'include'
-  });
+  const res = await fetch(`${API_BASE}/kpi/targets/year-matrix?${params.toString()}`, crmFetchInit());
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json?.error || '목표 정보를 불러오지 못했습니다.');
   return json;
@@ -1553,10 +1546,7 @@ async function fetchHomeKpiCurrentEmployees() {
   ) {
     return homeKpiOverviewCache.employees;
   }
-  const res = await fetch(`${API_BASE}/companies/overview`, {
-    headers: getAuthHeader(),
-    credentials: 'include'
-  });
+  const res = await fetch(`${API_BASE}/companies/overview`, crmFetchInit());
   const json = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(json?.error || '회사 직원 목록을 불러오지 못했습니다.');
   const list = Array.isArray(json?.employees) ? json.employees : [];
@@ -1878,7 +1868,7 @@ export default function Dashboard() {
    */
   const [insightAccess, setInsightAccess] = useState(() => {
     try {
-      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('crm_token') : '';
+      const token = typeof localStorage !== 'undefined' ? getCrmToken() : '';
       if (!token) return { checked: true, seniorPlus: false };
       return { checked: true, seniorPlus: isAdminOrAboveRole(getStoredCrmUser()?.role) };
     } catch {
@@ -1968,7 +1958,7 @@ export default function Dashboard() {
       pingBackendHealth(getAuthHeader).catch(() => {});
       try {
         const [boardRes] = await Promise.all([
-          fetch(`${API_BASE}/projects/board?projectId=${encodeURIComponent(id)}`, { headers: getAuthHeader() }),
+          fetch(`${API_BASE}/projects/board?projectId=${encodeURIComponent(id)}`, crmFetchInit()),
           fetchHomeProjectParticipantContext()
         ]);
         const data = await boardRes.json().catch(() => ({}));
@@ -2073,12 +2063,12 @@ export default function Dashboard() {
 
   useEffect(() => {
     let cancelled = false;
-    const token = localStorage.getItem('crm_token');
+    const token = getCrmToken();
     if (!token) {
       setInsightAccess({ checked: true, seniorPlus: false });
       return undefined;
     }
-    fetch(`${API_BASE}/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+    fetch(`${API_BASE}/auth/me`, { headers: { ...getCrmAuthHeaders() } })
       .then((r) => r.json().catch(() => ({})))
       .then((data) => {
         if (cancelled) return;
@@ -2129,7 +2119,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     let cancelled = false;
-    const token = localStorage.getItem('crm_token');
+    const token = getCrmToken();
     if (!token) {
       setHomeProjectPreview([]);
       setHomeProjectPreviewLoading(false);
@@ -2137,7 +2127,7 @@ export default function Dashboard() {
     }
     setHomeProjectPreviewLoading(true);
     pingBackendHealth(getAuthHeader).catch(() => { });
-    fetch(`${API_BASE}/projects`, { headers: getAuthHeader() })
+    fetch(`${API_BASE}/projects`, crmFetchInit())
       .then((r) => r.json().catch(() => ({})))
       .then((payload) => {
         if (cancelled) return;
@@ -2463,10 +2453,8 @@ export default function Dashboard() {
           const qs = new URLSearchParams(q);
           qs.set('allowStaleCache', '1');
           tasks.push(
-            fetch(`${API_BASE}/reports/dashboard?${qs}`, {
-              headers: getAuthHeader(),
-              signal: ac.signal
-            })
+            fetch(`${API_BASE}/reports/dashboard?${qs}`, { ...crmFetchInit(), signal: ac.signal
+             })
               .then(async (r1) => {
                 if (cancelled) return;
                 if (r1.status === 204) {
@@ -2484,7 +2472,7 @@ export default function Dashboard() {
         }
 
         tasks.push(
-          fetch(freshUrl, { headers: getAuthHeader(), signal: freshSignal })
+          fetch(freshUrl, { ...crmFetchInit(), signal: freshSignal  })
             .then(async (r2) => {
               if (cancelled) return;
               if (!r2.ok) return;
@@ -2807,10 +2795,7 @@ export default function Dashboard() {
     let cancelled = false;
     const fetchLeadCaptureDashboard = async () => {
       try {
-        const res = await fetch(`${API_BASE}/reports/home-capture-leads?limit=120`, {
-          headers: getAuthHeader(),
-          credentials: 'include'
-        });
+        const res = await fetch(`${API_BASE}/reports/home-capture-leads?limit=120`, crmFetchInit());
         const json = await res.json().catch(() => ({}));
         if (!cancelled && res.ok) {
           const items = Array.isArray(json.items) ? json.items : [];
@@ -2837,7 +2822,7 @@ export default function Dashboard() {
 
   const fetchStageDefinitions = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=salesPipelineStage`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=salesPipelineStage`, crmFetchInit());
       const json = await res.json().catch(() => ({}));
       if (res.ok && Array.isArray(json.items)) setStageDefinitions(json.items);
       else setStageDefinitions([]);
@@ -2849,7 +2834,7 @@ export default function Dashboard() {
   const fetchHomePipelineSummary = useCallback(async () => {
     setPipelineLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/reports/home-pipeline-summary`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/reports/home-pipeline-summary`, crmFetchInit());
       if (!res.ok) throw new Error('fetch failed');
       const json = await res.json();
       if (pipelineMounted.current) {

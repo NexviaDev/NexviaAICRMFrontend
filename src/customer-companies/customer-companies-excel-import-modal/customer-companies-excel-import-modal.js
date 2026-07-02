@@ -3,6 +3,7 @@
  * 뒤로가기로 닫히도록 부모가 searchParams로 open/onClose를 제어합니다.
  */
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import * as XLSX from 'xlsx';
 import { API_BASE } from '@/config';
 import {
@@ -25,11 +26,6 @@ import {
 } from '../../lead-capture/lead-capture-crm-mapping/lead-capture-crm-mapping-utils';
 import { buildExcelSourceOptions, previewExcelMappedValue } from './excel-import-mapping-utils';
 import { mapWithConcurrency } from '@/lib/map-with-concurrency';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function newRowId() {
   return `row-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -310,14 +306,8 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
     let cancelled = false;
     (async () => {
       const [c2Res, sfRes] = await Promise.allSettled([
-        fetch(`${API_BASE}/custom-field-definitions?entityType=customerCompany`, {
-          headers: getAuthHeader(),
-          credentials: 'include'
-        }).then((r) => r.json()),
-        fetch(`${API_BASE}/lead-capture-forms/crm-mappable-fields`, {
-          headers: getAuthHeader(),
-          credentials: 'include'
-        }).then((r) => r.json())
+        fetch(`${API_BASE}/custom-field-definitions?entityType=customerCompany`, crmFetchInit()).then((r) => r.json()),
+        fetch(`${API_BASE}/lead-capture-forms/crm-mappable-fields`, crmFetchInit()).then((r) => r.json())
       ]);
       if (cancelled) return;
       if (c2Res.status === 'fulfilled') {
@@ -332,7 +322,7 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/companies/overview`, { headers: getAuthHeader() })
+    fetch(`${API_BASE}/companies/overview`, crmFetchInit())
       .then((r) => r.json().catch(() => ({})))
       .then((data) => {
         if (!cancelled && Array.isArray(data?.employees)) setCompanyEmployeesForDisplay(data.employees);
@@ -697,10 +687,7 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
     let stopped = false;
     const run = async () => {
       try {
-        const res = await fetch(`${API_BASE}/customer-companies/import-excel/jobs/${inProgressJob.jobId}`, {
-          headers: getAuthHeader(),
-          credentials: 'include'
-        });
+        const res = await fetch(`${API_BASE}/customer-companies/import-excel/jobs/${inProgressJob.jobId}`, crmFetchInit());
         const data = await res.json().catch(() => ({}));
         if (!res.ok || stopped) return;
         if (!activeImportJobRef.current) return;

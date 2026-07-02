@@ -113,7 +113,7 @@ async function fetchProductDocMapByIds(productIds) {
   const results = await Promise.all(
     unique.map(async (pid) => {
       try {
-        const pres = await fetch(`${API_BASE}/products/${pid}`, { headers: getAuthHeader() });
+        const pres = await fetch(`${API_BASE}/products/${pid}`, crmFetchInit());
         if (!pres.ok) return null;
         const pdoc = await pres.json();
         return pdoc?._id ? [String(pid), pdoc] : null;
@@ -132,7 +132,7 @@ async function fetchProductDocMapByIds(productIds) {
 async function fetchCrmDriveUploadsForOppLoad(ccIdLoad, bnLoad, empIdLoad) {
   if (ccIdLoad && bnLoad) {
     try {
-      const cres = await fetch(`${API_BASE}/customer-companies/${ccIdLoad}`, { headers: getAuthHeader() });
+      const cres = await fetch(`${API_BASE}/customer-companies/${ccIdLoad}`, crmFetchInit());
       const cdata = await cres.json().catch(() => ({}));
       if (cres.ok && cdata?._id) {
         return Array.isArray(cdata.driveUploadedFiles) ? cdata.driveUploadedFiles : [];
@@ -145,9 +145,7 @@ async function fetchCrmDriveUploadsForOppLoad(ccIdLoad, bnLoad, empIdLoad) {
   if (empIdLoad && isLikelyMongoObjectId(empIdLoad)) {
     try {
       const empPath = normalizeMongoIdCandidate(empIdLoad);
-      const eres = await fetch(`${API_BASE}/customer-company-employees/${empPath}`, {
-        headers: getAuthHeader()
-      });
+      const eres = await fetch(`${API_BASE}/customer-company-employees/${empPath}`, crmFetchInit());
       const edata = await eres.json().catch(() => ({}));
       if (eres.ok && edata?._id) {
         return Array.isArray(edata.driveUploadedFiles) ? edata.driveUploadedFiles : [];
@@ -178,7 +176,7 @@ export default function OpportunityModal({
   const [pipelineStageDefinitions, setPipelineStageDefinitions] = useState([]);
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/custom-field-definitions?entityType=salesPipelineStage`, { headers: getAuthHeader() })
+    fetch(`${API_BASE}/custom-field-definitions?entityType=salesPipelineStage`, crmFetchInit())
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return;
@@ -776,7 +774,7 @@ export default function OpportunityModal({
     try {
       const res = await fetch(
         `${API_BASE}/custom-field-definitions?entityType=salesOpportunitySchedule`,
-        { headers: getAuthHeader() }
+        crmFetchInit()
       );
       const data = await res.json().catch(() => ({}));
       if (res.ok && Array.isArray(data.items)) setScheduleFieldDefs(data.items);
@@ -794,7 +792,7 @@ export default function OpportunityModal({
     try {
       const res = await fetch(
         `${API_BASE}/custom-field-definitions?entityType=salesOpportunityFinance`,
-        { headers: getAuthHeader() }
+        crmFetchInit()
       );
       const data = await res.json().catch(() => ({}));
       if (res.ok && Array.isArray(data.items)) setFinanceFieldDefs(data.items);
@@ -839,11 +837,8 @@ export default function OpportunityModal({
       if (!canRemoveChannelDistributor || !name) return;
       try {
         await pingBackendHealth(getAuthHeader);
-        const res = await fetch(`${API_BASE}/companies/channel-distributors`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-          body: JSON.stringify({ remove: String(name) })
-        });
+        const res = await fetch(`${API_BASE}/companies/channel-distributors`, crmFetchInit({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ remove: String(name)  })
+        }));
         const data = await res.json().catch(() => ({}));
         if (res.ok && Array.isArray(data.items)) {
           setChannelDistributorList(data.items);
@@ -862,7 +857,7 @@ export default function OpportunityModal({
     setFetchedOppValue(0);
     setLoadingOpp(true);
     try {
-      const res = await fetch(`${API_BASE}/sales-opportunities/${oppId}`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/sales-opportunities/${oppId}`, crmFetchInit());
       if (!res.ok) throw new Error();
       const data = await res.json();
       const valueNum = Math.max(0, Number(data.value)) || 0;
@@ -1131,7 +1126,7 @@ export default function OpportunityModal({
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/companies/overview`, { headers: getAuthHeader() })
+    fetch(`${API_BASE}/companies/overview`, crmFetchInit())
       .then((r) => r.json().catch(() => ({})))
       .then((data) => {
         if (cancelled) return;
@@ -1337,7 +1332,7 @@ export default function OpportunityModal({
     }
     let cancelled = false;
     (async () => {
-      const cr = await fetch(`${API_BASE}/customer-company-employees/${empId}`, { headers: getAuthHeader() });
+      const cr = await fetch(`${API_BASE}/customer-company-employees/${empId}`, crmFetchInit());
       const contact = await cr.json().catch(() => ({}));
       if (cancelled || !cr.ok || !contact?._id) return;
       const name = buildPersonalContactFolderName(contact);
@@ -1351,7 +1346,7 @@ export default function OpportunityModal({
     (async () => {
       try {
         await pingBackendHealth(getAuthHeader);
-        const res = await fetch(`${API_BASE}/companies/channel-distributors`, { headers: getAuthHeader() });
+        const res = await fetch(`${API_BASE}/companies/channel-distributors`, crmFetchInit());
         const data = await res.json().catch(() => ({}));
         if (cancelled || !res.ok || !Array.isArray(data.items)) return;
         setChannelDistributorList(data.items);
@@ -1511,7 +1506,7 @@ export default function OpportunityModal({
       await pingBackendHealth(getAuthHeader);
       const res = await fetch(
         `${API_BASE}/drive/files?folderId=${encodeURIComponent(raw)}&pageSize=100`,
-        { headers: getAuthHeader(), credentials: 'include' }
+        crmFetchInit()
       );
       const data = await res.json().catch(() => ({}));
       if (res.ok && Array.isArray(data.files)) {
@@ -1597,7 +1592,7 @@ export default function OpportunityModal({
       if (!isLikelyMongoObjectId(empId)) {
         throw new Error('담당자(연락처) ID가 올바르지 않습니다. 연락처를 다시 선택해 주세요.');
       }
-      const cr = await fetch(`${API_BASE}/customer-company-employees/${empId}`, { headers: getAuthHeader() });
+      const cr = await fetch(`${API_BASE}/customer-company-employees/${empId}`, crmFetchInit());
       const contact = await cr.json().catch(() => ({}));
       if (!cr.ok || !contact?._id) {
         throw new Error(contact.error || '연락처를 불러올 수 없습니다.');
@@ -1623,10 +1618,7 @@ export default function OpportunityModal({
     if (!folderId || !isValidDriveNodeId(String(folderId))) return false;
     try {
       await pingBackendHealth(getAuthHeader);
-      const res = await fetch(`${API_BASE}/drive/files/${encodeURIComponent(folderId)}`, {
-        headers: getAuthHeader(),
-        credentials: 'include'
-      });
+      const res = await fetch(`${API_BASE}/drive/files/${encodeURIComponent(folderId)}`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return false;
       if (data.mimeType !== DRIVE_FOLDER_MIME) return false;
@@ -1672,7 +1664,7 @@ export default function OpportunityModal({
 
   const refreshCrmDriveUploads = useCallback(async () => {
     if (hasConfirmedCompanyDrive && form.customerCompanyId) {
-      const res = await fetch(`${API_BASE}/customer-companies/${form.customerCompanyId}`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/customer-companies/${form.customerCompanyId}`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (res.ok && data?._id) {
         setCrmDriveUploads(Array.isArray(data.driveUploadedFiles) ? data.driveUploadedFiles : []);
@@ -1685,7 +1677,7 @@ export default function OpportunityModal({
         setCrmDriveUploads([]);
         return;
       }
-      const res = await fetch(`${API_BASE}/customer-company-employees/${empId}`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/customer-company-employees/${empId}`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (res.ok && data?._id) {
         setCrmDriveUploads(Array.isArray(data.driveUploadedFiles) ? data.driveUploadedFiles : []);
@@ -1715,7 +1707,7 @@ export default function OpportunityModal({
             ? { customerCompanyId: String(form.customerCompanyId).trim() }
             : { customerCompanyEmployeeId: normalizeMongoIdCandidate(form.customerCompanyEmployeeId) };
         const url = buildDriveFileDeleteUrl(fid, opts);
-        const res = await fetch(url, { method: 'DELETE', headers: getAuthHeader(), credentials: 'include' });
+        const res = await fetch(url, crmFetchInit({ method: 'DELETE' }));
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
           setDriveError(data.error || '삭제에 실패했습니다.');
@@ -2106,9 +2098,7 @@ export default function OpportunityModal({
       let product = line.productId ? productById[line.productId] : null;
       if (!product && line.productId && isLikelyMongoObjectId(line.productId)) {
         try {
-          const pres = await fetch(`${API_BASE}/products/${normalizeMongoIdCandidate(line.productId)}`, {
-            headers: getAuthHeader()
-          });
+          const pres = await fetch(`${API_BASE}/products/${normalizeMongoIdCandidate(line.productId)}`, crmFetchInit());
           if (pres.ok) {
             const pdoc = await pres.json();
             if (pdoc?._id) {
@@ -2235,11 +2225,8 @@ export default function OpportunityModal({
         }
       }
       for (const distTrim of distsToRegister) {
-        const cdRes = await fetch(`${API_BASE}/companies/channel-distributors`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-          body: JSON.stringify({ add: distTrim })
-        });
+        const cdRes = await fetch(`${API_BASE}/companies/channel-distributors`, crmFetchInit({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ add: distTrim  })
+        }));
         const cdData = await cdRes.json().catch(() => ({}));
         if (!cdRes.ok) {
           throw new Error(cdData.error || '유통사 목록에 추가할 수 없습니다.');
@@ -2402,17 +2389,14 @@ export default function OpportunityModal({
 
       const transitioningToWon = selectedStage === 'Won' && !(isEdit && stageAtLoadRef.current === 'Won');
       if (transitioningToWon) {
-        const previewRes = await fetch(`${API_BASE}/sales-opportunities/renewal-won-preview`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-          body: JSON.stringify({
+        const previewRes = await fetch(`${API_BASE}/sales-opportunities/renewal-won-preview`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
             saleDate: body.saleDate,
             lineItems: body.lineItems,
             productId: body.productId,
             createdAt: createdAtAtLoadRef.current || undefined,
             updatedAt: createdAtAtLoadRef.current || undefined
-          })
-        });
+           })
+        }));
         const preview = await previewRes.json().catch(() => ({}));
         if (
           previewRes.ok &&
@@ -2534,7 +2518,7 @@ export default function OpportunityModal({
     }
     if (!window.confirm('이 기회를 삭제하시겠습니까?')) return;
     try {
-      const res = await fetch(`${API_BASE}/sales-opportunities/${oppId}`, { method: 'DELETE', headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/sales-opportunities/${oppId}`, crmFetchInit({ method: 'DELETE' }));
       if (res.status === 403) {
         const data = await res.json().catch(() => ({}));
         window.alert(data.error || '삭제 권한이 없습니다.');
@@ -2581,7 +2565,7 @@ export default function OpportunityModal({
       let empRecord = null;
       if (contactEmpId) {
         try {
-          const er = await fetch(`${API_BASE}/customer-company-employees/${contactEmpId}`, { headers: getAuthHeader() });
+          const er = await fetch(`${API_BASE}/customer-company-employees/${contactEmpId}`, crmFetchInit());
           empRecord = await er.json().catch(() => ({}));
           if (!er.ok || !empRecord?._id) empRecord = null;
         } catch {
@@ -2643,11 +2627,8 @@ export default function OpportunityModal({
       const { journalSummaryNotice: noticeFromHistory } = await postSupportHistoryForOpportunity(content, { createdAt });
       if (noticeFromHistory) setJournalSummaryNotice(noticeFromHistory);
 
-      const resComment = await fetch(`${API_BASE}/sales-opportunities/${oppId}/comments`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ text: content })
-      });
+      const resComment = await fetch(`${API_BASE}/sales-opportunities/${oppId}/comments`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: content  })
+      }));
       const dataComment = await resComment.json().catch(() => ({}));
       if (!resComment.ok) {
         throw new Error(
@@ -2773,14 +2754,10 @@ export default function OpportunityModal({
         const historyText = parentCommentId ? `[기회 코멘트 답글] ${text}` : text;
         await postSupportHistoryForOpportunity(historyText, {});
       }
-      const res = await fetch(`${API_BASE}/sales-opportunities/${oppId}/comments`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({
+      const res = await fetch(`${API_BASE}/sales-opportunities/${oppId}/comments`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
           text,
-          ...(parentCommentId ? { parentCommentId } : {})
-        })
-      });
+          ...(parentCommentId ? { parentCommentId } : {}) })
+      }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '코멘트를 등록할 수 없습니다.');
       setComments(Array.isArray(data.comments) ? data.comments : []);
@@ -2803,11 +2780,8 @@ export default function OpportunityModal({
     setCommentBusy(true);
     setCommentError('');
     try {
-      const res = await fetch(`${API_BASE}/sales-opportunities/${oppId}/comments/${commentId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ text })
-      });
+      const res = await fetch(`${API_BASE}/sales-opportunities/${oppId}/comments/${commentId}`, crmFetchInit({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text  })
+      }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '코멘트를 수정할 수 없습니다.');
       setComments(Array.isArray(data.comments) ? data.comments : []);
@@ -2826,10 +2800,7 @@ export default function OpportunityModal({
     setCommentBusy(true);
     setCommentError('');
     try {
-      const res = await fetch(`${API_BASE}/sales-opportunities/${oppId}/comments/${commentId}`, {
-        method: 'DELETE',
-        headers: getAuthHeader()
-      });
+      const res = await fetch(`${API_BASE}/sales-opportunities/${oppId}/comments/${commentId}`, crmFetchInit({ method: 'DELETE' }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '코멘트를 삭제할 수 없습니다.');
       setComments(Array.isArray(data.comments) ? data.comments : []);
@@ -5031,7 +5002,7 @@ export default function OpportunityModal({
                 } else {
                   const cid = cc;
                   try {
-                    const ccRes = await fetch(`${API_BASE}/customer-companies/${cid}`, { headers: getAuthHeader() });
+                    const ccRes = await fetch(`${API_BASE}/customer-companies/${cid}`, crmFetchInit());
                     const ccData = await ccRes.json().catch(() => ({}));
                     if (ccRes.ok && ccData._id) {
                       nextCcId = ccData._id;

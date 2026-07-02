@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { useSearchParams } from 'react-router-dom';
 import AddContactModal from './add-customer-company-employees-modal/add-customer-company-employees-modal';
 import ContactDetailModal from './customer-company-employees-detail-modal/customer-company-employees-detail-modal';
@@ -57,11 +58,6 @@ function phoneToTelHref(phone) {
   const cleaned = s.replace(/[^\d+]/g, '');
   if (!cleaned || !cleaned.replace(/\+/g, '')) return '';
   return `tel:${cleaned}`;
-}
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 async function appendCommunicationHistoryForContacts({ contacts, channel, subject = '', body = '' }) {
@@ -206,7 +202,7 @@ export default function CustomerCompanyEmployees() {
   useEffect(() => {
     let cancelled = false;
     setCompanyEmployeesLoaded(false);
-    fetch(`${API_BASE}/companies/overview`, { headers: getAuthHeader() })
+    fetch(`${API_BASE}/companies/overview`, crmFetchInit())
       .then((r) => r.json().catch(() => ({})))
       .then((data) => {
         if (!cancelled && Array.isArray(data?.employees)) setCompanyEmployees(data.employees);
@@ -228,7 +224,7 @@ export default function CustomerCompanyEmployees() {
     }
     setLoadingDetailContact(true);
     let cancelled = false;
-    fetch(`${API_BASE}/customer-company-employees/${detailId}`, { headers: getAuthHeader() })
+    fetch(`${API_BASE}/customer-company-employees/${detailId}`, crmFetchInit())
       .then(async (r) => ({
         ok: r.ok,
         status: r.status,
@@ -296,7 +292,7 @@ export default function CustomerCompanyEmployees() {
       const st = overrideStatus !== undefined ? overrideStatus : '';
       if (st) params.set('status', st);
       if (assigneeMeOnly) params.set('assigneeMe', '1');
-      const res = await fetch(`${API_BASE}/customer-company-employees?${params}`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/customer-company-employees?${params}`, crmFetchInit());
       if (res.ok) {
         const data = await res.json();
         setItems(data.items || []);
@@ -354,7 +350,7 @@ export default function CustomerCompanyEmployees() {
 
   const loadContactCustomFieldColumns = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=contact`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=contact`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       const defs = Array.isArray(data?.items) ? data.items : [];
       const extra = defs.map((d) => ({ key: `${CUSTOM_FIELDS_PREFIX}${d.key}`, label: d.label || d.key || '' }));
@@ -381,11 +377,8 @@ export default function CustomerCompanyEmployees() {
   const handleToggleFavorite = async (rowId, nextValue) => {
     if (!rowId) return;
     try {
-      const res = await fetch(`${API_BASE}/customer-company-employees/${rowId}/favorite`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ isFavorite: nextValue })
-      });
+      const res = await fetch(`${API_BASE}/customer-company-employees/${rowId}/favorite`, crmFetchInit({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isFavorite: nextValue  })
+      }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return;
       setItems((prev) => prev.map((row) => (
@@ -409,11 +402,8 @@ export default function CustomerCompanyEmployees() {
     setGoogleSaving(true);
     setGoogleResult(null);
     try {
-      const res = await fetch(`${API_BASE}/google-contacts/contacts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ contacts })
-      });
+      const res = await fetch(`${API_BASE}/google-contacts/contacts`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contacts  })
+      }));
       const data = await res.json();
       if (res.ok) {
         setGoogleResult({ success: data.success, fail: data.fail, total: data.total, errors: data.errors });
@@ -644,11 +634,8 @@ export default function CustomerCompanyEmployees() {
     if (!confirmed) return;
     setBulkDeleteLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/customer-company-employees/bulk-delete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ ids })
-      });
+      const res = await fetch(`${API_BASE}/customer-company-employees/bulk-delete`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids  })
+      }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         window.alert(data.error || '삭제에 실패했습니다.');
@@ -688,9 +675,7 @@ export default function CustomerCompanyEmployees() {
       if (appliedSearchField) params.set('searchField', appliedSearchField);
     }
     if (assigneeMeOnly) params.set('assigneeMe', '1');
-    const res = await fetch(`${API_BASE}/customer-company-employees/for-selection?${params}`, {
-      headers: getAuthHeader()
-    });
+    const res = await fetch(`${API_BASE}/customer-company-employees/for-selection?${params}`, crmFetchInit());
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error || '목록을 가져오지 못했습니다.');
@@ -710,7 +695,7 @@ export default function CustomerCompanyEmployees() {
         if (appliedSearchField) params.set('searchField', appliedSearchField);
       }
       if (assigneeMeOnly) params.set('assigneeMe', '1');
-      const res = await fetch(`${API_BASE}/customer-company-employees?${params}`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/customer-company-employees?${params}`, crmFetchInit());
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || '목록을 가져오지 못했습니다.');

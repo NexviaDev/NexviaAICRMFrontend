@@ -90,10 +90,7 @@ export function useExchangeRates({
     setLoading(true);
     try {
       await pingBackendHealth(getAuthHeader);
-      const res = await fetch(`${API_BASE}/exchange-rates/latest`, {
-        headers: getAuthHeader(),
-        credentials: 'include'
-      });
+      const res = await fetch(`${API_BASE}/exchange-rates/latest`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!mountedRef.current) return;
       if (Array.isArray(data.rows)) {

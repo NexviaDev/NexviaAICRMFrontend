@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import MainAppRoutes, { PendingRestrictedRoute } from './layout/main-app-routes';
 import { useGuestOnlyRedirect } from './lib/use-crm-token';
@@ -21,7 +22,7 @@ const AdminQuotationDocMerge = lazy(() => import('./admin/admin-quotation-doc-me
 
 /** 로그인하지 않으면 /login으로 리다이렉트 */
 function ProtectedRoute({ children }) {
-  const token = localStorage.getItem('crm_token');
+  const token = getCrmToken();
   if (!token) return <Navigate to="/login" replace />;
   return children;
 }
@@ -35,7 +36,7 @@ function GuestOnlyRoute({ children }) {
 
 /** 알 수 없는 경로 — 비로그인은 /, 로그인은 /dashboard */
 function AppFallbackRedirect() {
-  const token = localStorage.getItem('crm_token');
+  const token = getCrmToken();
   return <Navigate to={token ? '/dashboard' : '/'} replace />;
 }
 

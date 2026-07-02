@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { API_BASE } from '@/config';
-import { getAdminSiteFetchHeaders } from '@/lib/admin-site-headers';
+import { adminSiteFetchInit } from '@/lib/admin-site-headers';
 import './adminsubscription.css';
 
 const ADMIN_TOKEN_KEY = 'admin_site_token';
@@ -50,7 +50,7 @@ export default function AdminCompanies() {
       const url = q
         ? `${API_BASE}/admin/companies?search=${encodeURIComponent(q)}`
         : `${API_BASE}/admin/companies`;
-      const res = await fetch(url, { headers: getAdminSiteFetchHeaders() });
+      const res = await fetch(url, adminSiteFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (res.status === 401) {
@@ -83,9 +83,7 @@ export default function AdminCompanies() {
     setGrantSeatInput(sub ? String(sub.seatCount) : '');
     setUsersLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/admin/companies/${encodeURIComponent(id)}/users`, {
-        headers: getAdminSiteFetchHeaders()
-      });
+      const res = await fetch(`${API_BASE}/admin/companies/${encodeURIComponent(id)}/users`, adminSiteFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '직원 목록을 불러오지 못했습니다.');
       setUsers(Array.isArray(data.users) ? data.users : []);
@@ -107,13 +105,10 @@ export default function AdminCompanies() {
     setError('');
     setSuccessMsg('');
     try {
-      const res = await fetch(`${API_BASE}/admin/companies/${encodeURIComponent(selectedId)}`, {
+      const res = await fetch(`${API_BASE}/admin/companies/${encodeURIComponent(selectedId)}`, adminSiteFetchInit({
         method: 'PATCH',
-        headers: getAdminSiteFetchHeaders(),
-        body: JSON.stringify({
-          adminSubscriptionGrant: { seatCount: n }
-        })
-      });
+        body: JSON.stringify({ adminSubscriptionGrant: { seatCount: n } })
+      }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '저장에 실패했습니다.');
       setSuccessMsg('관리자 무료 구독(전체 시트)을 반영했습니다. 해당 회사는 구독 화면에서 활성 상태로 보입니다.');
@@ -134,11 +129,10 @@ export default function AdminCompanies() {
     setError('');
     setSuccessMsg('');
     try {
-      const res = await fetch(`${API_BASE}/admin/companies/${encodeURIComponent(selectedId)}`, {
+      const res = await fetch(`${API_BASE}/admin/companies/${encodeURIComponent(selectedId)}`, adminSiteFetchInit({
         method: 'PATCH',
-        headers: getAdminSiteFetchHeaders(),
         body: JSON.stringify({ partnerReseller })
-      });
+      }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '저장에 실패했습니다.');
       setSuccessMsg(
@@ -159,11 +153,10 @@ export default function AdminCompanies() {
     setSavingGrant(true);
     setError('');
     try {
-      const res = await fetch(`${API_BASE}/admin/companies/${encodeURIComponent(selectedId)}`, {
+      const res = await fetch(`${API_BASE}/admin/companies/${encodeURIComponent(selectedId)}`, adminSiteFetchInit({
         method: 'PATCH',
-        headers: getAdminSiteFetchHeaders(),
         body: JSON.stringify({ clearAdminSubscriptionGrant: true })
-      });
+      }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '해제에 실패했습니다.');
       setGrantSeatInput('');
@@ -184,11 +177,7 @@ export default function AdminCompanies() {
     try {
       const res = await fetch(
         `${API_BASE}/admin/companies/${encodeURIComponent(selectedId)}/users/${encodeURIComponent(userId)}/role`,
-        {
-          method: 'PATCH',
-          headers: getAdminSiteFetchHeaders(),
-          body: JSON.stringify({ role })
-        }
+        adminSiteFetchInit({ method: 'PATCH', body: JSON.stringify({ role }) })
       );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '역할 변경에 실패했습니다.');

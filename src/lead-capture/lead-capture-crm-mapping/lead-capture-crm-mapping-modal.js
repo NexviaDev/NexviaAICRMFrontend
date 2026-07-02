@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { API_BASE } from '@/config';
 import {
   buildTargetOptionsForTarget,
@@ -15,11 +16,6 @@ import {
   BUSINESS_CARD_AUTO_TARGET
 } from './lead-capture-crm-mapping-utils';
 import './lead-capture-crm-mapping-modal.css';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function newRowId() {
   return `row-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -63,18 +59,9 @@ export default function LeadCaptureCrmMappingModal({
     (async () => {
       try {
         const [c1, c2, sf] = await Promise.all([
-          fetch(`${API_BASE}/custom-field-definitions?entityType=contact`, {
-            headers: getAuthHeader(),
-            credentials: 'include'
-          }).then((r) => r.json()),
-          fetch(`${API_BASE}/custom-field-definitions?entityType=customerCompany`, {
-            headers: getAuthHeader(),
-            credentials: 'include'
-          }).then((r) => r.json()),
-          fetch(`${API_BASE}/lead-capture-forms/crm-mappable-fields`, {
-            headers: getAuthHeader(),
-            credentials: 'include'
-          }).then((r) => r.json())
+          fetch(`${API_BASE}/custom-field-definitions?entityType=contact`, crmFetchInit()).then((r) => r.json()),
+          fetch(`${API_BASE}/custom-field-definitions?entityType=customerCompany`, crmFetchInit()).then((r) => r.json()),
+          fetch(`${API_BASE}/lead-capture-forms/crm-mappable-fields`, crmFetchInit()).then((r) => r.json())
         ]);
         if (cancelled) return;
         setContactCustomDefs(Array.isArray(c1.items) ? c1.items : []);
@@ -210,10 +197,7 @@ export default function LeadCaptureCrmMappingModal({
 
       if (!ids.length) {
         setSaveMsg('매핑 저장 완료. 리드 목록을 불러오는 중…');
-        const leadsRes = await fetch(`${API_BASE}/lead-capture-forms/${formId}/leads?limit=500&page=1`, {
-          headers: getAuthHeader(),
-          credentials: 'include'
-        });
+        const leadsRes = await fetch(`${API_BASE}/lead-capture-forms/${formId}/leads?limit=500&page=1`, crmFetchInit());
         const leadsData = await leadsRes.json().catch(() => ({}));
         if (leadsRes.ok && Array.isArray(leadsData.items)) {
           ids = leadsData.items.map((l) => String(l._id));

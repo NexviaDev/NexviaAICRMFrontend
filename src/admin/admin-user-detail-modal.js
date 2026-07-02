@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { API_BASE } from '@/config';
-import { getAdminSiteFetchHeaders } from '@/lib/admin-site-headers';
+import { adminSiteFetchInit } from '@/lib/admin-site-headers';
 import { SIDEBAR_CATEGORY_ITEMS, SIDEBAR_SUBMENU_BY_CATEGORY } from '@/lib/sidebar-menu-restrictions';
 import './admin-user-detail-modal.css';
 
@@ -38,9 +38,7 @@ export default function AdminUserDetailModal({ userId, onClose, onSaved }) {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_BASE}/admin/users/${encodeURIComponent(userId)}`, {
-        headers: getAdminSiteFetchHeaders()
-      });
+      const res = await fetch(`${API_BASE}/admin/users/${encodeURIComponent(userId)}`, adminSiteFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '사용자 정보를 불러오지 못했습니다.');
       const u = data.user || {};
@@ -83,15 +81,14 @@ export default function AdminUserDetailModal({ userId, onClose, onSaved }) {
     setSaving(true);
     setError('');
     try {
-      const res = await fetch(`${API_BASE}/admin/users/${encodeURIComponent(userId)}`, {
+      const res = await fetch(`${API_BASE}/admin/users/${encodeURIComponent(userId)}`, adminSiteFetchInit({
         method: 'PATCH',
-        headers: { ...getAdminSiteFetchHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: String(name || '').trim(),
           role,
           hiddenSidebarMenus: hiddenMenus
         })
-      });
+      }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '저장에 실패했습니다.');
       onSaved?.(data.user);

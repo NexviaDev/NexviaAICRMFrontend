@@ -1,12 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import './assignee-picker-modal.css';
 
 import { API_BASE } from '@/config';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function getCurrentUserId() {
   try {
@@ -39,7 +35,7 @@ export default function AssigneePickerModal({ open, onClose, selectedIds = [], o
     lastClickIndexRef.current = null;
     setLoading(true);
     let cancelled = false;
-    fetch(`${API_BASE}/companies/overview`, { headers: getAuthHeader() })
+    fetch(`${API_BASE}/companies/overview`, crmFetchInit())
       .then((r) => r.json().catch(() => ({})))
       .then((data) => {
         if (!cancelled && Array.isArray(data?.employees)) setEmployees(data.employees);

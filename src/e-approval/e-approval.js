@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import { useSearchParams } from 'react-router-dom';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import ListPaginationButtons from '@/components/list-pagination-buttons/list-pagination-buttons';
@@ -62,11 +63,6 @@ const MODAL_DETAIL = 'detail';
 const DETAIL_ID_PARAM = 'id';
 const COL_SPAN = 6;
 
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
 function getStoredUser() {
   try {
     const raw = localStorage.getItem('crm_user');
@@ -120,7 +116,7 @@ export default function EApproval() {
 
   const fetchBadge = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/approvals/badge`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/approvals/badge`, crmFetchInit());
       if (!res.ok) return;
       const data = await res.json();
       setPendingBadge(Number(data.pending) || 0);
@@ -139,7 +135,7 @@ export default function EApproval() {
       q.set('limit', '20');
       if (docType) q.set('docType', docType);
       if (appliedSearch.trim()) q.set('search', appliedSearch.trim());
-      const res = await fetch(`${API_BASE}/approvals?${q}`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/approvals?${q}`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setItems(data.items || []);
@@ -171,7 +167,7 @@ export default function EApproval() {
       return;
     }
     let cancelled = false;
-    fetch(`${API_BASE}/approvals/${encodeURIComponent(detailId)}`, { headers: getAuthHeader() })
+    fetch(`${API_BASE}/approvals/${encodeURIComponent(detailId)}`, crmFetchInit())
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!cancelled && data?._id) setDetailOverride(data);

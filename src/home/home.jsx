@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import { Link } from "react-router-dom";
 import { useHomeTailwind } from "./use-home-tailwind";
 import HomePwaInstallModal from "./home-pwa-install-modal";
@@ -562,7 +563,7 @@ function HomeSectionRotator({ sections, onActiveSectionChange }) {
 
 export default function Home() {
   const isPublicStandalone =
-    typeof window !== 'undefined' && !localStorage.getItem('crm_token');
+    typeof window !== 'undefined' && !getCrmToken();
   const tailwindReady = useHomeTailwind();
   const executiveMetricsRef = useRef(null);
   const [metricsActive, setMetricsActive] = useState(false);

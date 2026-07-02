@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { useNavigate } from 'react-router-dom';
 import CustomerCompanySearchModal from '../customer-companies/customer-company-search-modal/customer-company-search-modal';
 import CustomerCompanyEmployeesSearchModal from '../customer-company-employees/customer-company-employees-search-modal/customer-company-employees-search-modal';
@@ -20,11 +21,6 @@ import VoiceTranscriptionUsagePanel from '@/shared/voice-transcription-usage-pan
 
 /** 백엔드 단일 POST 상한과 동일 — 초과 시 청크 API로 나눔 */
 const VOICE_DIRECT_UPLOAD_MAX_BYTES = 12 * 1024 * 1024;
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function formatRecordingDate(d) {
   if (!d) return '';
@@ -119,7 +115,7 @@ export default function AiVoice() {
       const q = new URLSearchParams();
       if (searchQuery.trim()) q.set('search', searchQuery.trim());
       q.set('limit', '50');
-      const res = await fetch(`${API_BASE}/voice-recordings?${q}`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/voice-recordings?${q}`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '목록 조회 실패');
       const ownItems = filterOwnVoiceRecordings(data.items);
@@ -161,7 +157,7 @@ export default function AiVoice() {
     }
     if (!silent) setLoadingDetail(true);
     try {
-      const res = await fetch(`${API_BASE}/voice-recordings/${id}`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/voice-recordings/${id}`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '조회 실패');
       setSelectedDetail({
@@ -202,7 +198,7 @@ export default function AiVoice() {
     if (selectedDetail?.status !== 'processing' && selectedDetail?.status !== 'queued') return;
     const id = selectedDetail._id;
     pollRef.current = setInterval(() => {
-      fetch(`${API_BASE}/voice-recordings/${id}`, { headers: getAuthHeader() })
+      fetch(`${API_BASE}/voice-recordings/${id}`, crmFetchInit())
         .then((r) => r.json())
         .then((data) => {
           const detail = {
@@ -245,10 +241,7 @@ export default function AiVoice() {
       setSummaryLoading(true);
       try {
         await pingBackendHealth(getAuthHeader);
-        const res = await fetch(`${API_BASE}/voice-recordings/${id}/summarize`, {
-          method: 'POST',
-          headers: getAuthHeader()
-        });
+        const res = await fetch(`${API_BASE}/voice-recordings/${id}/summarize`, crmFetchInit({ method: 'POST' }));
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || '요약 생성 실패');
         if (!cancelled) {
@@ -310,7 +303,7 @@ export default function AiVoice() {
         const uploadChunked = async () => {
           const s = await fetch(`${API_BASE}/voice-recordings/chunked/session`, {
             method: 'POST',
-            headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+            headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
             body: JSON.stringify({
               fileName: file.name,
               totalBytes: file.size,
@@ -347,7 +340,7 @@ export default function AiVoice() {
           setUploadSplitStatus('서버에서 전사 요청 중…');
           const done = await fetch(`${API_BASE}/voice-recordings/chunked/${encodeURIComponent(sessionId)}/complete`, {
             method: 'POST',
-            headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+            headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
             body: JSON.stringify({ title: baseTitle })
           });
           const doneData = await done.json().catch(() => ({}));
@@ -440,7 +433,7 @@ export default function AiVoice() {
   const handleDelete = async (id) => {
     if (!window.confirm('이 음성 기록을 삭제할까요?')) return;
     try {
-      const res = await fetch(`${API_BASE}/voice-recordings/${id}`, { method: 'DELETE', headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/voice-recordings/${id}`, crmFetchInit({ method: 'DELETE' }));
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || '삭제 실패');
@@ -477,10 +470,7 @@ export default function AiVoice() {
     setSummaryError('');
     setSummaryLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/voice-recordings/${selectedDetail._id}/summarize`, {
-        method: 'POST',
-        headers: getAuthHeader()
-      });
+      const res = await fetch(`${API_BASE}/voice-recordings/${selectedDetail._id}/summarize`, crmFetchInit({ method: 'POST' }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '요약 생성 실패');
       setSelectedDetail((prev) => (prev ? { ...prev, summary: data.summary } : null));
@@ -499,16 +489,13 @@ export default function AiVoice() {
     setSendToMessage('');
     setSendToLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/customer-companies/${company._id}`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/customer-companies/${company._id}`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(getUserVisibleApiError(data, '고객사 조회 실패'));
       const existingMemo = data.memo != null ? String(data.memo).trim() : '';
       const newMemo = existingMemo ? `${existingMemo}\n\n${getPayloadForSend()}` : getPayloadForSend();
-      const patchRes = await fetch(`${API_BASE}/customer-companies/${company._id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ memo: newMemo })
-      });
+      const patchRes = await fetch(`${API_BASE}/customer-companies/${company._id}`, crmFetchInit({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ memo: newMemo  })
+      }));
       const patchData = await patchRes.json().catch(() => ({}));
       if (!patchRes.ok) throw new Error(getUserVisibleApiError(patchData, '고객사 메모 저장 실패'));
       setSendToMessage(`"${company.name || '고객사'}" 메모에 추가했습니다.`);
@@ -525,11 +512,8 @@ export default function AiVoice() {
     setSendToMessage('');
     setSendToLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/customer-company-employees/${contact._id}/history`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ content: getPayloadForSend() })
-      });
+      const res = await fetch(`${API_BASE}/customer-company-employees/${contact._id}/history`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: getPayloadForSend()  })
+      }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '일지 저장 실패');
       setSendToMessage(`"${contact.name || '연락처'}" 일지에 추가했습니다.`);

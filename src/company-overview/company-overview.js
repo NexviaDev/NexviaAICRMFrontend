@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import CompanyDriveSettingsModal from './company-drive-settings-modal/company-drive-settings-modal';
 import './company-overview.css';
 import 'mind-elixir/style.css';
@@ -16,11 +17,6 @@ import {
 } from '@/lib/org-chart-mind-shared';
 import { GoogleWorkspaceChatPolicyHint } from '@/lib/google-workspace-chat-hint';
 import { LIST_IDS, getSavedTemplate, patchListTemplate } from '@/lib/list-templates';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 /** 조직도 노드 → 직원 부서 선택 라벨 */
 function formatOrgDeptPickerLabel(node) {
@@ -266,7 +262,7 @@ export default function CompanyOverview() {
   };
 
   const refreshOverview = useCallback(async () => {
-    const res = await fetch(`${API_BASE}/companies/overview`, { headers: getAuthHeader() });
+    const res = await fetch(`${API_BASE}/companies/overview`, crmFetchInit());
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json.error || '조회에 실패했습니다.');
     setData(json);
@@ -281,7 +277,7 @@ export default function CompanyOverview() {
     }
     setHandoverPendingLoading(true);
     try {
-      const r = await fetch(`${API_BASE}/companies/assignee-handover-requests/pending`, { headers: getAuthHeader() });
+      const r = await fetch(`${API_BASE}/companies/assignee-handover-requests/pending`, crmFetchInit());
       const json = await r.json().catch(() => ({}));
       if (Array.isArray(json?.groups)) {
         setHandoverViewerCanConsent(Boolean(json.viewerCanConsent));
@@ -343,7 +339,7 @@ export default function CompanyOverview() {
       try {
         const res = await fetch(`${API_BASE}/companies/assignee-handover-requests/approve-in-app`, {
           method: 'POST',
-          headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+          headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
         });
         const out = await res.json().catch(() => ({}));
@@ -416,11 +412,8 @@ export default function CompanyOverview() {
     setSavingDeptLeader(true);
     setActionError('');
     try {
-      const res = await fetch(`${API_BASE}/companies/department-leaders`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ leaders: next })
-      });
+      const res = await fetch(`${API_BASE}/companies/department-leaders`, crmFetchInit({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ leaders: next  })
+      }));
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || '부서 팀장 저장에 실패했습니다.');
       await refreshOverview();
@@ -438,11 +431,8 @@ export default function CompanyOverview() {
   const saveOrgChart = useCallback(async (nextTree) => {
     setOrgSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/companies/organization-chart`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ organizationChart: nextTree })
-      });
+      const res = await fetch(`${API_BASE}/companies/organization-chart`, crmFetchInit({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ organizationChart: nextTree  })
+      }));
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || '조직도 저장 실패');
       setOrgChart(json.organizationChart || nextTree);
@@ -656,7 +646,7 @@ export default function CompanyOverview() {
     try {
       const res = await fetch(`${API_BASE}/companies/profile`, {
         method: 'PATCH',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify(companyProfileForm)
       });
       const out = await res.json().catch(() => ({}));
@@ -975,11 +965,8 @@ export default function CompanyOverview() {
     setRequestMessage('');
     setSavingMemberId(String(memberId));
     try {
-      const res = await fetch(`${API_BASE}/companies/members/${memberId}/access`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify(patch)
-      });
+      const res = await fetch(`${API_BASE}/companies/members/${memberId}/access`, crmFetchInit({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(patch)
+       }));
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || '직원 정보 변경에 실패했습니다.');
       await refreshOverview();
@@ -1010,11 +997,8 @@ export default function CompanyOverview() {
     }
     setRequestSending(true);
     try {
-      const res = await fetch(`${API_BASE}/companies/access-requests`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ approverUserIds: selectedApproverIds })
-      });
+      const res = await fetch(`${API_BASE}/companies/access-requests`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ approverUserIds: selectedApproverIds  })
+      }));
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || '권한 요청 메일 전송에 실패했습니다.');
       const recipientLabel = (json.approvers || []).map((item) => item.name || item.email).filter(Boolean).join(', ');

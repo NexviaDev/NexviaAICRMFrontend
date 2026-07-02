@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import {
   fetchSalesOpportunityScheduleFieldContext,
   fetchSalesOpportunityScheduleLabelMap,
@@ -14,11 +15,6 @@ import { LIST_IDS } from '@/lib/list-templates';
 import { SALES_PIPELINE_DEFAULT_VISIBLE_COLUMN_KEYS } from '@/sales-pipeline/drop-zone-list-modal/drop-zone-list-modal';
 import { compactColumnCellStylesForSave } from '@/lib/list-column-cell-styles';
 import './list-template-modal.css';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 const LIST_TEMPLATE_DROP_ZONE = 'list-template-column';
 const DND_MIME = 'application/x-list-template-column-key';

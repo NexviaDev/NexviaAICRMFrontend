@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 
 import { LiveKitRoom } from '@livekit/components-react';
 
@@ -13,16 +14,6 @@ import './video-meeting-room.css';
 
 
 import { API_BASE } from '@/config';
-
-
-
-function getAuthHeader() {
-
-  const token = localStorage.getItem('crm_token');
-
-  return token ? { Authorization: `Bearer ${token}` } : {};
-
-}
 
 
 
@@ -152,7 +143,7 @@ export default function VideoMeetingRoom({ meetingId, meetingTitle, onClose, onE
 
           method: 'POST',
 
-          headers: { ...getAuthHeader(), 'Content-Type': 'application/json' }
+          headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' }
 
         });
 
@@ -220,13 +211,7 @@ export default function VideoMeetingRoom({ meetingId, meetingTitle, onClose, onE
 
     try {
 
-      const res = await fetch(`${API_BASE}/video-meetings/${encodeURIComponent(meetingId)}/end`, {
-
-        method: 'PATCH',
-
-        headers: getAuthHeader()
-
-      });
+      const res = await fetch(`${API_BASE}/video-meetings/${encodeURIComponent(meetingId)}/end`, crmFetchInit({ method: 'PATCH' }));
 
       const data = await res.json().catch(() => ({}));
 

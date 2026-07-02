@@ -1,4 +1,5 @@
 import { API_BASE } from '@/config';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 
 /**
  * @param {() => Record<string, string>} getAuthHeader
@@ -18,7 +19,7 @@ export async function fetchGoogleLinkStatus(getAuthHeader) {
  * @param {string} [returnPath] — 기본값: 현재 pathname+search
  */
 export function startGoogleFeatureLink(feature, returnPath) {
-  const token = localStorage.getItem('crm_token');
+  const token = getCrmToken();
   if (!token) return;
   const ret = returnPath != null ? returnPath : `${window.location.pathname}${window.location.search}`;
   const params = new URLSearchParams({ token });

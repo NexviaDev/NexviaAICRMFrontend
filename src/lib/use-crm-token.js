@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
+import { hasCrmSession } from '@/lib/crm-auth';
 
-/** localStorage crm_token 동기화 (로그인·로그아웃 후 라우트 트리 갱신) */
+/** CRM 로그인 세션 동기화 (crm_user + HttpOnly 쿠키) */
 export function useCrmToken() {
-  const [token, setToken] = useState(() =>
-    typeof window !== 'undefined' ? localStorage.getItem('crm_token') : null,
+  const [active, setActive] = useState(() =>
+    typeof window !== 'undefined' ? hasCrmSession() : false,
   );
 
   useEffect(() => {
-    const sync = () => setToken(localStorage.getItem('crm_token'));
+    const sync = () => setActive(hasCrmSession());
     window.addEventListener('storage', sync);
     window.addEventListener('focus', sync);
     window.addEventListener('nexvia-auth-changed', sync);
@@ -18,7 +19,7 @@ export function useCrmToken() {
     };
   }, []);
 
-  return token;
+  return active ? 'session' : '';
 }
 
 export function notifyCrmAuthChanged() {

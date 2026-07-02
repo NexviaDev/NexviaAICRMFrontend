@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import AddCompanyModal from './add-company-modal/add-company-modal';
 import CustomerCompanyDetailModal from './customer-company-detail-modal/customer-company-detail-modal';
@@ -54,11 +55,6 @@ const DETAIL_ID_PARAM = 'id';
 const LIMIT = 13;
 const LIMIT_SEARCH_MODAL = 500;
 const EXPORT_PAGE_LIMIT = 100;
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 const LIST_ID = LIST_IDS.CUSTOMER_COMPANIES;
 
@@ -151,7 +147,7 @@ export default function CustomerCompanies({
   useEffect(() => {
     let cancelled = false;
     setCompanyEmployeesLoaded(false);
-    fetch(`${API_BASE}/companies/overview`, { headers: getAuthHeader() })
+    fetch(`${API_BASE}/companies/overview`, crmFetchInit())
       .then((r) => r.json().catch(() => ({})))
       .then((data) => {
         if (!cancelled && Array.isArray(data?.employees)) setCompanyEmployees(data.employees);
@@ -173,7 +169,7 @@ export default function CustomerCompanies({
     }
     setLoadingDetailCompany(true);
     let cancelled = false;
-    fetch(`${API_BASE}/customer-companies/${detailId}`, { headers: getAuthHeader() })
+    fetch(`${API_BASE}/customer-companies/${detailId}`, crmFetchInit())
       .then((r) => r.json().catch(() => ({})))
       .then((data) => {
         if (cancelled) return;
@@ -198,7 +194,7 @@ export default function CustomerCompanies({
       }
       if (assigneeMeOnly) params.set('assigneeMe', '1');
       const url = `${API_BASE}/customer-companies?${params.toString()}`;
-      const res = await fetch(url, { headers: getAuthHeader() });
+      const res = await fetch(url, crmFetchInit());
       if (res.ok) {
         const data = await res.json();
         setItems(data.items || []);
@@ -257,9 +253,7 @@ export default function CustomerCompanies({
       if (searchField) params.set('searchField', searchField);
     }
     if (assigneeMeOnly) params.set('assigneeMe', '1');
-    const res = await fetch(`${API_BASE}/customer-companies/for-selection?${params.toString()}`, {
-      headers: getAuthHeader()
-    });
+    const res = await fetch(`${API_BASE}/customer-companies/for-selection?${params.toString()}`, crmFetchInit());
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.error || '목록을 가져오지 못했습니다.');
@@ -288,7 +282,7 @@ export default function CustomerCompanies({
 
   const loadCustomerCompanyCustomFieldColumns = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=customerCompany`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=customerCompany`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       const items = Array.isArray(data?.items) ? data.items : [];
       const extra = items.map((d) => ({ key: `${CUSTOM_FIELDS_PREFIX}${d.key}`, label: d.label || d.key || '' }));
@@ -360,11 +354,8 @@ export default function CustomerCompanies({
   const handleToggleFavorite = async (rowId, nextValue) => {
     if (!rowId) return;
     try {
-      const res = await fetch(`${API_BASE}/customer-companies/${rowId}/favorite`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ isFavorite: nextValue })
-      });
+      const res = await fetch(`${API_BASE}/customer-companies/${rowId}/favorite`, crmFetchInit({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isFavorite: nextValue  })
+      }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return;
       setItems((prev) => prev.map((row) => (row._id === rowId ? { ...row, isFavorite: !!data.isFavorite } : row)));
@@ -613,11 +604,8 @@ export default function CustomerCompanies({
     if (!confirmed) return;
     setBulkDeleteLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/customer-companies/bulk-delete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ ids })
-      });
+      const res = await fetch(`${API_BASE}/customer-companies/bulk-delete`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids  })
+      }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         window.alert(data.error || '삭제에 실패했습니다.');
@@ -682,7 +670,7 @@ export default function CustomerCompanies({
         page: String(page),
         limit: '200'
       });
-      const res = await fetch(`${API_BASE}/customer-company-employees?${params.toString()}`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/customer-company-employees?${params.toString()}`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '고객사 직원 목록 조회 실패');
       const batch = Array.isArray(data.items) ? data.items : [];

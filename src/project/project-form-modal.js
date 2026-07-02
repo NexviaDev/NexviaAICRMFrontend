@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import { API_BASE, MAX_DRIVE_JSON_UPLOAD_BYTES } from '@/config';
 import ParticipantModal from '@/shared/participant-modal/participant-modal';
 import {
@@ -64,11 +65,6 @@ function formatCommentDate(input) {
 
 function tempId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 function sanitizeFolderNamePart(input) {
@@ -321,7 +317,7 @@ export default function ProjectFormModal({
     if (!commentPersistTarget) return null;
     const res = await fetch(`${API_BASE}/projects/${encodeURIComponent(commentPersistTarget.projectId)}/comments`, {
       method: 'POST',
-      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify({
         message,
         ...(commentPersistTarget.taskId ? { taskId: commentPersistTarget.taskId } : {})
@@ -338,7 +334,7 @@ export default function ProjectFormModal({
       `${API_BASE}/projects/${encodeURIComponent(commentPersistTarget.projectId)}/comments/${encodeURIComponent(commentId)}/replies`,
       {
         method: 'POST',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message,
           ...(commentPersistTarget.taskId ? { taskId: commentPersistTarget.taskId } : {})
@@ -533,7 +529,7 @@ export default function ProjectFormModal({
 
     const companyRootRes = await fetch(`${API_BASE}/drive/folders/ensure`, {
       method: 'POST',
-      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({ folderName: companyFolderName || '미등록_미등록' })
     });
@@ -544,7 +540,7 @@ export default function ProjectFormModal({
 
     const projectRootRes = await fetch(`${API_BASE}/drive/folders/ensure`, {
       method: 'POST',
-      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({ folderName: 'Project', parentFolderId: companyRootData.id })
     });
@@ -557,7 +553,7 @@ export default function ProjectFormModal({
     const leafName = buildStampedFolderName(title, nextStamp);
     const taskFolderRes = await fetch(`${API_BASE}/drive/folders/ensure`, {
       method: 'POST',
-      headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+      headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({ folderName: leafName, parentFolderId: projectRootData.id })
     });
@@ -578,10 +574,7 @@ export default function ProjectFormModal({
     setDriveBusy(true);
     setDriveError('');
     try {
-      const res = await fetch(`${API_BASE}/drive/files?folderId=${encodeURIComponent(driveFolderId)}&pageSize=100`, {
-        headers: getAuthHeader(),
-        credentials: 'include'
-      });
+      const res = await fetch(`${API_BASE}/drive/files?folderId=${encodeURIComponent(driveFolderId)}&pageSize=100`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || 'Drive 파일 목록을 불러오지 못했습니다.');
       setAttachments(
@@ -658,7 +651,7 @@ export default function ProjectFormModal({
       if (!contentBase64) throw new Error(`"${file.name}" 파일을 읽지 못했습니다.`);
       const res = await fetch(`${API_BASE}/drive/upload`, {
         method: 'POST',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           name: file.name,

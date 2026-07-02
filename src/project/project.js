@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { NavLink, useSearchParams } from 'react-router-dom';
 import { API_BASE } from '@/config';
 import { buildParticipantDirectoryFromOverview } from '@/lib/participant-directory-merge';
@@ -16,11 +17,6 @@ const TABS = [
 /** 홈 KPI 등에서 `navigate('/project?projectModal=edit&projectId=…')`로 연 뒤 뒤로가기로 닫을 수 있게 함 */
 const PROJECT_URL_MODAL_PARAM = 'projectModal';
 const PROJECT_URL_ID_PARAM = 'projectId';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 const DEFAULT_PROJECT_KANBAN_COLUMNS = [
   { key: 'todo', title: '해야 할 일', dot: 'dot-muted' },
@@ -858,7 +854,7 @@ export default function Project() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_BASE}/projects/board`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/projects/board`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '프로젝트 데이터를 불러오지 못했습니다.');
       setBoard({
@@ -973,9 +969,7 @@ export default function Project() {
     const sid = String(projectId || '').trim();
     if (!sid) return null;
     try {
-      const res = await fetch(`${API_BASE}/projects/board?projectId=${encodeURIComponent(sid)}`, {
-        headers: getAuthHeader()
-      });
+      const res = await fetch(`${API_BASE}/projects/board?projectId=${encodeURIComponent(sid)}`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return null;
       for (const col of data.kanban?.columns || []) {
@@ -1094,10 +1088,7 @@ export default function Project() {
         isLegacyTask && taskId
           ? `${API_BASE}/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}`
           : `${API_BASE}/projects/${encodeURIComponent(projectId)}`;
-      const res = await fetch(path, {
-        method: 'DELETE',
-        headers: getAuthHeader()
-      });
+      const res = await fetch(path, crmFetchInit({ method: 'DELETE' }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '삭제에 실패했습니다.');
       setShowProjectFormModal(false);
@@ -1194,11 +1185,8 @@ export default function Project() {
         const path = isLegacyTask
           ? `${API_BASE}/projects/${encodeURIComponent(draggedItem.sourceProjectId)}/tasks/${encodeURIComponent(itemId)}/stage`
           : `${API_BASE}/projects/${encodeURIComponent(itemId)}/stage`;
-        const res = await fetch(path, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-          body: JSON.stringify({ stage: targetStage })
-        });
+        const res = await fetch(path, crmFetchInit({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stage: targetStage  })
+        }));
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || '단계 변경에 실패했습니다.');
         fetchBoard().catch(() => { });

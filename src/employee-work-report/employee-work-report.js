@@ -1,4 +1,5 @@
 import { Fragment, useState, useEffect, useMemo } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { useNavigate, useParams } from 'react-router-dom';
 import './employee-work-report.css';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
@@ -20,11 +21,6 @@ function getPageNumbers(current, total) {
     result.push(sorted[i]);
   }
   return result;
-}
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 function findOrgChartNodeById(node, id) {
@@ -72,8 +68,8 @@ export default function EmployeeWorkReport() {
     (async () => {
       try {
         const [meRes, overviewRes] = await Promise.all([
-          fetch(`${API_BASE}/auth/me`, { headers: getAuthHeader() }),
-          fetch(`${API_BASE}/companies/overview`, { headers: getAuthHeader() })
+          fetch(`${API_BASE}/auth/me`, crmFetchInit()),
+          fetch(`${API_BASE}/companies/overview`, crmFetchInit())
         ]);
         const meJson = await meRes.json().catch(() => ({}));
         const overviewJson = await overviewRes.json().catch(() => ({}));

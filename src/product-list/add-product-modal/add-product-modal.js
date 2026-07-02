@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import CustomFieldsSection from '../../shared/custom-fields-section';
 import CustomFieldsDisplay from '../../shared/custom-fields-display';
 import CustomFieldsManageModal from '../../shared/custom-fields-manage-modal/custom-fields-manage-modal';
@@ -97,11 +98,6 @@ function getCategoryTriggerLabel(categoryKey, categoryOther) {
   }
   const opt = PRODUCT_CATEGORY_OPTIONS.find((o) => o.value === categoryKey);
   return opt?.label || categoryKey;
-}
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 /** 복제 시 _id 등 제거 */
@@ -482,7 +478,7 @@ export default function AddProductModal({
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/products/${product._id}`, { headers: getAuthHeader() });
+        const res = await fetch(`${API_BASE}/products/${product._id}`, crmFetchInit());
         const data = await res.json().catch(() => null);
         if (!cancelled && res.ok && data) setLoadedProduct(data);
       } catch {

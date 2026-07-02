@@ -1,4 +1,5 @@
 import { API_BASE } from '@/config';
+import { hasCrmSession, getCrmToken, crmFetchInit } from '@/lib/crm-auth';
 
 let foregroundUnsubscribe = null;
 let firebaseSdkPromise = null;
@@ -30,11 +31,6 @@ const FIREBASE_APP_URL = `https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERS
 const FIREBASE_MESSAGING_URL = `https://www.gstatic.com/firebasejs/${FIREBASE_SDK_VERSION}/firebase-messaging.js`;
 const PUSH_STEP_TIMEOUT_MS = 10000;
 
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
 export function canUsePushNotifications() {
   return (
     typeof window !== 'undefined' &&
@@ -59,7 +55,7 @@ function normalizeFirebaseConfig(raw) {
 }
 
 async function fetchFirebaseWebConfig() {
-  const res = await fetch(`${API_BASE}/push-notifications/web-config`, { headers: getAuthHeader() });
+  const res = await fetch(`${API_BASE}/push-notifications/web-config`, crmFetchInit());
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'Firebase 웹 설정을 불러오지 못했습니다.');
   const { config, vapidKey } = normalizeFirebaseConfig(data);
@@ -87,11 +83,11 @@ export function getOrCreatePushDeviceId() {
 
 async function registerTokenWithBackend(token) {
   const deviceId = getOrCreatePushDeviceId();
-  const res = await fetch(`${API_BASE}/push-notifications/register-token`, {
+  const res = await fetch(`${API_BASE}/push-notifications/register-token`, crmFetchInit({
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token, platform: 'web', deviceId })
-  });
+  }));
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || '푸시 토큰 등록에 실패했습니다.');
   return data;
@@ -99,11 +95,11 @@ async function registerTokenWithBackend(token) {
 
 async function unregisterTokenWithBackend(token) {
   if (!token) return;
-  const res = await fetch(`${API_BASE}/push-notifications/unregister-token`, {
+  const res = await fetch(`${API_BASE}/push-notifications/unregister-token`, crmFetchInit({
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ token })
-  });
+  }));
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || '푸시 토큰 해제에 실패했습니다.');
   return data;
@@ -156,7 +152,7 @@ function getCurrentCrmCompanyId() {
 
 function isCrmSessionLoggedIn() {
   try {
-    return Boolean(String(localStorage.getItem('crm_token') || '').trim() && getCurrentCrmUserId());
+    return Boolean(hasCrmSession() && getCurrentCrmUserId());
   } catch {
     return false;
   }
@@ -222,7 +218,7 @@ export function shouldShowPushForCurrentSession(data = {}) {
 export async function syncPushRegistrationForSession(user) {
   const sessionUserId = String(user?._id || user?.id || '').trim();
   const sessionCompanyId = String(user?.companyId || '').trim();
-  const crmToken = localStorage.getItem('crm_token');
+  const crmToken = getCrmToken();
 
   if (!crmToken || !sessionUserId) {
     await clearLocalPushRegistration();
@@ -266,7 +262,7 @@ export async function syncPushRegistrationForSession(user) {
 /** 로그아웃 시 — crm_token 삭제 전에 호출. UI는 즉시 전환하고 푸시 정리는 백그라운드. */
 export function clearPushSessionOnLogout() {
   const stored = getStoredPushToken();
-  const authHeader = getAuthHeader();
+  const hadSession = hasCrmSession();
 
   setStoredPushToken('');
   setStoredPushOwnerUserId('');
@@ -278,7 +274,7 @@ export function clearPushSessionOnLogout() {
     registered: false
   });
 
-  if (stored && authHeader.Authorization) {
+  if (stored && hadSession) {
     void unregisterTokenWithBackend(stored).catch(() => {});
   }
 

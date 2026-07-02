@@ -1,14 +1,10 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import { API_BASE } from '@/config';
 import { collectExactSelectedMemberDeptIds } from '@/lib/org-chart-tree-utils';
 import { buildParticipantDirectoryFromOverview } from '@/lib/participant-directory-merge';
 import ParticipantOrgChartPicker from './participant-org-chart-picker';
 import './participant-modal.css';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function memberToPickerRow(m) {
   const deptId = String(m.companyDepartment || m.department || '').trim();
@@ -73,10 +69,7 @@ export default function ParticipantModal({
     setOverviewError('');
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/companies/overview`, {
-          headers: getAuthHeader(),
-          credentials: 'include'
-        });
+        const res = await fetch(`${API_BASE}/companies/overview`, crmFetchInit());
         const json = await res.json().catch(() => ({}));
         if (cancelled) return;
         if (!res.ok) throw new Error(json.error || '사내 현황을 불러오지 못했습니다.');

@@ -1,13 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { API_BASE } from '@/config';
 import { formatPhone } from '@/register/phoneFormat';
 import '../sales-pipeline/opportunity-modal/opportunity-modal.css';
 import './home-lead-detail-modal.css';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function getCurrentUserId() {
   try {
@@ -119,10 +115,7 @@ export default function HomeLeadDetailModal({
     setLoading(true);
     setFetchError('');
     try {
-      const res = await fetch(`${API_BASE}/lead-capture-forms/${formId}/leads/${leadId}`, {
-        headers: getAuthHeader(),
-        credentials: 'include'
-      });
+      const res = await fetch(`${API_BASE}/lead-capture-forms/${formId}/leads/${leadId}`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '리드를 불러올 수 없습니다.');
       setLead(data);
@@ -230,11 +223,7 @@ export default function HomeLeadDetailModal({
     setCommentBusy(true);
     setCommentError('');
     try {
-      const res = await fetch(`${baseCommentUrl}/${commentId}`, {
-        method: 'DELETE',
-        headers: getAuthHeader(),
-        credentials: 'include'
-      });
+      const res = await fetch(`${baseCommentUrl}/${commentId}`, crmFetchInit({ method: 'DELETE' }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '코멘트를 삭제할 수 없습니다.');
       setComments(Array.isArray(data.comments) ? data.comments : []);

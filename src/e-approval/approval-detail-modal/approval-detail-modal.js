@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { API_BASE } from '@/config';
 import { LEAVE_LABEL, formatVacationTimeDisplay, formatVacationDaysLabel, formatVacationDateRangeLabel, isPartialDayLeave } from '../vacation-leave-utils';
 import ApprovalCommentsPanel from './approval-comments-panel';
@@ -40,11 +41,6 @@ const DOC_TYPE_DECLARATION = {
   quotation: '위와 같이 견적 결재를 신청하오니 검토 후 승인하여 주시기 바랍니다.',
   proposal: '위와 같이 품의하오니 검토 후 결재하여 주시기 바랍니다.'
 };
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
-}
 
 function formatDraftDate(d) {
   if (!d) return '—';
@@ -116,7 +112,7 @@ export default function ApprovalDetailModal({ doc, currentUser, onClose, onUpdat
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/companies/overview`, { headers: getAuthHeader(), credentials: 'include' })
+    fetch(`${API_BASE}/companies/overview`, crmFetchInit())
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!cancelled) {
@@ -132,7 +128,7 @@ export default function ApprovalDetailModal({ doc, currentUser, onClose, onUpdat
     if (!doc?._id) return;
     let cancelled = false;
     setLoadingDoc(true);
-    fetch(`${API_BASE}/approvals/${encodeURIComponent(doc._id)}`, { headers: getAuthHeader() })
+    fetch(`${API_BASE}/approvals/${encodeURIComponent(doc._id)}`, crmFetchInit())
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!cancelled && data?._id) setLocalDoc(data);

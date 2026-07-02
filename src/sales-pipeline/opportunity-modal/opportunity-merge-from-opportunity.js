@@ -527,10 +527,7 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/companies/list-templates-bundle`, {
-          headers: { ...getAuthHeader() },
-          credentials: 'include'
-        });
+        const res = await fetch(`${API_BASE}/companies/list-templates-bundle`, crmFetchInit());
         const data = await res.json().catch(() => ({}));
         if (cancelled || !res.ok) return;
         setCompanyProfile(
@@ -628,10 +625,7 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
       const idStr = eff != null && eff !== '' ? String(eff).trim() : '';
       const q = isMergeFieldPresetMongoId(idStr) ? `?presetId=${encodeURIComponent(idStr)}` : '';
       try {
-        const res = await fetch(`${API_BASE}/quotation-merge/field-guide${q}`, {
-          headers: { ...getAuthHeader() },
-          credentials: 'include'
-        });
+        const res = await fetch(`${API_BASE}/quotation-merge/field-guide${q}`, crmFetchInit());
         const data = await res.json().catch(() => ({}));
         if (res.ok) setFieldGuide(data);
         else setFieldGuide(null);
@@ -645,10 +639,7 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
   const loadFieldPresets = useCallback(async () => {
     setFieldPresetsLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/quotation-merge/field-presets`, {
-        headers: { ...getAuthHeader() },
-        credentials: 'include'
-      });
+      const res = await fetch(`${API_BASE}/quotation-merge/field-presets`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (res.ok) setFieldPresets(Array.isArray(data.items) ? data.items : []);
       else setFieldPresets([]);
@@ -662,10 +653,7 @@ export default function OpportunityMergeFromOpportunity({ open, onClose, getAuth
   const loadTemplates = useCallback(async () => {
     setTemplatesLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/quotation-merge/templates`, {
-        headers: { ...getAuthHeader() },
-        credentials: 'include'
-      });
+      const res = await fetch(`${API_BASE}/quotation-merge/templates`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '양식 목록 실패');
       const items = Array.isArray(data.items) ? data.items : [];

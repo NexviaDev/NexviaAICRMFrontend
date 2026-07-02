@@ -1,13 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { API_BASE } from '@/config';
 import { resolveDepartmentDisplayFromChart } from '@/lib/org-chart-tree-utils';
 import ParticipantModal from '@/shared/participant-modal/participant-modal';
 import './lead-capture-form-modal.css';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 const STATUS_OPTIONS = [
   { value: 'active', label: '활성' },
@@ -50,10 +46,7 @@ export default function LeadCaptureFormModal({ form, onClose, onSaved }) {
 
   const fetchOverview = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/companies/overview`, {
-        headers: getAuthHeader(),
-        credentials: 'include'
-      });
+      const res = await fetch(`${API_BASE}/companies/overview`, crmFetchInit());
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || '직원 목록을 불러올 수 없습니다.');
       setEmployees(Array.isArray(json.employees) ? json.employees : []);

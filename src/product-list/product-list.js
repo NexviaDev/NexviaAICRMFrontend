@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { useSearchParams } from 'react-router-dom';
 import AddProductModal from './add-product-modal/add-product-modal';
 import ProductExcelImportModal from './product-excel-import-modal/product-excel-import-modal';
@@ -255,11 +256,6 @@ const PRODUCT_FIELD_FILTER_STATIC = [
   { value: 'updatedAt', label: '수정일' }
 ];
 
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
 function formatPrice(price) {
   if (price == null) return '—';
   return Number(price).toLocaleString();
@@ -432,7 +428,7 @@ export default function ProductList({
         params.set('search', searchApplied);
         if (appliedSearchField) params.set('searchField', appliedSearchField);
       }
-      const res = await fetch(`${API_BASE}/products?${params}`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/products?${params}`, crmFetchInit());
       if (res.ok) {
         const data = await res.json();
         setItems(data.items || []);
@@ -462,7 +458,7 @@ export default function ProductList({
         params.set('search', searchApplied);
         if (appliedSearchField) params.set('searchField', appliedSearchField);
       }
-      const res = await fetch(`${API_BASE}/products?${params}`, { headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/products?${params}`, crmFetchInit());
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || '목록을 가져오지 못했습니다.');
@@ -629,7 +625,7 @@ export default function ProductList({
       return;
     }
     try {
-      const res = await fetch(`${API_BASE}/products/${row._id}`, { method: 'DELETE', headers: getAuthHeader() });
+      const res = await fetch(`${API_BASE}/products/${row._id}`, crmFetchInit({ method: 'DELETE' }));
       if (res.ok) {
         closeDetail();
         fetchList(pagination.page);
@@ -852,7 +848,7 @@ export default function ProductList({
       const ids = [...selectedIds];
       const res = await fetch(`${API_BASE}/products/bulk-delete`, {
         method: 'POST',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids })
       });
       const data = await res.json().catch(() => ({}));
@@ -886,7 +882,7 @@ export default function ProductList({
     try {
       for (const id of ids) {
         try {
-          const res = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}`, { headers: getAuthHeader() });
+          const res = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}`, crmFetchInit());
           const src = await res.json().catch(() => ({}));
           if (!res.ok) {
             fail += 1;
@@ -899,7 +895,7 @@ export default function ProductList({
           const channelP = Number(src.channelPrice) || 0;
           const createRes = await fetch(`${API_BASE}/products`, {
             method: 'POST',
-            headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+            headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
             body: JSON.stringify({
               name: newName,
               code: '',

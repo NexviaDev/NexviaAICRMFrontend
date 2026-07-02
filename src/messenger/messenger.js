@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { Link, useNavigate } from 'react-router-dom';
 import { API_BASE } from '@/config';
 import { buildParticipantDirectoryFromOverview } from '@/lib/participant-directory-merge';
@@ -16,11 +17,6 @@ const CHAT_API_DOCS = 'https://developers.google.com/workspace/chat/api/referenc
 const SPACES_POLL_EVERY_N_MESSAGE_TICKS = 3;
 /** 메시지 폴링 시 멤버 API는 N회에 1번만(헤더·표시명 최신화) */
 const MEMBERS_POLL_EVERY_N_MESSAGE_TICKS = 5;
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -318,10 +314,7 @@ export default function Messenger() {
 
   const loadChatContacts = useCallback(async () => {
     try {
-      const res = await fetchWithColdStartRetry(`${API_BASE}/google-chat/my-contacts`, {
-        headers: { ...getAuthHeader() },
-        credentials: 'include'
-      });
+      const res = await fetchWithColdStartRetry(`${API_BASE}/google-chat/my-contacts`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return;
       const list = Array.isArray(data.contacts) ? data.contacts : [];
@@ -423,7 +416,7 @@ export default function Messenger() {
                 const sid = encodeURIComponent(spaceIdFromName(s.name));
                 const res = await fetchWithColdStartRetry(
                   `${API_BASE}/google-chat/spaces/${sid}/members?pageSize=100`,
-                  { headers: { ...getAuthHeader() } }
+                  crmFetchInit()
                 );
                 const data = await res.json().catch(() => ({}));
                 if (cancelled || !res.ok) return;
@@ -478,7 +471,7 @@ export default function Messenger() {
         try {
           const res = await fetchWithColdStartRetry(`${API_BASE}/google-chat/resolve-user-names`, {
             method: 'POST',
-            headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+            headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
             credentials: 'include',
             body: JSON.stringify({ resourceNames: unique })
           });
@@ -543,7 +536,7 @@ export default function Messenger() {
       try {
         const res = await fetchWithColdStartRetry(`${API_BASE}/google-chat/resolve-user-names`, {
           method: 'POST',
-          headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+          headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({ resourceNames: missing })
         });
@@ -670,7 +663,7 @@ export default function Messenger() {
         const q = encodeURIComponent(rn);
         const res = await fetchWithColdStartRetry(
           `${API_BASE}/google-chat/profile?resourceName=${q}`,
-          { headers: { ...getAuthHeader() }, credentials: 'include' }
+          crmFetchInit()
         );
         const data = await res.json().catch(() => ({}));
         const fromApi = (data.displayName && String(data.displayName).trim()) || '';
@@ -704,7 +697,7 @@ export default function Messenger() {
     try {
       const res = await fetch(`${API_BASE}/google-chat/my-contacts`, {
         method: 'POST',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           chatResourceName: rnNorm,
@@ -804,7 +797,7 @@ export default function Messenger() {
 
   const loadMe = useCallback(async () => {
     try {
-      const res = await fetchWithColdStartRetry(`${ API_BASE }/google-chat/me`, { headers: { ...getAuthHeader() } });
+      const res = await fetchWithColdStartRetry(`${ API_BASE }/google-chat/me`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (res.ok && data?.resourceName) setMyResourceName(data.resourceName);
     } catch {
@@ -822,7 +815,7 @@ export default function Messenger() {
     try {
       const res = await fetchWithColdStartRetry(
         `${ API_BASE }/google-chat/spaces?pageSize=100`,
-        { headers: { ...getAuthHeader() } }
+        crmFetchInit()
       );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -866,13 +859,13 @@ export default function Messenger() {
     try {
       const msgReq = fetchWithColdStartRetry(
         `${ API_BASE }/google-chat/spaces/${ sid }/messages?pageSize=100`,
-        { headers: { ...getAuthHeader() } }
+        crmFetchInit()
       );
       const memReq = skipMembers
         ? Promise.resolve(null)
         : fetchWithColdStartRetry(
             `${ API_BASE }/google-chat/spaces/${ sid }/members?pageSize=100`,
-            { headers: { ...getAuthHeader() } }
+            crmFetchInit()
           );
       const [msgRes, memRes] = await Promise.all([msgReq, memReq]);
 
@@ -1008,11 +1001,8 @@ export default function Messenger() {
     setError('');
     setNeedsReauth(false);
     try {
-      const res = await fetch(`${ API_BASE }/google-chat/spaces/${ sid }/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ text })
-      });
+      const res = await fetch(`${ API_BASE }/google-chat/spaces/${ sid }/messages`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text  })
+      }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (data.needsReauth) setNeedsReauth(true);
@@ -1049,11 +1039,8 @@ export default function Messenger() {
       ...new Set((rawInviteEmails || []).map((e) => String(e).trim()).filter(Boolean))
     ].filter((e) => e.toLowerCase() !== myEmail);
     try {
-      const res = await fetch(`${ API_BASE }/google-chat/spaces`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ displayName })
-      });
+      const res = await fetch(`${ API_BASE }/google-chat/spaces`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ displayName  })
+      }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (data.needsReauth) setNeedsReauth(true);
@@ -1065,11 +1052,8 @@ export default function Messenger() {
         const sid = encodeURIComponent(spaceIdFromName(createdName));
         const failures = [];
         for (const email of inviteEmails) {
-          const inv = await fetch(`${ API_BASE }/google-chat/spaces/${ sid }/members`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-            body: JSON.stringify({ email })
-          });
+          const inv = await fetch(`${ API_BASE }/google-chat/spaces/${ sid }/members`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email  })
+          }));
           const invData = await inv.json().catch(() => ({}));
           if (!inv.ok) {
             failures.push(`${email}: ${invData.error || '실패'}`);
@@ -1113,11 +1097,8 @@ export default function Messenger() {
     try {
       const failures = [];
       for (const email of inviteEmails) {
-        const inv = await fetch(`${API_BASE}/google-chat/spaces/${sid}/members`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-          body: JSON.stringify({ email })
-        });
+        const inv = await fetch(`${API_BASE}/google-chat/spaces/${sid}/members`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email  })
+        }));
         const invData = await inv.json().catch(() => ({}));
         if (!inv.ok) {
           if (invData.needsReauth) setNeedsReauth(true);

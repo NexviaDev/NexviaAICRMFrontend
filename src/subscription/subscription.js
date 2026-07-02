@@ -1,13 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import { useSearchParams } from 'react-router-dom';
 import { API_BASE } from '@/config';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import './subscription.css';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function loadTossScript() {
   return new Promise((resolve, reject) => {
@@ -110,7 +106,7 @@ export default function Subscription() {
   const [partnerCouponMsg, setPartnerCouponMsg] = useState('');
 
   const refresh = useCallback(async () => {
-    const res = await fetch(`${API_BASE}/subscription/status`, { headers: { ...getAuthHeader(), 'Content-Type': 'application/json' } });
+    const res = await fetch(`${API_BASE}/subscription/status`, { headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' } });
     const json = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(json.error || '상태를 불러오지 못했습니다.');
     setStatus(json);
@@ -123,8 +119,8 @@ export default function Subscription() {
       setError('');
       try {
         const [cfgRes, stRes] = await Promise.all([
-          fetch(`${API_BASE}/subscription/config`, { headers: getAuthHeader() }),
-          fetch(`${API_BASE}/subscription/status`, { headers: getAuthHeader() })
+          fetch(`${API_BASE}/subscription/config`, crmFetchInit()),
+          fetch(`${API_BASE}/subscription/status`, crmFetchInit())
         ]);
         const cfgJson = await cfgRes.json().catch(() => ({}));
         const stJson = await stRes.json().catch(() => ({}));
@@ -157,7 +153,7 @@ export default function Subscription() {
         setPartnerCouponInput(code);
         const res = await fetch(`${API_BASE}/subscription/validate-partner-coupon`, {
           method: 'POST',
-          headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+          headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
           body: JSON.stringify({ partnerCouponCode: code })
         });
         const json = await res.json().catch(() => ({}));
@@ -210,7 +206,7 @@ export default function Subscription() {
         } catch (_) {}
         const res = await fetch(`${API_BASE}/subscription/confirm-billing`, {
           method: 'POST',
-          headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+          headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
           body: JSON.stringify({ authKey, customerKey, seatCount, partnerCouponCode: partnerCouponCode || undefined })
         });
         const json = await res.json().catch(() => ({}));
@@ -252,7 +248,7 @@ export default function Subscription() {
     try {
       const res = await fetch(`${API_BASE}/subscription/validate-partner-coupon`, {
         method: 'POST',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ partnerCouponCode: code })
       });
       const json = await res.json().catch(() => ({}));
@@ -330,7 +326,7 @@ export default function Subscription() {
     try {
       const res = await fetch(`${API_BASE}/subscription/dev-charge-now`, {
         method: 'POST',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' }
+        headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' }
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || '결제에 실패했습니다.');
@@ -372,7 +368,7 @@ export default function Subscription() {
       if (target > current) {
         const prev = await fetch(
           `${API_BASE}/subscription/seat-change-preview?seatCount=${encodeURIComponent(target)}`,
-          { headers: getAuthHeader() }
+          crmFetchInit()
         );
         const pv = await prev.json().catch(() => ({}));
         if (!prev.ok) throw new Error(pv.error || '미리보기에 실패했습니다.');
@@ -390,7 +386,7 @@ export default function Subscription() {
 
       const res = await fetch(`${API_BASE}/subscription/seats`, {
         method: 'PUT',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ seatCount: target })
       });
       const json = await res.json().catch(() => ({}));

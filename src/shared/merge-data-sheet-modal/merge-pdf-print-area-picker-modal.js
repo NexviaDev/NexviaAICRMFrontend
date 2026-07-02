@@ -129,10 +129,7 @@ export default function MergePdfPrintAreaPickerModal({
           buf = await localXlsxFile.arrayBuffer();
         } else {
           await pingBackendHealth();
-          const res = await fetch(`${apiBase}${mergeApiPrefix}/templates/${templateId}/download`, {
-            headers: { ...getAuthHeader() },
-            credentials: 'include'
-          });
+          const res = await fetch(`${apiBase}${mergeApiPrefix}/templates/${templateId}/download`, crmFetchInit());
           if (!res.ok) {
             const data = await res.json().catch(() => ({}));
             throw new Error(getUserVisibleApiError(data, '양식을 불러오지 못했습니다.'));

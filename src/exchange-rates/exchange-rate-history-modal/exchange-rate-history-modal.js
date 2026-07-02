@@ -1,14 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import { API_BASE } from '@/config';
 import { getCurrencyFlagSources } from '../exchange-rate-flags';
 import ExchangeRateLineChart from '../exchange-rate-line-chart';
 import { RATE_PERIODS } from '../exchange-rate-chart-params.js';
 import './exchange-rate-history-modal.css';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function formatKrwNumber(value) {
   if (value == null || !Number.isFinite(Number(value))) return '—';
@@ -54,7 +50,7 @@ function ExchangeRateHistoryModal({ catalogId, period, onClose, onPeriodChange }
     try {
       const res = await fetch(
         `${API_BASE}/exchange-rates/history/${encodeURIComponent(catalogId)}?period=${encodeURIComponent(period)}`,
-        { headers: getAuthHeader(), credentials: 'include' }
+        crmFetchInit()
       );
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {

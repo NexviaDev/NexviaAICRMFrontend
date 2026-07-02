@@ -1,13 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import { API_BASE } from '@/config';
 import { AI_VOICE_LIST_POLL_MS } from '@/lib/polling-intervals';
 
 export const VOICE_TRANSCRIPTION_USAGE_CHANGED = 'crm-voice-transcription-usage-changed';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 /** 전사 사용량(초) → 표시용 */
 export function formatHoursMinutesShort(sec) {
@@ -40,7 +36,7 @@ export function notifyVoiceTranscriptionUsageChanged() {
 }
 
 export async function fetchVoiceTranscriptionUsage() {
-  const res = await fetch(`${API_BASE}/voice-recordings/usage-stats`, { headers: getAuthHeader() });
+  const res = await fetch(`${API_BASE}/voice-recordings/usage-stats`, crmFetchInit());
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || '전사 사용량 조회 실패');
   return data;

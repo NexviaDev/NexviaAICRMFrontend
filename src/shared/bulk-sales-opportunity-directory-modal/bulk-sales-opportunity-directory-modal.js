@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import ProductSearchModal from '@/sales-pipeline/product-search-modal/product-search-modal';
 import ParticipantModal from '@/shared/participant-modal/participant-modal';
 import CustomFieldsManageModal from '@/shared/custom-fields-manage-modal/custom-fields-manage-modal';
@@ -28,11 +29,6 @@ import {
   priceBasisLabelsForValue
 } from '@/lib/sales-opportunity-form-shared';
 import './bulk-sales-opportunity-directory-modal.css';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function todayYmd() {
   const d = new Date();
@@ -130,7 +126,7 @@ export default function BulkSalesOpportunityDirectoryModal({
     try {
       const res = await fetch(
         `${API_BASE}/custom-field-definitions?entityType=salesOpportunitySchedule`,
-        { headers: getAuthHeader() }
+        crmFetchInit()
       );
       const data = await res.json().catch(() => ({}));
       if (Array.isArray(data.items)) setScheduleFieldDefs(data.items);
@@ -206,7 +202,7 @@ export default function BulkSalesOpportunityDirectoryModal({
         await pingBackendHealth(getAuthHeader);
         const res = await fetch(
           `${API_BASE}/custom-field-definitions?entityType=salesPipelineStage`,
-          { headers: getAuthHeader() }
+          crmFetchInit()
         );
         const data = await res.json().catch(() => ({}));
         if (!cancelled) {
@@ -224,7 +220,7 @@ export default function BulkSalesOpportunityDirectoryModal({
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    fetch(`${API_BASE}/companies/overview`, { headers: getAuthHeader() })
+    fetch(`${API_BASE}/companies/overview`, crmFetchInit())
       .then((r) => r.json().catch(() => ({})))
       .then((data) => {
         if (cancelled) return;
@@ -261,7 +257,7 @@ export default function BulkSalesOpportunityDirectoryModal({
       try {
         const res = await fetch(
           `${API_BASE}/custom-field-definitions?entityType=salesOpportunitySchedule`,
-          { headers: getAuthHeader() }
+          crmFetchInit()
         );
         const data = await res.json().catch(() => ({}));
         if (!cancelled && Array.isArray(data.items)) setScheduleFieldDefs(data.items);
@@ -281,7 +277,7 @@ export default function BulkSalesOpportunityDirectoryModal({
     (async () => {
       try {
         await pingBackendHealth(getAuthHeader);
-        const res = await fetch(`${API_BASE}/companies/channel-distributors`, { headers: getAuthHeader() });
+        const res = await fetch(`${API_BASE}/companies/channel-distributors`, crmFetchInit());
         const data = await res.json().catch(() => ({}));
         if (!cancelled && res.ok && Array.isArray(data.items)) setChannelDistributorList(data.items);
       } catch {
@@ -309,7 +305,7 @@ export default function BulkSalesOpportunityDirectoryModal({
           try {
             const res = await fetch(
               `${API_BASE}/customer-company-employees?customerCompanyId=${encodeURIComponent(id)}&page=1&limit=400`,
-              { headers: getAuthHeader() }
+              crmFetchInit()
             );
             const data = await res.json().catch(() => ({}));
             if (res.ok && Array.isArray(data.items)) next[id] = data.items;
@@ -425,11 +421,8 @@ export default function BulkSalesOpportunityDirectoryModal({
       }
     }
     for (const distTrim of toAdd) {
-      const cdRes = await fetch(`${API_BASE}/companies/channel-distributors`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        body: JSON.stringify({ add: distTrim })
-      });
+      const cdRes = await fetch(`${API_BASE}/companies/channel-distributors`, crmFetchInit({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ add: distTrim  })
+      }));
       const cdData = await cdRes.json().catch(() => ({}));
       if (!cdRes.ok) throw new Error(cdData.error || '유통사 목록에 추가할 수 없습니다.');
       if (Array.isArray(cdData.items)) setChannelDistributorList(cdData.items);
@@ -537,11 +530,8 @@ export default function BulkSalesOpportunityDirectoryModal({
             scheduleCustomDates,
             documentRefs: []
           });
-          const res = await fetch(`${API_BASE}/sales-opportunities`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-            body: JSON.stringify(body)
-          });
+          const res = await fetch(`${API_BASE}/sales-opportunities`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+           }));
           const data = await res.json().catch(() => ({}));
           if (!res.ok) errors.push(`${co.name}: ${data.error || res.status}`);
           else ok += 1;
@@ -593,11 +583,8 @@ export default function BulkSalesOpportunityDirectoryModal({
             scheduleCustomDates,
             documentRefs: []
           });
-          const res = await fetch(`${API_BASE}/sales-opportunities`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-            body: JSON.stringify(body)
-          });
+          const res = await fetch(`${API_BASE}/sales-opportunities`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+           }));
           const data = await res.json().catch(() => ({}));
           if (!res.ok) errors.push(`${emp.name || emp._id}: ${data.error || res.status}`);
           else ok += 1;

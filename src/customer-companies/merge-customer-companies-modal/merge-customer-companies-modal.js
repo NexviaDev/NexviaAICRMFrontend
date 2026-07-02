@@ -1,13 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { API_BASE } from '@/config';
 import { pingBackendHealth } from '@/lib/backend-wake';
 import { geocodeAddressForCompanySave } from '@/lib/geocode-company-address';
 import './merge-customer-companies-modal.css';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function formatBusinessNumberInput(value) {
   const digits = String(value || '').replace(/\D/g, '').slice(0, 10);
@@ -114,7 +110,7 @@ export default function MergeCustomerCompaniesModal({
       };
       const res = await fetch(`${API_BASE}/customer-companies/merge`, {
         method: 'POST',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
       const data = await res.json().catch(() => ({}));

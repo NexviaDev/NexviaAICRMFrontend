@@ -241,8 +241,8 @@ export default function MapCompanyPickerModal({
     (async () => {
       try {
         const [defsRes, ovRes] = await Promise.all([
-          fetch(`${API_BASE}/custom-field-definitions?entityType=customerCompany`, { headers: getAuthHeader() }),
-          fetch(`${API_BASE}/companies/overview`, { headers: getAuthHeader() })
+          fetch(`${API_BASE}/custom-field-definitions?entityType=customerCompany`, crmFetchInit()),
+          fetch(`${API_BASE}/companies/overview`, crmFetchInit())
         ]);
         const defsData = await defsRes.json().catch(() => ({}));
         const ovData = await ovRes.json().catch(() => ({}));

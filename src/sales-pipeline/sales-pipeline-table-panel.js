@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useLayoutEffect, useEffect } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import {
   fetchSalesOpportunityScheduleFieldContext,
   SALES_OPPORTUNITY_SCHEDULE_DEFS_CHANGED
@@ -30,11 +31,6 @@ import {
   getPipelineMoneyForColumn
 } from './drop-zone-list-modal/drop-zone-list-modal';
 import { PriceWithKrwHint, formatPriceWithKrwHintText } from '@/lib/currency-price-display';
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 const PIPELINE_TABLE_ADMIN_ONLY_KEYS = new Set([
   'value',

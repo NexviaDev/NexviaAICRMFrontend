@@ -1,4 +1,5 @@
 import { API_BASE } from '@/config';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import {
   buildAllowedScheduleCustomDateKeysFromApiItems,
   buildScheduleFieldLabelMapFromApiItems,
@@ -17,8 +18,8 @@ export function dispatchSalesOpportunityFinanceDefsChanged() {
 }
 
 function defaultGetAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  const token = getCrmToken();
+  return token ? { ...getCrmAuthHeaders() } : {};
 }
 
 /** 열 키 `financeCustomFields.xxx` → 헤더 문자열 */
@@ -35,10 +36,7 @@ export function financeCustomFieldsColumnTitle(colKey, labelByKey = {}) {
 
 export async function fetchSalesOpportunityFinanceFieldContext(getAuthHeader = defaultGetAuthHeader) {
   try {
-    const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=salesOpportunityFinance`, {
-      headers: { ...getAuthHeader() },
-      credentials: 'include'
-    });
+    const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=salesOpportunityFinance`, crmFetchInit());
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !Array.isArray(data.items)) {
       return { labelByKey: {}, allowedKeys: new Set() };

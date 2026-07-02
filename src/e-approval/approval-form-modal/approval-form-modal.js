@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import ParticipantModal from '@/shared/participant-modal/participant-modal';
 import { API_BASE } from '@/config';
 import {
@@ -79,11 +80,6 @@ function mapPersonLine(raw) {
     name: s.name || '',
     department: s.department || ''
   }));
-}
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
 }
 
 function emptyFormData(docType) {
@@ -211,10 +207,7 @@ export default function ApprovalFormModal({ currentUser, editDoc, onClose, onSav
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${API_BASE}/companies/overview`, {
-          headers: getAuthHeader(),
-          credentials: 'include'
-        });
+        const res = await fetch(`${API_BASE}/companies/overview`, crmFetchInit());
         const json = await res.json().catch(() => ({}));
         if (cancelled) return;
         setOrganizationChart(json?.company?.organizationChart ?? null);
@@ -247,9 +240,7 @@ export default function ApprovalFormModal({ currentUser, editDoc, onClose, onSav
       return;
     }
     let cancelled = false;
-    fetch(`${API_BASE}/approvals/doc-number-preview?docType=${encodeURIComponent(docType)}`, {
-      headers: getAuthHeader()
-    })
+    fetch(`${API_BASE}/approvals/doc-number-preview?docType=${encodeURIComponent(docType)}`, crmFetchInit())
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (!cancelled && data?.preview) setDocNumberPreview(data.preview);
@@ -409,10 +400,7 @@ export default function ApprovalFormModal({ currentUser, editDoc, onClose, onSav
         if (!res.ok) throw new Error(json.error || '저장하지 못했습니다.');
 
         if (isEdit && submit) {
-          res = await fetch(`${API_BASE}/approvals/${editDoc._id}/submit`, {
-            method: 'POST',
-            headers: getAuthHeader()
-          });
+          res = await fetch(`${API_BASE}/approvals/${editDoc._id}/submit`, crmFetchInit({ method: 'POST' }));
           json = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(json.error || '상신하지 못했습니다.');
         }
@@ -437,7 +425,7 @@ export default function ApprovalFormModal({ currentUser, editDoc, onClose, onSav
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/auth/me`, { headers: getAuthHeader(), credentials: 'include' })
+    fetch(`${API_BASE}/auth/me`, crmFetchInit())
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled || !data?.user) return;

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import { API_BASE } from '@/config';
 import {
   AI_GUIDED_AUDIENCES,
@@ -12,11 +13,6 @@ import './sms-draft-modal.css';
 
 /** 본문 글자 수 표시 상한 (디자인 시안 기준) */
 const SMS_BODY_MAX_LEN = 1000;
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function copyTextToClipboard(text) {
   const s = String(text ?? '');
@@ -206,7 +202,7 @@ export default function SmsDraftModal({
       };
       const res = await fetch(`${API_BASE}/compose/ai-assist`, {
         method: 'POST',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(body)
       });

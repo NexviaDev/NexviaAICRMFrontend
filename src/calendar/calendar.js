@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { useSearchParams } from 'react-router-dom';
 import EventModal from './event-modal/event-modal';
 import DayEventsModal from './day-events-modal/day-events-modal';
@@ -36,11 +37,6 @@ function pickTextOnCalendarColor(hex) {
   const b = parseInt(h.slice(4, 6), 16);
   const L = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
   return L > 0.62 ? '#1e293b' : '#fff';
-}
-
-function getAuthHeader() {
-  const token = localStorage.getItem('crm_token');
-  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 function getMonthRange(year, month) {
@@ -599,7 +595,7 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${API_BASE}/auth/me`, { headers: getAuthHeader() })
+    fetch(`${API_BASE}/auth/me`, crmFetchInit())
       .then((r) => r.json())
       .then((data) => {
         const u = data.user || data;
@@ -643,8 +639,8 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
     if (!currentUser?._id) return;
     let cancelled = false;
     Promise.all([
-      fetch(`${API_BASE}/auth/google/link-status`, { headers: getAuthHeader() }).then((r) => r.json()),
-      fetch(`${API_BASE}/auth/naver/link-status`, { headers: getAuthHeader() }).then((r) => r.json())
+      fetch(`${API_BASE}/auth/google/link-status`, crmFetchInit()).then((r) => r.json()),
+      fetch(`${API_BASE}/auth/naver/link-status`, crmFetchInit()).then((r) => r.json())
     ])
       .then(([g, n]) => {
         if (cancelled) return;
@@ -707,7 +703,7 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
       return;
     }
     let cancelled = false;
-    fetch(`${API_BASE}/google-calendar/calendar-list`, { headers: getAuthHeader() })
+    fetch(`${API_BASE}/google-calendar/calendar-list`, crmFetchInit())
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return;
@@ -737,7 +733,7 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
     setLoading(true);
 
     const crmParams = new URLSearchParams({ start: timeMin, end: timeMax });
-    const crmFetch = fetch(`${API_BASE}/calendar-events?${crmParams}`, { headers: getAuthHeader() }).then(
+    const crmFetch = fetch(`${API_BASE}/calendar-events?${crmParams}`, crmFetchInit()).then(
       async (r) => ({ ok: r.ok, status: r.status, data: await r.json().catch(() => ({})) })
     );
 
@@ -756,7 +752,7 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
 
     const googleFetches = ids.map((calId) => {
       const gParams = new URLSearchParams({ timeMin, timeMax, calendarId: calId });
-      return fetch(`${API_BASE}/google-calendar/events?${gParams}`, { headers: getAuthHeader() }).then(
+      return fetch(`${API_BASE}/google-calendar/events?${gParams}`, crmFetchInit()).then(
         async (r) => ({ calId, data: await r.json().catch(() => ({})) })
       );
     });
@@ -863,13 +859,13 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
   }, [calendarSyncProvider, naverLinkStatus?.calendar, googleLinkStatus?.calendar]);
 
   const startGoogleCalendarLink = useCallback(() => {
-    const token = localStorage.getItem('crm_token');
+    const token = getCrmToken();
     if (!token) return;
     window.location.href = `${API_BASE}/auth/google/link/calendar?token=${encodeURIComponent(token)}&return=${encodeURIComponent('/calendar')}`;
   }, []);
 
   const startNaverCalendarLink = useCallback(() => {
-    const token = localStorage.getItem('crm_token');
+    const token = getCrmToken();
     if (!token) return;
     window.location.href = `${API_BASE}/auth/naver/link/calendar?token=${encodeURIComponent(token)}&return=${encodeURIComponent('/calendar')}`;
   }, []);
@@ -880,7 +876,7 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
     try {
       const res = await fetch(`${API_BASE}/calendar-events/push-to-google`, {
         method: 'POST',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ start: timeMin, end: timeMax })
       });
       const data = await res.json().catch(() => ({}));
@@ -904,7 +900,7 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
     try {
       const res = await fetch(`${API_BASE}/calendar-events/push-to-naver`, {
         method: 'POST',
-        headers: { ...getAuthHeader(), 'Content-Type': 'application/json' },
+        headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ start: timeMin, end: timeMax })
       });
       const data = await res.json().catch(() => ({}));
