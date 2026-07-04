@@ -197,6 +197,11 @@ col.crm-list-sheet-fill-col {
   overflow: hidden;
 }
 
+.crm-list-sheet.data-table.crm-list-sheet--resizable thead th.sp-dz-data-table__th--col-tools,
+.crm-list-sheet.data-table.crm-list-sheet--resizable thead th.sp-dz-data-table__th--filter-open {
+  overflow: visible;
+}
+
 .crm-list-sheet.data-table.crm-list-sheet--resizable thead th.list-template-th-sortable,
 .crm-list-sheet.data-table.crm-list-sheet--resizable thead th:not(.cc-th-favorite):not(.cce-th-favorite):not(.cc-th-check):not(.cce-th-check):not(.pl-th-checkbox) {
   padding-right: 1.35rem;

@@ -43,8 +43,10 @@ export function useCrmListColumnResize({
     document.body.style.removeProperty('cursor');
     document.body.style.removeProperty('user-select');
     const next = { ...columnWidths, ...ctx.latest };
-    setDraftWidths(null);
-    void onPersistWidths(next);
+    setDraftWidths({ ...ctx.latest });
+    Promise.resolve(onPersistWidths?.(next))
+      .then(() => setDraftWidths(null))
+      .catch(() => setDraftWidths(null));
   }, [columnWidths, onPersistWidths]);
 
   useEffect(() => {

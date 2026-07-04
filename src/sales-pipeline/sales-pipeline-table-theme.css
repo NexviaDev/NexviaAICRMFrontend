@@ -318,7 +318,36 @@
 
 .sp-pipeline-page--table-view .sp-pipeline-table-scroll .sp-pipeline-table-sheet thead th.sp-dz-data-table__th--filter-open,
 .sp-board--table-view .sp-pipeline-table-scroll .sp-pipeline-table-sheet thead th.sp-dz-data-table__th--filter-open {
-  z-index: 45;
+  z-index: 50;
+  overflow: visible;
+}
+
+/* 필터·정렬 팝오버 — thead 레이어를 tbody 위로, th overflow 클립 해제 */
+.sp-pipeline-page--table-view .sp-pipeline-table-scroll .sp-pipeline-table-sheet.data-table thead,
+.sp-board--table-view .sp-pipeline-table-scroll .sp-pipeline-table-sheet.data-table thead {
+  position: relative;
+  z-index: 40;
+}
+
+.sp-pipeline-page--table-view .sp-pipeline-table-scroll .sp-pipeline-table-sheet.data-table tbody,
+.sp-board--table-view .sp-pipeline-table-scroll .sp-pipeline-table-sheet.data-table tbody {
+  position: relative;
+  z-index: 1;
+}
+
+.sp-pipeline-page--table-view .sp-pipeline-table-scroll .sp-pipeline-table-sheet thead th.sp-dz-data-table__th--col-tools,
+.sp-board--table-view .sp-pipeline-table-scroll .sp-pipeline-table-sheet thead th.sp-dz-data-table__th--col-tools {
+  overflow: visible;
+}
+
+.sp-pipeline-page--table-view .sp-pipeline-table-scroll .sp-dz-th-wrap,
+.sp-board--table-view .sp-pipeline-table-scroll .sp-dz-th-wrap {
+  overflow: visible;
+}
+
+.sp-pipeline-page--table-view .sp-pipeline-table-scroll .sp-dz-col-filter-pop,
+.sp-board--table-view .sp-pipeline-table-scroll .sp-dz-col-filter-pop {
+  z-index: 60;
 }
 
 .sp-pipeline-page--table-view .sp-pipeline-table-sheet .sp-dz-data-table__th--sticky-id,
