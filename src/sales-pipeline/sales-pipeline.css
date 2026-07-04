@@ -544,7 +544,14 @@
   background: #fff;
 }
 
-/* 본문 셀: 한 줄, 줄바꿈 없음 — 너비는 JS colgroup·scrollWidth로 확장 */
+/* 본문 셀: 한 줄 — 표 보기는 crm-list-sheet-table.css·table-theme 와 동기 */
+.sp-pipeline-page--table-view .sp-pl-data-table.sp-dz-data-table .sp-dz-data-table__td,
+.sp-pipeline-page--table-view .sp-pl-data-table.sp-dz-data-table .sp-dz-data-table__th {
+  white-space: nowrap;
+  max-width: none;
+  vertical-align: middle;
+}
+
 .sp-pl-data-table.sp-dz-data-table .sp-dz-data-table__td,
 .sp-pl-data-table.sp-dz-data-table .sp-dz-data-table__th {
   white-space: nowrap;
@@ -555,13 +562,6 @@
 
 .sp-pl-data-table.sp-dz-data-table .sp-dz-th-col-trigger__label {
   white-space: nowrap;
-}
-
-.sp-pipeline-table-footer {
-  flex-shrink: 0;
-  padding: 0.2rem 0.05rem 0;
-  font-size: 0.72rem;
-  color: #5a6b72;
 }
 
 .sp-view-mode-toggle {

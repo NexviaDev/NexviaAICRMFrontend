@@ -530,7 +530,7 @@ export const DEFAULT_SALES_PIPELINE_LIST_TEMPLATE = {
     'unitPrice'
   ],
   visible: {
-    stage: false,
+    stage: true,
     customerCompanyName: true,
     contactName: true,
     productName: true,
@@ -595,7 +595,8 @@ export function getMergedSalesPipelineTemplate() {
       visible: { ...d.visible },
       assigneeMeOnly: d.assigneeMeOnly,
       viewMode: d.viewMode,
-      columnCellStyles: { ...d.columnCellStyles }
+      columnCellStyles: { ...d.columnCellStyles },
+      columnWidths: {}
     };
   }
   const columnOrder =
@@ -614,7 +615,11 @@ export function getMergedSalesPipelineTemplate() {
       ? saved.columnCellStyles
       : {})
   };
-  return { columnOrder, visible, assigneeMeOnly, viewMode, columnCellStyles };
+  const columnWidths =
+    saved.columnWidths && typeof saved.columnWidths === 'object' && !Array.isArray(saved.columnWidths)
+      ? { ...saved.columnWidths }
+      : {};
+  return { columnOrder, visible, assigneeMeOnly, viewMode, columnCellStyles, columnWidths };
 }
 
 /**

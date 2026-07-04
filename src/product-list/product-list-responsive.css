@@ -195,8 +195,9 @@
     margin-bottom: 0;
   }
 
-  .product-list-page .crm-list-table-stack .table-wrap {
-    display: none;
+  .product-list-page .crm-list-table-stack .table-wrap,
+  .product-list-page .panel.table-panel .crm-list-table-stack > .table-wrap {
+    display: none !important;
   }
 
   .product-list-page .pl-mobile-cards-wrap {

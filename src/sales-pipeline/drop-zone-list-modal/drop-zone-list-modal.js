@@ -233,7 +233,7 @@ function matchesYearMonths(opp, yearStr, monthParts) {
 }
 
 function formatMonthPickerSummary(yearStr, monthParts) {
-  if (!String(yearStr ?? '').trim()) return '연도 선택 후 이용';
+  if (!String(yearStr ?? '').trim()) return '전체';
   const parts = Array.isArray(monthParts) ? monthParts : [];
   if (parts.length === 0) return '전체 월';
   if (parts.length === MONTH_SELECT_OPTIONS.length) return '1~12월 전체';
@@ -1407,7 +1407,7 @@ export default function DropZoneListModal({
   onDragEnd
 }) {
   const [listSearch, setListSearch] = useState('');
-  const [filterYear, setFilterYear] = useState(() => String(new Date().getFullYear()));
+  const [filterYear, setFilterYear] = useState('');
   const [selectedMonthParts, setSelectedMonthParts] = useState([]);
   const [sortState, setSortState] = useState({ key: null, dir: null });
   const [columnFilters, setColumnFilters] = useState({});
@@ -1445,7 +1445,7 @@ export default function DropZoneListModal({
 
   useEffect(() => {
     setListSearch('');
-    setFilterYear(String(new Date().getFullYear()));
+    setFilterYear('');
     setSelectedMonthParts([]);
     setSortState({ key: null, dir: null });
     setColumnFilters({});
@@ -1550,7 +1550,7 @@ export default function DropZoneListModal({
     return arr;
   }, [filteredByColumns, sortState, forecastPercent]);
 
-  const isYmDefault = filterYear === defaultYearStr && selectedMonthParts.length === 0;
+  const isYmDefault = !filterYear && selectedMonthParts.length === 0;
 
   const allMonthsSelected =
     Boolean(filterYear) && selectedMonthParts.length === MONTH_SELECT_OPTIONS.length;
@@ -1892,7 +1892,7 @@ export default function DropZoneListModal({
   }, []);
 
   const clearYearMonthFilter = useCallback(() => {
-    setFilterYear(String(new Date().getFullYear()));
+    setFilterYear('');
     setSelectedMonthParts([]);
     setMonthPickerOpen(false);
   }, []);

@@ -1158,7 +1158,7 @@
     min-height: 0;
     max-height: none;
     overflow: scroll;
-    scrollbar-gutter: stable both-edges;
+    scrollbar-gutter: stable;
     border-bottom: none;
   }
 

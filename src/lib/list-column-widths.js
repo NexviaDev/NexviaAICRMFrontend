@@ -10,10 +10,12 @@ export const LIST_COLUMN_WIDTH_DEFAULT = 160;
 export const LIST_COLUMN_FIXED_WIDTH_PX = {
   _favorite: 52,
   _check: 44,
-  __rowCheckbox__: 48
+  __rowCheckbox__: 48,
+  /** 세일즈 파이프라인 표 보기 — 행 번호(1·1.1…) 열 */
+  __rownum__: 52
 };
 
-const NON_RESIZABLE_KEYS = new Set(['_favorite', '_check', '__rowCheckbox__']);
+const NON_RESIZABLE_KEYS = new Set(['_favorite', '_check', '__rowCheckbox__', '__rownum__']);
 
 export function isListColumnResizable(columnKey) {
   return columnKey && !NON_RESIZABLE_KEYS.has(columnKey);

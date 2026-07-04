@@ -515,7 +515,7 @@
     margin-top: 0;
   }
 
-  .sp-pipeline-page--table-view .sp-pipeline-table-view-root .sp-pipeline-table-dz-panel {
+  .sp-pipeline-page--table-view .sp-pipeline-table-view-root .sp-pipeline-table-panel {
     flex: 1 1 auto;
     min-height: 0;
   }

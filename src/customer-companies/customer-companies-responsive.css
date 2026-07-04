@@ -164,49 +164,6 @@
     color: #005d47;
   }
 
-  .customer-companies-page .cc-mobile-activity-bento {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 1rem;
-    margin-bottom: 1.25rem;
-  }
-
-  .customer-companies-page .cc-mobile-activity-card {
-    border-radius: 0.75rem;
-    padding: 1rem 1.1rem;
-    min-height: 7.5rem;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    box-shadow: 0 1px 3px rgba(44, 52, 53, 0.06);
-  }
-
-  .customer-companies-page .cc-mobile-activity-card--lavender {
-    background: #e1e1f5;
-  }
-
-  .customer-companies-page .cc-mobile-activity-icon {
-    font-size: 1.35rem;
-    opacity: 0.85;
-    color: #4f5161;
-  }
-
-  .customer-companies-page .cc-mobile-activity-value {
-    margin: 0;
-    font-family: 'Manrope', 'Inter', system-ui, sans-serif;
-    font-size: 1.75rem;
-    font-weight: 800;
-    line-height: 1.1;
-    color: #2c3435;
-  }
-
-  .customer-companies-page .cc-mobile-activity-label {
-    margin: 0.2rem 0 0;
-    font-size: 0.6875rem;
-    font-weight: 600;
-    color: rgba(44, 52, 53, 0.65);
-  }
-
   .customer-companies-page .cc-mobile-fab {
     display: flex;
     align-items: center;
@@ -243,8 +200,9 @@
     border: none;
   }
 
-  .customer-companies-page .crm-list-table-stack .table-wrap {
-    display: none;
+  .customer-companies-page .crm-list-table-stack .table-wrap,
+  .customer-companies-page .panel.table-panel .crm-list-table-stack > .table-wrap {
+    display: none !important;
   }
 
   .customer-companies-page .customer-companies-mobile-cards-wrap {
@@ -412,8 +370,7 @@
     display: none;
   }
 
-  .customer-companies-page .cc-mobile-filter-chips,
-  .customer-companies-page .cc-mobile-activity-bento {
+  .customer-companies-page .cc-mobile-filter-chips {
     display: none;
   }
 }

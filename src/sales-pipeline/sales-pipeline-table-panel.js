@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback, useRef, useLayoutEffect, useEffect } from 'react';
-import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { getAuthHeader } from '@/lib/crm-auth';
 import {
   fetchSalesOpportunityScheduleFieldContext,
   SALES_OPPORTUNITY_SCHEDULE_DEFS_CHANGED
@@ -9,6 +9,19 @@ import {
   SALES_OPPORTUNITY_FINANCE_DEFS_CHANGED
 } from '@/lib/sales-opportunity-finance-labels';
 import { listColumnValueInlineStyle } from '@/lib/list-column-cell-styles';
+import { LIST_COLUMN_FIXED_WIDTH_PX } from '@/lib/list-column-widths';
+import {
+  useCrmListColumnResize,
+  CrmListColgroup,
+  CrmListColumnResizeHandle
+} from '@/components/crm-list-column-resize/crm-list-column-resize';
+import {
+  useCrmListSheetFillerRowCount,
+  crmListSheetColSpanWithFill,
+  CrmListSheetFillHeaderCell,
+  CrmListSheetFillBodyCell,
+  CrmListSheetFillerRows
+} from '@/components/crm-list-sheet-fill/crm-list-sheet-fill';
 import { usePipelineStageLabelMap, resolvePipelineStageLabel } from './pipeline-stage-labels';
 import {
   formatSummaryRowCell,
@@ -25,8 +38,6 @@ import {
   filterValueDisplay,
   reorderColumnKeysAt,
   DZ_COL_DRAG_MIME,
-  DZ_COL_MIN_WIDTH_DATA_PX,
-  DZ_COL_MIN_WIDTH_ROWNUM_PX,
   PIPELINE_MONEY_DISPLAY_KEYS,
   getPipelineMoneyForColumn
 } from './drop-zone-list-modal/drop-zone-list-modal';
@@ -74,7 +85,8 @@ export default function SalesPipelineTablePanel({
   onOpenEdit,
   onDragStart,
   onDragEnd,
-  onSaveColumnOrder
+  onSaveColumnOrder,
+  onPersistColumnWidths
 }) {
   const { stageLabelMap: stageLabelsFromApi } = usePipelineStageLabelMap(getAuthHeader);
   const stageLabels = useMemo(
@@ -87,11 +99,28 @@ export default function SalesPipelineTablePanel({
   const [colFilterSearch, setColFilterSearch] = useState('');
   const filterPopoverRef = useRef(null);
   const columnReorderBusyRef = useRef(false);
-  const dataTableRef = useRef(null);
-  const [measuredColWidths, setMeasuredColWidths] = useState(null);
+  const scrollContainerRef = useRef(null);
   const [scheduleFieldLabelByKey, setScheduleFieldLabelByKey] = useState({});
   const [financeFieldLabelByKey, setFinanceFieldLabelByKey] = useState({});
   const columnCellStyles = pipelineListTemplate?.columnCellStyles || {};
+  const columnWidths = pipelineListTemplate?.columnWidths || {};
+
+  const displayColumnsForColgroup = useMemo(
+    () => displayColumnKeys.map((key) => ({ key })),
+    [displayColumnKeys]
+  );
+
+  const { getWidthPx, tableWidthPx, startResize, isResizing } = useCrmListColumnResize({
+    columnWidths,
+    displayColumnKeys,
+    onPersistWidths: onPersistColumnWidths,
+    leadingColWidthsPx: [LIST_COLUMN_FIXED_WIDTH_PX.__rownum__]
+  });
+
+  const pipelineTableStyle = useMemo(
+    () => ({ '--crm-list-table-width': `${tableWidthPx}px`, tableLayout: 'fixed' }),
+    [tableWidthPx]
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -166,6 +195,10 @@ export default function SalesPipelineTablePanel({
 
   const displayRows = useMemo(() => buildFlatDisplayRows(sortedFiltered), [sortedFiltered]);
 
+  const listSheetBodyRowCount = displayRows.length === 0 ? 1 : displayRows.length;
+  const listSheetFillRowCount = useCrmListSheetFillerRowCount(scrollContainerRef, listSheetBodyRowCount);
+  const listSheetTableColSpan = crmListSheetColSpanWithFill(1 + displayColumnKeys.length);
+
   const rowsForFilterOptions = useMemo(
     () =>
       openFilterCol
@@ -216,63 +249,6 @@ export default function SalesPipelineTablePanel({
     (k) => columnHeaderLabel(k, scheduleFieldLabelByKey, financeFieldLabelByKey),
     [scheduleFieldLabelByKey, financeFieldLabelByKey]
   );
-
-  const measureTableColWidths = useCallback(() => {
-    const table = dataTableRef.current;
-    if (!table) return;
-    const tr = table.querySelector('thead tr');
-    if (!tr) return;
-    const cells = tr.querySelectorAll('th');
-    if (cells.length === 0) return;
-    const widths = Array.from(cells).map((th, i) => {
-      const raw = Math.round(th.getBoundingClientRect().width);
-      if (i === 0) return Math.max(DZ_COL_MIN_WIDTH_ROWNUM_PX, raw);
-      return Math.max(DZ_COL_MIN_WIDTH_DATA_PX, raw);
-    });
-    const bodyRows = table.querySelectorAll('tbody tr:not(.sp-pl-table__row--filter-empty)');
-    for (const row of bodyRows) {
-      const tds = row.querySelectorAll('td');
-      const n = Math.min(widths.length, tds.length);
-      for (let i = 0; i < n; i += 1) {
-        const td = tds[i];
-        const contentNeed = Math.ceil(td.scrollWidth);
-        widths[i] = Math.max(widths[i], contentNeed);
-      }
-    }
-    setMeasuredColWidths((prev) => {
-      if (prev && prev.length === widths.length && prev.every((w, i) => w === widths[i])) return prev;
-      return widths;
-    });
-  }, []);
-
-  const displayKeysSig = useMemo(() => displayColumnKeys.join('\0'), [displayColumnKeys]);
-
-  useLayoutEffect(() => {
-    setMeasuredColWidths(null);
-  }, [displayKeysSig]);
-
-  useLayoutEffect(() => {
-    measureTableColWidths();
-    const t = window.setTimeout(measureTableColWidths, 0);
-    const table = dataTableRef.current;
-    let ro;
-    if (table && typeof ResizeObserver !== 'undefined') {
-      ro = new ResizeObserver(() => measureTableColWidths());
-      ro.observe(table);
-    }
-    window.addEventListener('resize', measureTableColWidths);
-    return () => {
-      clearTimeout(t);
-      ro?.disconnect();
-      window.removeEventListener('resize', measureTableColWidths);
-    };
-  }, [measureTableColWidths, displayKeysSig, allOpportunities.length, displayRows.length, sortedFiltered.length]);
-
-  const dataTableFixedStyle = useMemo(() => {
-    if (!measuredColWidths?.length) return undefined;
-    const w = measuredColWidths.reduce((a, b) => a + b, 0);
-    return { tableLayout: 'fixed', width: w };
-  }, [measuredColWidths]);
 
   const setSortForColumn = useCallback((colKey, dir) => {
     if (dir == null) setSortState({ key: null, dir: null });
@@ -367,10 +343,10 @@ export default function SalesPipelineTablePanel({
   const hasActiveColumnFilters = Object.keys(columnFilters).length > 0;
 
   return (
-    <section className="sp-pipeline-table-section" aria-label="파이프라인 표">
+    <section className="sp-pipeline-table-section panel table-panel sp-pipeline-table-panel" aria-label="파이프라인 표">
       <div className="sp-pipeline-table-toolbar">
         <p className="sp-pipeline-table-toolbar-hint">
-          열 이름을 누르면 정렬·필터가 열립니다. 복수 품목은 1·1.1·1.2처럼 표시됩니다.
+          열 이름을 누르면 정렬·필터가 열립니다. 열 경계를 드래그하면 너비를 조절할 수 있습니다. 복수 품목은 1·1.1·1.2처럼 표시됩니다.
         </p>
         {hasActiveColumnFilters ? (
           <button type="button" className="sp-pipeline-table-clear-filters" onClick={clearAllColumnFilters}>
@@ -378,26 +354,25 @@ export default function SalesPipelineTablePanel({
           </button>
         ) : null}
       </div>
-      <div className="sp-dz-table-panel sp-pipeline-table-dz-panel">
-        <div className="sp-dz-table-h-scroll">
-          <div className="sp-dz-table-inner">
-            <div className="sp-dz-table-scroll">
+      <div className="crm-list-table-stack">
+        <div className="table-wrap">
+          <div className="crm-list-sheet-scroll sp-pipeline-table-scroll" ref={scrollContainerRef}>
+            <div className="crm-list-sheet-table-wrap sp-pipeline-table-sheet-wrap">
               <table
-              ref={dataTableRef}
-              className="sp-pl-data-table sp-dz-data-table sp-dz-data-table--no-actions"
-              style={dataTableFixedStyle}
+              className="data-table crm-list-sheet crm-list-sheet--resizable sp-pl-data-table sp-dz-data-table sp-dz-data-table--no-actions sp-pipeline-table-sheet"
+              style={pipelineTableStyle}
             >
-              {measuredColWidths && measuredColWidths.length > 0 ? (
-                <colgroup>
-                  {measuredColWidths.map((w, i) => (
-                    <col key={i} style={{ width: `${w}px`, minWidth: `${w}px` }} />
-                  ))}
-                </colgroup>
-              ) : null}
+              <CrmListColgroup
+                leadingCols={[
+                  { key: '__rownum__', widthPx: LIST_COLUMN_FIXED_WIDTH_PX.__rownum__ }
+                ]}
+                displayColumns={displayColumnsForColgroup}
+                getWidthPx={getWidthPx}
+              />
               <thead>
                 <tr>
                   <th
-                    className="sp-pl-data-table__th sp-dz-data-table__th sp-dz-data-table__th--sticky-id"
+                    className="sp-pl-data-table__th sp-dz-data-table__th sp-dz-data-table__th--sticky-id list-template-th-sortable"
                     scope="col"
                   >
                     행
@@ -409,12 +384,12 @@ export default function SalesPipelineTablePanel({
                     return (
                       <th
                         key={colKey}
-                        className={`sp-pl-data-table__th sp-dz-data-table__th sp-dz-data-table__th--col-tools sp-dz-data-table__th--dz-col-reorder${
+                        className={`sp-pl-data-table__th sp-dz-data-table__th sp-dz-data-table__th--col-tools sp-dz-data-table__th--dz-col-reorder list-template-th-sortable${
                           openFilterCol === colKey ? ' sp-dz-data-table__th--filter-open' : ''
                         }`}
                         scope="col"
                         title={labelForCol(colKey)}
-                        draggable
+                        draggable={!isResizing}
                         onDragStart={(e) => handleColumnHeaderDragStart(e, colIdx)}
                         onDragOver={handleColumnHeaderDragOver}
                         onDrop={(e) => handleColumnHeaderDrop(e, colIdx)}
@@ -557,9 +532,11 @@ export default function SalesPipelineTablePanel({
                             </div>
                           ) : null}
                         </div>
+                        <CrmListColumnResizeHandle columnKey={colKey} onResizeStart={startResize} />
                       </th>
                     );
                   })}
+                  <CrmListSheetFillHeaderCell />
                 </tr>
               </thead>
               <tbody>
@@ -567,7 +544,7 @@ export default function SalesPipelineTablePanel({
                   <tr className="sp-pl-table__row--filter-empty sp-dz-data-table__row sp-dz-data-table__row--filter-empty">
                     <td
                       className="sp-dz-data-table__td sp-dz-data-table__td--filter-empty-msg"
-                      colSpan={Math.max(1, 1 + displayColumnKeys.length)}
+                      colSpan={listSheetTableColSpan}
                     >
                       <div className="sp-dz-filter-empty-inner">
                         <p className="sp-dz-filter-empty-text">
@@ -588,14 +565,16 @@ export default function SalesPipelineTablePanel({
                     </td>
                   </tr>
                 ) : (
-                  displayRows.map((flatRow) => {
+                  displayRows.map((flatRow, rowIdx) => {
                     const opp = flatRow.opp;
+                    const stripeClass =
+                      rowIdx % 2 === 0 ? 'crm-list-sheet-row--stripe-a' : 'crm-list-sheet-row--stripe-b';
                     const trClass =
                       flatRow.kind === 'summary'
-                        ? 'sp-dz-data-table__row sp-dz-data-table__row--tree-summary'
+                        ? `sp-dz-data-table__row sp-dz-data-table__row--tree-summary ${stripeClass}`
                         : flatRow.kind === 'line'
-                          ? 'sp-dz-data-table__row sp-dz-data-table__row--tree-line'
-                          : 'sp-dz-data-table__row';
+                          ? `sp-dz-data-table__row sp-dz-data-table__row--tree-line ${stripeClass}`
+                          : `sp-dz-data-table__row ${stripeClass}`;
                     return (
                       <tr
                         key={flatRow.key}
@@ -652,25 +631,30 @@ export default function SalesPipelineTablePanel({
                             </td>
                           );
                         })}
+                        <CrmListSheetFillBodyCell />
                       </tr>
                     );
                   })
                 )}
+                <CrmListSheetFillerRows
+                  count={listSheetFillRowCount}
+                  colSpan={listSheetTableColSpan}
+                  stripeStartIndex={listSheetBodyRowCount}
+                />
               </tbody>
             </table>
-            </div>
-            <div className="sp-dz-table-totals-strip sp-pipeline-table-totals" aria-label="열 합계">
+            <div className="sp-pipeline-table-totals-strip sp-dz-table-totals-strip sp-pipeline-table-totals" aria-label="열 합계">
             <table
-              className="sp-pl-data-table sp-dz-data-table sp-dz-data-table--no-actions sp-dz-data-table--totals-only"
-              style={dataTableFixedStyle}
+              className="data-table crm-list-sheet crm-list-sheet--resizable sp-pl-data-table sp-dz-data-table sp-dz-data-table--no-actions sp-dz-data-table--totals-only sp-pipeline-table-sheet sp-pipeline-table-sheet--totals"
+              style={pipelineTableStyle}
             >
-              {measuredColWidths && measuredColWidths.length > 0 ? (
-                <colgroup>
-                  {measuredColWidths.map((w, i) => (
-                    <col key={`tot-col-${i}`} style={{ width: `${w}px`, minWidth: `${w}px` }} />
-                  ))}
-                </colgroup>
-              ) : null}
+              <CrmListColgroup
+                leadingCols={[
+                  { key: '__rownum__', widthPx: LIST_COLUMN_FIXED_WIDTH_PX.__rownum__ }
+                ]}
+                displayColumns={displayColumnsForColgroup}
+                getWidthPx={getWidthPx}
+              />
               <tbody>
                 <tr className="sp-dz-data-table__row sp-dz-data-table__row--totals">
                   <td className="sp-dz-data-table__td sp-dz-data-table__td--rownum sp-dz-data-table__td--totals-label">
@@ -691,16 +675,14 @@ export default function SalesPipelineTablePanel({
                       </td>
                     );
                   })}
+                  <CrmListSheetFillBodyCell />
                 </tr>
               </tbody>
             </table>
             </div>
+            </div>
           </div>
         </div>
-      </div>
-      <div className="sp-pipeline-table-footer" role="status">
-        표시 행 <strong>{displayRows.length}</strong> · 기회 <strong>{sortedFiltered.length}</strong>건 · 열{' '}
-        <strong>{displayColumnKeys.length}</strong>
       </div>
     </section>
   );

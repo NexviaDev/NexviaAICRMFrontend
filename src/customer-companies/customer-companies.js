@@ -1051,17 +1051,6 @@ export default function CustomerCompanies({
                     </button>
                   </div>
                 ) : null}
-                {!isSearchModal ? (
-                <div className="cc-mobile-activity-bento">
-                  <div className="cc-mobile-activity-card cc-mobile-activity-card--lavender">
-                    <span className="material-symbols-outlined cc-mobile-activity-icon" aria-hidden>domain</span>
-                    <div>
-                      <p className="cc-mobile-activity-value">{pagination.total ?? 0}</p>
-                      <p className="cc-mobile-activity-label">전체 고객사</p>
-                    </div>
-                  </div>
-                </div>
-                ) : null}
                 <div className="customer-companies-mobile-cards-list">
                 {sortedItems.map((row, idx) => (
                   <div

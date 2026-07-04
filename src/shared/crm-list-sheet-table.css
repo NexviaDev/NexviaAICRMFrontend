@@ -5,7 +5,8 @@
 .customer-companies-page,
 .customer-company-employees-page,
 .product-list-page,
-.e-approval-page {
+.e-approval-page,
+.sp-pipeline-page--table-view {
   --crm-list-sheet-header: #4e79a7;
   --crm-list-sheet-stripe: #eef4fa;
   --crm-list-sheet-border: rgba(78, 121, 167, 0.14);
@@ -32,6 +33,16 @@
 
 .crm-list-sheet-scroll::-webkit-scrollbar-thumb:hover {
   background: #a8bdd4;
+}
+
+/* 모바일: 카드 목록만 — 테이블 스크롤 영역은 숨김 (crm-list-table-stack 직계 .table-wrap) */
+@media (max-width: 768px) {
+  .customer-companies-page .panel.table-panel .crm-list-table-stack > .table-wrap,
+  .customer-company-employees-page .panel.table-panel .crm-list-table-stack > .table-wrap,
+  .customer-company-employees-page .panel.table-panel > .table-wrap,
+  .product-list-page:not(.product-list-page--search-modal) .panel.table-panel .crm-list-table-stack > .table-wrap {
+    display: none !important;
+  }
 }
 
 /* 고객사·연락처·제품 목록 — 테이블 패널 안에서 세로·가로 스크롤 항상 표시 */
@@ -89,7 +100,7 @@
     min-height: 0;
     max-height: none;
     overflow: scroll;
-    scrollbar-gutter: stable both-edges;
+    scrollbar-gutter: stable;
     border-bottom: none;
   }
 
@@ -208,6 +219,8 @@ col.crm-list-sheet-fill-col {
 .crm-list-sheet.data-table.crm-list-sheet--resizable thead th.pl-th-checkbox,
 .crm-list-sheet.data-table.crm-list-sheet--resizable thead th.cce-th-check,
 .crm-list-sheet.data-table.crm-list-sheet--resizable thead th.cce-th-favorite,
+.crm-list-sheet.data-table.crm-list-sheet--resizable thead th.sp-dz-data-table__th--sticky-id,
+.crm-list-sheet.data-table.crm-list-sheet--resizable tbody td.sp-dz-data-table__td--rownum,
 .crm-list-sheet.data-table.crm-list-sheet--resizable tbody td.crm-list-sheet-fill-td,
 .crm-list-sheet.data-table.crm-list-sheet--resizable tbody td.crm-list-sheet-fill-td-span,
 .crm-list-sheet.data-table.crm-list-sheet--resizable thead th.crm-list-sheet-fill-th {
@@ -390,18 +403,20 @@ body.crm-list-col-resizing * {
 }
 
 /* 고객사·연락처·제품 목록 — 헤더 폰트·높이 확대 */
-.customer-companies-page .crm-list-sheet.data-table thead th,
-.customer-company-employees-page .crm-list-sheet.data-table thead th,
-.product-list-page .crm-list-sheet.data-table thead th {
+  .customer-companies-page .crm-list-sheet.data-table thead th,
+  .customer-company-employees-page .crm-list-sheet.data-table thead th,
+  .product-list-page .crm-list-sheet.data-table thead th,
+  .sp-pipeline-page--table-view .crm-list-sheet.data-table thead th {
   padding: 1rem 1.5rem;
   font-size: 0.875rem;
   line-height: 1.35;
   letter-spacing: 0.02em;
 }
 
-.customer-companies-page .crm-list-sheet.data-table thead th .list-template-sort-icon,
-.customer-company-employees-page .crm-list-sheet.data-table thead th .list-template-sort-icon,
-.product-list-page .crm-list-sheet.data-table thead th .list-template-sort-icon {
+  .customer-companies-page .crm-list-sheet.data-table thead th .list-template-sort-icon,
+  .customer-company-employees-page .crm-list-sheet.data-table thead th .list-template-sort-icon,
+  .product-list-page .crm-list-sheet.data-table thead th .list-template-sort-icon,
+  .sp-pipeline-page--table-view .crm-list-sheet.data-table thead th .sp-dz-th-col-trigger__sort-icon {
   font-size: 1.125rem;
 }
 

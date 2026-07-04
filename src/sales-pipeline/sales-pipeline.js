@@ -9,6 +9,7 @@ import SalesPipelineExcelImportModal from './sales-opportunity-excel-import-moda
 import './sales-pipeline.css';
 import './sales-pipeline-responsive.css';
 import './sales-pipeline-table-theme.css';
+import '@/shared/crm-list-sheet-table.css';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import ListTemplateModal from '@/components/list-template-modal/list-template-modal';
 import {
@@ -53,15 +54,6 @@ const MODAL_ADD = 'add';
 const MODAL_EDIT = 'edit';
 const OPP_ID_PARAM = 'oppId';
 const STAGE_PARAM = 'stage';
-
-/** 브라우저 로컬 기준 오늘 연·월 — 파이프라인 필터 초기값 */
-function getLocalTodayYearMonth() {
-  const now = new Date();
-  return {
-    year: String(now.getFullYear()),
-    month: String(now.getMonth() + 1)
-  };
-}
 
 function getPipelineViewerUserId() {
   try {
@@ -422,9 +414,9 @@ export default function SalesPipeline() {
   const [showStagesModal, setShowStagesModal] = useState(false);
   /** 모바일: 칩으로 선택한 파이프라인 단계(해당 단계 카드만 목록 표시) */
   const [mobileListStage, setMobileListStage] = useState(null);
-  /** 목록 API: year/month + scheduleField(기본 시작일·서울 달력), productId·assignedTo 복수 */
-  const [filterYear, setFilterYear] = useState(() => getLocalTodayYearMonth().year);
-  const [filterMonth, setFilterMonth] = useState(() => getLocalTodayYearMonth().month);
+  /** 목록 API: year/month + scheduleField(기본 시작일·서울 달력), productId·assignedTo 복수 — 기본 연·월은 전체 */
+  const [filterYear, setFilterYear] = useState('');
+  const [filterMonth, setFilterMonth] = useState('');
   /** 연도 선택 시 적용할 일정 필드 — 기본 시작일 */
   const [filterScheduleField, setFilterScheduleField] = useState(PIPELINE_SCHEDULE_FIELD_FILTER_DEFAULT);
   const [filterProductIds, setFilterProductIds] = useState([]);
@@ -766,7 +758,8 @@ export default function SalesPipeline() {
       await patchListTemplate(SALES_PIPELINE_LIST_ID, {
         columnOrder: payload.columnOrder,
         visible: payload.visible,
-        columnCellStyles: payload.columnCellStyles
+        columnCellStyles: payload.columnCellStyles,
+        ...(payload.columnWidths !== undefined ? { columnWidths: payload.columnWidths } : {})
       });
       setPipelineTemplateTick((t) => t + 1);
     } catch (err) {
@@ -774,6 +767,25 @@ export default function SalesPipeline() {
       throw err;
     }
   }, []);
+
+  const savePipelineColumnWidths = useCallback(
+    async (columnWidths) => {
+      const saved = getMergedSalesPipelineTemplate();
+      try {
+        await patchListTemplate(SALES_PIPELINE_LIST_ID, {
+          columnOrder: saved.columnOrder,
+          visible: saved.visible,
+          columnCellStyles: saved.columnCellStyles,
+          columnWidths
+        });
+        setPipelineTemplateTick((t) => t + 1);
+      } catch (err) {
+        window.alert(err?.message || '열 너비 저장에 실패했습니다.');
+        throw err;
+      }
+    },
+    []
+  );
 
   const resetPipelineListTemplate = useCallback(async () => {
     try {
@@ -787,7 +799,11 @@ export default function SalesPipeline() {
 
   const savePipelineTableColumnOrder = useCallback(async (nextOrder) => {
     try {
-      await patchListTemplate(SALES_PIPELINE_LIST_ID, { columnOrder: nextOrder });
+      const saved = getMergedSalesPipelineTemplate();
+      await patchListTemplate(SALES_PIPELINE_LIST_ID, {
+        columnOrder: nextOrder,
+        columnWidths: saved.columnWidths
+      });
       setPipelineTemplateTick((t) => t + 1);
     } catch (err) {
       window.alert(err?.message || '저장에 실패했습니다.');
@@ -1097,7 +1113,11 @@ export default function SalesPipeline() {
       saved.columnCellStyles && typeof saved.columnCellStyles === 'object' && !Array.isArray(saved.columnCellStyles)
         ? { ...saved.columnCellStyles }
         : {};
-    return { columnOrder, visible, columns, columnCellStyles };
+    const columnWidths =
+      saved.columnWidths && typeof saved.columnWidths === 'object' && !Array.isArray(saved.columnWidths)
+        ? { ...saved.columnWidths }
+        : {};
+    return { columnOrder, visible, columns, columnCellStyles, columnWidths };
   }, [allOpportunities, canViewAdminContent, pipelineTemplateTick, scheduleFieldLabelByKey, allowedScheduleCustomDateKeys, financeFieldLabelByKey, allowedFinanceCustomFieldKeys]);
 
   const pipelineDisplayColumnKeys = useMemo(
@@ -1576,6 +1596,7 @@ export default function SalesPipeline() {
                 onDragStart={handleDragStart}
                 onDragEnd={handleDragEnd}
                 onSaveColumnOrder={savePipelineTableColumnOrder}
+                onPersistColumnWidths={savePipelineColumnWidths}
               />
             </div>
           ) : (
