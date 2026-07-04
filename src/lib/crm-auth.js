@@ -3,7 +3,14 @@
  * localStorage crm_token 은 더 이상 사용하지 않습니다.
  */
 import { API_BASE } from '@/config';
-import { notifyCrmAuthChanged } from '@/lib/use-crm-token';
+
+export function notifyCrmAuthChanged() {
+  try {
+    window.dispatchEvent(new Event('nexvia-auth-changed'));
+  } catch {
+    /* noop */
+  }
+}
 
 export function hasCrmSession() {
   try {

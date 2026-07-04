@@ -1,4 +1,5 @@
 import { API_BASE } from '@/config';
+import { crmFetchInit } from '@/lib/crm-auth';
 import { pingBackendHealth } from '@/lib/backend-wake';
 import { normalizeMergePdfExportOptions } from '@/lib/merge-pdf-export-options';
 
@@ -26,10 +27,10 @@ export function normalizeTemplateProfilesMap(profiles) {
   return out;
 }
 
-/** @param {() => object} getAuthHeader */
-export async function fetchMergeTemplateProfiles(getAuthHeader, apiPrefix = '/quotation-merge') {
+/** @param {() => object} getAuthHeader @param {string} apiPrefix @param {(extra?: object) => object} [fetchInit] */
+export async function fetchMergeTemplateProfiles(getAuthHeader, apiPrefix = '/quotation-merge', fetchInit = crmFetchInit) {
   await pingBackendHealth();
-  const res = await fetch(`${API_BASE}${apiPrefix}/template-profiles`, crmFetchInit());
+  const res = await fetch(`${API_BASE}${apiPrefix}/template-profiles`, fetchInit());
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || '양식별 PDF·메일 설정을 불러오지 못했습니다.');
   return normalizeTemplateProfilesMap(data.profiles);

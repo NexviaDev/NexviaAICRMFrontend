@@ -1,4 +1,5 @@
 import { API_BASE } from '@/config';
+import { crmFetchInit } from '@/lib/crm-auth';
 import { pingBackendHealth } from '@/lib/backend-wake';
 
 /** 예전 브라우저 전용 저장 — 1회 서버 이전 후 해당 회사 버킷 제거 */

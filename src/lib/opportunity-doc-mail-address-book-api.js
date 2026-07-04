@@ -1,4 +1,5 @@
 import { API_BASE } from '@/config';
+import { crmFetchInit } from '@/lib/crm-auth';
 
 /**
  * @param {() => object} getAuthHeader

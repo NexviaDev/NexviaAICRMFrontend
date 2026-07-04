@@ -14,6 +14,7 @@ import './opportunity-modal.css';
 import { CrmDriveStoragePanel, formatDriveFileDate } from '@/shared/register-sale-docs-drive';
 
 import { API_BASE, MAX_DRIVE_JSON_UPLOAD_BYTES } from '@/config';
+import { crmFetchInit } from '@/lib/crm-auth';
 import {
   buildDriveFolderUrl,
   buildDriveFileDeleteUrl,

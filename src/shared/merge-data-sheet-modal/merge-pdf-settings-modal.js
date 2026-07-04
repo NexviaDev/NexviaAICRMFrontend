@@ -38,6 +38,7 @@ export default function MergePdfSettingsModal({
   apiBase,
   mergeApiPrefix = '/quotation-merge',
   getAuthHeader,
+  apiFetchInit,
   printAreaTemplateId,
   printAreaTemplateName,
   localXlsxFile = null,
@@ -428,6 +429,7 @@ export default function MergePdfSettingsModal({
         apiBase={apiBase}
         mergeApiPrefix={mergeApiPrefix}
         getAuthHeader={getAuthHeader}
+        apiFetchInit={apiFetchInit}
         templateId={printAreaTemplateId}
         templateName={printAreaTemplateName || localXlsxFile?.name || ''}
         localXlsxFile={canPickPrintArea && !printAreaTemplateId ? localXlsxFile : null}

@@ -22,9 +22,7 @@ export function useCrmToken() {
   return active ? 'session' : '';
 }
 
-export function notifyCrmAuthChanged() {
-  window.dispatchEvent(new Event('nexvia-auth-changed'));
-}
+export { notifyCrmAuthChanged } from '@/lib/crm-auth';
 
 /** 비로그인 전용 — 로그인 상태면 대시보드로 */
 export function useGuestOnlyRedirect() {

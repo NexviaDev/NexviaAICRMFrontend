@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useLayoutEffect, useCallback } from 'react';
 import { API_BASE } from '@/config';
+import { crmFetchInit } from '@/lib/crm-auth';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { dispatchSalesOpportunityScheduleDefsChanged } from '@/lib/sales-opportunity-schedule-labels';
 import { dispatchSalesOpportunityFinanceDefsChanged } from '@/lib/sales-opportunity-finance-labels';

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { crmFetchInit } from '@/lib/crm-auth';
 import { pingBackendHealth } from '@/lib/backend-wake';
 import { getUserVisibleApiError } from '@/lib/api-error';
 import {
@@ -50,6 +51,7 @@ export default function MergePdfPrintAreaPickerModal({
   apiBase,
   mergeApiPrefix = '/quotation-merge',
   getAuthHeader,
+  apiFetchInit = crmFetchInit,
   templateId,
   templateName,
   /** 등록 전: 서버 templateId 없이 로컬 xlsx File 로 그리드 표시 */
@@ -129,7 +131,7 @@ export default function MergePdfPrintAreaPickerModal({
           buf = await localXlsxFile.arrayBuffer();
         } else {
           await pingBackendHealth();
-          const res = await fetch(`${apiBase}${mergeApiPrefix}/templates/${templateId}/download`, crmFetchInit());
+          const res = await fetch(`${apiBase}${mergeApiPrefix}/templates/${templateId}/download`, apiFetchInit());
           if (!res.ok) {
             const data = await res.json().catch(() => ({}));
             throw new Error(getUserVisibleApiError(data, '양식을 불러오지 못했습니다.'));

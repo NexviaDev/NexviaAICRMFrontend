@@ -1,4 +1,5 @@
 import { API_BASE } from '@/config';
+import { crmFetchInit } from '@/lib/crm-auth';
 import { pingBackendHealth } from '@/lib/backend-wake';
 
 export const MERGE_PDF_EXPORT_PRESETS_LIST_KEY = 'mergePdfExportPresets';

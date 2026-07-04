@@ -2,6 +2,7 @@ import React, { startTransition, useCallback, useEffect, useId, useMemo, useRef,
 import { flushSync } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import { API_BASE } from '@/config';
+import { crmFetchInit } from '@/lib/crm-auth';
 import { pingBackendHealth } from '@/lib/backend-wake';
 import { getUserVisibleApiError } from '@/lib/api-error';
 import {

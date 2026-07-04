@@ -1,4 +1,5 @@
 import { pingBackendHealth } from '@/lib/backend-wake';
+import { crmFetchInit } from '@/lib/crm-auth';
 import { getUserVisibleApiError } from '@/lib/api-error';
 import { listXlsxSheetNames } from '@/lib/merge-template-xlsx-grid';
 import { normalizeMergePdfExportOptions } from '@/lib/merge-pdf-export-options';
@@ -14,12 +15,13 @@ export async function fetchXlsxSheetNamesFromMergeTemplate(
   apiBase,
   getAuthHeader,
   templateId,
-  apiPrefix = '/quotation-merge'
+  apiPrefix = '/quotation-merge',
+  fetchInit = crmFetchInit
 ) {
   const tid = String(templateId || '').trim();
   if (!tid || !apiBase) return [];
   await pingBackendHealth();
-  const res = await fetch(`${apiBase}${apiPrefix}/templates/${tid}/download`, crmFetchInit());
+  const res = await fetch(`${apiBase}${apiPrefix}/templates/${tid}/download`, fetchInit());
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error(getUserVisibleApiError(data, '양식 시트 목록을 불러오지 못했습니다.'));

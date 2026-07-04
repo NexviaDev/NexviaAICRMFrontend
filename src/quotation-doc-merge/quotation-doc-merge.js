@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import { API_BASE } from '@/config';
+import { crmFetchInit } from '@/lib/crm-auth';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import { pingBackendHealth } from '@/lib/backend-wake';
 import { getUserVisibleApiError } from '@/lib/api-error';
@@ -72,7 +73,7 @@ import {
   MERGE_DATA_SHEET_URL_VALUE,
   isMergeDataSheetUrlOpen
 } from '@/lib/merge-data-sheet-url';
-import { MERGE_RUNTIME_TENANT } from '@/lib/quotation-doc-merge-runtime';
+import { MERGE_RUNTIME_TENANT, mergeApiFetchInit } from '@/lib/quotation-doc-merge-runtime';
 import {
   applyOurForcedToMergeRow,
   resolveOurForcedMergeValues,
@@ -389,6 +390,7 @@ export default function QuotationDocMerge({ runtime = MERGE_RUNTIME_TENANT } = {
     [runtime]
   );
   const mergeApiBase = `${API_BASE}${runtime.apiPrefix}`;
+  const apiFetchInit = useCallback((extra) => mergeApiFetchInit(runtime, extra), [runtime]);
   const getAuthHeader = useCallback((opts) => runtime.getAuthHeaders(opts), [runtime]);
   const sheetUrlParam = runtime.sheetUrlParam;
 
@@ -546,7 +548,7 @@ export default function QuotationDocMerge({ runtime = MERGE_RUNTIME_TENANT } = {
       const q = isMergeFieldPresetMongoId(idStr) ? `?presetId=${encodeURIComponent(idStr)}` : '';
       setFieldGuideLoading(true);
       try {
-        const res = await fetch(`${mergeApiBase}/field-guide${q}`, crmFetchInit());
+        const res = await fetch(`${mergeApiBase}/field-guide${q}`, apiFetchInit());
         const data = await res.json().catch(() => ({}));
         if (res.ok) setFieldGuide(data);
         else setFieldGuide(null);
@@ -556,7 +558,7 @@ export default function QuotationDocMerge({ runtime = MERGE_RUNTIME_TENANT } = {
         setFieldGuideLoading(false);
       }
     },
-    [selectedFieldPresetId, getAuthHeader, mergeApiBase]
+    [selectedFieldPresetId, apiFetchInit, mergeApiBase]
   );
 
   const handleSelectFieldPresetId = useCallback(
@@ -570,7 +572,7 @@ export default function QuotationDocMerge({ runtime = MERGE_RUNTIME_TENANT } = {
   const loadFieldPresets = useCallback(async () => {
     setFieldPresetsLoading(true);
     try {
-      const res = await fetch(`${mergeApiBase}/field-presets`, crmFetchInit());
+      const res = await fetch(`${mergeApiBase}/field-presets`, apiFetchInit());
       const data = await res.json().catch(() => ({}));
       if (res.ok) setFieldPresets(Array.isArray(data.items) ? data.items : []);
       else setFieldPresets([]);
@@ -579,7 +581,7 @@ export default function QuotationDocMerge({ runtime = MERGE_RUNTIME_TENANT } = {
     } finally {
       setFieldPresetsLoading(false);
     }
-  }, []);
+  }, [apiFetchInit, mergeApiBase]);
 
   const templateUploadPrepareCopyText = useMemo(() => {
     if (!mergeFieldsSheet.length) return '';
@@ -636,14 +638,14 @@ export default function QuotationDocMerge({ runtime = MERGE_RUNTIME_TENANT } = {
 
   const loadTemplateProfiles = useCallback(async () => {
     try {
-      const map = await fetchMergeTemplateProfiles(getAuthHeader, runtime.apiPrefix);
+      const map = await fetchMergeTemplateProfiles(getAuthHeader, runtime.apiPrefix, apiFetchInit);
       setTemplateProfilesById(map);
       return map;
     } catch (_) {
       setTemplateProfilesById({});
       return {};
     }
-  }, [getAuthHeader]);
+  }, [getAuthHeader, runtime.apiPrefix, apiFetchInit]);
 
   const openTemplateUploadPrepare = useCallback(() => {
     setTemplatePrepareMode('create');
@@ -675,7 +677,7 @@ export default function QuotationDocMerge({ runtime = MERGE_RUNTIME_TENANT } = {
       void loadFieldGuide();
       let profMap = templateProfilesById;
       try {
-        profMap = await fetchMergeTemplateProfiles(getAuthHeader, runtime.apiPrefix);
+        profMap = await fetchMergeTemplateProfiles(getAuthHeader, runtime.apiPrefix, apiFetchInit);
         setTemplateProfilesById(profMap);
       } catch (_) {
         /* 기존 캐시로 폼 채움 */
@@ -695,7 +697,7 @@ export default function QuotationDocMerge({ runtime = MERGE_RUNTIME_TENANT } = {
       setTemplateUploadPrepareScope('company');
       setTemplateUploadPrepareOpen(true);
     },
-    [loadFieldPresets, loadFieldGuide, getAuthHeader, templateProfilesById, canEditTemplateProfile]
+    [loadFieldPresets, loadFieldGuide, getAuthHeader, templateProfilesById, canEditTemplateProfile, apiFetchInit, runtime.apiPrefix]
   );
 
   const closeTemplateUploadPrepare = useCallback(() => {
@@ -719,7 +721,7 @@ export default function QuotationDocMerge({ runtime = MERGE_RUNTIME_TENANT } = {
     setTemplatesLoading(true);
     setTemplatesError('');
     try {
-      const res = await fetch(`${mergeApiBase}/templates`, crmFetchInit());
+      const res = await fetch(`${mergeApiBase}/templates`, apiFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || '양식 목록을 불러오지 못했습니다.');
       const items = Array.isArray(data.items) ? data.items : [];
@@ -734,7 +736,7 @@ export default function QuotationDocMerge({ runtime = MERGE_RUNTIME_TENANT } = {
     } finally {
       setTemplatesLoading(false);
     }
-  }, []);
+  }, [apiFetchInit, mergeApiBase]);
 
   const uploadTemplateFile = useCallback(async (file, opts = {}) => {
     if (!file) {
@@ -777,7 +779,13 @@ export default function QuotationDocMerge({ runtime = MERGE_RUNTIME_TENANT } = {
       if (newTid) setSelectedTemplateId(newTid);
       if (lower.endsWith('.xlsx') && newTid) {
         try {
-          const names = await fetchXlsxSheetNamesFromMergeTemplate(API_BASE, getAuthHeader, newTid, runtime.apiPrefix);
+          const names = await fetchXlsxSheetNamesFromMergeTemplate(
+            API_BASE,
+            getAuthHeader,
+            newTid,
+            runtime.apiPrefix,
+            apiFetchInit
+          );
           if (names.length) {
             setPdfExportOptions((prev) =>
               saveMergePdfExportOptions(pdfExportOptionsWithSheetNames(prev, names))
@@ -1211,7 +1219,7 @@ export default function QuotationDocMerge({ runtime = MERGE_RUNTIME_TENANT } = {
 
   const fetchTemplateFileBlob = async (id) => {
     await pingBackendHealth();
-    const res = await fetch(`${mergeApiBase}/templates/${id}/download`, crmFetchInit());
+    const res = await fetch(`${mergeApiBase}/templates/${id}/download`, apiFetchInit());
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       throw new Error(getUserVisibleApiError(data, '양식 파일을 불러오지 못했습니다.'));
@@ -2485,6 +2493,7 @@ export default function QuotationDocMerge({ runtime = MERGE_RUNTIME_TENANT } = {
           apiBase={API_BASE}
           mergeApiPrefix={runtime.apiPrefix}
           getAuthHeader={getAuthHeader}
+          apiFetchInit={apiFetchInit}
           onDownloadRow={runSheetDownloadForRow}
           onMailtoHandoffRow={runSheetMailHandoffForRow}
           onMailCellPaste={handleMergeSheetCellPaste}
@@ -2942,6 +2951,7 @@ export default function QuotationDocMerge({ runtime = MERGE_RUNTIME_TENANT } = {
           apiBase={API_BASE}
           mergeApiPrefix={runtime.apiPrefix}
           getAuthHeader={getAuthHeader}
+          apiFetchInit={apiFetchInit}
           printAreaTemplateId={
             templatePrepareMode === 'edit' && templatePrepareEditingTemplate?._id
               ? String(templatePrepareEditingTemplate._id)

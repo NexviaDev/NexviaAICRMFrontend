@@ -226,6 +226,7 @@ export default function MergeDataSheetModal({
   apiBase,
   mergeApiPrefix = '/quotation-merge',
   getAuthHeader,
+  apiFetchInit,
   onDownloadRow,
   onMailtoHandoffRow,
   onMergeSheetGridPaste,
@@ -386,7 +387,13 @@ export default function MergeDataSheetModal({
       });
       if (!xlsxId) return;
       try {
-        const names = await fetchXlsxSheetNamesFromMergeTemplate(apiBase, getAuthHeader, xlsxId, mergeApiPrefix);
+        const names = await fetchXlsxSheetNamesFromMergeTemplate(
+          apiBase,
+          getAuthHeader,
+          xlsxId,
+          mergeApiPrefix,
+          apiFetchInit
+        );
         if (!names.length) return;
         const row = mergeRowsRef.current[rowIdx];
         const base = row?._pdfExportOptions || pdfExportOptionsRef.current;
@@ -395,7 +402,7 @@ export default function MergeDataSheetModal({
         /* 프로필 PDF 설정은 이미 적용됨 — 시트명 자동 맞춤만 생략 */
       }
     },
-    [applyTemplateProfileForRow, apiBase, mergeApiPrefix, getAuthHeader, onUpdateRow]
+    [applyTemplateProfileForRow, apiBase, mergeApiPrefix, getAuthHeader, apiFetchInit, onUpdateRow]
   );
 
   /** 펼친 사용 양식(details) — 모달 안 다른 곳을 누르면 닫음 */

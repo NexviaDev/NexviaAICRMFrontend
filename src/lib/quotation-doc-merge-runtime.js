@@ -1,13 +1,20 @@
-import { getAdminSiteFetchHeaders } from '@/lib/admin-site-headers';
-import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
+import { crmFetchInit } from '@/lib/crm-auth';
+import { adminSiteFetchInit, getAdminSiteFetchHeaders } from '@/lib/admin-site-headers';
 import {
   ADMIN_MERGE_DATA_SHEET_URL_PARAM,
   MERGE_DATA_SHEET_URL_PARAM
 } from '@/lib/merge-data-sheet-url';
 
 function getCrmAuthHeader() {
-  const token = getCrmToken();
-  return token ? { ...getCrmAuthHeaders() } : {};
+  return {};
+}
+
+/** CRM 쿠키 또는 관리자 JWT+쿠키 fetch 옵션 */
+export function mergeApiFetchInit(runtime, extra = {}) {
+  if (runtime?.id === 'admin-common') {
+    return adminSiteFetchInit(extra);
+  }
+  return crmFetchInit(extra);
 }
 
 /** 일반 CRM — 회사별 테넌트 양식 + 공통 양식 조회 */

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { API_BASE } from '@/config';
+import { crmFetchInit } from '@/lib/crm-auth';
 import ListPaginationButtons from '@/components/list-pagination-buttons/list-pagination-buttons';
 import { CUSTOM_FIELDS_PREFIX, BASE_SEARCH_FIELD_OPTIONS } from '@/lib/customer-company-search-fields';
 import './map-company-picker-modal.css';
