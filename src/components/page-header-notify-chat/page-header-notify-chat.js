@@ -32,9 +32,7 @@ export default function PageHeaderNotifyChat({
       return;
     }
     try {
-      const res = await fetch(`${API_BASE}/notifications/badge`, {
-        headers: { ...getCrmAuthHeaders() }
-      });
+      const res = await fetch(`${API_BASE}/notifications/badge`, crmFetchInit());
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setNotifyUnread(false);

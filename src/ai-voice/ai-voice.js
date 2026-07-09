@@ -301,15 +301,15 @@ export default function AiVoice() {
         let data;
 
         const uploadChunked = async () => {
-          const s = await fetch(`${API_BASE}/voice-recordings/chunked/session`, {
+          const s = await fetch(`${API_BASE}/voice-recordings/chunked/session`, crmFetchInit({
             method: 'POST',
-            headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               fileName: file.name,
               totalBytes: file.size,
               mimeType: file.type || ''
             })
-          });
+          }));
           const sData = await s.json().catch(() => ({}));
           if (!s.ok) throw new Error(sData.error || '분할 업로드 준비 실패');
           const { sessionId, chunkSizeBytes } = sData;
@@ -326,11 +326,10 @@ export default function AiVoice() {
             const form = new FormData();
             form.append('chunk', slice, file.name);
             form.append('offset', String(offset));
-            const r = await fetch(`${API_BASE}/voice-recordings/chunked/${encodeURIComponent(sessionId)}/chunk`, {
+            const r = await fetch(`${API_BASE}/voice-recordings/chunked/${encodeURIComponent(sessionId)}/chunk`, crmFetchInit({
               method: 'POST',
-              headers: getAuthHeader(),
               body: form
-            });
+            }));
             const rData = await r.json().catch(() => ({}));
             if (!r.ok) throw new Error(rData.error || '조각 전송 실패');
             offset = Number(rData.receivedBytes) || offset + slice.size;
@@ -338,11 +337,11 @@ export default function AiVoice() {
           }
 
           setUploadSplitStatus('서버에서 전사 요청 중…');
-          const done = await fetch(`${API_BASE}/voice-recordings/chunked/${encodeURIComponent(sessionId)}/complete`, {
+          const done = await fetch(`${API_BASE}/voice-recordings/chunked/${encodeURIComponent(sessionId)}/complete`, crmFetchInit({
             method: 'POST',
-            headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ title: baseTitle })
-          });
+          }));
           const doneData = await done.json().catch(() => ({}));
           if (!done.ok) {
             if (done.status === 403 && doneData.code === 'TRANSCRIPTION_QUOTA_EXCEEDED') {
@@ -359,11 +358,10 @@ export default function AiVoice() {
           const form = new FormData();
           form.append('audio', file);
           form.append('title', baseTitle);
-          const res = await fetch(`${API_BASE}/voice-recordings`, {
+          const res = await fetch(`${API_BASE}/voice-recordings`, crmFetchInit({
             method: 'POST',
-            headers: getAuthHeader(),
             body: form
-          });
+          }));
           let resData = await res.json().catch(() => ({}));
           if (!res.ok && res.status === 413 && resData.useChunkedUpload) {
             data = await uploadChunked();
