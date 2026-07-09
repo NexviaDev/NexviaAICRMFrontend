@@ -25,6 +25,7 @@ export function buildBulkImportRowPayload(row, formatPhoneInput) {
     leadSource: (row.leadSource || '').trim() || undefined,
     status: row.status || 'Lead',
     companyName: (row.companyName || '').trim(),
+    companyCode: (row.companyCode || '').trim(),
     customerCompanyId: row.customerCompanyId != null ? String(row.customerCompanyId).trim() : '',
     linkedCompany: row.linkedCompany,
     customFields: row.customFields && typeof row.customFields === 'object' ? row.customFields : undefined

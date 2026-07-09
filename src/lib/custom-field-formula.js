@@ -17,6 +17,10 @@ import {
   normalizeFormulaBuiltInNumbers,
   parseNumericFieldValue
 } from './numeric-field-value';
+import {
+  customFieldNumericForFormula,
+  findCustomFieldDefinitionByKey
+} from './custom-field-display-format';
 
 export { FORMULA_FUNCTION_CATALOG, FORMULA_FUNCTION_GROUP_LABELS };
 
@@ -82,10 +86,12 @@ function resolveRefValue(refKey, context) {
   const custom = context?.customFields || {};
   const computed = context?.computedFormulas || {};
   const fieldTypes = context?.fieldTypes || {};
-  const customKeys = context?.customFieldKeys || buildCustomFieldKeySet(context?.definitions);
+  const definitions = context?.definitions || [];
+  const customKeys = context?.customFieldKeys || buildCustomFieldKeySet(definitions);
+  const defForRef = findCustomFieldDefinitionByKey(definitions, refKey);
 
   if (computed[refKey] !== undefined) {
-    const n = parseNumericFieldValue(computed[refKey], { rejectFormula: true });
+    const n = customFieldNumericForFormula(computed[refKey], defForRef);
     if (n != null) return n;
   }
   if (Object.prototype.hasOwnProperty.call(custom, refKey)) {
@@ -93,9 +99,9 @@ function resolveRefValue(refKey, context) {
     const raw = custom[refKey];
     let n = null;
     if (ft === 'number' || ft === 'checkbox') {
-      n = parseNumericFieldValue(raw, { fieldType: ft, rejectFormula: true });
+      n = customFieldNumericForFormula(raw, defForRef || { type: ft });
     } else if (!ft || looksLikeNumericTextForFormula(raw)) {
-      n = parseNumericFieldValue(raw, { rejectFormula: true });
+      n = customFieldNumericForFormula(raw, defForRef || {});
     }
     if (n != null) return n;
   }

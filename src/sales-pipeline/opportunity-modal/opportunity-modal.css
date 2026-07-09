@@ -900,6 +900,21 @@
   border-bottom: 2px solid var(--opp-basic-sheet-line, #6d8aad);
 }
 
+.opp-required-mark {
+  color: #c97a8a;
+  font-weight: 600;
+}
+
+.opp-line-sheet-readonly-val {
+  display: inline-block;
+  min-width: 4.5rem;
+  padding: 0.2rem 0.35rem;
+  font-size: 0.72rem;
+  color: #3d5a73;
+  background: #f3f8fc;
+  border-radius: 4px;
+}
+
 .opp-schedule-finance-subhead {
   display: flex;
   align-items: center;

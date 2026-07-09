@@ -108,6 +108,43 @@ export function getCustomFieldDisplayFormat(def) {
   return normalizeCustomFieldDisplayFormat(options?.displayFormat);
 }
 
+export function isPercentageDisplayFormat(def) {
+  return getCustomFieldDisplayFormat(def) === 'percentage';
+}
+
+export function findCustomFieldDefinitionByKey(definitions, key) {
+  const fk = String(key || '').trim();
+  if (!fk || !Array.isArray(definitions)) return null;
+  return (
+    definitions.find((d) => d?.key === fk) ||
+    definitions.find((d) => String(d?.key || '').trim().toLowerCase() === fk.toLowerCase()) ||
+    null
+  );
+}
+
+/**
+ * DB 저장값 → 수식 참조용 숫자.
+ * 표시형식이 백분율이면 30 → 0.3 (원가×마진율 등 계산용)
+ */
+export function customFieldNumericForFormula(value, def) {
+  const n = parseNumericFieldValue(value, { fieldType: def?.type, rejectFormula: true });
+  if (n == null || !Number.isFinite(n)) return null;
+  if (isPercentageDisplayFormat(def)) return n / 100;
+  return n;
+}
+
+/**
+ * 수식 필드 계산 결과 → 백분율 표시용 저장값.
+ * 비율(0~1)로 나온 결과만 ×100 (예: [마진율]*2 → 0.6 → 60%)
+ */
+export function scaleFormulaResultForPercentageDisplay(value, def) {
+  if (def?.type !== 'formula' || !isPercentageDisplayFormat(def)) return value;
+  const n = parseNumericFieldValue(value, { rejectFormula: false });
+  if (n == null || !Number.isFinite(n)) return value;
+  if (n !== 0 && Math.abs(n) <= 1) return n * 100;
+  return n;
+}
+
 /** options 객체에 displayFormat·displayFormatCurrency 병합 */
 export function mergeDisplayFormatIntoOptions(existingOptions, displayFormat, displayFormatCurrency) {
   const fmt = normalizeCustomFieldDisplayFormat(displayFormat);
@@ -180,7 +217,11 @@ function formatGeneralDisplay(value, def) {
   if (def?.type === 'formula') {
     const n = Number(value);
     if (Number.isFinite(n)) {
-      return n.toLocaleString('ko-KR', { maximumFractionDigits: 4, minimumFractionDigits: 0 });
+      const scaled = scaleFormulaResultForPercentageDisplay(n, def);
+      if (isPercentageDisplayFormat(def)) {
+        return `${scaled.toLocaleString('ko-KR', { maximumFractionDigits: 4, minimumFractionDigits: 0 })}%`;
+      }
+      return scaled.toLocaleString('ko-KR', { maximumFractionDigits: 4, minimumFractionDigits: 0 });
     }
   }
   if (typeof value === 'string' && !value.trim()) return '—';
@@ -242,6 +283,9 @@ export function formatCustomFieldDisplayValue(value, def, context = {}) {
     return String(value);
   }
 
+  const displayNum =
+    def?.type === 'formula' ? scaleFormulaResultForPercentageDisplay(n, def) : n;
+
   const currencyCode = resolveDisplayFormatCurrency(def, context) || 'KRW';
   const sym = getCurrencySymbol(currencyCode);
   const meta = getCurrencyMeta(currencyCode);
@@ -250,22 +294,22 @@ export function formatCustomFieldDisplayValue(value, def, context = {}) {
 
   switch (format) {
     case 'number':
-      return numFmt(n);
+      return numFmt(displayNum);
     case 'currency': {
       const prefix = meta.symbol === sym ? sym : `${sym}`;
-      return `${prefix}${numFmt(Math.abs(n))}`;
+      return `${prefix}${numFmt(Math.abs(displayNum))}`;
     }
     case 'accounting': {
       const prefix = meta.symbol === sym ? sym : `${sym}`;
-      if (n < 0) return `(${prefix}${numFmt(Math.abs(n))})`;
-      return `${prefix}${numFmt(n)}`;
+      if (displayNum < 0) return `(${prefix}${numFmt(Math.abs(displayNum))})`;
+      return `${prefix}${numFmt(displayNum)}`;
     }
     case 'percentage':
-      return `${numFmt(n)}%`;
+      return `${numFmt(displayNum)}%`;
     case 'scientific':
-      return n.toExponential(2);
+      return displayNum.toExponential(2);
     case 'fraction':
-      return formatAsFraction(n);
+      return formatAsFraction(displayNum);
     default:
       return formatGeneralDisplay(value, def);
   }

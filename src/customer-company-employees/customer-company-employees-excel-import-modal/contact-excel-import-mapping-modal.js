@@ -133,6 +133,10 @@ export default function ContactExcelImportMappingModal({
               <p className="excel-import-map-desc excel-import-map-desc--tight">
                 권장 매핑: <strong>이름·이메일·전화</strong> 중 최소 하나와, 필요 시 <strong>회사명(자유 입력)</strong>
               </p>
+              <p className="excel-import-map-desc excel-import-map-desc--tight">
+                <strong>고객사 코드</strong>를 함께 매핑하면, <strong>회사명+코드</strong>가 기존 고객사와 둘 다 일치할 때
+                자동으로 해당 업체에 연결됩니다.
+              </p>
               {targetOptions.length === 0 ? (
                 <p className="excel-import-map-warn-meta">대상 필드 API 응답이 비어 기본 필드 목록으로 표시 중입니다.</p>
               ) : null}

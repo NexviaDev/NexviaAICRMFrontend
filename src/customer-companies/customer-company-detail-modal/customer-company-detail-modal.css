@@ -1000,6 +1000,26 @@
   flex-shrink: 0;
 }
 
+.customer-company-detail-code-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 0.2rem;
+  padding: 0.12rem 0.42rem;
+  border-radius: 999px;
+  border: 1px solid rgba(78, 121, 167, 0.28);
+  background: #edf4fb;
+  color: #315b7b;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+}
+
+.customer-company-detail-code-badge--center {
+  margin-top: 0;
+  font-size: 0.62rem;
+}
+
 .customer-company-detail-name-link:hover .customer-company-detail-name-link-icon {
   color: var(--primary);
 }

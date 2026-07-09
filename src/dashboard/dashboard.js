@@ -3392,6 +3392,42 @@ export default function Dashboard() {
     }));
   }, [pipelineSummary, wonLeaderboardMode, dealBasRMap]);
 
+  const assigneeProfitByName = useMemo(() => {
+    const map = {};
+    for (const row of pipelineSummary?.assigneeProfitLeaderboard || []) {
+      const key = String(row?.name || '').trim();
+      if (!key) continue;
+      map[key] = row;
+    }
+    return map;
+  }, [pipelineSummary]);
+
+  const [dashboardExporting, setDashboardExporting] = useState(false);
+  const handleDashboardExport = async () => {
+    setDashboardExporting(true);
+    try {
+      const res = await fetch(`${API_BASE}/reports/dashboard-export`, crmFetchInit());
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '엑셀보내기에 실패했습니다.');
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `nexvia-dashboard-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('[Dashboard] export error:', err);
+      window.alert(err?.message || '엑셀보내기에 실패했습니다.');
+    } finally {
+      setDashboardExporting(false);
+    }
+  };
+
   const consumerRaw = useMemo(
     () => mergeCurrencySeriesMapToKrw(stats.salesGraphs?.consumerByCurrency, dealBasRMap),
     [stats.salesGraphs, dealBasRMap]
@@ -5488,6 +5524,15 @@ export default function Dashboard() {
                   세일즈 현황
                   <span className="material-symbols-outlined" aria-hidden>arrow_forward</span>
                 </Link>
+                <button
+                  type="button"
+                  className="home-pipeline-link home-pipeline-link--btn"
+                  onClick={handleDashboardExport}
+                  disabled={dashboardExporting || pipelineLoading}
+                  title="단계별 파이프라인·담당자별 수익 엑셀보내기"
+                >
+                  {dashboardExporting ? '보내는 중…' : '엑셀보내기'}
+                </button>
               </div>
             </div>
             <div className="home-chart-body home-reps-body">
@@ -5504,6 +5549,7 @@ export default function Dashboard() {
                     <tr>
                       <th>담당자</th>
                       <th>매출액</th>
+                      <th>순이익</th>
                       <th className="home-reps-col-extra">수주 성공 건수</th>
                       <th className="home-reps-col-extra">비중(건수)</th>
                     </tr>
@@ -5518,6 +5564,11 @@ export default function Dashboard() {
                           </div>
                         </td>
                         <td className="font-semibold">{row.revenueDisplay}</td>
+                        <td className="font-semibold">
+                          {assigneeProfitByName[row.name]?.netProfit != null
+                            ? formatCurrency(assigneeProfitByName[row.name].netProfit, 'KRW')
+                            : '—'}
+                        </td>
                         <td className="home-reps-col-extra">{row.deals}</td>
                         <td className="home-reps-col-extra">
                           <div className="quota-cell">

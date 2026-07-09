@@ -48,6 +48,11 @@ import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { PriceWithKrwHint } from '@/lib/currency-price-display';
 import { useExchangeRates } from '@/lib/use-exchange-rates';
 import { buildStageForecastPercentMap } from '../pipeline-forecast-utils';
+import {
+  computeLineNetProfitAfterCommission,
+  suggestCompletionDateFromProduct,
+  formatPricingSnapshotHint
+} from '@/lib/opportunity-line-pricing';
 import { resolveDepartmentDisplayFromChart } from '@/lib/org-chart-tree-utils';
 import {
   getAuthHeader,
@@ -212,9 +217,11 @@ export default function OpportunityModal({
     currency: 'KRW',
     stage: defaultStage || 'NewLead',
     description: '',
+    opportunityTitle: '',
     saleDate: '',
     expectedCloseMonth: '',
     startDate: todayDateInputValue(),
+    completionDate: '',
     targetDate: '',
     contractAmount: '',
     fullCollectionCompleteDate: '',
@@ -489,6 +496,7 @@ export default function OpportunityModal({
   const stageAtLoadRef = useRef(null);
   const createdAtAtLoadRef = useRef(null);
   const fullCollectionDateTouchedRef = useRef(false);
+  const licenseCompletionTouchedRef = useRef(false);
   /** 편집 시 GET 기회의 value(제품 행 없을 때 수주 시 계약금 자동 기입용) */
   const opportunityValueRef = useRef(0);
 
@@ -943,9 +951,11 @@ export default function OpportunityModal({
         currency: data.currency || 'KRW',
         stage: formStage,
         description: data.description || '',
+        opportunityTitle: String(data.title || '').trim(),
         saleDate: formSaleDate,
         expectedCloseMonth: /^\d{4}-\d{2}$/.test(ym) ? ym : '',
         startDate: toDateInputValue(data.startDate) || todayDateInputValue(),
+        completionDate: toDateInputValue(data.completionDate),
         targetDate: toDateInputValue(data.targetDate),
         contractAmount: formContractAmount,
         fullCollectionCompleteDate: toDateInputValue(data.fullCollectionCompleteDate),
@@ -997,6 +1007,7 @@ export default function OpportunityModal({
       );
       const loadedComm = Array.isArray(data.commissionRecipients) ? data.commissionRecipients : [];
       fullCollectionDateTouchedRef.current = Boolean(data.fullCollectionCompleteDate);
+      licenseCompletionTouchedRef.current = Boolean(data.completionDate);
       purchaseCostEditedLineIdsRef.current = new Set();
 
       const mapServerLineToClient = (li, idx) => {
@@ -1025,7 +1036,12 @@ export default function OpportunityModal({
           discountRate: rate > 0 ? String(rate) : '',
           discountAmount: amt > 0 ? amt.toLocaleString() : '',
           purchaseCostTotal: pc,
-          commissionRecipients: mapServerCommissionRowsToClient(li.commissionRecipients)
+          commissionRecipients: mapServerCommissionRowsToClient(li.commissionRecipients),
+          snapshotNetProfitAfterCommission: li.snapshotNetProfitAfterCommission,
+          pricingFrozenAt: li.pricingFrozenAt,
+          snapshotRpiAmountKrw: li.snapshotRpiAmountKrw,
+          snapshotHandlingAmountKrw: li.snapshotHandlingAmountKrw,
+          snapshotOrderExchangeRate: li.snapshotOrderExchangeRate
         };
       };
 
@@ -1426,6 +1442,18 @@ export default function OpportunityModal({
       setForm((f) => (f.fullCollectionCompleteDate === '' ? f : { ...f, fullCollectionCompleteDate: '' }));
     }
   }, [collectionEntries, form.contractAmount]);
+
+  useEffect(() => {
+    if (licenseCompletionTouchedRef.current) return;
+    const startYmd = String(form.startDate || '').trim();
+    if (!startYmd || lineItems.length === 0) return;
+    const firstLine = lineItems[0];
+    const product = firstLine?.productId ? productById[firstLine.productId] : null;
+    if (!product) return;
+    const suggested = suggestCompletionDateFromProduct(startYmd, product);
+    if (!suggested) return;
+    setForm((f) => (f.completionDate === suggested ? f : { ...f, completionDate: suggested }));
+  }, [form.startDate, lineItems, productById]);
 
   const driveMongoRegisteredUrl = useMemo(() => {
     const id = driveFolderId;
@@ -2172,8 +2200,22 @@ export default function OpportunityModal({
     return Math.round(cost * qty);
   };
 
-  /** 행별 순마진 */
+  /** 행별 순마진(수수료 차감 후 순이익 우선) */
   const computeLineNetMargin = (line) => {
+    const snapProfit = computeLineNetProfitAfterCommission(
+      {
+        quantity: line.quantity,
+        unitPrice: parseNumber(line.unitPrice),
+        discountRate: line.discountRate,
+        discountAmount: line.discountAmount,
+        productCostPriceSnapshot: parseNumber(line.purchaseCostTotal) / Math.max(1, Number(line.quantity) || 1),
+        commissionRecipients: line.commissionRecipients,
+        snapshotNetProfitAfterCommission: line.snapshotNetProfitAfterCommission,
+        pricingFrozenAt: line.pricingFrozenAt
+      },
+      parseNumber
+    );
+    if (Number.isFinite(snapProfit)) return snapProfit;
     const costTotal = getEffectivePurchaseCostForLine(line);
     if (costTotal == null) return null;
     return computeLineFinalAmount(line) - costTotal;
@@ -2198,12 +2240,13 @@ export default function OpportunityModal({
     if (e && typeof e.preventDefault === 'function') e.preventDefault();
     const names = lineItems.map((l) => l.productName?.trim()).filter(Boolean);
     const titleToUse =
+      String(form.opportunityTitle || '').trim() ||
       (names.length ? names.join(', ') : '') ||
       form.customerCompanyName?.trim() ||
       form.contactName?.trim() ||
       '';
     if (!titleToUse) {
-      setError('고객사·담당자·제품 중 하나는 선택해 주세요.');
+      setError('기회명을 입력하거나, 고객사·담당자·제품 중 하나를 선택해 주세요.');
       return;
     }
     const selectedStage = stageSelectOptions.some((s) => s.value === form.stage) ? form.stage : firstStageValue;
@@ -2329,6 +2372,7 @@ export default function OpportunityModal({
         expectedCloseMonth: expectedCloseMonthPayload,
         startDate: toIsoDate(form.startDate),
         targetDate: toIsoDate(form.targetDate),
+        completionDate: toIsoDate(form.completionDate),
         contractAmount: parseNumber(form.contractAmount) || 0,
         contractAmountDate: selectedStage === 'Won' ? toIsoDate(form.saleDate) : null,
         fullCollectionCompleteDate: toIsoDate(form.fullCollectionCompleteDate),
@@ -3010,8 +3054,7 @@ export default function OpportunityModal({
       ),
     0
   );
-  const netMarginAfterCommission =
-    netMarginAmount != null ? netMarginAmount - totalCommissionAmount : null;
+  const netMarginAfterCommission = netMarginAmount;
 
   const headerSalesAssigneeName =
     (form.assignedToName || '').trim() ||
@@ -3177,9 +3220,9 @@ export default function OpportunityModal({
                       </div>
                       <div
                             className="opp-modal-summary-dash-cell opp-modal-summary-dash-cell--margin"
-                        title="제품 행별 순마진(원가 반영)을 합산한 뒤, 기타 금액 합을 뺀 값입니다. 제품·원가가 없으면 표시할 수 없습니다."
+                        title="제품 행별 순이익(원가·기타금액 반영) 합계입니다."
                       >
-                        <span className="opp-modal-summary-dash-label">마진 합계</span>
+                        <span className="opp-modal-summary-dash-label">순이익 합계</span>
                         <div className="opp-modal-summary-dash-value">
                           {lineItems.length > 0 && netMarginAfterCommission != null
                             ? renderCurrencyAmount(netMarginAfterCommission, form.currency)
@@ -3233,6 +3276,28 @@ export default function OpportunityModal({
                       <div className="opp-basic-tab-layout" ref={basicTabLayoutRef}>
                         <div className="opp-basic-tab-sheets-col" ref={basicSheetsColRef}>
                         <div className="opp-basic-tab-sheets-stack" ref={basicSheetsStackRef}>
+                          <div className="opp-basic-split-card opp-basic-info-sheet-card">
+                            <div className="opp-basic-info-sheet" aria-label="기회명">
+                              <div className="opp-basic-info-sheet-head">
+                                <span className="opp-basic-info-sheet-head-title">기회명</span>
+                              </div>
+                              <div className="opp-basic-info-sheet-body">
+                                <div className="opp-basic-info-sheet-row">
+                                  <span className="opp-basic-info-sheet-label">기회명 <span className="opp-required-mark">*</span></span>
+                                  <div className="opp-basic-info-sheet-cell">
+                                    <input
+                                      type="text"
+                                      className="opp-basic-info-sheet-field opp-basic-info-sheet-field--input"
+                                      value={form.opportunityTitle}
+                                      placeholder="예: 2026 디제이테크 파워밀 리뉴얼"
+                                      onChange={(e) => handleChange('opportunityTitle', e.target.value)}
+                                      aria-required="true"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
                           <div className="opp-basic-split-card opp-basic-info-sheet-card">
                             <div className="opp-basic-info-sheet" aria-label="고객사">
                               <div className="opp-basic-info-sheet-head">
@@ -4274,6 +4339,7 @@ export default function OpportunityModal({
                                     <th scope="col" className="opp-line-sheet-th">매입 원가</th>
                                     <th scope="col" className="opp-line-sheet-th">차감금액</th>
                                     <th scope="col" className="opp-line-sheet-th opp-line-sheet-th--misc">기타금액</th>
+                                    <th scope="col" className="opp-line-sheet-th">순이익</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -4403,6 +4469,17 @@ export default function OpportunityModal({
                                               title="첫 번째 기타 금액 행과 동일합니다. 추가 금액이 있으면 아래 행에서 입력합니다."
                                             />
                                           </td>
+                                          <td className="opp-line-sheet-td" data-label="순이익">
+                                            <span
+                                              className="opp-line-sheet-readonly-val"
+                                              title={formatPricingSnapshotHint(line) || '원가·수수료 반영 후 예상 순이익'}
+                                            >
+                                              {(() => {
+                                                const net = computeLineNetMargin(line);
+                                                return net != null ? renderCurrencyAmount(net, form.currency) : '—';
+                                              })()}
+                                            </span>
+                                          </td>
                                         </tr>
                                         {commRows.length > 1
                                           ? commRows.map((row, idx) => (
@@ -4477,6 +4554,9 @@ export default function OpportunityModal({
                                                   </label>
                                                 </td>
                                               )}
+                                              <td className="opp-line-sheet-td opp-line-sheet-td--comm-skip" aria-hidden="true">
+                                                <span className="opp-line-sheet-na">—</span>
+                                              </td>
                                             </tr>
                                           ))
                                           : null}
@@ -4528,7 +4608,7 @@ export default function OpportunityModal({
                               0
                             );
                             const lineNet = computeLineNetMargin(line);
-                            const lineNetShown = lineNet != null ? lineNet - lineComm : null;
+                            const lineNetShown = lineNet;
                             return (
                                 <React.Fragment key={line.lineId}>
                                   <div className="opp-schedule-finance-subhead">{line.productName || '제품'}</div>
@@ -4639,7 +4719,7 @@ export default function OpportunityModal({
                               </p>
                             ) : null}
                                 <div className="opp-basic-info-sheet-row">
-                                  <span className="opp-basic-info-sheet-label">시작일</span>
+                                  <span className="opp-basic-info-sheet-label">라이선스 시작일</span>
                                   <div className="opp-basic-info-sheet-cell">
                                 <input
                                   type="date"
@@ -4649,6 +4729,24 @@ export default function OpportunityModal({
                                 />
                               </div>
                                 </div>
+                                <div className="opp-basic-info-sheet-row">
+                                  <span className="opp-basic-info-sheet-label">라이선스 종료일</span>
+                                  <div className="opp-basic-info-sheet-cell">
+                                    <input
+                                      type="date"
+                                      className="opp-basic-info-sheet-field opp-basic-info-sheet-field--input opp-schedule-sheet-field--date"
+                                      value={form.completionDate}
+                                      onChange={(e) => {
+                                        licenseCompletionTouchedRef.current = true;
+                                        handleChange('completionDate', e.target.value);
+                                      }}
+                                      aria-label="라이선스 종료일"
+                                    />
+                                  </div>
+                                </div>
+                                <p className="opp-schedule-sheet-hint">
+                                  연간 1년 계약은 시작일 + 364일로 자동 계산됩니다. 제품·시작일을 바꾸면 다시 채워집니다(직접 수정 시 유지).
+                                </p>
                                 <div className="opp-basic-info-sheet-row">
                                   <span className="opp-basic-info-sheet-label">구매 예정</span>
                                   <div className="opp-basic-info-sheet-cell">

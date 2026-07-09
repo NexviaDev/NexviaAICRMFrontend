@@ -86,6 +86,14 @@ function formatBusinessNumber(num) {
   return `${s.slice(0, 3)}-${s.slice(3, 5)}-${s.slice(5, 10)}`;
 }
 
+function formatCompanyCode(code) {
+  const raw = String(code || '').trim().toUpperCase();
+  if (!raw) return '';
+  const compact = raw.replace(/[^A-Z0-9]/g, '');
+  if (compact.length === 10) return `${compact.slice(0, 5)}-${compact.slice(5, 10)}`;
+  return raw;
+}
+
 const STATUS_LABEL = { active: '활성', inactive: '비활성', lead: '리드' };
 
 function toDatetimeLocalValue(date) {
@@ -999,6 +1007,7 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
   }
 
   function renderCompanyNameAndCertPopover({ nameTag: NameTag = 'h1' }) {
+    const companyCode = formatCompanyCode(companyToShow.code);
     return (
       <div className="customer-company-detail-name-wrap contact-detail-profile-name-wrap">
         <button
@@ -1019,6 +1028,14 @@ export default function CustomerCompanyDetailModal({ company, onClose, onUpdated
           <NameTag className={`customer-company-detail-name${isCenterPresentation ? ' contact-detail-name-in-card' : ''}`}>
             {companyToShow.name || '—'}
           </NameTag>
+          {companyCode ? (
+            <span
+              className={`customer-company-detail-code-badge${isCenterPresentation ? ' customer-company-detail-code-badge--center' : ''}`}
+              title={`고객사 코드: ${companyCode}`}
+            >
+              {companyCode}
+            </span>
+          ) : null}
           <span className="material-symbols-outlined customer-company-detail-name-link-icon">info</span>
         </button>
         {showRegisteredNamePopover && (

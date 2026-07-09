@@ -62,11 +62,20 @@ function formatPhoneInput(value) {
   return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
 }
 
+function normalizeCompanyCodeInput(value) {
+  const compact = String(value || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
+  if (compact.length === 10) return `${compact.slice(0, 5)}-${compact.slice(5, 10)}`;
+  return String(value || '').toUpperCase().trim();
+}
+
 const FALLBACK_TARGET_OPTIONS = [
   { value: 'contact.name', label: '연락처 · 이름' },
   { value: 'contact.email', label: '연락처 · 이메일' },
   { value: 'contact.phone', label: '연락처 · 전화' },
   { value: 'contact.companyName', label: '연락처 · 회사명(자유 입력)' },
+  { value: 'contact.companyCode', label: '연락처 · 고객사 코드(매칭용)' },
   { value: 'contact.position', label: '연락처 · 직책' },
   { value: 'contact.address', label: '연락처 · 주소' },
   { value: 'contact.birthDate', label: '연락처 · 생년월일' },
@@ -95,6 +104,10 @@ function guessContactExcelSourceKey(targetKey, headers) {
     {
       target: 'contact.companyName',
       test: (s) => /회사|기업|업체|법인|고객사|업체명|회사명|company/i.test(s)
+    },
+    {
+      target: 'contact.companyCode',
+      test: (s) => /고객사\s*코드|회사\s*코드|기업\s*코드|업체\s*코드|company\s*code|code/i.test(s)
     },
     {
       target: 'contact.position',
@@ -146,6 +159,7 @@ function buildContactPayloadFromExcelRow(excelRow, mappings) {
   let phone = formatPhoneInput(vals['contact.phone'] || '');
   const position = (vals['contact.position'] || '').trim();
   const companyName = (vals['contact.companyName'] || '').trim();
+  const companyCode = normalizeCompanyCodeInput(vals['contact.companyCode'] || '');
   const address = (vals['contact.address'] || '').trim();
   const birthDate = (vals['contact.birthDate'] || '').trim();
   let status = (vals['contact.status'] || '').trim() || 'Lead';
@@ -179,6 +193,7 @@ function buildContactPayloadFromExcelRow(excelRow, mappings) {
   if (companyName) {
     payload.customerCompanyId = null;
     payload.companyName = companyName;
+    payload.companyCode = companyCode || undefined;
   } else {
     payload.isIndividual = true;
     payload.customerCompanyId = null;
@@ -201,6 +216,7 @@ function buildPreviewRowFromContactPayload(payload, rowIndex) {
     status: payload.status || 'Lead',
     customFields: payload.customFields || {},
     companyName: payload.companyName || '',
+    companyCode: payload.companyCode || '',
     customerCompanyId: payload.customerCompanyId || null,
     linkedCompany: null,
     companyStatus: 'active',
@@ -406,6 +422,7 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
     return id ? [id] : [];
   });
   const previewRawSessionRef = useRef(null);
+  const ensuredCompanyCodesRef = useRef(false);
 
   const registerTarget = 'contact';
 
@@ -531,6 +548,7 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
     setContactPreviewPreReview(null);
     setResolvedHoldActions([]);
     setAppliedHoldGroupKeys({});
+    ensuredCompanyCodesRef.current = false;
     const initial = stripContactMappingRows(
       ensureContactMappingRowsComplete(rowsFromSavedMappings(null, registerTarget))
     );
@@ -647,6 +665,18 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
     setAppliedHoldGroupKeys({});
 
     try {
+      if (!ensuredCompanyCodesRef.current) {
+        const ensureRes = await fetch(`${API_BASE}/customer-companies/ensure-codes`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+          credentials: 'include'
+        });
+        const ensureData = await ensureRes.json().catch(() => ({}));
+        if (!ensureRes.ok) {
+          throw new Error(ensureData.error || '고객사 코드 보정에 실패했습니다.');
+        }
+        ensuredCompanyCodesRef.current = true;
+      }
       const items = excelRows
         .map((excelRow, idx) => {
           const payload = buildContactPayloadFromExcelRow(excelRow, mappings);

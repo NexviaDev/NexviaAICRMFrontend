@@ -71,6 +71,7 @@ function companyClipboardFromRow(row) {
         customerCompanyId: String(lid),
         linkedCompany: { ...row.linkedCompany },
         companyName: row.linkedCompany.name || row.companyName || '',
+        companyCode: row.linkedCompany.code || row.companyCode || '',
         address: row.linkedCompany.address != null ? String(row.linkedCompany.address) : (row.address || ''),
         representativeName: row.linkedCompany.representativeName || row.representativeName || '',
         industry: row.linkedCompany.industry || row.industry || '',
@@ -83,6 +84,7 @@ function companyClipboardFromRow(row) {
   return {
     type: 'new',
     companyName: row.companyName || '',
+    companyCode: row.companyCode || '',
     address: row.address || '',
     representativeName: row.representativeName || '',
     industry: row.industry || '',
@@ -100,6 +102,7 @@ function applyClipboardToRow(row, clip) {
       customerCompanyId: clip.customerCompanyId,
       linkedCompany: { ...co },
       companyName: co.name || row.companyName || '',
+      companyCode: co.code || clip.companyCode || row.companyCode || '',
       address: co.address != null ? String(co.address) : (clip.address || row.address),
       representativeName: co.representativeName || clip.representativeName || row.representativeName || '',
       industry: co.industry || clip.industry || row.industry || '',
@@ -113,6 +116,7 @@ function applyClipboardToRow(row, clip) {
     customerCompanyId: null,
     linkedCompany: null,
     companyName: clip.companyName,
+    companyCode: clip.companyCode || '',
     address: clip.address,
     representativeName: clip.representativeName,
     industry: clip.industry,
@@ -128,6 +132,7 @@ function toCompanyLikeRow(row) {
   return {
     _id: '',
     name: row.companyName || '',
+    code: row.companyCode || '',
     representativeName: row.representativeName || '',
     industry: row.industry || '',
     businessNumber: row.businessNumber || '',
@@ -141,6 +146,7 @@ function toCompanyLikeRow(row) {
 function normalizeIncomingRow(r) {
   return {
     ...r,
+    companyCode: r.companyCode || '',
     customerCompanyId: r.customerCompanyId || null,
     linkedCompany: r.linkedCompany || null,
     companyStatus: r.companyStatus || 'active',
@@ -411,6 +417,7 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
         if (row.customerCompanyId && !fixedCompany) return row;
 
         if (colKey === 'address') return { ...row, address: v };
+        if (colKey === 'code') return { ...row, companyCode: v.toUpperCase() };
         if (colKey === 'representativeName') return { ...row, representativeName: v };
         if (colKey === 'industry') return { ...row, industry: v };
         if (colKey === 'businessNumber') return { ...row, businessNumber: v.replace(/\D/g, '') };
@@ -726,7 +733,8 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
                         ? {
                             ...r,
                             customerCompanyId: null,
-                            linkedCompany: null
+                            linkedCompany: null,
+                            companyCode: ''
                           }
                         : r
                     )
@@ -781,10 +789,12 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
       );
     }
 
-    if (!locked && ['address', 'representativeName', 'industry', 'businessNumber'].includes(col.key)) {
+    if (!locked && ['address', 'code', 'representativeName', 'industry', 'businessNumber'].includes(col.key)) {
       const raw =
         col.key === 'address'
           ? row.address
+          : col.key === 'code'
+            ? row.companyCode
           : col.key === 'representativeName'
             ? row.representativeName
             : col.key === 'industry'
@@ -1017,6 +1027,7 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
                       customerCompanyId: String(company._id),
                       linkedCompany: company,
                       companyName: company.name || '',
+                      companyCode: company.code || '',
                       address: company.address != null ? String(company.address) : r.address
                     }
                   : r

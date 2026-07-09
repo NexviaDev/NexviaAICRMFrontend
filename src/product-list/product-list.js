@@ -58,7 +58,8 @@ import {
   getCustomFieldDisplayFormat,
   getCustomFieldDisplayFormatClass,
   normalizeCustomFieldDefinition,
-  readCustomFieldStoredValue
+  readCustomFieldStoredValue,
+  scaleFormulaResultForPercentageDisplay
 } from '@/lib/custom-field-display-format';
 const LIST_ID = LIST_IDS.PRODUCT_LIST;
 const LIMIT = 10;
@@ -179,6 +180,7 @@ function resolveProductCustomFieldDisplay(
   if (normalizedDef.type === 'formula') {
     rawValue = resolveFormulaCustomFieldRawValue(row, defKey, fieldKey, definitions, exchangeCtx);
     if (rawValue === undefined || rawValue === null || rawValue === '') return null;
+    rawValue = scaleFormulaResultForPercentageDisplay(rawValue, normalizedDef);
   } else {
     rawValue = readCustomFieldStoredValue(row?.customFields, defKey);
     if (rawValue === undefined || rawValue === null || rawValue === '') return null;

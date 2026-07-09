@@ -139,6 +139,7 @@ export function guessOpportunityExcelSourceKey(targetKey, headers) {
     { target: 'opp.description', test: (s) => /설명|비고|메모|description|note/i.test(s) },
     { target: 'opp.saleDate', test: (s) => /판매일|수주일|sale/i.test(s) },
     { target: 'opp.startDate', test: (s) => /시작일|start/i.test(s) },
+    { target: 'opp.completionDate', test: (s) => /종료일|만료|completion|license\s*end/i.test(s) },
     { target: 'opp.targetDate', test: (s) => /목표일|마감|target|close/i.test(s) },
     { target: 'opp.contractAmount', test: (s) => /계약\s*금액|contract/i.test(s) }
   ];
@@ -1070,6 +1071,7 @@ export function buildPreviewRowFromExcelRow(excelRow, rowIndex, mappings, meta) 
     assignedToValid: assignRes.valid || forceImport,
     saleDateYmd: normalizeYmdInput(vals['opp.saleDate']),
     startDateYmd: normalizeYmdInput(vals['opp.startDate']),
+    completionDateYmd: normalizeYmdInput(vals['opp.completionDate']),
     targetDateYmd: normalizeYmdInput(vals['opp.targetDate']),
     expectedCloseMonth: vals['opp.expectedCloseMonth'] || '',
     contractAmountStr: vals['opp.contractAmount'] ? formatNumberInput(String(parseNumber(vals['opp.contractAmount']))) : '',
@@ -1193,6 +1195,7 @@ export function buildBulkImportPayloadFromPreviewRow(row, meta) {
     description: row.description,
     saleDateYmd: row.saleDateYmd,
     startDateYmd: row.startDateYmd,
+    completionDateYmd: row.completionDateYmd,
     targetDateYmd: row.targetDateYmd,
     expectedCloseMonth: row.expectedCloseMonth,
     assignedToUserId: row.assignedToUserId,
