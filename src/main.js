@@ -9,8 +9,14 @@ import './styles/global.css';
 import './lib/nexvia-native-geolocation';
 import { ensureAppBuildVersion } from './lib/app-build-version';
 import { registerFcmServiceWorkerEarly } from './lib/push-notifications';
+import { installCrmFetchInterceptor, prepareCrmRefreshSession } from './lib/crm-auth';
 
 async function bootstrap() {
+  installCrmFetchInterceptor();
+  void prepareCrmRefreshSession();
+  window.addEventListener('focus', () => {
+    void prepareCrmRefreshSession();
+  });
   await ensureAppBuildVersion();
   registerFcmServiceWorkerEarly();
 
