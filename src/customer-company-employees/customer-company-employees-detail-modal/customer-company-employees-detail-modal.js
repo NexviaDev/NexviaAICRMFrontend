@@ -32,6 +32,7 @@ import {
   getSavedCustomerCompanyEmployeesDetailModalPresentation,
   patchCustomerCompanyEmployeesDetailModalTemplate
 } from '@/lib/list-templates';
+import { startGoogleFeatureLink } from '@/lib/google-feature-link';
 
 function formatHistoryDate(d) {
   if (!d) return '';
@@ -246,6 +247,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
   const [driveFolderId, setDriveFolderId] = useState(null);
   const [driveUploading, setDriveUploading] = useState(false);
   const [driveError, setDriveError] = useState('');
+  const [driveNeedsReauth, setDriveNeedsReauth] = useState(false);
   const [driveUploadNotice, setDriveUploadNotice] = useState('');
   const [crmListDropActive, setCrmListDropActive] = useState(false);
   const [crmDriveDeletingId, setCrmDriveDeletingId] = useState('');
@@ -548,7 +550,13 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
 
   useEffect(() => {
     setDriveUploadNotice('');
+    setDriveNeedsReauth(false);
   }, [contactId]);
+
+  const rejectDriveEnsureResponse = (res, data, fallback) => {
+    if (data?.needsReauth) setDriveNeedsReauth(true);
+    throw new Error(data?.error || fallback);
+  };
 
   const ensureDriveRootFolder = useCallback(
     async (contactOverride) => {
@@ -576,7 +584,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
         });
         const data1 = await r1.json().catch(() => ({}));
         if (!r1.ok || !data1.id) {
-          throw new Error(data1.error || '고객사 Drive 폴더를 준비할 수 없습니다.');
+          rejectDriveEnsureResponse(r1, data1, '고객사 Drive 폴더를 준비할 수 없습니다.');
         }
         const companyFolderId = String(data1.id);
         const companyFolderLink = sanitizeDriveFolderWebViewLink(data1.webViewLink, companyFolderId);
@@ -596,7 +604,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
         });
         const data2 = await r2.json().catch(() => ({}));
         if (!r2.ok || !data2.id) {
-          throw new Error(data2.error || '연락처 개인 폴더를 준비할 수 없습니다.');
+          rejectDriveEnsureResponse(r2, data2, '연락처 개인 폴더를 준비할 수 없습니다.');
         }
         if (!isValidDriveNodeId(String(data2.id))) {
           throw new Error('Drive 폴더 ID 형식이 올바르지 않습니다.');
@@ -648,7 +656,7 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok || !data.id) {
-        throw new Error(data.error || '폴더를 준비할 수 없습니다.');
+        rejectDriveEnsureResponse(r, data, '폴더를 준비할 수 없습니다.');
       }
       if (!isValidDriveNodeId(String(data.id))) {
         throw new Error('Drive 폴더 ID 형식이 올바르지 않습니다.');
@@ -1435,6 +1443,23 @@ export default function ContactDetailModal({ contact, onClose, onUpdated }) {
 
                 {/* 증서 · 자료 — 개인 폴더 [이름]_[연락처], 고객사 소속 시 고객사 루트 아래 */}
                 <>
+                  {driveNeedsReauth ? (
+                    <div className="contact-detail-drive-reauth" role="region" aria-label="Google Drive 연동">
+                      <p>{driveError || 'Google Drive 연동이 필요합니다.'}</p>
+                      <button
+                        type="button"
+                        className="contact-detail-drive-reauth-btn"
+                        onClick={() =>
+                          startGoogleFeatureLink(
+                            'loginRefresh',
+                            `${window.location.pathname}${window.location.search}`
+                          )
+                        }
+                      >
+                        Google Drive 연동
+                      </button>
+                    </div>
+                  ) : null}
                   <input
                     ref={fileInputRef}
                     type="file"

@@ -250,7 +250,7 @@ export default function SalesPipelineExcelImportModal({ open, onClose, onImporte
       }
       const headerKeys = Object.keys(parsed[0] || {}).filter((k) => k && !String(k).startsWith('__EMPTY'));
       if (!headerKeys.length) {
-        setSaveMsg('엑셀 열(헤더)을 읽지 못했습니다. 첫 행에 기회명·단계 등 열 이름이 있는지 확인해 주세요.');
+        setSaveMsg('엑셀 열(헤더)을 읽지 못했습니다. 첫 행에 제목·단계 등 열 이름이 있는지 확인해 주세요.');
         return;
       }
       setExcelRows(parsed);
@@ -458,7 +458,7 @@ export default function SalesPipelineExcelImportModal({ open, onClose, onImporte
       }
       if (!built.length) {
         setSaveMsg(
-          '등록할 유효한 행이 없습니다. 엑셀에 제품명·단계가 보이는지, 매핑에서 「제품명」「기회 · 단계」 열이 연결됐는지 확인해 주세요.'
+          '등록할 유효한 행이 없습니다. 엑셀에 제품명·단계가 보이는지, 매핑에서 「제품명」「영업기회 · 단계」 열이 연결됐는지 확인해 주세요.'
         );
         return;
       }

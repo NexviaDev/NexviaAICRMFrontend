@@ -501,6 +501,7 @@ export function getSavedTemplate(listId) {
 export const DEFAULT_SALES_PIPELINE_LIST_TEMPLATE = {
   columnOrder: [
     'stage',
+    'title',
     'customerCompanyName',
     'contactName',
     'productName',
@@ -531,6 +532,7 @@ export const DEFAULT_SALES_PIPELINE_LIST_TEMPLATE = {
   ],
   visible: {
     stage: true,
+    title: true,
     customerCompanyName: true,
     contactName: true,
     productName: true,
@@ -567,6 +569,11 @@ export const DEFAULT_SALES_PIPELINE_LIST_TEMPLATE = {
   assigneeMeOnly: false,
   viewMode: 'kanban',
   columnCellStyles: {
+    title: {
+      fontSize: '0.875rem',
+      fontWeight: '600',
+      color: '#3d4248'
+    },
     customerCompanyName: {
       fontSize: '0.875rem',
       fontWeight: '700'

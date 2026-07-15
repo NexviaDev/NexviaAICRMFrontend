@@ -1188,10 +1188,10 @@ export default function CustomerCompanyEmployees() {
                 type="button"
                 className="cce-action-bar-sales"
                 onClick={() => setBulkSalesPipelineOpen(true)}
-                title="선택한 연락처마다 동일 제품·단계로 영업 기회를 등록합니다. 기본은 개인 구매이며, 해제 시 소속 고객사가 함께 연결됩니다."
+                title="선택한 연락처마다 동일 제품·단계로 영업기회를 등록합니다. 기본은 개인 구매이며, 해제 시 소속 고객사가 함께 연결됩니다."
               >
                 <span className="material-symbols-outlined" aria-hidden>trending_up</span>
-                세일즈 현황에 추가
+                영업기회에 추가
               </button>
               {canRequestAssigneeHandover ? (
                 <button

@@ -79,7 +79,7 @@ const COLUMN_LABELS = {
   purchaseOrderDocCcEmail: '발주 문서 참조(CC)',
   docEmailReferenceSlots: '문서 이메일 참조 슬롯',
   assignedTo: '담당자 ID',
-  assignedToName: '판매 담당',
+  assignedToName: '영업 담당',
   createdById: '등록자 ID',
   createdByName: '등록자',
   saleDate: '계약일',
@@ -136,7 +136,7 @@ const DROPZONE_DEFAULT_COLUMN_ORDER = [
 
 /**
  * 표에서 제외: 통화·참조 ID·제품 행 트리 열·목록에서 숨길 업무 필드
- * (수정일·계약일·단계·제목·설명·문서·할인 일부·등록자·Forecast 예상 등)
+ * (수정일·계약일·단계·설명·문서·할인 일부·등록자·Forecast 예상 등)
  */
 const DROPZONE_TABLE_EXCLUDE_KEYS = new Set([
   '_id',
@@ -161,7 +161,6 @@ const DROPZONE_TABLE_EXCLUDE_KEYS = new Set([
   'unitPriceBasis',
   'saleDate',
   'stage',
-  'title',
   'documentRefs',
   'discountType',
   'discountValue',
@@ -668,8 +667,54 @@ const LINE_ITEM_STACK_KEYS = new Set([
   'commissionRecipients'
 ]);
 
-function hasMultiLineItems(opp) {
+export function hasMultiLineItems(opp) {
   return Array.isArray(opp?.lineItems) && opp.lineItems.length > 1;
+}
+
+export const PRODUCT_DISPLAY_MODE_STORAGE_KEY = 'nexvia_sp_product_display_mode';
+export const PRODUCT_DISPLAY_MODE_CHANGED_EVENT = 'nexvia-sp-product-display-mode-changed';
+
+export function readProductDisplayMode() {
+  try {
+    const v = localStorage.getItem(PRODUCT_DISPLAY_MODE_STORAGE_KEY);
+    return v === 'summary' ? 'summary' : 'list';
+  } catch {
+    return 'list';
+  }
+}
+
+export function writeProductDisplayMode(mode) {
+  try {
+    localStorage.setItem(PRODUCT_DISPLAY_MODE_STORAGE_KEY, mode === 'summary' ? 'summary' : 'list');
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(PRODUCT_DISPLAY_MODE_CHANGED_EVENT));
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+export function sumLineItemQuantities(opp) {
+  const lines = opp?.lineItems;
+  if (Array.isArray(lines) && lines.length > 0) {
+    return lines.reduce((s, l) => s + Math.max(0, Number(l?.quantity) || 0), 0);
+  }
+  const q = Number(opp?.quantity);
+  return Number.isFinite(q) && q > 0 ? q : 0;
+}
+
+export function countOpportunityLineItems(opp) {
+  const lines = opp?.lineItems;
+  if (Array.isArray(lines) && lines.length > 0) return lines.length;
+  if (opp?.productName || opp?.productId) return 1;
+  return 0;
+}
+
+function formatSingleProductLineLabel(line) {
+  const name = formatLineItemField('productName', line) || '—';
+  const q = line?.quantity != null && Number.isFinite(Number(line.quantity)) ? Number(line.quantity) : null;
+  if (q != null && q > 0) return `• ${name} (${q})`;
+  return `• ${name}`;
 }
 
 function shouldStackLineItemColumn(colKey, opp) {
@@ -710,7 +755,10 @@ function formatLineItemField(colKey, line) {
   if (Array.isArray(val)) {
     if (colKey === 'commissionRecipients') {
       if (!val.length) return '';
-      const sum = val.reduce((s, e) => s + toMoneyNumber(e?.amount), 0);
+      const sum = val.reduce(
+        (s, e) => s + toMoneyNumber(e?.commissionAmount ?? e?.amount),
+        0
+      );
       return `${val.length}건·${formatAmountPlain(sum)}`;
     }
     return `${val.length}건`;
@@ -723,14 +771,22 @@ function formatLineItemField(colKey, line) {
   return String(val);
 }
 
-/** 다중 제품명 — 수량 등과 같이 ` | ` 로 구분 (줄바꿈·쉼표 집계 문자열 포함) */
-function formatProductNamesForDisplay(opp) {
+/** 다중 제품명 — list: 세로 bullet, summary: 「제품 N건 · 총 수량 M」 */
+export function formatProductNamesForDisplay(opp, mode = readProductDisplayMode()) {
   const lines = opp?.lineItems;
   if (Array.isArray(lines) && lines.length > 0) {
-    const parts = lines
-      .map((l) => formatLineItemField('productName', l))
-      .filter((s) => s != null && String(s).trim() !== '');
-    if (parts.length) return parts.join(' | ');
+    const named = lines.filter((l) => {
+      const n = formatLineItemField('productName', l);
+      return n != null && String(n).trim() !== '';
+    });
+    if (named.length) {
+      if (mode === 'summary') {
+        const n = lines.length;
+        const totalQ = sumLineItemQuantities(opp);
+        return `제품 ${n}건 · 총 수량 ${totalQ}`;
+      }
+      return named.map((l) => formatSingleProductLineLabel(l)).join('\n');
+    }
   }
   const raw = opp?.productName;
   if (raw == null || raw === '') return '';
@@ -741,16 +797,36 @@ function formatProductNamesForDisplay(opp) {
       .split(/\n+/)
       .map((x) => x.trim())
       .filter(Boolean)
-      .join(' | ');
+      .map((x) => `• ${x}`)
+      .join('\n');
   }
   if (s.includes(',')) {
     return s
       .split(/,\s*/)
       .map((x) => x.trim())
       .filter(Boolean)
-      .join(' | ');
+      .map((x) => `• ${x}`)
+      .join('\n');
   }
   return s;
+}
+
+/** 칸반·표 productName 셀 — 줄바꿈 bullet 렌더 */
+export function ProductNameCellContent({ opp, mode = readProductDisplayMode(), className = '' }) {
+  const text = formatProductNamesForDisplay(opp, mode);
+  if (!text) return '\u00A0';
+  if (!text.includes('\n')) {
+    return <span className={className || undefined}>{text}</span>;
+  }
+  return (
+    <span className={`sp-product-name-multiline${className ? ` ${className}` : ''}`}>
+      {text.split('\n').map((line, i) => (
+        <span key={i} className="sp-product-name-line">
+          {line}
+        </span>
+      ))}
+    </span>
+  );
 }
 
 /** 제품 행 열: 줄마다 한 줄 요약 (제품명·수량·단가·할인 등, 줄별 배경으로 구분) */
@@ -798,7 +874,7 @@ export function formatSummaryRowCell(colKey, opp, forecastPercent) {
   }
 
   if (colKey === 'productName') {
-    return '';
+    return formatProductNamesForDisplay(opp);
   }
 
   if (colKey === 'productId') {
@@ -1378,7 +1454,7 @@ export function buildFlatDisplayRows(sortedFiltered) {
   return out;
 }
 
-export function renderDisplayRowCell(colKey, flatRow, forecastPercent) {
+export function renderDisplayRowCell(colKey, flatRow, forecastPercent, productDisplayMode = readProductDisplayMode()) {
   let text = '';
   if (flatRow.kind === 'summary') {
     text = formatSummaryRowCell(colKey, flatRow.opp, forecastPercent);
@@ -1386,6 +1462,16 @@ export function renderDisplayRowCell(colKey, flatRow, forecastPercent) {
     text = formatChildRowCell(colKey, flatRow.line);
   } else {
     text = formatCellValue(colKey, flatRow.opp, forecastPercent);
+  }
+  if (
+    colKey === 'productName' &&
+    (flatRow.kind === 'summary' || flatRow.kind === 'single') &&
+    text
+  ) {
+    return {
+      text,
+      node: <ProductNameCellContent opp={flatRow.opp} mode={productDisplayMode} />
+    };
   }
   return { text, node: text || '\u00A0' };
 }
@@ -2187,7 +2273,7 @@ export default function DropZoneListModal({
         <div className="sp-dz-list-modal-body sp-dz-list-modal-body--table">
           {filteredByToolbar.length === 0 ? (
             <p className="sp-dz-list-modal-empty">
-              {items.length === 0 ? '표시할 기회가 없습니다.' : '조건에 맞는 기회가 없습니다.'}
+              {items.length === 0 ? '표시할 영업기회가 없습니다.' : '조건에 맞는 영업기회가 없습니다.'}
             </p>
           ) : (
             <div className="sp-dz-table-panel">
@@ -2441,7 +2527,12 @@ export default function DropZoneListModal({
                             {flatRow.rowLabel}
                           </td>
                           {columnKeys.map((colKey) => {
-                            const { text, node } = renderDisplayRowCell(colKey, flatRow, forecastPercent);
+                            const { text, node } = renderDisplayRowCell(
+                              colKey,
+                              flatRow,
+                              forecastPercent,
+                              readProductDisplayMode()
+                            );
                             const moneyInfo =
                               canViewAdminContent && PIPELINE_MONEY_DISPLAY_KEYS.has(colKey)
                                 ? getPipelineMoneyForColumn(colKey, flatRow, forecastPercent)

@@ -405,7 +405,7 @@ export default function PipelineStagesManageModal({ onClose, onSaved }) {
         <div className="psm-body">
           <p className="psm-hint">
             단계를 추가·삭제할 수 있고, 각 단계마다 <strong>Forecast (%)</strong>를 입력할 수 있습니다(입력 후 칸 밖을 누르면 저장).
-            왼쪽 <strong>드래그 핸들</strong>(≡ 아이콘)을 끌어 순서를 바꾼 뒤 <strong>순서 저장</strong>을 누르면 세일즈 현황 칸반에 반영됩니다. DB에 단계가 없으면 화면{' '}
+            왼쪽 <strong>드래그 핸들</strong>(≡ 아이콘)을 끌어 순서를 바꾼 뒤 <strong>순서 저장</strong>을 누르면 영업기회 칸반에 반영됩니다. DB에 단계가 없으면 화면{' '}
             <strong>하단</strong>의 「기본 6단계 + Forecast 불러오기」로 기본 6단계(진행) + 수주 열을 한 번에 올릴 수 있습니다.
           </p>
           <form onSubmit={handleAdd} className="psm-form">

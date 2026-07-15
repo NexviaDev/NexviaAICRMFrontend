@@ -4,7 +4,9 @@ import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { notifyCrmAuthChanged } from '@/lib/use-crm-token';
 import { API_BASE } from '@/config';
 import { pingBackendHealth } from '@/lib/backend-wake';
-import { storeUserWithDefaultSidebarTemplate } from '@/lib/list-templates';import FindIdModal from './find-id-modal';
+import { storeUserWithDefaultSidebarTemplate } from '@/lib/list-templates';
+import { ensureGoogleOAuthRefreshAfterLogin } from '@/lib/google-feature-link';
+import FindIdModal from './find-id-modal';
 import './login.css';
 
 /** Login.html — minimalist workspace header (same asset as sample design) */
@@ -98,7 +100,7 @@ export default function Login() {
     }
 
     void fetchCrmMe()
-      .then((data) => {
+      .then(async (data) => {
         if (data.user) {
           markCrmSessionActive();
           return persistUserAndGo(data.user, navigate);
@@ -185,6 +187,9 @@ export default function Login() {
         markCrmSessionActive();
         setCompletingLogin(true);
         try {
+          await storeUserWithDefaultSidebarTemplate(data.user, { deferServerSync: true });
+          const dest = loginDestinationForRole(data.user.role);
+          if (ensureGoogleOAuthRefreshAfterLogin(data.user, dest)) return;
           await persistUserAndGo(data.user, navigate);
         } catch {
           setCompletingLogin(false);

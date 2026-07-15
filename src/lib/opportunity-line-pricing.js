@@ -103,6 +103,45 @@ export function suggestCompletionDateFromProduct(startDateYmd, product) {
   );
 }
 
+export function sumLineRpiAmountKrw(line) {
+  const unit = toMoneyNumber(line?.snapshotRpiAmountKrw);
+  if (!unit) return 0;
+  const qty = Math.max(0, Number(line?.quantity) || 0);
+  return Math.round(unit * qty);
+}
+
+export function sumLineHandlingAmountKrw(line) {
+  const unit = toMoneyNumber(line?.snapshotHandlingAmountKrw);
+  if (!unit) return 0;
+  const qty = Math.max(0, Number(line?.quantity) || 0);
+  return Math.round(unit * qty);
+}
+
+export function sumLinesRpiTotal(lines) {
+  if (!Array.isArray(lines)) return 0;
+  return lines.reduce((s, l) => s + sumLineRpiAmountKrw(l), 0);
+}
+
+export function sumLinesHandlingTotal(lines) {
+  if (!Array.isArray(lines)) return 0;
+  return lines.reduce((s, l) => s + sumLineHandlingAmountKrw(l), 0);
+}
+
+export function sumLinesCommissionTotal(lines, parseNumber = Number) {
+  if (!Array.isArray(lines)) return 0;
+  return lines.reduce((sum, line) => {
+    const rows = Array.isArray(line?.commissionRecipients) ? line.commissionRecipients : [];
+    return (
+      sum +
+      rows.reduce((s, r) => {
+        const n =
+          typeof parseNumber === 'function' ? parseNumber(r?.commissionAmount) : Number(r?.commissionAmount);
+        return s + (Number.isFinite(n) ? n : 0);
+      }, 0)
+    );
+  }, 0);
+}
+
 export function formatPricingSnapshotHint(line) {
   const parts = [];
   if (line?.snapshotOrderExchangeRate != null) {

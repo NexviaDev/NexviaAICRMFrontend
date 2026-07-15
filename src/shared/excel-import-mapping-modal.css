@@ -129,6 +129,24 @@
   font-weight: 700;
 }
 
+.excel-import-map-intro-note {
+  margin: 0.45rem 0 0;
+  padding: 0.45rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #4a6278;
+  line-height: 1.45;
+  background: #f0f6fb;
+  border: 1px solid #d5e3ef;
+  border-radius: 0.35rem;
+  max-width: 42rem;
+}
+
+.excel-import-map-intro-note strong {
+  color: #3d5a73;
+  font-weight: 700;
+}
+
 /* 엑셀 드롭존 — opp 파스텔 톤, 그라데이션 없음 */
 .excel-import-map-dropzone {
   border: 2px dashed var(--card-border, #dce6f2);

@@ -26,8 +26,14 @@ function pad2(n) {
  * @param {{ ymd: string, title: string }[]} marks
  * @param {(ymd: string) => void} [onDayClick] 날짜 셀 클릭 시 YYYY-MM-DD
  * @param {string} [resetKey] 기회 전환 시 달력 월을 다시 맞출 때 사용(예: oppId)
+ * @param {string|null} [pickerTargetLabel] 왼쪽에서 선택한 날짜 칸 이름(안내용)
  */
-export function OpportunityModalScheduleCalendar({ marks = [], onDayClick, resetKey = '' }) {
+export function OpportunityModalScheduleCalendar({
+  marks = [],
+  onDayClick,
+  resetKey = '',
+  pickerTargetLabel = null
+}) {
   const anchorMonth = useMemo(() => {
     for (const m of marks) {
       const ymd = String(m?.ymd || '').trim();
@@ -96,16 +102,32 @@ export function OpportunityModalScheduleCalendar({ marks = [], onDayClick, reset
   }, []);
 
   const monthTitle = `${current.year}년 ${current.month + 1}월`;
+  const pickHint = pickerTargetLabel
+    ? `${pickerTargetLabel} — 날짜를 누르면 해당 칸에 입력됩니다`
+    : onDayClick
+      ? '먼저 왼쪽 날짜 칸을 선택한 뒤, 날짜를 누르세요'
+      : undefined;
   const now = new Date();
   const isTodayCell = (d) =>
     d != null && d === now.getDate() && current.month === now.getMonth() && current.year === now.getFullYear();
 
   return (
     <div
-      className="opp-embed-calendar-root calendar-page calendar-page--embedded"
+      className={`opp-embed-calendar-root calendar-page calendar-page--embedded${onDayClick ? ' calendar-page--pick-mode' : ''}${pickerTargetLabel ? ' calendar-page--pick-active' : ''}`}
       aria-label="기회 일정 월 달력"
-      title={onDayClick ? '날짜를 누르면 구매 예정 날짜에 반영됩니다.' : undefined}
+      title={pickHint}
     >
+      {onDayClick ? (
+        <p className="opp-embed-calendar-pick-banner" role="status">
+          {pickerTargetLabel ? (
+            <>
+              입력 대상: <strong>{pickerTargetLabel}</strong>
+            </>
+          ) : (
+            '왼쪽 날짜 칸을 선택하세요'
+          )}
+        </p>
+      ) : null}
       <div className="page-content calendar-page-content calendar-page-content--embedded">
         <div className="calendar-shell">
           <div className="calendar-hero">
@@ -146,7 +168,7 @@ export function OpportunityModalScheduleCalendar({ marks = [], onDayClick, reset
                       return (
                         <div
                           key={`opp-cal-${weekIndex}-${dayIndex}`}
-                          className={`calendar-day ${d == null ? 'empty' : ''} ${isToday ? 'today' : ''} ${isSunday ? 'sun' : ''} ${isSaturday ? 'sat' : ''}`}
+                          className={`calendar-day ${d == null ? 'empty' : ''} ${isToday ? 'today' : ''} ${isSunday ? 'sun' : ''} ${isSaturday ? 'sat' : ''}${d != null && onDayClick ? ' calendar-day--pickable' : ''}`}
                           role={d != null && onDayClick ? 'button' : undefined}
                           tabIndex={d != null && onDayClick ? 0 : undefined}
                           onClick={() => {

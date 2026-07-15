@@ -433,7 +433,7 @@ export default function BulkSalesOpportunityDirectoryModal({
     (fallbackName) => {
       const names = lineItems.map((l) => l.productName?.trim()).filter(Boolean);
       if (names.length) return names.join(', ');
-      return String(fallbackName || '').trim() || '영업 기회';
+      return String(fallbackName || '').trim() || '영업기회';
     },
     [lineItems]
   );
@@ -779,7 +779,7 @@ export default function BulkSalesOpportunityDirectoryModal({
           </div>
 
           <div className="bulk-opp-dir-assignee-row">
-            <span className="bulk-opp-dir-assignee-label">판매 담당</span>
+            <span className="bulk-opp-dir-assignee-label">영업 담당</span>
             <button type="button" className="bulk-opp-dir-btn" onClick={() => setShowInternalAssigneePicker(true)}>
               {(form.assignedToName || '').trim() ||
                 (form.assignedToUserId ? '직원 선택됨' : '사내 담당 선택…')}

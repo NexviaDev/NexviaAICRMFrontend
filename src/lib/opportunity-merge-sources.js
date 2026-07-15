@@ -102,7 +102,7 @@ export function buildOpportunityMergeSourceOptions(ctx) {
   add('form.startDate', '시작일');
   add('form.targetDate', '목표일');
   add('form.saleDate', '수주·판매일');
-  add('form.assignedToName', '판매 담당 이름');
+  add('form.assignedToName', '영업 담당 이름');
   add('snapshot.businessNumber', '사업자번호(표시)');
   add('derived.linesSummary', '제품·수량 (줄마다 1제품, 이름×수량)');
   add('derived.linesProductNames', '제품명만 (줄마다 1행·수량 열과 순서 동일)');

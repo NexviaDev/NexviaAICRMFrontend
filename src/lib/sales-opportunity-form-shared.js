@@ -43,6 +43,30 @@ export const OPPORTUNITY_STAGE_OPTIONS = [
 ];
 
 /**
+ * 저장·엑셀 등록 시 영업기회 제목 — 명시 입력 우선, 없으면 제품명 → 고객사 → 구매 담당자
+ */
+export function resolveOpportunityTitleToUse({
+  opportunityTitle,
+  title,
+  lineItems,
+  productName,
+  customerCompanyName,
+  contactName
+} = {}) {
+  const explicit = String(opportunityTitle ?? title ?? '').trim();
+  if (explicit) return { title: explicit, autoFilled: false };
+  const fromLines = (lineItems || []).map((l) => String(l?.productName || '').trim()).filter(Boolean);
+  if (fromLines.length) return { title: fromLines.join(', '), autoFilled: true };
+  const singleProduct = String(productName || '').trim();
+  if (singleProduct) return { title: singleProduct, autoFilled: true };
+  const company = String(customerCompanyName || '').trim();
+  if (company) return { title: company, autoFilled: true };
+  const contact = String(contactName || '').trim();
+  if (contact) return { title: contact, autoFilled: true };
+  return { title: '', autoFilled: false };
+}
+
+/**
  * `custom-field-definitions?entityType=salesPipelineStage` 결과 → 기회 모달·파이프라인과 동일한 단계 선택지
  * (칸반 열 순서·커스텀 단계 포함, 끝에 Won / Lost / Abandoned 고정 추가 — sales-pipeline.js 와 동일 규칙)
  */

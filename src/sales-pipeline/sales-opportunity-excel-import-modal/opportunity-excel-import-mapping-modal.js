@@ -40,7 +40,7 @@ export default function OpportunityExcelImportMappingModal({
         <div className="opp-modal-header">
           <div className="opp-modal-header-left">
             <h3 className="opp-modal-title" id="sp-excel-map-title">
-              엑셀 → 영업 기회 매핑
+              엑셀 → 영업기회 매핑
             </h3>
             <span className="excel-import-map-badge excel-import-map-badge--tag">Excel</span>
             <span className="excel-import-map-badge excel-import-map-badge--count" title="업로드된 행 수">
@@ -56,11 +56,15 @@ export default function OpportunityExcelImportMappingModal({
           <div className="opp-modal-form-layout excel-import-map-form-layout">
             <div className="opp-modal-form-main excel-import-map-form-main">
               <div className="excel-import-map-intro">
-                <h2 className="excel-import-map-intro-title">영업 기회 일괄 등록</h2>
+                <h2 className="excel-import-map-intro-title">영업기회 일괄 등록</h2>
                 <p className="excel-import-map-intro-desc">
-                  엑셀 <strong>첫 행은 헤더</strong>입니다. 각 열을 <strong>기회 필드</strong>에 연결한 뒤{' '}
+                  엑셀 <strong>첫 행은 헤더</strong>입니다. 각 열을 <strong>영업기회 필드</strong>에 연결한 뒤{' '}
                   <strong>엑셀 미리보기</strong>로 이동해 원본 표를 확인·수정하고, 이어서 <strong>검증·등록</strong>을
                   진행하세요.
+                </p>
+                <p className="excel-import-map-intro-note">
+                  <strong>제목</strong> 열은 필수입니다(헤더 예: 제목, 기회명, 프로젝트명). 비어 있으면 등록 시{' '}
+                  <strong>제품명 → 고객사 → 구매 담당자</strong> 순으로 자동 채워집니다.
                 </p>
               </div>
 
@@ -115,7 +119,7 @@ export default function OpportunityExcelImportMappingModal({
               <div className="excel-import-map-table-head">
                 <div>소스 필드 (엑셀 열)</div>
                 <div />
-                <div>대상 필드 (영업 기회)</div>
+                <div>대상 필드 (영업기회)</div>
                 <div>미리보기</div>
                 <div style={{ textAlign: 'right' }}>상태</div>
               </div>
@@ -223,9 +227,10 @@ export default function OpportunityExcelImportMappingModal({
                     <span className="material-symbols-outlined">info</span>
                   </div>
                   <div>
-                    <p>필수: 제목 · 단계</p>
+                    <p>필수: 영업기회 · 제목 · 단계</p>
                     <span>
-                      다음 <strong>엑셀 미리보기</strong> 창에서 셀을 고칠 수 있습니다. 검증 단계에서 단계·통화 등 목록
+                      제목 열 헤더는 <strong>제목</strong>, <strong>기회명</strong>, <strong>프로젝트명</strong> 등으로
+                      자동 인식됩니다. 다음 <strong>엑셀 미리보기</strong> 창에서 셀을 고칠 수 있습니다. 검증 단계에서 단계·통화 등 목록
                       불일치 시 <strong style={{ color: '#b91c1c' }}>붉은색</strong> — 모두 수정 후 등록합니다.
                     </span>
                   </div>

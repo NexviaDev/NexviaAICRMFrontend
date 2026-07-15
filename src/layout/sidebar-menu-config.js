@@ -27,7 +27,7 @@ export const SIDEBAR_SUBMENU_ITEMS = [
   { to: '/kpi', icon: 'analytics', label: '성과분석', category: 'inhouse' },
   { to: '/customer-company-employees', icon: 'group', label: '연락처 리스트', category: 'outside' },
   { to: '/customer-companies', icon: 'business', label: '기업 리스트', category: 'outside' },
-  { to: '/sales-pipeline', icon: 'view_kanban', label: '세일즈 현황', category: 'outside' },
+  { to: '/sales-pipeline', icon: 'view_kanban', label: '영업기회', category: 'outside' },
   { to: '/map', icon: 'map', label: '지도', category: 'outside' },
   { to: '/lead-capture', icon: 'ads_click', label: '리드 캡처', category: 'outside' },
   { to: '/calendar', icon: 'calendar_month', label: '캘린더', category: 'schedule' },

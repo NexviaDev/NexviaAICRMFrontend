@@ -2467,3 +2467,36 @@
   color: #5b6b8a;
   font-size: 0.74rem;
 }
+
+.contact-detail-drive-reauth {
+  margin: 0 0 0.75rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.contact-detail-drive-reauth p {
+  margin: 0 0 0.625rem;
+  font-size: 0.8125rem;
+  color: #475569;
+  line-height: 1.45;
+}
+
+.contact-detail-drive-reauth-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.4375rem 0.875rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  color: #1e293b;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.contact-detail-drive-reauth-btn:hover {
+  background: #f1f5f9;
+}

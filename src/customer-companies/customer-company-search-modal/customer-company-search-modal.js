@@ -7,7 +7,14 @@ import './customer-company-search-modal.css';
  * 고객사 검색 모달 (업체명, 사업자번호, 주소, 직원 이름/연락처로 검색)
  * opportunity-modal, add-contact-modal 등에서 공통 사용
  */
-export default function CustomerCompanySearchModal({ onClose, onSelect, multiSelect, onSelectBatch }) {
+export default function CustomerCompanySearchModal({
+  onClose,
+  onSelect,
+  multiSelect,
+  onSelectBatch,
+  initialSearchQuery = '',
+  includeSimilarSearch = false
+}) {
   const [showAddCompany, setShowAddCompany] = useState(false);
 
   useEffect(() => {
@@ -51,6 +58,8 @@ export default function CustomerCompanySearchModal({ onClose, onSelect, multiSel
           <div className="cc-search-modal-body">
             <CustomerCompanies
               listVariant="searchModal"
+              initialSearchQuery={initialSearchQuery}
+              includeSimilarSearch={includeSimilarSearch}
               searchModalMultiSelect={!!multiSelect}
               onSearchModalConfirm={(company) => {
                 onSelect?.(company);

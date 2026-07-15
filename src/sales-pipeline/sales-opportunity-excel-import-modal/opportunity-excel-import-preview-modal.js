@@ -113,7 +113,7 @@ export default function OpportunityExcelImportPreviewModal({
                 <th>통화</th>
                 <th>가격기준</th>
                 <th>유통사</th>
-                <th>사내 담당</th>
+                <th>영업 담당</th>
               </tr>
             </thead>
             <tbody>
@@ -125,8 +125,14 @@ export default function OpportunityExcelImportPreviewModal({
                       type="text"
                       className={`opp-excel-preview-cell-input ${row.invalidCells?.has('title') ? 'is-invalid' : ''}`}
                       value={row.title || ''}
-                      onChange={(e) => patchRow(row.rowIndex, { title: e.target.value })}
+                      onChange={(e) => patchRow(row.rowIndex, { title: e.target.value, titleAutoFilled: false })}
                       disabled={saving}
+                      title={
+                        row.titleAutoFilled
+                          ? '제품명·고객사·담당자에서 자동 채운 제목입니다. 직접 수정할 수 있습니다.'
+                          : undefined
+                      }
+                      placeholder={row.titleAutoFilled ? '자동 제목' : '제목'}
                     />
                   </td>
                   <td>

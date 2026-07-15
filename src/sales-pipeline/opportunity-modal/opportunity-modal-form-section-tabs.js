@@ -19,6 +19,12 @@ export const OPP_FORM_SECTION_TABS = [
     label: '일정',
     btnId: 'opp-section-tab-btn-schedule',
     panelId: 'opp-section-tab-panel-schedule'
+  },
+  {
+    id: 'additionalInfo',
+    label: '추가정보',
+    btnId: 'opp-section-tab-btn-additional-info',
+    panelId: 'opp-section-tab-panel-additional-info'
   }
 ];
 

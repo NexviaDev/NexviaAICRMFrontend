@@ -17,7 +17,14 @@ import {
   collectSalesPipelineTableColumnKeys,
   columnHeaderLabel,
   formatCellValue,
-  isPersonalPurchaseOpp
+  isPersonalPurchaseOpp,
+  formatProductNamesForDisplay,
+  ProductNameCellContent,
+  hasMultiLineItems,
+  sumLineItemQuantities,
+  readProductDisplayMode,
+  writeProductDisplayMode,
+  PRODUCT_DISPLAY_MODE_CHANGED_EVENT
 } from './drop-zone-list-modal/drop-zone-list-modal';
 import { listColumnValueInlineStyle } from '@/lib/list-column-cell-styles';
 import { OPPORTUNITY_MERGE_SHEET_URL_PARAM } from '@/lib/merge-data-sheet-url';
@@ -134,9 +141,13 @@ const PIPELINE_KANBAN_ADMIN_ONLY_KEYS = new Set([
   'collectionEntries'
 ]);
 
-function pipelineKanbanOppCellText(colKey, opp, fp, stageLabels, canViewAdmin) {
+function pipelineKanbanOppCellText(colKey, opp, fp, stageLabels, canViewAdmin, productDisplayMode) {
   if (!canViewAdmin && PIPELINE_KANBAN_ADMIN_ONLY_KEYS.has(colKey)) return '—';
   if (colKey === 'stage') return resolvePipelineStageLabel(opp.stage, stageLabels);
+  if (colKey === 'productName') return formatProductNamesForDisplay(opp, productDisplayMode);
+  if (colKey === 'quantity' && hasMultiLineItems(opp)) {
+    return `총 ${sumLineItemQuantities(opp)}`;
+  }
   return formatCellValue(colKey, opp, fp);
 }
 
@@ -311,7 +322,7 @@ function dealTitlePrimaryLabel(opp) {
   return company || '';
 }
 
-/** 카드·목록용 사내 판매 담당 표시명 */
+/** 카드·목록용 사내 영업 담당 표시명 */
 function salesAssigneeDisplay(opp) {
   const n = opp?.assignedToName != null ? String(opp.assignedToName).trim() : '';
   if (n) return n;
@@ -434,6 +445,12 @@ export default function SalesPipeline() {
     const v = getMergedSalesPipelineTemplate().viewMode;
     return v === 'table' ? 'table' : 'kanban';
   });
+  const [productDisplayMode, setProductDisplayMode] = useState(() => readProductDisplayMode());
+  useEffect(() => {
+    const sync = () => setProductDisplayMode(readProductDisplayMode());
+    window.addEventListener(PRODUCT_DISPLAY_MODE_CHANGED_EVENT, sync);
+    return () => window.removeEventListener(PRODUCT_DISPLAY_MODE_CHANGED_EVENT, sync);
+  }, []);
   const [pipelineListSettingsOpen, setPipelineListSettingsOpen] = useState(false);
   /** 열 설정 저장 후 collectSalesPipelineTableColumnKeys 재계산 */
   const [pipelineTemplateTick, setPipelineTemplateTick] = useState(0);
@@ -1125,12 +1142,18 @@ export default function SalesPipeline() {
     [pipelineListTemplate]
   );
 
+  /** 칸반: 카드가 이미 해당 단계 열 안에 있으므로 「단계」필드는 표시하지 않음 */
+  const kanbanDisplayColumnKeys = useMemo(
+    () => pipelineDisplayColumnKeys.filter((k) => k !== 'stage'),
+    [pipelineDisplayColumnKeys]
+  );
+
   const renderDesktopKanbanLucidCard = (opp) => {
     const fp = stageForecastPercent[opp.stage];
     const patching = String(stagePatchingId) === String(opp._id);
-    const colKeys = isPersonalPurchaseOpp(opp)
-      ? pipelineDisplayColumnKeys.filter((k) => k !== 'contactName')
-      : pipelineDisplayColumnKeys;
+    const colKeys = (isPersonalPurchaseOpp(opp)
+      ? kanbanDisplayColumnKeys.filter((k) => k !== 'contactName')
+      : kanbanDisplayColumnKeys);
     const accentTone = stageToneByKey[opp.stage] || 'tone-0';
     return (
       <div
@@ -1160,7 +1183,14 @@ export default function SalesPipeline() {
           const renderField = (colKey, idx, keys, isHead) => {
             const personalPurchase = isPersonalPurchaseOpp(opp);
             const isPersonalCompanyCell = personalPurchase && colKey === 'customerCompanyName';
-            let text = pipelineKanbanOppCellText(colKey, opp, fp, stageLabels, canViewAdminContent);
+            let text = pipelineKanbanOppCellText(
+              colKey,
+              opp,
+              fp,
+              stageLabels,
+              canViewAdminContent,
+              productDisplayMode
+            );
             if (isPersonalCompanyCell) text = kanbanPersonalPurchaseContactLabel(opp);
             const spanFull =
               isHead ||
@@ -1209,6 +1239,15 @@ export default function SalesPipeline() {
                       </span>
                       <span className="sp-kanban-card-personal-tag">개인 구매</span>
                     </>
+                  ) : isProductNameCol && text ? (
+                    <>
+                      <ProductNameCellContent opp={opp} mode={productDisplayMode} />
+                      {hasMultiLineItems(opp) && productDisplayMode !== 'summary' ? (
+                        <span className="sp-kanban-product-qty-meta">
+                          총 수량 {sumLineItemQuantities(opp)}
+                        </span>
+                      ) : null}
+                    </>
                   ) : moneyInfo ? (
                     <PriceWithKrwHint
                       amount={moneyInfo.amount}
@@ -1249,10 +1288,13 @@ export default function SalesPipeline() {
       {/* Header */}
       <header className="sp-header">
         <div className="sp-header-brand">
-          <h2 className="sp-title">세일즈 현황</h2>
+          <div className="sp-header-brand-title-wrap">
+            <h2 className="sp-title">영업기회</h2>
+            <p className="sp-title-sub">세일즈 현황</p>
+          </div>
           <div className="sp-search-wrap">
             <span className="material-symbols-outlined sp-search-icon">search</span>
-            <input className="sp-search" type="text" placeholder="기회 검색..." value={search} onChange={onSearchInput} aria-label="기회 검색" />
+            <input className="sp-search" type="text" placeholder="영업기회 검색..." value={search} onChange={onSearchInput} aria-label="영업기회 검색" />
           </div>
         </div>
         <div className="sp-header-right">
@@ -1273,6 +1315,26 @@ export default function SalesPipeline() {
               </span>
               <span className="sp-header-btn-label">
                 {pipelineViewMode === 'kanban' ? '표 보기' : '칸반 보기'}
+              </span>
+            </button>
+            <button
+              type="button"
+              className={`sp-header-icon-btn sp-header-tool-btn${productDisplayMode === 'summary' ? ' is-active' : ''}`}
+              onClick={() => {
+                const next = productDisplayMode === 'summary' ? 'list' : 'summary';
+                writeProductDisplayMode(next);
+                setProductDisplayMode(next);
+              }}
+              title={
+                productDisplayMode === 'summary'
+                  ? '제품명 세로 목록 보기로 전환'
+                  : '제품 요약(제품 N건 · 총 수량 M) 보기로 전환'
+              }
+              aria-label="제품 표시 방식 전환"
+            >
+              <span className="material-symbols-outlined">inventory_2</span>
+              <span className="sp-header-btn-label">
+                {productDisplayMode === 'summary' ? '제품 목록' : '제품 요약'}
               </span>
             </button>
             <button
@@ -1303,7 +1365,7 @@ export default function SalesPipeline() {
             type="button"
             className="sp-header-icon-btn sp-header-tool-btn"
             onClick={openExcelImportModal}
-            title="엑셀 파일을 매핑하여 영업 기회 일괄 등록"
+            title="엑셀 파일을 매핑하여 영업기회 일괄 등록"
             aria-label="엑셀 매핑 가져오기"
           >
             <span className="material-symbols-outlined">upload_file</span>
@@ -1311,7 +1373,7 @@ export default function SalesPipeline() {
           </button>
           <button type="button" className="sp-add-btn" onClick={() => openAddModal()}>
             <span className="material-symbols-outlined">add</span>
-            기회 추가
+            영업기회 추가
           </button>
           <PageHeaderNotifyChat buttonClassName="sp-header-icon-btn" wrapperClassName="sp-header-quick" />
         </div>
@@ -1377,9 +1439,9 @@ export default function SalesPipeline() {
             </select>
           </label>
           <label className="sp-filter-label">
-            <span className="sp-filter-label-text">담당</span>
+            <span className="sp-filter-label-text">영업 담당</span>
             <details className="sp-filter-multi">
-              <summary className="sp-filter-multi-summary" aria-label="담당자별 필터(복수 선택)">
+              <summary className="sp-filter-multi-summary" aria-label="영업 담당별 필터(복수 선택)">
                 {assigneeFilterSummary}
               </summary>
               <div className="sp-filter-multi-panel">
@@ -1387,7 +1449,7 @@ export default function SalesPipeline() {
                   type="button"
                   className="sp-filter-multi-reset"
                   onClick={selectAllFilterAssigneeIds}
-                  aria-label="담당자 전체 선택"
+                  aria-label="영업 담당 전체 선택"
                 >
                   전체 선택
                 </button>
@@ -1546,7 +1608,7 @@ export default function SalesPipeline() {
                                 {nameInitials(salesAssigneeDisplay(opp))}
                               </span>
                               <div className="sp-mobile-deal-owner-text">
-                                <span className="sp-mobile-deal-assignee-label">판매 담당</span>
+                                <span className="sp-mobile-deal-assignee-label">영업 담당</span>
                                 <span className="sp-mobile-deal-owner-name">
                                   {salesAssigneeDisplay(opp) || '미지정'}
                                 </span>
@@ -1592,6 +1654,7 @@ export default function SalesPipeline() {
                 stageLabels={stageLabels}
                 canViewAdminContent={canViewAdminContent}
                 dealBasRMap={dealBasRMap}
+                productDisplayMode={productDisplayMode}
                 onOpenEdit={openEditModal}
                 onDragStart={handleDragStart}
                 onDragEnd={handleDragEnd}
@@ -1629,7 +1692,7 @@ export default function SalesPipeline() {
                               className="sp-kanban-add"
                               title="이 단계에 추가"
                               onClick={() => openAddModal(stage)}
-                              aria-label={`${stageLabels[stage] ?? stage}에 기회 추가`}
+                              aria-label={`${stageLabels[stage] ?? stage}에 영업기회 추가`}
                             >
                               <span className="material-symbols-outlined">add</span>
                             </button>
@@ -1737,7 +1800,7 @@ export default function SalesPipeline() {
         <button
           type="button"
           className="sp-mobile-fab"
-          aria-label="기회 추가"
+          aria-label="영업기회 추가"
           onClick={() =>
             openAddModal(pipelineViewMode === 'kanban' ? activeMobileStage || undefined : undefined)
           }

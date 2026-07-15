@@ -62,77 +62,12 @@ function truncateColumnLabel(label, max = COLUMN_HEADER_MAX_CHARS) {
   return `${chars.slice(0, max).join('')}...`;
 }
 
-function companyClipboardFromRow(row) {
-  if (row.linkedCompany) {
-    const lid = row.customerCompanyId || row.linkedCompany._id;
-    if (lid) {
-      return {
-        type: 'linked',
-        customerCompanyId: String(lid),
-        linkedCompany: { ...row.linkedCompany },
-        companyName: row.linkedCompany.name || row.companyName || '',
-        companyCode: row.linkedCompany.code || row.companyCode || '',
-        address: row.linkedCompany.address != null ? String(row.linkedCompany.address) : (row.address || ''),
-        representativeName: row.linkedCompany.representativeName || row.representativeName || '',
-        industry: row.linkedCompany.industry || row.industry || '',
-        businessNumber: row.linkedCompany.businessNumber || row.businessNumber || '',
-        companyStatus: row.linkedCompany.status || row.companyStatus || 'active',
-        companyCustomFields: { ...(row.linkedCompany.customFields || row.companyCustomFields || {}) }
-      };
-    }
-  }
-  return {
-    type: 'new',
-    companyName: row.companyName || '',
-    companyCode: row.companyCode || '',
-    address: row.address || '',
-    representativeName: row.representativeName || '',
-    industry: row.industry || '',
-    businessNumber: row.businessNumber || '',
-    companyStatus: row.companyStatus || 'active',
-    companyCustomFields: { ...(row.companyCustomFields || {}) }
-  };
-}
-
-function applyClipboardToRow(row, clip) {
-  if (clip.type === 'linked') {
-    const co = clip.linkedCompany;
-    return {
-      ...row,
-      customerCompanyId: clip.customerCompanyId,
-      linkedCompany: { ...co },
-      companyName: co.name || row.companyName || '',
-      companyCode: co.code || clip.companyCode || row.companyCode || '',
-      address: co.address != null ? String(co.address) : (clip.address || row.address),
-      representativeName: co.representativeName || clip.representativeName || row.representativeName || '',
-      industry: co.industry || clip.industry || row.industry || '',
-      businessNumber: co.businessNumber || clip.businessNumber || row.businessNumber || '',
-      companyStatus: co.status || clip.companyStatus || row.companyStatus || 'active',
-      companyCustomFields: { ...(clip.companyCustomFields || co.customFields || row.companyCustomFields || {}) }
-    };
-  }
-  return {
-    ...row,
-    customerCompanyId: null,
-    linkedCompany: null,
-    companyName: clip.companyName,
-    companyCode: clip.companyCode || '',
-    address: clip.address,
-    representativeName: clip.representativeName,
-    industry: clip.industry,
-    businessNumber: clip.businessNumber,
-    companyStatus: clip.companyStatus || row.companyStatus || 'active',
-    companyCustomFields: { ...(clip.companyCustomFields || {}) }
-  };
-}
-
 function toCompanyLikeRow(row) {
   if (row.linkedCompany && row.customerCompanyId) return { ...row.linkedCompany };
   const cf = row.companyCustomFields && typeof row.companyCustomFields === 'object' ? { ...row.companyCustomFields } : {};
   return {
     _id: '',
     name: row.companyName || '',
-    code: row.companyCode || '',
     representativeName: row.representativeName || '',
     industry: row.industry || '',
     businessNumber: row.businessNumber || '',
@@ -146,7 +81,6 @@ function toCompanyLikeRow(row) {
 function normalizeIncomingRow(r) {
   return {
     ...r,
-    companyCode: r.companyCode || '',
     customerCompanyId: r.customerCompanyId || null,
     linkedCompany: r.linkedCompany || null,
     companyStatus: r.companyStatus || 'active',
@@ -186,10 +120,6 @@ function rangeRows(a, b) {
   return rows;
 }
 
-function normalizeSelectedRows(rows) {
-  return [...new Set((rows || []).filter((n) => Number.isInteger(n) && n >= 0))].sort((a, b) => a - b);
-}
-
 function allRowIndices(count) {
   return new Set(Array.from({ length: count }, (_, i) => i));
 }
@@ -212,26 +142,14 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
   const [template, setTemplate] = useState(() => getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), []));
   const [companyEmployees, setCompanyEmployees] = useState([]);
   const [companyEmployeesLoaded, setCompanyEmployeesLoaded] = useState(false);
-  const [companySearchRow, setCompanySearchRow] = useState(null);
+  const [companySearchCtx, setCompanySearchCtx] = useState(null);
   /** 같은 소속 행 묶음 호버 — `rowAffiliationKey` 원문과 비교 */
   const [hoveredAffiliationKey, setHoveredAffiliationKey] = useState(null);
   /** 등록 포함 여부(체크) — 기본 전체 선택 */
   const [checkedRows, setCheckedRows] = useState(() => new Set());
 
-  const [selectedNameRows, setSelectedNameRowsState] = useState([0]);
-  const excelSelRef = useRef({ anchor: 0, focus: 0 });
-  const selectedNameRowsRef = useRef([0]);
-  const lastAnchorRef = useRef(0);
   /** 체크박스 Shift 범위 기준 행 */
   const checkAnchorRef = useRef(0);
-  const nameDragActiveRef = useRef(false);
-  const nameDragStartRef = useRef(null);
-  const nameDragModeRef = useRef('replace');
-  const nameDragBaseRowsRef = useRef([]);
-  const dragMovedRef = useRef(false);
-  const mouseDownPosRef = useRef({ x: 0, y: 0 });
-
-  const clipboardRef = useRef(null);
   const draftRef = useRef([]);
   const panelRef = useRef(null);
 
@@ -243,17 +161,6 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
     });
     return map;
   }, [companyEmployees]);
-
-  const setSelectedNameRows = useCallback((rows) => {
-    const next = normalizeSelectedRows(rows);
-    selectedNameRowsRef.current = next;
-    setSelectedNameRowsState(next);
-  }, []);
-
-  const setSel = useCallback((anchor, focus) => {
-    excelSelRef.current = { anchor, focus };
-    setSelectedNameRows(rangeRows(anchor, focus));
-  }, [setSelectedNameRows]);
 
   const loadCustomFieldColumns = useCallback(async () => {
     try {
@@ -301,13 +208,10 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
     const nextDraft = (items || []).map((r) => normalizeIncomingRow(normalizeContactPreviewItem({ ...r })));
     setDraft(nextDraft);
     setCheckedRows(allRowIndices(nextDraft.length));
-    clipboardRef.current = null;
-    setCompanySearchRow(null);
+    setCompanySearchCtx(null);
     setHoveredAffiliationKey(null);
-    setSel(0, 0);
-    lastAnchorRef.current = 0;
     checkAnchorRef.current = 0;
-  }, [open, items, setSel]);
+  }, [open, items]);
 
   const displayColumns = useMemo(
     () => template.columns.filter((c) => template.visible[c.key] && c.key !== '_favorite'),
@@ -417,7 +321,6 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
         if (row.customerCompanyId && !fixedCompany) return row;
 
         if (colKey === 'address') return { ...row, address: v };
-        if (colKey === 'code') return { ...row, companyCode: v.toUpperCase() };
         if (colKey === 'representativeName') return { ...row, representativeName: v };
         if (colKey === 'industry') return { ...row, industry: v };
         if (colKey === 'businessNumber') return { ...row, businessNumber: v.replace(/\D/g, '') };
@@ -447,36 +350,11 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
     );
   }, [bulkSaving]);
 
-  const applyPasteToRange = useCallback((clip) => {
-    if (!clip || fixedCompany) return false;
-    const selectedRows = selectedNameRowsRef.current;
-    if (!selectedRows.length) return false;
-    const prev = draftRef.current;
-    const next = [...prev];
-    let touched = 0;
-    for (const i of selectedRows) {
-      if (!next[i]) continue;
-      next[i] = applyClipboardToRow(next[i], clip);
-      touched += 1;
-    }
-    if (touched === 0) return false;
-    draftRef.current = next;
-    setDraft(next);
-    return true;
-  }, [fixedCompany]);
-
-  const applyCompanyClipboardToSelection = useCallback(() => {
-    const selectedRows = selectedNameRowsRef.current;
-    const clip = clipboardRef.current;
-    if (!clip || !selectedRows.length) return false;
-    const end = selectedRows[selectedRows.length - 1];
-    const applied = applyPasteToRange(clip);
-    if (applied) {
-      setSel(-1, -1);
-      if (end >= 0) lastAnchorRef.current = end;
-    }
-    return applied;
-  }, [applyPasteToRange, setSel]);
+  useEffect(() => {
+    if (!open) return;
+    const t = window.setTimeout(() => panelRef.current?.focus(), 0);
+    return () => window.clearTimeout(t);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -484,128 +362,15 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
       if (e.key !== 'Escape') return;
       if (bulkSaving) return;
       e.preventDefault();
-      if (companySearchRow != null) {
-        setCompanySearchRow(null);
+      if (companySearchCtx != null) {
+        setCompanySearchCtx(null);
         return;
       }
       onClose?.();
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [open, bulkSaving, onClose, companySearchRow]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    const endNameDrag = () => {
-      if (!nameDragActiveRef.current) return;
-      nameDragActiveRef.current = false;
-      nameDragStartRef.current = null;
-      const moved = dragMovedRef.current;
-      dragMovedRef.current = false;
-      if (!moved) {
-        const { anchor: aa, focus: bb } = excelSelRef.current;
-        const a = Math.min(aa, bb);
-        const b = Math.max(aa, bb);
-        if (a >= 0 && a === b) {
-          const el = panelRef.current?.querySelector(`input[data-cip-name-row="${a}"]`);
-          if (el && typeof el.focus === 'function') {
-            setTimeout(() => el.focus(), 0);
-          }
-        }
-      }
-    };
-
-    const onMove = (e) => {
-      if (!nameDragActiveRef.current || nameDragStartRef.current === null) return;
-      const dx = e.clientX - mouseDownPosRef.current.x;
-      const dy = e.clientY - mouseDownPosRef.current.y;
-      if (dx * dx + dy * dy > 16) dragMovedRef.current = true;
-
-      const el = document.elementFromPoint(e.clientX, e.clientY);
-      const cell = el?.closest?.('[data-cip-name-row-cell]');
-      if (!cell || !panelRef.current?.contains(cell)) return;
-      const nextIdx = Number(cell.getAttribute('data-cip-name-row-cell'));
-      if (!Number.isInteger(nextIdx) || nextIdx < 0) return;
-
-      const rows = rangeRows(nameDragStartRef.current, nextIdx);
-      excelSelRef.current = { anchor: nameDragStartRef.current, focus: nextIdx };
-      if (nameDragModeRef.current === 'add') {
-        setSelectedNameRows([...nameDragBaseRowsRef.current, ...rows]);
-        return;
-      }
-      setSelectedNameRows(rows);
-    };
-
-    document.addEventListener('mouseup', endNameDrag);
-    document.addEventListener('mousemove', onMove);
-    return () => {
-      document.removeEventListener('mouseup', endNameDrag);
-      document.removeEventListener('mousemove', onMove);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => {
-      const panel = panelRef.current;
-      if (!panel) return;
-      const ae = document.activeElement;
-      if (!(e.ctrlKey || e.metaKey)) return;
-
-      if (e.key === 'c' || e.key === 'C') {
-        const selectedRows = selectedNameRowsRef.current;
-        if (!selectedRows.length && !panel.contains(e.target) && !panel.contains(ae)) return;
-        if (ae && panel.contains(ae) && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) {
-          const hasSel =
-            typeof ae.selectionStart === 'number' &&
-            typeof ae.selectionEnd === 'number' &&
-            ae.selectionEnd > ae.selectionStart;
-          if (hasSel) return;
-        }
-        const src = selectedRows.length ? selectedRows[0] : -1;
-        const row = draftRef.current[src];
-        if (!row || src < 0) {
-          if (ae && ae.classList?.contains('cip-name-field-input')) {
-            e.preventDefault();
-            const full = String(ae.value ?? '');
-            if (full && navigator.clipboard?.writeText) void navigator.clipboard.writeText(full);
-          }
-          return;
-        }
-        e.preventDefault();
-        clipboardRef.current = companyClipboardFromRow(row);
-        return;
-      }
-
-      if (e.key === 'v' || e.key === 'V') {
-        if (clipboardRef.current && selectedNameRowsRef.current.length > 0) {
-          e.preventDefault();
-          applyCompanyClipboardToSelection();
-          return;
-        }
-        if (!panel.contains(e.target) && !panel.contains(ae)) return;
-      }
-    };
-
-    const onPaste = (e) => {
-      const panel = panelRef.current;
-      if (!panel) return;
-      if (!clipboardRef.current || !selectedNameRowsRef.current.length) return;
-      const ae = document.activeElement;
-      if (!panel.contains(e.target) && !panel.contains(ae)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      applyCompanyClipboardToSelection();
-    };
-
-    window.addEventListener('keydown', onKey, true);
-    window.addEventListener('paste', onPaste, true);
-    return () => {
-      window.removeEventListener('keydown', onKey, true);
-      window.removeEventListener('paste', onPaste, true);
-    };
-  }, [open, applyCompanyClipboardToSelection]);
+  }, [open, bulkSaving, onClose, companySearchCtx]);
 
   const handleConfirmClick = () => {
     const rows = draft.filter((_, idx) => checkedRows.has(idx));
@@ -647,50 +412,6 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
     });
   };
 
-  const handleNameCellMouseDown = (e, idx) => {
-    if (e.button !== 0 || fixedCompany || bulkSaving) return;
-    if (e.target.closest('.cip-name-search-btn')) return;
-    const modifiedSelection = !!(e.ctrlKey || e.metaKey || e.shiftKey);
-    dragMovedRef.current = false;
-    mouseDownPosRef.current = { x: e.clientX, y: e.clientY };
-    const additive = !!(e.ctrlKey || e.metaKey);
-
-    if (e.shiftKey) {
-      const rows = rangeRows(lastAnchorRef.current, idx);
-      if (additive) {
-        setSelectedNameRows([...selectedNameRowsRef.current, ...rows]);
-        excelSelRef.current = { anchor: lastAnchorRef.current, focus: idx };
-      } else {
-        setSel(lastAnchorRef.current, idx);
-      }
-      return;
-    }
-
-    lastAnchorRef.current = idx;
-    nameDragStartRef.current = idx;
-    nameDragActiveRef.current = true;
-    nameDragModeRef.current = additive ? 'add' : 'replace';
-    nameDragBaseRowsRef.current = additive ? selectedNameRowsRef.current : [];
-    if (additive) {
-      excelSelRef.current = { anchor: idx, focus: idx };
-      setSelectedNameRows([...nameDragBaseRowsRef.current, idx]);
-    } else {
-      setSel(idx, idx);
-    }
-    e.preventDefault();
-  };
-
-  const handleNameCellMouseEnter = (idx) => {
-    if (!nameDragActiveRef.current || nameDragStartRef.current === null) return;
-    const rows = rangeRows(nameDragStartRef.current, idx);
-    excelSelRef.current = { anchor: nameDragStartRef.current, focus: idx };
-    if (nameDragModeRef.current === 'add') {
-      setSelectedNameRows([...nameDragBaseRowsRef.current, ...rows]);
-      return;
-    }
-    setSelectedNameRows(rows);
-  };
-
   const renderCompanyCell = (row, rowIdx, col, companyLike) => {
     const valStyle = listColumnValueInlineStyle(template.columnCellStyles, col.key);
     const locked = !!fixedCompany || (!!row.customerCompanyId && col.key !== 'name');
@@ -698,7 +419,6 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
     if (col.key === 'name') {
       const synced = linkedNameSynced(row);
       const linkedLocked = !!row.customerCompanyId && !!row.linkedCompany;
-      const selected = selectedNameRows.includes(rowIdx);
       const showMini = !!row.linkedCompany;
       const miniLabel = row.linkedCompany?.name || row.companyName || '';
       const inp = (
@@ -733,15 +453,17 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
                         ? {
                             ...r,
                             customerCompanyId: null,
-                            linkedCompany: null,
-                            companyCode: ''
+                            linkedCompany: null
                           }
                         : r
                     )
                   );
                   return;
                 }
-                setCompanySearchRow(rowIdx);
+                setCompanySearchCtx({
+                  rowIdx,
+                  initialQuery: String(row.companyName || '').trim()
+                });
               }}
             >
               <span className="material-symbols-outlined" aria-hidden>
@@ -751,19 +473,11 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
           ) : null}
         </div>
       );
-      const wrap = (
-        <td
-          key={col.key}
-          className={`cip-td-company cip-td-excel-name ${selected ? 'cip-name-cell--selected' : ''}`}
-          data-cip-company-col={col.key}
-          data-cip-name-row-cell={rowIdx}
-          onMouseDown={(e) => handleNameCellMouseDown(e, rowIdx)}
-          onMouseEnter={() => handleNameCellMouseEnter(rowIdx)}
-        >
+      return (
+        <td key={col.key} className={`cip-td-company cip-td-excel-name${locked ? '' : ''}`}>
           {valStyle ? <span className="list-col-value-style" style={valStyle}>{inp}</span> : inp}
         </td>
       );
-      return wrap;
     }
 
     if (col.key === 'status') {
@@ -783,18 +497,16 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
         </select>
       );
       return (
-        <td key={col.key} className="cip-td-company text-muted" data-cip-company-col={col.key}>
+        <td key={col.key} className="cip-td-company text-muted">
           {valStyle ? <span className="list-col-value-style" style={valStyle}>{content}</span> : content}
         </td>
       );
     }
 
-    if (!locked && ['address', 'code', 'representativeName', 'industry', 'businessNumber'].includes(col.key)) {
+    if (!locked && ['address', 'representativeName', 'industry', 'businessNumber'].includes(col.key)) {
       const raw =
         col.key === 'address'
           ? row.address
-          : col.key === 'code'
-            ? row.companyCode
           : col.key === 'representativeName'
             ? row.representativeName
             : col.key === 'industry'
@@ -809,7 +521,7 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
         />
       );
       return (
-        <td key={col.key} className="cip-td-company text-muted" data-cip-company-col={col.key}>
+        <td key={col.key} className="cip-td-company text-muted">
           {valStyle ? <span className="list-col-value-style" style={valStyle}>{inp}</span> : inp}
         </td>
       );
@@ -827,7 +539,7 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
         />
       );
       return (
-        <td key={col.key} className="cip-td-company text-muted" data-cip-company-col={col.key}>
+        <td key={col.key} className="cip-td-company text-muted">
           {valStyle ? <span className="list-col-value-style" style={valStyle}>{inp}</span> : inp}
         </td>
       );
@@ -836,7 +548,7 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
     const text = cellValue(companyLike, col.key, assigneeIdToName, companyEmployeesLoaded);
     const content = <span className={col.key === 'name' ? '' : 'text-muted'}>{text}</span>;
     return (
-      <td key={col.key} className="cip-td-company text-muted" data-cip-company-col={col.key}>
+      <td key={col.key} className={`cip-td-company${col.key === 'name' ? ' cip-td-excel-name' : ' text-muted'}`}>
         {valStyle ? <span className="list-col-value-style" style={valStyle}>{content}</span> : content}
       </td>
     );
@@ -868,8 +580,6 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
             <span>
               신규 고객사(배치 내 신규 묶음) <strong>{headerStats.newCompanyCount}</strong>개
             </span>
-            <span className="contact-import-preview-header-sep">·</span>
-            <span className="contact-import-preview-header-hint">Shift: 기준 행과 같은 체크를 범위에 적용</span>
           </p>
         </header>
 
@@ -1015,25 +725,28 @@ export default function ContactImportPreviewModal({ open, items, bulkSaving, fix
         </footer>
       </div>
 
-      {companySearchRow != null && (
+      {companySearchCtx != null && (
         <CustomerCompanySearchModal
-          onClose={() => setCompanySearchRow(null)}
+          key={`cip-company-search-${companySearchCtx.rowIdx}-${companySearchCtx.initialQuery}`}
+          initialSearchQuery={companySearchCtx.initialQuery}
+          includeSimilarSearch
+          onClose={() => setCompanySearchCtx(null)}
           onSelect={(company) => {
+            const targetRow = companySearchCtx.rowIdx;
             setDraft((prev) =>
               prev.map((r, i) =>
-                i === companySearchRow
+                i === targetRow
                   ? {
                       ...r,
                       customerCompanyId: String(company._id),
                       linkedCompany: company,
                       companyName: company.name || '',
-                      companyCode: company.code || '',
                       address: company.address != null ? String(company.address) : r.address
                     }
                   : r
               )
             );
-            setCompanySearchRow(null);
+            setCompanySearchCtx(null);
           }}
         />
       )}

@@ -340,6 +340,23 @@
   flex-shrink: 0;
 }
 
+.sp-header-brand-title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.sp-title-sub {
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #7a8f9e;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+}
+
 .sp-filter-group {
   display: flex;
   align-items: center;
@@ -1436,6 +1453,29 @@
 .sp-kanban-card-field--product-name .sp-kanban-card-field-val-inner {
   font-weight: 700;
   color: #334155;
+}
+
+.sp-kanban-product-qty-meta {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: #64748b;
+  letter-spacing: -0.01em;
+}
+
+.sp-product-name-multiline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.22rem;
+  min-width: 0;
+}
+
+.sp-product-name-line {
+  display: block;
+  font-size: inherit;
+  line-height: 1.35;
+  word-break: break-word;
 }
 
 .sp-kanban-card-field--date .sp-kanban-card-field-val,

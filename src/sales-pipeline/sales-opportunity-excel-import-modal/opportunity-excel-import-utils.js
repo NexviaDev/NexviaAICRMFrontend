@@ -7,7 +7,8 @@ import {
   buildPipelineStageSelectOptionsFromDefinitions,
   formatNumberInput,
   parseNumber,
-  priceBasisLabelsForValue
+  priceBasisLabelsForValue,
+  resolveOpportunityTitleToUse
 } from '@/lib/sales-opportunity-form-shared';
 import { OPPORTUNITY_PRICE_BASIS_OPTIONS } from '@/lib/product-price-utils';
 import { getDefinitionFormulaDefaultDisplay } from '@/lib/custom-field-formula';
@@ -33,6 +34,30 @@ export const OPP_CURRENCY_PREVIEW_OPTIONS = PRODUCT_CURRENCY_SELECT_OPTIONS.map(
 }));
 
 export const OPP_EXCEL_REQUIRED_TARGETS = new Set(['opp.title', 'opp.stage']);
+
+/** 엑셀 매핑 드롭다운 — API 라벨 보강(제목·영업 담당 등) */
+const OPP_TARGET_LABEL_OVERRIDES = {
+  'opp.title': '영업기회 · 제목 (필수)',
+  'opp.stage': '영업기회 · 단계 (필수)',
+  'opp.assignedToName': '영업기회 · 영업 담당'
+};
+
+function formatOpportunityTargetLabel(value, fallback) {
+  const key = String(value || '').trim();
+  if (OPP_TARGET_LABEL_OVERRIDES[key]) return OPP_TARGET_LABEL_OVERRIDES[key];
+  return String(fallback || key);
+}
+
+function applyResolvedTitleToImportRow(row) {
+  const resolved = resolveOpportunityTitleToUse({
+    title: row.title,
+    lineItems: row.lineItemsClient,
+    customerCompanyName: row.personalPurchase ? '' : row.customerCompanyName,
+    contactName: row.contactName
+  });
+  row.title = resolved.title;
+  row.titleAutoFilled = resolved.autoFilled;
+}
 
 /** 엑셀 미리보기 행 — 사내 담당자 확정 userId (표시 열에는 이름만) */
 export const OPP_EXCEL_ROW_META_ASSIGNEE_ID = '__assigneeUserId';
@@ -112,11 +137,14 @@ export function defaultOpportunityMappingRows() {
 export function buildOpportunityTargetOptions(meta) {
   const fromApi = Array.isArray(meta?.mappableFields) ? meta.mappableFields : [];
   if (fromApi.length) {
-    return fromApi.map((f) => ({ value: f.value, label: f.label || f.value }));
+    return fromApi.map((f) => ({
+      value: f.value,
+      label: formatOpportunityTargetLabel(f.value, f.label || f.value)
+    }));
   }
   return defaultOpportunityMappingRows().map((r) => ({
     value: r.targetKey,
-    label: r.targetKey
+    label: formatOpportunityTargetLabel(r.targetKey, r.targetKey)
   }));
 }
 
@@ -1091,8 +1119,9 @@ export function buildPreviewRowFromExcelRow(excelRow, rowIndex, mappings, meta) 
     forceImport
   };
 
+  applyResolvedTitleToImportRow(row);
   row.invalidCells = collectInvalidCells(row);
-  row.isValid = row.invalidCells.size === 0 && !!title;
+  row.isValid = row.invalidCells.size === 0 && !!row.title;
   return row;
 }
 
@@ -1166,6 +1195,7 @@ export function revalidatePreviewRow(row, meta) {
     productWarn: productDraft.warn,
     productStatus: productDraft.status
   };
+  applyResolvedTitleToImportRow(next);
   next.invalidCells = collectInvalidCells(next);
   next.isValid = next.invalidCells.size === 0 && !!next.title;
   return next;

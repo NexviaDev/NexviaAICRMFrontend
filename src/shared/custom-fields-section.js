@@ -14,7 +14,11 @@ export default function CustomFieldsSection({
   fieldClassName = '',
   hideTitle = false,
   inputClassName = '',
-  formulaContext = null
+  formulaContext = null,
+  /** 일정 탭 달력 연동 — date 타입만 적용 */
+  getDateInputClassName = null,
+  onDateFieldActivate = null,
+  dateInputDescribedBy = null
 }) {
   const [openMultiselectKey, setOpenMultiselectKey] = useState(null);
   const multiselectRef = useRef(null);
@@ -184,11 +188,31 @@ export default function CustomFieldsSection({
                   <label htmlFor={id}>{label}{required ? ' *' : ''}</label>
                   <input
                     id={id}
-                    className={inputClassName || undefined}
+                    className={[
+                      inputClassName || '',
+                      def.type === 'date' && typeof getDateInputClassName === 'function'
+                        ? getDateInputClassName(key) || ''
+                        : ''
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
                     type={def.type === 'number' ? 'number' : def.type === 'date' ? 'date' : 'text'}
                     value={displayValue}
+                    onFocus={
+                      def.type === 'date' && onDateFieldActivate
+                        ? () => onDateFieldActivate(key)
+                        : undefined
+                    }
+                    onClick={
+                      def.type === 'date' && onDateFieldActivate
+                        ? () => onDateFieldActivate(key)
+                        : undefined
+                    }
                     onChange={handleValueChange(key, 'text')}
                     required={required}
+                    aria-describedby={
+                      def.type === 'date' && dateInputDescribedBy ? dateInputDescribedBy : undefined
+                    }
                   />
                 </>
               )}

@@ -62,13 +62,16 @@ export default function CustomerCompanies({
   listVariant = 'page',
   onSearchModalConfirm,
   searchModalMultiSelect,
-  onSearchModalConfirmBatch
+  onSearchModalConfirmBatch,
+  initialSearchQuery = '',
+  includeSimilarSearch = false
 }) {
   const isSearchModal = listVariant === 'searchModal';
   const listPageLimit = isSearchModal ? LIMIT_SEARCH_MODAL : LIMIT;
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const [items, setItems] = useState([]);
+  const [similarSearchItems, setSimilarSearchItems] = useState([]);
   const [searchInput, setSearchInput] = useState('');
   const [searchApplied, setSearchApplied] = useState('');
   const [assigneeMeOnly, setAssigneeMeOnly] = useState(() => getSavedTemplate(LIST_ID)?.assigneeMeOnly === true);
@@ -262,6 +265,39 @@ export default function CustomerCompanies({
     return data.items || [];
   }, [searchApplied, searchField, assigneeMeOnly]);
 
+  useEffect(() => {
+    if (!isSearchModal) return;
+    const q = String(initialSearchQuery || '').trim();
+    if (!q) return;
+    setSearchInput(q);
+    setSearchApplied(q);
+  }, [isSearchModal, initialSearchQuery]);
+
+  useEffect(() => {
+    if (!isSearchModal || !includeSimilarSearch) {
+      setSimilarSearchItems([]);
+      return;
+    }
+    const q = String(searchApplied || '').trim();
+    if (!q) {
+      setSimilarSearchItems([]);
+      return;
+    }
+    let cancelled = false;
+    const params = new URLSearchParams({ name: q });
+    fetch(`${API_BASE}/customer-companies/similar-name-candidates?${params.toString()}`, crmFetchInit())
+      .then((r) => r.json().catch(() => ({})))
+      .then((data) => {
+        if (!cancelled) setSimilarSearchItems(Array.isArray(data?.similar) ? data.similar : []);
+      })
+      .catch(() => {
+        if (!cancelled) setSimilarSearchItems([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isSearchModal, includeSimilarSearch, searchApplied]);
+
   useEffect(() => { fetchList(pagination.page); }, [pagination.page, fetchList]);
   useEffect(() => {
     const onExcelImportDone = () => { fetchList(pagination.page); };
@@ -452,9 +488,28 @@ export default function CustomerCompanies({
     return '';
   }, [assigneeIdToName]);
 
+  const listItemsForDisplay = useMemo(() => {
+    if (!isSearchModal || !includeSimilarSearch || !String(searchApplied || '').trim()) return items;
+    const seen = new Set();
+    const merged = [];
+    for (const row of similarSearchItems) {
+      const id = row?._id != null ? String(row._id) : '';
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      merged.push(row);
+    }
+    for (const row of items) {
+      const id = row?._id != null ? String(row._id) : '';
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      merged.push(row);
+    }
+    return merged;
+  }, [items, similarSearchItems, isSearchModal, includeSimilarSearch, searchApplied]);
+
   const sortedItems = useMemo(() => {
     const dir = sortDir === 'asc' ? 1 : -1;
-    return [...items].sort((a, b) => {
+    return [...listItemsForDisplay].sort((a, b) => {
       const favDiff = Number(!!b.isFavorite) - Number(!!a.isFavorite);
       if (favDiff !== 0) return favDiff;
       if (!sortKey || sortKey === '_favorite') return 0;
@@ -464,7 +519,7 @@ export default function CustomerCompanies({
       if (va > vb) return 1 * dir;
       return 0;
     });
-  }, [items, sortKey, sortDir, getSortValue]);
+  }, [listItemsForDisplay, sortKey, sortDir, getSortValue]);
 
   const listSheetBodyRowCount = loading || sortedItems.length === 0 ? 1 : sortedItems.length;
   const listSheetFillRowCount = useCrmListSheetFillerRowCount(listSheetScrollRef, listSheetBodyRowCount);
@@ -922,10 +977,10 @@ export default function CustomerCompanies({
                 type="button"
                 className="cc-selection-action-bar-sales"
                 onClick={() => setBulkSalesPipelineOpen(true)}
-                title="선택한 고객사마다 동일 제품·단계로 영업 기회를 등록합니다. 고객사별 구매 담당자(소속 직원)를 지정해야 합니다."
+                title="선택한 고객사마다 동일 제품·단계로 영업기회를 등록합니다. 고객사별 구매 담당자(소속 직원)를 지정해야 합니다."
               >
                 <span className="material-symbols-outlined" aria-hidden>trending_up</span>
-                세일즈 현황에 추가
+                영업기회에 추가
               </button>
               <button
                 type="button"

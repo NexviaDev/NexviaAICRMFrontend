@@ -39,7 +39,9 @@ import {
   reorderColumnKeysAt,
   DZ_COL_DRAG_MIME,
   PIPELINE_MONEY_DISPLAY_KEYS,
-  getPipelineMoneyForColumn
+  getPipelineMoneyForColumn,
+  ProductNameCellContent,
+  readProductDisplayMode
 } from './drop-zone-list-modal/drop-zone-list-modal';
 import { PriceWithKrwHint, formatPriceWithKrwHintText } from '@/lib/currency-price-display';
 
@@ -82,6 +84,7 @@ export default function SalesPipelineTablePanel({
   stageLabels: stageLabelsProp,
   canViewAdminContent,
   dealBasRMap = {},
+  productDisplayMode = readProductDisplayMode(),
   onOpenEdit,
   onDragStart,
   onDragEnd,
@@ -549,7 +552,7 @@ export default function SalesPipelineTablePanel({
                       <div className="sp-dz-filter-empty-inner">
                         <p className="sp-dz-filter-empty-text">
                           {allOpportunities.length === 0
-                            ? '표시할 기회가 없습니다.'
+                            ? '표시할 영업기회가 없습니다.'
                             : '열 필터 조건 때문에 표시할 행이 없습니다. 열 이름을 눌러 값을 다시 선택하거나 필터를 해제해 주세요.'}
                         </p>
                         {hasActiveColumnFilters ? (
@@ -610,6 +613,10 @@ export default function SalesPipelineTablePanel({
                               currency={moneyInfo.currency}
                               dealBasRMap={dealBasRMap}
                             />
+                          ) : colKey === 'productName' &&
+                            (flatRow.kind === 'summary' || flatRow.kind === 'single') &&
+                            text ? (
+                            <ProductNameCellContent opp={opp} mode={productDisplayMode} />
                           ) : (
                             text || '\u00A0'
                           );
