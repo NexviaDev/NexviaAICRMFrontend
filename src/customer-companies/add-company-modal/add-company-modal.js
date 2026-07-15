@@ -718,11 +718,10 @@ export default function AddCompanyModal({
       await pingBackendHealth(getAuthHeader);
       const fd = new FormData();
       fd.append('file', file);
-      const res = await fetch(`${API_BASE}/customer-companies/extract-from-certificate`, {
-        method: 'POST',
-        headers: getAuthHeader(),
-        body: fd
-      });
+      const res = await fetch(
+        `${API_BASE}/customer-companies/extract-from-certificate`,
+        crmFetchInit({ method: 'POST', body: fd })
+      );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(getUserVisibleApiError(data, '증빙에서 정보를 읽지 못했습니다.'));
@@ -772,11 +771,10 @@ export default function AddCompanyModal({
       await pingBackendHealth(getAuthHeader);
       const fd = new FormData();
       fd.append('files', file);
-      const res = await fetch(`${API_BASE}/customer-companies/preview-import`, {
-        method: 'POST',
-        headers: getAuthHeader(),
-        body: fd
-      });
+      const res = await fetch(
+        `${API_BASE}/customer-companies/preview-import`,
+        crmFetchInit({ method: 'POST', body: fd })
+      );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(getUserVisibleApiError(data, '텍스트에서 정보를 읽지 못했습니다.'));
@@ -846,11 +844,10 @@ export default function AddCompanyModal({
       await pingBackendHealth(getAuthHeader);
       const fd = new FormData();
       arr.forEach((f) => fd.append('files', f));
-      const res = await fetch(`${API_BASE}/customer-companies/preview-import`, {
-        method: 'POST',
-        headers: getAuthHeader(),
-        body: fd
-      });
+      const res = await fetch(
+        `${API_BASE}/customer-companies/preview-import`,
+        crmFetchInit({ method: 'POST', body: fd })
+      );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(getUserVisibleApiError(data, '미리보기에 실패했습니다.'));

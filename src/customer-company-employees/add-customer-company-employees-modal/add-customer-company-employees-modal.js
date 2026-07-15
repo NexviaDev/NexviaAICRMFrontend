@@ -825,11 +825,10 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
       await pingBackendHealth(getAuthHeader);
       const fd = new FormData();
       fd.append('file', file);
-      const res = await fetch(`${API_BASE}/customer-company-employees/extract-from-business-card`, {
-        method: 'POST',
-        headers: getAuthHeader(),
-        body: fd
-      });
+      const res = await fetch(
+        `${API_BASE}/customer-company-employees/extract-from-business-card`,
+        crmFetchInit({ method: 'POST', body: fd })
+      );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(data.error || '명함에서 정보를 읽지 못했습니다.');
@@ -868,11 +867,10 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
       await pingBackendHealth(getAuthHeader);
       const fd = new FormData();
       fd.append('files', file);
-      const res = await fetch(`${API_BASE}/customer-company-employees/preview-import`, {
-        method: 'POST',
-        headers: getAuthHeader(),
-        body: fd
-      });
+      const res = await fetch(
+        `${API_BASE}/customer-company-employees/preview-import`,
+        crmFetchInit({ method: 'POST', body: fd })
+      );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(data.error || '텍스트에서 정보를 읽지 못했습니다.');
@@ -933,11 +931,10 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
       await pingBackendHealth(getAuthHeader);
       const fd = new FormData();
       arr.forEach((f) => fd.append('files', f));
-      const res = await fetch(`${API_BASE}/customer-company-employees/preview-import`, {
-        method: 'POST',
-        headers: getAuthHeader(),
-        body: fd
-      });
+      const res = await fetch(
+        `${API_BASE}/customer-company-employees/preview-import`,
+        crmFetchInit({ method: 'POST', body: fd })
+      );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setError(data.error || '미리보기에 실패했습니다.');
@@ -1406,11 +1403,11 @@ export default function AddContactModal({ onClose, onSaved, onUpdated, initialCu
 
       const url = isEditMode ? `${API_BASE}/customer-company-employees/${contact._id || contact.id}` : `${API_BASE}/customer-company-employees`;
       const method = isEditMode ? 'PATCH' : 'POST';
-      const res = await fetch(url, {
+      const res = await fetch(url, crmFetchInit({
         method,
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
-      });
+      }));
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         if (res.status === 409 && data.code === 'SIMILAR_CUSTOMER_COMPANY' && Array.isArray(data.similarCustomerCompanies)) {
