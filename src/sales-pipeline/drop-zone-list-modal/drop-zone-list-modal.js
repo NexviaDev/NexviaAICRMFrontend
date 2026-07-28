@@ -710,8 +710,9 @@ export function countOpportunityLineItems(opp) {
   return 0;
 }
 
-function formatSingleProductLineLabel(line) {
+function formatSingleProductLineLabel(line, { withQty = false } = {}) {
   const name = formatLineItemField('productName', line) || '—';
+  if (!withQty) return `• ${name}`;
   const q = line?.quantity != null && Number.isFinite(Number(line.quantity)) ? Number(line.quantity) : null;
   if (q != null && q > 0) return `• ${name} (${q})`;
   return `• ${name}`;
@@ -771,8 +772,13 @@ function formatLineItemField(colKey, line) {
   return String(val);
 }
 
-/** 다중 제품명 — list: 세로 bullet, summary: 「제품 N건 · 총 수량 M」 */
-export function formatProductNamesForDisplay(opp, mode = readProductDisplayMode()) {
+/**
+ * 다중 제품명 표시
+ * - list: 세로 bullet (표: 이름만 / 칸반: withQty 시 이름(수량))
+ * - summary: 「제품 N건 · 총 수량 M」 (레거시·드롭존 호환, 파이프라인 UI는 list 고정)
+ */
+export function formatProductNamesForDisplay(opp, mode = readProductDisplayMode(), options = {}) {
+  const withQty = options?.withQty === true;
   const lines = opp?.lineItems;
   if (Array.isArray(lines) && lines.length > 0) {
     const named = lines.filter((l) => {
@@ -785,19 +791,25 @@ export function formatProductNamesForDisplay(opp, mode = readProductDisplayMode(
         const totalQ = sumLineItemQuantities(opp);
         return `제품 ${n}건 · 총 수량 ${totalQ}`;
       }
-      return named.map((l) => formatSingleProductLineLabel(l)).join('\n');
+      return named.map((l) => formatSingleProductLineLabel(l, { withQty })).join('\n');
     }
   }
   const raw = opp?.productName;
   if (raw == null || raw === '') return '';
   const s = String(raw).trim();
   if (!s) return '';
+  const appendRootQty = (label) => {
+    if (!withQty) return label;
+    const q = Number(opp?.quantity);
+    if (Number.isFinite(q) && q > 0) return `${label} (${q})`;
+    return label;
+  };
   if (s.includes('\n')) {
     return s
       .split(/\n+/)
       .map((x) => x.trim())
       .filter(Boolean)
-      .map((x) => `• ${x}`)
+      .map((x) => appendRootQty(`• ${x}`))
       .join('\n');
   }
   if (s.includes(',')) {
@@ -805,15 +817,20 @@ export function formatProductNamesForDisplay(opp, mode = readProductDisplayMode(
       .split(/,\s*/)
       .map((x) => x.trim())
       .filter(Boolean)
-      .map((x) => `• ${x}`)
+      .map((x) => appendRootQty(`• ${x}`))
       .join('\n');
   }
-  return s;
+  return appendRootQty(s);
 }
 
 /** 칸반·표 productName 셀 — 줄바꿈 bullet 렌더 */
-export function ProductNameCellContent({ opp, mode = readProductDisplayMode(), className = '' }) {
-  const text = formatProductNamesForDisplay(opp, mode);
+export function ProductNameCellContent({
+  opp,
+  mode = readProductDisplayMode(),
+  withQty = false,
+  className = ''
+}) {
+  const text = formatProductNamesForDisplay(opp, mode, { withQty });
   if (!text) return '\u00A0';
   if (!text.includes('\n')) {
     return <span className={className || undefined}>{text}</span>;

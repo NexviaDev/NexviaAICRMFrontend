@@ -1,0 +1,99 @@
+/* ERP 회계 — 파스텔 단색, 그라데이션 없음 */
+
+.erp-accounting-page .erp-accounting-header-text {
+  min-width: 0;
+}
+
+.erp-accounting-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.erp-accounting-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.erp-accounting-tab {
+  padding: 0.5rem 0.875rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.875rem;
+}
+
+.erp-accounting-tab.is-active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  font-weight: 700;
+}
+
+.erp-accounting-primary {
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid var(--primary);
+  border-radius: 0.5rem;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.erp-accounting-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.erp-accounting-form input {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--text);
+}
+
+.erp-accounting-error {
+  color: var(--danger, #c45c5c);
+  font-size: 0.875rem;
+}
+
+.erp-accounting-muted {
+  margin: 1.5rem 0;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.erp-accounting-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--card);
+}
+
+.erp-accounting-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.erp-accounting-table th,
+.erp-accounting-table td {
+  padding: 0.625rem 0.75rem;
+  border-bottom: 1px solid var(--card-border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.erp-accounting-table th {
+  background: var(--bg-light);
+  color: var(--text-muted);
+}

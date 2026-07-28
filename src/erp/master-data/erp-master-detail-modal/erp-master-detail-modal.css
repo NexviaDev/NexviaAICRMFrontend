@@ -1,0 +1,340 @@
+/* ERP 기준정보 상세 모달 — 단색 표면, 그라데이션 없음 */
+
+.erp-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(29, 40, 58, 0.35);
+  backdrop-filter: blur(4px);
+}
+
+.erp-modal {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 46rem;
+  max-height: 92vh;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  border-radius: 0.75rem;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+  overflow: hidden;
+}
+
+.erp-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.erp-modal-title {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.erp-modal-subtitle {
+  margin: 0.25rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.erp-modal-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 0.5rem;
+}
+
+.erp-modal-close:hover:not(:disabled) {
+  background: var(--bg-light);
+  color: var(--text);
+}
+
+.erp-modal-close:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.erp-modal-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 3rem 1.5rem;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+.erp-modal-form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.erp-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.25rem 1.5rem;
+}
+
+.erp-modal-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid rgba(220, 38, 38, 0.28);
+  border-radius: 0.5rem;
+  background: #fdf2f2;
+  color: var(--danger);
+  font-size: 0.875rem;
+}
+
+.erp-modal-error-action {
+  margin-left: auto;
+}
+
+.erp-modal-note {
+  margin: 0 0 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  background: var(--bg-light);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.erp-modal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.875rem 1rem;
+}
+
+.erp-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3125rem;
+  min-width: 0;
+}
+
+.erp-modal-field.is-full {
+  grid-column: 1 / -1;
+}
+
+.erp-modal-field label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.erp-modal-required {
+  color: var(--danger);
+}
+
+.erp-modal-field input,
+.erp-modal-field select,
+.erp-modal-field textarea {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--card);
+  font-size: 0.875rem;
+  color: var(--text);
+}
+
+.erp-modal-field textarea {
+  resize: vertical;
+}
+
+.erp-modal-field input:focus,
+.erp-modal-field select:focus,
+.erp-modal-field textarea:focus {
+  outline: 2px solid var(--pastel-sky);
+  outline-offset: -1px;
+}
+
+.erp-modal-field input:disabled,
+.erp-modal-field select:disabled,
+.erp-modal-field textarea:disabled {
+  background: var(--bg-light);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.erp-modal-check {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text);
+}
+
+.erp-modal-check input {
+  margin-top: 0.1875rem;
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--primary);
+}
+
+.erp-modal-help {
+  display: block;
+  margin: 0.1875rem 0 0;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+/* ---------- 변경 이력 ---------- */
+
+.erp-modal-history {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--card-border);
+}
+
+.erp-modal-history-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--primary);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.erp-modal-history-empty {
+  margin: 0.625rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.erp-modal-history-list {
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.erp-modal-history-list > li {
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--bg-light);
+}
+
+.erp-modal-history-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.erp-modal-history-head strong {
+  color: var(--text);
+}
+
+.erp-modal-history-changes {
+  margin: 0.375rem 0 0;
+  padding-left: 1rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+/* ---------- 하단 버튼 ---------- */
+
+.erp-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--card-border);
+  background: var(--card);
+}
+
+.erp-modal-footer-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.erp-modal-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid rgba(220, 38, 38, 0.35);
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--danger);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.erp-modal-delete:hover:not(:disabled) {
+  background: #fdf2f2;
+}
+
+.erp-modal-delete:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+  .erp-modal-overlay {
+    padding: 0;
+  }
+
+  .erp-modal {
+    max-width: none;
+    max-height: 100vh;
+    height: 100%;
+    border-radius: 0;
+    border: none;
+  }
+
+  .erp-modal-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .erp-modal-footer {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .erp-modal-footer-actions {
+    width: 100%;
+  }
+
+  .erp-modal-footer-actions button {
+    flex: 1;
+  }
+
+  .erp-modal-delete {
+    justify-content: center;
+  }
+}

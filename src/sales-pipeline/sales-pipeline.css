@@ -561,19 +561,27 @@
   background: #fff;
 }
 
-/* 본문 셀: 한 줄 — 표 보기는 crm-list-sheet-table.css·table-theme 와 동기 */
+/* 본문 셀: 한 줄 — 표 셀 밀도만 table-theme 변수와 동기 (필터·칸반 제외) */
 .sp-pipeline-page--table-view .sp-pl-data-table.sp-dz-data-table .sp-dz-data-table__td,
 .sp-pipeline-page--table-view .sp-pl-data-table.sp-dz-data-table .sp-dz-data-table__th {
   white-space: nowrap;
   max-width: none;
   vertical-align: middle;
+  padding: var(--sp-tbl-cell-pad-y, 0.28rem) var(--sp-tbl-cell-pad-x, 0.45rem);
+  font-size: var(--sp-tbl-font, 0.75rem);
+  line-height: var(--sp-tbl-line, 1.25);
+  min-width: 3.5rem;
+}
+
+.sp-pipeline-page--table-view .sp-pl-data-table.sp-dz-data-table .sp-dz-data-table__th--col-tools {
+  min-width: 5.5rem;
 }
 
 .sp-pl-data-table.sp-dz-data-table .sp-dz-data-table__td,
 .sp-pl-data-table.sp-dz-data-table .sp-dz-data-table__th {
   white-space: nowrap;
   max-width: none;
-  padding: 0.28rem 0.42rem;
+  padding: 0.28rem 0.45rem;
   vertical-align: middle;
 }
 
@@ -596,31 +604,31 @@
   border-color: rgba(44, 100, 133, 0.35);
 }
 
-/* Etheric Flow 칸반 — Sample sales-pipeline22: 328px 컬럼 + 단계별 파스텔 틴트 */
+/* Etheric Flow 칸반 — Sample sales-pipeline22 톤 유지, 밀도는 한 단계 촘촘하게 */
 .sp-kanban {
   flex: 1;
   min-height: 0;
-  margin-top: 0.55rem;
+  margin-top: 0.4rem;
   display: flex;
   flex-wrap: nowrap;
   align-items: stretch;
-  gap: 0.85rem;
+  gap: 0.55rem;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 0.15rem 0.1rem 0.45rem;
+  padding: 0.1rem 0.05rem 0.35rem;
   scroll-snap-type: x proximity;
   scrollbar-width: thin;
 }
 
 .sp-kanban-col {
-  flex: 0 0 328px;
-  min-width: 328px;
-  max-width: 328px;
+  flex: 0 0 288px;
+  min-width: 288px;
+  max-width: 288px;
   display: flex;
   flex-direction: column;
   gap: 0;
   min-height: 0;
-  border-radius: 0.85rem;
+  border-radius: 0.75rem;
   padding: 0;
   overflow: hidden;
   scroll-snap-align: start;
@@ -667,12 +675,12 @@
 .sp-kanban-col-head {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
-  padding: 0.8rem 0.85rem 0.7rem;
+  gap: 0.25rem;
+  padding: 0.5rem 0.6rem 0.45rem;
   flex-shrink: 0;
   background: rgba(255, 255, 255, 0.78);
   border-bottom: 1px solid rgba(220, 228, 232, 0.9);
-  border-radius: 0.85rem 0.85rem 0 0;
+  border-radius: 0.75rem 0.75rem 0 0;
   box-shadow: none;
 }
 
@@ -766,7 +774,7 @@
 
 .sp-kanban-col-title {
   font-family: 'Manrope', 'Inter', system-ui, sans-serif;
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   margin: 0;
@@ -851,11 +859,11 @@
 
 .sp-kanban-list-panel {
   flex: 1;
-  min-height: 8rem;
+  min-height: 6rem;
   display: flex;
   flex-direction: column;
   min-width: 0;
-  padding: 0.55rem 0.5rem 0.6rem;
+  padding: 0.4rem 0.4rem 0.45rem;
 }
 
 .sp-kanban-cards {
@@ -863,26 +871,26 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
+  gap: 0.4rem;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 0.1rem 0.05rem 0.15rem;
+  padding: 0.05rem 0.05rem 0.1rem;
   scrollbar-width: thin;
 }
 
 .sp-kanban-empty {
   flex: 1;
-  min-height: 10rem;
+  min-height: 6rem;
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 1.35rem 1rem;
-  font-size: 0.75rem;
+  padding: 0.85rem 0.65rem;
+  font-size: 0.7rem;
   font-weight: 600;
   color: #9a9d9f;
   border: 2px dashed rgba(172, 179, 183, 0.38);
-  border-radius: 0.75rem;
+  border-radius: 0.65rem;
   background: rgba(255, 255, 255, 0.62);
 }
 
@@ -1208,10 +1216,10 @@
   border: 1px solid rgba(220, 228, 232, 0.95);
   border-left-width: 3px;
   border-left-color: #0058be;
-  border-radius: 0.75rem;
-  padding: 0.7rem 0.72rem 0.65rem;
+  border-radius: 0.6rem;
+  padding: 0.5rem 0.55rem 0.45rem;
   overflow: visible;
-  box-shadow: 0 4px 20px -4px rgba(44, 100, 133, 0.06);
+  box-shadow: 0 3px 14px -4px rgba(44, 100, 133, 0.06);
   cursor: grab;
   flex-shrink: 0;
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.18s ease, background 0.18s ease;
@@ -1227,23 +1235,23 @@
 .sp-kanban-card-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  column-gap: 0.5rem;
-  row-gap: 0.45rem;
+  column-gap: 0.35rem;
+  row-gap: 0.3rem;
   align-content: start;
   min-width: 0;
 }
 
 .sp-kanban-card-body {
-  margin-top: 0.15rem;
-  padding: 0.55rem 0.5rem 0.5rem;
-  border-radius: 0.6rem;
+  margin-top: 0.1rem;
+  padding: 0.4rem 0.4rem 0.35rem;
+  border-radius: 0.5rem;
   background: rgba(240, 244, 247, 0.55);
   border: 1px solid rgba(234, 239, 242, 0.95);
 }
 
 .sp-kanban-card-grid--body {
-  column-gap: 0.45rem;
-  row-gap: 0.4rem;
+  column-gap: 0.35rem;
+  row-gap: 0.3rem;
 }
 
 .sp-card--lucid:hover {
@@ -1356,15 +1364,15 @@
 }
 
 .sp-kanban-card-field--body {
-  padding: 0.34rem 0.38rem 0.36rem;
-  border-radius: 0.45rem;
+  padding: 0.22rem 0.28rem 0.24rem;
+  border-radius: 0.35rem;
   background: rgba(255, 255, 255, 0.82);
   border: 1px solid rgba(234, 239, 242, 0.95);
 }
 
 .sp-kanban-card-field--head {
   grid-column: 1 / -1;
-  padding: 0 0.05rem 0.45rem;
+  padding: 0 0.05rem 0.3rem;
   margin-bottom: 0;
   background: transparent;
   border-bottom: none;
@@ -1400,11 +1408,11 @@
 .sp-kanban-card-field--head .sp-kanban-card-field-val,
 .sp-kanban-card-field--head .sp-kanban-card-field-val-inner {
   font-family: 'Manrope', 'Inter', system-ui, sans-serif;
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   font-weight: 800;
   letter-spacing: -0.03em;
   color: #2c3437;
-  line-height: 1.25;
+  line-height: 1.2;
 }
 
 .sp-kanban-card-field--head.sp-kanban-card-field--product-name .sp-kanban-card-field-val-inner {
@@ -1433,12 +1441,12 @@
 }
 
 .sp-kanban-card-field-val {
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   color: #3a4249;
-  line-height: 1.35;
+  line-height: 1.3;
   word-break: break-word;
-  min-height: 1.1em;
+  min-height: 1em;
   text-align: left;
 }
 
@@ -3198,9 +3206,9 @@
   }
 
   .sp-kanban-col {
-    flex: 0 0 min(312px, 88vw);
-    min-width: min(312px, 88vw);
-    max-width: min(312px, 88vw);
+    flex: 0 0 min(272px, 88vw);
+    min-width: min(272px, 88vw);
+    max-width: min(272px, 88vw);
   }
 
   .sp-kanban-card-grid {

@@ -407,21 +407,20 @@ body.crm-list-col-resizing * {
   box-shadow: none;
 }
 
-/* 고객사·연락처·제품 목록 — 헤더 폰트·높이 확대 */
-  .customer-companies-page .crm-list-sheet.data-table thead th,
-  .customer-company-employees-page .crm-list-sheet.data-table thead th,
-  .product-list-page .crm-list-sheet.data-table thead th,
-  .sp-pipeline-page--table-view .crm-list-sheet.data-table thead th {
+/* 고객사·연락처·제품 목록 — 헤더 폰트·높이 확대
+   (세일즈 파이프라인 표는 Excel 밀도 — .sp-pipeline-page--table-view 제외) */
+.customer-companies-page .crm-list-sheet.data-table thead th,
+.customer-company-employees-page .crm-list-sheet.data-table thead th,
+.product-list-page .crm-list-sheet.data-table thead th {
   padding: 1rem 1.5rem;
   font-size: 0.875rem;
   line-height: 1.35;
   letter-spacing: 0.02em;
 }
 
-  .customer-companies-page .crm-list-sheet.data-table thead th .list-template-sort-icon,
-  .customer-company-employees-page .crm-list-sheet.data-table thead th .list-template-sort-icon,
-  .product-list-page .crm-list-sheet.data-table thead th .list-template-sort-icon,
-  .sp-pipeline-page--table-view .crm-list-sheet.data-table thead th .sp-dz-th-col-trigger__sort-icon {
+.customer-companies-page .crm-list-sheet.data-table thead th .list-template-sort-icon,
+.customer-company-employees-page .crm-list-sheet.data-table thead th .list-template-sort-icon,
+.product-list-page .crm-list-sheet.data-table thead th .list-template-sort-icon {
   font-size: 1.125rem;
 }
 

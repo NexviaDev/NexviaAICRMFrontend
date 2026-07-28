@@ -1,0 +1,297 @@
+/* ERP 기준정보 — 파스텔 단색 표면, 그라데이션 사용하지 않음 */
+
+.erp-master-page .erp-header-text {
+  min-width: 0;
+}
+
+.erp-page-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* ---------- 탭 ---------- */
+
+.erp-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.erp-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 0.875rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+
+.erp-tab:hover {
+  background: var(--bg-light);
+  color: var(--text);
+}
+
+.erp-tab.is-active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  font-weight: 700;
+}
+
+.erp-tab .material-symbols-outlined {
+  font-size: 1.125rem;
+}
+
+.erp-entity-desc {
+  margin: 0 0 1rem;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
+
+/* ---------- 툴바 ---------- */
+
+.erp-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.erp-search-form {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 20rem;
+  min-width: 0;
+}
+
+.erp-search-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem 0.75rem 0.5rem 2.25rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--card);
+  font-size: 0.875rem;
+  color: var(--text);
+}
+
+.erp-search-form input:focus {
+  outline: 2px solid var(--pastel-sky);
+  outline-offset: -1px;
+}
+
+.erp-search-icon {
+  position: absolute;
+  left: 0.625rem;
+  color: var(--text-muted);
+  font-size: 1.125rem;
+  pointer-events: none;
+}
+
+.erp-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.erp-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.erp-filter select {
+  padding: 0.4375rem 0.625rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--card);
+  font-size: 0.875rem;
+  color: var(--text);
+}
+
+.erp-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.erp-sync-status {
+  margin: 0 0 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.erp-sync-message {
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.erp-readonly-note {
+  margin: 0 0 0.75rem;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--card-border);
+  border-left: 3px solid var(--warning);
+  border-radius: 0.5rem;
+  background: var(--card);
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+/* ---------- 표 ---------- */
+
+.erp-table th.is-right,
+.erp-table td.is-right {
+  text-align: right;
+}
+
+.erp-row {
+  cursor: pointer;
+}
+
+.erp-row:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.erp-table-state {
+  padding: 2.5rem 1rem;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.erp-table-error {
+  color: var(--danger);
+}
+
+.erp-retry {
+  margin-left: 0.75rem;
+}
+
+.erp-name-cell {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.erp-name-note {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.erp-muted {
+  color: var(--text-muted);
+}
+
+.erp-status-badge {
+  display: inline-block;
+  padding: 0.1875rem 0.5rem;
+  border-radius: 0.375rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.erp-status-badge.is-active {
+  background: var(--pastel-mint);
+  color: #1f6b52;
+}
+
+.erp-status-badge.is-inactive {
+  background: var(--bg-light);
+  color: var(--text-muted);
+}
+
+.erp-chip {
+  display: inline-block;
+  padding: 0.125rem 0.4375rem;
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.erp-chip--on {
+  background: var(--pastel-sky);
+  color: var(--primary-dark);
+}
+
+/* ---------- 스피너 (저장·삭제·조회 진행 표시) ---------- */
+
+.erp-spinner {
+  display: inline-block;
+  width: 0.875rem;
+  height: 0.875rem;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: erp-spin 0.65s linear infinite;
+  vertical-align: -0.125rem;
+}
+
+.btn-outline .erp-spinner,
+.erp-spinner--dark {
+  border-color: rgba(91, 124, 153, 0.25);
+  border-top-color: var(--primary);
+}
+
+.erp-spinner--dark {
+  margin-right: 0.375rem;
+}
+
+@keyframes erp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .erp-spinner {
+    animation-duration: 2s;
+  }
+}
+
+/* ---------- 반응형 ---------- */
+
+@media (max-width: 768px) {
+  .erp-toolbar-actions {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .erp-toolbar-actions .btn-primary,
+  .erp-toolbar-actions .btn-outline {
+    flex: 1 1 auto;
+  }
+
+  .erp-search-form {
+    flex: 1 1 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .erp-tab {
+    flex: 1 1 calc(50% - 0.25rem);
+    justify-content: center;
+  }
+
+  .erp-filter {
+    flex: 1 1 100%;
+  }
+
+  .erp-filter select {
+    flex: 1;
+  }
+}

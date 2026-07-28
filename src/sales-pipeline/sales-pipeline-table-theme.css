@@ -1,5 +1,6 @@
 /**
- * 파이프라인 표 보기 — drop-zone-list-modal / opportunity-modal Tableau·파스텔 톤
+ * 파이프라인 표 보기 — Tableau·파스텔 톤 + Excel 중간 밀도(표 셀만)
+ * (고객사 목록의 큰 셀과 분리 — crm-list-sheet-table 확대 규칙에 넣지 않음)
  */
 .sp-pipeline-page--table-view {
   --sp-tbl-primary: #2c7bb6;
@@ -11,6 +12,11 @@
   --sp-tbl-text-muted: #64748b;
   --sp-tbl-panel-bg: #f9fbfd;
   --sp-tbl-control-h: 40px;
+  /* 표 셀만 — 초밀집(11px)과 고객사 목록(큰 셀) 사이 */
+  --sp-tbl-cell-pad-y: 0.28rem;
+  --sp-tbl-cell-pad-x: 0.45rem;
+  --sp-tbl-font: 0.75rem; /* 12px */
+  --sp-tbl-line: 1.25;
   background: var(--sp-tbl-panel-bg);
   height: 100%;
   min-height: 0;
@@ -264,9 +270,29 @@
   max-width: none;
 }
 
-.sp-pipeline-table-view-root .sp-pipeline-table-sheet.crm-list-sheet--resizable .sp-dz-data-table__th--col-tools,
-.sp-pipeline-table-view-root .sp-pipeline-table-sheet.crm-list-sheet--resizable .sp-dz-data-table__td {
+.sp-pipeline-page--table-view .sp-pipeline-table-sheet.crm-list-sheet--resizable .sp-dz-data-table__th--col-tools,
+.sp-pipeline-page--table-view .sp-pipeline-table-sheet.crm-list-sheet--resizable .sp-dz-data-table__td {
   min-width: 0;
+}
+
+/* 표 셀: 기본 sp-dz 넓은 min-width(6rem/8.5rem)만 소폭 축소 */
+.sp-pipeline-page--table-view .sp-pipeline-table-sheet .sp-dz-data-table__th--col-tools,
+.sp-board--table-view .sp-pipeline-table-sheet .sp-dz-data-table__th--col-tools {
+  min-width: 5.5rem;
+}
+
+.sp-pipeline-page--table-view .sp-pipeline-table-sheet .sp-dz-data-table__td,
+.sp-board--table-view .sp-pipeline-table-sheet .sp-dz-data-table__td {
+  min-width: 3.5rem;
+}
+
+.sp-pipeline-page--table-view .sp-pipeline-table-sheet .sp-dz-data-table__th--sticky-id,
+.sp-pipeline-page--table-view .sp-pipeline-table-sheet .sp-dz-data-table__td--rownum,
+.sp-board--table-view .sp-pipeline-table-sheet .sp-dz-data-table__th--sticky-id,
+.sp-board--table-view .sp-pipeline-table-sheet .sp-dz-data-table__td--rownum {
+  min-width: 2rem;
+  padding-left: 0.2rem;
+  padding-right: 0.2rem;
 }
 
 .sp-pipeline-table-view-root .sp-pipeline-table-totals-strip {
@@ -282,14 +308,15 @@
   box-shadow: 0 -1px 0 rgba(78, 121, 167, 0.14);
 }
 
-/* 테이블 — 연락처 목록(crm-list-sheet)과 동일 Tableau 톤 */
+/* 테이블 셀만 — Excel 중간 밀도 (필터·헤더 툴바는 기존 크기 유지) */
 .sp-pipeline-page--table-view .sp-pipeline-table-sheet.data-table,
 .sp-board--table-view .sp-pipeline-table-sheet.data-table {
   min-width: 100%;
   color: var(--crm-list-sheet-text, #1e3344);
-  font-size: 0.8125rem;
-  font-family: ui-sans-serif, system-ui, 'Segoe UI', 'Malgun Gothic', sans-serif;
+  font-size: var(--sp-tbl-font, 0.75rem);
+  font-family: Calibri, 'Segoe UI', 'Malgun Gothic', ui-sans-serif, system-ui, sans-serif;
   background: #fff;
+  border-collapse: collapse;
 }
 
 .sp-pipeline-page--table-view .sp-pipeline-table-sheet.data-table thead th,
@@ -298,12 +325,13 @@
 .sp-board--table-view .sp-pipeline-table-sheet .sp-dz-data-table__th {
   white-space: nowrap;
   max-width: none;
-  padding: 1rem 1.5rem;
+  min-width: 3.5rem;
+  padding: var(--sp-tbl-cell-pad-y, 0.28rem) var(--sp-tbl-cell-pad-x, 0.45rem);
   vertical-align: middle;
-  font-size: 0.875rem;
-  line-height: 1.35;
-  letter-spacing: 0.02em;
-  font-weight: 700;
+  font-size: var(--sp-tbl-font, 0.75rem);
+  line-height: var(--sp-tbl-line, 1.25);
+  letter-spacing: 0;
+  font-weight: 600;
   color: #fff;
   background: var(--crm-list-sheet-header, #4e79a7);
   border: none;
@@ -361,8 +389,9 @@
 .sp-pipeline-page--table-view .sp-pipeline-table-sheet .sp-dz-th-col-trigger,
 .sp-board--table-view .sp-pipeline-table-sheet .sp-dz-th-col-trigger {
   color: #fff;
-  font-size: 0.875rem;
-  font-weight: 700;
+  font-size: var(--sp-tbl-font, 0.75rem);
+  font-weight: 600;
+  line-height: var(--sp-tbl-line, 1.25);
 }
 
 .sp-pipeline-page--table-view .sp-pipeline-table-sheet .sp-dz-th-col-trigger:hover,
@@ -378,17 +407,18 @@
 .sp-pipeline-page--table-view .sp-pipeline-table-sheet .sp-dz-th-col-trigger__sort-icon,
 .sp-board--table-view .sp-pipeline-table-sheet .sp-dz-th-col-trigger__sort-icon {
   color: rgba(255, 255, 255, 0.95);
-  font-size: 1.125rem !important;
+  font-size: 0.95rem !important;
 }
 
 .sp-pipeline-page--table-view .sp-pipeline-table-sheet.data-table tbody td,
 .sp-pipeline-page--table-view .sp-pipeline-table-sheet .sp-dz-data-table__td,
 .sp-board--table-view .sp-pipeline-table-sheet.data-table tbody td,
 .sp-board--table-view .sp-pipeline-table-sheet .sp-dz-data-table__td {
-  padding: 1rem 1.5rem;
+  padding: var(--sp-tbl-cell-pad-y, 0.28rem) var(--sp-tbl-cell-pad-x, 0.45rem);
+  min-width: 3.5rem;
   vertical-align: middle;
-  font-size: 0.875rem;
-  line-height: 1.35;
+  font-size: var(--sp-tbl-font, 0.75rem);
+  line-height: var(--sp-tbl-line, 1.25);
   color: #1e3344;
   border: none;
   border-bottom: 1px solid var(--crm-list-sheet-border, rgba(78, 121, 167, 0.14));
@@ -496,6 +526,9 @@
   background: transparent;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  font-size: var(--sp-tbl-font, 0.75rem);
+  line-height: var(--sp-tbl-line, 1.25);
+  padding: var(--sp-tbl-cell-pad-y, 0.28rem) var(--sp-tbl-cell-pad-x, 0.45rem);
   color: #1e3344;
   border-bottom: none;
 }

@@ -1,0 +1,152 @@
+/* 재고 조정 모달 — 파스텔 단색, 그라데이션 없음 */
+
+.erp-inv-adjust-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(30, 40, 60, 0.35);
+}
+
+.erp-inv-adjust-modal {
+  width: min(28rem, 100%);
+  max-height: min(90vh, 40rem);
+  overflow: auto;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--card);
+  box-shadow: 0 8px 24px rgba(20, 30, 50, 0.12);
+}
+
+.erp-inv-adjust-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.erp-inv-adjust-header h2 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.erp-inv-adjust-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  border-radius: 0.375rem;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.erp-inv-adjust-close:hover {
+  background: var(--bg-light);
+  color: var(--text);
+}
+
+.erp-inv-adjust-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  padding: 1.25rem;
+}
+
+.erp-inv-adjust-hint {
+  margin: 0;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--card-border);
+  border-left: 3px solid var(--primary);
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  background: var(--bg-light);
+}
+
+.erp-inv-adjust-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.erp-inv-adjust-field input,
+.erp-inv-adjust-field select,
+.erp-inv-adjust-field textarea {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--text);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.erp-inv-adjust-error {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--danger, #c45c5c);
+}
+
+.erp-inv-adjust-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.erp-inv-adjust-footer .btn-primary,
+.erp-inv-adjust-footer .btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 0.875rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.erp-inv-adjust-footer .btn-primary {
+  border: 1px solid var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+
+.erp-inv-adjust-footer .btn-secondary {
+  border: 1px solid var(--card-border);
+  background: var(--card);
+  color: var(--text);
+}
+
+.erp-inv-adjust-footer button:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.erp-inv-spinner {
+  width: 0.875rem;
+  height: 0.875rem;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: erp-inv-spin 0.7s linear infinite;
+}
+
+@keyframes erp-inv-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
