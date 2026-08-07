@@ -1,15 +1,11 @@
-import { useMemo, useCallback, useRef, useLayoutEffect } from 'react';
+import { useMemo, useCallback, useRef, useState, useEffect } from 'react';
 import { useExcelGridClipboard } from '@/lib/use-excel-grid-clipboard';
+import { normalizeGridSelection } from '@/lib/excel-grid-clipboard-utils';
 import {
   readExcelMappedCell,
   resolveExcelRowHeaderKey
 } from '../../customer-companies/customer-companies-excel-import-modal/excel-import-mapping-utils';
 import { parseBillingIntervalInput } from '@/lib/product-billing-utils';
-import {
-  insertFormulaFunctionAtCursor,
-  insertFormulaInputFieldAtCursor
-} from '@/lib/custom-field-formula';
-import { getFormulaFieldTypeHint } from '@/lib/custom-field-formula-catalog';
 import {
   buildProductExcelPreviewColumns,
   buildBillingPeriodPreviewOptions,
@@ -33,7 +29,9 @@ import {
   PRODUCT_STATUS_PREVIEW_OPTIONS,
   readProductExcelPreviewCellRaw,
   resolveProductExcelColumnKey,
-  resolveProductExcelRow
+  resolveProductExcelRow,
+  replaceAllInExcelDraftRows,
+  listCheckedUnmappedExcelColumns
 } from './product-excel-import-utils';
 import '../../sales-pipeline/opportunity-modal/opportunity-modal.css';
 import '../../shared/excel-import-mapping-modal.css';
@@ -191,7 +189,7 @@ function CurrencyExcelCell({ raw, saving, onPick, currencyPreviewOptions, allowe
   );
 }
 
-function FormulaCapablePriceExcelCell({ raw, saving, preview, onChange, onCaptureFocus }) {
+function FormulaCapablePriceExcelCell({ raw, saving, preview, onChange }) {
   const display = formatFormulaCapableExcelInputDisplay(raw);
   const isFormula = isExcelFormulaInput(String(raw ?? ''));
 
@@ -204,13 +202,13 @@ function FormulaCapablePriceExcelCell({ raw, saving, preview, onChange, onCaptur
         className={`opp-excel-raw-cell-input opp-excel-raw-cell-input--price${isFormula ? ' is-formula' : ''}`}
         value={display}
         onChange={(e) => onChange(sanitizeFormulaCapableExcelInput(e.target.value))}
-        onFocus={onCaptureFocus}
-        onClick={onCaptureFocus}
-        onSelect={onCaptureFocus}
-        onKeyUp={onCaptureFocus}
         disabled={saving}
-        placeholder="0 또는 =[제품 소비자가]-[제품 원가]"
-        title={isFormula ? '수식 — 오른쪽 패널에서 필드·함수 삽입' : '숫자 또는 = 수식 입력'}
+        placeholder="0 · 10% 또는 =[소비자가]-[원가]"
+        title={
+          isFormula
+            ? '수식 — 「필드·함수」에서 복사 후 붙여넣기'
+            : '숫자 · 확률(10% → 10/100) 또는 = 수식 입력'
+        }
       />
       {preview != null ? (
         <span
@@ -285,35 +283,98 @@ export default function ProductExcelRawPreviewModal({
   onClose,
   onProceed,
   onCellChange,
+  onRowsReplaceAll,
+  onUndoDraft,
+  onBeforeBulkMutation,
   saveMsg,
   currencyPreviewOptions = [],
   currencyAllowedCodes = null,
   customDefinitions = [],
   formulaExchangeCtx = null
 }) {
-  const activeFormulaCellRef = useRef(null);
-  const pendingCaretRef = useRef(null);
+  const [findText, setFindText] = useState('');
+  const [replaceText, setReplaceText] = useState('');
+  const [replaceMsg, setReplaceMsg] = useState(null);
+  const [formulaCopyMsg, setFormulaCopyMsg] = useState(null);
+  /** excelKey → 등록 포함 여부 (기본 전부 true) */
+  const [includedByExcelKey, setIncludedByExcelKey] = useState({});
+  /** 필드·함수 플로팅 팔레트 (상시 패널 대신) */
+  const [formulaPaletteOpen, setFormulaPaletteOpen] = useState(false);
+  const [formulaPalettePos, setFormulaPalettePos] = useState(null);
+  const formulaPaletteDragRef = useRef(null);
 
   const formulaFieldOptions = useMemo(
-    () => buildProductFormulaPickerOptions(customDefinitions),
-    [customDefinitions]
+    () => buildProductFormulaPickerOptions(customDefinitions, formulaExchangeCtx?.pricingProfile),
+    [customDefinitions, formulaExchangeCtx?.pricingProfile]
   );
   const formulaCatalogGroups = useMemo(() => buildProductFormulaCatalogGroups(), []);
 
   const saveMsgIsError =
-    saveMsg && (saveMsg.includes('실패') || saveMsg.includes('필요') || saveMsg.includes('없습니다') || saveMsg.includes('수정'));
+    saveMsg && (saveMsg.includes('실패') || saveMsg.includes('필요') || saveMsg.includes('없습니다') || saveMsg.includes('수정') || saveMsg.includes('매핑'));
 
   const displayRows = useMemo(() => {
     const list = Array.isArray(rows) ? rows : [];
     return list.length > DISPLAY_MAX_ROWS ? list.slice(0, DISPLAY_MAX_ROWS) : list;
   }, [rows]);
 
-  const excelHeaders = useMemo(() => collectProductExcelDraftHeaders(displayRows), [displayRows]);
+  const excelHeaders = useMemo(() => collectProductExcelDraftHeaders(rows), [rows]);
 
-  const displayColumns = useMemo(
+  const allPreviewColumns = useMemo(
     () => buildProductExcelPreviewColumns(mappingRows, targetOptions, excelHeaders, customDefinitions),
     [mappingRows, targetOptions, excelHeaders, customDefinitions]
   );
+
+  useEffect(() => {
+    setIncludedByExcelKey((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const col of allPreviewColumns) {
+        if (!col?.includeToggleable || !col.excelKey) continue;
+        if (!Object.prototype.hasOwnProperty.call(next, col.excelKey)) {
+          next[col.excelKey] = true;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [allPreviewColumns]);
+
+  const displayColumns = useMemo(
+    () =>
+      allPreviewColumns.filter((col) => {
+        if (!col) return false;
+        if (!col.includeToggleable) return true;
+        return includedByExcelKey[col.excelKey] !== false;
+      }),
+    [allPreviewColumns, includedByExcelKey]
+  );
+
+  const hiddenColumns = useMemo(
+    () =>
+      allPreviewColumns.filter(
+        (col) => col?.includeToggleable && includedByExcelKey[col.excelKey] === false
+      ),
+    [allPreviewColumns, includedByExcelKey]
+  );
+
+  const toggleColumnIncluded = useCallback((excelKey, nextValue) => {
+    if (!excelKey) return;
+    setIncludedByExcelKey((prev) => ({ ...prev, [excelKey]: nextValue }));
+  }, []);
+
+  const includedExcelKeySet = useMemo(() => {
+    const set = new Set();
+    for (const col of allPreviewColumns) {
+      if (!col?.excelKey) continue;
+      if (!col.includeToggleable) {
+        set.add(col.excelKey);
+        continue;
+      }
+      if (includedByExcelKey[col.excelKey] !== false) set.add(col.excelKey);
+    }
+    return set;
+  }, [allPreviewColumns, includedByExcelKey]);
+
 
   const nameColumnKey = useMemo(
     () => resolveProductExcelColumnKey(mappingRows, 'product.name'),
@@ -337,7 +398,12 @@ export default function ProductExcelRawPreviewModal({
   );
 
   const isFormulaCapableColumn = useCallback(
-    (col) => isProductFormulaCapableTarget(col?.targetKey, customDefinitions),
+    (col) => {
+      // 미매핑이라도 =수식·금액이면 결과 미리보기 필요 (Civil 3D 등은 looksLikePriceOrNumericInput으로 보호)
+      if (col?.isUnmapped) return true;
+      if (!col?.targetKey) return false;
+      return isProductFormulaCapableTarget(col.targetKey, customDefinitions);
+    },
     [customDefinitions]
   );
 
@@ -350,60 +416,81 @@ export default function ProductExcelRawPreviewModal({
   );
 
   const rowResolved = useMemo(
-    () => displayRows.map((row) =>
-      resolveProductExcelRow(row, mappingRows, formulaExchangeCtx, customDefinitions, {
-        allowedCodes: currencyAllowedCodes
-      })
-    ),
-    [displayRows, mappingRows, formulaExchangeCtx, customDefinitions, currencyAllowedCodes]
+    () =>
+      displayRows.map((row) =>
+        resolveProductExcelRow(row, mappingRows, formulaExchangeCtx, customDefinitions, {
+          allowedCodes: currencyAllowedCodes,
+          excelHeaderCols: rows?.__excelHeaderCols
+        })
+      ),
+    [displayRows, mappingRows, formulaExchangeCtx, customDefinitions, currencyAllowedCodes, rows]
   );
 
-  const captureFormulaFocus = useCallback((rowIndex, header, raw, e) => {
-    const el = e?.target;
-    activeFormulaCellRef.current = {
-      rowIndex,
-      header,
-      raw: String(raw ?? ''),
-      selectionStart: el && typeof el.selectionStart === 'number' ? el.selectionStart : String(raw ?? '').length,
-      selectionEnd: el && typeof el.selectionEnd === 'number' ? el.selectionEnd : String(raw ?? '').length,
-      inputEl: el
-    };
+  const copyFormulaTokenToClipboard = useCallback(async (text, label) => {
+    const token = String(text ?? '').trim();
+    if (!token) return;
+    try {
+      await navigator.clipboard.writeText(token);
+      setFormulaCopyMsg(`복사됨: ${label || token}`);
+    } catch {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = token;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        setFormulaCopyMsg(`복사됨: ${label || token}`);
+      } catch {
+        setFormulaCopyMsg('복사에 실패했습니다. 브라우저 권한을 확인해 주세요.');
+      }
+    }
   }, []);
 
-  const applyFormulaTransform = useCallback((transformFn) => {
-    const active = activeFormulaCellRef.current;
-    if (!active || typeof onCellChange !== 'function') return;
-    const cur = String(active.raw ?? '');
-    const start = active.selectionStart ?? cur.length;
-    const end = active.selectionEnd ?? start;
-    const { value, caret } = transformFn(cur, start, end);
-    onCellChange(active.rowIndex, active.header, value);
-    activeFormulaCellRef.current = {
-      ...active,
-      raw: value,
-      selectionStart: caret,
-      selectionEnd: caret
+  const handleCopyFormulaFieldLabel = useCallback(
+    (label) => {
+      const lb = String(label || '').trim();
+      if (!lb) return;
+      void copyFormulaTokenToClipboard(`[${lb}]`, `[${lb}]`);
+    },
+    [copyFormulaTokenToClipboard]
+  );
+
+  const handleCopyFormulaFunctionName = useCallback(
+    (fnName) => {
+      const name = String(fnName || '').trim().toLowerCase();
+      if (!name) return;
+      const token = name === 'pi' ? 'pi' : `${name}(`;
+      void copyFormulaTokenToClipboard(token, token);
+    },
+    [copyFormulaTokenToClipboard]
+  );
+
+  useEffect(() => {
+    if (!formulaCopyMsg) return undefined;
+    const t = window.setTimeout(() => setFormulaCopyMsg(null), 2200);
+    return () => window.clearTimeout(t);
+  }, [formulaCopyMsg]);
+
+  /** Ctrl+Z — 모두 바꾸기·붙여넣기 직전 스냅샷 되돌리기 */
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (saving) return;
+      if (!(e.ctrlKey || e.metaKey)) return;
+      if (e.shiftKey) return;
+      if (e.key !== 'z' && e.key !== 'Z') return;
+      if (typeof onUndoDraft !== 'function') return;
+      if (!onUndoDraft()) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setReplaceMsg('바로 전 바꾸기·붙여넣기를 되돌렸습니다. (Ctrl+Z)');
     };
-    pendingCaretRef.current = { el: active.inputEl, caret };
-  }, [onCellChange]);
-
-  const handleInsertFormulaFieldLabel = useCallback((label) => {
-    applyFormulaTransform((cur, start, end) => insertFormulaInputFieldAtCursor(cur, label, start, end));
-  }, [applyFormulaTransform]);
-
-  const handleInsertFormulaFunctionName = useCallback((fnName) => {
-    applyFormulaTransform((cur, start, end) => insertFormulaFunctionAtCursor(cur, fnName, start, end));
-  }, [applyFormulaTransform]);
-
-  useLayoutEffect(() => {
-    const pending = pendingCaretRef.current;
-    if (!pending?.el) return;
-    pendingCaretRef.current = null;
-    pending.el.focus?.({ preventScroll: true });
-    if (typeof pending.caret === 'number') {
-      pending.el.setSelectionRange?.(pending.caret, pending.caret);
-    }
-  });
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [saving, onUndoDraft]);
 
   const invalidCounts = useMemo(
     () =>
@@ -440,6 +527,9 @@ export default function ProductExcelRawPreviewModal({
   const previewCellRaw = useCallback(
     (row, col) => {
       if (col?.isConstant) return col.constantValue ?? '';
+      if (col?.isUnmapped || !col?.targetKey) {
+        return readExcelMappedCell(row, col?.excelKey) ?? '';
+      }
       return readProductExcelPreviewCellRaw(
         row,
         mappingRows,
@@ -489,9 +579,13 @@ export default function ProductExcelRawPreviewModal({
 
   const {
     gridRootRef,
+    selection,
     isCellSelected,
     isCellActive,
-    isAltDragging
+    isAltDragging,
+    selectEntireRow,
+    selectEntireColumn,
+    selectAllCells
   } = useExcelGridClipboard({
     rowCount: displayRows.length,
     colCount: displayColumns.length,
@@ -499,8 +593,180 @@ export default function ProductExcelRawPreviewModal({
     getCellValue: getGridCellValue,
     setCellValue: setGridCellValue,
     isCellEditable: isGridCellEditable,
-    sanitizePasteValue: sanitizeGridPaste
+    sanitizePasteValue: sanitizeGridPaste,
+    onBeforeBulkMutation
   });
+
+  const selectionBox = useMemo(
+    () => normalizeGridSelection(selection?.start, selection?.end),
+    [selection]
+  );
+
+  const isEntireRowSelected = useCallback(
+    (rowIndex) => {
+      const box = selectionBox;
+      if (!box || displayColumns.length < 1) return false;
+      return (
+        box.startRow === rowIndex &&
+        box.endRow === rowIndex &&
+        box.startCol === 0 &&
+        box.endCol === displayColumns.length - 1
+      );
+    },
+    [selectionBox, displayColumns.length]
+  );
+
+  const isEntireColumnSelected = useCallback(
+    (colIndex) => {
+      const box = selectionBox;
+      if (!box || displayRows.length < 1) return false;
+      return (
+        box.startCol === colIndex &&
+        box.endCol === colIndex &&
+        box.startRow === 0 &&
+        box.endRow === displayRows.length - 1
+      );
+    },
+    [selectionBox, displayRows.length]
+  );
+
+  const isAllSelected = Boolean(
+    selectionBox &&
+      displayRows.length > 0 &&
+      displayColumns.length > 0 &&
+      selectionBox.startRow === 0 &&
+      selectionBox.endRow === displayRows.length - 1 &&
+      selectionBox.startCol === 0 &&
+      selectionBox.endCol === displayColumns.length - 1
+  );
+
+  const handleReplaceAll = useCallback(() => {
+    const find = String(findText ?? '');
+    if (!find.trim()) {
+      setReplaceMsg('찾을 내용을 입력해 주세요.');
+      return;
+    }
+    if (typeof onRowsReplaceAll !== 'function') {
+      setReplaceMsg('모두 바꾸기를 사용할 수 없습니다.');
+      return;
+    }
+
+    let allowedCellKeys = null;
+    if (selectionBox) {
+      allowedCellKeys = new Set();
+      for (let r = selectionBox.startRow; r <= selectionBox.endRow; r += 1) {
+        const row = displayRows[r];
+        if (!row) continue;
+        for (let c = selectionBox.startCol; c <= selectionBox.endCol; c += 1) {
+          const col = displayColumns[c];
+          if (!col) continue;
+          const header = isProductPreviewCellKey(col.excelKey)
+            ? col.excelKey
+            : resolveExcelRowHeaderKey(row, col.excelKey) || col.excelKey;
+          if (!header || String(header).startsWith('__')) continue;
+          allowedCellKeys.add(`${r}\u0000${header}`);
+        }
+      }
+      if (!allowedCellKeys.size) {
+        setReplaceMsg('선택한 셀이 없습니다. Alt+드래그로 범위를 지정하거나 선택을 해제해 전체에서 바꾸세요.');
+        return;
+      }
+    }
+
+    const { rows: next, changedCells, changedRows, scoped } = replaceAllInExcelDraftRows(
+      rows,
+      find,
+      replaceText,
+      { allowedCellKeys }
+    );
+    if (Array.isArray(rows?.__excelHeaderCols)) next.__excelHeaderCols = rows.__excelHeaderCols;
+    onRowsReplaceAll(next);
+    const scopeLabel = scoped ? '선택 범위' : '전체';
+    setReplaceMsg(
+      changedCells > 0
+        ? `${scopeLabel}: ${changedRows}행 · ${changedCells}칸에서 바꿨습니다.`
+        : `${scopeLabel}에서 일치하는 내용이 없습니다.`
+    );
+  }, [
+    findText,
+    replaceText,
+    rows,
+    onRowsReplaceAll,
+    selectionBox,
+    displayRows,
+    displayColumns
+  ]);
+
+  const handleProceed = useCallback(() => {
+    onProceed?.({
+      ok: true,
+      includedExcelKeys: includedExcelKeySet,
+      autoCreateUnmapped: listCheckedUnmappedExcelColumns(allPreviewColumns, includedExcelKeySet)
+    });
+  }, [allPreviewColumns, includedExcelKeySet, onProceed]);
+
+  const startFormulaPaletteDrag = useCallback(
+    (e) => {
+      if (e.button !== 0) return;
+      if (e.target?.closest?.('button')) return;
+      e.preventDefault();
+      const panel = e.currentTarget?.closest?.('.pl-excel-formula-float');
+      if (!panel) return;
+      const rect = panel.getBoundingClientRect();
+      const startLeft = formulaPalettePos?.x ?? rect.left;
+      const startTop = formulaPalettePos?.y ?? rect.top;
+      formulaPaletteDragRef.current = {
+        pointerId: e.pointerId,
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        startLeft,
+        startTop,
+        width: rect.width,
+        height: rect.height
+      };
+      try {
+        e.currentTarget.setPointerCapture?.(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+    },
+    [formulaPalettePos]
+  );
+
+  const moveFormulaPaletteDrag = useCallback((e) => {
+    const drag = formulaPaletteDragRef.current;
+    if (!drag) return;
+    const dx = e.clientX - drag.startClientX;
+    const dy = e.clientY - drag.startClientY;
+    const margin = 8;
+    const maxX = Math.max(margin, window.innerWidth - drag.width - margin);
+    const maxY = Math.max(margin, window.innerHeight - drag.height - margin);
+    const nextX = Math.min(maxX, Math.max(margin, drag.startLeft + dx));
+    const nextY = Math.min(maxY, Math.max(margin, drag.startTop + dy));
+    setFormulaPalettePos({ x: nextX, y: nextY });
+  }, []);
+
+  const endFormulaPaletteDrag = useCallback((e) => {
+    if (!formulaPaletteDragRef.current) return;
+    formulaPaletteDragRef.current = null;
+    try {
+      e.currentTarget.releasePointerCapture?.(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!formulaPaletteOpen) return undefined;
+    const onKey = (ev) => {
+      if (ev.key === 'Escape') {
+        ev.stopPropagation();
+        setFormulaPaletteOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [formulaPaletteOpen]);
 
   if (!open) return null;
 
@@ -567,13 +833,110 @@ export default function ProductExcelRawPreviewModal({
         <div className="opp-excel-raw-preview-modal-body">
           <div className="opp-excel-raw-preview-intro-bar">
             <span>
-              <strong>매핑한 대상 필드</strong> 기준 표시 · <strong>Alt</strong> 누른 채 드래그 → 범위 선택 ·{' '}
-              <strong>Esc</strong> 선택 해제 · <strong>Ctrl+C / Ctrl+V</strong> 복사·붙여넣기(엑셀 TSV) · 셀 직접 수정 ·{' '}
-              <strong>제품명</strong> 필수 · 금액·마진 셀은 <strong>=[제품 소비자가]-[제품 원가]</strong> 수식 가능 · 오른쪽{' '}
-              <strong>필드·함수</strong> 패널로 삽입 · 결제주기는 <strong>1Y→1년, 1M→1개월, P→영구</strong> · 잘못된 값은{' '}
-              <strong style={{ color: '#b91c1c' }}>붉게</strong> 표시 · 해소 후 <strong>일괄 등록</strong>
+              엑셀 <strong>모든 열</strong>을 가져옵니다. 헤더 체크를 해제하면 열을 숨기고 등록에서 제외합니다 · 체크된
+              미매핑 열은 <strong>추가 필드로 자동 생성</strong>됩니다 · 수식은 <strong>같은 행→[필드라벨]</strong> 자동
+              환산 · <strong>Alt+드래그</strong> 선택 후 모두 바꾸기 · 바꾸기/붙여넣기 후 <strong>Ctrl+Z</strong> 되돌리기
             </span>
           </div>
+
+          <div className="opp-excel-raw-preview-replace-bar" role="search" aria-label="찾기 및 모두 바꾸기">
+            <label className="opp-excel-raw-preview-replace-field">
+              <span>찾을 내용</span>
+              <input
+                type="text"
+                className="opp-input"
+                value={findText}
+                onChange={(e) => {
+                  setFindText(e.target.value);
+                  setReplaceMsg(null);
+                }}
+                disabled={saving}
+                placeholder="예: $I$1 또는 1450"
+                autoComplete="off"
+              />
+            </label>
+            <label className="opp-excel-raw-preview-replace-field">
+              <span>바꿀 내용</span>
+              <input
+                type="text"
+                className="opp-input"
+                value={replaceText}
+                onChange={(e) => {
+                  setReplaceText(e.target.value);
+                  setReplaceMsg(null);
+                }}
+                disabled={saving}
+                placeholder="예: [USD_KRW] 또는 1380"
+                autoComplete="off"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleReplaceAll();
+                  }
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className="opp-excel-footer-btn opp-excel-footer-btn--ghost"
+              disabled={saving || !String(findText || '').trim()}
+              onClick={handleReplaceAll}
+              title={
+                selectionBox
+                  ? 'Alt+드래그로 선택한 셀에서만 바꿉니다. Esc로 선택 해제 시 전체에서 바꿉니다.'
+                  : '선택 없음 — 표시된 모든 셀에서 바꿉니다. Alt+드래그로 범위를 지정하면 선택 칸만 바꿉니다.'
+              }
+            >
+              {selectionBox ? '선택 범위에서 바꾸기' : '모두 바꾸기'}
+            </button>
+            <button
+              type="button"
+              className={`opp-excel-footer-btn opp-excel-footer-btn--ghost${formulaPaletteOpen ? ' is-active' : ''}`}
+              disabled={saving}
+              onClick={() => setFormulaPaletteOpen((v) => !v)}
+              title="금액·수식 셀에 필드·함수 삽입 (떠 있는 창 · 뒤 표 작업 가능)"
+              aria-pressed={formulaPaletteOpen}
+            >
+              <span className="material-symbols-outlined" aria-hidden>
+                functions
+              </span>
+              필드·함수
+            </button>
+            {selectionBox ? (
+              <span className="excel-import-map-badge excel-import-map-badge--tag" title="Esc로 선택 해제">
+                선택 {(selectionBox.endRow - selectionBox.startRow + 1) *
+                  (selectionBox.endCol - selectionBox.startCol + 1)}
+                칸
+              </span>
+            ) : null}
+            {replaceMsg ? (
+              <span className="opp-excel-raw-preview-replace-msg" role="status">
+                {replaceMsg}
+              </span>
+            ) : null}
+          </div>
+
+          {hiddenColumns.length > 0 ? (
+            <div className="opp-excel-raw-preview-hidden-cols" aria-label="숨긴 열">
+              <span className="opp-excel-raw-preview-hidden-cols-label">숨긴 열</span>
+              {hiddenColumns.map((col) => (
+                <button
+                  key={`hidden-${col.excelKey}`}
+                  type="button"
+                  className="opp-excel-raw-preview-hidden-chip"
+                  disabled={saving}
+                  title="다시 표시·등록에 포함"
+                  onClick={() => toggleColumnIncluded(col.excelKey, true)}
+                >
+                  {col.excelTitle || col.label || col.excelKey}
+                  <span className="material-symbols-outlined" aria-hidden>
+                    add
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+
           {!nameColumnKey ? (
             <p className="opp-excel-raw-preview-warn">
               참고: 매핑에서 제품명이 <strong>고정값</strong>이면 모든 행에 동일한 제품명이 적용됩니다.
@@ -594,20 +957,36 @@ export default function ProductExcelRawPreviewModal({
             >
               {displayColumns.length === 0 ? (
                 <p className="opp-excel-raw-preview-empty">
-                  매핑된 열이 없습니다. 매핑 단계에서 엑셀 열을 대상 필드에 연결해 주세요.
+                  표시할 열이 없습니다. 숨긴 열 칩에서 다시 포함하거나, 매핑·엑셀 파일을 확인해 주세요.
                 </p>
               ) : (
                 <table className="opp-excel-raw-preview-table">
                   <thead>
                     <tr>
-                      <th className="opp-excel-raw-preview-th-num">#</th>
-                      {displayColumns.map((col) => {
+                      <th
+                        className={`opp-excel-raw-preview-th-num${isAllSelected ? ' is-axis-selected' : ''}`}
+                        title="전체 선택"
+                        onMouseDown={(e) => {
+                          if (e.button !== 0 || saving) return;
+                          e.preventDefault();
+                          selectAllCells();
+                        }}
+                      >
+                        #
+                      </th>
+                      {displayColumns.map((col, colIdx) => {
                         const h = col.excelKey;
                         return (
                         <th
                           key={h}
-                          title={`원본 엑셀 열: ${col.excelTitle}`}
-                          className={
+                          data-grid-col={colIdx}
+                          title={
+                            col.isUnmapped
+                              ? `미매핑 엑셀 열: ${col.excelTitle} — 체크 해제하거나 매핑하세요 · 클릭 시 열 전체 선택`
+                              : `원본 엑셀 열: ${col.excelTitle} · 클릭 시 열 전체 선택`
+                          }
+                          className={[
+                            'opp-excel-raw-preview-th--select-col',
                             h === nameColumnKey ||
                             h === billingColumnKey ||
                             h === billingIntervalColumnKey ||
@@ -615,10 +994,38 @@ export default function ProductExcelRawPreviewModal({
                             h === currencyColumnKey ||
                             isFormulaCapableExcelKey(h)
                               ? 'opp-excel-raw-preview-th--stage'
-                              : ''
-                          }
+                              : '',
+                            col.isUnmapped ? 'opp-excel-raw-preview-th--unmapped' : '',
+                            isEntireColumnSelected(colIdx) ? 'is-axis-selected' : ''
+                          ]
+                            .filter(Boolean)
+                            .join(' ')}
+                          onMouseDown={(e) => {
+                            if (e.button !== 0 || saving) return;
+                            if (e.target.closest?.('input[type="checkbox"]')) return;
+                            e.preventDefault();
+                            selectEntireColumn(colIdx);
+                          }}
                         >
-                          {col.label}
+                          {col.includeToggleable ? (
+                            <span className="opp-excel-raw-preview-th-include">
+                              <input
+                                type="checkbox"
+                                checked={includedByExcelKey[h] !== false}
+                                disabled={saving}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => toggleColumnIncluded(h, e.target.checked)}
+                                aria-label={`${col.label} 등록 포함`}
+                              />
+                              <span>{col.label}</span>
+                            </span>
+                          ) : (
+                            <span>{col.label}</span>
+                          )}
+                          {col.isUnmapped ? (
+                            <span className="opp-excel-raw-preview-th-badge">미매핑</span>
+                          ) : null}
                           {h === nameColumnKey ? (
                             <span className="opp-excel-raw-preview-th-badge">제품명 필수</span>
                           ) : null}
@@ -634,7 +1041,7 @@ export default function ProductExcelRawPreviewModal({
                           {h === currencyColumnKey ? (
                             <span className="opp-excel-raw-preview-th-badge">통화</span>
                           ) : null}
-                          {isFormulaCapableExcelKey(h) ? (
+                          {!col.isUnmapped && isFormulaCapableExcelKey(h) ? (
                             <span className="opp-excel-raw-preview-th-badge">금액·수식</span>
                           ) : null}
                         </th>
@@ -645,7 +1052,17 @@ export default function ProductExcelRawPreviewModal({
                   <tbody>
                     {displayRows.map((row, idx) => (
                       <tr key={idx}>
-                        <td className="opp-excel-raw-preview-td-num">{idx + 1}</td>
+                        <td
+                          className={`opp-excel-raw-preview-td-num${isEntireRowSelected(idx) ? ' is-axis-selected' : ''}`}
+                          title="행 전체 선택"
+                          onMouseDown={(e) => {
+                            if (e.button !== 0 || saving) return;
+                            e.preventDefault();
+                            selectEntireRow(idx);
+                          }}
+                        >
+                          {idx + 1}
+                        </td>
                         {displayColumns.map((col, colIdx) => {
                           const h = col.excelKey;
                           const cellRaw = previewCellRaw(row, col);
@@ -717,7 +1134,6 @@ export default function ProductExcelRawPreviewModal({
                                   customDefinitions
                                 )}
                                 onChange={(v) => handleCell(idx, h, v)}
-                                onCaptureFocus={(e) => captureFormulaFocus(idx, h, cellRaw, e)}
                               />
                             ) : (
                               <input
@@ -740,63 +1156,99 @@ export default function ProductExcelRawPreviewModal({
             </div>
           </div>
 
-          <aside className="custom-fields-manage-formula-fields-panel pl-excel-formula-panel" aria-label="수식 필드·함수">
-            <div className="custom-fields-manage-formula-panel-col custom-fields-manage-formula-panel-col--fields">
-              <h4 className="custom-fields-manage-formula-fields-title">필드</h4>
-              <p className="custom-fields-manage-formula-fields-hint">금액·마진 셀 포커스 후 클릭하여 삽입</p>
-              <div className="custom-fields-manage-formula-panel-scroll">
-                <ul className="custom-fields-manage-formula-fields-list">
-                  {formulaFieldOptions.map((opt) => (
-                    <li key={opt.key}>
-                      <button
-                        type="button"
-                        className="custom-fields-manage-formula-field-btn"
-                        onClick={() => handleInsertFormulaFieldLabel(opt.label)}
-                        disabled={saving}
-                      >
-                        <span className="custom-fields-manage-formula-field-btn-label">{opt.label}</span>
-                        {opt.subtitle ? (
-                          <span className="custom-fields-manage-formula-field-btn-desc">{opt.subtitle}</span>
-                        ) : null}
-                        <span className="custom-fields-manage-formula-field-btn-type">
-                          {getFormulaFieldTypeHint(opt.fieldType)}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+          </div>
+
+          {formulaPaletteOpen ? (
+            <div
+              className="pl-excel-formula-float"
+              role="dialog"
+              aria-modal="false"
+              aria-labelledby="pl-excel-formula-float-title"
+              style={
+                formulaPalettePos
+                  ? { left: formulaPalettePos.x, top: formulaPalettePos.y, right: 'auto' }
+                  : undefined
+              }
+            >
+              <div
+                className="pl-excel-formula-float-header"
+                onPointerDown={startFormulaPaletteDrag}
+                onPointerMove={moveFormulaPaletteDrag}
+                onPointerUp={endFormulaPaletteDrag}
+                onPointerCancel={endFormulaPaletteDrag}
+              >
+                <div className="pl-excel-formula-float-header-text">
+                  <span className="material-symbols-outlined" aria-hidden>
+                    drag_indicator
+                  </span>
+                  <strong id="pl-excel-formula-float-title">필드 · 함수</strong>
+                  <span className="pl-excel-formula-float-hint">클릭=복사 · Ctrl+V 붙여넣기</span>
+                </div>
+                <button
+                  type="button"
+                  className="pl-excel-formula-float-close"
+                  onClick={() => setFormulaPaletteOpen(false)}
+                  aria-label="필드·함수 닫기"
+                >
+                  <span className="material-symbols-outlined">close</span>
+                </button>
               </div>
-            </div>
-            <div className="custom-fields-manage-formula-panel-col custom-fields-manage-formula-panel-col--fn">
-              <h4 className="custom-fields-manage-formula-fields-title">함수</h4>
-              <p className="custom-fields-manage-formula-fields-hint">회계·금액 함수가 먼저 표시됩니다</p>
-              <div className="custom-fields-manage-formula-panel-scroll">
-                {formulaCatalogGroups.map((group) => (
-                  <section key={group.id} className="custom-fields-manage-formula-fn-group">
-                    <p className="custom-fields-manage-formula-fn-group-label">{group.label}</p>
-                    <ul className="custom-fields-manage-formula-fn-list">
-                      {group.items.map((fn) => (
-                        <li key={fn.name}>
+              {formulaCopyMsg ? (
+                <p className="pl-excel-formula-float-copy-msg" role="status">
+                  {formulaCopyMsg}
+                </p>
+              ) : null}
+              <div
+                className="custom-fields-manage-formula-fields-panel pl-excel-formula-panel pl-excel-formula-panel--float pl-excel-formula-panel--dense"
+                aria-label="수식 필드·함수"
+              >
+                <div className="custom-fields-manage-formula-panel-col custom-fields-manage-formula-panel-col--fields">
+                  <h4 className="custom-fields-manage-formula-fields-title">필드</h4>
+                  <div className="custom-fields-manage-formula-panel-scroll">
+                    <ul className="custom-fields-manage-formula-fields-list">
+                      {formulaFieldOptions.map((opt) => (
+                        <li key={opt.key}>
                           <button
                             type="button"
-                            className="custom-fields-manage-formula-fn-btn"
-                            title={fn.example}
-                            onClick={() => handleInsertFormulaFunctionName(fn.name)}
+                            className="custom-fields-manage-formula-field-btn"
+                            onClick={() => handleCopyFormulaFieldLabel(opt.label)}
                             disabled={saving}
+                            title={`[${opt.label}] 복사`}
                           >
-                            <span className="custom-fields-manage-formula-fn-name">{fn.name}</span>
-                            <span className="custom-fields-manage-formula-fn-desc">{fn.desc}</span>
-                            <span className="custom-fields-manage-formula-fn-example">{fn.example}</span>
+                            <span className="custom-fields-manage-formula-field-btn-label">{opt.label}</span>
                           </button>
                         </li>
                       ))}
                     </ul>
-                  </section>
-                ))}
+                  </div>
+                </div>
+                <div className="custom-fields-manage-formula-panel-col custom-fields-manage-formula-panel-col--fn">
+                  <h4 className="custom-fields-manage-formula-fields-title">함수</h4>
+                  <div className="custom-fields-manage-formula-panel-scroll">
+                    {formulaCatalogGroups.map((group) => (
+                      <section key={group.id} className="custom-fields-manage-formula-fn-group">
+                        <ul className="custom-fields-manage-formula-fn-list">
+                          {group.items.map((fn) => (
+                            <li key={fn.name}>
+                              <button
+                                type="button"
+                                className="custom-fields-manage-formula-fn-btn"
+                                title={`${fn.name} 복사`}
+                                onClick={() => handleCopyFormulaFunctionName(fn.name)}
+                                disabled={saving}
+                              >
+                                <span className="custom-fields-manage-formula-fn-name">{fn.name}</span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
-          </aside>
-          </div>
+          ) : null}
 
           {saveMsg ? (
             <p
@@ -824,8 +1276,12 @@ export default function ProductExcelRawPreviewModal({
             type="button"
             className="opp-excel-footer-btn opp-excel-footer-btn--register"
             disabled={saving || !canProceed}
-            title={!canProceed ? '붉은 칸을 모두 수정한 뒤 등록할 수 있습니다' : undefined}
-            onClick={onProceed}
+            title={
+              !canProceed
+                ? '붉은 칸을 모두 수정한 뒤 등록할 수 있습니다'
+                : '체크된 미매핑 열은 제품 추가 필드로 자동 생성 후 등록합니다'
+            }
+            onClick={handleProceed}
           >
             <span
               className={`material-symbols-outlined${saving ? ' opp-excel-footer-icon-spin' : ''}`}

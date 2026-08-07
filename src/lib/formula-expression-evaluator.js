@@ -2,7 +2,10 @@
  * 수식 표현식 평가 — [필드] 치환 후 산술 + 엑셀형 함수
  * 보안: eval() 미사용, 화이트리스트 함수만
  */
-import { parseNumericFieldValue, parseNumericFieldValueOrZero } from './numeric-field-value';
+import {
+  parseNumericFieldValueForFormula,
+  parseNumericFieldValueOrZero
+} from './numeric-field-value';
 
 const FORMULA_CONSTANTS = {
   pi: Math.PI
@@ -76,11 +79,11 @@ function strVal(v) {
   return v == null ? '' : String(v);
 }
 
-/** 산술 연산용 — ₩$원% 등 제거 후 숫자 */
+/** 산술 연산용 — ₩$원 등 제거 후 숫자. 값 뒤 %는 /100 (확률) */
 function coerceToNum(v) {
   if (typeof v === 'number') return Number.isFinite(v) ? v : NaN;
   if (typeof v === 'boolean') return v ? 1 : 0;
-  const n = parseNumericFieldValue(v, { rejectFormula: false });
+  const n = parseNumericFieldValueForFormula(v, { rejectFormula: false });
   return n != null ? n : NaN;
 }
 
@@ -334,7 +337,7 @@ function tokenize(expr) {
       i += 1;
       continue;
     }
-    if ('+-*/(),'.includes(c)) {
+    if ('+-*/(),%'.includes(c)) {
       tokens.push(c);
       i += 1;
       continue;
@@ -443,7 +446,19 @@ function parseUnary(tokens, getPos, setPos, evalCtx) {
     setPos(pos);
     return -coerceToNum(parseUnary(tokens, getPos, setPos, evalCtx));
   }
-  return parsePrimary(tokens, getPos, setPos, evalCtx);
+  return parsePostfix(tokens, getPos, setPos, evalCtx);
+}
+
+/** 값 뒤 % = 확률 → /100 (예: 10%*50 → 10/100*50 = 5) */
+function parsePostfix(tokens, getPos, setPos, evalCtx) {
+  let pos = getPos();
+  let value = parsePrimary(tokens, () => pos, (v) => { pos = v; }, evalCtx);
+  while (tokens[pos] === '%') {
+    pos += 1;
+    value = coerceToNum(value) / 100;
+  }
+  setPos(pos);
+  return value;
 }
 
 function parseArgList(tokens, getPos, setPos, evalCtx) {

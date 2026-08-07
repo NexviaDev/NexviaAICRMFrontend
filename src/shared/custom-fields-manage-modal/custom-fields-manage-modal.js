@@ -5,6 +5,7 @@ import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { dispatchSalesOpportunityScheduleDefsChanged } from '@/lib/sales-opportunity-schedule-labels';
 import { dispatchSalesOpportunityFinanceDefsChanged } from '@/lib/sales-opportunity-finance-labels';
 import { buildFormulaFieldPickerOptions, getFormulaFieldTypeHint } from '@/lib/custom-field-formula-catalog';
+import { useExchangeRates } from '@/lib/use-exchange-rates';
 import {
   appendFormulaOperatorAtCursor,
   formatFormulaExpressionForLabel,
@@ -150,7 +151,7 @@ function getDefTypeLabel(def) {
   return def.type || '글자';
 }
 
-function buildUpdateBody(def, draft, entityType, definitions) {
+function buildUpdateBody(def, draft, entityType, definitions, pricingProfile) {
   const label = String(draft.label || '').trim();
   if (!label) return { error: '표시 이름을 입력해 주세요.' };
 
@@ -168,7 +169,8 @@ function buildUpdateBody(def, draft, entityType, definitions) {
     const check = validateFormulaExpression(
       parsed.expression,
       entityType,
-      definitions.filter((d) => String(d._id) !== String(def._id))
+      definitions.filter((d) => String(d._id) !== String(def._id)),
+      { pricingProfile }
     );
     if (!check.ok) return { error: check.error || '수식이 올바르지 않습니다.' };
     body.type = 'formula';
@@ -261,7 +263,8 @@ function validateNewFieldForm({
   entityType,
   definitions,
   useSelectList,
-  selectListInput
+  selectListInput,
+  pricingProfile
 }) {
   if (!label) return { error: '표시 이름을 입력해 주세요.' };
   const duplicate = (definitions || []).some(
@@ -269,7 +272,9 @@ function validateNewFieldForm({
   );
   if (duplicate) return { error: '같은 표시 이름의 필드가 이미 있습니다.' };
   if (isFormulaMode) {
-    const check = validateFormulaExpression(parsedFormula.expression, entityType, definitions);
+    const check = validateFormulaExpression(parsedFormula.expression, entityType, definitions, {
+      pricingProfile
+    });
     if (!check.ok) return { error: check.error || '수식이 올바르지 않습니다.' };
   }
   if (useSelectList && !selectListInput.trim()) {
@@ -297,6 +302,11 @@ export default function CustomFieldsManageModal({
 }) {
   const allowed = isAdminOrAboveRole(getStoredCrmUser()?.role);
   const canUseFormula = FORMULA_ENTITY_TYPES.has(entityType) && !fixedType;
+  const { pricingProfile } = useExchangeRates({
+    getAuthHeader,
+    pollMs: entityType === 'product' ? 0 : undefined,
+    enabled: entityType === 'product'
+  });
   const [definitions, setDefinitions] = useState([]);
   const [newLabel, setNewLabel] = useState('');
   const [newType, setNewType] = useState(() => (fixedType || 'text'));
@@ -322,8 +332,8 @@ export default function CustomFieldsManageModal({
   );
 
   const formulaFieldOptions = useMemo(
-    () => buildFormulaFieldPickerOptions(entityType, definitions),
-    [entityType, definitions]
+    () => buildFormulaFieldPickerOptions(entityType, definitions, '', { pricingProfile }),
+    [entityType, definitions, pricingProfile]
   );
 
   const formulaCatalogGroups = useMemo(() => {
@@ -491,7 +501,8 @@ export default function CustomFieldsManageModal({
       entityType,
       definitions,
       useSelectList,
-      selectListInput
+      selectListInput,
+      pricingProfile
     });
     if (validation.error) {
       if (isFormulaMode || validation.error.includes('수식')) {
@@ -562,7 +573,7 @@ export default function CustomFieldsManageModal({
     for (const def of dirtyDefs) {
       const sid = String(def._id);
       const draft = rowDrafts[sid] || defToEditDraft(def, entityType);
-      const built = buildUpdateBody(def, draft, entityType, definitions);
+      const built = buildUpdateBody(def, draft, entityType, definitions, pricingProfile);
       if (built.error) {
         nextErrors[sid] = built.error;
         continue;
@@ -746,13 +757,13 @@ export default function CustomFieldsManageModal({
                           onClick={captureFormulaSelection}
                           onSelect={captureFormulaSelection}
                           onKeyUp={captureFormulaSelection}
-                          placeholder="=[제품 소비자가]-[제품 원가]"
+                          placeholder="=[소비자가]-[원가]"
                           autoComplete="off"
                           spellCheck={false}
                         />
                         <p className="custom-fields-manage-hint">
                           <strong>=</strong> 로 시작 · <strong>[필드]</strong> · <strong>+ - * / ( )</strong> ·
-                          엑셀 함수(if, iferror, round, dec, max 등) · [필드] · [환율][발주환율][통화환율] 등 · + - * / · 비교(&gt; &lt; = &gt;= &lt;= &lt;&gt;)
+                          엑셀 함수(if, iferror, round, dec, max 등) · [필드] · [발주환율][통화환율] · USD 산정 「추가」항목 등 · + - * / · 비교(&gt; &lt; = &gt;= &lt;= &lt;&gt;)
                         </p>
                       </div>
                       <div className="custom-fields-manage-formula-ops" role="group" aria-label="연산자">
@@ -987,7 +998,7 @@ export default function CustomFieldsManageModal({
                               className="custom-fields-manage-list-expr-input"
                               value={draft.expression}
                               onChange={(e) => updateRowDraft(def._id, { expression: e.target.value })}
-                              placeholder="=[제품 소비자가]-[제품 원가]"
+                              placeholder="=[소비자가]-[원가]"
                               autoComplete="off"
                               spellCheck={false}
                               aria-label={`${def.label} 함수 수식`}

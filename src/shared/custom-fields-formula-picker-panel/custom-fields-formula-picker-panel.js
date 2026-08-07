@@ -10,7 +10,9 @@ export default function CustomFieldsFormulaPickerPanel({
   formulaFieldOptions = [],
   formulaCatalogGroups = [],
   onInsertFieldLabel,
-  onInsertFunctionName
+  onInsertFunctionName,
+  fieldHint = '클릭하여 삽입',
+  functionHint = '회계·금액 함수가 먼저 표시됩니다'
 }) {
   return (
     <aside
@@ -19,7 +21,7 @@ export default function CustomFieldsFormulaPickerPanel({
     >
       <div className="custom-fields-manage-formula-panel-col custom-fields-manage-formula-panel-col--fields">
         <h4 className="custom-fields-manage-formula-fields-title">필드</h4>
-        <p className="custom-fields-manage-formula-fields-hint">클릭하여 삽입</p>
+        <p className="custom-fields-manage-formula-fields-hint">{fieldHint}</p>
         <div className="custom-fields-manage-formula-panel-scroll">
           <ul className="custom-fields-manage-formula-fields-list">
             {formulaFieldOptions.map((opt) => (
@@ -45,7 +47,7 @@ export default function CustomFieldsFormulaPickerPanel({
       </div>
       <div className="custom-fields-manage-formula-panel-col custom-fields-manage-formula-panel-col--fn">
         <h4 className="custom-fields-manage-formula-fields-title">함수</h4>
-        <p className="custom-fields-manage-formula-fields-hint">회계·금액 함수가 먼저 표시됩니다</p>
+        <p className="custom-fields-manage-formula-fields-hint">{functionHint}</p>
         <div className="custom-fields-manage-formula-panel-scroll">
           {formulaCatalogGroups.map((group) => (
             <section key={group.id} className="custom-fields-manage-formula-fn-group">

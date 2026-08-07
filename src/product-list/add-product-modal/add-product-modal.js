@@ -11,7 +11,12 @@ import {
   shouldDashChannelMargin,
   PRODUCT_BUILTIN_MARGIN_EXPRESSIONS
 } from '@/lib/product-margin';
-import { mergeCustomFieldsForSave } from '@/lib/custom-field-formula';
+import {
+  prepareProductCustomFieldsForSave,
+  buildCustomFieldFormValuesFromStored,
+  formatFormulaExpressionForLabel,
+  splitCustomFieldFormulasFromValues
+} from '@/lib/custom-field-formula';
 import { normalizeCustomFieldDefinition } from '@/lib/custom-field-display-format';
 import { formatProductBillingDisplay } from '@/lib/product-billing-utils';
 import { getPresetCategoryAvatar } from '../product-category-avatar-config';
@@ -45,11 +50,26 @@ import {
   buildProductFormInputsFromStored,
   isProductFieldFormulaInput,
   mergeResolvedProductRow,
+  normalizeProductFieldFormulas,
   productFieldInputFromStored,
   resolveProductFormulasUnified
 } from '@/lib/product-field-formulas';
 import { useProductFormulaPicker } from '@/lib/use-product-formula-picker';
 import { parseNumericFieldValueOrZero } from '@/lib/numeric-field-value';
+
+/** 상세보기 — 기본 필드도 수식(=…)으로 등록됐으면 추가 필드와 같은 함수 배지를 보여준다 */
+function ProductDetailTerm({ label, expression }) {
+  if (!expression) return <dt>{label}</dt>;
+  return (
+    <dt>
+      {label}
+      <span className="custom-fields-formula-expression-label">
+        {formatFormulaExpressionForLabel(expression)}
+      </span>
+      <span className="custom-fields-display-formula-badge">함수</span>
+    </dt>
+  );
+}
 
 const STATUS_LABELS = { Active: '활성', EndOfLife: 'End of Life', Draft: '초안' };
 const BILLING_OPTIONS = ['Monthly', 'Annual', 'Perpetual'];
@@ -125,7 +145,7 @@ function resolveInitialPanelMode({ product, variant, initialMode }) {
   return 'create';
 }
 
-function applyProductToFormState(product, savedNew) {
+function applyProductToFormState(product, savedNew, customDefinitions = []) {
   const cat = parseCategoryFromStored(product?.category);
   const priceFmt = { formatPriceDisplay: (n) => formatPriceDisplay(n) };
   const categoryFromFormula = product?.fieldFormulas?.category;
@@ -139,7 +159,7 @@ function applyProductToFormState(product, savedNew) {
         product?.billingInterval ?? savedNew?.billingInterval ?? 1
       ),
       status: product?.status ?? 'Active',
-      customFields: product?.customFields ? { ...product.customFields } : {}
+      customFields: buildCustomFieldFormValuesFromStored(product, customDefinitions)
     },
     ...inputs,
     categoryKey: categoryFromFormula ? 'other' : cat.key,
@@ -264,6 +284,8 @@ export default function AddProductModal({
   });
   const [customDefinitions, setCustomDefinitions] = useState([]);
   const [showCustomFieldsModal, setShowCustomFieldsModal] = useState(false);
+  const [formulaPaletteOpen, setFormulaPaletteOpen] = useState(false);
+  const [formulaCopyMsg, setFormulaCopyMsg] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [nameInput, setNameInput] = useState(() => {
@@ -316,7 +338,7 @@ export default function AddProductModal({
   const categoryPickerRef = useRef(null);
   const excelFileInputRef = useRef(null);
   const [excelDragOver, setExcelDragOver] = useState(false);
-  const { dealBasRMap, usdSummary, pricingProfile } = useExchangeRates({
+  const { dealBasRMap, usdSummary, pricingProfile, rateRows } = useExchangeRates({
     getAuthHeader,
     respectSessionFreeze: true
   });
@@ -327,15 +349,15 @@ export default function AddProductModal({
   );
 
   const formulaExchangeCtx = useMemo(
-    () => ({ usdSummary, dealBasRMap, pricingProfile }),
-    [usdSummary, dealBasRMap, pricingProfile]
+    () => ({ usdSummary, dealBasRMap, pricingProfile, rateRows }),
+    [usdSummary, dealBasRMap, pricingProfile, rateRows]
   );
 
   const productForForm = loadedProduct || product;
 
   const syncFormFromProduct = (sourceProduct, savedNew = null) => {
     if (!sourceProduct) return;
-    const next = applyProductToFormState(sourceProduct, savedNew);
+    const next = applyProductToFormState(sourceProduct, savedNew, customDefinitions);
     setForm(next.form);
     setNameInput(next.nameInput);
     setCodeInput(next.codeInput);
@@ -366,7 +388,8 @@ export default function AddProductModal({
       billingIntervalInput,
       currency: form.currency,
       customFields: form.customFields,
-      parsePriceInput
+      parsePriceInput,
+      definitions: customDefinitions
     }),
     [
       nameInput,
@@ -381,7 +404,8 @@ export default function AddProductModal({
       channelMarginInput,
       billingIntervalInput,
       form.currency,
-      form.customFields
+      form.customFields,
+      customDefinitions
     ]
   );
 
@@ -391,8 +415,8 @@ export default function AddProductModal({
   );
 
   const formulaFieldOptions = useMemo(
-    () => buildProductFormulaPickerOptions(customDefinitions),
-    [customDefinitions]
+    () => buildProductFormulaPickerOptions(customDefinitions, pricingProfile),
+    [customDefinitions, pricingProfile]
   );
   const formulaCatalogGroups = useMemo(() => buildProductFormulaCatalogGroups(), []);
 
@@ -423,18 +447,69 @@ export default function AddProductModal({
     billingInterval: setBillingIntervalInput
   };
 
-  const { bindFormulaField, insertFieldLabel, insertFunctionName } = useProductFormulaPicker(
+  const { bindFormulaField } = useProductFormulaPicker(
     fieldValuesRef,
     fieldSettersRef
   );
 
+  const copyFormulaToken = async (token, label) => {
+    const text = String(token || '').trim();
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setFormulaCopyMsg(`복사됨: ${label || text}`);
+    } catch {
+      try {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.setAttribute('readonly', '');
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        setFormulaCopyMsg(`복사됨: ${label || text}`);
+      } catch {
+        setFormulaCopyMsg('복사에 실패했습니다.');
+      }
+    }
+  };
+
+  const copyFormulaField = (label) => {
+    const normalized = String(label || '').trim();
+    if (normalized) void copyFormulaToken(`[${normalized}]`, `[${normalized}]`);
+  };
+
+  const copyFormulaFunction = (name) => {
+    const normalized = String(name || '').trim().toLowerCase();
+    if (!normalized) return;
+    const token = normalized === 'pi' ? 'pi' : `${normalized}(`;
+    void copyFormulaToken(token, token);
+  };
+
+  useEffect(() => {
+    if (!formulaCopyMsg) return undefined;
+    const timer = window.setTimeout(() => setFormulaCopyMsg(''), 2200);
+    return () => window.clearTimeout(timer);
+  }, [formulaCopyMsg]);
+
   const customFieldFormulaContext = useMemo(() => {
     const fxBuiltIn = buildExchangeRateFormulaBuiltin(usdSummary, dealBasRMap, form.currency, {
-      profile: pricingProfile
+      profile: pricingProfile,
+      rateRows
     });
+    const { customFieldFormulas: liveCfFormulas } = splitCustomFieldFormulasFromValues(
+      customDefinitions,
+      form.customFields
+    );
     return {
       entityType: 'product',
       definitions: customDefinitions,
+      pricingProfile,
+      customFieldFormulas: liveCfFormulas,
+      allowFormulaInput: true,
+      missingCustomRefAsZero: true,
       builtIn: {
         listPrice: resolvedLiveProduct.listPrice,
         price: resolvedLiveProduct.listPrice,
@@ -446,11 +521,23 @@ export default function AddProductModal({
       },
       computedFormulas: resolvedLiveProduct.customFields || {}
     };
-  }, [resolvedLiveProduct, customDefinitions, dealBasRMap, usdSummary, pricingProfile, form.currency]);
+  }, [
+    resolvedLiveProduct,
+    customDefinitions,
+    dealBasRMap,
+    usdSummary,
+    pricingProfile,
+    rateRows,
+    form.currency,
+    form.customFields
+  ]);
 
   const viewResolvedProduct = useMemo(
-    () => (product ? mergeResolvedProductRow(product, formulaExchangeCtx, customDefinitions) : null),
-    [product, formulaExchangeCtx, customDefinitions]
+    () =>
+      productForForm
+        ? mergeResolvedProductRow(productForForm, formulaExchangeCtx, customDefinitions)
+        : null,
+    [productForForm, formulaExchangeCtx, customDefinitions]
   );
 
   const fetchCustomDefinitions = async () => {
@@ -497,7 +584,9 @@ export default function AddProductModal({
     panelMode,
     productForForm?._id,
     productForForm?.updatedAt,
-    JSON.stringify(productForForm?.fieldFormulas || {})
+    customDefinitions.length,
+    JSON.stringify(productForForm?.fieldFormulas || {}),
+    JSON.stringify(productForForm?.customFieldFormulas || {})
   ]);
 
   useEffect(() => {
@@ -507,7 +596,9 @@ export default function AddProductModal({
     panelMode,
     loadedProduct?._id,
     loadedProduct?.updatedAt,
-    JSON.stringify(loadedProduct?.fieldFormulas || {})
+    customDefinitions.length,
+    JSON.stringify(loadedProduct?.fieldFormulas || {}),
+    JSON.stringify(loadedProduct?.customFieldFormulas || {})
   ]);
 
   useEffect(() => {
@@ -524,13 +615,22 @@ export default function AddProductModal({
       if (e.key !== 'Escape') return;
       if (showDeleteConfirm) setShowDeleteConfirm(false);
       else if (showCustomFieldsModal) setShowCustomFieldsModal(false);
+      else if (formulaPaletteOpen) setFormulaPaletteOpen(false);
       else if (categoryOpen) setCategoryOpen(false);
       else if ((panelMode === 'edit' || panelMode === 'duplicate') && isDetailSlideFlow) setPanelMode('view');
       else onClose?.();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, showCustomFieldsModal, categoryOpen, showDeleteConfirm, panelMode, isDetailSlideFlow]);
+  }, [
+    onClose,
+    showCustomFieldsModal,
+    formulaPaletteOpen,
+    categoryOpen,
+    showDeleteConfirm,
+    panelMode,
+    isDetailSlideFlow
+  ]);
 
   useEffect(() => {
     if (!categoryOpen) return;
@@ -657,6 +757,11 @@ export default function AddProductModal({
       return;
     }
     const addModalSnapshot = isNewProductRegistration ? getSavedAddProductModalDefaults() : null;
+    const preparedCustom = prepareProductCustomFieldsForSave(
+      customDefinitions,
+      form.customFields,
+      customFieldFormulaContext
+    );
     setSaving(true);
     try {
       const url = isEdit ? `${API_BASE}/products/${formProductId || product._id}` : `${API_BASE}/products`;
@@ -670,11 +775,8 @@ export default function AddProductModal({
           billingType: form.billingType,
           billingInterval: normalizeBillingInterval(form.billingType, payload.body.billingInterval),
           status: form.status,
-          customFields: mergeCustomFieldsForSave(
-            customDefinitions,
-            form.customFields,
-            customFieldFormulaContext
-          )
+          customFields: preparedCustom.customFields,
+          customFieldFormulas: preparedCustom.customFieldFormulas
         })
       });
       if (!res.ok) {
@@ -755,7 +857,10 @@ export default function AddProductModal({
   if (!product && panelMode !== 'create') return null;
 
   if (isViewMode && product) {
-    const displayProduct = viewResolvedProduct || product;
+    const detailProduct = productForForm || product;
+    const displayProduct = viewResolvedProduct || detailProduct;
+    /** 엑셀 가져오기·수동 등록에서 =수식으로 넣은 기본 필드 (환율 등 변동 시 재계산됨) */
+    const viewFieldFormulas = normalizeProductFieldFormulas(detailProduct);
     const statusClass = displayProduct.status === 'Active' ? 'active' : displayProduct.status === 'EndOfLife' ? 'eol' : 'draft';
     const catParsed = parseCategoryFromStored(displayProduct.category);
     const categoryDisplay = catParsed.key
@@ -843,31 +948,34 @@ export default function AddProductModal({
               <h3 className="product-detail-section-title">기본 정보</h3>
               <dl className="product-detail-dl">
                 <div className="product-detail-dl-row">
-                  <dt>카테고리</dt>
+                  <ProductDetailTerm label="카테고리" expression={viewFieldFormulas.category} />
                   <dd>{categoryDisplay}</dd>
                 </div>
                 <div className="product-detail-dl-row">
-                  <dt>버전</dt>
+                  <ProductDetailTerm label="버전" expression={viewFieldFormulas.version} />
                   <dd>{displayProduct.version || '—'}</dd>
                 </div>
                 <div className="product-detail-dl-row">
-                  <dt>소비자가</dt>
+                  <ProductDetailTerm label="소비자가" expression={viewFieldFormulas.listPrice} />
                   <dd>{formatPriceView(listPriceFromProduct(displayProduct))}</dd>
                 </div>
                 <div className="product-detail-dl-row">
-                  <dt>원가</dt>
+                  <ProductDetailTerm label="원가" expression={viewFieldFormulas.costPrice} />
                   <dd>{formatPriceView(displayProduct.costPrice)}</dd>
                 </div>
                 <div className="product-detail-dl-row">
-                  <dt>유통가</dt>
+                  <ProductDetailTerm label="유통가" expression={viewFieldFormulas.channelPrice} />
                   <dd>{formatPriceView(displayProduct.channelPrice)}</dd>
                 </div>
                 <div className="product-detail-dl-row">
-                  <dt>순 마진</dt>
+                  <ProductDetailTerm label="순 마진" expression={viewFieldFormulas.consumerMargin} />
                   <dd>{formatPriceView(getConsumerMargin(displayProduct))}</dd>
                 </div>
                 <div className="product-detail-dl-row">
-                  <dt>유통시 순 마진</dt>
+                  <ProductDetailTerm
+                    label="유통시 순 마진"
+                    expression={viewFieldFormulas.channelMargin}
+                  />
                   <dd>
                     {shouldDashChannelMargin(displayProduct)
                       ? '—'
@@ -876,28 +984,32 @@ export default function AddProductModal({
                 </div>
                 <div className="product-detail-dl-row">
                   <dt>결제 주기</dt>
-                  <dd>{formatProductBillingDisplay(product.billingType, product.billingInterval)}</dd>
+                  <dd>{formatProductBillingDisplay(detailProduct.billingType, detailProduct.billingInterval)}</dd>
                 </div>
                 <div className="product-detail-dl-row">
                   <dt>통화</dt>
-                  <dd>{product.currency || '—'}</dd>
+                  <dd>{detailProduct.currency || '—'}</dd>
                 </div>
               </dl>
             </section>
             <CustomFieldsDisplay
               definitions={customDefinitions}
-              values={product.customFields || {}}
+              values={detailProduct.customFields || {}}
               className="product-detail-custom-fields"
               formulaContext={{
                 entityType: 'product',
-                displayContext: { currency: product.currency || 'KRW' },
+                pricingProfile,
+                customFieldFormulas: detailProduct.customFieldFormulas || {},
+                missingCustomRefAsZero: true,
+                displayContext: { currency: detailProduct.currency || 'KRW' },
                 builtIn: {
-                  listPrice: listPriceFromProduct(product),
-                  price: listPriceFromProduct(product),
-                  costPrice: Number(product.costPrice) || 0,
-                  channelPrice: Number(product.channelPrice) || 0,
-                  ...buildExchangeRateFormulaBuiltin(usdSummary, dealBasRMap, product.currency, {
-                    profile: pricingProfile
+                  listPrice: listPriceFromProduct(displayProduct),
+                  price: listPriceFromProduct(displayProduct),
+                  costPrice: Number(displayProduct.costPrice) || 0,
+                  channelPrice: Number(displayProduct.channelPrice) || 0,
+                  ...buildExchangeRateFormulaBuiltin(usdSummary, dealBasRMap, detailProduct.currency, {
+                    profile: pricingProfile,
+                    rateRows
                   })
                 }
               }}
@@ -910,7 +1022,7 @@ export default function AddProductModal({
 
   return (
     <div className={`add-product-modal-overlay ${isSlidePanel ? 'add-product-modal-overlay--slide' : ''}`}>
-      <div className={`add-product-modal add-product-modal--with-formula-picker ${isSlidePanel ? 'add-product-modal--slide' : ''}`}>
+      <div className={`add-product-modal ${isSlidePanel ? 'add-product-modal--slide' : ''}`}>
         <div className="add-product-modal-header">
           <div className="add-product-modal-header-text">
             <h2 className="add-product-modal-title">
@@ -929,12 +1041,23 @@ export default function AddProductModal({
           </button>
         </div>
         <form onSubmit={handleSubmit} className="add-product-modal-form">
-          <div className="add-product-modal-body-layout">
-            <div className="add-product-modal-body">
+          <div className="add-product-modal-body">
             {error && <p className="add-product-modal-error">{error}</p>}
-            <p className="add-product-modal-formula-hint">
-              드롭다운·선택 UI가 아닌 입력란은 <strong>=</strong> 로 시작하는 수식을 쓸 수 있습니다. 오른쪽 패널에서 필드·함수를 클릭하면 커서 위치에 삽입됩니다.
-            </p>
+            <div className="add-product-modal-formula-hint">
+              <span>
+                드롭다운·선택 UI가 아닌 입력란은 <strong>=</strong> 로 시작하는 수식을 쓸 수 있습니다.
+                필드·함수를 복사한 뒤 원하는 입력란에 붙여넣으세요.
+              </span>
+              <button
+                type="button"
+                className={`add-product-modal-formula-toggle${formulaPaletteOpen ? ' is-active' : ''}`}
+                onClick={() => setFormulaPaletteOpen((open) => !open)}
+                aria-expanded={formulaPaletteOpen}
+              >
+                <span className="material-symbols-outlined" aria-hidden>functions</span>
+                필드·함수
+              </button>
+            </div>
 
             {showExcelDrop ? (
               <>
@@ -1404,15 +1527,41 @@ export default function AddProductModal({
                 </div>
               </section>
             ) : null}
-            </div>
-            <CustomFieldsFormulaPickerPanel
-              className="add-product-modal-formula-picker-panel"
-              formulaFieldOptions={formulaFieldOptions}
-              formulaCatalogGroups={formulaCatalogGroups}
-              onInsertFieldLabel={insertFieldLabel}
-              onInsertFunctionName={insertFunctionName}
-            />
           </div>
+          {formulaPaletteOpen ? (
+            <div
+              className="add-product-modal-formula-popover"
+              role="dialog"
+              aria-modal="false"
+              aria-label="필드·함수 복사"
+            >
+              <div className="add-product-modal-formula-popover-header">
+                <div>
+                  <strong>필드 · 함수</strong>
+                  <span>클릭하면 복사됩니다. 붙여넣기는 원하는 입력란에서 직접 하세요.</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFormulaPaletteOpen(false)}
+                  aria-label="필드·함수 닫기"
+                >
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+              {formulaCopyMsg ? (
+                <p className="add-product-modal-formula-copy-msg" role="status">{formulaCopyMsg}</p>
+              ) : null}
+              <CustomFieldsFormulaPickerPanel
+                className="add-product-modal-formula-picker-panel"
+                formulaFieldOptions={formulaFieldOptions}
+                formulaCatalogGroups={formulaCatalogGroups}
+                onInsertFieldLabel={copyFormulaField}
+                onInsertFunctionName={copyFormulaFunction}
+                fieldHint="클릭하여 [필드명] 복사"
+                functionHint="클릭하여 함수명( 복사"
+              />
+            </div>
+          ) : null}
           <div className="add-product-modal-footer">
             {canManageCustomFieldDefinitions ? (
               <button type="button" className="add-product-modal-extra" onClick={() => setShowCustomFieldsModal(true)}>

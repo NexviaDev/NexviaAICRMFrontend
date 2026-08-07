@@ -1,8 +1,6 @@
-import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
-import CustomerCompanySearchModal from '../../customer-companies/customer-company-search-modal/customer-company-search-modal';
-import CustomerCompanyEmployeesSearchModal from '../../customer-company-employees/customer-company-employees-search-modal/customer-company-employees-search-modal';
-import ProductSearchModal from '../product-search-modal/product-search-modal';
+import OpportunityLineProductDetailModal from '../opportunity-line-product-detail-modal/opportunity-line-product-detail-modal';
 import ParticipantModal from '@/shared/participant-modal/participant-modal';
 import CustomFieldsManageModal from '@/shared/custom-fields-manage-modal/custom-fields-manage-modal';
 import CustomFieldsSection from '@/shared/custom-fields-section';
@@ -17,7 +15,6 @@ import {
 import '../../customer-companies/customer-company-detail-modal/customer-company-detail-modal.css';
 import './opportunity-modal.css';
 import { CrmDriveStoragePanel, formatDriveFileDate } from '@/shared/register-sale-docs-drive';
-
 import { API_BASE, MAX_DRIVE_JSON_UPLOAD_BYTES } from '@/config';
 import { crmFetchInit } from '@/lib/crm-auth';
 import {
@@ -49,6 +46,9 @@ import {
   buildLineItemsPayloadFromClientLines,
   resolveOpportunityTitleToUse
 } from '@/lib/sales-opportunity-form-shared';
+import { normalizeCustomFieldDefinition } from '@/lib/custom-field-display-format';
+import { filterActiveCustomFieldDefinitions } from '@/lib/custom-field-definition-utils';
+import '../opportunity-line-product-detail-modal/opportunity-line-product-detail-modal.css';
 import { getUserVisibleApiError } from '@/lib/api-error';
 import { getStoredCrmUser, isAdminOrAboveRole } from '@/lib/crm-role-utils';
 import { PriceWithKrwHint } from '@/lib/currency-price-display';
@@ -99,6 +99,15 @@ import {
   fileToBase64,
   organizeComments
 } from './opportunity-modal-helpers';
+
+/** 검색 모달은 클릭 시에만 로드 — 제품/고객사 전체 목록 페이지 번들 연쇄 차단 */
+const CustomerCompanySearchModal = lazy(() =>
+  import('../../customer-companies/customer-company-search-modal/customer-company-search-modal')
+);
+const CustomerCompanyEmployeesSearchModal = lazy(() =>
+  import('../../customer-company-employees/customer-company-employees-search-modal/customer-company-employees-search-modal')
+);
+const ProductSearchModal = lazy(() => import('../product-search-modal/product-search-modal'));
 
 /** 서버 lineItems 합계 — 칸반 드롭 후 URL stage=Won 일 때 handleStageButtonClick 과 동일 */
 function sumLineFinalFromServerLineItems(lineItemsRaw) {
@@ -246,6 +255,9 @@ export default function OpportunityModal({
   const firstStageValue = stageSelectOptions[0]?.value || 'NewLead';
   const {
     dealBasRMap,
+    usdSummary,
+    pricingProfile,
+    rateRows,
     exchangeRatesFrozen,
     frozenAt,
     toggleExchangeRatesFreeze,
@@ -330,6 +342,8 @@ export default function OpportunityModal({
   const [showCompanySearchModal, setShowCompanySearchModal] = useState(false);
   const [showContactSearchModal, setShowContactSearchModal] = useState(false);
   const [showProductSearchModal, setShowProductSearchModal] = useState(false);
+  const [lineProductDetail, setLineProductDetail] = useState(null);
+  const [productCustomFieldDefinitions, setProductCustomFieldDefinitions] = useState([]);
   const [showInternalAssigneePicker, setShowInternalAssigneePicker] = useState(false);
   /** DB에 ObjectId는 남았으나 문서가 삭제된 경우 상세는 — 표시 */
   const [companyRefMissing, setCompanyRefMissing] = useState(false);
@@ -435,6 +449,33 @@ export default function OpportunityModal({
     }
     return dealBasRMap;
   }, [form.stage, loadedFrozenExchangeRates, dealBasRMap]);
+  const productFormulaExchangeCtx = useMemo(
+    () => ({
+      dealBasRMap: effectiveDealBasRMap,
+      usdSummary:
+        form.stage === 'Won' && loadedFrozenExchangeRates?.usdSummary
+          ? loadedFrozenExchangeRates.usdSummary
+          : usdSummary,
+      pricingProfile:
+        form.stage === 'Won' && loadedFrozenExchangeRates?.pricingProfile
+          ? loadedFrozenExchangeRates.pricingProfile
+          : pricingProfile,
+      rateRows:
+        form.stage === 'Won' &&
+        Array.isArray(loadedFrozenExchangeRates?.rateRows) &&
+        loadedFrozenExchangeRates.rateRows.length
+          ? loadedFrozenExchangeRates.rateRows
+          : rateRows
+    }),
+    [
+      effectiveDealBasRMap,
+      form.stage,
+      loadedFrozenExchangeRates,
+      usdSummary,
+      pricingProfile,
+      rateRows
+    ]
+  );
   const effectiveRatesFrozen =
     (form.stage === 'Won' && Boolean(loadedFrozenExchangeRates?.dealBasRMap)) || exchangeRatesFrozen;
   const effectiveFrozenAt =
@@ -1194,7 +1235,9 @@ export default function OpportunityModal({
           snapshotDsrpUsd: li.snapshotDsrpUsd,
           snapshotSupplyCostKrw: li.snapshotSupplyCostKrw,
           snapshotRpiPercent: li.snapshotRpiPercent,
-          snapshotHandlingRate: li.snapshotHandlingRate
+          snapshotHandlingRate: li.snapshotHandlingRate,
+          productCatalogSnapshot: li.productCatalogSnapshot || null,
+          productCatalogOverrides: li.productCatalogOverrides || null
         };
       };
 
@@ -1309,6 +1352,30 @@ export default function OpportunityModal({
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        await pingBackendHealth(getAuthHeader);
+        const res = await fetch(
+          `${API_BASE}/custom-field-definitions?entityType=product&_=${Date.now()}`,
+          { ...crmFetchInit(), cache: 'no-store' }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        const defs = filterActiveCustomFieldDefinitions(
+          (Array.isArray(data?.items) ? data.items : []).map(normalizeCustomFieldDefinition)
+        );
+        setProductCustomFieldDefinitions(defs);
+      } catch {
+        if (!cancelled) setProductCustomFieldDefinitions([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   /** 편집 시 서버에 이름만 비어 있는 경우 overview 직원 목록으로 보강 */
   useEffect(() => {
     const uid = (form.assignedToUserId || '').trim();
@@ -1378,7 +1445,8 @@ export default function OpportunityModal({
   useEffect(() => {
     const onKey = (e) => {
       if (e.key !== 'Escape') return;
-      if (showProductSearchModal) setShowProductSearchModal(false);
+      if (lineProductDetail) setLineProductDetail(null);
+      else if (showProductSearchModal) setShowProductSearchModal(false);
       else if (showInternalAssigneePicker) setShowInternalAssigneePicker(false);
       else if (showContactSearchModal) setShowContactSearchModal(false);
       else if (showCompanySearchModal) setShowCompanySearchModal(false);
@@ -1388,6 +1456,7 @@ export default function OpportunityModal({
     return () => window.removeEventListener('keydown', onKey);
   }, [
     onClose,
+    lineProductDetail,
     showCompanySearchModal,
     showContactSearchModal,
     showProductSearchModal,
@@ -4595,7 +4664,24 @@ export default function OpportunityModal({
                                       <React.Fragment key={line.lineId}>
                                         <tr className={`opp-line-sheet-tr-main ${stripeClass}`}>
                                           <td className="opp-line-sheet-td opp-line-sheet-td--product" data-label="제품">
-                                            <span className="opp-line-sheet-product-name">{line.productName || '제품'}</span>
+                                            <button
+                                              type="button"
+                                              className="opp-line-sheet-product-name-btn"
+                                              onClick={() =>
+                                                setLineProductDetail({
+                                                  lineId: line.lineId,
+                                                  productId: line.productId || '',
+                                                  productName: line.productName || '',
+                                                  productCatalogSnapshot: line.productCatalogSnapshot || null,
+                                                  productCatalogOverrides: line.productCatalogOverrides || null,
+                                                  priceBasis: line.priceBasis === 'channel' ? 'channel' : 'consumer',
+                                                  quantity: line.quantity || '1'
+                                                })
+                                              }
+                                              title="제품 상세 · 환율 재계산값과 등록 초기값 비교"
+                                            >
+                                              {line.productName || '제품'}
+                                            </button>
                                           </td>
                                           <td className="opp-line-sheet-td opp-line-sheet-td--basis" data-label="가격 기준">
                                             <select
@@ -5489,113 +5575,150 @@ export default function OpportunityModal({
           />
         ) : null}
         {showCompanySearchModal && (
-          <CustomerCompanySearchModal
-            onClose={() => setShowCompanySearchModal(false)}
-            onSelect={(company) => {
-              setPersonalPurchase(false);
-              setCompanyRefMissing(false);
-              setContactRefMissing(false);
-              setForm((f) => ({
-                ...f,
-                customerCompanyId: company._id,
-                customerCompanyName: company.name || '',
-                customerCompanyAddress: String(company?.address ?? '').trim(),
-                customerCompanyEmployeeId: '',
-                contactName: '',
-                contactPhone: '',
-                contactEmail: ''
-              }));
-              setBusinessNumber(String(company?.businessNumber ?? ''));
-              setShowCompanySearchModal(false);
-            }}
-          />
+          <Suspense fallback={null}>
+            <CustomerCompanySearchModal
+              onClose={() => setShowCompanySearchModal(false)}
+              onSelect={(company) => {
+                setPersonalPurchase(false);
+                setCompanyRefMissing(false);
+                setContactRefMissing(false);
+                setForm((f) => ({
+                  ...f,
+                  customerCompanyId: company._id,
+                  customerCompanyName: company.name || '',
+                  customerCompanyAddress: String(company?.address ?? '').trim(),
+                  customerCompanyEmployeeId: '',
+                  contactName: '',
+                  contactPhone: '',
+                  contactEmail: ''
+                }));
+                setBusinessNumber(String(company?.businessNumber ?? ''));
+                setShowCompanySearchModal(false);
+              }}
+            />
+          </Suspense>
         )}
         {showContactSearchModal && (
-          <CustomerCompanyEmployeesSearchModal
-            customerCompanyId={form.customerCompanyId || null}
-            onClose={() => setShowContactSearchModal(false)}
-            onSelect={async (contact) => {
-              const empId = contact._id != null ? String(contact._id) : '';
-              let nextCcId = '';
-              let nextCcName = '';
-              let nextBn = '';
-              let nextAddr = '';
-              if (contact.customerCompanyId) {
-                const cc = contact.customerCompanyId;
-                if (typeof cc === 'object' && cc !== null && cc._id) {
-                  nextCcId = cc._id;
-                  nextCcName = cc.name || contact.company || '';
-                  nextBn = String(cc.businessNumber ?? '');
-                  nextAddr = String(cc.address ?? '');
-                } else {
-                  const cid = cc;
-                  try {
-                    const ccRes = await fetch(`${API_BASE}/customer-companies/${cid}`, crmFetchInit());
-                    const ccData = await ccRes.json().catch(() => ({}));
-                    if (ccRes.ok && ccData._id) {
-                      nextCcId = ccData._id;
-                      nextCcName = ccData.name || contact.company || '';
-                      nextBn = String(ccData.businessNumber ?? '');
-                      nextAddr = String(ccData.address ?? '');
-                    }
-                  } catch (_) { /* ignore */ }
+          <Suspense fallback={null}>
+            <CustomerCompanyEmployeesSearchModal
+              customerCompanyId={form.customerCompanyId || null}
+              onClose={() => setShowContactSearchModal(false)}
+              onSelect={async (contact) => {
+                const empId = contact._id != null ? String(contact._id) : '';
+                let nextCcId = '';
+                let nextCcName = '';
+                let nextBn = '';
+                let nextAddr = '';
+                if (contact.customerCompanyId) {
+                  const cc = contact.customerCompanyId;
+                  if (typeof cc === 'object' && cc !== null && cc._id) {
+                    nextCcId = cc._id;
+                    nextCcName = cc.name || contact.company || '';
+                    nextBn = String(cc.businessNumber ?? '');
+                    nextAddr = String(cc.address ?? '');
+                  } else {
+                    const cid = cc;
+                    try {
+                      const ccRes = await fetch(`${API_BASE}/customer-companies/${cid}`, crmFetchInit());
+                      const ccData = await ccRes.json().catch(() => ({}));
+                      if (ccRes.ok && ccData._id) {
+                        nextCcId = ccData._id;
+                        nextCcName = ccData.name || contact.company || '';
+                        nextBn = String(ccData.businessNumber ?? '');
+                        nextAddr = String(ccData.address ?? '');
+                      }
+                    } catch (_) { /* ignore */ }
+                  }
+                } else if ((contact.company || '').trim()) {
+                  const resolved = await resolveCustomerCompanyByAffiliationName(String(contact.company).trim());
+                  if (resolved) {
+                    nextCcId = resolved._id;
+                    nextCcName = resolved.name || '';
+                    nextBn = String(resolved.businessNumber ?? '');
+                    nextAddr = String(resolved.address ?? '');
+                  }
                 }
-              } else if ((contact.company || '').trim()) {
-                const resolved = await resolveCustomerCompanyByAffiliationName(String(contact.company).trim());
-                if (resolved) {
-                  nextCcId = resolved._id;
-                  nextCcName = resolved.name || '';
-                  nextBn = String(resolved.businessNumber ?? '');
-                  nextAddr = String(resolved.address ?? '');
+                setContactRefMissing(false);
+                setForm((f) => ({
+                  ...f,
+                  contactName: contact.name || '',
+                  contactPhone: formatPhone(String(contact.phone ?? '').trim()),
+                  contactEmail: String(contact.email ?? '').trim(),
+                  customerCompanyEmployeeId: empId,
+                  ...(personalPurchase
+                    ? {}
+                    : nextCcId
+                      ? {
+                        customerCompanyId: nextCcId,
+                        customerCompanyName: nextCcName,
+                        customerCompanyAddress: nextAddr
+                      }
+                      : { customerCompanyId: '', customerCompanyName: '', customerCompanyAddress: '' })
+                }));
+                if (!personalPurchase) {
+                  setBusinessNumber(nextBn);
+                  setCompanyRefMissing(false);
                 }
-              }
-              setContactRefMissing(false);
-              setForm((f) => ({
-                ...f,
-                contactName: contact.name || '',
-                contactPhone: formatPhone(String(contact.phone ?? '').trim()),
-                contactEmail: String(contact.email ?? '').trim(),
-                customerCompanyEmployeeId: empId,
-                ...(personalPurchase
-                  ? {}
-                  : nextCcId
-                    ? {
-                      customerCompanyId: nextCcId,
-                      customerCompanyName: nextCcName,
-                      customerCompanyAddress: nextAddr
-                    }
-                    : { customerCompanyId: '', customerCompanyName: '', customerCompanyAddress: '' })
-              }));
-              if (!personalPurchase) {
-                setBusinessNumber(nextBn);
-                setCompanyRefMissing(false);
-              }
-              setShowContactSearchModal(false);
-            }}
-          />
+                setShowContactSearchModal(false);
+              }}
+            />
+          </Suspense>
         )}
         {showProductSearchModal && (
-          <ProductSearchModal
-            onClose={() => setShowProductSearchModal(false)}
-            onSelect={(products) => {
-              const list = Array.isArray(products) ? products : products ? [products] : [];
-              if (!list.length) return;
-              setLineItems((prev) => [...prev, ...list.map((p) => buildLineFromProduct(p, 'consumer'))]);
-              setProductById((prev) => {
-                const next = { ...prev };
-                for (const p of list) {
-                  if (p?._id) next[String(p._id)] = p;
-                }
-                return next;
-              });
-              setForm((f) => ({
-                ...f,
-                currency: list[0]?.currency || f.currency || 'KRW'
-              }));
-              setShowProductSearchModal(false);
-            }}
-          />
+          <Suspense fallback={null}>
+            <ProductSearchModal
+              onClose={() => setShowProductSearchModal(false)}
+              onSelect={(products) => {
+                const list = Array.isArray(products) ? products : products ? [products] : [];
+                if (!list.length) return;
+                setLineItems((prev) => [
+                  ...prev,
+                  ...list.map((p) =>
+                    buildLineFromProduct(p, 'consumer', {
+                      exchangeCtx: productFormulaExchangeCtx,
+                      definitions: productCustomFieldDefinitions
+                    })
+                  )
+                ]);
+                setProductById((prev) => {
+                  const next = { ...prev };
+                  for (const p of list) {
+                    if (p?._id) next[String(p._id)] = p;
+                  }
+                  return next;
+                });
+                setForm((f) => ({
+                  ...f,
+                  currency: list[0]?.currency || f.currency || 'KRW'
+                }));
+                setShowProductSearchModal(false);
+              }}
+            />
+          </Suspense>
         )}
+        {lineProductDetail ? (
+          <OpportunityLineProductDetailModal
+            productId={lineProductDetail.productId}
+            productName={lineProductDetail.productName}
+            initialCatalogSnapshot={lineProductDetail.productCatalogSnapshot}
+            catalogOverrides={lineProductDetail.productCatalogOverrides}
+            seedProduct={
+              lineProductDetail.productId ? productById[lineProductDetail.productId] || null : null
+            }
+            customDefinitions={productCustomFieldDefinitions}
+            dealBasRMap={effectiveDealBasRMap}
+            usdSummary={productFormulaExchangeCtx.usdSummary}
+            pricingProfile={productFormulaExchangeCtx.pricingProfile}
+            rateRows={productFormulaExchangeCtx.rateRows}
+            linePriceBasis={lineProductDetail.priceBasis || 'consumer'}
+            lineQuantity={lineProductDetail.quantity || '1'}
+            onApply={(patch) => {
+              if (!lineProductDetail?.lineId || !patch) return;
+              updateLine(lineProductDetail.lineId, patch);
+            }}
+            onClose={() => setLineProductDetail(null)}
+          />
+        ) : null}
         {showInternalAssigneePicker ? (
           <ParticipantModal
             title="사내 영업 담당 선택"

@@ -8,6 +8,10 @@ import {
   DEFAULT_EXCHANGE_RATE_PRICING_PROFILE,
   normalizeExchangeRatePricingProfile
 } from '@/lib/exchange-rate-pricing-profile';
+import {
+  customStepBuiltinKey,
+  normalizeCustomPricingSteps
+} from '@/lib/exchange-rate-formula-fields';
 
 /** product 수식 필드 picker · 라벨 매핑 (제품 필드·환율 산정 필드 명칭 구분) */
 export const EXCHANGE_RATE_FORMULA_BUILTIN = [
@@ -21,9 +25,61 @@ export const EXCHANGE_RATE_FORMULA_BUILTIN = [
   { key: 'fxCurrencyDealBasR', label: '통화환율', desc: '제품 통화 매매기준율' }
 ];
 
+/** 내장 + 회사 추가 산정 항목 (`profile.customSteps`) */
+export function listExchangeRateFormulaBuiltins(profile) {
+  const custom = normalizeCustomPricingSteps(profile?.customSteps);
+  return [
+    ...EXCHANGE_RATE_FORMULA_BUILTIN,
+    ...custom.map((s) => ({
+      key: customStepBuiltinKey(s.id),
+      label: s.label,
+      desc: '회사 USD 산정 · 추가 항목'
+    }))
+  ];
+}
+
 function num(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * 고시 표 rows 없이 dealBasRMap·usdSummary 만으로 산정 체인 재계산용 최소 행
+ * (엑셀 미리보기 등 rows 미보관 경로에서 [기준환율] 등 customSteps 복원)
+ */
+export function buildSyntheticRateRowsForPricing(dealBasRMap = {}, usdSummary = null) {
+  const map = dealBasRMap && typeof dealBasRMap === 'object' ? dealBasRMap : {};
+  const codes = new Set(
+    Object.keys(map)
+      .map((k) => String(k).trim().toUpperCase())
+      .filter(Boolean)
+  );
+  if (num(usdSummary?.dealBasR) != null) codes.add('USD');
+  const rows = [];
+  for (const code of codes) {
+    const dealBasR =
+      code === 'USD' ? num(usdSummary?.dealBasR) ?? num(map.USD) ?? num(map.usd) : num(map[code]);
+    if (dealBasR == null || dealBasR <= 0) continue;
+    rows.push({
+      id: code,
+      code,
+      dealBasR,
+      tts: code === 'USD' ? num(usdSummary?.remittanceRate) ?? dealBasR : null,
+      ttb: null,
+      bkpr: null,
+      yyEfeeR: null,
+      tenDdEfeeR: null,
+      kftcDealBasR: null,
+      kftcBkpr: null
+    });
+  }
+  return rows;
+}
+
+function chainHasCustomStepValues(chain, customSteps) {
+  if (!customSteps?.length) return true;
+  if (!chain || typeof chain !== 'object') return false;
+  return customSteps.every((s) => num(chain[s.id]) != null);
 }
 
 /** @param {Record<string, number>} dealBasRMap */
@@ -38,7 +94,7 @@ export function resolveCurrencyDealBasR(dealBasRMap, currencyCode) {
  * @param {object|null} usdSummary — /exchange-rates/latest meta.usdSummary
  * @param {Record<string, number>} dealBasRMap
  * @param {string} [currencyCode] — 제품 통화
- * @param {{ profile?: object, usdAmount?: number, marginRate?: number }} [options]
+ * @param {{ profile?: object, usdAmount?: number, marginRate?: number, rateRows?: Array }} [options]
  */
 export function buildExchangeRateFormulaBuiltin(
   usdSummary,
@@ -46,20 +102,35 @@ export function buildExchangeRateFormulaBuiltin(
   currencyCode = 'USD',
   options = {}
 ) {
-  const profile = normalizeExchangeRatePricingProfile(options.profile || DEFAULT_EXCHANGE_RATE_PRICING_PROFILE);
-  let chain = usdSummary?.pricingChain || null;
-  if (!chain && Array.isArray(options.rateRows) && options.rateRows.length) {
-    chain = computeExchangeRatePricingChain(options.rateRows, profile, {
-      referenceUsdAmount: options.usdAmount ?? profile.referenceUsdAmount
-    });
-  }
-  if (!chain) {
-    chain = computeExchangeRatePricingChain([], profile, {
-      referenceUsdAmount: options.usdAmount ?? profile.referenceUsdAmount
-    });
+  const profile = normalizeExchangeRatePricingProfile(
+    options.profile || DEFAULT_EXCHANGE_RATE_PRICING_PROFILE
+  );
+  const customSteps = profile.customSteps || [];
+  const refUsd = options.usdAmount ?? profile.referenceUsdAmount;
+
+  let rateRows =
+    Array.isArray(options.rateRows) && options.rateRows.length ? options.rateRows : null;
+  let chain = null;
+
+  if (rateRows) {
+    chain = computeExchangeRatePricingChain(rateRows, profile, { referenceUsdAmount: refUsd });
+  } else if (
+    usdSummary?.pricingChain &&
+    chainHasCustomStepValues(usdSummary.pricingChain, customSteps)
+  ) {
+    chain = usdSummary.pricingChain;
+  } else {
+    const synth = buildSyntheticRateRowsForPricing(dealBasRMap, usdSummary);
+    if (synth.length) {
+      chain = computeExchangeRatePricingChain(synth, profile, { referenceUsdAmount: refUsd });
+    } else if (usdSummary?.pricingChain) {
+      chain = usdSummary.pricingChain;
+    } else {
+      chain = computeExchangeRatePricingChain([], profile, { referenceUsdAmount: refUsd });
+    }
   }
 
-  return {
+  const out = {
     fxDealBasR: num(usdSummary?.dealBasR) ?? resolveCurrencyDealBasR(dealBasRMap, 'USD'),
     fxRemittanceRate: chain.remittanceRate,
     fxOrderRate: chain.orderRate,
@@ -70,6 +141,16 @@ export function buildExchangeRateFormulaBuiltin(
     fxVatAmount: chain.vatAmount,
     fxCurrencyDealBasR: resolveCurrencyDealBasR(dealBasRMap, currencyCode)
   };
+
+  for (const step of customSteps) {
+    const v = num(chain[step.id]);
+    const key = customStepBuiltinKey(step.id);
+    out[key] = v;
+    /** 라벨 직접 참조 ([기준환율]) — picker·별도 map 없이도 해석 */
+    if (step.label) out[step.label] = v;
+  }
+
+  return out;
 }
 
 /** 외화 금액 × (통화환율 / quoteUnits) — 수식 보조용 */

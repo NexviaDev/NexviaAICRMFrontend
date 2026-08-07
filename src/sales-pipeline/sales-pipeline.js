@@ -1,11 +1,15 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, lazy, Suspense } from 'react';
 import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import SalesPipelineTablePanel from './sales-pipeline-table-panel';
 import { useSearchParams } from 'react-router-dom';
-import OpportunityModal from './opportunity-modal/opportunity-modal';
 import PipelineStagesManageModal from './pipeline-stages-manage-modal/pipeline-stages-manage-modal';
 import DropZoneListModal from './drop-zone-list-modal/drop-zone-list-modal';
-import SalesPipelineExcelImportModal from './sales-opportunity-excel-import-modal/sales-pipeline-excel-import-modal';
+
+/** 모달·엑셀 청크는 열 때만 로드(제품/고객사 목록 페이지 연쇄 import 차단) */
+const OpportunityModal = lazy(() => import('./opportunity-modal/opportunity-modal'));
+const SalesPipelineExcelImportModal = lazy(() =>
+  import('./sales-opportunity-excel-import-modal/sales-pipeline-excel-import-modal')
+);
 import './sales-pipeline.css';
 import './sales-pipeline-responsive.css';
 import './sales-pipeline-table-theme.css';
@@ -397,7 +401,10 @@ export default function SalesPipeline() {
   const [grouped, setGrouped] = useState({});
   const [totals, setTotals] = useState({});
   const [loading, setLoading] = useState(true);
+  /** 입력란 표시값 — fetchData deps에 넣지 않음(키입력마다 즉시 목록 재조회 방지) */
   const [search, setSearch] = useState('');
+  /** debounce 후 API에 넘기는 검색어 */
+  const [searchQuery, setSearchQuery] = useState('');
   const [dragId, setDragId] = useState(null);
   const kanbanDragGhostRef = useRef(null);
   /** 칸반 드래그로 단계 PATCH 중인 기회 id (중복 드롭 방지) */
@@ -506,7 +513,7 @@ export default function SalesPipeline() {
       const params = new URLSearchParams();
       /* 파이프라인 칸반: 갱신 후속(NewLead)의 미래 saleDate 숨김을 쓰지 않고 전부 표시 */
       params.set('pipelineShowAll', '1');
-      if (search) params.set('search', search);
+      if (searchQuery) params.set('search', searchQuery);
       const fy = (filterYear || '').trim();
       if (fy) {
         params.set('year', fy);
@@ -560,7 +567,7 @@ export default function SalesPipeline() {
       if (!silent) setLoading(false);
     }
   }, [
-    search,
+    searchQuery,
     filterYear,
     filterMonth,
     filterScheduleField,
@@ -735,8 +742,11 @@ export default function SalesPipeline() {
     const val = e.target.value;
     setSearch(val);
     clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => fetchData(), 350);
+    /* searchQuery만 바꾸면 fetchData identity 변경 → 기존 useEffect가 1회 조회. setSearch는 즉시 조회 유발 금지 */
+    searchTimer.current = setTimeout(() => setSearchQuery(val), 350);
   };
+
+  useEffect(() => () => clearTimeout(searchTimer.current), []);
 
   const persistAssigneeMeTemplate = useCallback((assigneeMeOnly) => {
     patchListTemplate(SALES_PIPELINE_LIST_ID, { assigneeMeOnly }).catch((err) => {
@@ -1768,28 +1778,34 @@ export default function SalesPipeline() {
         </button>
       )}
 
-      <SalesPipelineExcelImportModal
-        open={excelImportOpen}
-        onClose={closeExcelImportModal}
-        onImported={() => {
-          void fetchData({ silent: true });
-        }}
-      />
+      {excelImportOpen ? (
+        <Suspense fallback={null}>
+          <SalesPipelineExcelImportModal
+            open={excelImportOpen}
+            onClose={closeExcelImportModal}
+            onImported={() => {
+              void fetchData({ silent: true });
+            }}
+          />
+        </Suspense>
+      ) : null}
 
-      {/* 기회 모달 */}
+      {/* 기회 모달 — 청크는 열릴 때만 */}
       {isModalOpen && (
-        <OpportunityModal
-          mode={modalMode}
-          oppId={editOppId}
-          defaultStage={defaultStage}
-          stageOptions={boardStages.map((key) => ({ value: key, label: stageLabels[key] ?? key })).concat(
-            [{ value: 'Won', label: '수주 성공' }],
-            [{ value: 'Lost', label: '기회 상실' }, { value: 'Abandoned', label: '보류' }]
-          )}
-          onClose={closeModal}
-          onSaved={handleOpportunitySaved}
-          onSwitchToEditAfterCreate={openEditModal}
-        />
+        <Suspense fallback={null}>
+          <OpportunityModal
+            mode={modalMode}
+            oppId={editOppId}
+            defaultStage={defaultStage}
+            stageOptions={boardStages.map((key) => ({ value: key, label: stageLabels[key] ?? key })).concat(
+              [{ value: 'Won', label: '수주 성공' }],
+              [{ value: 'Lost', label: '기회 상실' }, { value: 'Abandoned', label: '보류' }]
+            )}
+            onClose={closeModal}
+            onSaved={handleOpportunitySaved}
+            onSwitchToEditAfterCreate={openEditModal}
+          />
+        </Suspense>
       )}
       {/* 단계 관리 모달 */}
       {showStagesModal && (

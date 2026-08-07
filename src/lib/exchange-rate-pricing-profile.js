@@ -1,15 +1,17 @@
 import {
   DEFAULT_STEP_FORMULAS,
-  PRICING_STEP_DEFS,
-  STEP_RESULT_FIELD_LABELS,
+  DEFAULT_CUSTOM_STEP_FORMULA,
   buildRateFieldValuesFromRows,
   evaluateExchangeRateStepFormula,
   mergeStepResultsIntoFieldValues,
-  normalizeExchangeRateStepFormula
+  normalizeCustomPricingSteps,
+  normalizeExchangeRateStepFormula,
+  resolvePricingStepDefs
 } from '@/lib/exchange-rate-formula-fields';
 
 export const DEFAULT_EXCHANGE_RATE_PRICING_PROFILE = {
   stepFormulas: { ...DEFAULT_STEP_FORMULAS },
+  customSteps: [],
   /** 1 USD 기준 — 공급원가 = round(1 × RPI환율) */
   referenceUsdAmount: 1
 };
@@ -56,19 +58,22 @@ function migrateLegacyProfile(src) {
           ? normalizeExchangeRateStepFormula(`round([산정 소비자가]*${vat})`)
           : DEFAULT_STEP_FORMULAS.vat
     },
+    customSteps: [],
     referenceUsdAmount: refUsd
   };
 }
 
-function normalizeStepFormulas(raw) {
+function normalizeStepFormulas(raw, customSteps) {
   const src = raw && typeof raw === 'object' ? raw : {};
   const migrated = migrateLegacyProfile(src);
   const base = migrated?.stepFormulas || src.stepFormulas || {};
   const out = {};
-  for (const step of PRICING_STEP_DEFS) {
-    const rawExpr = String(base[step.id] ?? DEFAULT_STEP_FORMULAS[step.id] ?? '').trim();
+  const steps = resolvePricingStepDefs({ customSteps });
+  for (const step of steps) {
+    const fallback = DEFAULT_STEP_FORMULAS[step.id] || DEFAULT_CUSTOM_STEP_FORMULA;
+    const rawExpr = String(base[step.id] ?? fallback ?? '').trim();
     const expr = migratePricingFormulaTokens(rawExpr);
-    out[step.id] = normalizeExchangeRateStepFormula(expr || DEFAULT_STEP_FORMULAS[step.id]);
+    out[step.id] = normalizeExchangeRateStepFormula(expr || fallback);
   }
   return out;
 }
@@ -76,10 +81,13 @@ function normalizeStepFormulas(raw) {
 export function normalizeExchangeRatePricingProfile(raw) {
   const src = raw && typeof raw === 'object' ? raw : {};
   const migrated = migrateLegacyProfile(src);
+  const base = migrated || src;
+  const customSteps = normalizeCustomPricingSteps(base.customSteps);
   return {
-    stepFormulas: normalizeStepFormulas(migrated || src),
+    stepFormulas: normalizeStepFormulas(base, customSteps),
+    customSteps,
     referenceUsdAmount: clampUsdAmount(
-      migrated?.referenceUsdAmount ?? src.referenceUsdAmount,
+      base.referenceUsdAmount,
       DEFAULT_EXCHANGE_RATE_PRICING_PROFILE.referenceUsdAmount
     )
   };
@@ -94,6 +102,7 @@ export function computeExchangeRatePricingChain(rateRows, profile, inputs = {}) 
   const normalized = normalizeExchangeRatePricingProfile(profile);
   const refUsd = clampUsdAmount(inputs.referenceUsdAmount, normalized.referenceUsdAmount);
   const baseFields = buildRateFieldValuesFromRows(rateRows, refUsd);
+  const steps = resolvePricingStepDefs(normalized);
 
   const results = {
     remittanceRate: baseFields['USD-보내실 때'] ?? null,
@@ -108,14 +117,14 @@ export function computeExchangeRatePricingChain(rateRows, profile, inputs = {}) 
 
   let fieldValues = { ...baseFields };
 
-  for (const step of PRICING_STEP_DEFS) {
+  for (const step of steps) {
     const expression = normalized.stepFormulas[step.id];
     const value = evaluateExchangeRateStepFormula(expression, fieldValues);
     results[step.resultKey] = value;
-    if (value != null && STEP_RESULT_FIELD_LABELS[step.id]) {
-      fieldValues[STEP_RESULT_FIELD_LABELS[step.id]] = value;
+    if (value != null && step.label) {
+      fieldValues[step.label] = value;
     }
-    fieldValues = mergeStepResultsIntoFieldValues(fieldValues, results);
+    fieldValues = mergeStepResultsIntoFieldValues(fieldValues, results, normalized);
   }
 
   return results;
@@ -125,12 +134,13 @@ export function buildPricingStepRows(chain, profile) {
   const p = normalizeExchangeRatePricingProfile(profile || chain?.profile);
   const c = chain || { profile: p };
 
-  return PRICING_STEP_DEFS.map((step) => ({
+  return resolvePricingStepDefs(p).map((step) => ({
     id: step.id,
     label: step.label,
     formula: p.stepFormulas[step.id],
     result: c[step.resultKey],
-    resultKind: step.resultKind
+    resultKind: step.resultKind,
+    custom: Boolean(step.custom)
   }));
 }
 
@@ -142,4 +152,5 @@ export function formatPricingResult(value, kind) {
   return Number(value).toLocaleString('ko-KR', { maximumFractionDigits: 0 });
 }
 
-export { PRICING_STEP_DEFS, DEFAULT_STEP_FORMULAS };
+export { DEFAULT_STEP_FORMULAS, resolvePricingStepDefs };
+export { PRICING_STEP_DEFS } from '@/lib/exchange-rate-formula-fields';

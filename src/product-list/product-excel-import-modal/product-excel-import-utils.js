@@ -12,14 +12,22 @@ import {
   parseFormulaInput,
   getDefinitionFormulaDefaultDisplay,
   computeCustomFieldFormulas,
-  evaluateFormulaExpression
+  evaluateFormulaExpression,
+  validateFormulaExpression
 } from '@/lib/custom-field-formula';
 import {
+  convertExcelFormulaToCrm,
+  replaceAllInExcelDraftRows
+} from '@/lib/excel-formula-to-crm';
+import { getBuiltinFormulaFields } from '@/lib/custom-field-formula-catalog';
+import {
+  hasPercentSuffix,
   normalizeCustomFieldsForApiSave,
   normalizeCustomFieldsForFormula,
   normalizeFormulaBuiltInNumbers,
   parseNumericFieldValue,
-  parseNumericFieldValueOrZero
+  parseNumericFieldValueForFormula,
+  stripPercentSuffix
 } from '@/lib/numeric-field-value';
 import { buildExchangeRateFormulaBuiltin } from '@/lib/exchange-rate-formula-builtin';
 import {
@@ -35,6 +43,8 @@ import {
   PRODUCT_CURRENCY_SELECT_OPTIONS,
   resolveProductCurrencySelectOptions
 } from '@/lib/exchange-rate-currency-options';
+
+export { replaceAllInExcelDraftRows };
 
 export const PRODUCT_PRICE_TARGET_KEYS = new Set([
   'product.listPrice',
@@ -135,6 +145,82 @@ export function buildProductTargetOptions(customFieldDefs = []) {
       label: `제품 · ${d.label || d.key} (추가 필드)`
     }));
   return [...base, ...custom];
+}
+
+/** 수식 [필드라벨] — 피커·평가와 동일한 표시 이름 */
+export function formulaLabelForProductTarget(targetKey, customDefinitions = []) {
+  const tk = String(targetKey || '').trim();
+  if (!tk) return '';
+  const builtInKey = PRODUCT_FORMULA_TARGET_TO_FIELD[tk];
+  if (builtInKey) {
+    const b = getBuiltinFormulaFields('product').find((x) => x.key === builtInKey);
+    return String(b?.label || builtInKey).trim();
+  }
+  const ck = productCustomFieldKeyFromTarget(tk);
+  if (!ck) return '';
+  const def = (customDefinitions || []).find((d) => d?.key === ck);
+  return String(def?.label || ck).trim();
+}
+
+/**
+ * 미리보기 진입 — 모든 열의 엑셀 A1 수식을 =[라벨] 형태로 환산
+ * - 같은 행 참조: 매핑된 수식가능 필드면 CRM 라벨, 아니면 엑셀 헤더명
+ * - 미매핑 열 수식도 변환 (예: =H6*(1-I6) → =[SRP]*(1-[ADSK DC]))
+ * - $I$1 등 다른 행·절대참조는 남겨 「모두 바꾸기」로 치환
+ */
+export function convertMappedExcelFormulasForPreview(
+  excelRows,
+  mappingRows,
+  customDefinitions = []
+) {
+  const headerCols = Array.isArray(excelRows?.__excelHeaderCols)
+    ? excelRows.__excelHeaderCols
+    : [];
+
+  /** 엑셀 헤더 키 → CRM 수식 라벨 (수식가능 매핑만) */
+  const headerToCrmLabel = new Map();
+  for (const row of mappingRows || []) {
+    if (row?.sourceType === 'constant') continue;
+    const sk = String(row?.sourceKey || '').trim();
+    const tk = String(row?.targetKey || '').trim();
+    if (!sk || !tk || tk === 'ignore') continue;
+    if (!isProductFormulaCapableTarget(tk, customDefinitions)) continue;
+    const label = formulaLabelForProductTarget(tk, customDefinitions);
+    if (label) headerToCrmLabel.set(sk, label);
+  }
+
+  /** 시트 열 인덱스 → 괄호 라벨 (매핑 CRM 우선, 없으면 엑셀 헤더) */
+  const absColToLabel = new Map();
+  for (const h of headerCols) {
+    if (h == null || h.absCol == null) continue;
+    const key = String(h.key || '').replace(/\s+/g, ' ').trim();
+    if (!key) continue;
+    absColToLabel.set(h.absCol, headerToCrmLabel.get(h.key) || headerToCrmLabel.get(key) || key);
+  }
+
+  const nextRows = (excelRows || []).map((row) => {
+    const next = { ...row };
+    const excelRow1Based = Number(row?.__excelRowNum__) || 0;
+    for (const key of Object.keys(row || {})) {
+      if (!key || String(key).startsWith('__')) continue;
+      const raw = next[key];
+      if (raw == null || String(raw).trim() === '') continue;
+      const rawStr = String(raw);
+      if (!rawStr.trimStart().startsWith('=')) continue;
+      // 이미 CRM [라벨]만 있고 A1 셀참조가 없으면 스킵
+      if (!/\$?[A-Za-z]+\$?\d+\b/.test(rawStr)) continue;
+      const converted = convertExcelFormulaToCrm(rawStr, {
+        excelRow1Based,
+        colIndexToLabel: absColToLabel
+      });
+      if (converted.ok && converted.formula && converted.convertedCount > 0) {
+        next[key] = converted.formula;
+      }
+    }
+    return next;
+  });
+  if (headerCols.length) nextRows.__excelHeaderCols = headerCols;
+  return nextRows;
 }
 
 /** 엑셀 헤더 문자열 → 매칭된 소스 열 키 */
@@ -411,13 +497,13 @@ function readMapped(excelRow, mappingRows, targetKey, customDefinitions = [], ex
   return String(v).trim();
 }
 
-/** 엑셀·미리보기 문자열(₩, 원, 쉼표 등) 또는 숫자 셀 → API 금액 */
+/** 엑셀·미리보기 문자열(₩, 원, 쉼표 등) 또는 숫자 셀 → API 금액. 값 뒤 %는 확률(/100) */
 export function parsePriceNum(val) {
   if (typeof val === 'number' && Number.isFinite(val)) return val;
   const s = String(val ?? '').trim();
   if (!s) return 0;
   if (isExcelFormulaInput(s)) return 0;
-  return parseNumericFieldValueOrZero(s);
+  return parseNumericFieldValueForFormula(s) ?? 0;
 }
 
 function formatPriceWhileTyping(raw) {
@@ -441,6 +527,28 @@ export function isExcelFormulaInput(raw) {
   return parseFormulaInput(raw).isFormula;
 }
 
+/**
+ * 금액 칸 포맷/sanitize 대상인지 — 「Civil 3D」「v3」처럼 문자+숫자 혼합은 제외.
+ * ₩/$/원·통화코드는 금액으로 인정.
+ */
+export function looksLikePriceOrNumericInput(raw) {
+  const t = String(raw ?? '').trim();
+  if (!t) return false;
+  if (isExcelFormulaInput(t) || t.trimStart().startsWith('=')) return true;
+  if (!/\d/.test(t)) return false;
+  const withoutCurrency = t
+    .replace(/(USD|KRW|EUR|JPY|CNY|GBP|WON)/gi, '')
+    .replace(/[₩$€£¥원%\s,]/g, '');
+  if (!withoutCurrency) return false;
+  if (!/^-?\d*\.?\d*$/.test(withoutCurrency) && !/^\(\d*\.?\d*\)$/.test(withoutCurrency)) {
+    return false;
+  }
+  const lettersLeft = t
+    .replace(/(USD|KRW|EUR|JPY|CNY|GBP|WON)/gi, '')
+    .replace(/[₩$€£¥원%\s,.\d()\-+]/g, '');
+  return lettersLeft === '';
+}
+
 /** 미리보기·입력 표시 — 수식은 그대로, 숫자는 기호 제거·쉼표 */
 export function formatFormulaCapableExcelInputDisplay(raw) {
   const s = String(raw ?? '').trim();
@@ -458,12 +566,19 @@ export function sanitizeFormulaCapableExcelInput(raw) {
   return sanitizePriceExcelInput(raw);
 }
 
-/** 미리보기·입력 표시 — 기호(₩$원 등) 제거, 천 단위 쉼표 유지 */
+/** 미리보기·입력 표시 — 기호(₩$원 등) 제거, 천 단위 쉼표 유지. 확률(10%)은 % 그대로 유지 */
 export function formatPriceExcelInputDisplay(raw) {
   const s = String(raw ?? '').trim();
   if (!s) return '';
   if (isExcelFormulaInput(s)) return s;
   if (!/\d/.test(s)) return s;
+  // Civil 3D 등 — 숫자만 뽑으면 「3」이 되므로 원문 유지
+  if (!looksLikePriceOrNumericInput(s)) return s;
+  if (hasPercentSuffix(s)) {
+    const pct = parseNumericFieldValue(stripPercentSuffix(s));
+    if (pct == null) return s;
+    return `${pct.toLocaleString('ko-KR', { maximumFractionDigits: 4, minimumFractionDigits: 0 })}%`;
+  }
   const n = parsePriceNum(raw);
   return n.toLocaleString('ko-KR', {
     maximumFractionDigits: 4,
@@ -471,14 +586,17 @@ export function formatPriceExcelInputDisplay(raw) {
   });
 }
 
-/** 입력 중 — 숫자·쉼표·소수점만 남기고 쉼표 포맷 */
+/** 입력 중 — 숫자·쉼표·소수점(+확률 %)만 남기고 쉼표 포맷 */
 export function sanitizePriceExcelInput(raw) {
   const s = String(raw ?? '').trim();
   if (!s) return '';
   if (isExcelFormulaInput(s)) return s;
   if (s.trimStart().startsWith('=')) return String(raw ?? '');
+  if (!looksLikePriceOrNumericInput(s)) return String(raw ?? '');
+  const percent = s.endsWith('%');
   const digitsOnly = s.replace(/,/g, '').replace(/[^\d.]/g, '');
-  return formatPriceWhileTyping(digitsOnly);
+  const formatted = formatPriceWhileTyping(digitsOnly);
+  return percent ? `${formatted}%` : formatted;
 }
 
 /**
@@ -728,8 +846,16 @@ export function normalizeExcelRowsBillingForPreview(
   allowedCodes = null,
   customDefinitions = []
 ) {
+  const withFormulas = convertMappedExcelFormulasForPreview(
+    excelRows,
+    mappingRows,
+    customDefinitions
+  );
   const billingKey = resolveProductExcelColumnKey(mappingRows, 'product.billingType');
-  const baseRows = (excelRows || []).map((r) => ({ ...r }));
+  const baseRows = (withFormulas || []).map((r) => ({ ...r }));
+  if (Array.isArray(withFormulas?.__excelHeaderCols)) {
+    baseRows.__excelHeaderCols = withFormulas.__excelHeaderCols;
+  }
   const intervalKey = resolveProductExcelColumnKey(mappingRows, 'product.billingInterval');
 
   const billingNormalized = !billingKey
@@ -754,12 +880,20 @@ export function normalizeExcelRowsBillingForPreview(
         return next;
       });
 
-  return normalizeExcelRowsPricesAndCurrencyForPreview(
+  if (Array.isArray(withFormulas?.__excelHeaderCols)) {
+    billingNormalized.__excelHeaderCols = withFormulas.__excelHeaderCols;
+  }
+
+  const priced = normalizeExcelRowsPricesAndCurrencyForPreview(
     billingNormalized,
     mappingRows,
     allowedCodes,
     customDefinitions
   );
+  if (Array.isArray(withFormulas?.__excelHeaderCols)) {
+    priced.__excelHeaderCols = withFormulas.__excelHeaderCols;
+  }
+  return priced;
 }
 
 export function billingIntervalCellIsValid(raw, billingTypeHint = 'Monthly') {
@@ -833,14 +967,14 @@ function customFieldsForFormulaContext(rawCustomFields = {}, customDefinitions =
   return normalizeCustomFieldsForFormula(rawCustomFields, customDefinitions);
 }
 
-function buildProductExcelCustomFormulaContext(resolvedProduct, customFieldsInput, exchangeCtx, customDefinitions) {
+function buildProductExcelCustomFormulaContext(resolvedProduct, customFieldsInput, exchangeCtx, customDefinitions, excelPeerValues = null) {
   const fxBuiltIn = exchangeCtx
-    ? buildExchangeRateFormulaBuiltin(
-        exchangeCtx.usdSummary,
-        exchangeCtx.dealBasRMap,
-        resolvedProduct?.currency,
-        { profile: exchangeCtx.pricingProfile }
-      )
+    ?         buildExchangeRateFormulaBuiltin(
+          exchangeCtx.usdSummary,
+          exchangeCtx.dealBasRMap,
+          resolvedProduct?.currency,
+          { profile: exchangeCtx.pricingProfile, rateRows: exchangeCtx.rateRows }
+        )
     : {};
   const rawBuiltIn = {
     listPrice: resolvedProduct?.listPrice ?? 0,
@@ -851,11 +985,18 @@ function buildProductExcelCustomFormulaContext(resolvedProduct, customFieldsInpu
     channelMargin: resolvedProduct?.channelMargin ?? 0,
     ...fxBuiltIn
   };
+  const peers =
+    excelPeerValues && typeof excelPeerValues === 'object' ? excelPeerValues : {};
   return {
     entityType: 'product',
     definitions: customDefinitions || [],
+    pricingProfile: exchangeCtx?.pricingProfile || null,
     builtIn: normalizeFormulaBuiltInNumbers(rawBuiltIn),
-    customFields: normalizeCustomFieldsForFormula(customFieldsInput || {}, customDefinitions)
+    customFields: normalizeCustomFieldsForFormula(
+      { ...peers, ...(customFieldsInput || {}) },
+      customDefinitions
+    ),
+    missingRefAsZero: Boolean(excelPeerValues && Object.keys(peers).length)
   };
 }
 
@@ -866,14 +1007,16 @@ function resolveProductExcelCustomFields(
   rawCustomFields,
   exchangeCtx,
   customDefinitions,
-  excelHeaders
+  excelHeaders,
+  excelPeerValues = null
 ) {
   const manual = customFieldsForFormulaContext(rawCustomFields, customDefinitions);
   const ctx = buildProductExcelCustomFormulaContext(
     resolvedProduct,
     manual,
     exchangeCtx,
-    customDefinitions
+    customDefinitions,
+    excelPeerValues
   );
   const fieldTypes = {};
   for (const d of customDefinitions || []) {
@@ -889,12 +1032,16 @@ function resolveProductExcelCustomFields(
   let computed = computeCustomFieldFormulas(customDefinitions, ctx);
 
   for (const def of customDefinitions || []) {
-    if (def?.type !== 'formula' || !def.key) continue;
+    if (!def?.key) continue;
+    if (def.type !== 'formula' && def.type !== 'number') continue;
     const tk = `${PRODUCT_CUSTOM_FIELD_TARGET_PREFIX}${def.key}`;
     const cellRaw = readMapped(excelRow, mappingRows, tk, customDefinitions, excelHeaders);
     const parsed = parseFormulaInput(cellRaw);
     if (!parsed.isFormula || !parsed.expression) continue;
-    const val = evaluateFormulaExpression(parsed.expression, formulaEvalCtx(computed));
+    const val = evaluateFormulaExpression(parsed.expression, {
+      ...formulaEvalCtx(computed),
+      missingRefAsZero: true
+    });
     if (val != null && Number.isFinite(Number(val))) {
       computed[def.key] = Number(val);
     }
@@ -955,10 +1102,177 @@ function readExcelRowFormulaInputs(excelRow, mappingRows, customDefinitions = []
   };
 }
 
+/**
+ * 미매핑 포함 — 같은 엑셀 행의 헤더명→숫자.
+ * `=[소비자가]*(1-[ADSK DC])` 처럼 미매핑 열도 서로·CRM 내장 필드와 연산 가능하게 함.
+ * #REF! 가 포함된 수식은 엑셀 원본 깨진 참조라 스킵.
+ */
+export function computeExcelPeerNumericValues(
+  excelRow,
+  mappingRows = [],
+  customDefinitions = [],
+  exchangeCtx = null,
+  headerCols = null
+) {
+  const headerMeta =
+    Array.isArray(headerCols) && headerCols.length
+      ? headerCols
+      : Array.isArray(excelRow?.__excelHeaderCols)
+        ? excelRow.__excelHeaderCols
+        : [];
+  const headers = [];
+  const seen = new Set();
+  for (const h of headerMeta) {
+    const key = typeof h === 'string' ? h : h?.key;
+    if (!key || String(key).startsWith('__') || seen.has(key)) continue;
+    seen.add(key);
+    headers.push(key);
+  }
+  for (const k of Object.keys(excelRow || {})) {
+    if (!k || String(k).startsWith('__') || seen.has(k)) continue;
+    seen.add(k);
+    headers.push(k);
+  }
+
+  /** 엑셀 헤더 → CRM 수식 라벨 (매핑된 수식가능) */
+  const headerToCrmLabel = new Map();
+  const headerToFieldKey = new Map();
+  for (const row of mappingRows || []) {
+    if (row?.sourceType === 'constant') continue;
+    const sk = String(row?.sourceKey || '').trim();
+    const tk = String(row?.targetKey || '').trim();
+    if (!sk || !tk || tk === 'ignore') continue;
+    if (!isProductFormulaCapableTarget(tk, customDefinitions)) continue;
+    const label = formulaLabelForProductTarget(tk, customDefinitions);
+    if (label) headerToCrmLabel.set(sk, label);
+    const fk = PRODUCT_FORMULA_TARGET_TO_FIELD[tk] || productCustomFieldKeyFromTarget(tk);
+    if (fk) headerToFieldKey.set(sk, fk);
+  }
+
+  const rawByHeader = {};
+  for (const h of headers) {
+    rawByHeader[h] = readExcelMappedCell(excelRow, h);
+  }
+
+  const valuesByHeader = {};
+  for (const h of headers) {
+    const raw = rawByHeader[h];
+    if (isExcelFormulaInput(raw)) continue;
+    if (/#REF!/i.test(String(raw))) continue;
+    // 빈 칸은 0 — =[RPI환율]*(1-[ADSK DC]) 에서 ADSK DC 없을 때 깨지지 않게
+    if (raw == null || String(raw).trim() === '') {
+      valuesByHeader[h] = 0;
+      continue;
+    }
+    /** 확률(10%)은 문자열 그대로 — /100 환산은 수식 참조 시 한 번만 한다 */
+    if (hasPercentSuffix(String(raw).trim())) {
+      valuesByHeader[h] = String(raw).trim();
+      continue;
+    }
+    if (looksLikePriceOrNumericInput(raw)) {
+      valuesByHeader[h] = parsePriceNum(raw);
+      continue;
+    }
+    const n = parseNumericFieldValue(raw, { rejectFormula: true });
+    if (n != null) valuesByHeader[h] = n;
+    else valuesByHeader[h] = 0;
+  }
+
+  const buildPeerBag = () => {
+    const peers = { ...valuesByHeader };
+    for (const [h, v] of Object.entries(valuesByHeader)) {
+      if (v == null) continue;
+      if (!hasPercentSuffix(v) && !Number.isFinite(Number(v))) continue;
+      const val = hasPercentSuffix(v) ? v : Number(v);
+      const label = headerToCrmLabel.get(h);
+      if (label) peers[label] = val;
+      /** [DSRP] → custom key 로 리맵되므로 peer에 필드 키도 넣어야 함 (라벨만 있으면 0) */
+      const fk = headerToFieldKey.get(h);
+      if (fk) peers[fk] = val;
+    }
+    return peers;
+  };
+
+  const buildBuiltIn = () => {
+    const builtIn = {
+      listPrice: 0,
+      price: 0,
+      costPrice: 0,
+      channelPrice: 0,
+      consumerMargin: 0,
+      channelMargin: 0
+    };
+    for (const [h, fk] of headerToFieldKey.entries()) {
+      const n = parseNumericFieldValueForFormula(valuesByHeader[h], { rejectFormula: true });
+      if (n == null || !Number.isFinite(n)) continue;
+      if (['listPrice', 'costPrice', 'channelPrice', 'consumerMargin', 'channelMargin'].includes(fk)) {
+        builtIn[fk] = n;
+        if (fk === 'listPrice') builtIn.price = builtIn.listPrice;
+      }
+    }
+    if (exchangeCtx) {
+      Object.assign(
+        builtIn,
+        buildExchangeRateFormulaBuiltin(
+          exchangeCtx.usdSummary,
+          exchangeCtx.dealBasRMap,
+          null,
+          { profile: exchangeCtx.pricingProfile, rateRows: exchangeCtx.rateRows }
+        ) || {}
+      );
+    }
+    return normalizeFormulaBuiltInNumbers(builtIn);
+  };
+
+  const maxPass = Math.max(8, headers.length + 4);
+  for (let pass = 0; pass < maxPass; pass += 1) {
+    let changed = false;
+    const peers = buildPeerBag();
+    const builtIn = buildBuiltIn();
+    const ctx = {
+      entityType: 'product',
+      definitions: customDefinitions || [],
+      pricingProfile: exchangeCtx?.pricingProfile || null,
+      builtIn,
+      customFields: normalizeCustomFieldsForFormula(peers, customDefinitions || []),
+      computedFormulas: {},
+      fieldTypes: {},
+      customFieldKeys: new Set((customDefinitions || []).filter((d) => d?.key).map((d) => d.key)),
+      missingRefAsZero: true
+    };
+    for (const h of headers) {
+      const raw = rawByHeader[h];
+      if (!isExcelFormulaInput(raw)) continue;
+      if (/#REF!/i.test(String(raw))) continue;
+      const parsed = parseFormulaInput(raw);
+      if (!parsed.isFormula || !parsed.expression) continue;
+      const val = evaluateFormulaExpression(parsed.expression, ctx);
+      if (val == null || !Number.isFinite(Number(val))) continue;
+      const n = Number(val);
+      if (valuesByHeader[h] !== n) {
+        valuesByHeader[h] = n;
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+
+  return buildPeerBag();
+}
+
 /** 미리보기 — 행 단위 수식 재계산 결과 */
 export function resolveProductExcelRow(excelRow, mappingRows, exchangeCtx = null, customDefinitions = [], opts = {}) {
-  const { allowedCodes = null } = opts;
-  const excelHeaders = excelRow ? Object.keys(excelRow).filter((k) => k && !String(k).startsWith('__')) : [];
+  const { allowedCodes = null, excelHeaderCols = null } = opts;
+  const excelHeaders = excelRow
+    ? Object.keys(excelRow).filter((k) => k && !String(k).startsWith('__'))
+    : [];
+  const excelPeerValues = computeExcelPeerNumericValues(
+    excelRow,
+    mappingRows,
+    customDefinitions,
+    exchangeCtx,
+    excelHeaderCols
+  );
   const inputs = readExcelRowFormulaInputs(excelRow, mappingRows, customDefinitions, excelHeaders);
   const currency = normalizeCurrency(
     readMapped(excelRow, mappingRows, 'product.currency', customDefinitions, excelHeaders),
@@ -980,7 +1294,9 @@ export function resolveProductExcelRow(excelRow, mappingRows, exchangeCtx = null
     customFields: inputs.customFields,
     parsePriceInput: parsePriceNum
   });
-  let resolved = resolveProductFieldValues(draft, exchangeCtx, customDefinitions);
+  let resolved = resolveProductFieldValues(draft, exchangeCtx, customDefinitions, {
+    excelPeerValues
+  });
   let customFields = resolveProductExcelCustomFields(
     excelRow,
     mappingRows,
@@ -988,7 +1304,8 @@ export function resolveProductExcelRow(excelRow, mappingRows, exchangeCtx = null
     inputs.customFields,
     exchangeCtx,
     customDefinitions,
-    excelHeaders
+    excelHeaders,
+    excelPeerValues
   );
 
   const formulaDefCount = (customDefinitions || []).filter((d) => d?.type === 'formula').length;
@@ -1012,7 +1329,7 @@ export function resolveProductExcelRow(excelRow, mappingRows, exchangeCtx = null
       { ...draft, customFields: { ...inputs.customFields, ...customFields } },
       exchangeCtx,
       customDefinitions,
-      { computedCustomFields: customFields }
+      { computedCustomFields: customFields, excelPeerValues }
     );
     customFields = resolveProductExcelCustomFields(
       excelRow,
@@ -1021,12 +1338,13 @@ export function resolveProductExcelRow(excelRow, mappingRows, exchangeCtx = null
       inputs.customFields,
       exchangeCtx,
       customDefinitions,
-      excelHeaders
+      excelHeaders,
+      excelPeerValues
     );
     if (snapshot() === prev) break;
   }
 
-  return { ...resolved, currency, customFields };
+  return { ...resolved, currency, customFields, __excelPeerValues: excelPeerValues };
 }
 
 export function formatResolvedExcelFormulaPreview(value) {
@@ -1044,6 +1362,15 @@ export function resolveExcelCellResolvedPreview(cellRaw, col, rowResolved = {}, 
   const raw = String(cellRaw ?? '').trim();
   if (!raw) return null;
 
+  const peerBag = rowResolved?.__excelPeerValues;
+  const peerKey = col?.excelKey;
+  if (isExcelFormulaInput(raw) && peerBag && peerKey && peerBag[peerKey] != null) {
+    return formatResolvedExcelFormulaPreview(peerBag[peerKey]);
+  }
+  if (isExcelFormulaInput(raw) && /#REF!/i.test(raw)) {
+    return '깨진참조(#REF!)';
+  }
+
   const tk = col?.targetKey;
   const builtInKey = PRODUCT_FORMULA_TARGET_TO_FIELD[tk];
   if (builtInKey) {
@@ -1054,7 +1381,14 @@ export function resolveExcelCellResolvedPreview(cellRaw, col, rowResolved = {}, 
   }
 
   const customKey = productCustomFieldKeyFromTarget(tk);
-  if (!customKey) return null;
+  if (!customKey) {
+    // 미매핑 숫자 열 — 인식값 표시
+    if (!col?.isUnmapped) return null;
+    if (looksLikePriceOrNumericInput(raw)) {
+      return formatResolvedExcelFormulaPreview(parsePriceNum(raw));
+    }
+    return null;
+  }
 
   const def = productCustomFieldDefFromTarget(tk, customDefinitions);
   if (!def) return null;
@@ -1077,12 +1411,37 @@ export function resolveExcelCellResolvedPreview(cellRaw, col, rowResolved = {}, 
   return null;
 }
 
+function extractCustomFieldFormulasFromExcelRow(
+  excelRow,
+  mappingRows,
+  customDefinitions = [],
+  excelHeaders = []
+) {
+  const out = {};
+  for (const d of customDefinitions || []) {
+    if (!d?.key) continue;
+    if (!['number', 'text', 'formula', 'checkbox'].includes(d.type)) continue;
+    const tk = `${PRODUCT_CUSTOM_FIELD_TARGET_PREFIX}${d.key}`;
+    const cellRaw = readMapped(excelRow, mappingRows, tk, customDefinitions, excelHeaders);
+    const parsed = parseFormulaInput(cellRaw);
+    if (parsed.isFormula && parsed.expression) {
+      out[d.key] = parsed.expression;
+    }
+  }
+  return out;
+}
+
 /**
  * 매핑 행 + 엑셀 한 줄 → POST /products body (fieldFormulas·마진 스냅샷 포함)
  * @param {{ allowedCodes?: Set<string>|null, exchangeCtx?: object|null, customDefinitions?: Array }} [opts]
  */
 export function excelRowToProductBody(excelRow, mappingRows, opts = {}) {
-  const { allowedCodes = null, exchangeCtx = null, customDefinitions = [] } = opts;
+  const {
+    allowedCodes = null,
+    exchangeCtx = null,
+    customDefinitions = [],
+    excelHeaderCols = null
+  } = opts;
   const excelHeaders = excelRow ? Object.keys(excelRow).filter((k) => k && !String(k).startsWith('__')) : [];
   const inputs = readExcelRowFormulaInputs(excelRow, mappingRows, customDefinitions, excelHeaders);
   const currency = normalizeCurrency(
@@ -1125,8 +1484,15 @@ export function excelRowToProductBody(excelRow, mappingRows, opts = {}) {
   const billingInterval = parsed?.billingInterval ?? payload.body.billingInterval ?? 1;
 
   const resolvedRow = resolveProductExcelRow(excelRow, mappingRows, exchangeCtx, customDefinitions, {
-    allowedCodes
+    allowedCodes,
+    excelHeaderCols
   });
+  const customFieldFormulas = extractCustomFieldFormulasFromExcelRow(
+    excelRow,
+    mappingRows,
+    customDefinitions,
+    excelHeaders
+  );
   const resolvedCustomRaw =
     resolvedRow?.customFields && typeof resolvedRow.customFields === 'object'
       ? resolvedRow.customFields
@@ -1136,6 +1502,7 @@ export function excelRowToProductBody(excelRow, mappingRows, opts = {}) {
   return {
     ...payload.body,
     fieldFormulas: payload.body.fieldFormulas || {},
+    customFieldFormulas,
     listPrice: resolvedRow.listPrice,
     price: resolvedRow.listPrice,
     costPrice: resolvedRow.costPrice,
@@ -1156,52 +1523,321 @@ export function isExcelRowEffectivelyEmpty(excelRow) {
   return !Object.values(excelRow).some((v) => v != null && String(v).trim() !== '');
 }
 
-/** 미리보기 표 — CRM 매핑 가능 필드 전부(미연결 포함), 헤더는 CRM 라벨 */
+/**
+ * 미리보기 표 열 — 엑셀 헤더를 모두 표시(미매핑 포함).
+ * 매핑된 열은 CRM 라벨, 미매핑은 엑셀 헤더명. 고정값 매핑은 맨 뒤에 추가.
+ */
 export function buildProductExcelPreviewColumns(mappingRows, targetOptions, excelHeaders = [], customFieldDefs = []) {
   const labelMap = new Map();
   for (const o of targetOptions || []) {
     if (o?.value) labelMap.set(o.value, o.label || o.value);
   }
-  const hdrs = Array.isArray(excelHeaders) ? excelHeaders : [];
-  const seenTargets = new Set();
+  const hdrs = (Array.isArray(excelHeaders) ? excelHeaders : []).filter(
+    (h) => h && !String(h).startsWith('__')
+  );
+
+  /** 엑셀 헤더 → 매핑 행 (정확한 sourceKey 우선) */
+  const mappingByHeader = new Map();
+  for (const r of mappingRows || []) {
+    if (!r || r.sourceType === 'constant') continue;
+    const sk = String(r.sourceKey || '').trim();
+    const tk = String(r.targetKey || '').trim();
+    if (!sk || !tk || tk === 'ignore') continue;
+    if (!mappingByHeader.has(sk)) mappingByHeader.set(sk, r);
+  }
+
   const cols = [];
-  const optionTargets = (targetOptions || []).map((o) => String(o?.value ?? '').trim()).filter(Boolean);
-  const targets = optionTargets.length
-    ? optionTargets
-    : (mappingRows || [])
-        .filter((r) => r?.sourceType !== 'constant')
-        .map((r) => String(r?.targetKey ?? '').trim())
-        .filter(Boolean);
+  const seenExcel = new Set();
 
-  for (const targetKey of targets) {
-    if (!targetKey || seenTargets.has(targetKey)) continue;
-    seenTargets.add(targetKey);
-
-    const resolved = resolveProductFieldExcelKey(mappingRows, targetKey, hdrs, customFieldDefs);
-    if (resolved.mode === 'constant') {
-      cols.push({
-        targetKey,
-        excelKey: resolved.excelKey,
-        label: labelMap.get(targetKey) || targetKey,
-        excelTitle: `고정값 (${resolved.constantValue ?? ''})`,
-        isConstant: true,
-        constantValue: String(resolved.constantValue ?? '')
-      });
-      continue;
-    }
-
-    const excelKey = resolved.excelKey;
+  for (const h of hdrs) {
+    if (seenExcel.has(h)) continue;
+    seenExcel.add(h);
+    const m = mappingByHeader.get(h);
+    const targetKey = m ? String(m.targetKey || '').trim() : '';
+    const mapped = Boolean(targetKey && targetKey !== 'ignore');
     cols.push({
-      targetKey,
-      excelKey,
-      label: labelMap.get(targetKey) || targetKey,
-      excelTitle: isProductPreviewCellKey(excelKey)
-        ? '열 미연결 · 미리보기에서 직접 입력'
-        : excelKey,
-      isPreviewOnly: isProductPreviewCellKey(excelKey)
+      excelKey: h,
+      targetKey: mapped ? targetKey : '',
+      label: mapped ? labelMap.get(targetKey) || targetKey : h,
+      excelTitle: h,
+      isConstant: false,
+      isUnmapped: !mapped,
+      includeToggleable: true
     });
   }
+
+  for (const r of mappingRows || []) {
+    if (!r || r.sourceType !== 'constant') continue;
+    const targetKey = String(r.targetKey || '').trim();
+    if (!targetKey || targetKey === 'ignore') continue;
+    cols.push({
+      targetKey,
+      excelKey: productPreviewCellKey(targetKey),
+      label: labelMap.get(targetKey) || targetKey,
+      excelTitle: `고정값 (${r.constantValue ?? ''})`,
+      isConstant: true,
+      constantValue: String(r.constantValue ?? ''),
+      isUnmapped: false,
+      includeToggleable: false
+    });
+  }
+
   return cols;
+}
+
+/** 미리보기에서 체크된 엑셀 열만 남기도록 매핑 행 필터 (고정값은 유지) */
+export function filterMappingRowsByIncludedExcelKeys(mappingRows, includedExcelKeys) {
+  const set =
+    includedExcelKeys instanceof Set
+      ? includedExcelKeys
+      : new Set(
+          Array.isArray(includedExcelKeys)
+            ? includedExcelKeys
+            : includedExcelKeys && typeof includedExcelKeys === 'object'
+              ? Object.keys(includedExcelKeys).filter((k) => includedExcelKeys[k])
+              : []
+        );
+  return (mappingRows || []).filter((r) => {
+    if (!r) return false;
+    if (r.sourceType === 'constant') return true;
+    const sk = String(r.sourceKey || '').trim();
+    if (!sk) return false;
+    return set.has(sk);
+  });
+}
+
+/** 체크돼 있지만 매핑 없는 엑셀 열 라벨 목록 */
+export function listCheckedUnmappedExcelColumns(previewColumns, includedExcelKeys) {
+  const set =
+    includedExcelKeys instanceof Set
+      ? includedExcelKeys
+      : new Set(
+          Array.isArray(includedExcelKeys)
+            ? includedExcelKeys
+            : includedExcelKeys && typeof includedExcelKeys === 'object'
+              ? Object.keys(includedExcelKeys).filter((k) => includedExcelKeys[k])
+              : []
+        );
+  return (previewColumns || []).filter(
+    (c) => c && c.includeToggleable && c.isUnmapped && set.has(c.excelKey)
+  );
+}
+
+/** 엑셀 헤더 → API custom field key (영문 시작 + 영숫자_) */
+export function suggestProductExcelAutoFieldKey(header, index, usedKeys = new Set()) {
+  const used = usedKeys instanceof Set ? usedKeys : new Set(usedKeys || []);
+  const ascii = String(header || '')
+    .normalize('NFKD')
+    .replace(/[^\x00-\x7F]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase();
+  let base = ascii && /^[a-zA-Z]/.test(ascii) ? ascii.slice(0, 36) : `excel_col_${Number(index) + 1}`;
+  if (!/^[a-zA-Z]/.test(base)) base = `f_${base}`;
+  let key = base;
+  let n = 2;
+  while (used.has(key)) {
+    key = `${base}_${n}`;
+    n += 1;
+  }
+  used.add(key);
+  return key;
+}
+
+/**
+ * 미리보기 샘플로 자동 생성 필드 타입 추정
+ * - 수식 셀이 많으면 함수 필드, 값 뒤 %가 많으면 백분율 숫자 필드
+ * - 수식이지만 아직 검증 못한 경우에도 expression 을 돌려줘 2차 판정에 쓴다
+ * @returns {{ label: string, type: 'formula'|'number'|'text', expression?: string, displayFormat?: string }}
+ */
+export function inferProductExcelAutoFieldSpec(
+  excelKey,
+  draftRows,
+  customDefinitions = [],
+  opts = {}
+) {
+  const { pricingProfile = null } = opts;
+  const label = String(excelKey || '').replace(/\s+/g, ' ').trim() || '엑셀열';
+  let formula = 0;
+  let number = 0;
+  let percent = 0;
+  let text = 0;
+  let firstExpr = '';
+  for (const row of (draftRows || []).slice(0, 60)) {
+    const raw = readExcelMappedCell(row, excelKey);
+    if (raw == null || String(raw).trim() === '') continue;
+    if (isExcelFormulaInput(raw)) {
+      formula += 1;
+      if (!firstExpr) {
+        const parsed = parseFormulaInput(raw);
+        if (parsed.isFormula && parsed.expression) firstExpr = parsed.expression;
+      }
+      continue;
+    }
+    if (hasPercentSuffix(String(raw).trim())) {
+      percent += 1;
+      number += 1;
+      continue;
+    }
+    if (looksLikePriceOrNumericInput(raw)) number += 1;
+    else text += 1;
+  }
+
+  if (formula > 0 && formula >= number && formula >= text && firstExpr) {
+    const check = validateFormulaExpression(firstExpr, 'product', customDefinitions || [], {
+      pricingProfile
+    });
+    if (check.ok) {
+      return { label, type: 'formula', expression: firstExpr };
+    }
+    // 아직 만들어지지 않은 열을 참조 — planAuto…에서 2차 판정
+    return { label, type: 'number', expression: firstExpr };
+  }
+  if (number > 0 && number >= text) {
+    return percent > 0 && percent >= number / 2
+      ? { label, type: 'number', displayFormat: 'percentage' }
+      : { label, type: 'number' };
+  }
+  return { label, type: 'text' };
+}
+
+/**
+ * 체크된 미매핑 열 → 기존 정의 재사용 또는 생성 스펙 + 매핑 행
+ * @returns {{ mappingExtra: Array, createPayloads: Array<{ excelKey, payload }>, reuse: Array }}
+ */
+export function planAutoCustomFieldsForUnmappedExcelColumns(
+  unmappedColumns,
+  draftRows,
+  existingDefinitions = [],
+  opts = {}
+) {
+  const { pricingProfile = null } = opts;
+  const defs = Array.isArray(existingDefinitions) ? [...existingDefinitions] : [];
+  const usedKeys = new Set(defs.map((d) => d.key).filter(Boolean));
+  const labelToDef = new Map();
+  for (const d of defs) {
+    const lb = String(d?.label || '').trim().toLowerCase();
+    if (lb && !labelToDef.has(lb)) labelToDef.set(lb, d);
+  }
+
+  const mappingExtra = [];
+  const createPayloads = [];
+  const reuse = [];
+  let orderBase = defs.length;
+
+  (unmappedColumns || []).forEach((col, idx) => {
+    const excelKey = String(col?.excelKey || '').trim();
+    if (!excelKey) return;
+    const label = String(col.excelTitle || col.label || excelKey).replace(/\s+/g, ' ').trim();
+    const existing = labelToDef.get(label.toLowerCase());
+    if (existing?.key) {
+      reuse.push({ excelKey, def: existing });
+      mappingExtra.push({
+        id: `auto-${existing.key}`,
+        sourceType: 'field',
+        sourceKey: excelKey,
+        constantValue: '',
+        targetKey: `product.customFields.${existing.key}`
+      });
+      return;
+    }
+
+    const spec = inferProductExcelAutoFieldSpec(excelKey, draftRows, defs, { pricingProfile });
+    const key = suggestProductExcelAutoFieldKey(label || excelKey, idx, usedKeys);
+    const options = {};
+    if (spec.type === 'formula' && spec.expression) options.expression = spec.expression;
+    if (spec.displayFormat) options.displayFormat = spec.displayFormat;
+    const payload = {
+      entityType: 'product',
+      key,
+      label: spec.label || label,
+      type: spec.type,
+      required: false,
+      order: orderBase + idx,
+      ...(Object.keys(options).length ? { options } : {})
+    };
+    // provisional def for subsequent formula validation
+    const provisional = {
+      key,
+      label: payload.label,
+      type: payload.type,
+      options: payload.options || null
+    };
+    defs.push(provisional);
+    labelToDef.set(String(payload.label).trim().toLowerCase(), { key, label: payload.label });
+    createPayloads.push({
+      excelKey,
+      payload,
+      provisional,
+      pendingExpression: spec.type !== 'formula' ? spec.expression || '' : ''
+    });
+    mappingExtra.push({
+      id: `auto-new-${key}`,
+      sourceType: 'field',
+      sourceKey: excelKey,
+      constantValue: '',
+      targetKey: `product.customFields.${key}`
+    });
+  });
+
+  /**
+   * 2차 판정 — 뒤쪽 열을 참조해 1차에서 함수로 못 만든 열도 함수 필드로 승격.
+   * (예: 시트에서 [Double]=[Half]*2 가 Half 보다 앞에 있는 경우)
+   */
+  for (let pass = 0; pass <= createPayloads.length; pass += 1) {
+    let changed = false;
+    for (const entry of createPayloads) {
+      if (!entry.pendingExpression) continue;
+      const check = validateFormulaExpression(entry.pendingExpression, 'product', defs, {
+        pricingProfile
+      });
+      if (!check.ok) continue;
+      entry.payload.type = 'formula';
+      entry.payload.options = {
+        ...(entry.payload.options || {}),
+        expression: entry.pendingExpression
+      };
+      entry.provisional.type = 'formula';
+      entry.provisional.options = entry.payload.options;
+      entry.pendingExpression = '';
+      changed = true;
+    }
+    if (!changed) break;
+  }
+
+  /**
+   * 생성 순서 정렬 — 백엔드는 「이미 있는 필드」기준으로 수식을 검증하므로
+   * 일반 필드 → 참조가 모두 준비된 함수 필드 순으로 만들어야 함수로 저장된다.
+   * (payload.order 는 그대로라 화면 표시 순서는 엑셀 열 순서 유지)
+   */
+  const available = Array.isArray(existingDefinitions) ? [...existingDefinitions] : [];
+  const ordered = [];
+  let pendingFormula = [];
+  for (const entry of createPayloads) {
+    if (entry.payload.type === 'formula') {
+      pendingFormula.push(entry);
+      continue;
+    }
+    ordered.push(entry);
+    available.push(entry.provisional);
+  }
+  for (let pass = 0; pass <= pendingFormula.length; pass += 1) {
+    if (!pendingFormula.length) break;
+    const ready = pendingFormula.filter((entry) =>
+      validateFormulaExpression(entry.payload.options?.expression, 'product', available, {
+        pricingProfile
+      }).ok
+    );
+    if (!ready.length) break;
+    for (const entry of ready) {
+      ordered.push(entry);
+      available.push(entry.provisional);
+    }
+    pendingFormula = pendingFormula.filter((entry) => !ready.includes(entry));
+  }
+  ordered.push(...pendingFormula);
+
+  return { mappingExtra, createPayloads: ordered, reuse };
 }
 
 /** 매핑 행 → 엑셀 원본 열 키 (고정값 매핑이면 빈 문자열) */
@@ -1222,16 +1858,26 @@ export function productMappingCanProceed(mappingRows, excelRows) {
   return !!nameRow.sourceKey;
 }
 
-/** 미리보기 표 헤더 — 행 객체 키 합집합 */
+/** 미리보기 표 헤더 — `__excelHeaderCols` 순서 우선, 없으면 행 키 합집합 (`__` 메타 제외) */
 export function collectProductExcelDraftHeaders(rows) {
-  const keys = new Set();
+  const ordered = [];
+  const seen = new Set();
+  const addKey = (k) => {
+    if (!k || String(k).startsWith('__') || seen.has(k)) return;
+    seen.add(k);
+    ordered.push(k);
+  };
+
+  const headerMeta = Array.isArray(rows?.__excelHeaderCols) ? rows.__excelHeaderCols : [];
+  for (const col of headerMeta) {
+    addKey(typeof col === 'string' ? col : col?.key);
+  }
+
   for (const r of (rows || []).slice(0, 80)) {
     if (!r || typeof r !== 'object') continue;
-    Object.keys(r).forEach((k) => {
-      if (k !== '__rowNum__') keys.add(k);
-    });
+    Object.keys(r).forEach(addKey);
   }
-  return Array.from(keys);
+  return ordered;
 }
 
 function billingCellIsValid(raw, intervalRaw = '', hasIntervalColumn = false) {
@@ -1354,6 +2000,10 @@ export function excelObjectToProductFormDraft(rowObj, customFieldDefs = []) {
       customFields: body.customFields && typeof body.customFields === 'object' ? { ...body.customFields } : {}
     },
     fieldFormulas: body.fieldFormulas && typeof body.fieldFormulas === 'object' ? { ...body.fieldFormulas } : {},
+    customFieldFormulas:
+      body.customFieldFormulas && typeof body.customFieldFormulas === 'object'
+        ? { ...body.customFieldFormulas }
+        : {},
     listPrice: body.listPrice || 0,
     costPrice: body.costPrice || 0,
     channelPrice: body.channelPrice || 0,
@@ -1363,7 +2013,19 @@ export function excelObjectToProductFormDraft(rowObj, customFieldDefs = []) {
   };
 }
 
-/** 엑셀 셀 — 화면에 보이는 문자열(cell.w) 우선 (원가·유통가 환산 소수 등 내부값과 표시값 불일치 방지) */
+/** 엑셀 셀 — 수식 있으면 `=수식`, 아니면 화면 표시값(cell.w) 우선 */
+function excelCellImportValue(cell) {
+  if (!cell) return '';
+  const formula = cell.f != null ? String(cell.f).trim() : '';
+  if (formula) {
+    return formula.startsWith('=') ? formula : `=${formula}`;
+  }
+  if (cell.w != null && String(cell.w).trim() !== '') return String(cell.w);
+  if (cell.v == null) return '';
+  return String(cell.v);
+}
+
+/** @deprecated 표시값만 필요할 때 — import는 excelCellImportValue 사용 */
 function excelCellDisplayValue(cell) {
   if (!cell) return '';
   if (cell.w != null && String(cell.w).trim() !== '') return String(cell.w);
@@ -1371,16 +2033,37 @@ function excelCellDisplayValue(cell) {
   return String(cell.v);
 }
 
-/** 시트 → 행 배열 (헤더=첫 행, 값=엑셀 표시 문자열) */
+/**
+ * 시트 → 행 배열 (헤더=시트의 첫 데이터 행, 값=수식 우선·없으면 표시 문자열)
+ * 헤더 행 번호는 시트 !ref 시작 행을 따름 — 특정 행(예: 5행) 하드코딩 금지.
+ * 메타: rows.__excelHeaderCols = [{ absCol, key }, ...]
+ */
 export function sheetToExcelDisplayRows(sheet) {
   const ref = sheet?.['!ref'];
   if (!ref) return [];
   const range = XLSX.utils.decode_range(ref);
   const headerRow = range.s.r;
   const headers = [];
+  const headerCols = [];
   for (let c = range.s.c; c <= range.e.c; c += 1) {
     const cell = sheet[XLSX.utils.encode_cell({ r: headerRow, c })];
-    headers[c] = excelCellDisplayValue(cell).trim();
+    const rawLabel = excelCellDisplayValue(cell).trim();
+    headers[c] = rawLabel;
+  }
+
+  const usedKeys = new Set();
+  for (let c = range.s.c; c <= range.e.c; c += 1) {
+    const key = headers[c];
+    if (!key) continue;
+    let finalKey = key;
+    if (usedKeys.has(finalKey)) {
+      let n = 2;
+      while (usedKeys.has(`${key}_${n}`)) n += 1;
+      finalKey = `${key}_${n}`;
+    }
+    usedKeys.add(finalKey);
+    headers[c] = finalKey;
+    headerCols.push({ absCol: c, key: finalKey });
   }
 
   const rows = [];
@@ -1390,26 +2073,24 @@ export function sheetToExcelDisplayRows(sheet) {
     for (let c = range.s.c; c <= range.e.c; c += 1) {
       const key = headers[c];
       if (!key) continue;
-      const val = excelCellDisplayValue(sheet[XLSX.utils.encode_cell({ r, c })]);
+      const val = excelCellImportValue(sheet[XLSX.utils.encode_cell({ r, c })]);
       if (val !== '') hasValue = true;
-      let finalKey = key;
-      if (Object.prototype.hasOwnProperty.call(row, finalKey)) {
-        let n = 2;
-        while (Object.prototype.hasOwnProperty.call(row, `${key}_${n}`)) n += 1;
-        finalKey = `${key}_${n}`;
-      }
-      row[finalKey] = val;
+      row[key] = val;
     }
-    if (hasValue) rows.push(row);
+    if (hasValue) {
+      row.__excelRowNum__ = r + 1;
+      rows.push(row);
+    }
   }
+  rows.__excelHeaderCols = headerCols;
   return rows;
 }
 
-/** 파일 → 첫 시트 행 배열 (add-product·가져오기 공통) */
+/** 파일 → 첫 시트 행 배열 (add-product·가져오기 공통) — 수식 셀은 =수식 보존 */
 export async function parseExcelFileToRows(file) {
   const buf = await file.arrayBuffer();
   const data = new Uint8Array(buf);
-  const wb = XLSX.read(data, { type: 'array' });
+  const wb = XLSX.read(data, { type: 'array', cellFormula: true });
   const sheetName = wb.SheetNames[0];
   if (!sheetName) throw new Error('시트가 없습니다.');
   const sheet = wb.Sheets[sheetName];

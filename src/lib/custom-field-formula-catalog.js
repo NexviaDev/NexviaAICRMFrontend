@@ -2,18 +2,21 @@
  * 커스텀 필드 수식 — 엔티티별 기본(내장) 숫자 필드 목록
  * 수식에서 [costPrice] 형태로 참조
  */
-import { EXCHANGE_RATE_FORMULA_BUILTIN } from '@/lib/exchange-rate-formula-builtin';
+import {
+  EXCHANGE_RATE_FORMULA_BUILTIN,
+  listExchangeRateFormulaBuiltins
+} from '@/lib/exchange-rate-formula-builtin';
 import { filterActiveCustomFieldDefinitions } from '@/lib/custom-field-definition-utils';
 
 export const FORMULA_ELIGIBLE_CUSTOM_TYPES = new Set(['number', 'text', 'checkbox', 'formula']);
 
 export const CUSTOM_FIELD_FORMULA_BUILTIN = {
+  /** 표시 라벨은 /product-list·추가제품 모달과 동일 (접두 ‘제품 ’ 없음) */
   product: [
-    { key: 'listPrice', label: '제품 소비자가' },
-    { key: 'costPrice', label: '제품 원가' },
-    { key: 'channelPrice', label: '제품 유통가' },
-    { key: 'price', label: '제품 가격' },
-    ...EXCHANGE_RATE_FORMULA_BUILTIN.map(({ key, label }) => ({ key, label }))
+    { key: 'listPrice', label: '소비자가' },
+    { key: 'costPrice', label: '원가' },
+    { key: 'channelPrice', label: '유통가' },
+    { key: 'price', label: '가격' }
   ],
   customerCompany: [
     { key: 'latitude', label: '위도' },
@@ -22,9 +25,14 @@ export const CUSTOM_FIELD_FORMULA_BUILTIN = {
   contact: []
 };
 
-/** @param {string} entityType */
-export function getBuiltinFormulaFields(entityType) {
-  return CUSTOM_FIELD_FORMULA_BUILTIN[entityType] || [];
+/**
+ * @param {string} entityType
+ * @param {{ pricingProfile?: object }} [options]
+ */
+export function getBuiltinFormulaFields(entityType, options = {}) {
+  const base = CUSTOM_FIELD_FORMULA_BUILTIN[entityType] || [];
+  if (entityType !== 'product') return base;
+  return [...base, ...listExchangeRateFormulaBuiltins(options.pricingProfile)];
 }
 
 /**
@@ -32,18 +40,26 @@ export function getBuiltinFormulaFields(entityType) {
  * @param {string} entityType
  * @param {Array<{ key: string, label?: string, type?: string }>} definitions
  * @param {string} [excludeKey] — 편집 중인 필드 자신 제외
+ * @param {{ pricingProfile?: object }} [options]
  */
-export function buildFormulaFieldPickerOptions(entityType, definitions = [], excludeKey = '') {
+export function buildFormulaFieldPickerOptions(
+  entityType,
+  definitions = [],
+  excludeKey = '',
+  options = {}
+) {
   const seenKeys = new Set();
   const seenLabels = new Set();
   const out = [];
-  for (const b of getBuiltinFormulaFields(entityType)) {
+  const fxList = listExchangeRateFormulaBuiltins(options.pricingProfile);
+  for (const b of getBuiltinFormulaFields(entityType, options)) {
     if (!b.key || seenKeys.has(b.key)) continue;
     const label = String(b.label || b.key).trim();
     if (!label || seenLabels.has(label)) continue;
     seenKeys.add(b.key);
     seenLabels.add(label);
-    const fxMeta = EXCHANGE_RATE_FORMULA_BUILTIN.find((f) => f.key === b.key);
+    const fxMeta =
+      fxList.find((f) => f.key === b.key) || EXCHANGE_RATE_FORMULA_BUILTIN.find((f) => f.key === b.key);
     out.push({
       key: b.key,
       label,
@@ -71,11 +87,11 @@ export function buildFormulaFieldPickerOptions(entityType, definitions = [], exc
   return out;
 }
 
-/** @param {string} entityType @param {Array} definitions */
-export function buildFormulaRefMaps(entityType, definitions = []) {
+/** @param {string} entityType @param {Array} definitions @param {{ pricingProfile?: object }} [options] */
+export function buildFormulaRefMaps(entityType, definitions = [], options = {}) {
   const labelToKey = new Map();
 
-  for (const b of getBuiltinFormulaFields(entityType)) {
+  for (const b of getBuiltinFormulaFields(entityType, options)) {
     if (!b?.key) continue;
     labelToKey.set(b.key, b.key);
     const label = String(b.label || '').trim();
@@ -84,11 +100,12 @@ export function buildFormulaRefMaps(entityType, definitions = []) {
 
   if (entityType === 'product') {
     const aliases = {
-      소비자가: 'listPrice',
       소비자: 'listPrice',
-      원가: 'costPrice',
-      유통가: 'channelPrice',
-      가격: 'price',
+      /** 구 수식 호환 — 예전 피커 라벨 */
+      '제품 소비자가': 'listPrice',
+      '제품 원가': 'costPrice',
+      '제품 유통가': 'channelPrice',
+      '제품 가격': 'price',
       '가격(price)': 'price',
       fxConsumerPrice: 'fxConsumerRate'
     };
@@ -109,8 +126,8 @@ export function buildFormulaRefMaps(entityType, definitions = []) {
 }
 
 /** @param {string} token — 괄호 안 문자열(표시 이름 또는 key) */
-export function resolveFormulaRefToken(token, entityType, definitions = []) {
-  const { labelToKey } = buildFormulaRefMaps(entityType, definitions);
+export function resolveFormulaRefToken(token, entityType, definitions = [], options = {}) {
+  const { labelToKey } = buildFormulaRefMaps(entityType, definitions, options);
   if (labelToKey.has(token)) return labelToKey.get(token);
   return null;
 }

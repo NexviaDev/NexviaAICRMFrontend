@@ -8,7 +8,6 @@ import {
   fetchSalesOpportunityFinanceFieldContext,
   SALES_OPPORTUNITY_FINANCE_DEFS_CHANGED
 } from '@/lib/sales-opportunity-finance-labels';
-import { listColumnValueInlineStyle } from '@/lib/list-column-cell-styles';
 import { LIST_COLUMN_FIXED_WIDTH_PX } from '@/lib/list-column-widths';
 import {
   useCrmListColumnResize,
@@ -105,7 +104,6 @@ export default function SalesPipelineTablePanel({
   const scrollContainerRef = useRef(null);
   const [scheduleFieldLabelByKey, setScheduleFieldLabelByKey] = useState({});
   const [financeFieldLabelByKey, setFinanceFieldLabelByKey] = useState({});
-  const columnCellStyles = pipelineListTemplate?.columnCellStyles || {};
   const columnWidths = pipelineListTemplate?.columnWidths || {};
 
   const displayColumnsForColgroup = useMemo(
@@ -623,7 +621,6 @@ export default function SalesPipelineTablePanel({
                           const titleText = moneyInfo
                             ? formatPriceWithKrwHintText(moneyInfo.amount, moneyInfo.currency, dealBasRMap)
                             : text;
-                          const kStyle = listColumnValueInlineStyle(columnCellStyles, colKey);
                           return (
                             <td
                               key={colKey}
@@ -632,9 +629,7 @@ export default function SalesPipelineTablePanel({
                               }${colKey === 'productName' ? ' sp-dz-data-table__td--product-name' : ''}`}
                               title={titleText}
                             >
-                              <span className="list-col-value-style" style={kStyle || undefined}>
-                                {node}
-                              </span>
+                              <span className="list-col-value-style sp-pl-table-cell-text">{node}</span>
                             </td>
                           );
                         })}
@@ -669,16 +664,13 @@ export default function SalesPipelineTablePanel({
                   </td>
                   {displayColumnKeys.map((colKey) => {
                     const t = totalsByColumn[colKey];
-                    const kStyle = listColumnValueInlineStyle(columnCellStyles, colKey);
                     return (
                       <td
                         key={`tot-${colKey}`}
                         className="sp-dz-data-table__td sp-dz-data-table__td--totals"
                         title={t}
                       >
-                        <span className="list-col-value-style" style={kStyle || undefined}>
-                          {t || '\u00A0'}
-                        </span>
+                        <span className="list-col-value-style sp-pl-table-cell-text">{t || '\u00A0'}</span>
                       </td>
                     );
                   })}

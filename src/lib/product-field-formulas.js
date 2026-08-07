@@ -7,6 +7,7 @@ import {
   evaluateFormulaExpression,
   formatFormulaExpressionForLabel,
   parseFormulaInput,
+  splitCustomFieldFormulasFromValues,
   validateFormulaExpression
 } from '@/lib/custom-field-formula';
 import {
@@ -44,8 +45,8 @@ export function buildProductFormulaCatalogGroups() {
   }));
 }
 
-export function buildProductFormulaPickerOptions(definitions = []) {
-  return buildFormulaFieldPickerOptions('product', definitions);
+export function buildProductFormulaPickerOptions(definitions = [], pricingProfile = null) {
+  return buildFormulaFieldPickerOptions('product', definitions, '', { pricingProfile });
 }
 
 function literalProductFieldValue(product, fieldKey) {
@@ -154,7 +155,8 @@ export function buildLiveProductDraft({
   billingIntervalInput,
   currency,
   customFields,
-  parsePriceInput
+  parsePriceInput,
+  definitions = []
 }) {
   const inputs = {
     name: nameInput,
@@ -170,10 +172,15 @@ export function buildLiveProductDraft({
     customFields
   };
   const fieldFormulas = extractFieldFormulasFromInputs(inputs);
+  const { manual, customFieldFormulas } = splitCustomFieldFormulasFromValues(
+    definitions,
+    customFields
+  );
   const draft = {
     currency,
-    customFields: customFields || {},
+    customFields: manual,
     fieldFormulas,
+    customFieldFormulas,
     name: String(nameInput ?? '').trim(),
     code: String(codeInput ?? '').trim(),
     version: String(versionInput ?? '').trim(),
@@ -188,7 +195,7 @@ export function buildLiveProductDraft({
   return draft;
 }
 
-export function validateProductFieldFormulas(fieldFormulas, definitions = []) {
+export function validateProductFieldFormulas(fieldFormulas, definitions = [], pricingProfile = null) {
   const src = fieldFormulas && typeof fieldFormulas === 'object' ? fieldFormulas : {};
   const out = {};
   for (const [key, rawExpr] of Object.entries(src)) {
@@ -199,7 +206,9 @@ export function validateProductFieldFormulas(fieldFormulas, definitions = []) {
     if (!parsed.isFormula || !parsed.expression) {
       return { ok: false, error: `${key} 수식이 올바르지 않습니다.` };
     }
-    const check = validateFormulaExpression(parsed.expression, 'product', definitions);
+    const check = validateFormulaExpression(parsed.expression, 'product', definitions, {
+      pricingProfile
+    });
     if (!check.ok) return { ok: false, error: check.error || `${key} 수식 오류` };
     out[key] = parsed.expression;
   }
@@ -215,13 +224,25 @@ function computedChannelMargin(numeric) {
 }
 
 function buildEvalContext(product, exchangeCtx, definitions, resolvedNumeric, opts = {}) {
-  const { computedCustomFields = {} } = opts;
+  const { computedCustomFields = {}, excelPeerValues = null } = opts;
+  const productCustomFormulaKeys = new Set(
+    Object.keys(
+      product?.customFieldFormulas && typeof product.customFieldFormulas === 'object'
+        ? product.customFieldFormulas
+        : {}
+    )
+  );
+  const zeroWhenMissingCustomKeys = new Set(
+    (definitions || [])
+      .filter((d) => d?.key && d.type !== 'formula' && !productCustomFormulaKeys.has(d.key))
+      .map((d) => d.key)
+  );
   const fxBuiltIn = exchangeCtx
     ? buildExchangeRateFormulaBuiltin(
         exchangeCtx.usdSummary,
         exchangeCtx.dealBasRMap,
         product?.currency,
-        { profile: exchangeCtx.pricingProfile }
+        { profile: exchangeCtx.pricingProfile, rateRows: exchangeCtx.rateRows }
       )
     : {};
   const builtIn = {
@@ -233,13 +254,24 @@ function buildEvalContext(product, exchangeCtx, definitions, resolvedNumeric, op
     channelMargin: resolvedNumeric.channelMargin,
     ...fxBuiltIn
   };
+  const peers =
+    excelPeerValues && typeof excelPeerValues === 'object' ? excelPeerValues : {};
   return {
     entityType: 'product',
     definitions: definitions || [],
+    pricingProfile: exchangeCtx?.pricingProfile || null,
     builtIn: normalizeFormulaBuiltInNumbers(builtIn),
-    customFields: normalizeCustomFieldsForFormula(product?.customFields || {}, definitions || []),
+    customFields: normalizeCustomFieldsForFormula(
+      { ...peers, ...(product?.customFields || {}) },
+      definitions || []
+    ),
     computedFormulas: computedCustomFields,
-    customFieldKeys: new Set((definitions || []).filter((d) => d?.key).map((d) => d.key))
+    customFieldKeys: new Set((definitions || []).filter((d) => d?.key).map((d) => d.key)),
+    zeroWhenMissingCustomKeys,
+    // 엑셀에서 빈 추가필드는 0으로 계산되므로 상세 재계산도 같은 의미를 유지한다.
+    missingCustomRefAsZero: true,
+    // 엑셀 peer 연산: 빈 [ADSK DC] 등 → 0
+    missingRefAsZero: Boolean(excelPeerValues && Object.keys(peers).length)
   };
 }
 
@@ -248,7 +280,7 @@ function buildEvalContext(product, exchangeCtx, definitions, resolvedNumeric, op
  * @returns {object} row와 병합 가능한 resolved 필드
  */
 export function resolveProductFieldValues(product, exchangeCtx = null, definitions = [], opts = {}) {
-  const { computedCustomFields = {} } = opts;
+  const { computedCustomFields = {}, excelPeerValues = null } = opts;
   const formulas = normalizeProductFieldFormulas(product);
   const hasFormula = Object.keys(formulas).length > 0;
   const resolved = {
@@ -290,7 +322,10 @@ export function resolveProductFieldValues(product, exchangeCtx = null, definitio
     for (const key of PRODUCT_FORMULA_NUMERIC_KEYS) {
       const expr = formulas[key];
       if (!expr) continue;
-      const ctx = buildEvalContext(product, exchangeCtx, definitions, numeric, { computedCustomFields });
+      const ctx = buildEvalContext(product, exchangeCtx, definitions, numeric, {
+        computedCustomFields,
+        excelPeerValues
+      });
       const val = evaluateFormulaExpression(expr, ctx);
       if (val == null || !Number.isFinite(Number(val))) continue;
       const n = Number(val);
@@ -313,7 +348,10 @@ export function resolveProductFieldValues(product, exchangeCtx = null, definitio
   for (const key of PRODUCT_FORMULA_TEXT_KEYS) {
     const expr = formulas[key];
     if (!expr) continue;
-    const ctx = buildEvalContext(product, exchangeCtx, definitions, numeric, { computedCustomFields });
+    const ctx = buildEvalContext(product, exchangeCtx, definitions, numeric, {
+      computedCustomFields,
+      excelPeerValues
+    });
     const val = evaluateFormulaExpression(expr, ctx);
     if (val == null) continue;
     resolved[key] = String(val);
@@ -328,13 +366,18 @@ function buildProductCustomFormulaContext(product, exchangeCtx, definitions, res
         exchangeCtx.usdSummary,
         exchangeCtx.dealBasRMap,
         product?.currency,
-        { profile: exchangeCtx.pricingProfile }
+        { profile: exchangeCtx.pricingProfile, rateRows: exchangeCtx.rateRows }
       )
     : {};
   const customFields = rawCustomFields ?? product?.customFields ?? {};
   return {
     entityType: 'product',
     definitions: definitions || [],
+    pricingProfile: exchangeCtx?.pricingProfile || null,
+    customFieldFormulas:
+      product?.customFieldFormulas && typeof product.customFieldFormulas === 'object'
+        ? product.customFieldFormulas
+        : {},
     builtIn: normalizeFormulaBuiltInNumbers({
       listPrice: resolvedNumeric.listPrice,
       price: resolvedNumeric.listPrice,
@@ -344,7 +387,8 @@ function buildProductCustomFormulaContext(product, exchangeCtx, definitions, res
       channelMargin: resolvedNumeric.channelMargin,
       ...fxBuiltIn
     }),
-    customFields: normalizeCustomFieldsForFormula(customFields, definitions || [])
+    customFields: normalizeCustomFieldsForFormula(customFields, definitions || []),
+    missingCustomRefAsZero: true
   };
 }
 
@@ -366,7 +410,10 @@ function stableFormulasSnapshot(resolved, customComputed) {
 export function resolveProductFormulasUnified(product, exchangeCtx = null, definitions = []) {
   const formulaDefs = (definitions || []).filter((d) => d?.type === 'formula');
   const hasBuiltinFormulas = product?.fieldFormulas && Object.keys(product.fieldFormulas).length > 0;
-  const hasCustomFormulas = formulaDefs.some((d) => d?.options?.expression);
+  const hasProductCustomFormulas =
+    product?.customFieldFormulas && Object.keys(product.customFieldFormulas).length > 0;
+  const hasCustomFormulas =
+    formulaDefs.some((d) => d?.options?.expression) || hasProductCustomFormulas;
 
   if (!hasBuiltinFormulas && !hasCustomFormulas) {
     const resolved = resolveProductFieldValues(product, exchangeCtx, definitions);
@@ -384,7 +431,11 @@ export function resolveProductFormulasUnified(product, exchangeCtx = null, defin
     buildProductCustomFormulaContext(product, exchangeCtx, definitions, resolved)
   );
 
-  const maxPass = formulaDefs.length + Object.keys(product?.fieldFormulas || {}).length + 8;
+  const maxPass =
+    formulaDefs.length +
+    Object.keys(product?.fieldFormulas || {}).length +
+    Object.keys(product?.customFieldFormulas || {}).length +
+    8;
   for (let pass = 0; pass < maxPass; pass += 1) {
     const snap = stableFormulasSnapshot(resolved, customComputed);
 
@@ -454,7 +505,11 @@ export function buildProductFieldPayload({
     }
   }
 
-  const check = validateProductFieldFormulas(fieldFormulas, definitions);
+  const check = validateProductFieldFormulas(
+    fieldFormulas,
+    definitions,
+    exchangeCtx?.pricingProfile || null
+  );
   if (!check.ok) return check;
 
   draft.fieldFormulas = check.fieldFormulas;
@@ -495,7 +550,11 @@ export function mergeResolvedProductRow(row, exchangeCtx, definitions) {
   const formulas = normalizeProductFieldFormulas(row);
   const hasBuiltinFormulas = Object.keys(formulas).length > 0;
   const hasCustomFormulas = hasCustomFormulaDefinitions(definitions);
-  if (!hasBuiltinFormulas && !hasCustomFormulas) return row;
+  const hasProductCustomFormulas =
+    row?.customFieldFormulas &&
+    typeof row.customFieldFormulas === 'object' &&
+    Object.keys(row.customFieldFormulas).length > 0;
+  if (!hasBuiltinFormulas && !hasCustomFormulas && !hasProductCustomFormulas) return row;
   const resolved = resolveProductFormulasUnified(row, exchangeCtx, definitions);
   return {
     ...row,

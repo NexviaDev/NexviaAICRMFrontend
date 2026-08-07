@@ -81,7 +81,7 @@ function buildProductFormulaContext(row, definitions = [], exchangeCtx = null) {
         exchangeCtx.usdSummary,
         exchangeCtx.dealBasRMap,
         row?.currency,
-        { profile: exchangeCtx.pricingProfile }
+        { profile: exchangeCtx.pricingProfile, rateRows: exchangeCtx.rateRows }
       )
     : {};
   return {
@@ -336,7 +336,8 @@ export default function ProductList({
   const {
     dealBasRMap: exchangeDealBasRMap,
     usdSummary: exchangeUsdSummary,
-    pricingProfile: exchangePricingProfile
+    pricingProfile: exchangePricingProfile,
+    rateRows: exchangeRateRows
   } = useExchangeRates({
     getAuthHeader,
     respectSessionFreeze: true
@@ -345,9 +346,10 @@ export default function ProductList({
     () => ({
       dealBasRMap: exchangeDealBasRMap,
       usdSummary: exchangeUsdSummary,
-      pricingProfile: exchangePricingProfile
+      pricingProfile: exchangePricingProfile,
+      rateRows: exchangeRateRows
     }),
-    [exchangeDealBasRMap, exchangeUsdSummary, exchangePricingProfile]
+    [exchangeDealBasRMap, exchangeUsdSummary, exchangePricingProfile, exchangeRateRows]
   );
   const normalizedProductCustomFieldDefinitions = useMemo(
     () => productCustomFieldDefinitions.map((d) => normalizeCustomFieldDefinition(d)),

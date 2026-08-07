@@ -12,16 +12,6 @@ export function toKrwAmount(amount, currency, dealBasRMap) {
   return krw != null ? Math.round(krw) : 0;
 }
 
-function sumInsightSeriesValues(series, from, to) {
-  if (!Array.isArray(series)) return 0;
-  const end = to == null ? series.length : Math.min(to, series.length);
-  let s = 0;
-  for (let i = from; i < end; i += 1) {
-    s += Number(series[i]?.value) || 0;
-  }
-  return s;
-}
-
 /** 통화별 시계열 맵 → 원화 합산 단일 시계열 */
 export function mergeCurrencySeriesMapToKrw(byCurrency, dealBasRMap) {
   const map = byCurrency && typeof byCurrency === 'object' ? byCurrency : {};
@@ -51,78 +41,75 @@ export function sumCurrencyBreakdownToKrw(byCurrency, dealBasRMap) {
 }
 
 /**
- * salesGraphs 원화 병합 기준 KPI 수치 (백엔드 primaryCurrency 무시)
- * buildHomeKpiSummaryFromGraphs 와 동일 구간 규칙
+ * 차트 시계열에서 KPI 카드용 ‘현재 기간’ 버킷 인덱스.
+ * - month/week/year: 시리즈가 당기까지라 마지막 버킷
+ * - quarter: 올해 4분기 막대 중 당분기
+ * - half: 1~6 / 7~12 중 당반기
  */
-export function computeKrwInsightKpiFromGraphs(salesGraphs, dealBasRMap) {
+export function resolveInsightKpiCurrentBucketIndex(period, seriesLength, now = new Date()) {
+  const n = Math.max(0, Number(seriesLength) || 0);
+  if (n <= 0) return -1;
+  const p = String(period || '').toLowerCase();
+  if (p === 'quarter') {
+    const q = Math.min(3, Math.max(0, Math.floor(now.getMonth() / 3)));
+    return Math.min(n - 1, q);
+  }
+  if (p === 'half') {
+    const h = now.getMonth() <= 5 ? 0 : 1;
+    return Math.min(n - 1, h);
+  }
+  return n - 1;
+}
+
+/**
+ * salesGraphs 원화 병합 기준 KPI 수치 (백엔드 primaryCurrency 무시, 다통화→KRW)
+ * kpiPeriodHint / chartMeta.kpiPeriod 에 맞는 **현재 기간 버킷만** 합산.
+ * (구버전: month 시계열에 대해 앞 6버킷을 합산해 1~6월=반기 금액이 월간 매출액으로 보이던 버그 방지)
+ * 후반/전반 forecast 는 단일 버킷으로는 불가 → null 반환, UI는 백엔드 kpiSummary 로 보완.
+ */
+export function computeKrwInsightKpiFromGraphs(salesGraphs, dealBasRMap, kpiPeriodHint) {
   const v = mergeCurrencySeriesMapToKrw(salesGraphs?.wonValueByCurrency, dealBasRMap);
   const vp = mergeCurrencySeriesMapToKrw(salesGraphs?.wonValuePrevYearByCurrency, dealBasRMap);
   const net = mergeCurrencySeriesMapToKrw(salesGraphs?.netMarginByCurrency, dealBasRMap);
   const netp = mergeCurrencySeriesMapToKrw(salesGraphs?.netMarginPrevYearByCurrency, dealBasRMap);
 
   const n = v.length;
-  let last6;
-  let prev6;
-  let last3;
-  let prev3;
-  let m6;
-  let m6py;
-  let m3;
-  let v3;
-  let m3p;
-  let v3p;
+  const period = String(
+    kpiPeriodHint ||
+      salesGraphs?.chartMeta?.kpiPeriod ||
+      salesGraphs?.chartMeta?.granularity ||
+      ''
+  ).toLowerCase();
 
-  if (n === 2) {
-    last6 = sumInsightSeriesValues(v, 0, 2);
-    prev6 = sumInsightSeriesValues(vp, 0, 2);
-    last3 = sumInsightSeriesValues(v, 1, 2);
-    prev3 = sumInsightSeriesValues(v, 0, 1);
-    m6 = sumInsightSeriesValues(net, 0, 2);
-    m6py = sumInsightSeriesValues(netp, 0, 2);
-    m3 = sumInsightSeriesValues(net, 1, 2);
-    v3 = sumInsightSeriesValues(v, 1, 2);
-    m3p = sumInsightSeriesValues(net, 0, 1);
-    v3p = sumInsightSeriesValues(v, 0, 1);
-  } else {
-    last6 = sumInsightSeriesValues(v, 0, 6);
-    prev6 = sumInsightSeriesValues(vp, 0, 6);
-    last3 = sumInsightSeriesValues(v, 3, 6);
-    prev3 = sumInsightSeriesValues(v, 0, 3);
-    m6 = sumInsightSeriesValues(net, 0, 6);
-    m6py = sumInsightSeriesValues(netp, 0, 6);
-    m3 = sumInsightSeriesValues(net, 3, 6);
-    v3 = sumInsightSeriesValues(v, 3, 6);
-    m3p = sumInsightSeriesValues(net, 0, 3);
-    v3p = sumInsightSeriesValues(v, 0, 3);
-  }
+  const currentIdx = resolveInsightKpiCurrentBucketIndex(period, n);
+  const idx = currentIdx >= 0 ? currentIdx : Math.max(0, n - 1);
+  const curr = Number(v[idx]?.value) || 0;
+  const prevYoy = Number(vp[idx]?.value) || 0;
+  const currNet = Number(net[idx]?.value) || 0;
+  const prevNet = Number(netp[idx]?.value) || 0;
 
-  const revenueYoyPct = prev6 > 0 ? (100 * (last6 - prev6)) / prev6 : null;
-  const revenueForecastPct = v3p > 0 ? (100 * v3) / v3p : null;
-  const rate6 = last6 > 0 ? (100 * m6) / last6 : 0;
-  const nonMarginAmount = Math.max(0, last6 - m6);
-  const rate6py = prev6 > 0 ? (100 * m6py) / prev6 : null;
+  const revenueYoyPct = prevYoy > 0 ? (100 * (curr - prevYoy)) / prevYoy : null;
+  const rateCurr = curr > 0 ? (100 * currNet) / curr : 0;
+  const nonMarginAmount = Math.max(0, curr - currNet);
+  const rateYoy = prevYoy > 0 ? (100 * prevNet) / prevYoy : null;
   const marginYoyPP =
-    last6 > 0 && prev6 > 0 ? Math.round((rate6 - rate6py) * 10) / 10 : null;
-  const rate3 = v3 > 0 ? (100 * m3) / v3 : 0;
-  const rate3p = v3p > 0 ? (100 * m3p) / v3p : 0;
-  const marginForecastPP =
-    v3 > 0 && v3p > 0 ? Math.round((rate3 - rate3p) * 10) / 10 : null;
+    curr > 0 && prevYoy > 0 ? Math.round((rateCurr - rateYoy) * 10) / 10 : null;
 
   return {
     primaryCurrency: DASHBOARD_DISPLAY_CURRENCY,
     revenue: {
-      orderValueTotal: Math.round(last6),
-      primaryTotal: Math.round(last6),
-      last6Total: Math.round(last6),
-      forecastVsPct: revenueForecastPct,
+      orderValueTotal: Math.round(curr),
+      primaryTotal: Math.round(curr),
+      last6Total: Math.round(curr),
+      forecastVsPct: null,
       yoyPct: revenueYoyPct
     },
     grossMargin: {
-      ratePct: Math.round(rate6 * 10) / 10,
-      forecastVsPP: marginForecastPP,
+      ratePct: Math.round(rateCurr * 10) / 10,
+      forecastVsPP: null,
       yoyPP: marginYoyPP,
       nonMarginAmount: Math.round(nonMarginAmount),
-      netMarginTotal: Math.round(m6)
+      netMarginTotal: Math.round(currNet)
     }
   };
 }

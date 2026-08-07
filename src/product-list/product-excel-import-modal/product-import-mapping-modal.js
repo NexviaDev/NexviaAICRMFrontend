@@ -63,9 +63,12 @@ export default function ProductImportMappingModal({
                 <p className="excel-import-map-intro-desc">
                   엑셀 <strong>첫 행은 헤더</strong>(열 이름)로 사용됩니다. 각 열을 <strong>제품 필드</strong>에 연결한 뒤{' '}
                   <strong>엑셀 미리보기</strong>에서 확인·수정 후 일괄 등록합니다.{' '}
+                  미리보기 진입 시 셀 수식은 <strong>같은 행 참조→[필드라벨]</strong>로 자동 환산되고,{' '}
+                  <strong>$I$1</strong> 같은 절대/다른 행 참조(환율 등)는 미리보기의 <strong>모두 바꾸기</strong>로 치환하세요.{' '}
                   결제 주기 열은 <strong>1Y·2Y·3Y(년)</strong>, <strong>1M·2M(개월)</strong>, <strong>P(영구)</strong> 또는{' '}
-                  <strong>1년·3개월·1달·영구</strong> 형식을 지원합니다. 미리보기에서 <strong>1Y→1년, 1M→1개월, P→영구</strong>로 변환되어 표시됩니다.
-                  커스텀 필드는 정의에 맞춰 대상 목록에 표시됩니다.
+                  <strong>1년·3개월·1달·영구</strong> 형식을 지원합니다. 미리보기에서{' '}
+                  <strong>1Y→1년, 1M→1개월, P→영구</strong>로 변환되어 표시됩니다. 커스텀 필드는 정의에 맞춰 대상 목록에
+                  표시됩니다.
                 </p>
               </div>
 

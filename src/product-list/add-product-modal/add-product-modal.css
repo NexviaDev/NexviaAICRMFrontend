@@ -1137,6 +1137,10 @@
 .add-product-modal-formula-hint {
   margin: 0 0 1rem;
   padding: 0.65rem 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
   font-size: 0.78rem;
   line-height: 1.5;
   color: #4a6575;
@@ -1149,6 +1153,106 @@
   color: #2c6485;
 }
 
+.add-product-modal-formula-toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2rem;
+  padding: 0.35rem 0.65rem;
+  color: #315f78;
+  background: #fff;
+  border: 1px solid #b8d0df;
+  border-radius: 0.45rem;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.add-product-modal-formula-toggle:hover,
+.add-product-modal-formula-toggle.is-active {
+  color: #244c63;
+  background: #e2edf3;
+  border-color: #8fb3c8;
+}
+
+.add-product-modal-formula-toggle .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
+.add-product-modal-formula-popover {
+  position: fixed;
+  z-index: 80;
+  top: 50%;
+  left: 50%;
+  width: min(48rem, calc(100vw - 2rem));
+  max-height: min(72vh, 46rem);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transform: translate(-50%, -50%);
+  background: #fff;
+  border: 1px solid #b8d0df;
+  border-radius: 0.75rem;
+  box-shadow: 0 20px 55px rgba(31, 55, 70, 0.2);
+}
+
+.add-product-modal-formula-popover-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.8rem 1rem;
+  background: #eef4f8;
+  border-bottom: 1px solid #d4e3ec;
+}
+
+.add-product-modal-formula-popover-header > div {
+  display: flex;
+  align-items: baseline;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.add-product-modal-formula-popover-header strong {
+  color: #294f65;
+}
+
+.add-product-modal-formula-popover-header span {
+  color: #607986;
+  font-size: 0.76rem;
+}
+
+.add-product-modal-formula-popover-header button {
+  width: 2rem;
+  height: 2rem;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: #607986;
+  background: #fff;
+  border: 1px solid #c7d9e3;
+  border-radius: 0.45rem;
+  cursor: pointer;
+}
+
+.add-product-modal-formula-popover-header button:hover {
+  color: #294f65;
+  background: #e2edf3;
+}
+
+.add-product-modal-formula-copy-msg {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0.45rem 1rem;
+  color: #315f78;
+  background: #f5f9fb;
+  border-bottom: 1px solid #dce8ee;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
 .add-product-modal-formula-picker-panel.custom-fields-manage-formula-fields-panel {
   position: sticky;
   top: 0;
@@ -1159,6 +1263,15 @@
   gap: 1rem;
   margin: 1.25rem 1.25rem 1.5rem 0;
   min-width: 0;
+}
+
+.add-product-modal-formula-popover .add-product-modal-formula-picker-panel {
+  position: static;
+  min-height: 0;
+  height: min(60vh, 38rem);
+  margin: 0;
+  padding: 0.9rem;
+  align-self: stretch;
 }
 
 .add-product-modal-formula-picker-panel .custom-fields-manage-formula-panel-col {
@@ -1229,5 +1342,23 @@
 
   .add-product-modal-formula-picker-panel .custom-fields-manage-formula-panel-col {
     min-width: 0;
+  }
+
+  .add-product-modal-formula-hint {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .add-product-modal-formula-popover-header > div {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .add-product-modal-formula-popover .add-product-modal-formula-picker-panel {
+    position: static;
+    min-height: 0;
+    max-height: none;
+    margin: 0;
   }
 }

@@ -92,7 +92,8 @@ export function useExcelGridClipboard({
   getCellValue,
   setCellValue,
   isCellEditable,
-  sanitizePasteValue
+  sanitizePasteValue,
+  onBeforeBulkMutation
 }) {
   const [selection, setSelection] = useState(null);
   const [gridRootEl, setGridRootEl] = useState(null);
@@ -105,6 +106,7 @@ export function useExcelGridClipboard({
   const setCellValueRef = useRef(setCellValue);
   const isCellEditableRef = useRef(isCellEditable);
   const sanitizePasteValueRef = useRef(sanitizePasteValue);
+  const onBeforeBulkMutationRef = useRef(onBeforeBulkMutation);
   const rowCountRef = useRef(rowCount);
   const colCountRef = useRef(colCount);
   const disabledRef = useRef(disabled);
@@ -118,10 +120,20 @@ export function useExcelGridClipboard({
     setCellValueRef.current = setCellValue;
     isCellEditableRef.current = isCellEditable;
     sanitizePasteValueRef.current = sanitizePasteValue;
+    onBeforeBulkMutationRef.current = onBeforeBulkMutation;
     rowCountRef.current = rowCount;
     colCountRef.current = colCount;
     disabledRef.current = disabled;
-  }, [getCellValue, setCellValue, isCellEditable, sanitizePasteValue, rowCount, colCount, disabled]);
+  }, [
+    getCellValue,
+    setCellValue,
+    isCellEditable,
+    sanitizePasteValue,
+    onBeforeBulkMutation,
+    rowCount,
+    colCount,
+    disabled
+  ]);
 
   const setGridRef = useCallback((node) => {
     gridRootRef.current = node;
@@ -142,6 +154,49 @@ export function useExcelGridClipboard({
     selectionDragActiveRef.current = false;
     setIsAltDragging(false);
     setSelection(null);
+  }, []);
+
+  /** 엑셀처럼 — 행번호 클릭 시 해당 행 전체 */
+  const selectEntireRow = useCallback((rowIndex) => {
+    const rows = rowCountRef.current;
+    const cols = colCountRef.current;
+    if (disabledRef.current || rows < 1 || cols < 1) return;
+    const r = Number(rowIndex);
+    if (!Number.isFinite(r) || r < 0 || r >= rows) return;
+    selectionDragActiveRef.current = false;
+    setIsAltDragging(false);
+    setSelection({
+      start: { row: r, col: 0 },
+      end: { row: r, col: cols - 1 }
+    });
+  }, []);
+
+  /** 엑셀처럼 — 열 헤더 클릭 시 해당 열 전체 */
+  const selectEntireColumn = useCallback((colIndex) => {
+    const rows = rowCountRef.current;
+    const cols = colCountRef.current;
+    if (disabledRef.current || rows < 1 || cols < 1) return;
+    const c = Number(colIndex);
+    if (!Number.isFinite(c) || c < 0 || c >= cols) return;
+    selectionDragActiveRef.current = false;
+    setIsAltDragging(false);
+    setSelection({
+      start: { row: 0, col: c },
+      end: { row: rows - 1, col: c }
+    });
+  }, []);
+
+  /** 엑셀처럼 — 좌상단(#) 클릭 시 전체 */
+  const selectAllCells = useCallback(() => {
+    const rows = rowCountRef.current;
+    const cols = colCountRef.current;
+    if (disabledRef.current || rows < 1 || cols < 1) return;
+    selectionDragActiveRef.current = false;
+    setIsAltDragging(false);
+    setSelection({
+      start: { row: 0, col: 0 },
+      end: { row: rows - 1, col: cols - 1 }
+    });
   }, []);
 
   const buildCopyMatrix = useCallback(() => {
@@ -168,6 +223,14 @@ export function useExcelGridClipboard({
     if (!matrix?.length) return false;
 
     const pasteGrid = expandPasteMatrixForSelection(matrix, box);
+
+    if (typeof onBeforeBulkMutationRef.current === 'function') {
+      try {
+        onBeforeBulkMutationRef.current();
+      } catch {
+        /* ignore */
+      }
+    }
 
     for (let ri = 0; ri < pasteGrid.length; ri += 1) {
       const parts = pasteGrid[ri];
@@ -378,6 +441,9 @@ export function useExcelGridClipboard({
     isCellSelected,
     isCellActive,
     isAltDragging,
-    clearSelection
+    clearSelection,
+    selectEntireRow,
+    selectEntireColumn,
+    selectAllCells
   };
 }

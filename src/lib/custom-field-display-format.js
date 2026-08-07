@@ -1,7 +1,11 @@
 /**
  * 추가 필드 표시형식 — 저장값은 변경하지 않고 화면 표시만 변환 (MS Office 숫자 서식 유사)
  */
-import { parseNumericFieldValue } from '@/lib/numeric-field-value';
+import {
+  hasPercentSuffix,
+  parseNumericFieldValue,
+  parseNumericFieldValueForFormula
+} from '@/lib/numeric-field-value';
 import {
   getCurrencyMeta,
   getCurrencySymbol,
@@ -105,7 +109,13 @@ export function readCustomFieldStoredValue(customFields, fieldKey) {
 
 export function getCustomFieldDisplayFormat(def) {
   const options = normalizeCustomFieldDefOptions(def?.options);
-  return normalizeCustomFieldDisplayFormat(options?.displayFormat);
+  const stored = String(options?.displayFormat || '').trim();
+  if (stored) return normalizeCustomFieldDisplayFormat(stored);
+  // 구 엑셀 자동필드 호환: 이름 자체가 "%"인 숫자 필드는 백분율로 해석한다.
+  if (def?.type === 'number' && String(def?.label || '').trim().endsWith('%')) {
+    return 'percentage';
+  }
+  return 'general';
 }
 
 export function isPercentageDisplayFormat(def) {
@@ -123,10 +133,15 @@ export function findCustomFieldDefinitionByKey(definitions, key) {
 }
 
 /**
- * DB 저장값 → 수식 참조용 숫자.
- * 표시형식이 백분율이면 30 → 0.3 (원가×마진율 등 계산용)
+ * DB 저장값 → 수식 참조용 숫자. /100 은 여기서 한 번만 한다.
+ * - 값 자체가 `10%` 처럼 % 로 끝나면 → 0.1 (표시형식과 무관)
+ * - 값은 30 이지만 표시형식이 백분율이면 → 0.3
  */
 export function customFieldNumericForFormula(value, def) {
+  if (hasPercentSuffix(value)) {
+    const pct = parseNumericFieldValueForFormula(value, { rejectFormula: true });
+    return pct != null && Number.isFinite(pct) ? pct : null;
+  }
   const n = parseNumericFieldValue(value, { fieldType: def?.type, rejectFormula: true });
   if (n == null || !Number.isFinite(n)) return null;
   if (isPercentageDisplayFormat(def)) return n / 100;

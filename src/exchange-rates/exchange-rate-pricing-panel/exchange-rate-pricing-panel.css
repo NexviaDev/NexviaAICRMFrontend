@@ -76,6 +76,11 @@
   color: #f8fbfd;
 }
 
+.er-pricing-btn--add {
+  background: #3d7a52;
+  color: #f5fbf6;
+}
+
 .er-pricing-btn:hover:not(:disabled) {
   opacity: 0.92;
 }
@@ -125,6 +130,69 @@
 
 .er-pricing-grid-col-head {
   font-size: 0.72rem;
+  position: relative;
+}
+
+.er-pricing-grid-col-head-label {
+  display: inline-block;
+  padding-inline: 0.15rem;
+}
+
+.er-pricing-grid-col-head--custom .er-pricing-col-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 0.2rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.2rem;
+  background: rgba(255, 255, 255, 0.22);
+  color: #f5fbf6;
+  cursor: pointer;
+  vertical-align: middle;
+  line-height: 1;
+}
+
+.er-pricing-grid-col-head--custom .er-pricing-col-remove .material-symbols-outlined {
+  font-size: 0.85rem;
+}
+
+.er-pricing-grid-col-head--custom .er-pricing-col-remove:hover {
+  background: rgba(180, 60, 60, 0.75);
+}
+
+.er-pricing-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.65rem;
+  background: #f4faf5;
+  border-bottom: 1px solid #b8d9be;
+}
+
+.er-pricing-add-input {
+  flex: 1 1 10rem;
+  min-width: 8rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #8fbf98;
+  border-radius: 0.3rem;
+  font-size: 0.78rem;
+}
+
+.er-pricing-add-kind {
+  padding: 0.35rem 0.45rem;
+  border: 1px solid #8fbf98;
+  border-radius: 0.3rem;
+  font-size: 0.75rem;
+  background: #fff;
+}
+
+.er-pricing-add-error {
+  flex: 1 1 100%;
+  font-size: 0.72rem;
+  color: #b42318;
+  font-weight: 600;
 }
 
 .er-pricing-grid-col-head--pickable {

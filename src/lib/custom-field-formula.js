@@ -15,7 +15,8 @@ import {
   looksLikeNumericTextForFormula,
   normalizeCustomFieldsForFormula,
   normalizeFormulaBuiltInNumbers,
-  parseNumericFieldValue
+  parseNumericFieldValue,
+  parseNumericFieldValueForFormula
 } from './numeric-field-value';
 import {
   customFieldNumericForFormula,
@@ -59,13 +60,14 @@ export function extractFormulaRefs(expression) {
  * @param {string} expression
  * @param {string} entityType
  * @param {Array} definitions
+ * @param {{ pricingProfile?: object }} [options]
  */
-export function validateFormulaExpression(expression, entityType, definitions = []) {
+export function validateFormulaExpression(expression, entityType, definitions = [], options = {}) {
   const expr = String(expression || '').trim();
   if (!expr) return { ok: false, error: '수식을 입력해 주세요.' };
   const refs = extractFormulaRefs(expr);
   for (const r of refs) {
-    if (!resolveFormulaRefToken(r, entityType, definitions)) {
+    if (!resolveFormulaRefToken(r, entityType, definitions, options)) {
       return { ok: false, error: `수식에 없는 필드 [${r}] 가 있습니다.` };
     }
   }
@@ -88,6 +90,7 @@ function resolveRefValue(refKey, context) {
   const fieldTypes = context?.fieldTypes || {};
   const definitions = context?.definitions || [];
   const customKeys = context?.customFieldKeys || buildCustomFieldKeySet(definitions);
+  const zeroWhenMissingCustomKeys = context?.zeroWhenMissingCustomKeys;
   const defForRef = findCustomFieldDefinitionByKey(definitions, refKey);
 
   if (computed[refKey] !== undefined) {
@@ -101,15 +104,22 @@ function resolveRefValue(refKey, context) {
     if (ft === 'number' || ft === 'checkbox') {
       n = customFieldNumericForFormula(raw, defForRef || { type: ft });
     } else if (!ft || looksLikeNumericTextForFormula(raw)) {
-      n = customFieldNumericForFormula(raw, defForRef || {});
+      /** 숫자처럼 보이는 글자 필드(10, 10%)도 참조 가능 — 정의 타입으로 막지 않는다 */
+      n = customFieldNumericForFormula(raw, defForRef ? { ...defForRef, type: 'number' } : {});
     }
     if (n != null) return n;
   }
-  // 추가 필드 키인데 값 없음 — 환율 내장(fxConsumerRate 등)으로 대체하지 않음
-  if (customKeys.has(refKey)) return null;
+  // 정의된 추가 필드가 비어 있으면 제품 엑셀 수식에서는 0으로 이어서 계산한다.
+  // 환율 내장값 누락까지 0으로 숨기지 않도록 custom key에만 제한한다.
+  if (customKeys.has(refKey)) {
+    const canUseZero =
+      context?.missingCustomRefAsZero &&
+      (!(zeroWhenMissingCustomKeys instanceof Set) || zeroWhenMissingCustomKeys.has(refKey));
+    return canUseZero ? 0 : null;
+  }
 
   if (builtIn[refKey] !== undefined && builtIn[refKey] !== '') {
-    return parseNumericFieldValue(builtIn[refKey], { rejectFormula: true });
+    return parseNumericFieldValueForFormula(builtIn[refKey], { rejectFormula: true });
   }
   return null;
 }
@@ -120,12 +130,22 @@ export function evaluateFormulaExpression(expression, context) {
   if (!expr) return null;
   const entityType = context?.entityType || '';
   const definitions = context?.definitions || [];
-  const refMaps = entityType ? buildFormulaRefMaps(entityType, definitions) : null;
+  const refMaps = entityType
+    ? buildFormulaRefMaps(entityType, definitions, {
+        pricingProfile: context?.pricingProfile
+      })
+    : null;
+  const missingRefAsZero = Boolean(context?.missingRefAsZero);
   let replaced = expr;
   const refs = extractFormulaRefs(expr);
   for (const ref of refs) {
     const refKey = refMaps?.labelToKey?.get(ref) ?? ref;
-    const v = resolveRefValue(refKey, context);
+    let v = resolveRefValue(refKey, context);
+    /** 리맵 키가 peer에 없고 원라벨(peers['DSRP'] 등)만 있을 때 보조 */
+    if (v == null && refKey !== ref) {
+      v = resolveRefValue(ref, context);
+    }
+    if (v == null && missingRefAsZero) v = 0;
     if (v == null) return null;
     replaced = replaced.replace(new RegExp(`\\[${escapeRegExp(ref)}\\]`, 'g'), `(${v})`);
   }
@@ -136,11 +156,53 @@ export function evaluateFormulaExpression(expression, context) {
 }
 
 /**
+ * 정의 formula + 제품별 customFieldFormulas → 평가용 def 목록
+ * (제품 수식이 있으면 정의 수식을 덮어씀. number 필드에도 제품 수식 가능)
+ */
+function buildEffectiveCustomFormulaDefs(definitions = [], customFieldFormulas = {}) {
+  const productExprs =
+    customFieldFormulas && typeof customFieldFormulas === 'object' ? customFieldFormulas : {};
+  const byKey = new Map();
+
+  for (const d of definitions || []) {
+    if (!d?.key) continue;
+    if (d.type === 'formula' && d?.options?.expression) {
+      byKey.set(d.key, {
+        key: d.key,
+        type: 'formula',
+        label: d.label || d.key,
+        options: { expression: String(d.options.expression).trim() }
+      });
+    }
+  }
+
+  for (const [key, rawExpr] of Object.entries(productExprs)) {
+    const expr = String(rawExpr || '').trim().replace(/^\s*=/, '').trim();
+    if (!expr) continue;
+    const def = (definitions || []).find((d) => d?.key === key);
+    if (!def) continue;
+    if (!['number', 'text', 'formula', 'checkbox'].includes(def.type)) continue;
+    byKey.set(key, {
+      key,
+      type: 'formula',
+      label: def.label || key,
+      options: { expression: expr }
+    });
+  }
+
+  return [...byKey.values()].filter((d) => d?.options?.expression);
+}
+
+/**
  * 정의 목록 + 컨텍스트 → formula 타입 필드 계산값
+ * context.customFieldFormulas — 제품별 추가필드 수식
  * @returns {Record<string, number>}
  */
 export function computeCustomFieldFormulas(definitions = [], context = {}) {
-  const formulaDefs = (definitions || []).filter((d) => d?.type === 'formula' && d?.options?.expression);
+  const formulaDefs = buildEffectiveCustomFormulaDefs(
+    definitions,
+    context.customFieldFormulas
+  );
   if (!formulaDefs.length) return {};
 
   const manualCustom = normalizeCustomFieldsForFormula(context.customFields || {}, definitions);
@@ -149,6 +211,12 @@ export function computeCustomFieldFormulas(definitions = [], context = {}) {
   }
 
   const fieldTypes = buildFieldTypesMap(definitions);
+  const effectiveFormulaKeys = new Set(formulaDefs.map((d) => d.key));
+  const zeroWhenMissingCustomKeys = new Set(
+    (definitions || [])
+      .filter((d) => d?.key && !effectiveFormulaKeys.has(d.key))
+      .map((d) => d.key)
+  );
   const computed = {};
   const maxPass = formulaDefs.length + 2;
   const builtIn = normalizeFormulaBuiltInNumbers(context.builtIn || {});
@@ -162,7 +230,11 @@ export function computeCustomFieldFormulas(definitions = [], context = {}) {
         fieldTypes,
         entityType: context.entityType,
         definitions,
-        customFieldKeys: buildCustomFieldKeySet(definitions)
+        pricingProfile: context.pricingProfile || null,
+        customFieldKeys: buildCustomFieldKeySet(definitions),
+        zeroWhenMissingCustomKeys,
+        missingCustomRefAsZero: Boolean(context.missingCustomRefAsZero),
+        missingRefAsZero: Boolean(context.missingRefAsZero)
       });
       if (val == null) continue;
       if (computed[def.key] !== val) {
@@ -324,9 +396,52 @@ function appendFormulaOperatorExpr(expression, op) {
   return `${base}${op}`;
 }
 
+export function splitCustomFieldFormulasFromValues(definitions = [], manualValues = {}) {
+  const customFieldFormulas = {};
+  const manual = {};
+  for (const [key, val] of Object.entries(manualValues || {})) {
+    const def = (definitions || []).find((d) => d?.key === key);
+    if (!def) continue;
+    if (['number', 'text', 'checkbox', 'formula'].includes(def.type)) {
+      const parsed = parseFormulaInput(val);
+      if (parsed.isFormula && parsed.expression) {
+        customFieldFormulas[key] = parsed.expression;
+        continue;
+      }
+    }
+    if (def.type === 'formula') continue;
+    manual[key] = val;
+  }
+  return { manual, customFieldFormulas };
+}
+
+/** DB 저장값 → 폼 표시 (제품 수식 있으면는 =수식) */
+export function buildCustomFieldFormValuesFromStored(product, definitions = []) {
+  const values =
+    product?.customFields && typeof product.customFields === 'object'
+      ? { ...product.customFields }
+      : {};
+  const formulas =
+    product?.customFieldFormulas && typeof product.customFieldFormulas === 'object'
+      ? product.customFieldFormulas
+      : {};
+  for (const [key, expr] of Object.entries(formulas)) {
+    const def = (definitions || []).find((d) => d?.key === key);
+    if (!def) continue;
+    if (expr) values[key] = formatFormulaExpressionForLabel(expr);
+  }
+  for (const d of definitions || []) {
+    if (d?.type === 'formula' && d.key && !formulas[d.key]) delete values[d.key];
+  }
+  return values;
+}
+
 /** 저장 API body용 — 수동 입력 + formula 계산값 병합 */
 export function mergeCustomFieldsForSave(definitions = [], manualValues = {}, formulaContext = null) {
-  const manual = { ...(manualValues || {}) };
+  const { manual, customFieldFormulas } = splitCustomFieldFormulasFromValues(
+    definitions,
+    manualValues
+  );
   for (const d of definitions || []) {
     if (d?.type === 'formula' && d.key) delete manual[d.key];
   }
@@ -335,8 +450,38 @@ export function mergeCustomFieldsForSave(definitions = [], manualValues = {}, fo
     builtIn: formulaContext.builtIn || {},
     customFields: manual,
     entityType: formulaContext.entityType,
-    definitions
+    definitions,
+    customFieldFormulas: {
+      ...(formulaContext.customFieldFormulas || {}),
+      ...customFieldFormulas
+    },
+    pricingProfile: formulaContext.pricingProfile || null,
+    missingRefAsZero: Boolean(formulaContext.missingRefAsZero)
   });
   const merged = { ...manual, ...computed };
   return Object.keys(merged).length ? merged : undefined;
+}
+
+/** 제품 저장 — customFields 스냅샷 + customFieldFormulas */
+export function prepareProductCustomFieldsForSave(
+  definitions = [],
+  manualValues = {},
+  formulaContext = null
+) {
+  const { manual, customFieldFormulas } = splitCustomFieldFormulasFromValues(
+    definitions,
+    manualValues
+  );
+  const ctx = {
+    ...(formulaContext || {}),
+    customFieldFormulas: {
+      ...(formulaContext?.customFieldFormulas || {}),
+      ...customFieldFormulas
+    }
+  };
+  const customFields = mergeCustomFieldsForSave(definitions, manual, ctx);
+  return {
+    customFields,
+    customFieldFormulas: Object.keys(customFieldFormulas).length ? customFieldFormulas : {}
+  };
 }

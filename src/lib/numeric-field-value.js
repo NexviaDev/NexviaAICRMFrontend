@@ -1,6 +1,7 @@
 /**
  * 필드·셀 표시값 → 수식 계산용 숫자
- * ₩, $, 원, %, 쉼표 등 문자는 제거하고 숫자만 사용
+ * ₩, $, 원, 쉼표 등 문자는 제거하고 숫자만 사용
+ * 값 뒤에 붙은 %(확률)는 수식 계산 시 /100 으로 환산한다 — parseNumericFieldValueForFormula
  */
 
 export function looksLikeFormulaInput(raw) {
@@ -42,6 +43,40 @@ export function parseNumericFieldValue(value, options = {}) {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * 값 뒤에 %가 붙은 확률 표기인지 — `10%`, `-2.5 %`, `10.5%`
+ * (`50%할인` 처럼 % 뒤에 글자가 오면 확률 표기로 보지 않음)
+ */
+export function hasPercentSuffix(value) {
+  if (typeof value !== 'string') return false;
+  const s = value.trim();
+  if (!s.endsWith('%')) return false;
+  const head = s.slice(0, -1).replace(/[\s,]/g, '');
+  return /^[-+]?\d*\.?\d+$/.test(head);
+}
+
+/** `10%` → `10` (숫자 부분만) */
+export function stripPercentSuffix(value) {
+  return String(value ?? '').trim().replace(/%\s*$/, '').trim();
+}
+
+/**
+ * 수식 계산용 숫자 — 값 뒤 %는 /100 (확률).
+ * 예) `10%` × 50 → 10/100*50 = 5
+ * %가 붙은 값은 텍스트·선택 필드여도 숫자로 인식한다.
+ * @returns {number|null}
+ */
+export function parseNumericFieldValueForFormula(value, options = {}) {
+  if (hasPercentSuffix(value)) {
+    const n = parseNumericFieldValue(stripPercentSuffix(value), {
+      ...options,
+      fieldType: null
+    });
+    return n == null ? null : n / 100;
+  }
+  return parseNumericFieldValue(value, options);
+}
+
 /** 수식 참조용 — 글자 필드라도 10, 10%, 6,790 처럼 숫자만 있으면 계산에 사용 (SAP 코드 등은 제외) */
 export function looksLikeNumericTextForFormula(value) {
   const s = String(value ?? '').trim();
@@ -67,6 +102,12 @@ export function normalizeCustomFieldsForFormula(customFields = {}, definitions =
   for (const [key, val] of Object.entries(customFields || {})) {
     const fieldType = typeMap[key] || null;
     if (fieldType === 'formula' && rejectFormula && looksLikeFormulaInput(val)) continue;
+
+    // `10%` 는 문자열 그대로 두고 customFieldNumericForFormula 에서 한 번만 /100 한다
+    if (hasPercentSuffix(val)) {
+      out[key] = val.trim();
+      continue;
+    }
 
     if (fieldType === 'checkbox') {
       out[key] = parseNumericFieldValue(val, { fieldType: 'checkbox', rejectFormula: false });
@@ -134,12 +175,12 @@ export function normalizeCustomFieldsForApiSave(customFields = {}, definitions =
   return out;
 }
 
-/** builtIn 수식 컨텍스트 — 문자열 금액·환율도 숫자로 */
+/** builtIn 수식 컨텍스트 — 문자열 금액·환율도 숫자로 (값 뒤 %는 /100) */
 export function normalizeFormulaBuiltInNumbers(builtIn = {}) {
   const out = {};
   for (const [key, val] of Object.entries(builtIn || {})) {
     if (val === '' || val == null) continue;
-    const n = parseNumericFieldValue(val, { rejectFormula: true });
+    const n = parseNumericFieldValueForFormula(val, { rejectFormula: true });
     out[key] = n != null ? n : val;
   }
   return out;

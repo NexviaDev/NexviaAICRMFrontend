@@ -14,6 +14,7 @@ export const EXIM_RATE_FIELD_COLUMNS = [
   { key: 'kftcBkpr', label: '중개 장부가격' }
 ];
 
+/** 내장 고정 단계 (삭제 불가) — 추가 항목은 customSteps로 「추가」 */
 export const PRICING_STEP_DEFS = [
   { id: 'orderRate', label: '발주환율', resultKey: 'orderRate', resultKind: 'rate' },
   { id: 'rpiRate', label: 'RPI환율', resultKey: 'rpiRate', resultKind: 'rate' },
@@ -31,6 +32,9 @@ export const STEP_RESULT_FIELD_LABELS = {
 };
 
 export const REFERENCE_USD_FIELD_LABEL = '기준USD';
+export const MAX_CUSTOM_PRICING_STEPS = 12;
+export const CUSTOM_STEP_ID_RE = /^c_[a-z0-9]+_[a-z0-9]+$/i;
+export const DEFAULT_CUSTOM_STEP_FORMULA = '=dec([USD-매매기준율],2)';
 
 /** Excel 스타일 — 평가·치환 전 선행 = 제거 */
 export function stripExchangeRateFormulaPrefix(raw) {
@@ -65,6 +69,63 @@ function num(v) {
   return Number.isFinite(n) ? n : null;
 }
 
+export function createCustomPricingStepId() {
+  return `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export function customStepBuiltinKey(stepId) {
+  return `fxCustom_${String(stepId || '').trim()}`;
+}
+
+export function sanitizePricingStepLabel(raw) {
+  return String(raw || '')
+    .replace(/[\[\]]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 24);
+}
+
+export function normalizeCustomPricingSteps(raw) {
+  if (!Array.isArray(raw)) return [];
+  const seenIds = new Set();
+  const seenLabels = new Set(
+    PRICING_STEP_DEFS.map((s) => String(s.label || '').trim().toLowerCase()).filter(Boolean)
+  );
+  const out = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    if (out.length >= MAX_CUSTOM_PRICING_STEPS) break;
+    const id = String(item.id || '').trim();
+    if (!CUSTOM_STEP_ID_RE.test(id) || seenIds.has(id)) continue;
+    const label = sanitizePricingStepLabel(item.label);
+    if (!label) continue;
+    const labelKey = label.toLowerCase();
+    if (seenLabels.has(labelKey)) continue;
+    const resultKind = item.resultKind === 'money' ? 'money' : 'rate';
+    seenIds.add(id);
+    seenLabels.add(labelKey);
+    out.push({ id, label, resultKind });
+  }
+  return out;
+}
+
+/** 내장 + 회사 추가 단계 */
+export function resolvePricingStepDefs(profileLike) {
+  const custom = normalizeCustomPricingSteps(
+    profileLike?.customSteps ?? (Array.isArray(profileLike) ? profileLike : [])
+  );
+  return [
+    ...PRICING_STEP_DEFS.map((s) => ({ ...s, custom: false })),
+    ...custom.map((s) => ({
+      id: s.id,
+      label: s.label,
+      resultKey: s.id,
+      resultKind: s.resultKind,
+      custom: true
+    }))
+  ];
+}
+
 export function buildRateFieldToken(currencyCode, columnLabel) {
   const code = String(currencyCode || '').trim().toUpperCase();
   const label = String(columnLabel || '').trim();
@@ -72,9 +133,12 @@ export function buildRateFieldToken(currencyCode, columnLabel) {
   return `[${code}-${label}]`;
 }
 
-export function buildStepResultToken(stepId) {
-  const label = STEP_RESULT_FIELD_LABELS[stepId];
-  return label ? `[${label}]` : '';
+export function buildStepResultToken(stepId, profileLike) {
+  const steps = resolvePricingStepDefs(profileLike);
+  const step = steps.find((s) => s.id === stepId);
+  if (step?.label) return `[${step.label}]`;
+  const fallback = STEP_RESULT_FIELD_LABELS[stepId];
+  return fallback ? `[${fallback}]` : '';
 }
 
 export function buildReferenceUsdToken() {
@@ -98,10 +162,10 @@ export function buildRateFieldValuesFromRows(rows, referenceUsdAmount = 1) {
   return values;
 }
 
-export function mergeStepResultsIntoFieldValues(fieldValues, stepResults = {}) {
+export function mergeStepResultsIntoFieldValues(fieldValues, stepResults = {}, profileLike) {
   const merged = { ...fieldValues };
-  for (const step of PRICING_STEP_DEFS) {
-    const label = STEP_RESULT_FIELD_LABELS[step.id];
+  for (const step of resolvePricingStepDefs(profileLike)) {
+    const label = step.label || STEP_RESULT_FIELD_LABELS[step.id];
     const v = num(stepResults[step.resultKey]);
     if (label && v != null) merged[label] = v;
   }
@@ -239,7 +303,7 @@ export function validateExchangeRateStepFormula(expression, fieldValues = {}) {
   return { ok: true, value: val };
 }
 
-export function listKnownRateFieldTokens(rows = []) {
+export function listKnownRateFieldTokens(rows = [], profileLike) {
   const tokens = [buildReferenceUsdToken()];
   for (const row of rows || []) {
     const code = String(row.code || row.id || '').trim().toUpperCase();
@@ -248,8 +312,8 @@ export function listKnownRateFieldTokens(rows = []) {
       if (num(row[col.key]) != null) tokens.push(buildRateFieldToken(code, col.label));
     }
   }
-  for (const label of Object.values(STEP_RESULT_FIELD_LABELS)) {
-    tokens.push(`[${label}]`);
+  for (const step of resolvePricingStepDefs(profileLike)) {
+    if (step.label) tokens.push(`[${step.label}]`);
   }
   return tokens;
 }

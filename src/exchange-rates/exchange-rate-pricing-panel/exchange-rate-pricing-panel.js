@@ -12,7 +12,11 @@ import {
   validateExchangeRateStepFormula,
   buildRateFieldValuesFromRows,
   mergeStepResultsIntoFieldValues,
-  PRICING_STEP_DEFS,
+  resolvePricingStepDefs,
+  createCustomPricingStepId,
+  sanitizePricingStepLabel,
+  MAX_CUSTOM_PRICING_STEPS,
+  DEFAULT_CUSTOM_STEP_FORMULA,
   buildFormulaRefColorMaps,
   buildStepResultToken,
   normalizeExchangeRateStepFormula
@@ -59,6 +63,10 @@ export default function ExchangeRatePricingPanel({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [saveOk, setSaveOk] = useState('');
+  const [addOpen, setAddOpen] = useState(false);
+  const [addLabel, setAddLabel] = useState('');
+  const [addKind, setAddKind] = useState('rate');
+  const [addError, setAddError] = useState('');
   const formulaRefs = useRef({});
   const formulaSelectionRef = useRef({});
   const pendingCaretRef = useRef(null);
@@ -181,15 +189,16 @@ export default function ExchangeRatePricingPanel({
     const normalized = normalizeExchangeRatePricingProfile(profile);
     let partial = {};
     let fieldValues = buildRateFieldValuesFromRows(rateRows, normalized.referenceUsdAmount);
+    const stepsDefs = resolvePricingStepDefs(normalized);
 
-    for (const step of PRICING_STEP_DEFS) {
+    for (const step of stepsDefs) {
       const check = validateExchangeRateStepFormula(normalized.stepFormulas[step.id], fieldValues);
       if (!check.ok) {
         setSaveError(`${step.label} 수식: ${check.error}`);
         return;
       }
       partial = { ...partial, [step.resultKey]: check.value };
-      fieldValues = mergeStepResultsIntoFieldValues(fieldValues, partial);
+      fieldValues = mergeStepResultsIntoFieldValues(fieldValues, partial, normalized);
     }
 
     setSaving(true);
@@ -221,19 +230,70 @@ export default function ExchangeRatePricingPanel({
   const handleCancelEdit = useCallback(() => {
     setProfile(normalizeExchangeRatePricingProfile(initialProfile));
     setEditing(false);
+    setAddOpen(false);
+    setAddLabel('');
+    setAddError('');
     setSaveError('');
   }, [initialProfile]);
 
+  const handleAddStep = useCallback(() => {
+    const label = sanitizePricingStepLabel(addLabel);
+    if (!label) {
+      setAddError('항목 이름을 입력해 주세요.');
+      return;
+    }
+    const next = normalizeExchangeRatePricingProfile(profile);
+    if ((next.customSteps || []).length >= MAX_CUSTOM_PRICING_STEPS) {
+      setAddError(`추가 항목은 최대 ${MAX_CUSTOM_PRICING_STEPS}개까지입니다.`);
+      return;
+    }
+    const known = resolvePricingStepDefs(next);
+    if (known.some((s) => String(s.label).toLowerCase() === label.toLowerCase())) {
+      setAddError('같은 이름의 항목이 이미 있습니다.');
+      return;
+    }
+    const id = createCustomPricingStepId();
+    next.customSteps = [
+      ...(next.customSteps || []),
+      { id, label, resultKind: addKind === 'money' ? 'money' : 'rate' }
+    ];
+    next.stepFormulas = {
+      ...next.stepFormulas,
+      [id]: DEFAULT_CUSTOM_STEP_FORMULA
+    };
+    setProfile(normalizeExchangeRatePricingProfile(next));
+    setActiveStepId(id);
+    setAddOpen(false);
+    setAddLabel('');
+    setAddKind('rate');
+    setAddError('');
+    setSaveOk('');
+  }, [addLabel, addKind, profile]);
+
+  const handleRemoveCustomStep = useCallback((stepId) => {
+    setProfile((prev) => {
+      const next = normalizeExchangeRatePricingProfile(prev);
+      next.customSteps = (next.customSteps || []).filter((s) => s.id !== stepId);
+      if (next.stepFormulas && next.stepFormulas[stepId] != null) {
+        const { [stepId]: _removed, ...rest } = next.stepFormulas;
+        next.stepFormulas = rest;
+      }
+      return normalizeExchangeRatePricingProfile(next);
+    });
+    setActiveStepId((cur) => (cur === stepId ? 'orderRate' : cur));
+    setSaveOk('');
+  }, []);
+
   const handleInsertStepField = useCallback(
     (stepId) => {
-      const token = buildStepResultToken(stepId);
+      const token = buildStepResultToken(stepId, profile);
       if (token) insertToken(token);
     },
-    [insertToken]
+    [insertToken, profile]
   );
 
   const formulaHints = useMemo(() => {
-    return `필드 예: [USD-보내실 때], [발주환율], ${buildReferenceUsdToken()} · 위 목록(발주환율 등) 또는 아래 환율 표 셀 클릭으로 삽입`;
+    return `필드 예: [USD-매매기준율], [발주환율], ${buildReferenceUsdToken()} · 「추가」항목·아래 환율 표 셀 클릭으로 삽입`;
   }, []);
 
   return (
@@ -273,6 +333,18 @@ export default function ExchangeRatePricingPanel({
               <>
                 <button
                   type="button"
+                  className="er-pricing-btn er-pricing-btn--add"
+                  onClick={() => {
+                    setAddOpen((v) => !v);
+                    setAddError('');
+                  }}
+                  disabled={saving}
+                >
+                  <span className="material-symbols-outlined">add</span>
+                  추가
+                </button>
+                <button
+                  type="button"
                   className="er-pricing-btn er-pricing-btn--cancel"
                   onClick={handleCancelEdit}
                   disabled={saving}
@@ -310,6 +382,46 @@ export default function ExchangeRatePricingPanel({
         <p className="er-pricing-formula-hint">{formulaHints}</p>
       ) : null}
 
+      {editing && canEdit && addOpen ? (
+        <div className="er-pricing-add-row" role="group" aria-label="산정 항목 추가">
+          <input
+            type="text"
+            className="er-pricing-add-input"
+            value={addLabel}
+            onChange={(e) => {
+              setAddLabel(e.target.value);
+              setAddError('');
+            }}
+            placeholder="항목 이름 (예: 인센환율)"
+            maxLength={24}
+            aria-label="추가 항목 이름"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleAddStep();
+              }
+            }}
+          />
+          <select
+            className="er-pricing-add-kind"
+            value={addKind}
+            onChange={(e) => setAddKind(e.target.value)}
+            aria-label="결과 형식"
+          >
+            <option value="rate">환율</option>
+            <option value="money">금액</option>
+          </select>
+          <button type="button" className="er-pricing-btn er-pricing-btn--save" onClick={handleAddStep}>
+            확인
+          </button>
+          {addError ? (
+            <span className="er-pricing-add-error" role="alert">
+              {addError}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="er-pricing-table-wrap">
         <table className="er-pricing-table er-pricing-table--grid">
           <tbody>
@@ -318,7 +430,7 @@ export default function ExchangeRatePricingPanel({
                 목록
               </th>
               {steps.map((step) => {
-                const stepToken = buildStepResultToken(step.id);
+                const stepToken = buildStepResultToken(step.id, profile);
                 const headerPickable = editing && canEdit && stepToken;
                 return (
                   <th
@@ -326,7 +438,7 @@ export default function ExchangeRatePricingPanel({
                     scope="col"
                     className={`er-pricing-grid-col-head${
                       headerPickable ? ' er-pricing-grid-col-head--pickable' : ''
-                    }`}
+                    }${step.custom ? ' er-pricing-grid-col-head--custom' : ''}`}
                     title={headerPickable ? `${stepToken} 수식에 삽입` : step.label}
                     onMouseDown={
                       headerPickable
@@ -353,7 +465,22 @@ export default function ExchangeRatePricingPanel({
                     tabIndex={headerPickable ? 0 : undefined}
                     role={headerPickable ? 'button' : undefined}
                   >
-                    {step.label}
+                    <span className="er-pricing-grid-col-head-label">{step.label}</span>
+                    {editing && canEdit && step.custom ? (
+                      <button
+                        type="button"
+                        className="er-pricing-col-remove"
+                        title={`${step.label} 삭제`}
+                        aria-label={`${step.label} 삭제`}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveCustomStep(step.id);
+                        }}
+                      >
+                        <span className="material-symbols-outlined">close</span>
+                      </button>
+                    ) : null}
                   </th>
                 );
               })}
@@ -411,8 +538,8 @@ export default function ExchangeRatePricingPanel({
       {canEdit ? (
         <p className="er-pricing-panel-note">
           {editing
-            ? '수식 입력란 커서 위치에 [필드]가 삽입됩니다. 위 목록(발주환율 등)·아래 환율 표 셀을 클릭해 추가하세요.'
-            : '회사 공통 산정 수식입니다. 관리자는 「수식 수정」에서 변경할 수 있습니다.'}
+            ? '항목 「추가」로 산정 열을 더할 수 있습니다. 수식 입력란 커서에 [필드]가 삽입됩니다. 위 목록·아래 환율 표 셀을 클릭해 넣으세요. 저장 후 제품 수식에서도 같은 이름으로 사용됩니다.'
+            : '회사 공통 산정 수식입니다. 관리자는 「수식 수정」에서 변경·추가할 수 있습니다.'}
         </p>
       ) : (
         <p className="er-pricing-panel-note">회사에 저장된 산정 수식으로 자동 계산됩니다.</p>

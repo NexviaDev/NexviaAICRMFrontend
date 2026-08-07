@@ -22,6 +22,7 @@ export function readFrozenExchangeRatesFromStorage() {
         dealBasRMap: parsed.dealBasRMap,
         usdSummary: parsed.usdSummary || null,
         pricingProfile: parsed.pricingProfile || null,
+        rateRows: Array.isArray(parsed.rateRows) ? parsed.rateRows : [],
         frozenAt: parsed.frozenAt || null
       };
     }
@@ -31,7 +32,12 @@ export function readFrozenExchangeRatesFromStorage() {
   return null;
 }
 
-export function writeFrozenExchangeRatesToStorage(dealBasRMap, usdSummary = null, pricingProfile = null) {
+export function writeFrozenExchangeRatesToStorage(
+  dealBasRMap,
+  usdSummary = null,
+  pricingProfile = null,
+  rateRows = []
+) {
   try {
     sessionStorage.setItem(
       EXCHANGE_RATES_FREEZE_STORAGE_KEY,
@@ -39,6 +45,7 @@ export function writeFrozenExchangeRatesToStorage(dealBasRMap, usdSummary = null
         dealBasRMap,
         usdSummary,
         pricingProfile,
+        rateRows: Array.isArray(rateRows) ? rateRows : [],
         frozenAt: new Date().toISOString()
       })
     );
@@ -73,6 +80,7 @@ export function useExchangeRates({
   const [liveDealBasRMap, setLiveDealBasRMap] = useState({});
   const [liveUsdSummary, setLiveUsdSummary] = useState(null);
   const [livePricingProfile, setLivePricingProfile] = useState(null);
+  const [liveRateRows, setLiveRateRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [frozenSnapshot, setFrozenSnapshot] = useState(() =>
     respectSessionFreeze ? readFrozenExchangeRatesFromStorage() : null
@@ -85,6 +93,12 @@ export function useExchangeRates({
   const pricingProfile = exchangeRatesFrozen
     ? frozenSnapshot?.pricingProfile ?? livePricingProfile
     : livePricingProfile;
+  /** 빈 [] 는 미보관으로 보고 live 사용 — 예전 freeze에 rateRows:[] 가 있으면 산정 재계산이 깨짐 */
+  const rateRows = exchangeRatesFrozen
+    ? Array.isArray(frozenSnapshot?.rateRows) && frozenSnapshot.rateRows.length
+      ? frozenSnapshot.rateRows
+      : liveRateRows
+    : liveRateRows;
 
   const fetchRates = useCallback(async () => {
     if (!enabled) return;
@@ -96,6 +110,7 @@ export function useExchangeRates({
       if (!mountedRef.current) return;
       if (Array.isArray(data.rows)) {
         setLiveDealBasRMap(buildDealBasRMapFromRows(data.rows));
+        setLiveRateRows(data.rows);
       }
       if (data.usdSummary && typeof data.usdSummary === 'object') {
         setLiveUsdSummary(data.usdSummary);
@@ -116,11 +131,12 @@ export function useExchangeRates({
       dealBasRMap: snap,
       usdSummary: liveUsdSummary,
       pricingProfile: livePricingProfile,
+      rateRows: liveRateRows,
       frozenAt: new Date().toISOString()
     };
     setFrozenSnapshot(next);
-    writeFrozenExchangeRatesToStorage(snap, liveUsdSummary, livePricingProfile);
-  }, [liveDealBasRMap, liveUsdSummary, livePricingProfile]);
+    writeFrozenExchangeRatesToStorage(snap, liveUsdSummary, livePricingProfile, liveRateRows);
+  }, [liveDealBasRMap, liveUsdSummary, livePricingProfile, liveRateRows]);
 
   const resumeExchangeRates = useCallback(() => {
     setFrozenSnapshot(null);
@@ -158,12 +174,14 @@ export function useExchangeRates({
     const syncFrozenFromStorage = () => {
       setFrozenSnapshot(readFrozenExchangeRatesFromStorage());
     };
-    window.addEventListener(EXCHANGE_RATES_FREEZE_CHANGED_EVENT, syncFrozenFromStorage);
-    window.addEventListener('storage', (e) => {
+    const onStorage = (e) => {
       if (e.key === EXCHANGE_RATES_FREEZE_STORAGE_KEY) syncFrozenFromStorage();
-    });
+    };
+    window.addEventListener(EXCHANGE_RATES_FREEZE_CHANGED_EVENT, syncFrozenFromStorage);
+    window.addEventListener('storage', onStorage);
     return () => {
       window.removeEventListener(EXCHANGE_RATES_FREEZE_CHANGED_EVENT, syncFrozenFromStorage);
+      window.removeEventListener('storage', onStorage);
     };
   }, [respectSessionFreeze]);
 
@@ -171,6 +189,7 @@ export function useExchangeRates({
     dealBasRMap,
     usdSummary,
     pricingProfile,
+    rateRows,
     liveDealBasRMap,
     liveUsdSummary,
     loading,

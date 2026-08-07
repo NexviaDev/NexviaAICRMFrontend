@@ -40,6 +40,18 @@
   color: var(--text, #1e293b);
 }
 
+.custom-fields-display-value {
+  display: inline;
+}
+
+.custom-fields-display-initial {
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
+  font-weight: 400;
+  color: var(--text-muted, #6b7280);
+  line-height: 1.35;
+}
+
 .custom-fields-display-formula-badge {
   display: inline-block;
   margin-left: 0.35rem;

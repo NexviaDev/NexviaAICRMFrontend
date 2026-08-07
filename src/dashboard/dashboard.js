@@ -3137,8 +3137,8 @@ export default function Dashboard() {
   const selectedGraphCurrency = DASHBOARD_DISPLAY_CURRENCY;
 
   const krwInsightKpi = useMemo(
-    () => computeKrwInsightKpiFromGraphs(stats.salesGraphs, dealBasRMap),
-    [stats.salesGraphs, dealBasRMap]
+    () => computeKrwInsightKpiFromGraphs(stats.salesGraphs, dealBasRMap, kpiPeriod),
+    [stats.salesGraphs, dealBasRMap, kpiPeriod]
   );
 
   const homeContributionBarKrw = useMemo(

@@ -1,9 +1,9 @@
 import { listPriceFromProduct } from './product-price-utils';
 
-/** 내장 순·유통 마진 수식 (커스텀 필드 함수 UI와 동일 토큰) */
+/** 내장 순·유통 마진 수식 (커스텀 필드 함수 UI·/product-list 라벨과 동일 토큰) */
 export const PRODUCT_BUILTIN_MARGIN_EXPRESSIONS = {
-  consumerMargin: '[제품 소비자가]-[제품 원가]',
-  channelMargin: '[제품 유통가]-[제품 원가]'
+  consumerMargin: '[소비자가]-[원가]',
+  channelMargin: '[유통가]-[원가]'
 };
 
 

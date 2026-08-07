@@ -2,7 +2,63 @@
  * 영업 기회( opportunity-modal )와 동일한 단계·라인 아이템 API 형식.
  * opportunity-modal.js 가 바뀔 때 이 파일의 페이로드·단계 목록을 함께 맞춥니다.
  */
-import { suggestedPriceFromProduct, OPPORTUNITY_PRICE_BASIS_OPTIONS } from '@/lib/product-price-utils';
+import { suggestedPriceFromProduct, OPPORTUNITY_PRICE_BASIS_OPTIONS, listPriceFromProduct } from '@/lib/product-price-utils';
+import { getConsumerMargin, getChannelMargin } from '@/lib/product-margin';
+import { mergeResolvedProductRow } from '@/lib/product-field-formulas';
+
+function moneyNum(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * 기회 라인에 붙이는 「등록 초기」카탈로그 스냅샷.
+ * exchangeCtx·definitions 가 있으면 현재 환율로 수식을 풀어 숫자값을 넣고,
+ * fieldFormulas/customFieldFormulas 는 원본을 보존한다.
+ */
+export function buildProductCatalogSnapshotFromProduct(product, exchangeCtx = null, definitions = []) {
+  if (!product || typeof product !== 'object') return null;
+  const resolved =
+    exchangeCtx || (Array.isArray(definitions) && definitions.length)
+      ? mergeResolvedProductRow(product, exchangeCtx, definitions)
+      : product;
+  return {
+    capturedAt: new Date().toISOString(),
+    productId: product._id != null ? String(product._id) : '',
+    name: String(resolved.name || product.name || ''),
+    code: String(resolved.code || product.code || ''),
+    version: String(resolved.version || product.version || ''),
+    category: String(resolved.category || product.category || ''),
+    currency: String(resolved.currency || product.currency || 'KRW').trim().toUpperCase() || 'KRW',
+    status: String(product.status || ''),
+    billingType: String(product.billingType || ''),
+    billingInterval: Math.min(
+      99,
+      Math.max(1, Math.round(Number(resolved.billingInterval ?? product.billingInterval) || 1))
+    ),
+    listPrice: moneyNum(listPriceFromProduct(resolved)),
+    costPrice: moneyNum(resolved.costPrice),
+    channelPrice: moneyNum(resolved.channelPrice),
+    consumerMargin: moneyNum(getConsumerMargin(resolved)),
+    channelMargin: moneyNum(getChannelMargin(resolved)),
+    fieldFormulas:
+      product.fieldFormulas && typeof product.fieldFormulas === 'object' ? { ...product.fieldFormulas } : {},
+    customFieldFormulas:
+      product.customFieldFormulas && typeof product.customFieldFormulas === 'object'
+        ? { ...product.customFieldFormulas }
+        : {},
+    customFields:
+      resolved.customFields && typeof resolved.customFields === 'object'
+        ? { ...resolved.customFields }
+        : product.customFields && typeof product.customFields === 'object'
+          ? { ...product.customFields }
+          : {}
+  };
+}
+
+export function hasProductCatalogSnapshot(snap) {
+  return Boolean(snap && typeof snap === 'object' && !Array.isArray(snap) && Object.keys(snap).length > 0);
+}
 
 /**
  * 기본 파이프라인 단계(커스텀 정의 없을 때) — `sales-pipeline.js` 의 DEFAULT_ACTIVE_STAGES / 라벨과 동일 순서·문구 유지
@@ -147,7 +203,7 @@ export function createEmptyCommissionRow() {
   return { id: newCommissionRecipientId(), remarks: '', commissionAmount: '' };
 }
 
-export function buildLineFromProduct(product, priceBasisPref = 'consumer') {
+export function buildLineFromProduct(product, priceBasisPref = 'consumer', options = {}) {
   const basis = priceBasisPref === 'channel' ? 'channel' : 'consumer';
   const { priceBasisLabel, priceBasisShortLabel } = priceBasisLabelsForValue(basis);
   const price = suggestedPriceFromProduct(product, basis);
@@ -155,6 +211,16 @@ export function buildLineFromProduct(product, priceBasisPref = 'consumer') {
   const qty = 1;
   const pc =
     Number.isFinite(cost) && cost >= 0 && qty > 0 ? Math.round(cost * qty).toLocaleString() : '';
+  const catalogSnap =
+    options.productCatalogSnapshot && hasProductCatalogSnapshot(options.productCatalogSnapshot)
+      ? options.productCatalogSnapshot
+      : options.exchangeCtx != null || options.definitions
+        ? buildProductCatalogSnapshotFromProduct(
+            product,
+            options.exchangeCtx || null,
+            options.definitions || []
+          )
+        : buildProductCatalogSnapshotFromProduct(product);
   return {
     lineId: newOppLineId(),
     productId: String(product._id),
@@ -168,15 +234,21 @@ export function buildLineFromProduct(product, priceBasisPref = 'consumer') {
     discountRate: '',
     discountAmount: '',
     purchaseCostTotal: pc,
-    commissionRecipients: [createEmptyCommissionRow()]
+    commissionRecipients: [createEmptyCommissionRow()],
+    productCatalogSnapshot: catalogSnap,
+    productCatalogOverrides: null
   };
+}
+
+export function hasProductCatalogOverrides(raw) {
+  return Boolean(raw && typeof raw === 'object' && !Array.isArray(raw) && Object.keys(raw).length > 0);
 }
 
 export function buildLineItemsPayloadFromClientLines(lineItems) {
   return (Array.isArray(lineItems) ? lineItems : []).map((li) => {
     const basis = li.priceBasis === 'channel' ? 'channel' : 'consumer';
     const fb = priceBasisLabelsForValue(basis);
-    return {
+    const payload = {
       productId: li.productId || null,
       productName: li.productName?.trim() || '',
       unitPrice: parseNumber(li.unitPrice),
@@ -196,6 +268,15 @@ export function buildLineItemsPayloadFromClientLines(lineItems) {
         }))
         .filter((r) => r.remarks || r.commissionAmount > 0)
     };
+    if (hasProductCatalogSnapshot(li.productCatalogSnapshot)) {
+      payload.productCatalogSnapshot = li.productCatalogSnapshot;
+    }
+    if (Object.prototype.hasOwnProperty.call(li, 'productCatalogOverrides')) {
+      payload.productCatalogOverrides = hasProductCatalogOverrides(li.productCatalogOverrides)
+        ? li.productCatalogOverrides
+        : null;
+    }
+    return payload;
   });
 }
 

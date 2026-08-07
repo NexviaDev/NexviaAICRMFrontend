@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { computeCustomFieldFormulas, formatFormulaDisplayValue, formatFormulaExpressionForLabel } from '@/lib/custom-field-formula';
+import { computeCustomFieldFormulas, formatFormulaDisplayValue, formatFormulaExpressionForLabel, splitCustomFieldFormulasFromValues } from '@/lib/custom-field-formula';
 import { filterActiveCustomFieldDefinitions } from '@/lib/custom-field-definition-utils';
 import './custom-fields-section.css';
 
@@ -30,11 +30,19 @@ export default function CustomFieldsSection({
 
   const computedFormulas = useMemo(() => {
     if (!formulaContext) return {};
+    const { customFieldFormulas } = splitCustomFieldFormulasFromValues(activeDefinitions, values);
     return computeCustomFieldFormulas(activeDefinitions, {
       builtIn: formulaContext.builtIn || {},
       customFields: values,
       entityType: formulaContext.entityType,
-      definitions: activeDefinitions
+      definitions: activeDefinitions,
+      pricingProfile: formulaContext.pricingProfile || null,
+      customFieldFormulas: {
+        ...(formulaContext.customFieldFormulas || {}),
+        ...customFieldFormulas
+      },
+      missingCustomRefAsZero: Boolean(formulaContext.missingCustomRefAsZero),
+      missingRefAsZero: Boolean(formulaContext.missingRefAsZero)
     });
   }, [activeDefinitions, formulaContext, values]);
 
@@ -74,7 +82,7 @@ export default function CustomFieldsSection({
 
   const visibleDefs = activeDefinitions.filter((def) => {
     if (def.type !== 'formula') return true;
-    return computedFormulas[def.key] != null;
+    return Boolean(formulaContext?.allowFormulaInput) || computedFormulas[def.key] != null;
   });
 
   if (visibleDefs.length === 0) return null;
@@ -89,6 +97,7 @@ export default function CustomFieldsSection({
       {visibleDefs.map((def) => {
         const key = def.key;
         const val = values[key];
+        const hasOwnValue = Object.prototype.hasOwnProperty.call(values || {}, key);
         const displayValue = val !== undefined && val !== null ? val : '';
         const id = `custom-${key}`;
         const label = def.label || key;
@@ -99,15 +108,44 @@ export default function CustomFieldsSection({
         if (def.type === 'formula') {
           const computed = computedFormulas[key];
           const formatted = formatFormulaDisplayValue(computed);
+          const exprLabel =
+            formulaContext?.customFieldFormulas?.[key] ||
+            def.options?.expression ||
+            '';
+          if (formulaContext?.allowFormulaInput) {
+            const inputValue = hasOwnValue
+              ? displayValue
+              : formatFormulaExpressionForLabel(exprLabel);
+            return (
+              <div key={def._id} className={`${fieldClassName} custom-fields-value-row custom-fields-value-row--formula`.trim()}>
+                <div className="custom-fields-value-input-wrap">
+                  <label htmlFor={id}>{label}{required ? ' *' : ''}</label>
+                  <input
+                    id={id}
+                    type="text"
+                    className={inputClassName || undefined}
+                    value={inputValue}
+                    onChange={handleValueChange(key, 'text')}
+                    placeholder="=[필드명]*값"
+                    spellCheck={false}
+                  />
+                  <div className="custom-fields-formula-display">
+                    <span className="custom-fields-formula-value">{formatted ?? '계산 대기'}</span>
+                    <span className="custom-fields-formula-badge">함수</span>
+                  </div>
+                </div>
+              </div>
+            );
+          }
           if (formatted == null) return null;
           return (
             <div key={def._id} className={`${fieldClassName} custom-fields-value-row custom-fields-value-row--formula`.trim()}>
               <div className="custom-fields-value-input-wrap">
                 <span className="custom-fields-value-label">
                   {label}{required ? ' *' : ''}
-                  {def.options?.expression ? (
+                  {exprLabel ? (
                     <span className="custom-fields-formula-expression-label">
-                      {formatFormulaExpressionForLabel(def.options.expression)}
+                      {formatFormulaExpressionForLabel(exprLabel)}
                     </span>
                   ) : null}
                 </span>
@@ -119,6 +157,12 @@ export default function CustomFieldsSection({
             </div>
           );
         }
+
+        const formulaCapableInput =
+          Boolean(formulaContext?.allowFormulaInput) &&
+          (def.type === 'number' || def.type === 'text');
+        const hasFormulaValue =
+          formulaCapableInput && String(displayValue || '').trimStart().startsWith('=');
 
         return (
           <div key={def._id} className={`${fieldClassName} custom-fields-value-row`.trim()}>
@@ -196,7 +240,18 @@ export default function CustomFieldsSection({
                     ]
                       .filter(Boolean)
                       .join(' ')}
-                    type={def.type === 'number' ? 'number' : def.type === 'date' ? 'date' : 'text'}
+                    type={
+                      def.type === 'number' && !formulaCapableInput
+                        ? 'number'
+                        : def.type === 'date'
+                          ? 'date'
+                          : 'text'
+                    }
+                    inputMode={
+                      def.type === 'number' && formulaCapableInput && !hasFormulaValue
+                        ? 'decimal'
+                        : undefined
+                    }
                     value={displayValue}
                     onFocus={
                       def.type === 'date' && onDateFieldActivate
@@ -209,6 +264,8 @@ export default function CustomFieldsSection({
                         : undefined
                     }
                     onChange={handleValueChange(key, 'text')}
+                    placeholder={formulaCapableInput ? '값 또는 =[필드명]*값' : undefined}
+                    spellCheck={formulaCapableInput ? false : undefined}
                     required={required}
                     aria-describedby={
                       def.type === 'date' && dateInputDescribedBy ? dateInputDescribedBy : undefined
