@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { useSearchParams } from 'react-router-dom';
 import AddProductModal from './add-product-modal/add-product-modal';
@@ -798,34 +799,70 @@ export default function ProductList({
     el.indeterminate = total > 0 && selectedIds.size > 0 && selectedIds.size < total;
   }, [selectedIds.size, pagination.total]);
 
-  const handleRowCheckboxClick = useCallback((e, rowIdx, rowId) => {
-    e.stopPropagation();
-    /* preventDefault 금지: controlled checkbox와 충돌 시 체크 표시가 한 박자 밀림 */
-    const list = sortedItems;
-    const sid = productIdKey(rowId);
-    if (!sid) return;
-    if (e.shiftKey && selectionAnchorIdxRef.current != null) {
-      const a = selectionAnchorIdxRef.current;
-      const start = Math.min(a, rowIdx);
-      const end = Math.max(a, rowIdx);
-      setSelectedIds((prev) => {
+  /**
+   * 행/체크박스 선택.
+   * - forceChecked: checkbox onChange의 e.target.checked (토글 중복 방지)
+   * - 검색 모달은 flushSync로 체크 UI를 클릭 직후 즉시 반영(표 셀 많을 때 한 박자 지연 방지)
+   */
+  const applyRowSelection = useCallback(
+    (rowIdx, rowId, { shiftKey = false, forceChecked = null } = {}) => {
+      const list = sortedItems;
+      const sid = productIdKey(rowId);
+      if (!sid) return;
+
+      const commit = (updater) => {
+        if (isSearchModal) flushSync(() => setSelectedIds(updater));
+        else setSelectedIds(updater);
+      };
+
+      if (shiftKey && selectionAnchorIdxRef.current != null) {
+        const a = selectionAnchorIdxRef.current;
+        const start = Math.min(a, rowIdx);
+        const end = Math.max(a, rowIdx);
+        const check = forceChecked != null ? forceChecked : true;
+        commit((prev) => {
+          const next = new Set(prev);
+          for (let i = start; i <= end; i++) {
+            const id = productIdKey(list[i]?._id);
+            if (!id) continue;
+            if (check) next.add(id);
+            else next.delete(id);
+          }
+          return next;
+        });
+        return;
+      }
+
+      commit((prev) => {
         const next = new Set(prev);
-        for (let i = start; i <= end; i++) {
-          const id = productIdKey(list[i]?._id);
-          if (id) next.add(id);
-        }
-        return next;
-      });
-    } else {
-      setSelectedIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(sid)) next.delete(sid);
-        else next.add(sid);
+        const shouldCheck = forceChecked != null ? forceChecked : !prev.has(sid);
+        if (shouldCheck) next.add(sid);
+        else next.delete(sid);
         return next;
       });
       selectionAnchorIdxRef.current = rowIdx;
-    }
-  }, [sortedItems]);
+    },
+    [sortedItems, isSearchModal]
+  );
+
+  const handleRowCheckboxClick = useCallback(
+    (e, rowIdx, rowId) => {
+      e.stopPropagation();
+      applyRowSelection(rowIdx, rowId, { shiftKey: e.shiftKey });
+    },
+    [applyRowSelection]
+  );
+
+  const handleRowCheckboxChange = useCallback(
+    (e, rowIdx, rowId) => {
+      e.stopPropagation();
+      applyRowSelection(rowIdx, rowId, {
+        shiftKey: e.nativeEvent?.shiftKey === true || e.shiftKey === true,
+        forceChecked: e.target.checked
+      });
+    },
+    [applyRowSelection]
+  );
 
   const clearSelection = useCallback(() => {
     setSelectedIds(new Set());
@@ -1039,12 +1076,13 @@ export default function ProductList({
       (row.category && String(row.category).trim()) ||
       (row.code && String(row.code).trim() && `코드 ${row.code}`) ||
       '—';
+    const rowSelected = selectedIds.has(productIdKey(row._id));
     return (
       <div
         key={row._id}
         role="button"
         tabIndex={0}
-        className={`pl-mcard ${isEol ? 'pl-mcard--eol' : ''}${isSearchModal ? ' pl-mcard--search-modal-pick' : ''}`}
+        className={`pl-mcard ${isEol ? 'pl-mcard--eol' : ''}${isSearchModal ? ' pl-mcard--search-modal-pick' : ''}${rowSelected ? ' is-selected' : ''}`}
         onClick={(e) => {
           if (isSearchModal) handleRowCheckboxClick(e, idx, row._id);
           else openDetail(row);
@@ -1067,9 +1105,9 @@ export default function ProductList({
             <input
               type="checkbox"
               className="pl-mcard-row-cb"
-              checked={selectedIds.has(productIdKey(row._id))}
-              onChange={() => {}}
-              onClick={(e) => handleRowCheckboxClick(e, idx, row._id)}
+              checked={rowSelected}
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => handleRowCheckboxChange(e, idx, row._id)}
               aria-label={`${row.name || '제품'} 선택`}
             />
           </div>
@@ -1317,10 +1355,12 @@ export default function ProductList({
                 ) : sortedItems.length === 0 ? (
                   <tr><td colSpan={listSheetTableColSpan} className="text-center">등록된 제품이 없습니다.</td></tr>
                 ) : (
-                  sortedItems.map((row, rowIdx) => (
+                  sortedItems.map((row, rowIdx) => {
+                    const rowSelected = selectedIds.has(productIdKey(row._id));
+                    return (
                     <tr
                       key={row._id}
-                      className={`${isSearchModal ? 'product-list-row--search-modal-pick' : 'product-list-row-clickable'} ${row.status === 'EndOfLife' ? 'product-list-row-eol' : ''} ${rowIdx % 2 === 0 ? 'crm-list-sheet-row--stripe-a' : 'crm-list-sheet-row--stripe-b'}`}
+                      className={`${isSearchModal ? 'product-list-row--search-modal-pick' : 'product-list-row-clickable'} ${row.status === 'EndOfLife' ? 'product-list-row-eol' : ''} ${rowIdx % 2 === 0 ? 'crm-list-sheet-row--stripe-a' : 'crm-list-sheet-row--stripe-b'}${rowSelected ? ' is-selected' : ''}`}
                       onClick={(e) => {
                         if (isSearchModal) handleRowCheckboxClick(e, rowIdx, row._id);
                         else openDetail(row);
@@ -1330,9 +1370,9 @@ export default function ProductList({
                         <input
                           type="checkbox"
                           className="pl-row-checkbox"
-                          checked={selectedIds.has(productIdKey(row._id))}
-                          onChange={() => {}}
-                          onClick={(e) => handleRowCheckboxClick(e, rowIdx, row._id)}
+                          checked={rowSelected}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => handleRowCheckboxChange(e, rowIdx, row._id)}
                           aria-label={`${row.name || '제품'} 선택`}
                         />
                       </td>
@@ -1443,7 +1483,8 @@ export default function ProductList({
                       })}
                       <CrmListSheetFillBodyCell />
                     </tr>
-                  ))
+                    );
+                  })
                 )}
                 <CrmListSheetFillerRows
                   count={listSheetFillRowCount}

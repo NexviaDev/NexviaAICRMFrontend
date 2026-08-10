@@ -787,6 +787,15 @@
   cursor: pointer;
 }
 
+.product-list-row--search-modal-pick.is-selected,
+.product-list-page--search-modal .pl-mcard--search-modal-pick.is-selected {
+  background: rgba(92, 107, 192, 0.1);
+}
+
+.product-list-row--search-modal-pick.is-selected td {
+  background: transparent;
+}
+
 .product-list-search-modal-footer {
   display: flex;
   flex-wrap: wrap;

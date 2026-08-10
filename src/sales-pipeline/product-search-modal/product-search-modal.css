@@ -1,7 +1,8 @@
 .product-search-modal-overlay {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  /* 기회 모달(1400) 내부 단계 드롭다운(1450)·주소록(2000)보다 위 — 고객사 검색 모달과 동일 */
+  z-index: 2400;
   display: flex;
   align-items: center;
   justify-content: center;
