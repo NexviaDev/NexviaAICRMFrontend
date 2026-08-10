@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useCallback } from 'react';
 import ProductList from '@/product-list/product-list';
 import './product-search-modal.css';
 
@@ -6,16 +6,28 @@ import './product-search-modal.css';
  * 제품 선택 모달 — 제품 목록 페이지와 동일한 표·열 설정(listTemplates.productList) 사용.
  */
 export default function ProductSearchModal({ onClose, onSelect }) {
+  const handleClose = useCallback(() => {
+    onClose?.();
+  }, [onClose]);
+
+  const handleConfirm = useCallback(
+    (products) => {
+      onSelect?.(products);
+      onClose?.();
+    },
+    [onSelect, onClose]
+  );
+
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === 'Escape') onClose?.();
+      if (e.key === 'Escape') handleClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [handleClose]);
 
   return (
-    <div className="product-search-modal-overlay" role="presentation" onClick={onClose}>
+    <div className="product-search-modal-overlay" role="presentation" onClick={handleClose}>
       <div
         className="product-search-modal product-search-modal--embed-list"
         role="dialog"
@@ -25,18 +37,15 @@ export default function ProductSearchModal({ onClose, onSelect }) {
       >
         <header className="product-search-modal-header">
           <h3 id="product-search-modal-title">제품 검색</h3>
-          <button type="button" className="product-search-modal-close" onClick={onClose} aria-label="닫기">
+          <button type="button" className="product-search-modal-close" onClick={handleClose} aria-label="닫기">
             <span className="material-symbols-outlined">close</span>
           </button>
         </header>
         <div className="product-search-modal-body">
           <ProductList
             listVariant="searchModal"
-            onSearchModalClose={onClose}
-            onSearchModalConfirm={(products) => {
-              onSelect?.(products);
-              onClose?.();
-            }}
+            onSearchModalClose={handleClose}
+            onSearchModalConfirm={handleConfirm}
           />
         </div>
       </div>

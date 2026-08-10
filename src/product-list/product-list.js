@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { flushSync } from 'react-dom';
+import { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
 import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession, getAuthHeader } from '@/lib/crm-auth';
 import { useSearchParams } from 'react-router-dom';
 import AddProductModal from './add-product-modal/add-product-modal';
 import ProductExcelImportModal from './product-excel-import-modal/product-excel-import-modal';
 import ListTemplateModal from '../components/list-template-modal/list-template-modal';
+import ProductListTableRow from './product-list-table-row';
 import {
   LIST_IDS,
   getSavedTemplate,
@@ -24,7 +24,6 @@ import {
   useCrmListSheetFillerRowCount,
   crmListSheetColSpanWithFill,
   CrmListSheetFillHeaderCell,
-  CrmListSheetFillBodyCell,
   CrmListSheetFillerRows
 } from '@/components/crm-list-sheet-fill/crm-list-sheet-fill';
 import { LIST_COLUMN_FIXED_WIDTH_PX } from '@/lib/list-column-widths';
@@ -179,7 +178,13 @@ function resolveProductCustomFieldDisplay(
 
   let rawValue;
   if (normalizedDef.type === 'formula') {
-    rawValue = resolveFormulaCustomFieldRawValue(row, defKey, fieldKey, definitions, exchangeCtx);
+    /* mergeResolvedProductRow가 이미 customFields에 계산값을 넣어 둠 — 셀마다 전체 수식 재계산 금지 */
+    const stored = readCustomFieldStoredValue(row?.customFields, defKey);
+    if (stored != null && stored !== '' && !looksLikeFormulaInput(String(stored))) {
+      rawValue = stored;
+    } else {
+      rawValue = resolveFormulaCustomFieldRawValue(row, defKey, fieldKey, definitions, exchangeCtx);
+    }
     if (rawValue === undefined || rawValue === null || rawValue === '') return null;
     rawValue = scaleFormulaResultForPercentageDisplay(rawValue, normalizedDef);
   } else {
@@ -291,6 +296,84 @@ function wrapProductListCellContent(content, colKey, columnCellStyles) {
     </span>
   );
 }
+
+const ProductListMobileCard = memo(function ProductListMobileCard({
+  row,
+  idx,
+  selected,
+  isSearchModal,
+  onSelectClick,
+  onSelectChange,
+  onOpenDetail
+}) {
+  const mp = getConsumerMarginPercent(row);
+  const isEol = row.status === 'EndOfLife';
+  const badgeClass =
+    row.status === 'Active' ? 'pl-mcard-badge--active' : row.status === 'EndOfLife' ? 'pl-mcard-badge--eol' : 'pl-mcard-badge--draft';
+  const sub =
+    (row.category && String(row.category).trim()) ||
+    (row.code && String(row.code).trim() && `코드 ${row.code}`) ||
+    '—';
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      className={`pl-mcard ${isEol ? 'pl-mcard--eol' : ''}${isSearchModal ? ' pl-mcard--search-modal-pick' : ''}${selected ? ' is-selected' : ''}`}
+      onClick={(e) => {
+        if (isSearchModal) onSelectClick(e, idx, row._id);
+        else onOpenDetail(row);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          if (isSearchModal) onSelectClick(e, idx, row._id);
+          else onOpenDetail(row);
+        }
+      }}
+    >
+      <div className="pl-mcard-top">
+        <div
+          className="pl-mcard-checkbox-wrap"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+          role="presentation"
+        >
+          <input
+            type="checkbox"
+            className="pl-mcard-row-cb"
+            checked={selected}
+            onClick={(e) => e.stopPropagation()}
+            onChange={(e) => onSelectChange(e, idx, row._id)}
+            aria-label={`${row.name || '제품'} 선택`}
+          />
+        </div>
+        <div className="pl-mcard-head-row">
+          <div className="pl-mcard-text">
+            <h3 className="pl-mcard-name">{row.name || '—'}</h3>
+            <p className="pl-mcard-sub">{sub}</p>
+          </div>
+          <span className={`pl-mcard-badge ${badgeClass}`}>{STATUS_LABELS[row.status] || row.status || '—'}</span>
+        </div>
+      </div>
+      <div className={`pl-mcard-grid ${isEol ? 'pl-mcard-grid--muted' : ''}`}>
+        <div className="pl-mcard-metric">
+          <span className="pl-mcard-metric-label">원가</span>
+          <span className="pl-mcard-metric-val">{renderPriceCell(row.costPrice)}</span>
+        </div>
+        <div className="pl-mcard-metric">
+          <span className="pl-mcard-metric-label">소비자가</span>
+          <span className="pl-mcard-metric-val">{renderPriceCell(listPriceFromProduct(row))}</span>
+        </div>
+        <div className="pl-mcard-metric">
+          <span className="pl-mcard-metric-label">순 마진</span>
+          <span className="pl-mcard-metric-val pl-mcard-metric-val--margin">
+            {mp != null ? `${mp.toFixed(1)}%` : '—'}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+});
 
 /**
  * @param {{ listVariant?: 'page' | 'searchModal', onSearchModalClose?: () => void, onSearchModalConfirm?: (products: object[]) => void }} props
@@ -605,15 +688,18 @@ export default function ProductList({
       return p;
     }, { replace: true });
   }, [setSearchParams]);
-  const openDetail = (row) => {
-    if (!row?._id) return;
-    if (isSearchModal) {
-      setPickerDetailProduct(row);
-      return;
-    }
-    setSearchParams({ [MODAL_PARAM]: MODAL_DETAIL, [DETAIL_ID_PARAM]: row._id });
-  };
-  const closeDetail = () => {
+  const openDetail = useCallback(
+    (row) => {
+      if (!row?._id) return;
+      if (isSearchModal) {
+        setPickerDetailProduct(row);
+        return;
+      }
+      setSearchParams({ [MODAL_PARAM]: MODAL_DETAIL, [DETAIL_ID_PARAM]: row._id });
+    },
+    [isSearchModal, setSearchParams]
+  );
+  const closeDetail = useCallback(() => {
     if (isSearchModal) {
       setPickerDetailProduct(null);
       return;
@@ -622,7 +708,7 @@ export default function ProductList({
     next.delete(MODAL_PARAM);
     next.delete(DETAIL_ID_PARAM);
     setSearchParams(next, { replace: true });
-  };
+  }, [isSearchModal, searchParams, setSearchParams]);
 
   const handleDelete = async (row) => {
     if (!isAdminOrAboveRole(getStoredCrmUser()?.role)) {
@@ -801,49 +887,41 @@ export default function ProductList({
 
   /**
    * 행/체크박스 선택.
-   * - forceChecked: checkbox onChange의 e.target.checked (토글 중복 방지)
-   * - 검색 모달은 flushSync로 체크 UI를 클릭 직후 즉시 반영(표 셀 많을 때 한 박자 지연 방지)
+   * forceChecked: checkbox onChange의 e.target.checked (토글 중복 방지)
+   * 행 UI는 ProductListTableRow(memo)라 selected만 바뀐 행만 다시 그린다.
    */
-  const applyRowSelection = useCallback(
-    (rowIdx, rowId, { shiftKey = false, forceChecked = null } = {}) => {
-      const list = sortedItems;
-      const sid = productIdKey(rowId);
-      if (!sid) return;
+  const applyRowSelection = useCallback((rowIdx, rowId, { shiftKey = false, forceChecked = null } = {}) => {
+    const list = sortedItems;
+    const sid = productIdKey(rowId);
+    if (!sid) return;
 
-      const commit = (updater) => {
-        if (isSearchModal) flushSync(() => setSelectedIds(updater));
-        else setSelectedIds(updater);
-      };
-
-      if (shiftKey && selectionAnchorIdxRef.current != null) {
-        const a = selectionAnchorIdxRef.current;
-        const start = Math.min(a, rowIdx);
-        const end = Math.max(a, rowIdx);
-        const check = forceChecked != null ? forceChecked : true;
-        commit((prev) => {
-          const next = new Set(prev);
-          for (let i = start; i <= end; i++) {
-            const id = productIdKey(list[i]?._id);
-            if (!id) continue;
-            if (check) next.add(id);
-            else next.delete(id);
-          }
-          return next;
-        });
-        return;
-      }
-
-      commit((prev) => {
+    if (shiftKey && selectionAnchorIdxRef.current != null) {
+      const a = selectionAnchorIdxRef.current;
+      const start = Math.min(a, rowIdx);
+      const end = Math.max(a, rowIdx);
+      const check = forceChecked != null ? forceChecked : true;
+      setSelectedIds((prev) => {
         const next = new Set(prev);
-        const shouldCheck = forceChecked != null ? forceChecked : !prev.has(sid);
-        if (shouldCheck) next.add(sid);
-        else next.delete(sid);
+        for (let i = start; i <= end; i++) {
+          const id = productIdKey(list[i]?._id);
+          if (!id) continue;
+          if (check) next.add(id);
+          else next.delete(id);
+        }
         return next;
       });
-      selectionAnchorIdxRef.current = rowIdx;
-    },
-    [sortedItems, isSearchModal]
-  );
+      return;
+    }
+
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      const shouldCheck = forceChecked != null ? forceChecked : !prev.has(sid);
+      if (shouldCheck) next.add(sid);
+      else next.delete(sid);
+      return next;
+    });
+    selectionAnchorIdxRef.current = rowIdx;
+  }, [sortedItems]);
 
   const handleRowCheckboxClick = useCallback(
     (e, rowIdx, rowId) => {
@@ -1067,81 +1145,7 @@ export default function ProductList({
     }
   }, [fetchAllProductsForExport, customFieldLabelByKey, normalizedProductCustomFieldDefinitions, productFormulaExchangeCtx]);
 
-  const renderMobileCard = (row, idx) => {
-    const mp = getConsumerMarginPercent(row);
-    const isEol = row.status === 'EndOfLife';
-    const badgeClass =
-      row.status === 'Active' ? 'pl-mcard-badge--active' : row.status === 'EndOfLife' ? 'pl-mcard-badge--eol' : 'pl-mcard-badge--draft';
-    const sub =
-      (row.category && String(row.category).trim()) ||
-      (row.code && String(row.code).trim() && `코드 ${row.code}`) ||
-      '—';
-    const rowSelected = selectedIds.has(productIdKey(row._id));
-    return (
-      <div
-        key={row._id}
-        role="button"
-        tabIndex={0}
-        className={`pl-mcard ${isEol ? 'pl-mcard--eol' : ''}${isSearchModal ? ' pl-mcard--search-modal-pick' : ''}${rowSelected ? ' is-selected' : ''}`}
-        onClick={(e) => {
-          if (isSearchModal) handleRowCheckboxClick(e, idx, row._id);
-          else openDetail(row);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            if (isSearchModal) handleRowCheckboxClick(e, idx, row._id);
-            else openDetail(row);
-          }
-        }}
-      >
-        <div className="pl-mcard-top">
-          <div
-            className="pl-mcard-checkbox-wrap"
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
-            role="presentation"
-          >
-            <input
-              type="checkbox"
-              className="pl-mcard-row-cb"
-              checked={rowSelected}
-              onClick={(e) => e.stopPropagation()}
-              onChange={(e) => handleRowCheckboxChange(e, idx, row._id)}
-              aria-label={`${row.name || '제품'} 선택`}
-            />
-          </div>
-          <div className="pl-mcard-head-row">
-            <div className="pl-mcard-text">
-              <h3 className="pl-mcard-name">{row.name || '—'}</h3>
-              <p className="pl-mcard-sub">{sub}</p>
-            </div>
-            <span className={`pl-mcard-badge ${badgeClass}`}>{STATUS_LABELS[row.status] || row.status || '—'}</span>
-          </div>
-        </div>
-        <div className={`pl-mcard-grid ${isEol ? 'pl-mcard-grid--muted' : ''}`}>
-          <div className="pl-mcard-metric">
-            <span className="pl-mcard-metric-label">원가</span>
-            <span className="pl-mcard-metric-val">
-              {renderPriceCell(row.costPrice)}
-            </span>
-          </div>
-          <div className="pl-mcard-metric">
-            <span className="pl-mcard-metric-label">소비자가</span>
-            <span className="pl-mcard-metric-val">
-              {renderPriceCell(listPriceFromProduct(row))}
-            </span>
-          </div>
-          <div className="pl-mcard-metric">
-            <span className="pl-mcard-metric-label">순 마진</span>
-            <span className="pl-mcard-metric-val pl-mcard-metric-val--margin">
-              {mp != null ? `${mp.toFixed(1)}%` : '—'}
-            </span>
-          </div>
-        </div>
-      </div>
-    );
-  };
+  const billingTypeVisible = template.visible?.billingType === true;
 
   return (
     <div className={`page product-list-page${isSearchModal ? ' product-list-page--search-modal' : ''}`}>
@@ -1280,7 +1284,18 @@ export default function ProductList({
               <p className="pl-mobile-cards-message">등록된 제품이 없습니다.</p>
             ) : (
               <div className="pl-mobile-cards-list">
-                {sortedItems.map((row, idx) => renderMobileCard(row, idx))}
+                {sortedItems.map((row, idx) => (
+                  <ProductListMobileCard
+                    key={row._id}
+                    row={row}
+                    idx={idx}
+                    selected={selectedIds.has(productIdKey(row._id))}
+                    isSearchModal={isSearchModal}
+                    onSelectClick={handleRowCheckboxClick}
+                    onSelectChange={handleRowCheckboxChange}
+                    onOpenDetail={openDetail}
+                  />
+                ))}
               </div>
             )}
           </div>
@@ -1355,136 +1370,35 @@ export default function ProductList({
                 ) : sortedItems.length === 0 ? (
                   <tr><td colSpan={listSheetTableColSpan} className="text-center">등록된 제품이 없습니다.</td></tr>
                 ) : (
-                  sortedItems.map((row, rowIdx) => {
-                    const rowSelected = selectedIds.has(productIdKey(row._id));
-                    return (
-                    <tr
+                  sortedItems.map((row, rowIdx) => (
+                    <ProductListTableRow
                       key={row._id}
-                      className={`${isSearchModal ? 'product-list-row--search-modal-pick' : 'product-list-row-clickable'} ${row.status === 'EndOfLife' ? 'product-list-row-eol' : ''} ${rowIdx % 2 === 0 ? 'crm-list-sheet-row--stripe-a' : 'crm-list-sheet-row--stripe-b'}${rowSelected ? ' is-selected' : ''}`}
-                      onClick={(e) => {
-                        if (isSearchModal) handleRowCheckboxClick(e, rowIdx, row._id);
-                        else openDetail(row);
-                      }}
-                    >
-                      <td className="pl-td-checkbox" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          className="pl-row-checkbox"
-                          checked={rowSelected}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => handleRowCheckboxChange(e, rowIdx, row._id)}
-                          aria-label={`${row.name || '제품'} 선택`}
-                        />
-                      </td>
-                      {displayColumns.map((col) => {
-                        const customFieldKey = col.key.startsWith(CUSTOM_FIELDS_PREFIX)
-                          ? normalizeProductListCustomFieldKey(col.key)
-                          : null;
-                        const columnDisplayDef = findListColumnDisplayFormatDef(
-                          col,
-                          customFieldKey,
-                          productCustomFieldDefMaps
-                        );
-                        return (
-                        <td
-                          key={col.key}
-                          className={isProductPricingHighlightColumn(col) ? 'pl-col-pricing-highlight' : undefined}
-                        >
-                          {wrapProductListCellContent(
-                            (() => {
-                              if (col.key === 'name') {
-                                return (
-                                  <div className="product-list-cell-name">
-                                    <span className="product-list-name">{row.name || '—'}</span>
-                                  </div>
-                                );
-                              }
-                              if (col.key === 'category') {
-                                return row.category ? (
-                                  <span className="product-list-category-badge">{row.category}</span>
-                                ) : (
-                                  '—'
-                                );
-                              }
-                              if (col.key === 'version') {
-                                return <span className="product-list-version">{row.version || '—'}</span>;
-                              }
-                              if (col.key === 'code') {
-                                return <span className="text-muted">{row.code || '—'}</span>;
-                              }
-                              if (col.key === 'currency') {
-                                return (
-                                  <span className="product-list-currency-label" title={row.currency || undefined}>
-                                    {row.currency || '—'}
-                                  </span>
-                                );
-                              }
-                              if (col.key === 'billingType') {
-                                return (
-                                  <span className="product-list-billing">
-                                    {formatProductBillingDisplay(row.billingType, row.billingInterval)}
-                                  </span>
-                                );
-                              }
-                              if (col.key === 'price') {
-                                return (
-                                  <div className="product-list-pricing">
-                                    {renderPriceCell(listPriceFromProduct(row), {
-                                      row,
-                                      displayDef: columnDisplayDef
-                                    })}
-                                    {row.billingType && !template.visible?.billingType && (
-                                      <span className="product-list-billing">
-                                        {formatProductBillingDisplay(row.billingType, row.billingInterval)}
-                                      </span>
-                                    )}
-                                  </div>
-                                );
-                              }
-                              if (col.key === 'costPrice') {
-                                return renderPriceCell(row.costPrice, { row, displayDef: columnDisplayDef });
-                              }
-                              if (col.key === 'channelPrice') {
-                                return renderPriceCell(row.channelPrice, { row, displayDef: columnDisplayDef });
-                              }
-                              if (col.key === 'consumerMargin') {
-                                return renderPriceCell(getConsumerMargin(row), { row, displayDef: columnDisplayDef });
-                              }
-                              if (col.key === 'channelMargin') {
-                                return renderPriceCell(getChannelMargin(row), {
-                                  dashed: shouldDashChannelMargin(row),
-                                  row,
-                                  displayDef: columnDisplayDef
-                                });
-                              }
-                              if (col.key === 'status') {
-                                return (
-                                  <span className={`status-badge status-${row.status === 'Active' ? 'active' : row.status === 'EndOfLife' ? 'eol' : 'draft'}`}>
-                                    {STATUS_LABELS[row.status] || row.status}
-                                  </span>
-                                );
-                              }
-                              if (customFieldKey) {
-                                return renderProductCustomFieldCell(
-                                  row,
-                                  customFieldKey,
-                                  normalizedProductCustomFieldDefinitions,
-                                  productFormulaExchangeCtx,
-                                  columnDisplayDef
-                                );
-                              }
-                              return '—';
-                            })(),
-                            col.key,
-                            template.columnCellStyles
-                          )}
-                        </td>
-                        );
-                      })}
-                      <CrmListSheetFillBodyCell />
-                    </tr>
-                    );
-                  })
+                      row={row}
+                      rowIdx={rowIdx}
+                      selected={selectedIds.has(productIdKey(row._id))}
+                      isSearchModal={isSearchModal}
+                      stripeClass={
+                        rowIdx % 2 === 0 ? 'crm-list-sheet-row--stripe-a' : 'crm-list-sheet-row--stripe-b'
+                      }
+                      displayColumns={displayColumns}
+                      columnCellStyles={template.columnCellStyles}
+                      billingTypeVisible={billingTypeVisible}
+                      productCustomFieldDefMaps={productCustomFieldDefMaps}
+                      normalizedProductCustomFieldDefinitions={normalizedProductCustomFieldDefinitions}
+                      productFormulaExchangeCtx={productFormulaExchangeCtx}
+                      CUSTOM_FIELDS_PREFIX={CUSTOM_FIELDS_PREFIX}
+                      STATUS_LABELS={STATUS_LABELS}
+                      normalizeProductListCustomFieldKey={normalizeProductListCustomFieldKey}
+                      findListColumnDisplayFormatDef={findListColumnDisplayFormatDef}
+                      isProductPricingHighlightColumn={isProductPricingHighlightColumn}
+                      wrapProductListCellContent={wrapProductListCellContent}
+                      renderPriceCell={renderPriceCell}
+                      renderProductCustomFieldCell={renderProductCustomFieldCell}
+                      onSelectClick={handleRowCheckboxClick}
+                      onSelectChange={handleRowCheckboxChange}
+                      onOpenDetail={openDetail}
+                    />
+                  ))
                 )}
                 <CrmListSheetFillerRows
                   count={listSheetFillRowCount}
