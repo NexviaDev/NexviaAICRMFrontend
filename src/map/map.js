@@ -136,9 +136,18 @@ function shouldTryGpsRefinement() {
   }
 }
 
-/** 실시간 내 위치 반투명 원 — 지표 기준 고정 반경(m). 화면 픽셀 크기와 무관하게 지상 거리는 동일 */
-const MY_LOCATION_CIRCLE_RADIUS_M = 2000;
-const MY_LOCATION_CIRCLE_FIT_PADDING = { top: 56, right: 48, bottom: 100, left: 48 };
+/** 실시간 내 위치 — 작은 점 마커(화면 고정 픽셀) */
+const MY_LOCATION_DOT_SIZE_PX = 14;
+
+function buildMyLocationDotIcon(google) {
+  const s = MY_LOCATION_DOT_SIZE_PX;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 ${s} ${s}"><circle cx="${s / 2}" cy="${s / 2}" r="${s / 2 - 1.5}" fill="#e53935" stroke="#ffffff" stroke-width="2"/></svg>`;
+  return {
+    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
+    scaledSize: new google.maps.Size(s, s),
+    anchor: new google.maps.Point(s / 2, s / 2)
+  };
+}
 
 /** 한 프레임에 추가할 고객사 마커 수 — 전부 한꺼번에 그리면 메인 스레드가 멈춰 첫 화면이 느려짐 */
 const MAP_MARKER_CHUNK_SIZE = 32;
@@ -570,7 +579,7 @@ export default function Map({
   const gpsRefineTimeoutRef = useRef(null);
   const gpsRefineLateTimeoutRef = useRef(null);
   const locationSamplesRef = useRef([]);
-  const myLocationAccuracyCircleRef = useRef(null);
+  const myLocationMarkerRef = useRef(null);
   const lastRefinedLocationRef = useRef(null);
   const focusRequestHandledRef = useRef(false);
   /** 지도 검색으로 붙인 focusCompanyId 등은 URL에 남김 — 외부 딥링크 처리 후에는 제거 */
@@ -755,10 +764,10 @@ export default function Map({
     setLiveLocationOn(false);
     if (!keepPin) {
       setMyLocation(null);
-      const circle = myLocationAccuracyCircleRef.current;
-      if (circle) {
-        circle.setMap(null);
-        myLocationAccuracyCircleRef.current = null;
+      const marker = myLocationMarkerRef.current;
+      if (marker) {
+        marker.setMap(null);
+        myLocationMarkerRef.current = null;
       }
     }
   }, []);
@@ -1064,9 +1073,9 @@ export default function Map({
       koreaLabelMarkersRef.current = [];
       koreaLabelListenersRef.current.forEach((l) => l.remove?.());
       koreaLabelListenersRef.current = [];
-      if (myLocationAccuracyCircleRef.current) {
-        myLocationAccuracyCircleRef.current.setMap(null);
-        myLocationAccuracyCircleRef.current = null;
+      if (myLocationMarkerRef.current) {
+        myLocationMarkerRef.current.setMap(null);
+        myLocationMarkerRef.current = null;
       }
       if (searchPlaceMarkerRef.current) {
         searchPlaceMarkerRef.current.setMap(null);
@@ -1343,54 +1352,36 @@ export default function Map({
     }
   }, [focusCompanyId, openCompanyModal, companies, mapReady, requestedZoom, setSearchParams, embedded, allowCompanyDetailModal]);
 
-  /** 내 위치 — 지상 반경 고정 원(m). 점 마커 없음. */
+  /** 내 위치 — 작은 점 마커 */
   useEffect(() => {
     if (!mapReady || !mapInstanceRef.current || !window.google) return;
     if (!myLocation) {
-      if (myLocationAccuracyCircleRef.current) {
-        myLocationAccuracyCircleRef.current.setMap(null);
-        myLocationAccuracyCircleRef.current = null;
+      if (myLocationMarkerRef.current) {
+        myLocationMarkerRef.current.setMap(null);
+        myLocationMarkerRef.current = null;
       }
       return;
     }
     const map = mapInstanceRef.current;
-    const center = { lat: myLocation.lat, lng: myLocation.lng };
-    const radiusM = MY_LOCATION_CIRCLE_RADIUS_M;
-    const fitCircleOnce = () => {
-      const circle = myLocationAccuracyCircleRef.current;
-      if (!circle || typeof map.fitBounds !== 'function') return;
-      const b = circle.getBounds();
-      if (!b) return;
-      window.google.maps.event.trigger(map, 'resize');
-      map.fitBounds(b, MY_LOCATION_CIRCLE_FIT_PADDING);
-    };
-    if (!myLocationAccuracyCircleRef.current) {
-      const circle = new window.google.maps.Circle({
-        strokeColor: '#e53935',
-        strokeOpacity: 0,
-        strokeWeight: 0,
-        fillColor: '#e53935',
-        fillOpacity: 0.12,
+    const position = { lat: myLocation.lat, lng: myLocation.lng };
+    if (!myLocationMarkerRef.current) {
+      myLocationMarkerRef.current = new window.google.maps.Marker({
         map,
-        center,
-        radius: radiusM,
-        zIndex: 99,
-        clickable: false
+        position,
+        icon: buildMyLocationDotIcon(window.google),
+        zIndex: 999,
+        clickable: false,
+        optimized: true,
+        title: '내 위치'
       });
-      myLocationAccuracyCircleRef.current = circle;
-      map.panTo(center);
-      fitCircleOnce();
-      /* 실제 폰: 레이아웃·주소창 확정 전 getBounds/fitBounds가 틀어지는 경우 보정 (에뮬레이터는 보통 한 번에 맞음) */
-      window.setTimeout(fitCircleOnce, 350);
     } else {
-      myLocationAccuracyCircleRef.current.setCenter(center);
-      myLocationAccuracyCircleRef.current.setRadius(radiusM);
+      myLocationMarkerRef.current.setPosition(position);
     }
   }, [mapReady, myLocation]);
 
   /**
    * 실제 모바일에서 visualViewport resize가 과하게 잡혀 줌이 들쭉날쭉해지는 문제 방지:
-   * 지도 캔버스 요소의 실제 크기 변화만 ResizeObserver로 재맞춤 (회전·분할 화면 등).
+   * 지도 캔버스 크기 변화 시 resize만 트리거 (내 위치 점으로 맞춤하지 않음).
    */
   useEffect(() => {
     if (!mapReady || !liveLocationOn || !myLocation) return;
@@ -1402,15 +1393,6 @@ export default function Map({
     let lastW = Math.round(el.getBoundingClientRect().width);
     let lastH = Math.round(el.getBoundingClientRect().height);
 
-    const refitCircleInView = () => {
-      const circle = myLocationAccuracyCircleRef.current;
-      if (!circle) return;
-      const b = circle.getBounds();
-      if (!b || typeof map.fitBounds !== 'function') return;
-      window.google.maps.event.trigger(map, 'resize');
-      map.fitBounds(b, MY_LOCATION_CIRCLE_FIT_PADDING);
-    };
-
     const ro = new ResizeObserver((entries) => {
       const cr = entries[0]?.contentRect;
       if (!cr) return;
@@ -1421,7 +1403,9 @@ export default function Map({
       lastW = w;
       lastH = h;
       window.clearTimeout(debounceId);
-      debounceId = window.setTimeout(refitCircleInView, 120);
+      debounceId = window.setTimeout(() => {
+        window.google.maps.event.trigger(map, 'resize');
+      }, 120);
     });
 
     ro.observe(el);
