@@ -13,6 +13,7 @@ import {
   ymdAddOneDay,
   crmAllDayInclusiveEndYmd
 } from './calendar-date-utils';
+import { syncCalendarWidget } from '@/lib/sync-calendar-widget';
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 const MODAL_PARAM = 'modal';
@@ -841,6 +842,12 @@ export default function Calendar({ embedded = false, hideBottomSection = false }
     const googleFiltered = googleEvents.filter((gev) => !isGoogleEventDuplicateOfCrm(gev, dedupIndex));
     return [...crm, ...googleFiltered].sort(compareCalendarEvents);
   }, [crmEvents, googleEvents]);
+
+  /** Android 홈 화면 위젯 — 오늘 일정 캐시 동기화 (네이티브만) */
+  useEffect(() => {
+    if (loading) return;
+    void syncCalendarWidget(rawEvents);
+  }, [rawEvents, loading]);
 
   /** 로그인 계정 유형 — 네이버 우선, 없으면 Google */
   const calendarSyncProvider = useMemo(() => {

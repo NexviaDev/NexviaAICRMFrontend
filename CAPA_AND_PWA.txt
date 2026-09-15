@@ -14,3 +14,10 @@ Android 앱 (Capacitor — Fused Location 으로 지도 정확도 개선)
    npm run cap:android   → Android Studio 에서 에뮬레이터/실기기 Run
 3) 실기기에서 같은 Wi-Fi 의 백엔드를 쓰려면 빌드 전 VITE_API_URL 에 PC IP 대신 배포된 API 주소를 넣는 것이 간단합니다.
 4) 위치 권한: 앱 최초 실행 시 허용. AndroidManifest 에 FINE/COARSE 위치 권한이 포함되어 있습니다.
+
+Android 홈 화면 캘린더 위젯
+----------------------------
+1) Capacitor Android 앱을 실기기/에뮬레이터에 설치한 뒤, 홈 화면 길게 누르기 → 위젯 → "Nexvia 캘린더" 추가
+2) 앱에서 /calendar 를 한 번 열면 오늘 일정이 위젯에 반영됩니다 (CRM + 연동된 구글 일정).
+3) 위젯을 탭하면 앱의 캘린더 화면으로 이동합니다.
+4) PWA(홈 화면 추가만) 에서는 네이티브 위젯을 사용할 수 없습니다.

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#5b7c99</color>
+    <color name="colorPrimaryDark">#3d5a73</color>
+    <color name="colorAccent">#c8e4f5</color>
+
+    <color name="widget_bg">#F0F4F8</color>
+    <color name="widget_card">#FFFFFF</color>
+    <color name="widget_header_bg">#D4D4F0</color>
+    <color name="widget_accent">#C5E8D6</color>
+    <color name="widget_text">#334155</color>
+    <color name="widget_text_muted">#64748B</color>
+    <color name="widget_divider">#E2E8F0</color>
+    <color name="widget_time">#5B7C99</color>
+</resources>

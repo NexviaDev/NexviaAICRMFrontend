@@ -27,7 +27,6 @@ import {
   formatChildRowCell,
   formatCellValue,
   columnHeaderLabel,
-  buildFlatDisplayRows,
   applyColumnFiltersPipeline,
   applyColumnFiltersExceptPipeline,
   compareOppsForSortPipeline,
@@ -73,7 +72,7 @@ function pipelineFlatRowCellText(colKey, flatRow, fpMap, stageLabels, canViewAdm
 }
 
 /**
- * 파이프라인 표 보기 — 드롭존 목록과 동일: 행 번호(1·1.1·1.2), 열 필터·정렬, 합계, colgroup 너비.
+ * 파이프라인 표 보기 — 기회당 1행, 열 필터·정렬, 합계, colgroup 너비.
  */
 export default function SalesPipelineTablePanel({
   allOpportunities,
@@ -81,6 +80,7 @@ export default function SalesPipelineTablePanel({
   displayColumnKeys,
   stageForecastPercent,
   stageLabels: stageLabelsProp,
+  stageToneByKey = {},
   canViewAdminContent,
   dealBasRMap = {},
   productDisplayMode = readProductDisplayMode(),
@@ -88,7 +88,8 @@ export default function SalesPipelineTablePanel({
   onDragStart,
   onDragEnd,
   onSaveColumnOrder,
-  onPersistColumnWidths
+  onPersistColumnWidths,
+  onOpenColumnSettings
 }) {
   const { stageLabelMap: stageLabelsFromApi } = usePipelineStageLabelMap(getAuthHeader);
   const stageLabels = useMemo(
@@ -194,7 +195,15 @@ export default function SalesPipelineTablePanel({
     return arr;
   }, [filteredByColumns, sortState, stageForecastPercent]);
 
-  const displayRows = useMemo(() => buildFlatDisplayRows(sortedFiltered), [sortedFiltered]);
+  const displayRows = useMemo(
+    () =>
+      (sortedFiltered || []).map((opp, idx) => {
+        const ord = idx + 1;
+        const id = String(opp?._id ?? `idx${idx}`);
+        return { kind: 'single', opp, rowLabel: String(ord), oppOrdinal: ord, key: `${id}-s` };
+      }),
+    [sortedFiltered]
+  );
 
   const listSheetBodyRowCount = displayRows.length === 0 ? 1 : displayRows.length;
   const listSheetFillRowCount = useCrmListSheetFillerRowCount(scrollContainerRef, listSheetBodyRowCount);
@@ -342,19 +351,36 @@ export default function SalesPipelineTablePanel({
   );
 
   const hasActiveColumnFilters = Object.keys(columnFilters).length > 0;
+  const recordCount = allOpportunities.length;
 
   return (
     <section className="sp-pipeline-table-section panel table-panel sp-pipeline-table-panel" aria-label="파이프라인 표">
       <div className="sp-pipeline-table-toolbar">
-        <p className="sp-pipeline-table-toolbar-hint">
-          열 이름을 누르면 정렬·필터가 열립니다. 열 경계를 드래그하면 너비를 조절할 수 있습니다. 복수 품목은 1·1.1·1.2처럼 표시됩니다.
-        </p>
-        {hasActiveColumnFilters ? (
-          <button type="button" className="sp-pipeline-table-clear-filters" onClick={clearAllColumnFilters}>
-            열 필터 모두 해제
-          </button>
-        ) : null}
+        <div className="sp-pipeline-table-toolbar-left">
+          <span className="sp-pipeline-table-toolbar-title">전체 기회 스프레드시트 데이터 목록</span>
+          <span className="sp-pipeline-table-toolbar-count">총 {recordCount.toLocaleString('ko-KR')}개 레코드</span>
+        </div>
+        <div className="sp-pipeline-table-toolbar-right">
+          {hasActiveColumnFilters ? (
+            <button type="button" className="sp-pipeline-table-clear-filters" onClick={clearAllColumnFilters}>
+              열 필터 모두 해제
+            </button>
+          ) : null}
+          {typeof onOpenColumnSettings === 'function' ? (
+            <button
+              type="button"
+              className="sp-pipeline-table-toolbar-btn"
+              onClick={onOpenColumnSettings}
+              title="표·칸반 표시 항목 설정"
+            >
+              열 선택 (Columns)
+            </button>
+          ) : null}
+        </div>
       </div>
+      <p className="sp-pipeline-table-toolbar-hint">
+        열 이름을 누르면 정렬·필터가 열립니다. 열 경계를 드래그하면 너비를 조절할 수 있습니다.
+      </p>
       <div className="crm-list-table-stack">
         <div className="table-wrap">
           <div className="crm-list-sheet-scroll sp-pipeline-table-scroll" ref={scrollContainerRef}>
@@ -611,6 +637,12 @@ export default function SalesPipelineTablePanel({
                               currency={moneyInfo.currency}
                               dealBasRMap={dealBasRMap}
                             />
+                          ) : colKey === 'stage' && flatRow.kind !== 'line' && text ? (
+                            <span
+                              className={`sp-pl-stage-pill sp-pl-stage-pill--${stageToneByKey[opp.stage] || 'tone-0'}`}
+                            >
+                              {text}
+                            </span>
                           ) : colKey === 'productName' &&
                             (flatRow.kind === 'summary' || flatRow.kind === 'single') &&
                             text ? (
@@ -621,12 +653,18 @@ export default function SalesPipelineTablePanel({
                           const titleText = moneyInfo
                             ? formatPriceWithKrwHintText(moneyInfo.amount, moneyInfo.currency, dealBasRMap)
                             : text;
+                          const isTitleCol = colKey === 'title';
+                          const isMoneyCol = moneyInfo != null || PIPELINE_MONEY_DISPLAY_KEYS.has(colKey);
                           return (
                             <td
                               key={colKey}
                               className={`sp-dz-data-table__td sp-pl-data-table__td${
                                 flatRow.kind === 'line' ? ' sp-dz-data-table__td--tree-line-indent' : ''
-                              }${colKey === 'productName' ? ' sp-dz-data-table__td--product-name' : ''}`}
+                              }${colKey === 'productName' ? ' sp-dz-data-table__td--product-name' : ''}${
+                                isTitleCol ? ' sp-pl-data-table__td--title' : ''
+                              }${isMoneyCol ? ' sp-pl-data-table__td--money' : ''}${
+                                colKey === 'stage' ? ' sp-pl-data-table__td--stage' : ''
+                              }`}
                               title={titleText}
                             >
                               <span className="list-col-value-style sp-pl-table-cell-text">{node}</span>

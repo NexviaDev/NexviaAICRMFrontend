@@ -181,6 +181,25 @@ export function sumForecastTotalsKrw(rows, productFilter, dealBasRMap, getRowDis
   );
 }
 
+/** 기여도·달성률 막대 — ref 톤 다색 팔레트 */
+const CONTRIBUTION_BAR_COLORS = [
+  '#254deb',
+  '#3b82f6',
+  '#f59e0b',
+  '#a855f7',
+  '#10b981',
+  '#6366f1',
+  '#f97316',
+  '#ec4899',
+  '#14b8a6',
+  '#64748b'
+];
+
+function contributionBarColorAt(index) {
+  const i = Number(index) || 0;
+  return CONTRIBUTION_BAR_COLORS[((i % CONTRIBUTION_BAR_COLORS.length) + CONTRIBUTION_BAR_COLORS.length) % CONTRIBUTION_BAR_COLORS.length];
+}
+
 /** 기여도 막대 — segment.netMarginByCurrency 가 있으면 원화 합산 */
 export function rebuildContributionBarKrw(bar, dealBasRMap) {
   if (!bar || !Array.isArray(bar.segments) || !bar.segments.length) return bar;
@@ -205,6 +224,10 @@ export function rebuildContributionBarKrw(bar, dealBasRMap) {
         pct: total > 0 ? Number(((seg.amount / total) * 100).toFixed(1)) : 0
       }))
       .sort((a, b) => b.amount - a.amount)
+      .map((seg, idx) => ({
+        ...seg,
+        color: contributionBarColorAt(idx)
+      }))
   };
 }
 

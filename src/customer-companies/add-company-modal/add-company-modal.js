@@ -174,6 +174,8 @@ export default function AddCompanyModal({
   });
   const [showAssigneePicker, setShowAssigneePicker] = useState(false);
   const [companyEmployeesForDisplay, setCompanyEmployeesForDisplay] = useState([]); // 담당자 input 표시용 이름 매핑
+  const [assigneeNameExtras, setAssigneeNameExtras] = useState({}); // overview에 없는 ID 보강
+  const [assigneeNamesReady, setAssigneeNamesReady] = useState(false);
   const [assigneeDisplayText, setAssigneeDisplayText] = useState(undefined); // 수기 수정 가능 (undefined면 선택된 ID 기준 표시)
   const [customDefinitions, setCustomDefinitions] = useState([]);
   const customFieldFormulaContext = useMemo(() => ({
@@ -244,10 +246,17 @@ export default function AddCompanyModal({
 
   useEffect(() => {
     let cancelled = false;
+    setAssigneeNamesReady(false);
     fetch(`${API_BASE}/companies/overview`, crmFetchInit())
       .then((r) => r.json().catch(() => ({})))
       .then((data) => {
         if (!cancelled && Array.isArray(data?.employees)) setCompanyEmployeesForDisplay(data.employees);
+      })
+      .catch(() => {
+        if (!cancelled) setCompanyEmployeesForDisplay([]);
+      })
+      .finally(() => {
+        if (!cancelled) setAssigneeNamesReady(true);
       });
     return () => { cancelled = true; };
   }, []);
@@ -290,17 +299,56 @@ export default function AddCompanyModal({
   }, [company]);
 
   const assigneeIdToName = useMemo(() => {
-    const map = {};
+    const map = { ...(assigneeNameExtras || {}) };
     (companyEmployeesForDisplay || []).forEach((e) => {
-      const id = e.id != null ? String(e.id) : null;
-      if (id) map[id] = e.name || e.email || id;
+      const id = e.id != null ? String(e.id) : (e._id ? String(e._id) : null);
+      if (id) map[id] = e.name || e.email || map[id] || '';
     });
     return map;
-  }, [companyEmployeesForDisplay]);
+  }, [companyEmployeesForDisplay, assigneeNameExtras]);
+
+  /** overview에 없는 담당자 ID(퇴사·타사 이관 등) 이름 보강 — ObjectId 원문 표시 방지 */
+  useEffect(() => {
+    const ids = (form.assigneeUserIds || []).map((id) => String(id)).filter(Boolean);
+    const missing = ids.filter((id) => !assigneeIdToName[id]);
+    if (missing.length === 0) return;
+    if (!assigneeNamesReady) return;
+    let cancelled = false;
+    fetch(`${API_BASE}/companies/resolve-member-names`, {
+      method: 'POST',
+      headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ ids: missing })
+    })
+      .then((r) => r.json().catch(() => ({})))
+      .then((data) => {
+        if (cancelled) return;
+        const names = data?.names && typeof data.names === 'object' ? data.names : {};
+        if (!Object.keys(names).length) return;
+        setAssigneeNameExtras((prev) => ({ ...prev, ...names }));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [form.assigneeUserIds, assigneeIdToName, assigneeNamesReady]);
+
+  const looksLikeObjectId = (value) => /^[a-f0-9]{24}$/i.test(String(value || '').trim());
+
+  const formatAssigneeLabels = (ids) => {
+    const labels = (ids || []).map((id) => {
+      const key = String(id);
+      const name = assigneeIdToName[key];
+      if (name && !looksLikeObjectId(name)) return name;
+      return null;
+    }).filter(Boolean);
+    if (labels.length > 0) return labels.join(', ');
+    if ((ids || []).length > 0 && !assigneeNamesReady) return '담당자 불러오는 중...';
+    if ((ids || []).length > 0) return '이름 없는 담당자';
+    return '';
+  };
 
   const assigneeInputValue = assigneeDisplayText !== undefined && assigneeDisplayText !== null
     ? assigneeDisplayText
-    : (form.assigneeUserIds || []).map((id) => assigneeIdToName[String(id)] || id).join(', ');
+    : formatAssigneeLabels(form.assigneeUserIds);
 
   const driveFolderName = useMemo(() => {
     /**
@@ -1618,7 +1666,7 @@ export default function AddCompanyModal({
               selectedIds={form.assigneeUserIds || []}
               onConfirm={(ids) => {
                 setForm((prev) => ({ ...prev, assigneeUserIds: ids }));
-                const names = (ids || []).map((id) => assigneeIdToName[String(id)] || id).join(', ');
+                const names = formatAssigneeLabels(ids);
                 setAssigneeDisplayText(names);
               }}
             />
@@ -1748,7 +1796,7 @@ export default function AddCompanyModal({
           selectedIds={form.assigneeUserIds || []}
           onConfirm={(ids) => {
             setForm((prev) => ({ ...prev, assigneeUserIds: ids }));
-            const names = (ids || []).map((id) => assigneeIdToName[String(id)] || id).join(', ');
+            const names = formatAssigneeLabels(ids);
             setAssigneeDisplayText(names);
           }}
         />

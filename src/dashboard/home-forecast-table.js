@@ -249,3 +249,169 @@ export function HomeForecastTable({
     </table>
   );
 }
+
+function companyInitialFromLabel(label) {
+  const s = String(label || '').trim().replace(/^\(+|\)+$/g, '');
+  if (!s) return '?';
+  const cleaned = s.replace(/^(주\)|주식회사|㈜)\s*/u, '').trim() || s;
+  return cleaned.charAt(0);
+}
+
+function productChipTone(label) {
+  const s = String(label || '');
+  let h = 0;
+  for (let i = 0; i < s.length; i += 1) h = (h + s.charCodeAt(i) * (i + 1)) % 3;
+  return h === 0 ? 'sky' : h === 1 ? 'brand' : 'amber';
+}
+
+function stageBadgeTone(stage) {
+  const s = String(stage || '').trim();
+  if (s === 'Won') return 'green';
+  if (s === 'Negotiation') return 'amber';
+  if (s === 'TechDemo') return 'slate';
+  if (s === 'Quotation' || s === 'ProposalSent') return 'blue';
+  if (s === 'Contacted') return 'indigo';
+  if (s === 'NewLead') return 'purple';
+  return 'slate';
+}
+
+/**
+ * 홈 ref_home — 운영 허브 딜 표 (탭: 진행 중 / 수주 완료)
+ * @param {'active'|'completed'} variant
+ */
+export function HomeForecastPairTable({
+  variant = 'active',
+  rows,
+  productFilter,
+  dealBasRMap,
+  getRowDisplay,
+  formatTargetMonth,
+  stageLabels = {},
+  onRowClick,
+  showMoreDots = false
+}) {
+  const isCompleted = variant === 'completed';
+  const avatarTones = ['blue', 'emerald', 'purple', 'indigo', 'slate', 'amber'];
+
+  return (
+    <div className="home-forecast-hub-table-scroll">
+      <table className="home-forecast-hub-table">
+        <thead>
+          <tr>
+            <th scope="col">고객사 / 업체명</th>
+            <th scope="col">{isCompleted ? '계약 제품' : '제안 솔루션'}</th>
+            <th scope="col" className="is-right">
+              단가
+            </th>
+            <th scope="col" className="is-center">
+              수량
+            </th>
+            <th scope="col" className="is-right">
+              {isCompleted ? '체결 금액' : '최종 제안액'}
+            </th>
+            <th scope="col" className="is-center">
+              {isCompleted ? '체결 시기' : '클로징 목표월'}
+            </th>
+            <th scope="col" className="is-center">
+              {isCompleted ? '상태' : '진행 단계'}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {(rows || []).map((row, idx) => {
+            const d = getRowDisplay(row, productFilter);
+            const company = String(row?.companyLabel || '—');
+            const software = String(d?.softwareLabel || '—');
+            const qty = Math.max(0, Number(d?.quantity) || 0);
+            const unitPrice = Number(d?.unitPrice) || 0;
+            const amount = isCompleted
+              ? Math.max(Number(d?.contractAmount) || 0, Number(d?.finalPrice) || 0)
+              : Number(d?.finalPrice) || 0;
+            const stageKey = String(row?.stage || '').trim();
+            const stageLabel =
+              stageLabels[stageKey] ||
+              (isCompleted ? '수주 성공' : stageKey || '—');
+            const monthLabel = formatTargetMonth?.(row?.targetMonth) || '—';
+            const tone = avatarTones[idx % avatarTones.length];
+            const chipTone = productChipTone(software);
+            const badgeTone = isCompleted ? 'green' : stageBadgeTone(stageKey);
+            return (
+              <tr
+                key={row.id}
+                tabIndex={0}
+                role="button"
+                aria-label={`기회 ${company} 상세`}
+                onClick={() => onRowClick?.(row.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onRowClick?.(row.id);
+                  }
+                }}
+              >
+                <td>
+                  <div className="home-forecast-hub-company">
+                    <span className={`home-forecast-hub-avatar tone-${tone}`} aria-hidden>
+                      {companyInitialFromLabel(company)}
+                    </span>
+                    <span className="home-forecast-hub-company-text">
+                      <strong>{company}</strong>
+                      <span>
+                        {isCompleted
+                          ? Number.isFinite(Number(row?.probabilityPct))
+                            ? `확률 ${Number(row.probabilityPct)}%`
+                            : '수주 완료'
+                          : Number.isFinite(Number(row?.probabilityPct))
+                            ? `확률 ${Number(row.probabilityPct)}%`
+                            : '진행 중'}
+                      </span>
+                    </span>
+                  </div>
+                </td>
+                <td>
+                  <span className={`home-forecast-hub-chip tone-${chipTone}`} title={software}>
+                    {software}
+                  </span>
+                </td>
+                <td className="is-right">
+                  <span className={`home-forecast-hub-money${unitPrice <= 0 ? ' is-muted' : ''}`}>
+                    {unitPrice <= 0
+                      ? '₩0 (견적 산정)'
+                      : formatForecastKrw(unitPrice, row.currency, dealBasRMap)}
+                  </span>
+                </td>
+                <td className="is-center">
+                  <strong className="home-forecast-hub-qty">{qty.toLocaleString('ko-KR')}</strong>
+                </td>
+                <td className="is-right">
+                  <span className={`home-forecast-hub-money is-strong${amount <= 0 ? ' is-muted' : ''}`}>
+                    {amount <= 0 ? '—' : formatForecastKrw(amount, row.currency, dealBasRMap)}
+                  </span>
+                </td>
+                <td className="is-center">
+                  <span className="home-forecast-hub-month">{monthLabel}</span>
+                </td>
+                <td className="is-center">
+                  <span className={`home-forecast-hub-badge tone-${badgeTone}`}>
+                    {isCompleted ? '완료' : stageLabel}
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
+          {showMoreDots ? (
+            <tr className="home-forecast-hub-more">
+              <td colSpan={7}>
+                <span className="home-forecast-more-dots" aria-hidden>
+                  <span>.</span>
+                  <span>.</span>
+                  <span>.</span>
+                </span>
+              </td>
+            </tr>
+          ) : null}
+        </tbody>
+      </table>
+    </div>
+  );
+}

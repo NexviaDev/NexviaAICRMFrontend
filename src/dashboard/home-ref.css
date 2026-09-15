@@ -1,0 +1,2505 @@
+/**
+ * ref_home.html / ref_home.png 1:1 룩 — 기존 pastel 규칙보다 우선 적용
+ */
+
+.home-page.home-page--ref {
+  --home-brand-50: #f0f4ff;
+  --home-brand-100: #e0e9fe;
+  --home-brand-300: #93b4fd;
+  --home-brand-500: #3b66f5;
+  --home-brand-600: #254deb;
+  --home-brand-700: #1d3ec7;
+  --home-brand-900: #122368;
+  --home-slate-50: #f8fafc;
+  --home-slate-100: #f1f5f9;
+  --home-slate-200: #e2e8f0;
+  --home-slate-400: #94a3b8;
+  --home-slate-500: #64748b;
+  --home-slate-600: #475569;
+  --home-slate-700: #334155;
+  --home-slate-800: #1e293b;
+  --home-slate-900: #0f172a;
+  background: var(--home-slate-50) !important;
+  color: var(--home-slate-800);
+  /* 한글 세로 깨짐 방지 */
+  writing-mode: horizontal-tb !important;
+  word-break: keep-all !important;
+  overflow-wrap: normal !important;
+  -webkit-font-smoothing: antialiased;
+}
+
+.home-page.home-page--ref ::selection {
+  background: var(--home-brand-500);
+  color: #fff;
+}
+
+.home-page.home-page--ref *,
+.home-page.home-page--ref *::before,
+.home-page.home-page--ref *::after {
+  writing-mode: horizontal-tb !important;
+}
+
+.home-page.home-page--ref > .page-header.home-page-header {
+  height: 4rem;
+  padding: 0 1.5rem;
+  background: #fff;
+  border-bottom: 1px solid var(--home-slate-200);
+}
+
+.home-page.home-page--ref .home-page-content {
+  padding: 1.5rem !important;
+  gap: 1.5rem !important;
+  display: flex !important;
+  flex-direction: column !important;
+  max-width: none !important;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.home-page.home-page--ref .home-mobile-hero {
+  display: none !important;
+}
+
+.home-page.home-page--ref .home-insights-top {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  width: 100%;
+}
+
+/* —— Filter bar —— */
+.home-page.home-page--ref .home-insight-toolbar {
+  background: #fff !important;
+  border: 1px solid rgba(226, 232, 240, 0.9) !important;
+  border-radius: 0.75rem !important;
+  padding: 0.875rem !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  margin: 0 !important;
+}
+
+.home-page.home-page--ref .home-insight-mode-switch {
+  background: var(--home-slate-100) !important;
+  border: 1px solid rgba(226, 232, 240, 0.7) !important;
+  border-radius: 0.5rem !important;
+  padding: 0.25rem !important;
+}
+
+.home-page.home-page--ref .home-insight-mode-switch button {
+  border-radius: 0.375rem !important;
+  font-size: 0.75rem !important;
+  font-weight: 500 !important;
+  color: var(--home-slate-600) !important;
+  padding: 0.375rem 0.75rem !important;
+  white-space: nowrap !important;
+}
+
+.home-page.home-page--ref .home-insight-mode-switch button.is-active,
+.home-page.home-page--ref .home-insight-mode-switch button.active {
+  background: #fff !important;
+  color: var(--home-brand-700) !important;
+  font-weight: 700 !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.home-page.home-page--ref .home-kpi-period-toggle {
+  display: inline-flex !important;
+  border: 1px solid var(--home-slate-200) !important;
+  background: #fff !important;
+  border-radius: 0.5rem !important;
+  padding: 0.125rem !important;
+  gap: 0 !important;
+}
+
+.home-page.home-page--ref .home-kpi-period-toggle button {
+  white-space: nowrap !important;
+  font-size: 0.75rem !important;
+  padding: 0.25rem 0.625rem !important;
+  color: var(--home-slate-500) !important;
+  border-radius: 0.375rem !important;
+}
+
+.home-page.home-page--ref .home-kpi-period-toggle button.is-active {
+  background: var(--home-brand-50) !important;
+  color: var(--home-brand-700) !important;
+  font-weight: 700 !important;
+}
+
+/* —— KPI: 5 equal cards —— */
+.home-page.home-page--ref .home-kpi-strip {
+  display: grid !important;
+  grid-template-columns: repeat(5, minmax(11rem, 1fr)) !important;
+  gap: 1rem !important;
+  margin: 0 !important;
+  width: 100%;
+  overflow-x: auto;
+}
+
+.home-page.home-page--ref .home-kpi-strip .home-kpi-card {
+  grid-column: auto !important;
+  min-width: 11rem !important;
+  background: #fff !important;
+  border: 1px solid var(--home-slate-200) !important;
+  border-radius: 0.75rem !important;
+  padding: 1.25rem !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: border-color 0.2s;
+  display: flex;
+  flex-direction: column;
+}
+
+.home-page.home-page--ref .home-kpi-card:hover {
+  border-color: #93b4fd !important;
+}
+
+.home-page.home-page--ref .home-kpi-card--tone-blue:hover {
+  border-color: #93c5fd !important; /* blue-300 */
+}
+
+.home-page.home-page--ref .home-kpi-card--tone-emerald:hover {
+  border-color: #6ee7b7 !important; /* emerald-300 */
+}
+
+.home-page.home-page--ref .home-kpi-card--tone-purple:hover {
+  border-color: #c4b5fd !important; /* violet-ish / indigo-300 */
+}
+
+.home-page.home-page--ref .home-kpi-card--tone-amber:hover {
+  border-color: #fcd34d !important; /* amber-300 */
+}
+
+.home-page.home-page--ref .home-kpi-card--tone-indigo:hover {
+  border-color: #a5b4fc !important; /* indigo-300 */
+}
+
+.home-page.home-page--ref .home-kpi-card-head {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 0.5rem !important;
+  margin-bottom: 0 !important;
+}
+
+.home-page.home-page--ref .home-kpi-card-icon-wrap {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.home-page.home-page--ref .home-kpi-card-icon-wrap .home-kpi-card-icon {
+  font-size: 1rem !important;
+  font-variation-settings: 'FILL' 0, 'wght' 500, 'GRAD' 0, 'opsz' 20;
+  line-height: 1;
+  color: inherit !important;
+}
+
+.home-page.home-page--ref .home-kpi-card-icon-wrap--blue {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.home-page.home-page--ref .home-kpi-card-icon-wrap--emerald {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.home-page.home-page--ref .home-kpi-card-icon-wrap--purple {
+  background: #faf5ff;
+  color: #9333ea;
+}
+
+.home-page.home-page--ref .home-kpi-card-icon-wrap--amber {
+  background: #fffbeb;
+  color: #d97706;
+}
+
+.home-page.home-page--ref .home-kpi-card-icon-wrap--indigo {
+  background: #eef2ff;
+  color: #4f46e5;
+}
+
+.home-page.home-page--ref .home-kpi-card,
+.home-page.home-page--ref .home-kpi-card * {
+  word-break: keep-all !important;
+  overflow-wrap: normal !important;
+  white-space: normal !important;
+}
+
+.home-page.home-page--ref .home-kpi-label,
+.home-page.home-page--ref .home-kpi-card h3,
+.home-page.home-page--ref .home-kpi-card-title {
+  font-size: 0.75rem !important;
+  font-weight: 600 !important;
+  color: var(--home-slate-500) !important;
+  white-space: nowrap !important;
+}
+
+.home-page.home-page--ref .home-kpi-value,
+.home-page.home-page--ref .home-kpi-card .home-kpi-main,
+.home-page.home-page--ref .home-kpi-card .home-kpi-value-row,
+.home-page.home-page--ref .home-kpi-card-value {
+  margin-top: 0.625rem !important;
+  font-size: 1.5rem !important;
+  font-weight: 900 !important;
+  letter-spacing: -0.02em;
+  color: var(--home-slate-900) !important;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap !important;
+}
+
+.home-page.home-page--ref .home-kpi-card-hint,
+.home-page.home-page--ref .home-kpi-card-target-amount {
+  font-size: 0.6875rem !important;
+  color: var(--home-slate-500) !important;
+  margin-top: 0.125rem !important;
+}
+
+.home-page.home-page--ref .home-kpi-card-metrics {
+  margin-top: auto !important;
+  padding-top: 0.75rem !important;
+  border-top: 1px solid var(--home-slate-100) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0.35rem !important;
+}
+
+.home-page.home-page--ref .home-kpi-metric-line {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 0.5rem !important;
+  font-size: 0.75rem !important;
+}
+
+.home-page.home-page--ref .home-kpi-dot {
+  display: none !important;
+}
+
+.home-page.home-page--ref .home-kpi-metric-label {
+  color: var(--home-slate-500) !important;
+  font-weight: 500 !important;
+}
+
+.home-page.home-page--ref .home-kpi-metric-val,
+.home-page.home-page--ref .home-kpi-metric-trend.is-up,
+.home-page.home-page--ref .home-kpi-metric-trend--up {
+  color: #059669 !important;
+  font-weight: 700 !important;
+}
+
+.home-page.home-page--ref .home-kpi-metric-trend.is-down,
+.home-page.home-page--ref .home-kpi-metric-trend--down {
+  color: #dc2626 !important;
+  font-weight: 700 !important;
+}
+
+.home-page.home-page--ref .home-kpi-card--tone-blue .home-kpi-metric-val,
+.home-page.home-page--ref .home-kpi-card--tone-blue .home-kpi-metric-trend.is-up {
+  color: var(--home-brand-600) !important;
+}
+
+.home-page.home-page--ref .home-kpi-card--tone-purple .home-kpi-metric-val {
+  color: #7e22ce !important;
+}
+
+.home-page.home-page--ref .home-kpi-card--tone-amber .home-kpi-metric-val {
+  color: #d97706 !important;
+}
+
+.home-page.home-page--ref .home-kpi-goal-bar,
+.home-page.home-page--ref .home-kpi-project-bar-stack-track {
+  height: 0.5rem !important;
+  border-radius: 999px !important;
+  background: var(--home-slate-100) !important;
+  overflow: hidden !important;
+  margin-top: 0.5rem !important;
+}
+
+.home-page.home-page--ref .home-kpi-goal-fill {
+  height: 100% !important;
+  border-radius: 999px !important;
+  background: linear-gradient(90deg, #a855f7 0%, #4f46e5 100%) !important;
+}
+
+.home-page.home-page--ref .home-kpi-project-bar-stack-seg--done {
+  background: linear-gradient(90deg, #a855f7 0%, #4f46e5 100%) !important;
+}
+
+.home-page.home-page--ref .home-kpi-project-bar-stack-seg--active {
+  background: #cbd5e1 !important;
+}
+
+.home-page.home-page--ref .home-kpi-project-bar-stack-legend-item--done {
+  color: #7e22ce !important;
+  font-weight: 600 !important;
+}
+
+/* 리드 배지 — ref emerald capsule */
+.home-page.home-page--ref .home-insight-lead-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.5rem !important;
+  padding: 0.375rem 0.75rem !important;
+  background: #ecfdf5 !important;
+  border: 1px solid #a7f3d0 !important;
+  border-radius: 999px !important;
+  box-shadow: none !important;
+}
+
+.home-page.home-page--ref .home-insight-lead-badge:hover {
+  background: #d1fae5 !important;
+  border-color: #6ee7b7 !important;
+}
+
+.home-page.home-page--ref .home-insight-lead-badge-pulse {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: #10b981;
+  flex-shrink: 0;
+  animation: home-ref-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes home-ref-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.home-page.home-page--ref .home-insight-lead-badge-label {
+  font-size: 0.75rem !important;
+  font-weight: 600 !important;
+  color: #065f46 !important;
+  white-space: nowrap !important;
+}
+
+.home-page.home-page--ref .home-insight-lead-badge-count {
+  all: unset;
+  font-weight: 800 !important;
+  text-decoration: underline;
+  color: #065f46 !important;
+}
+
+.home-page.home-page--ref .home-kpi-metric-trend .material-symbols-outlined {
+  font-size: 0.875rem !important;
+  vertical-align: -0.125rem;
+}
+
+.home-page.home-page--ref .home-pastel-spinner-ring {
+  border-color: rgba(37, 77, 235, 0.18) !important;
+  border-top-color: var(--home-brand-600) !important;
+}
+
+.home-page.home-page--ref .home-line-legend-swatch.current,
+.home-page.home-page--ref .home-line-legend-swatch.current.consumer {
+  background: var(--home-brand-600) !important;
+}
+
+.home-page.home-page--ref .home-line-legend-swatch.prev,
+.home-page.home-page--ref .home-line-legend-swatch.prev.consumer {
+  background: transparent !important;
+  border-top: 2px dashed #94a3b8 !important;
+  height: 0 !important;
+}
+
+/* —— Panels —— */
+.home-page.home-page--ref .panel,
+.home-page.home-page--ref .home-chart-panel,
+.home-page.home-page--ref .home-forecast-panel,
+.home-page.home-page--ref .home-leader-breakdown-panel,
+.home-page.home-page--ref .home-dashboard-calendar-panel,
+.home-page.home-page--ref .sales-pipeline,
+.home-page.home-page--ref .reps-panel {
+  background: #fff !important;
+  border: 1px solid var(--home-slate-200) !important;
+  border-radius: 0.75rem !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  margin-bottom: 0 !important;
+  min-width: 0;
+}
+
+.home-page.home-page--ref .panel-head,
+.home-page.home-page--ref .home-chart-head {
+  border-bottom: 1px solid var(--home-slate-100) !important;
+  padding: 1rem 1.25rem !important;
+}
+
+.home-page.home-page--ref .panel-head h2,
+.home-page.home-page--ref .home-chart-head h2 {
+  font-size: 0.875rem !important;
+  font-weight: 700 !important;
+  color: var(--home-slate-900) !important;
+  white-space: nowrap !important;
+}
+
+.home-page.home-page--ref .home-chart-subtitle {
+  font-size: 0.75rem !important;
+  color: var(--home-slate-500) !important;
+  margin-top: 0.125rem !important;
+  white-space: normal !important;
+  word-break: keep-all !important;
+}
+
+.home-page.home-page--ref .home-pipeline-link {
+  color: var(--home-brand-600) !important;
+  font-size: 0.75rem !important;
+  font-weight: 600 !important;
+  white-space: nowrap !important;
+}
+
+/* —— Analytics: 도넛 + 추이 번들 (열 높이 맞춤, 차트 min-height 유지) —— */
+.home-page.home-page--ref .home-ref-donut-trend {
+  display: grid !important;
+  grid-template-columns: minmax(14rem, 0.7fr) minmax(0, 1.6fr) !important;
+  gap: 1.5rem !important;
+  align-items: stretch !important;
+  width: 100%;
+  min-height: auto;
+}
+
+.home-page.home-page--ref .home-ref-donut-trend > * {
+  align-self: stretch !important;
+  min-width: 0;
+  min-height: auto;
+  height: auto;
+}
+
+.home-page.home-page--ref .home-ref-donut-trend--trend-only {
+  grid-template-columns: 1fr !important;
+}
+
+.home-page.home-page--ref .home-ref-donut-stack {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 1rem !important;
+  min-width: 0;
+  height: 100%;
+}
+
+.home-page.home-page--ref .home-contribution-panel--donut {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0.4rem !important;
+  padding: 0.85rem 1rem 0.75rem !important;
+  flex: 1 1 0 !important;
+  min-height: 16rem !important;
+  height: auto !important;
+  overflow: hidden;
+}
+
+.home-page.home-page--ref .home-contribution-panel--donut .home-contribution-head,
+.home-page.home-page--ref .home-contribution-panel--donut .home-contribution-single-caption {
+  flex-shrink: 0;
+}
+
+.home-page.home-page--ref .home-contribution-panel--donut .home-contribution-head--row {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 0.5rem !important;
+  width: 100%;
+}
+
+.home-page.home-page--ref .home-contribution-panel--donut .home-contribution-head--row h3 {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  font-size: 0.875rem !important;
+  line-height: 1.35 !important;
+  padding-right: 0.25rem;
+}
+
+.home-page.home-page--ref .home-contribution-panel--donut .home-contribution-calc-detail-btn {
+  flex: 0 0 auto !important;
+  align-self: flex-start;
+  margin: 0 !important;
+  margin-left: auto !important;
+  padding: 0.2rem 0.45rem !important;
+  border: none !important;
+  border-radius: 0.375rem !important;
+  background: transparent !important;
+  color: var(--home-brand-600, #254deb) !important;
+  font-size: 0.6875rem !important;
+  font-weight: 700 !important;
+  line-height: 1.3 !important;
+  white-space: nowrap !important;
+  box-shadow: none !important;
+}
+
+.home-page.home-page--ref .home-contribution-panel--donut .home-contribution-calc-detail-btn:hover {
+  background: #eff6ff !important;
+  border-color: transparent !important;
+  text-decoration: underline;
+}
+
+.home-page.home-page--ref .home-contribution-panel--donut .home-donut-chart {
+  flex: 1 1 auto;
+  min-height: 0 !important;
+  justify-content: center;
+  gap: 0.4rem !important;
+  overflow: visible;
+}
+
+.home-page.home-page--ref .home-contribution-panel--donut .home-donut-chart-visual {
+  width: 6.75rem !important;
+  height: 6.75rem !important;
+  flex-shrink: 0;
+}
+
+.home-page.home-page--ref .home-contribution-panel--donut .home-donut-center {
+  inset: 20% !important;
+  padding: 0.2rem !important;
+}
+
+.home-page.home-page--ref .home-contribution-panel--donut .home-donut-center strong {
+  font-size: 0.78rem !important;
+  line-height: 1.15 !important;
+}
+
+.home-page.home-page--ref .home-contribution-panel--donut .home-donut-center span {
+  font-size: 0.625rem !important;
+  line-height: 1.2 !important;
+}
+
+.home-page.home-page--ref .home-contribution-panel--donut .home-contribution-legend {
+  flex-shrink: 0 !important;
+  margin-top: 0.1rem !important;
+  width: 100%;
+  max-width: 100%;
+  justify-content: center;
+  gap: 0.35rem 0.65rem !important;
+}
+
+.home-page.home-page--ref .home-contribution-panel--donut .home-contribution-legend-label {
+  font-size: 0.6875rem !important;
+  line-height: 1.25 !important;
+  white-space: nowrap;
+}
+
+.home-page.home-page--ref .home-ref-donut-trend-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.home-page.home-page--ref .home-ref-trend-bundles {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 1rem !important;
+  width: 100%;
+  flex: 1 1 auto;
+  height: 100%;
+  align-items: stretch;
+  min-height: 28rem !important;
+}
+
+.home-page.home-page--ref .home-ref-trend-card--bundle {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+  min-height: 28rem !important;
+  height: 100% !important;
+  padding: 0 !important;
+  overflow: visible !important;
+}
+
+.home-page.home-page--ref .home-ref-donut-trend--trend-only .home-ref-trend-bundles {
+  min-height: 26rem;
+}
+
+.home-page.home-page--ref .home-ref-donut-trend--trend-only .home-ref-trend-card--bundle {
+  min-height: 26rem !important;
+  height: auto !important;
+}
+
+.home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-head {
+  padding: 0.9rem 1rem 0.55rem;
+  align-items: flex-start;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
+
+.home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-head-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.home-page.home-page--ref .home-ref-trend-bundle-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0 1rem 0.85rem;
+  flex: 1 1 auto;
+  min-height: 22rem;
+  overflow: visible;
+}
+
+.home-page.home-page--ref .home-ref-trend-bundle-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-height: 11rem;
+  flex: 1 1 0;
+  overflow: visible;
+}
+
+.home-page.home-page--ref .home-ref-trend-bundle-item-title {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--home-slate-700);
+  flex-shrink: 0;
+}
+
+.home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-body {
+  flex: 1 1 auto !important;
+  min-height: 9.5rem !important;
+  padding: 0.2rem 0 0.05rem !important;
+  display: flex !important;
+  flex-direction: column !important;
+  min-width: 0;
+  overflow: visible !important;
+}
+
+.home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-body > .home-ref-trend-plot,
+.home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-body > .home-ref-trend-empty {
+  flex: 1 1 auto;
+}
+
+.home-page.home-page--ref .home-ref-trend-empty {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 9.5rem;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.85rem 0.75rem;
+  text-align: center;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  background: #f8fafc;
+  border: 1px dashed #e2e8f0;
+}
+
+.home-page.home-page--ref .home-ref-trend-empty .material-symbols-outlined {
+  font-size: 1.35rem;
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+.home-page.home-page--ref .home-ref-trend-empty p {
+  margin: 0;
+  max-width: 100%;
+  font-size: 0.72rem;
+  font-weight: 500;
+  line-height: 1.45;
+  color: #64748b;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+  line-clamp: 5;
+  overflow: hidden;
+}
+
+.home-page.home-page--ref .home-ref-trend-card--bundle .home-chart-empty {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 9.5rem !important;
+  margin: 0;
+  padding: 0.85rem 0.75rem;
+  box-sizing: border-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  border-radius: 0.5rem;
+  background: #f8fafc;
+  border: 1px dashed #e2e8f0;
+}
+
+.home-page.home-page--ref .home-ref-trend-plot--compact {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 1 1 auto !important;
+  min-height: 9.5rem !important;
+  height: 9.5rem !important;
+  min-width: 0;
+  overflow: visible;
+}
+
+.home-page.home-page--ref .home-ref-trend-plot--compact .home-line-chart-chart-block {
+  flex: 1 1 auto !important;
+  min-height: 7rem !important;
+  height: 7.25rem !important;
+  overflow: visible;
+}
+
+.home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-embed-body {
+  flex: 1 1 auto !important;
+  min-height: 9.5rem !important;
+  height: auto !important;
+  display: flex;
+  flex-direction: column;
+  overflow: visible !important;
+  min-width: 0;
+}
+
+.home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-embed-body .home-line-chart-wrap,
+.home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-embed-body .home-bar-chart-wrap {
+  flex: 1 1 auto;
+  min-height: 8.5rem;
+  min-width: 0;
+  overflow: visible;
+}
+
+.home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-embed-body .home-bar-chart-wrap {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0.35rem !important;
+  height: 100%;
+}
+
+.home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-embed-body .home-line-chart-chart-block,
+.home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-embed-body .home-mini-chart {
+  min-height: 6.5rem !important;
+  height: auto !important;
+}
+
+/* 막대 영역만 줄이고 연도 라벨 자리는 유지 — 그래프가 글자를 덮지 않게 */
+.home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-embed-body .home-mini-chart {
+  flex: 1 1 auto;
+  min-height: 0 !important;
+  align-self: stretch;
+}
+
+.home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-embed-body .home-mini-chart-col {
+  min-height: 0;
+  height: 100%;
+  gap: 0;
+}
+
+.home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-embed-body .home-mini-chart-track {
+  height: 100%;
+  min-height: 5.75rem;
+  max-height: 7rem;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-embed-body .home-bar-chart-labels {
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 2;
+  margin: 0 !important;
+  padding: 0 !important;
+  line-height: 1.2;
+}
+
+.home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-embed-body .home-bar-chart-labels span {
+  display: block;
+  overflow: visible;
+  white-space: nowrap;
+  font-size: 0.625rem;
+  line-height: 1.2;
+}
+
+/* zero 스택이 height:100% 로 통짜 회색 막대가 되어 라벨을 덮지 않게 */
+.home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-embed-body .home-product-sales-stack.home-product-sales-stack--zero {
+  height: 2px !important;
+  min-height: 2px !important;
+  max-height: 2px !important;
+  margin-top: auto;
+  align-self: center;
+}
+
+.home-page.home-page--ref .home-ref-trend-card--bundle .home-product-legend-menu {
+  margin-left: 0.35rem;
+}
+
+.home-page.home-page--ref .home-ref-trend-footer--compact {
+  margin-top: 0.15rem;
+  padding: 0.25rem 0 0 !important;
+  border-top: 1px solid var(--home-slate-100);
+  flex-shrink: 0;
+}
+
+.home-page.home-page--ref .home-ref-donut-trend-main .home-ref-trend-bundles,
+.home-page.home-page--ref .home-ref-donut-trend-main .home-ref-trend-card {
+  height: 100% !important;
+  min-height: 28rem !important;
+}
+
+.home-page.home-page--ref .home-ref-analytics {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 1.5rem !important;
+  align-items: stretch !important;
+  width: 100%;
+  position: relative;
+  z-index: 0;
+  overflow: visible;
+  isolation: isolate;
+}
+
+.home-page.home-page--ref .home-ref-analytics-charts {
+  min-width: 18rem !important;
+  width: 100%;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0 !important;
+  position: relative;
+  z-index: 1;
+  overflow: visible;
+}
+
+.home-page.home-page--ref .home-ref-analytics .home-ref-pipeline-funnel {
+  margin-bottom: 0 !important;
+  width: 100%;
+  max-width: none;
+  position: relative;
+  z-index: 0;
+  flex-shrink: 0;
+}
+
+.home-page.home-page--ref .home-ref-analytics--funnel-only {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.home-page.home-page--ref .home-ref-analytics--funnel-only .home-ref-pipeline-funnel {
+  max-width: 100%;
+}
+
+/* 퍼널(+랭킹) 4.5 : 캘린더 5.5 */
+.home-page.home-page--ref .home-ref-funnel-calendar {
+  display: grid !important;
+  grid-template-columns: minmax(16rem, 4.5fr) minmax(0, 5.5fr) !important;
+  gap: 1.5rem !important;
+  align-items: stretch !important;
+  width: 100%;
+}
+
+.home-page.home-page--ref .home-ref-funnel-calendar .home-ref-pipeline-funnel,
+.home-page.home-page--ref .home-ref-funnel-calendar .home-ref-funnel-calendar-panel {
+  min-width: 0 !important;
+  height: 100%;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.home-page.home-page--ref .home-ref-funnel-calendar .home-dashboard-calendar-embed {
+  padding: 0.5rem 0.75rem 1rem !important;
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+}
+
+.home-page.home-page--ref .home-ref-funnel-calendar .home-dashboard-calendar-embed .calendar-page > .page-header {
+  display: none !important;
+}
+
+.home-page.home-page--ref .home-ref-funnel-calendar .calendar-page--embedded,
+.home-page.home-page--ref .home-ref-funnel-calendar .calendar-shell,
+.home-page.home-page--ref .home-ref-funnel-calendar .calendar-hero,
+.home-page.home-page--ref .home-ref-funnel-calendar .calendar-month-headline {
+  background: transparent !important;
+}
+
+/* —— ref_home: 매출·순마진 / 제품·수량 번들 추이 —— */
+.home-page.home-page--ref .home-ref-trend-card:not(.home-ref-trend-card--bundle) {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+  height: auto;
+  min-height: 0;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+.home-page.home-page--ref .home-ref-trend-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1.25rem 1.25rem 1rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.home-page.home-page--ref .home-ref-trend-title {
+  display: flex !important;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 !important;
+  font-size: 0.875rem !important;
+  font-weight: 700 !important;
+  color: #0f172a !important;
+  white-space: normal !important;
+  writing-mode: horizontal-tb !important;
+  word-break: keep-all !important;
+}
+
+.home-page.home-page--ref .home-ref-trend-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.625rem;
+  font-weight: 500;
+  background: #f1f5f9;
+  color: #475569;
+  white-space: nowrap;
+}
+
+.home-page.home-page--ref .home-ref-trend-sub {
+  margin: 0.125rem 0 0 !important;
+  font-size: 0.75rem !important;
+  color: #64748b !important;
+  white-space: normal !important;
+  word-break: keep-all !important;
+}
+
+.home-page.home-page--ref .home-ref-trend-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 0.5rem;
+  background: #f1f5f9;
+  align-self: flex-start;
+}
+
+.home-page.home-page--ref .home-ref-trend-tab {
+  border: none;
+  background: transparent;
+  color: #475569;
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.25rem 0.625rem;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+.home-page.home-page--ref .home-ref-trend-tab:hover {
+  color: #0f172a;
+}
+
+.home-page.home-page--ref .home-ref-trend-tab.is-active {
+  background: #fff;
+  color: #0f172a;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.home-page.home-page--ref .home-ref-trend-body {
+  flex: 1;
+  min-height: 15rem;
+  padding: 1.25rem 1.25rem 0.5rem !important;
+}
+
+.home-page.home-page--ref .home-ref-trend-plot {
+  position: relative;
+  min-height: 15rem;
+  height: 15rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.home-page.home-page--ref .home-ref-trend-y-axis {
+  position: absolute;
+  inset: 0 0 1.75rem 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.home-page.home-page--ref .home-ref-trend-y-row {
+  display: flex;
+  justify-content: flex-start;
+  border-bottom: 1px solid #f1f5f9;
+  color: #94a3b8;
+  font-size: 0.625rem;
+  padding-right: 0.5rem;
+}
+
+.home-page.home-page--ref .home-ref-trend-y-row:last-child {
+  border-bottom-color: #e2e8f0;
+  color: #cbd5e1;
+}
+
+.home-page.home-page--ref .home-ref-trend-plot .home-line-chart-chart-block {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  min-height: 7rem;
+  height: 7.25rem;
+  margin: 0.35rem 0.75rem 0 2.1rem;
+  /* padding 쓰면 absolute 마커가 패딩 박스 기준이 되어 SVG(콘텐츠 박스)와 어긋남 */
+  padding: 0 !important;
+  overflow: visible;
+}
+
+.home-page.home-page--ref .home-ref-trend-plot .home-line-chart-marker.is-hollow:not(.is-last) {
+  background: #fff !important;
+  border-width: 2.5px;
+}
+
+.home-page.home-page--ref .home-ref-trend-value-tip {
+  position: absolute;
+  max-width: none;
+  background: #1e293b;
+  color: #fff;
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  padding: 0.28rem 0.45rem;
+  border-radius: 0.375rem;
+  white-space: nowrap !important;
+  word-break: keep-all;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 5;
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.18);
+  /* 기본: 점 왼쪽 + 살짝 위 */
+  transform: translate(calc(-100% - 0.4rem), -50%);
+}
+
+.home-page.home-page--ref .home-ref-trend-value-tip.is-beside {
+  transform: translate(calc(-100% - 0.4rem), -50%);
+  margin: 0;
+}
+
+.home-page.home-page--ref .home-ref-trend-value-tip.is-beside.is-top {
+  /* 꼭짓점 근처면 점보다 아래·왼쪽으로 */
+  transform: translate(calc(-100% - 0.4rem), 20%);
+}
+
+.home-page.home-page--ref .home-ref-trend-x-labels {
+  position: relative;
+  z-index: 1;
+  height: 1.2rem;
+  margin: 0.15rem 0.75rem 0 2.1rem !important;
+  padding: 0 !important;
+  color: #64748b !important;
+  font-size: 0.625rem !important;
+  font-weight: 600 !important;
+  display: block !important;
+  grid-template-columns: none !important;
+  overflow: visible;
+}
+
+.home-page.home-page--ref .home-ref-trend-x-labels > span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  text-align: center;
+  font-size: inherit;
+  font-weight: inherit;
+  color: inherit;
+  max-width: none;
+  letter-spacing: -0.02em;
+}
+
+.home-page.home-page--ref .home-ref-trend-x-labels > span.is-prev-end {
+  transform: translateX(-70%);
+}
+
+.home-page.home-page--ref .home-ref-trend-x-labels > span.is-end {
+  transform: translateX(-15%);
+  text-align: left;
+}
+
+.home-page.home-page--ref .home-ref-trend-x-current {
+  color: var(--home-brand-600, #254deb) !important;
+  font-weight: 700 !important;
+}
+
+.home-page.home-page--ref .home-ref-trend-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: auto;
+  padding: 0.75rem 1.25rem 1.15rem;
+  border-top: 1px solid #f1f5f9;
+  font-size: 0.75rem;
+}
+
+.home-page.home-page--ref .home-ref-trend-footer-lines,
+.home-page.home-page--ref .home-ref-trend-footer-products {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+}
+
+.home-page.home-page--ref .home-ref-trend-leg {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.home-page.home-page--ref .home-ref-trend-leg-swatch.solid {
+  width: 0.75rem;
+  height: 0.25rem;
+  border-radius: 999px;
+  background: #254deb;
+}
+
+.home-page.home-page--ref .home-ref-trend-leg-swatch.solid.is-margin {
+  background: #059669;
+}
+
+.home-page.home-page--ref .home-ref-trend-leg-swatch.dashed {
+  width: 0.75rem;
+  height: 0;
+  border-top: 2px dashed #94a3b8;
+}
+
+.home-page.home-page--ref .home-ref-trend-leg-label {
+  color: #334155;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.home-page.home-page--ref .home-ref-trend-leg-label.muted {
+  color: #64748b;
+  font-weight: 400;
+}
+
+.home-page.home-page--ref .home-ref-trend-prod {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: #475569;
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+
+.home-page.home-page--ref .home-ref-trend-prod-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.home-page.home-page--ref .home-ref-trend-embed-body {
+  min-height: 14rem;
+}
+
+.home-page.home-page--ref .home-ref-trend-embed-body .home-product-chart-legend {
+  margin-top: 0.75rem;
+}
+
+.home-page.home-page--ref .home-ref-trend-card .panel-head,
+.home-page.home-page--ref .home-ref-trend-card .home-chart-head {
+  display: none !important;
+}
+
+/* —— Pipeline funnel: 한 행 가로 등간격 —— */
+.home-page.home-page--ref .home-ref-pipeline-funnel {
+  min-width: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.home-page.home-page--ref .home-ref-pipeline-funnel .home-pipeline-body,
+.home-page.home-page--ref .home-ref-pipeline-funnel .home-chart-body {
+  flex: 1;
+  min-height: 0;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0.75rem;
+}
+
+.home-page.home-page--ref .home-ref-funnel-reps {
+  margin: 0 1.25rem 1.1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid #f1f5f9;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+}
+
+.home-page.home-page--ref .home-ref-funnel-reps-head h3 {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.home-page.home-page--ref .home-ref-funnel-reps-head p {
+  margin: 0.15rem 0 0;
+  font-size: 0.6875rem;
+  color: #64748b;
+  line-height: 1.35;
+}
+
+.home-page.home-page--ref .home-ref-funnel-reps-table-wrap {
+  max-height: 14rem;
+  overflow: auto;
+}
+
+.home-page.home-page--ref .home-ref-funnel-reps .home-reps-table {
+  font-size: 0.75rem;
+}
+
+.home-page.home-page--ref .home-ref-funnel-reps .home-reps-table th,
+.home-page.home-page--ref .home-ref-funnel-reps .home-reps-table td {
+  padding: 0.4rem 0.35rem;
+  white-space: nowrap;
+}
+
+.home-page.home-page--ref .home-ref-funnel-reps .cell-user {
+  gap: 0.35rem;
+}
+
+.home-page.home-page--ref .home-ref-funnel-reps .avatar-initials {
+  width: 1.5rem;
+  height: 1.5rem;
+  font-size: 0.625rem;
+}
+
+.home-page.home-page--ref .sales-pipeline.home-chart-panel.home-ref-pipeline-funnel .pipeline-steps,
+.home-page.home-page--ref .home-ref-pipeline-funnel .pipeline-steps {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: stretch !important;
+  justify-content: space-between !important;
+  grid-template-columns: none !important;
+  gap: 0.75rem !important;
+  padding: 0.85rem 1.25rem 0.85rem !important;
+  width: 100% !important;
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-x: auto;
+}
+
+.home-page.home-page--ref .home-ref-pipeline-funnel .pipeline-step-wrap {
+  display: flex !important;
+  flex: 1 1 0 !important;
+  width: auto !important;
+  min-width: 7.5rem !important;
+  max-width: none !important;
+  position: relative !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+}
+
+.home-page.home-page--ref .home-ref-pipeline-funnel .pipeline-step-arrow {
+  display: none !important;
+}
+
+.home-page.home-page--ref .home-ref-pipeline-funnel .pipeline-step-card {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 0.55rem !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 7.5rem !important;
+  padding: 0.85rem 0.65rem !important;
+  border-radius: 0.65rem !important;
+  border: 1px solid var(--home-slate-100) !important;
+  background: rgba(248, 250, 252, 0.95) !important;
+  box-sizing: border-box;
+  text-align: center !important;
+}
+
+.home-page.home-page--ref .home-ref-pipeline-funnel .pipeline-step-NewLead,
+.home-page.home-page--ref .home-ref-pipeline-funnel .pipeline-step-Contacted,
+.home-page.home-page--ref .home-ref-pipeline-funnel .pipeline-step-ProposalSent,
+.home-page.home-page--ref .home-ref-pipeline-funnel .pipeline-step-TechDemo,
+.home-page.home-page--ref .home-ref-pipeline-funnel .pipeline-step-Quotation,
+.home-page.home-page--ref .home-ref-pipeline-funnel .pipeline-step-Negotiation,
+.home-page.home-page--ref .home-ref-pipeline-funnel .pipeline-step-Won {
+  background: rgba(248, 250, 252, 0.95) !important;
+}
+
+.home-page.home-page--ref .home-ref-pipeline-funnel .pipeline-step-card.is-hot {
+  border-color: #bfdbfe !important;
+  background: rgba(239, 246, 255, 0.75) !important;
+}
+
+.home-page.home-page--ref .home-ref-pipeline-funnel .pipeline-step-card.is-closing {
+  border-color: #a7f3d0 !important;
+  background: rgba(236, 253, 245, 0.65) !important;
+}
+
+.home-page.home-page--ref .home-ref-pipeline-funnel .home-ref-funnel-left {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 0.4rem !important;
+  min-width: 0 !important;
+  width: 100% !important;
+  flex: 0 0 auto !important;
+}
+
+.home-page.home-page--ref .home-ref-pipeline-funnel .home-ref-funnel-left > div {
+  min-width: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.home-page.home-page--ref .home-ref-pipeline-funnel .home-ref-funnel-idx {
+  width: 1.5rem !important;
+  height: 1.5rem !important;
+  border-radius: 9999px !important;
+  background: var(--home-slate-200) !important;
+  color: var(--home-slate-700) !important;
+  font-size: 0.6875rem !important;
+  font-weight: 700 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+}
+
+.home-page.home-page--ref .home-ref-pipeline-funnel .pipeline-step-card.is-hot .home-ref-funnel-idx,
+.home-page.home-page--ref .home-ref-pipeline-funnel .pipeline-step-card.is-closing .home-ref-funnel-idx {
+  background: var(--home-brand-600) !important;
+  color: #fff !important;
+}
+
+.home-page.home-page--ref .home-ref-pipeline-funnel .pipeline-step-card.is-closing .home-ref-funnel-idx {
+  background: #059669 !important;
+}
+
+.home-page.home-page--ref .home-ref-pipeline-funnel .pipeline-step-title {
+  font-size: 0.75rem !important;
+  font-weight: 700 !important;
+  color: var(--home-slate-800) !important;
+  text-align: center !important;
+  white-space: normal !important;
+  line-height: 1.25 !important;
+  overflow: hidden !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.home-page.home-page--ref .home-ref-pipeline-funnel .pipeline-step-hint {
+  display: block !important;
+  font-size: 0.625rem !important;
+  color: var(--home-slate-400) !important;
+  font-weight: 400 !important;
+  text-align: center !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  max-width: 100%;
+}
+
+.home-page.home-page--ref .home-ref-pipeline-funnel .pipeline-step-metrics {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 0.15rem !important;
+  flex-shrink: 0 !important;
+  text-align: center !important;
+  margin-top: auto !important;
+}
+
+.home-page.home-page--ref .home-ref-pipeline-funnel .pipeline-step-metrics p {
+  margin: 0 !important;
+  font-size: 0.8125rem !important;
+  font-weight: 800 !important;
+  color: var(--home-slate-900) !important;
+  white-space: nowrap !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.home-page.home-page--ref .home-ref-pipeline-funnel .pipeline-step-metrics span {
+  font-size: 0.6875rem !important;
+  color: var(--home-slate-500) !important;
+  font-weight: 600 !important;
+  white-space: nowrap !important;
+  text-align: center !important;
+  letter-spacing: 0 !important;
+}
+
+.home-page.home-page--ref .home-ref-pipeline-funnel .home-ref-funnel-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0 1.25rem 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--home-slate-100);
+  font-size: 0.75rem;
+  color: var(--home-slate-500);
+}
+
+.home-page.home-page--ref .home-ref-pipeline-funnel .home-ref-funnel-summary strong {
+  color: var(--home-slate-900);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 900px) {
+  .home-page.home-page--ref .home-ref-pipeline-funnel .pipeline-steps {
+    flex-wrap: wrap !important;
+    justify-content: flex-start !important;
+  }
+
+  .home-page.home-page--ref .home-ref-pipeline-funnel .pipeline-step-wrap {
+    flex: 1 1 calc(33.333% - 0.75rem) !important;
+    min-width: 8rem !important;
+  }
+}
+
+/* —— Ops hub: Forecast 표 8 + 캘린더/랭킹 4 —— */
+.home-page.home-page--ref .home-ref-ops-hub {
+  display: grid !important;
+  grid-template-columns: minmax(0, 8fr) minmax(16rem, 4fr) !important;
+  gap: 1.5rem !important;
+  align-items: start !important;
+  width: 100%;
+}
+
+.home-page.home-page--ref .home-ref-ops-hub--forecast-only,
+.home-page.home-page--ref .home-ref-ops-hub--forecast-pair {
+  grid-template-columns: minmax(0, 8fr) minmax(16rem, 4fr) !important;
+}
+
+.home-page.home-page--ref .home-ref-ops-main {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 1.5rem !important;
+  min-width: 18rem !important;
+}
+
+.home-page.home-page--ref .home-ref-ops-side {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 1.5rem !important;
+  min-width: 16rem !important;
+}
+
+.home-page.home-page--ref .home-ref-ops-side .home-dashboard-calendar-embed {
+  padding: 0.5rem 0.75rem 1rem !important;
+  overflow: hidden;
+}
+
+.home-page.home-page--ref .home-ref-ops-side .home-dashboard-calendar-embed .calendar-page > .page-header {
+  display: none !important;
+}
+
+.home-page.home-page--ref .home-ref-ops-side .calendar-page--embedded,
+.home-page.home-page--ref .home-ref-ops-side .calendar-shell,
+.home-page.home-page--ref .home-ref-ops-side .calendar-hero,
+.home-page.home-page--ref .home-ref-ops-side .calendar-month-headline {
+  writing-mode: horizontal-tb !important;
+  word-break: keep-all !important;
+  overflow-wrap: normal !important;
+}
+
+.home-page.home-page--ref .home-ref-ops-side .calendar-month-headline,
+.home-page.home-page--ref .home-ref-ops-side .calendar-weekday {
+  white-space: nowrap !important;
+}
+
+.home-page.home-page--ref .home-ref-ops-side .reps-panel .table-wrap {
+  max-height: 14rem;
+  overflow: auto;
+}
+
+/* —— ref_home: 주간 액션 캘린더 —— */
+.home-page.home-page--ref .home-ref-action-cal,
+.home-page.home-page--ref .home-ref-rank-widget {
+  background: #fff;
+  border: 1px solid var(--home-slate-200);
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  padding: 1.15rem 1.2rem 1rem;
+}
+
+.home-page.home-page--ref .home-ref-action-cal-head,
+.home-page.home-page--ref .home-ref-rank-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--home-slate-100);
+}
+
+.home-page.home-page--ref .home-ref-action-cal-title,
+.home-page.home-page--ref .home-ref-rank-title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.home-page.home-page--ref .home-ref-action-cal-title h3,
+.home-page.home-page--ref .home-ref-rank-title h3 {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--home-slate-900);
+}
+
+.home-page.home-page--ref .home-ref-action-cal-icon,
+.home-page.home-page--ref .home-ref-rank-icon {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.home-page.home-page--ref .home-ref-action-cal-icon {
+  background: var(--home-brand-50);
+  color: var(--home-brand-600);
+}
+
+.home-page.home-page--ref .home-ref-rank-icon {
+  background: #fffbeb;
+  color: #d97706;
+}
+
+.home-page.home-page--ref .home-ref-action-cal-icon .material-symbols-outlined,
+.home-page.home-page--ref .home-ref-rank-icon .material-symbols-outlined {
+  font-size: 0.95rem;
+}
+
+.home-page.home-page--ref .home-ref-action-cal-week {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--home-brand-600);
+  white-space: nowrap;
+}
+
+.home-page.home-page--ref .home-ref-rank-period {
+  font-size: 0.625rem;
+  color: var(--home-slate-400);
+  white-space: nowrap;
+}
+
+.home-page.home-page--ref .home-ref-action-cal-days {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.35rem;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--home-slate-100);
+}
+
+.home-page.home-page--ref .home-ref-action-cal-day {
+  border: none;
+  background: var(--home-slate-50);
+  color: var(--home-slate-600);
+  border-radius: 0.5rem;
+  padding: 0.35rem 0.2rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  line-height: 1.2;
+}
+
+.home-page.home-page--ref .home-ref-action-cal-day-wd {
+  font-size: 0.5625rem;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.home-page.home-page--ref .home-ref-action-cal-day-num {
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.home-page.home-page--ref .home-ref-action-cal-day.is-active {
+  background: var(--home-brand-600);
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(37, 77, 235, 0.25);
+}
+
+.home-page.home-page--ref .home-ref-action-cal-day.is-active .home-ref-action-cal-day-wd {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.home-page.home-page--ref .home-ref-action-cal-list {
+  margin-top: 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-height: 6rem;
+}
+
+.home-page.home-page--ref .home-ref-action-cal-empty {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--home-slate-500);
+  line-height: 1.45;
+}
+
+.home-page.home-page--ref .home-ref-action-cal-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.6rem 0.65rem;
+  border-radius: 0.5rem;
+  background: var(--home-slate-50);
+  border-left: 4px solid var(--home-brand-600);
+}
+
+.home-page.home-page--ref .home-ref-action-cal-item.tone-brand {
+  border-left-color: var(--home-brand-600);
+}
+
+.home-page.home-page--ref .home-ref-action-cal-item.tone-emerald {
+  border-left-color: #10b981;
+}
+
+.home-page.home-page--ref .home-ref-action-cal-item.tone-amber {
+  border-left-color: #f59e0b;
+}
+
+.home-page.home-page--ref .home-ref-action-cal-item.tone-indigo {
+  border-left-color: #6366f1;
+}
+
+.home-page.home-page--ref .home-ref-action-cal-item-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--home-slate-900);
+}
+
+.home-page.home-page--ref .home-ref-action-cal-item-detail {
+  margin-top: 0.15rem;
+  font-size: 0.6875rem;
+  color: var(--home-slate-500);
+}
+
+.home-page.home-page--ref .home-ref-action-cal-item-when {
+  display: inline-block;
+  margin-top: 0.3rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  color: var(--home-brand-700);
+  background: var(--home-brand-50);
+  border-radius: 0.25rem;
+  padding: 0.1rem 0.35rem;
+}
+
+.home-page.home-page--ref .home-ref-action-cal-item.tone-emerald .home-ref-action-cal-item-when {
+  color: #047857;
+  background: #ecfdf5;
+}
+
+.home-page.home-page--ref .home-ref-action-cal-item-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: var(--home-brand-600);
+  margin-top: 0.25rem;
+  flex-shrink: 0;
+}
+
+.home-page.home-page--ref .home-ref-action-cal-item.tone-emerald .home-ref-action-cal-item-dot {
+  background: #10b981;
+}
+
+.home-page.home-page--ref .home-ref-action-cal-link {
+  color: var(--home-brand-600);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.home-page.home-page--ref .home-ref-action-cal-link:hover {
+  color: var(--home-brand-700);
+}
+
+/* —— ref_home: 랭킹 리스트 —— */
+.home-page.home-page--ref .home-ref-rank-list {
+  margin-top: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.home-page.home-page--ref .home-ref-rank-empty {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--home-slate-500);
+}
+
+.home-page.home-page--ref .home-ref-rank-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  font-size: 0.75rem;
+}
+
+.home-page.home-page--ref .home-ref-rank-row:not(.is-top) {
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--home-slate-100);
+}
+
+.home-page.home-page--ref .home-ref-rank-user {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.home-page.home-page--ref .home-ref-rank-avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.home-page.home-page--ref .home-ref-rank-avatar {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 800;
+  background: #f1f5f9;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+}
+
+.home-page.home-page--ref .home-ref-rank-avatar.is-gold {
+  background: #fef3c7;
+  color: #92400e;
+  border: 2px solid #f59e0b;
+}
+
+.home-page.home-page--ref .home-ref-rank-badge {
+  position: absolute;
+  top: -0.25rem;
+  right: -0.25rem;
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 999px;
+  background: #94a3b8;
+  color: #fff;
+  font-size: 0.5625rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.home-page.home-page--ref .home-ref-rank-row.is-top .home-ref-rank-badge {
+  background: #f59e0b;
+}
+
+.home-page.home-page--ref .home-ref-rank-user-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.home-page.home-page--ref .home-ref-rank-user-text strong {
+  font-weight: 700;
+  color: var(--home-slate-900);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.home-page.home-page--ref .home-ref-rank-user-text span {
+  font-size: 0.625rem;
+  color: var(--home-slate-400);
+}
+
+.home-page.home-page--ref .home-ref-rank-metrics {
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.home-page.home-page--ref .home-ref-rank-metrics strong {
+  display: block;
+  font-weight: 800;
+  color: var(--home-slate-900);
+  font-variant-numeric: tabular-nums;
+}
+
+.home-page.home-page--ref .home-ref-rank-metrics span {
+  font-size: 0.625rem;
+  color: var(--home-slate-400);
+}
+
+.home-page.home-page--ref .home-ref-rank-metrics span.is-profit {
+  color: #059669;
+  font-weight: 700;
+}
+
+.home-page.home-page--ref .home-ref-rank-banner {
+  margin-top: 0.9rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(37, 77, 235, 0.15);
+  background: linear-gradient(90deg, #f0f4ff, #eef2ff);
+  text-align: center;
+  font-size: 0.6875rem;
+  color: #1e3a8a;
+  font-weight: 500;
+}
+
+.home-page.home-page--ref .home-ref-rank-banner strong {
+  font-weight: 800;
+}
+
+/* —— ref_home: 딜 허브 탭 표 —— */
+.home-page.home-page--ref .home-forecast-hub {
+  display: flex !important;
+  flex-direction: column !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  min-height: 22rem;
+}
+
+.home-page.home-page--ref .home-forecast-hub-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid var(--home-slate-200);
+}
+
+.home-page.home-page--ref .home-forecast-hub-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.home-page.home-page--ref .home-forecast-hub-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: none;
+  background: transparent;
+  color: var(--home-slate-600);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.4rem 0.7rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  line-height: 1.3;
+}
+
+.home-page.home-page--ref .home-forecast-hub-tab:hover {
+  background: var(--home-slate-100);
+  color: var(--home-slate-900);
+}
+
+.home-page.home-page--ref .home-forecast-hub-tab.is-active {
+  background: var(--home-brand-600);
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(37, 77, 235, 0.25);
+}
+
+.home-page.home-page--ref .home-forecast-hub-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  background: var(--home-slate-200);
+  color: var(--home-slate-700);
+}
+
+.home-page.home-page--ref .home-forecast-hub-tab.is-active .home-forecast-hub-tab-count {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+.home-page.home-page--ref .home-forecast-hub-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.home-page.home-page--ref .home-forecast-hub-filters .home-forecast-filters {
+  margin: 0;
+}
+
+.home-page.home-page--ref .home-forecast-filters--pair .home-forecast-filter-label {
+  display: none;
+}
+
+.home-page.home-page--ref .home-forecast-filters--pair .home-forecast-filter-select {
+  background: var(--home-slate-50);
+  border: 1px solid var(--home-slate-200);
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  padding: 0.3rem 0.5rem;
+  color: var(--home-slate-600);
+}
+
+.home-page.home-page--ref .home-forecast-hub-more-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  border: none;
+  background: transparent;
+  color: var(--home-brand-600);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0.25rem 0.15rem;
+}
+
+.home-page.home-page--ref .home-forecast-hub-more-link .material-symbols-outlined {
+  font-size: 1rem;
+}
+
+.home-page.home-page--ref .home-forecast-hub-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.home-page.home-page--ref .home-forecast-hub-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.home-page.home-page--ref .home-forecast-hub-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+
+.home-page.home-page--ref .home-forecast-hub-table thead th {
+  padding: 0.7rem 0.85rem;
+  text-align: left;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--home-slate-500);
+  background: rgba(248, 250, 252, 0.9);
+  border-bottom: 1px solid var(--home-slate-200);
+  white-space: nowrap;
+}
+
+.home-page.home-page--ref .home-forecast-hub-table thead th.is-right,
+.home-page.home-page--ref .home-forecast-hub-table td.is-right {
+  text-align: right;
+}
+
+.home-page.home-page--ref .home-forecast-hub-table thead th.is-center,
+.home-page.home-page--ref .home-forecast-hub-table td.is-center {
+  text-align: center;
+}
+
+.home-page.home-page--ref .home-forecast-hub-table tbody tr {
+  cursor: pointer;
+  border-bottom: 1px solid var(--home-slate-100);
+  transition: background 0.12s ease;
+}
+
+.home-page.home-page--ref .home-forecast-hub-table tbody tr:hover {
+  background: rgba(248, 250, 252, 0.9);
+}
+
+.home-page.home-page--ref .home-forecast-hub-table tbody td {
+  padding: 0.8rem 0.85rem;
+  vertical-align: middle;
+  color: var(--home-slate-700);
+}
+
+.home-page.home-page--ref .home-forecast-hub-company {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.home-page.home-page--ref .home-forecast-hub-avatar {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.375rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.home-page.home-page--ref .home-forecast-hub-avatar.tone-blue { background: #dbeafe; color: #1d4ed8; }
+.home-page.home-page--ref .home-forecast-hub-avatar.tone-emerald { background: #d1fae5; color: #047857; }
+.home-page.home-page--ref .home-forecast-hub-avatar.tone-purple { background: #ede9fe; color: #6d28d9; }
+.home-page.home-page--ref .home-forecast-hub-avatar.tone-indigo { background: #e0e7ff; color: #4338ca; }
+.home-page.home-page--ref .home-forecast-hub-avatar.tone-slate { background: #f1f5f9; color: #334155; }
+.home-page.home-page--ref .home-forecast-hub-avatar.tone-amber { background: #fef3c7; color: #b45309; }
+
+.home-page.home-page--ref .home-forecast-hub-company-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.home-page.home-page--ref .home-forecast-hub-company-text strong {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--home-slate-900);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.home-page.home-page--ref .home-forecast-hub-company-text span {
+  font-size: 0.625rem;
+  color: var(--home-slate-400);
+}
+
+.home-page.home-page--ref .home-forecast-hub-chip {
+  display: inline-flex;
+  max-width: 9.5rem;
+  align-items: center;
+  padding: 0.15rem 0.45rem;
+  border-radius: 0.3rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: 1px solid transparent;
+}
+
+.home-page.home-page--ref .home-forecast-hub-chip.tone-sky {
+  background: #f0f9ff;
+  color: #0369a1;
+  border-color: #e0f2fe;
+}
+
+.home-page.home-page--ref .home-forecast-hub-chip.tone-brand {
+  background: var(--home-brand-50);
+  color: var(--home-brand-700);
+  border-color: var(--home-brand-100);
+}
+
+.home-page.home-page--ref .home-forecast-hub-chip.tone-amber {
+  background: #fffbeb;
+  color: #b45309;
+  border-color: #fde68a;
+}
+
+.home-page.home-page--ref .home-forecast-hub-money {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  color: var(--home-slate-600);
+  white-space: nowrap;
+}
+
+.home-page.home-page--ref .home-forecast-hub-money.is-strong {
+  font-weight: 700;
+  color: var(--home-slate-900);
+}
+
+.home-page.home-page--ref .home-forecast-hub-money.is-muted {
+  color: var(--home-slate-400);
+  font-weight: 500;
+}
+
+.home-page.home-page--ref .home-forecast-hub-qty {
+  font-weight: 700;
+  color: var(--home-slate-800);
+  font-variant-numeric: tabular-nums;
+}
+
+.home-page.home-page--ref .home-forecast-hub-month {
+  color: var(--home-slate-600);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.home-page.home-page--ref .home-forecast-hub-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.home-page.home-page--ref .home-forecast-hub-badge.tone-amber {
+  background: #fffbeb;
+  color: #b45309;
+  border-color: #fde68a;
+}
+
+.home-page.home-page--ref .home-forecast-hub-badge.tone-blue {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+
+.home-page.home-page--ref .home-forecast-hub-badge.tone-indigo {
+  background: #eef2ff;
+  color: #4338ca;
+  border-color: #c7d2fe;
+}
+
+.home-page.home-page--ref .home-forecast-hub-badge.tone-purple {
+  background: #f5f3ff;
+  color: #6d28d9;
+  border-color: #ddd6fe;
+}
+
+.home-page.home-page--ref .home-forecast-hub-badge.tone-slate {
+  background: #f1f5f9;
+  color: #475569;
+  border-color: #e2e8f0;
+}
+
+.home-page.home-page--ref .home-forecast-hub-badge.tone-green {
+  background: #ecfdf5;
+  color: #047857;
+  border-color: #a7f3d0;
+}
+
+.home-page.home-page--ref .home-forecast-hub-more td {
+  text-align: center;
+  padding: 0.65rem;
+}
+
+.home-page.home-page--ref .home-forecast-hub-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid var(--home-slate-200);
+  background: #f8fafc;
+  font-size: 0.75rem;
+  color: var(--home-slate-500);
+  font-weight: 500;
+}
+
+.home-page.home-page--ref .home-forecast-hub-foot-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+}
+
+.home-page.home-page--ref .home-forecast-hub-foot-metrics strong {
+  color: var(--home-slate-900);
+  font-variant-numeric: tabular-nums;
+}
+
+.home-page.home-page--ref .home-forecast-hub-foot-metrics strong.is-active {
+  color: var(--home-brand-700);
+  font-size: 0.875rem;
+  font-weight: 800;
+}
+
+.home-page.home-page--ref .home-forecast-hub-foot-metrics strong.is-done {
+  color: #047857;
+  font-size: 0.875rem;
+  font-weight: 800;
+}
+
+.home-page.home-page--ref .home-ref-pipeline-funnel {
+  margin-bottom: 1.5rem !important;
+}
+
+.home-page.home-page--ref .home-forecast-table-wrap,
+.home-page.home-page--ref .home-forecast-table-wrap table,
+.home-page.home-page--ref .home-forecast-table-wrap th,
+.home-page.home-page--ref .home-forecast-table-wrap td {
+  word-break: keep-all !important;
+  overflow-wrap: normal !important;
+  white-space: nowrap !important;
+}
+
+.home-page.home-page--ref .home-forecast-table-wrap thead th {
+  background: rgba(248, 250, 252, 0.95) !important;
+  color: var(--home-slate-500) !important;
+  font-size: 0.6875rem !important;
+}
+
+.home-page.home-page--ref .home-forecast-add-opp-btn {
+  background: var(--home-brand-600) !important;
+  color: #fff !important;
+  border-radius: 0.5rem !important;
+}
+
+.home-page.home-page--ref .home-bottom--ref-export {
+  margin-top: 0 !important;
+}
+
+.home-page.home-page--ref .reps-panel--export-only .panel-head {
+  border-bottom: none !important;
+}
+
+.home-page.home-page--ref .home-contribution-panel {
+  background: #fff !important;
+  border: 1px solid var(--home-slate-200) !important;
+  border-radius: 0.75rem !important;
+  padding: 1rem 1.25rem !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.home-page.home-page--ref .home-contribution-legend-label {
+  color: var(--home-slate-600) !important;
+}
+
+.home-page.home-page--ref .home-contribution-split-bar,
+.home-page.home-page--ref .home-contribution-ach-frame {
+  border-radius: 0.5rem !important;
+}
+
+.home-page.home-page--ref .home-contribution-split-seg > span {
+  color: inherit !important;
+}
+
+@media (max-width: 1200px) {
+  .home-page.home-page--ref .home-ref-analytics,
+  .home-page.home-page--ref .home-ref-ops-hub,
+  .home-page.home-page--ref .home-ref-donut-trend,
+  .home-page.home-page--ref .home-ref-funnel-calendar,
+  .home-page.home-page--ref .home-ref-trend-bundles {
+    grid-template-columns: 1fr !important;
+  }
+
+  .home-page.home-page--ref .home-kpi-strip {
+    grid-template-columns: repeat(2, minmax(11rem, 1fr)) !important;
+  }
+
+  .home-page.home-page--ref .home-ref-trend-head {
+    flex-direction: column;
+  }
+
+  .home-page.home-page--ref .home-ref-trend-tabs {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  /* 스택 시 height:100% / min-height:0 이 차트·카드를 찌그러뜨림 → 콘텐츠 높이로 복구 */
+  .home-page.home-page--ref .home-ref-donut-trend,
+  .home-page.home-page--ref .home-ref-analytics,
+  .home-page.home-page--ref .home-ref-funnel-calendar {
+    align-items: start !important;
+    height: auto !important;
+  }
+
+  .home-page.home-page--ref .home-ref-funnel-calendar .home-ref-pipeline-funnel,
+  .home-page.home-page--ref .home-ref-funnel-calendar .home-ref-funnel-calendar-panel {
+    height: auto !important;
+  }
+
+  .home-page.home-page--ref .home-ref-donut-trend-main,
+  .home-page.home-page--ref .home-ref-trend-bundles,
+  .home-page.home-page--ref .home-ref-donut-trend-main .home-ref-trend-bundles,
+  .home-page.home-page--ref .home-ref-donut-trend-main .home-ref-trend-card,
+  .home-page.home-page--ref .home-ref-trend-card,
+  .home-page.home-page--ref .home-ref-trend-card--bundle {
+    height: auto !important;
+    min-height: 22rem !important;
+    overflow: visible !important;
+  }
+
+  .home-page.home-page--ref .home-ref-trend-bundles {
+    align-items: stretch !important;
+    gap: 1.25rem !important;
+    min-height: auto !important;
+  }
+
+  .home-page.home-page--ref .home-contribution-panel--donut {
+    min-height: 16rem !important;
+    flex: none !important;
+  }
+
+  .home-page.home-page--ref .home-ref-trend-bundle-stack {
+    flex: none !important;
+    min-height: 22rem !important;
+  }
+
+  .home-page.home-page--ref .home-ref-trend-bundle-item {
+    flex: none !important;
+    min-height: 11rem !important;
+  }
+
+  .home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-body {
+    flex: none !important;
+    min-height: 11rem !important;
+    overflow: visible !important;
+  }
+
+  .home-page.home-page--ref .home-ref-trend-plot--compact {
+    min-height: 11rem !important;
+    height: 11rem !important;
+  }
+
+  .home-page.home-page--ref .home-ref-trend-plot--compact .home-line-chart-chart-block {
+    flex: none !important;
+    height: calc(11rem - 1.75rem) !important;
+    min-height: calc(11rem - 1.75rem) !important;
+  }
+
+  .home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-embed-body {
+    height: auto !important;
+    min-height: 11rem !important;
+    overflow: visible !important;
+  }
+
+  .home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-embed-body .home-line-chart-wrap,
+  .home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-embed-body .home-bar-chart-wrap {
+    min-height: 11rem !important;
+    overflow: visible !important;
+  }
+
+  .home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-embed-body .home-line-chart-chart-block,
+  .home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-embed-body .home-mini-chart {
+    height: auto !important;
+    min-height: 6.5rem !important;
+    flex: 1 1 auto !important;
+  }
+
+  .home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-embed-body .home-mini-chart-track {
+    max-height: 8rem;
+  }
+
+  .home-page.home-page--ref .home-ref-trend-plot,
+  .home-page.home-page--ref .home-ref-trend-plot--compact {
+    position: relative !important;
+    overflow: visible !important;
+  }
+
+  .home-page.home-page--ref .home-ref-trend-value-tip {
+    max-width: none;
+    font-size: 0.625rem;
+    white-space: nowrap !important;
+    word-break: keep-all;
+  }
+
+  .home-page.home-page--ref .home-ref-trend-x-labels {
+    font-size: 0.625rem !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .home-page.home-page--ref .home-page-content {
+    padding: 1rem !important;
+  }
+
+  .home-page.home-page--ref .home-kpi-strip {
+    grid-template-columns: 1fr !important;
+  }
+
+  .home-page.home-page--ref .home-mobile-hero {
+    display: block !important;
+  }
+
+  .home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-head {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .home-page.home-page--ref .home-ref-trend-title {
+    font-size: 0.8125rem !important;
+  }
+
+  .home-page.home-page--ref .home-ref-trend-badge {
+    white-space: normal;
+  }
+
+  .home-page.home-page--ref .home-ref-trend-bundle-stack {
+    padding: 0 0.85rem 0.85rem;
+    gap: 1rem;
+  }
+
+  .home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-body {
+    min-height: 12rem !important;
+  }
+
+  .home-page.home-page--ref .home-ref-trend-plot--compact {
+    min-height: 12rem !important;
+    height: 12rem !important;
+  }
+
+  .home-page.home-page--ref .home-ref-trend-plot--compact .home-line-chart-chart-block {
+    height: calc(12rem - 1.75rem) !important;
+    min-height: calc(12rem - 1.75rem) !important;
+  }
+
+  .home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-embed-body {
+    min-height: 12rem !important;
+  }
+
+  .home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-embed-body .home-line-chart-chart-block,
+  .home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-embed-body .home-mini-chart {
+    height: 11rem !important;
+    min-height: 11rem !important;
+  }
+
+  .home-page.home-page--ref .home-ref-trend-y-axis {
+    font-size: 0.5625rem;
+  }
+
+  .home-page.home-page--ref .home-ref-trend-x-labels > span {
+    font-size: 0.5625rem;
+    max-width: none;
+    white-space: nowrap;
+    overflow: visible;
+  }
+
+  .home-page.home-page--ref .home-ref-trend-plot .home-line-chart-chart-block {
+    margin-left: 1.75rem !important;
+    margin-right: 0.35rem !important;
+  }
+
+  .home-page.home-page--ref .home-product-legend-menu-panel {
+    right: 0;
+    left: auto;
+    width: min(17rem, calc(100vw - 2rem));
+  }
+}

@@ -19,7 +19,6 @@ const CRM_IN_APP_ROUTE_PREFIXES = [
   '/lead-capture',
   '/calendar',
   '/project',
-  '/todo-list',
   '/ai-voice',
   '/quotation-doc-merge',
   '/subscription',

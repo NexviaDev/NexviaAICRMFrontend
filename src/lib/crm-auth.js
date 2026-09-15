@@ -3,6 +3,7 @@
  * localStorage crm_token 은 더 이상 사용하지 않습니다.
  */
 import { API_BASE } from '@/config';
+import { clearCalendarWidget } from '@/lib/sync-calendar-widget';
 
 const SESSION_EXPIRED_MESSAGE = '로그인 시간이 만료되었습니다. 다시 로그인해 주세요.';
 let fetchInterceptorInstalled = false;
@@ -189,6 +190,7 @@ export function clearCrmSessionLocal() {
   } catch {
     /* noop */
   }
+  void clearCalendarWidget();
   notifyCrmAuthChanged();
 }
 

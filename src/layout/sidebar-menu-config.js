@@ -32,7 +32,6 @@ export const SIDEBAR_SUBMENU_ITEMS = [
   { to: '/lead-capture', icon: 'ads_click', label: '리드 캡처', category: 'outside' },
   { to: '/calendar', icon: 'calendar_month', label: '캘린더', category: 'schedule' },
   { to: '/project', icon: 'folder', label: '프로젝트', category: 'schedule' },
-  { to: '/todo-list', icon: 'checklist', label: 'Todo List', category: 'schedule' },
   { to: '/ai-voice', icon: 'mic', label: 'AI 음성 기록', category: 'etc' },
   { to: '/quotation-doc-merge', icon: 'merge_type', label: '문서 메일머지', category: 'etc' },
   { to: '/subscription', icon: 'subscriptions', label: '구독관리', category: 'etc' },

@@ -1,7 +1,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
 import CompanyDriveSettingsModal from './company-drive-settings-modal/company-drive-settings-modal';
+import CompanyBrandMapCard, { CompanyOverviewLogo, NEXVIA_BRAND_LOGO } from './company-brand-map-card';
 import './company-overview.css';
+import './company-overview-ref.css';
 import 'mind-elixir/style.css';
 
 import { API_BASE } from '@/config';
@@ -149,65 +152,113 @@ function sortEmployeeRows(rows, sortConfig) {
   return next;
 }
 
-/** 구독 카드용 — 역할별 한 줄 요약(summary)만 표시 */
+/** 구독 카드용 — ref 권한 체계 (상위 → 하위) */
 const CRM_ROLE_PERMISSION_GUIDE = [
   {
-    id: 'pending',
-    title: '권한 대기 (Pending)',
-    usesSeat: false,
-    summary: 'CRM 미사용 (승인 전)'
-  },
-  {
-    id: 'staff',
-    title: '직원 (Staff)',
+    id: 'owner',
+    tier: 1,
+    title: '대표 (Owner)',
     usesSeat: true,
-    summary: 'CRM 기본 — 등록·조회·수정'
-  },
-  {
-    id: 'manager',
-    title: '실무자 (Manager)',
-    usesSeat: true,
-    summary: '직원(Staff) 권한 + 팀 단위 보기·견적 필드 설정'
+    summary: '관리자(Admin) 권한 + 결제 및 최고 관리자 지정'
   },
   {
     id: 'admin',
+    tier: 2,
     title: '관리자 (Admin)',
     usesSeat: true,
     summary: '실무자(Manager) 권한 + 삭제·조직·시스템 설정'
   },
   {
-    id: 'owner',
-    title: '대표 (Owner)',
+    id: 'manager',
+    tier: 3,
+    title: '실무자 (Manager)',
     usesSeat: true,
-    summary: '관리자(Admin) 권한 + 관리자 지정'
+    summary: '직원(Staff) 권한 + 팀 단위 보기·견적 필드 설정'
+  },
+  {
+    id: 'staff',
+    tier: 4,
+    title: '직원 (Staff)',
+    usesSeat: true,
+    summary: 'CRM 기본 권한 — 고객/영업 등록·조회·수정'
+  },
+  {
+    id: 'pending',
+    tier: 5,
+    title: '권한 대기 (Pending)',
+    usesSeat: false,
+    summary: 'CRM 미사용 (가입 승인 전 임시 보관 상태)'
   }
 ];
 
+const AVATAR_TONES = ['amber', 'purple', 'emerald', 'teal', 'blue', 'indigo', 'rose'];
+
+function memberInitials(name, email) {
+  const n = String(name || '').trim();
+  if (n) {
+    const parts = n.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2 && /^[A-Za-z]/.test(parts[0])) {
+      return `${parts[0][0] || ''}${parts[1][0] || ''}`.toUpperCase();
+    }
+    return n.slice(0, 1);
+  }
+  const e = String(email || '').trim();
+  return e ? e.slice(0, 1).toUpperCase() : '?';
+}
+
+function avatarToneForKey(key) {
+  const s = String(key || '');
+  let h = 0;
+  for (let i = 0; i < s.length; i += 1) h = (h + s.charCodeAt(i) * (i + 1)) % 997;
+  return AVATAR_TONES[h % AVATAR_TONES.length];
+}
+
+function normalizeRoleKey(role) {
+  const r = String(role || 'staff').trim();
+  if (r === 'owner') return 'owner';
+  if (r === 'admin' || r === 'senior') return 'admin';
+  if (r === 'manager' || r === 'practitioner' || r === 'contributor') return 'manager';
+  if (r === 'pending') return 'pending';
+  return 'staff';
+}
+
+function usesSeatRole(role) {
+  return normalizeRoleKey(role) !== 'pending';
+}
+
+function formatSubscriptionDateShort(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '—';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}.${m}.${day}`;
+  } catch {
+    return '—';
+  }
+}
+
 function SubscriptionRolePermissionGuide() {
   return (
-    <div className="company-subscription-role-guide" role="region" aria-label="역할별 권한 안내">
-      <h3 className="company-subscription-role-guide-title">역할별로 할 수 있는 일</h3>
-      <p className="company-subscription-role-guide-lead">
-        아래는 권한이 적은 순서입니다. 각 역할의 <strong>색 한 줄</strong>은 「바로 아래 단계 + 추가로 생기는 일」을 뜻합니다.
-        화면에 버튼이 없어도, 권한이 없으면 저장할 때 서버가 막습니다.
-      </p>
-      <div className="company-subscription-role-guide-list">
-        {CRM_ROLE_PERMISSION_GUIDE.map((block) => (
-          <div key={block.id} className={`company-subscription-role-block company-subscription-role-block--${block.id}`}>
-            <div className="company-subscription-role-block-head">
-              <span className="company-subscription-role-name">{block.title}</span>
-              {block.usesSeat ? (
-                <span className="company-subscription-role-badge">시트 사용</span>
-              ) : (
-                <span className="company-subscription-role-badge company-subscription-role-badge-muted">시트 미사용</span>
-              )}
+    <div className="co-ref-perm-list" role="region" aria-label="역할별 권한 안내">
+      {CRM_ROLE_PERMISSION_GUIDE.map((block) => (
+        <div key={block.id} className={`co-ref-perm-row co-ref-perm-row--${block.id}`}>
+          <div className="co-ref-perm-main">
+            <span className="co-ref-perm-tier" aria-hidden>{block.tier}</span>
+            <div>
+              <span className="co-ref-perm-name">{block.title}</span>
+              <p className="co-ref-perm-summary">{block.summary}</p>
             </div>
-            {block.summary ? (
-              <p className="company-subscription-role-summary">{block.summary}</p>
-            ) : null}
           </div>
-        ))}
-      </div>
+          {block.usesSeat ? (
+            <span className="co-ref-perm-seat">시트 사용</span>
+          ) : (
+            <span className="co-ref-perm-seat is-muted">시트 미사용</span>
+          )}
+        </div>
+      ))}
     </div>
   );
 }
@@ -236,6 +287,14 @@ export default function CompanyOverview() {
   const [companyProfileForm, setCompanyProfileForm] = useState(null);
   const [companyProfileSaving, setCompanyProfileSaving] = useState(false);
   const [companyProfileMessage, setCompanyProfileMessage] = useState('');
+  const [companyLogoFile, setCompanyLogoFile] = useState(null);
+  const [companyLogoPreview, setCompanyLogoPreview] = useState('');
+  const companyLogoInputRef = useRef(null);
+  const companyLogoObjectUrlRef = useRef(null);
+  const [workspaceHintOpen, setWorkspaceHintOpen] = useState(true);
+  const [memberQuickSearch, setMemberQuickSearch] = useState('');
+  const [memberDeptFilter, setMemberDeptFilter] = useState('');
+  const [memberRoleFilter, setMemberRoleFilter] = useState('');
   const [employeeColumnOrder, setEmployeeColumnOrder] = useState(() => {
     const saved = getSavedTemplate(COMPANY_OVERVIEW_EMPLOYEE_LIST_ID);
     return normalizeEmployeeColumnOrder(saved?.columnOrder, COMPANY_OVERVIEW_EMPLOYEE_COLUMN_KEYS);
@@ -616,8 +675,25 @@ export default function CompanyOverview() {
     setActionError('');
     void mind.removeNodes(removable).catch(() => { });
   }, [canManageRoles]);
+  const clearCompanyLogoObjectUrl = useCallback(() => {
+    if (companyLogoObjectUrlRef.current) {
+      URL.revokeObjectURL(companyLogoObjectUrlRef.current);
+      companyLogoObjectUrlRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => {
+    if (companyLogoObjectUrlRef.current) {
+      URL.revokeObjectURL(companyLogoObjectUrlRef.current);
+      companyLogoObjectUrlRef.current = null;
+    }
+  }, []);
+
   const openCompanyProfileEdit = useCallback(() => {
     setCompanyProfileMessage('');
+    clearCompanyLogoObjectUrl();
+    setCompanyLogoFile(null);
+    setCompanyLogoPreview(String(company.logo || '').trim() || NEXVIA_BRAND_LOGO);
     setCompanyProfileForm({
       name: String(company.name || '').trim(),
       businessNumber: String(company.businessNumber || '').trim(),
@@ -630,13 +706,34 @@ export default function CompanyOverview() {
       subBusinessNumber: String(company.subBusinessNumber || '').trim()
     });
     setCompanyProfileEditing(true);
-  }, [company]);
+  }, [company, clearCompanyLogoObjectUrl]);
 
   const cancelCompanyProfileEdit = useCallback(() => {
     setCompanyProfileEditing(false);
     setCompanyProfileForm(null);
     setCompanyProfileMessage('');
-  }, []);
+    setCompanyLogoFile(null);
+    clearCompanyLogoObjectUrl();
+    setCompanyLogoPreview('');
+  }, [clearCompanyLogoObjectUrl]);
+
+  const applyCompanyLogoFile = useCallback((file) => {
+    if (!file) return;
+    if (!String(file.type || '').startsWith('image/')) {
+      setActionError('이미지 파일만 선택할 수 있습니다.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setActionError('로고는 5MB 이하로 올려 주세요.');
+      return;
+    }
+    setActionError('');
+    clearCompanyLogoObjectUrl();
+    const url = URL.createObjectURL(file);
+    companyLogoObjectUrlRef.current = url;
+    setCompanyLogoFile(file);
+    setCompanyLogoPreview(url);
+  }, [clearCompanyLogoObjectUrl]);
 
   const saveCompanyProfile = useCallback(async () => {
     if (!companyProfileForm) return;
@@ -644,25 +741,70 @@ export default function CompanyOverview() {
     setCompanyProfileMessage('');
     setActionError('');
     try {
-      const res = await fetch(`${API_BASE}/companies/profile`, {
-        method: 'PATCH',
-        headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify(companyProfileForm)
-      });
-      const out = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(out.error || '소속 회사 정보 저장에 실패했습니다.');
+      let logoChanged = false;
+      let nextCompany = { ...companyProfileForm };
+
+      if (companyLogoFile) {
+        const formData = new FormData();
+        formData.append('image', companyLogoFile, companyLogoFile.name || 'company-logo.jpg');
+        const logoRes = await fetch(`${API_BASE}/companies/logo`, crmFetchInit({
+          method: 'POST',
+          body: formData
+        }));
+        const logoOut = await logoRes.json().catch(() => ({}));
+        if (!logoRes.ok) throw new Error(logoOut.error || '회사 로고 업로드에 실패했습니다.');
+        logoChanged = true;
+        if (logoOut.company) nextCompany = { ...nextCompany, ...logoOut.company };
+        else if (logoOut.logo) nextCompany = { ...nextCompany, logo: logoOut.logo };
+      }
+
+      const baseline = {
+        name: String(company.name || '').trim(),
+        businessNumber: String(company.businessNumber || '').trim(),
+        representativeName: String(company.representativeName || '').trim(),
+        representativeEmail: String(company.representativeEmail || '').trim(),
+        address: String(company.address || '').trim(),
+        addressDetail: String(company.addressDetail || '').trim(),
+        businessType: String(company.businessType || '').trim(),
+        businessItem: String(company.businessItem || '').trim(),
+        subBusinessNumber: String(company.subBusinessNumber || '').trim()
+      };
+      const fieldsDirty = Object.keys(baseline).some(
+        (key) => String(companyProfileForm[key] || '').trim() !== baseline[key]
+      );
+
+      if (fieldsDirty) {
+        const res = await fetch(`${API_BASE}/companies/profile`, {
+          method: 'PATCH',
+          headers: { ...getCrmAuthHeaders(), 'Content-Type': 'application/json' },
+          body: JSON.stringify(companyProfileForm)
+        });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(out.error || '소속 회사 정보 저장에 실패했습니다.');
+        if (out.company) nextCompany = { ...nextCompany, ...out.company };
+      } else if (!logoChanged) {
+        throw new Error('변경된 항목이 없습니다.');
+      }
+
       setData((prev) => (prev
-        ? { ...prev, company: { ...prev.company, ...(out.company || {}) } }
+        ? { ...prev, company: { ...prev.company, ...nextCompany } }
         : prev));
       setCompanyProfileEditing(false);
       setCompanyProfileForm(null);
-      setCompanyProfileMessage('저장되었습니다. 변경 내용은 공지사항에 등록되어 직원들이 확인할 수 있습니다.');
+      setCompanyLogoFile(null);
+      clearCompanyLogoObjectUrl();
+      setCompanyLogoPreview('');
+      setCompanyProfileMessage(
+        logoChanged && !fieldsDirty
+          ? '로고가 저장되었습니다. 변경 내용은 공지사항에 등록되어 직원들이 확인할 수 있습니다.'
+          : '저장되었습니다. 변경 내용은 공지사항에 등록되어 직원들이 확인할 수 있습니다.'
+      );
     } catch (e) {
       setActionError(e.message || '소속 회사 정보 저장에 실패했습니다.');
     } finally {
       setCompanyProfileSaving(false);
     }
-  }, [companyProfileForm]);
+  }, [company, companyLogoFile, companyProfileForm, clearCompanyLogoObjectUrl]);
   const isPendingUser = me.role === 'pending';
   /** 구독·시트 블록: Admin·Owner (레거시 senior 포함) */
   const canSeeSubscriptionSection = ['owner', 'admin', 'senior'].includes(me.role);
@@ -798,8 +940,77 @@ export default function CompanyOverview() {
       const allowed = new Set(selectedValues);
       rows = rows.filter((row) => allowed.has(getEmployeeCellText(row, key)));
     });
+    const q = memberQuickSearch.trim().toLowerCase();
+    if (q) {
+      rows = rows.filter((row) => {
+        const name = String(row.name || '').toLowerCase();
+        const email = String(row.email || '').toLowerCase();
+        return name.includes(q) || email.includes(q);
+      });
+    }
+    if (memberDeptFilter) {
+      rows = rows.filter((row) => String(row._deptLabel || '') === memberDeptFilter);
+    }
+    if (memberRoleFilter) {
+      rows = rows.filter((row) => normalizeRoleKey(row.role) === memberRoleFilter);
+    }
     return sortEmployeeRows(rows, employeeSortConfig);
-  }, [baseSortedEmployees, employeeActiveFilters, employeeSortConfig]);
+  }, [
+    baseSortedEmployees,
+    employeeActiveFilters,
+    employeeSortConfig,
+    memberDeptFilter,
+    memberQuickSearch,
+    memberRoleFilter
+  ]);
+
+  const memberDeptOptions = useMemo(() => {
+    const set = new Set();
+    baseSortedEmployees.forEach((row) => {
+      const label = String(row._deptLabel || '').trim();
+      if (label && label !== '—') set.add(label);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'ko'));
+  }, [baseSortedEmployees]);
+
+  const seatUsedCount = useMemo(
+    () => baseSortedEmployees.filter((e) => usesSeatRole(e.role)).length,
+    [baseSortedEmployees]
+  );
+
+  const seatLimitRaw = subscription?.seatCount;
+  const seatLimit =
+    seatLimitRaw == null || seatLimitRaw === ''
+      ? NaN
+      : Number(seatLimitRaw);
+  const seatPct =
+    Number.isFinite(seatLimit) && seatLimit > 0
+      ? Math.min(100, Math.round((seatUsedCount / seatLimit) * 100))
+      : 0;
+
+  const exportEmployeesCsv = useCallback(() => {
+    const headers = ['이름', '이메일', '부서', '직급', '연락처', 'CRM역할', '시트'];
+    const lines = [headers.join(',')];
+    filteredAndSortedEmployees.forEach((emp) => {
+      const cells = [
+        emp.name || '',
+        emp.email || '',
+        emp._deptLabel || '',
+        emp.rank || '',
+        emp.phone || '',
+        emp._roleLabel || '',
+        usesSeatRole(emp.role) ? '배정됨' : '미사용'
+      ].map((v) => `"${String(v).replace(/"/g, '""')}"`);
+      lines.push(cells.join(','));
+    });
+    const blob = new Blob([`\uFEFF${lines.join('\n')}`], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `nexvia-employees-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [filteredAndSortedEmployees]);
 
   const persistEmployeeColumnOrder = useCallback(async (nextOrder) => {
     try {
@@ -930,14 +1141,8 @@ export default function CompanyOverview() {
 
   if (loading) {
     return (
-      <div className="page company-overview-page">
-        <header className="page-header company-overview-header">
-          <h1 className="page-title">사내 현황</h1>
-          <div className="company-overview-header-tools">
-            <PageHeaderNotifyChat />
-          </div>
-        </header>
-        <div className="page-content company-overview-content">
+      <div className="page company-overview-page company-overview-page--ref">
+        <div className="page-content co-ref-content">
           <p className="company-overview-loading">불러오는 중...</p>
         </div>
       </div>
@@ -946,14 +1151,8 @@ export default function CompanyOverview() {
 
   if (error) {
     return (
-      <div className="page company-overview-page">
-        <header className="page-header company-overview-header">
-          <h1 className="page-title">사내 현황</h1>
-          <div className="company-overview-header-tools">
-            <PageHeaderNotifyChat />
-          </div>
-        </header>
-        <div className="page-content company-overview-content">
+      <div className="page company-overview-page company-overview-page--ref">
+        <div className="page-content co-ref-content">
           <p className="company-overview-error">{error}</p>
         </div>
       </div>
@@ -1012,220 +1211,325 @@ export default function CompanyOverview() {
   };
 
   return (
-    <div className="page company-overview-page">
-      <header className="page-header company-overview-header">
-        <h1 className="page-title">사내 현황</h1>
-        <div className="company-overview-header-tools">
-          <button
-            type="button"
-            className="company-overview-settings-btn"
-            onClick={() => setShowDriveSettingsModal(true)}
-            title="전체 공유 드라이브 설정"
-            aria-label="전체 공유 드라이브 설정"
-          >
-            <span className="material-symbols-outlined">settings</span>
-          </button>
-          <PageHeaderNotifyChat />
-        </div>
-      </header>
-      <div className="page-content company-overview-content">
-        <p className="company-overview-workspace-hint" role="note">
-          <GoogleWorkspaceChatPolicyHint />
-        </p>
-        {actionError && <p className="company-overview-error company-overview-inline-error">{actionError}</p>}
-        <section className="company-overview-card company-info-card">
-          <div className="company-info-card-head">
-            <h2 className="company-overview-section-title">
-              <span className="material-symbols-outlined">business</span>
-              소속 회사
-            </h2>
-            {canManageRoles && !companyProfileEditing ? (
-              <button
-                type="button"
-                className="co-company-profile-edit-btn"
-                onClick={openCompanyProfileEdit}
-                title="소속 회사 정보 수정"
-              >
-                <span className="material-symbols-outlined">edit</span>
-                수정
-              </button>
-            ) : null}
-          </div>
-          {companyProfileMessage ? (
-            <p className="company-overview-request-message co-company-profile-message" role="status">
-              {companyProfileMessage}
+    <div className="page company-overview-page company-overview-page--ref">
+      <div className="page-content co-ref-content">
+        <div className="co-ref-page-head">
+          <div className="co-ref-page-head-text">
+            <div className="co-ref-title-row">
+              <h1 className="co-ref-title">사내 현황</h1>
+              <span className="co-ref-suite-badge">Enterprise Suite</span>
+            </div>
+            <p className="co-ref-subtitle">
+              회사 기본 정보, 임직원 CRM 권한 계층 및 구독 워크스페이스 시트를 한눈에 관리합니다.
             </p>
-          ) : null}
-          {companyProfileEditing && companyProfileForm ? (
-            <div className="co-company-profile-edit">
-              <div className="co-company-profile-field">
-                <label htmlFor="co-profile-name">회사명</label>
-                <input
-                  id="co-profile-name"
-                  type="text"
-                  value={companyProfileForm.name}
-                  onChange={(e) => setCompanyProfileForm((f) => ({ ...f, name: e.target.value }))}
-                />
+          </div>
+          <div className="co-ref-page-actions">
+            <button type="button" className="co-ref-btn co-ref-btn--ghost" onClick={exportEmployeesCsv}>
+              <span className="material-symbols-outlined" aria-hidden>upload</span>
+              데이터 내보내기
+            </button>
+            <button
+              type="button"
+              className="co-ref-icon-btn"
+              onClick={() => setShowDriveSettingsModal(true)}
+              title="전체 공유 드라이브 설정"
+              aria-label="전체 공유 드라이브 설정"
+            >
+              <span className="material-symbols-outlined">settings</span>
+            </button>
+            <PageHeaderNotifyChat />
+          </div>
+        </div>
+
+        {workspaceHintOpen ? (
+          <div className="co-ref-alert" role="note">
+            <div className="co-ref-alert-icon" aria-hidden>
+              <span className="material-symbols-outlined">info</span>
+            </div>
+            <div className="co-ref-alert-body">
+              <div className="co-ref-alert-title-row">
+                <span>Google Workspace 보안 및 외부 초대 정책 안내</span>
+                <span className="co-ref-alert-chip">공지사항</span>
               </div>
-              <div className="co-company-profile-field">
-                <label htmlFor="co-profile-bn">사업자번호</label>
-                <input
-                  id="co-profile-bn"
-                  type="text"
-                  inputMode="numeric"
-                  value={companyProfileForm.businessNumber}
-                  onChange={(e) => setCompanyProfileForm((f) => ({
-                    ...f,
-                    businessNumber: formatBusinessNumberInput(e.target.value)
-                  }))}
-                  placeholder="000-00-00000"
-                />
-              </div>
-              <div className="co-company-profile-field">
-                <label htmlFor="co-profile-rep">대표자</label>
-                <input
-                  id="co-profile-rep"
-                  type="text"
-                  value={companyProfileForm.representativeName}
-                  onChange={(e) => setCompanyProfileForm((f) => ({ ...f, representativeName: e.target.value }))}
-                />
-              </div>
-              <div className="co-company-profile-field">
-                <label htmlFor="co-profile-rep-email">대표이사 이메일</label>
-                <input
-                  id="co-profile-rep-email"
-                  type="email"
-                  autoComplete="email"
-                  value={companyProfileForm.representativeEmail}
-                  onChange={(e) => setCompanyProfileForm((f) => ({ ...f, representativeEmail: e.target.value }))}
-                  placeholder="ceo@company.com"
-                />
-              </div>
-              <div className="co-company-profile-field">
-                <label htmlFor="co-profile-address">주소</label>
-                <input
-                  id="co-profile-address"
-                  type="text"
-                  value={companyProfileForm.address}
-                  onChange={(e) => setCompanyProfileForm((f) => ({ ...f, address: e.target.value }))}
-                />
-              </div>
-              <div className="co-company-profile-field">
-                <label htmlFor="co-profile-address-detail">상세주소</label>
-                <input
-                  id="co-profile-address-detail"
-                  type="text"
-                  value={companyProfileForm.addressDetail}
-                  onChange={(e) => setCompanyProfileForm((f) => ({ ...f, addressDetail: e.target.value }))}
-                />
-              </div>
-              <div className="co-company-profile-field">
-                <label htmlFor="co-profile-biz-type">업태</label>
-                <input
-                  id="co-profile-biz-type"
-                  type="text"
-                  value={companyProfileForm.businessType}
-                  onChange={(e) => setCompanyProfileForm((f) => ({ ...f, businessType: e.target.value }))}
-                  placeholder="예: 도매 및 소매업"
-                />
-              </div>
-              <div className="co-company-profile-field">
-                <label htmlFor="co-profile-biz-item">종목</label>
-                <input
-                  id="co-profile-biz-item"
-                  type="text"
-                  value={companyProfileForm.businessItem}
-                  onChange={(e) => setCompanyProfileForm((f) => ({ ...f, businessItem: e.target.value }))}
-                  placeholder="예: 컴퓨터 프로그램 개발·공급"
-                />
-              </div>
-              <div className="co-company-profile-field">
-                <label htmlFor="co-profile-sub-bn">종사업장 번호</label>
-                <input
-                  id="co-profile-sub-bn"
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={4}
-                  value={companyProfileForm.subBusinessNumber}
-                  onChange={(e) => setCompanyProfileForm((f) => ({
-                    ...f,
-                    subBusinessNumber: formatSubBusinessNumberInput(e.target.value)
-                  }))}
-                  placeholder="0001"
-                />
-              </div>
-              <div className="co-company-profile-actions">
-                <button
-                  type="button"
-                  className="co-company-profile-cancel-btn"
-                  onClick={cancelCompanyProfileEdit}
-                  disabled={companyProfileSaving}
-                >
-                  취소
-                </button>
-                <button
-                  type="button"
-                  className="co-company-profile-save-btn"
-                  onClick={saveCompanyProfile}
-                  disabled={companyProfileSaving}
-                >
-                  <span className="material-symbols-outlined">save</span>
-                  {companyProfileSaving ? '저장 중…' : '저장'}
-                </button>
+              <div className="co-ref-alert-text">
+                <GoogleWorkspaceChatPolicyHint />
               </div>
             </div>
-          ) : (
-            <dl className="company-info-list">
-              <div className="company-info-row">
-                <dt>회사명</dt>
-                <dd>{company.name || '—'}</dd>
+            <button
+              type="button"
+              className="co-ref-alert-close"
+              onClick={() => setWorkspaceHintOpen(false)}
+              aria-label="안내 닫기"
+            >
+              <span className="material-symbols-outlined">close</span>
+            </button>
+          </div>
+        ) : null}
+
+        {actionError ? (
+          <p className="company-overview-error company-overview-inline-error">{actionError}</p>
+        ) : null}
+
+        <section className="co-ref-bento" data-purpose="company-and-subscription">
+          <article className="co-ref-card co-ref-card--company">
+            <div className="co-ref-card-head">
+              <div className="co-ref-card-title-wrap">
+                <span className="co-ref-card-icon tone-blue" aria-hidden>
+                  <span className="material-symbols-outlined">apartment</span>
+                </span>
+                <div>
+                  <h2 className="co-ref-card-title">소속 회사 기본 정보</h2>
+                  <p className="co-ref-card-sub">법인 등록 및 세무 연동 정보</p>
+                </div>
               </div>
-              <div className="company-info-row">
-                <dt>사업자번호</dt>
-                <dd>{company.businessNumber || '—'}</dd>
+              {canManageRoles && !companyProfileEditing ? (
+                <button type="button" className="co-ref-btn co-ref-btn--soft" onClick={openCompanyProfileEdit}>
+                  <span className="material-symbols-outlined" aria-hidden>edit</span>
+                  수정하기
+                </button>
+              ) : null}
+            </div>
+            {companyProfileMessage ? (
+              <p className="company-overview-request-message co-company-profile-message" role="status">
+                {companyProfileMessage}
+              </p>
+            ) : null}
+            {companyProfileEditing && companyProfileForm ? (
+              <div className="co-company-profile-edit">
+                <div className="co-company-profile-field co-company-profile-field--logo">
+                  <span className="co-company-profile-logo-label">회사 로고</span>
+                  <div className="co-company-profile-logo-row">
+                    <button
+                      type="button"
+                      className="co-company-profile-logo-pick"
+                      onClick={() => companyLogoInputRef.current?.click()}
+                      disabled={companyProfileSaving}
+                      aria-label="회사 로고 변경"
+                    >
+                      {companyLogoPreview ? (
+                        <img src={companyLogoPreview} alt="" className="co-company-profile-logo-preview" />
+                      ) : (
+                        <span className="co-company-profile-logo-placeholder" aria-hidden>
+                          {(companyProfileForm.name || 'N').slice(0, 1)}
+                        </span>
+                      )}
+                    </button>
+                    <div className="co-company-profile-logo-actions">
+                      <input
+                        ref={companyLogoInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="co-company-profile-logo-input"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          e.target.value = '';
+                          if (file) applyCompanyLogoFile(file);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        className="co-ref-btn co-ref-btn--soft"
+                        onClick={() => companyLogoInputRef.current?.click()}
+                        disabled={companyProfileSaving}
+                      >
+                        <span className="material-symbols-outlined" aria-hidden>image</span>
+                        로고 선택
+                      </button>
+                      <p className="co-company-profile-logo-hint">이미지 5MB 이하 · 저장 시 반영</p>
+                    </div>
+                  </div>
+                </div>
+                <div className="co-company-profile-field">
+                  <label htmlFor="co-profile-name">회사명</label>
+                  <input
+                    id="co-profile-name"
+                    type="text"
+                    value={companyProfileForm.name}
+                    onChange={(e) => setCompanyProfileForm((f) => ({ ...f, name: e.target.value }))}
+                  />
+                </div>
+                <div className="co-company-profile-field">
+                  <label htmlFor="co-profile-bn">사업자번호</label>
+                  <input
+                    id="co-profile-bn"
+                    type="text"
+                    inputMode="numeric"
+                    value={companyProfileForm.businessNumber}
+                    onChange={(e) => setCompanyProfileForm((f) => ({
+                      ...f,
+                      businessNumber: formatBusinessNumberInput(e.target.value)
+                    }))}
+                    placeholder="000-00-00000"
+                  />
+                </div>
+                <div className="co-company-profile-field">
+                  <label htmlFor="co-profile-rep">대표자</label>
+                  <input
+                    id="co-profile-rep"
+                    type="text"
+                    value={companyProfileForm.representativeName}
+                    onChange={(e) => setCompanyProfileForm((f) => ({ ...f, representativeName: e.target.value }))}
+                  />
+                </div>
+                <div className="co-company-profile-field">
+                  <label htmlFor="co-profile-rep-email">대표이사 이메일</label>
+                  <input
+                    id="co-profile-rep-email"
+                    type="email"
+                    autoComplete="email"
+                    value={companyProfileForm.representativeEmail}
+                    onChange={(e) => setCompanyProfileForm((f) => ({ ...f, representativeEmail: e.target.value }))}
+                    placeholder="ceo@company.com"
+                  />
+                </div>
+                <div className="co-company-profile-field">
+                  <label htmlFor="co-profile-address">주소</label>
+                  <input
+                    id="co-profile-address"
+                    type="text"
+                    value={companyProfileForm.address}
+                    onChange={(e) => setCompanyProfileForm((f) => ({ ...f, address: e.target.value }))}
+                  />
+                </div>
+                <div className="co-company-profile-field">
+                  <label htmlFor="co-profile-address-detail">상세주소</label>
+                  <input
+                    id="co-profile-address-detail"
+                    type="text"
+                    value={companyProfileForm.addressDetail}
+                    onChange={(e) => setCompanyProfileForm((f) => ({ ...f, addressDetail: e.target.value }))}
+                  />
+                </div>
+                <div className="co-company-profile-field">
+                  <label htmlFor="co-profile-biz-type">업태</label>
+                  <input
+                    id="co-profile-biz-type"
+                    type="text"
+                    value={companyProfileForm.businessType}
+                    onChange={(e) => setCompanyProfileForm((f) => ({ ...f, businessType: e.target.value }))}
+                    placeholder="예: 도매 및 소매업"
+                  />
+                </div>
+                <div className="co-company-profile-field">
+                  <label htmlFor="co-profile-biz-item">종목</label>
+                  <input
+                    id="co-profile-biz-item"
+                    type="text"
+                    value={companyProfileForm.businessItem}
+                    onChange={(e) => setCompanyProfileForm((f) => ({ ...f, businessItem: e.target.value }))}
+                    placeholder="예: 컴퓨터 프로그램 개발·공급"
+                  />
+                </div>
+                <div className="co-company-profile-field">
+                  <label htmlFor="co-profile-sub-bn">종사업장 번호</label>
+                  <input
+                    id="co-profile-sub-bn"
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={4}
+                    value={companyProfileForm.subBusinessNumber}
+                    onChange={(e) => setCompanyProfileForm((f) => ({
+                      ...f,
+                      subBusinessNumber: formatSubBusinessNumberInput(e.target.value)
+                    }))}
+                    placeholder="0001"
+                  />
+                </div>
+                <div className="co-company-profile-actions">
+                  <button
+                    type="button"
+                    className="co-company-profile-cancel-btn"
+                    onClick={cancelCompanyProfileEdit}
+                    disabled={companyProfileSaving}
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    className="co-company-profile-save-btn"
+                    onClick={saveCompanyProfile}
+                    disabled={companyProfileSaving}
+                  >
+                    <span className="material-symbols-outlined">save</span>
+                    {companyProfileSaving ? '저장 중…' : '저장'}
+                  </button>
+                </div>
               </div>
-              <div className="company-info-row">
-                <dt>대표자</dt>
-                <dd>{company.representativeName || '—'}</dd>
+            ) : (
+              <div className="co-ref-meta-layout">
+                <div className="co-ref-meta-logo-slot">
+                  <CompanyOverviewLogo companyName={company.name} logoUrl={company.logo} />
+                </div>
+                <div className="co-ref-meta-grid">
+                  <div>
+                    <span className="co-ref-meta-label">회사명</span>
+                    <span className="co-ref-meta-value">{company.name || '—'}</span>
+                  </div>
+                  <div>
+                    <span className="co-ref-meta-label">사업자등록번호</span>
+                    <div className="co-ref-meta-inline">
+                      <span className="co-ref-meta-value is-mono">{company.businessNumber || '—'}</span>
+                      {company.businessNumber ? <span className="co-ref-chip tone-emerald">인증완료</span> : null}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="co-ref-meta-label">대표자 성명</span>
+                    <span className="co-ref-meta-value">{company.representativeName || '—'}</span>
+                  </div>
+                  <div className="co-ref-meta-span">
+                    <span className="co-ref-meta-label">대표 공식 이메일</span>
+                    <span className="co-ref-meta-value is-link is-mono">{company.representativeEmail || '—'}</span>
+                  </div>
+                  <div className="co-ref-meta-span">
+                    <span className="co-ref-meta-label">업태 / 종목</span>
+                    <span className="co-ref-meta-value">
+                      {[company.businessType, company.businessItem].filter(Boolean).join(' / ') || '—'}
+                    </span>
+                  </div>
+                  <div className="co-ref-meta-span">
+                    <span className="co-ref-meta-label">종사업장 번호</span>
+                    <span className="co-ref-meta-value is-muted">{company.subBusinessNumber || '- (해당사항 없음)'}</span>
+                  </div>
+                  <div className="co-ref-meta-address">
+                    <span className="co-ref-meta-label">사업장 주소</span>
+                    <div className="co-ref-meta-inline">
+                      <span className="material-symbols-outlined" aria-hidden>location_on</span>
+                      <span className="co-ref-meta-value">
+                        {[company.address, company.addressDetail].filter(Boolean).join(' ') || '—'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="company-info-row">
-                <dt>대표이사 이메일</dt>
-                <dd>{company.representativeEmail || '—'}</dd>
-              </div>
-              <div className="company-info-row">
-                <dt>주소</dt>
-                <dd>{company.address || '—'}</dd>
-              </div>
-              <div className="company-info-row">
-                <dt>상세주소</dt>
-                <dd>{company.addressDetail || '—'}</dd>
-              </div>
-              <div className="company-info-row">
-                <dt>업태</dt>
-                <dd>{company.businessType || '—'}</dd>
-              </div>
-              <div className="company-info-row">
-                <dt>종목</dt>
-                <dd>{company.businessItem || '—'}</dd>
-              </div>
-              <div className="company-info-row">
-                <dt>종사업장 번호</dt>
-                <dd>{company.subBusinessNumber || '—'}</dd>
-              </div>
-            </dl>
-          )}
+            )}
+          </article>
+
+          <CompanyBrandMapCard
+            companyName={company.name}
+            address={company.address}
+            addressDetail={company.addressDetail}
+            showSubscriptionLink={canSeeSubscriptionSection}
+          />
         </section>
 
-        {showHandoverConsentCard && (
+        {canSeeSubscriptionSection && subscription?.overLimit ? (
+          <div className="company-overview-seat-warning" role="status">
+            <span className="material-symbols-outlined">warning</span>
+            <span>
+              구독 인원({subscription.seatCount}명)보다 역할이 부여된 직원이 많습니다.{' '}
+              <Link to="/subscription">구독관리</Link>에서 인원을 늘리거나, 일부 직원을 권한 대기로 내려 주세요.
+            </span>
+          </div>
+        ) : null}
+
+        {showHandoverConsentCard ? (
           <section className="company-overview-card co-handover-pending-card" aria-labelledby="co-handover-title">
             <h2 id="co-handover-title" className="company-overview-section-title">
               <span className="material-symbols-outlined">swap_horiz</span>
               담당 이관 승인 대기
             </h2>
             <p className="co-handover-pending-lead">
-              동의가 필요한 관리자에게만 표시됩니다. 메일과 동일하게 <strong>인수·인계·대표(Owner)·동의·승인</strong> 정보를
-              보여 주며, 아래 버튼으로 메일의 「동의하기」와 같은 반영을 할 수 있습니다. 여러 건 묶음은{' '}
-              <strong>전체 동의하기 · 반영</strong>으로 한 번에 처리됩니다.
+              동의가 필요한 관리자에게만 표시됩니다. 아래 버튼으로 메일의 「동의하기」와 같은 반영을 할 수 있습니다.
             </p>
             {handoverActionError ? (
               <p className="company-overview-error company-overview-inline-error co-handover-inline-error" role="alert">
@@ -1250,37 +1554,23 @@ export default function CompanyOverview() {
                     <div className="co-handover-group-people" role="group" aria-label="인수·인계·대표·동의">
                       <div className="co-handover-ppl-cell">
                         <span className="co-handover-ppl-k">인수자</span>
-                        <span className="co-handover-ppl-hint">(새 담당)</span>
                         <strong className="co-handover-ppl-v">{g.toName || '—'}</strong>
                       </div>
                       <div className="co-handover-ppl-cell">
                         <span className="co-handover-ppl-k">인계자</span>
-                        <span className="co-handover-ppl-hint">(기존 담당)</span>
                         <strong className="co-handover-ppl-v">{g.fromName || '—'}</strong>
                       </div>
                       <div className="co-handover-ppl-cell">
                         <span className="co-handover-ppl-k">대표 (Owner)</span>
-                        <span className="co-handover-ppl-hint">(회사)</span>
                         <strong className="co-handover-ppl-v">{g.ownerName || '—'}</strong>
                       </div>
                       <div className="co-handover-ppl-cell">
                         <span className="co-handover-ppl-k">동의·승인</span>
-                        <span className="co-handover-ppl-hint">(관리자)</span>
                         <strong className="co-handover-ppl-v co-handover-ppl-consent">
                           {formatHandoverConsentNames(g.consentRequiredUsers)}
                         </strong>
                       </div>
                     </div>
-                    <p className="co-handover-group-requester">
-                      신청자: <strong>{g.requesterName || '—'}</strong>
-                    </p>
-                    {g.items && g.items.length > 0 ? (
-                      <ul className="co-handover-group-targets" aria-label="신청 대상 항목">
-                        {g.items.map((it) => (
-                          <li key={String(it.id)}>{it.targetLabel || '—'}</li>
-                        ))}
-                      </ul>
-                    ) : null}
                     <div className="co-handover-approve-row">
                       <button
                         type="button"
@@ -1304,24 +1594,56 @@ export default function CompanyOverview() {
               </ul>
             )}
           </section>
-        )}
+        ) : null}
 
-        <section className="company-overview-card employees-card">
-          <h2 className="company-overview-section-title">
-            <span className="material-symbols-outlined">group</span>
-            직원 리스트
-            <span className="company-overview-count">({filteredAndSortedEmployees.length}명)</span>
-          </h2>
-          {canSeeSubscriptionSection && subscription?.overLimit && (
-            <div className="company-overview-seat-warning" role="status">
-              <span className="material-symbols-outlined">warning</span>
-              <span>
-                구독 인원({subscription.seatCount}명)보다 역할이 부여된 직원이 많습니다. 구독에서 인원을 늘리거나,
-                일부 직원을 권한 대기로 내려 주세요.
+        <section className="co-ref-card co-ref-members" data-purpose="member-table">
+          <div className="co-ref-members-toolbar">
+            <div className="co-ref-card-title-wrap">
+              <span className="co-ref-card-icon tone-indigo" aria-hidden>
+                <span className="material-symbols-outlined">group</span>
               </span>
+              <div>
+                <div className="co-ref-title-row">
+                  <h3 className="co-ref-card-title">직원 및 권한 목록</h3>
+                  <span className="co-ref-count-pill">총 {filteredAndSortedEmployees.length}명</span>
+                </div>
+                <p className="co-ref-card-sub">역할별 CRM 접근 인가 권한 및 계정 프로필 관리</p>
+              </div>
             </div>
-          )}
-          {isPendingUser && (
+            <div className="co-ref-members-filters">
+              <input
+                className="co-ref-input"
+                type="search"
+                value={memberQuickSearch}
+                onChange={(e) => setMemberQuickSearch(e.target.value)}
+                placeholder="이름/이메일 검색"
+              />
+              <select
+                className="co-ref-select"
+                value={memberDeptFilter}
+                onChange={(e) => setMemberDeptFilter(e.target.value)}
+              >
+                <option value="">모든 부서</option>
+                {memberDeptOptions.map((d) => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+              <select
+                className="co-ref-select"
+                value={memberRoleFilter}
+                onChange={(e) => setMemberRoleFilter(e.target.value)}
+              >
+                <option value="">모든 역할</option>
+                <option value="owner">대표 (Owner)</option>
+                <option value="admin">관리자 (Admin)</option>
+                <option value="manager">실무자 (Manager)</option>
+                <option value="staff">직원 (Staff)</option>
+                <option value="pending">권한 대기 (Pending)</option>
+              </select>
+            </div>
+          </div>
+
+          {isPendingUser ? (
             <div className="company-overview-approval-box">
               <p className="company-overview-approval-text">
                 권한 대기 상태입니다. 아래 대표 또는 관리자 중 메일을 받을 사람을 선택한 뒤 승인 요청을 보내세요.
@@ -1334,324 +1656,218 @@ export default function CompanyOverview() {
               >
                 {requestSending ? '요청 메일 전송 중...' : '선택한 인원에게 권한 요청 메일 보내기'}
               </button>
-              {requestMessage && <p className="company-overview-request-message">{requestMessage}</p>}
+              {requestMessage ? <p className="company-overview-request-message">{requestMessage}</p> : null}
             </div>
-          )}
+          ) : null}
+
           {filteredAndSortedEmployees.length === 0 ? (
             <p className="company-overview-empty">등록된 직원이 없습니다.</p>
           ) : (
-            <div className="company-overview-table-wrap">
-              <table className="company-overview-table">
+            <div className="co-ref-table-wrap">
+              <table className="co-ref-table">
                 <thead>
                   <tr>
-                    {orderedEmployeeColumns.map((col) => {
-                      const key = col.key;
-                      const isDragOver = employeeDragOverKey === key;
-                      const isDragging = employeeDraggingKey === key;
-                      return (
-                        <th
-                          key={`head-${key}`}
-                          onDragOver={(e) => handleEmployeeHeaderDragOver(e, key)}
-                          onDrop={() => handleEmployeeHeaderDrop(key)}
-                          onDragEnd={() => { setEmployeeDraggingKey(''); setEmployeeDragOverKey(''); }}
-                          className={[
-                            'company-overview-table-head-draggable',
-                            isDragOver ? 'company-overview-table-head-drag-over' : '',
-                            isDragging ? 'company-overview-table-head-dragging' : ''
-                          ].filter(Boolean).join(' ')}
-                        >
-                          <span
-                            className="company-overview-table-drag-handle"
-                            draggable
-                            onDragStart={() => setEmployeeDraggingKey(key)}
-                            title="드래그해서 열 순서 변경"
-                            aria-label={`${col.label} 순서 변경`}
-                          >
-                            <span className="material-symbols-outlined" aria-hidden>drag_indicator</span>
-                          </span>
-                          <button
-                            type="button"
-                            className="company-overview-table-head-filter-trigger"
-                            onClick={(e) => openEmployeeFilter(key, { x: e.clientX, y: e.clientY })}
-                            title="정렬/필터"
-                          >
-                            <span className="company-overview-table-head-label">{col.label}</span>
-                            {employeeSortConfig.key === key && employeeSortConfig.dir ? (
-                              <span className="material-symbols-outlined company-overview-table-head-sort-icon" aria-hidden>
-                                {employeeSortConfig.dir === 'asc' ? 'arrow_upward' : 'arrow_downward'}
-                              </span>
-                            ) : null}
-                            {Array.isArray(employeeActiveFilters[key]) && employeeActiveFilters[key].length > 0 ? (
-                              <span className="material-symbols-outlined company-overview-table-head-filter-icon" aria-hidden>filter_alt</span>
-                            ) : null}
-                          </button>
-                          {employeeOpenFilterKey === key ? (
-                            <div
-                              ref={employeeFilterMenuRef}
-                              className="company-overview-table-filter-menu"
-                              style={{ top: `${employeeFilterMenuPosition.top}px`, left: `${employeeFilterMenuPosition.left}px` }}
-                              onMouseDown={(e) => e.stopPropagation()}
-                            >
-                              <div className="company-overview-table-filter-menu-actions">
-                                <button type="button" onClick={() => setEmployeeSortConfig({ key, dir: 'asc' })} className="company-overview-table-filter-btn">오름차순 정렬</button>
-                                <button type="button" onClick={() => setEmployeeSortConfig({ key, dir: 'desc' })} className="company-overview-table-filter-btn">내림차순 정렬</button>
-                                <button
-                                  type="button"
-                                  onClick={() => setEmployeeSortConfig((prev) => (prev.key === key ? { key: '', dir: '' } : prev))}
-                                  className="company-overview-table-filter-btn"
-                                >
-                                  정렬 해제
-                                </button>
-                              </div>
-                              <input
-                                type="search"
-                                className="company-overview-table-filter-search"
-                                value={employeeFilterSearch}
-                                onChange={(e) => setEmployeeFilterSearch(e.target.value)}
-                                placeholder="검색"
-                              />
-                              <div className="company-overview-table-filter-options">
-                                {(employeeFilterOptionsByKey[key] || [])
-                                  .filter((v) => v.toLowerCase().includes(employeeFilterSearch.trim().toLowerCase()))
-                                  .map((option) => (
-                                    <label key={`f-${key}-${option || '__empty'}`} className="company-overview-table-filter-option">
-                                      <input
-                                        type="checkbox"
-                                        checked={employeeDraftSelected.includes(option)}
-                                        onChange={() => setEmployeeDraftSelected((prev) => (
-                                          prev.includes(option) ? prev.filter((v) => v !== option) : [...prev, option]
-                                        ))}
-                                      />
-                                      <span>{option || '(빈 값)'}</span>
-                                    </label>
-                                  ))}
-                              </div>
-                              <div className="company-overview-table-filter-footer">
-                                <button type="button" onClick={applyEmployeeFilter} className="company-overview-table-filter-ok">확인</button>
-                                <button type="button" onClick={() => clearEmployeeFilter(key)} className="company-overview-table-filter-cancel">전체</button>
-                                <button type="button" onClick={() => setEmployeeOpenFilterKey('')} className="company-overview-table-filter-cancel">취소</button>
-                              </div>
-                            </div>
-                          ) : null}
-                        </th>
-                      );
-                    })}
-                    {isPendingUser && <th>선택</th>}
+                    <th scope="col">구성원</th>
+                    <th scope="col">소속 부서 (조직)</th>
+                    <th scope="col">직급</th>
+                    <th scope="col">연락처</th>
+                    <th scope="col">CRM 관리 역할</th>
+                    <th scope="col">시트 상태</th>
+                    <th scope="col" className="is-right">설정</th>
+                    {isPendingUser ? <th scope="col">선택</th> : null}
                   </tr>
                 </thead>
                 <tbody>
                   {filteredAndSortedEmployees.map((emp) => {
+                    const roleKey = normalizeRoleKey(emp.role);
+                    const isSelf = String(emp.id) === String(me.id);
                     return (
-                    <tr
-                      key={emp.id}
-                      className={canManageRoles ? 'company-overview-table-row-editable' : ''}
-                      onClick={() => {
-                        if (!canManageRoles) return;
-                        openMemberEditModal(emp);
-                      }}
-                    >
-                      {orderedEmployeeColumns.map((col) => {
-                        if (col.key === 'name') {
-                          return (
-                            <td key={`${emp.id}-${col.key}`}>
-                              <div className="company-overview-name-with-badge">
-                                <span>{emp.name || '—'}</span>
+                      <tr key={emp.id}>
+                        <td>
+                          <div className="co-ref-member-cell">
+                            {String(emp.avatar || '').trim() ? (
+                              <img
+                                src={String(emp.avatar).trim()}
+                                alt=""
+                                className="co-ref-avatar co-ref-avatar--photo"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                  const fallback = e.currentTarget.nextElementSibling;
+                                  if (fallback) fallback.hidden = false;
+                                }}
+                              />
+                            ) : null}
+                            <span
+                              className={`co-ref-avatar tone-${avatarToneForKey(emp.id || emp.email)}`}
+                              aria-hidden
+                              hidden={Boolean(String(emp.avatar || '').trim())}
+                            >
+                              {memberInitials(emp.name, emp.email)}
+                            </span>
+                            <div>
+                              <div className="co-ref-member-name-row">
+                                <span className="co-ref-member-name">{emp.name || '—'}</span>
+                                {roleKey === 'owner' ? (
+                                  <span className="material-symbols-outlined co-ref-owner-star" aria-label="대표">star</span>
+                                ) : null}
+                                {isSelf ? <span className="co-ref-self-chip">본인</span> : null}
                                 {emp._isDeptLeader ? (
-                                  <span className="company-overview-name-leader-mark" title="리더" aria-label="리더">
-                                    <span className="material-symbols-outlined" aria-hidden>star</span>
-                                  </span>
+                                  <span className="co-ref-leader-chip" title="리더">리더</span>
                                 ) : null}
                               </div>
-                            </td>
-                          );
-                        }
-                        if (col.key === 'email') return <td key={`${emp.id}-${col.key}`}>{emp.email || '—'}</td>;
-                        if (col.key === 'phone') return <td key={`${emp.id}-${col.key}`}>{emp.phone || '—'}</td>;
-                        if (col.key === 'department') return <td key={`${emp.id}-${col.key}`}>{emp._deptLabel || '—'}</td>;
-                        if (col.key === 'rank') return <td key={`${emp.id}-${col.key}`}>{emp.rank || '—'}</td>;
-                        if (col.key === 'title') return <td key={`${emp.id}-${col.key}`}>{emp.title || '—'}</td>;
-                        if (col.key === 'crmRole') {
-                          return (
-                            <td key={`${emp.id}-${col.key}`}>
-                              <span className={`company-overview-badge role-${emp.role || 'staff'}`}>
-                                {emp._roleLabel}
-                              </span>
-                            </td>
-                          );
-                        }
-                        return <td key={`${emp.id}-${col.key}`}>{getEmployeeCellText(emp, col.key) || '—'}</td>;
-                      })}
-                      {isPendingUser && (
-                        <td onClick={(e) => e.stopPropagation()}>
-                          <label
-                            className="company-overview-approval-check"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedApproverIds.includes(String(emp.id))}
-                              onChange={() => toggleApproverSelection(emp.id)}
-                              disabled={requestSending}
-                            />
-                            <span>선택</span>
-                          </label>
+                              <span className="co-ref-member-email">{emp.email || '—'}</span>
+                            </div>
+                          </div>
                         </td>
-                      )}
-                    </tr>
+                        <td>{emp._deptLabel || '—'}</td>
+                        <td className={!emp.rank ? 'is-muted' : ''}>{emp.rank || '-'}</td>
+                        <td className="is-mono">{emp.phone || '—'}</td>
+                        <td>
+                          <span className={`co-ref-role-badge role-${roleKey}`}>
+                            <span className="co-ref-role-dot" aria-hidden />
+                            {emp._roleLabel}
+                          </span>
+                        </td>
+                        <td>
+                          {usesSeatRole(emp.role) ? (
+                            <span className="co-ref-seat-badge">
+                              <span className="material-symbols-outlined" aria-hidden>check</span>
+                              시트 배정됨
+                            </span>
+                          ) : (
+                            <span className="co-ref-seat-badge is-muted">시트 미사용</span>
+                          )}
+                        </td>
+                        <td className="is-right">
+                          {canManageRoles ? (
+                            <button
+                              type="button"
+                              className="co-ref-row-edit"
+                              onClick={() => openMemberEditModal(emp)}
+                            >
+                              수정
+                            </button>
+                          ) : (
+                            <span className="is-muted">—</span>
+                          )}
+                        </td>
+                        {isPendingUser ? (
+                          <td onClick={(e) => e.stopPropagation()}>
+                            <label className="company-overview-approval-check" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={selectedApproverIds.includes(String(emp.id))}
+                                onChange={() => toggleApproverSelection(emp.id)}
+                                disabled={requestSending}
+                              />
+                              <span>선택</span>
+                            </label>
+                          </td>
+                        ) : null}
+                      </tr>
                     );
                   })}
                 </tbody>
               </table>
             </div>
           )}
+          <div className="co-ref-table-foot">
+            <span>
+              전체 {baseSortedEmployees.length}명 중 {filteredAndSortedEmployees.length}명 표시됨
+              (활성 시트 {seatUsedCount}개)
+            </span>
+          </div>
         </section>
 
-        <section className="company-overview-card">
-          <h2 className="company-overview-section-title">
-            <span className="material-symbols-outlined">account_tree</span>
-            조직도
-            {orgSaving ? <span className="company-overview-count">(저장 중...)</span> : null}
-          </h2>
-          {orgChart ? (
-            <div className="co-org-wrap">
-              {!canManageRoles ? (
-                <p className="co-org-readonly-hint">조직도 편집·저장은 대표(Owner) 또는 관리자(Admin)만 가능합니다.</p>
-              ) : null}
-              <div className="co-org-toolbar">
-                <div className="co-org-toolbar-mind-actions" role="group" aria-label="조직 노드 추가·삭제">
-                  <button
-                    type="button"
-                    className="co-org-mind-icon-btn"
-                    onClick={handleOrgMindAddChild}
-                    disabled={!canManageRoles}
-                    title={
-                      canManageRoles
-                        ? '선택한 노드 아래에 하위 조직 추가'
-                        : '대표 또는 관리자만 편집할 수 있습니다.'
-                    }
-                    aria-label="하위 조직 추가"
-                  >
-                    <span className="material-symbols-outlined" aria-hidden>add</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="co-org-mind-icon-btn"
-                    onClick={handleOrgMindRemove}
-                    disabled={!canManageRoles}
-                    title={
-                      canManageRoles
-                        ? '선택한 노드 삭제 (최상위 제외)'
-                        : '대표 또는 관리자만 편집할 수 있습니다.'
-                    }
-                    aria-label="선택 노드 삭제"
-                  >
-                    <span className="material-symbols-outlined" aria-hidden>remove</span>
-                  </button>
+        <section className="co-ref-bottom-grid" data-purpose="org-and-permissions">
+          <article className="co-ref-card co-ref-card--org">
+            <div className="co-ref-card-head">
+              <div className="co-ref-card-title-wrap">
+                <span className="co-ref-card-icon tone-blue" aria-hidden>
+                  <span className="material-symbols-outlined">account_tree</span>
+                </span>
+                <div>
+                  <h3 className="co-ref-card-title">사내 조직도 (Hierarchy)</h3>
+                  <p className="co-ref-card-sub">본부 및 산하 연구 조직 계통도</p>
                 </div>
+              </div>
+              <div className="co-org-toolbar-mind-actions" role="group" aria-label="조직 노드 추가·삭제">
                 <button
                   type="button"
-                  className="co-org-save-btn"
-                  onClick={handleSaveMindOrgChart}
-                  disabled={!canManageRoles || orgSaving}
-                  title={canManageRoles ? undefined : '대표 또는 관리자만 저장할 수 있습니다.'}
+                  className="co-org-mind-icon-btn"
+                  onClick={handleOrgMindAddChild}
+                  disabled={!canManageRoles}
+                  title={canManageRoles ? '하위 조직 추가' : '대표 또는 관리자만 편집할 수 있습니다.'}
+                  aria-label="하위 조직 추가"
                 >
-                  <span className="material-symbols-outlined" aria-hidden>
-                    {orgSaving ? 'hourglass_empty' : 'save'}
-                  </span>
-                  {orgSaving ? '저장 중...' : '조직도 저장'}
+                  <span className="material-symbols-outlined" aria-hidden>add</span>
+                </button>
+                <button
+                  type="button"
+                  className="co-org-mind-icon-btn"
+                  onClick={handleOrgMindRemove}
+                  disabled={!canManageRoles}
+                  title={canManageRoles ? '선택 노드 삭제' : '대표 또는 관리자만 편집할 수 있습니다.'}
+                  aria-label="선택 노드 삭제"
+                >
+                  <span className="material-symbols-outlined" aria-hidden>remove</span>
                 </button>
               </div>
-              <div
-                ref={mindContainerRef}
-                className={`co-org-mind${!canManageRoles ? ' co-org-mind--readonly' : ''}`}
-              />
             </div>
-          ) : (
-            <p className="company-overview-empty">조직도 데이터를 불러오는 중입니다.</p>
-          )}
-        </section>
-
-        {canSeeSubscriptionSection && (
-          <section className="company-overview-card company-subscription-card" aria-labelledby="co-sub-title">
-            <h2 id="co-sub-title" className="company-overview-section-title">
-              <span className="material-symbols-outlined">payments</span>
-              구독 · 시트 (역할 인원)
-            </h2>
-            <p className="company-subscription-visibility-note">
-              이 섹션은 관리자(Admin) 이상만 볼 수 있습니다.
-            </p>
-            {subActive ? (
-              <dl className="company-info-list company-subscription-dl">
-                <div className="company-info-row">
-                  <dt>구독 이용 인원</dt>
-                  <dd>{subscription.seatCount != null ? `${subscription.seatCount}명` : '—'}</dd>
-                </div>
-                <div className="company-info-row">
-                  <dt>역할 배정 사용</dt>
-                  <dd>
-                    {subscription.activeRoleCount != null ? `${subscription.activeRoleCount}명` : '—'}
-                    <span className="company-subscription-slots">
-                      {' '}(남은 시트 {typeof seatsRemaining === 'number' ? `${seatsRemaining}명` : '—'})
-                    </span>
-                  </dd>
-                </div>
-                <div className="company-info-row">
-                  <dt>월 정기 금액(안내)</dt>
-                  <dd>
-                    {subscription.planAmount != null
-                      ? `${Number(subscription.planAmount).toLocaleString('ko-KR')}원`
-                      : '—'}
-                  </dd>
-                </div>
-                <div className="company-info-row">
-                  <dt>다음 정기 결제 예정</dt>
-                  <dd>{formatSubscriptionDate(subscription.nextBillingAt)}</dd>
-                </div>
-              </dl>
-            ) : null}
-            <SubscriptionRolePermissionGuide />
-            {subActive ? (
-              <div className="company-subscription-hint-block">
-                <p className="company-subscription-hint">
-                  <strong>구독 시트</strong>는 <strong>대표·관리자·실무자·직원</strong> 네 가지 역할을 쓰는 계정 수의 합이, 구독에 포함된
-                  이용 인원(시트)을 넘지 않아야 합니다. <strong>권한 대기(Pending)</strong>는 시트를 쓰지 않으므로, 초대만 된 상태로
-                  두거나 시트가 꽉 찼을 때 임시로 내려 두기에 적합합니다.
-                </p>
-                <ul className="company-subscription-hint-list">
-                  <li>
-                    역할을 권한 대기에서 직원·실무자·관리자·대표 쪽으로 올리면, 그 계정이 시트를 &quot;쓰는&quot; 역할이 되는 한
-                    사용 중인 시트 수가 늘어납니다. 반대로 Pending으로 내리면 해당 칸이 비워집니다.
-                  </li>
-                  <li>
-                    대표만 다른 계정을 <strong>관리자(Admin)</strong>로 지정할 수 있습니다. 관리자는 그 아래 역할(실무자·직원·대기) 변경과
-                    조직도 편집은 할 수 있습니다.
-                  </li>
-                  <li>
-                    위 &quot;역할별로 할 수 있는 일&quot;에서 기능 범위를 확인한 뒤, 필요한 만큼만 시트를 쓰는 역할로 배정하면 됩니다.
-                  </li>
-                </ul>
-                {noSeatForPromotion ? (
-                  <p className="company-subscription-hint company-subscription-hint-warn">
-                    현재 남은 시트가 없습니다. 권한 대기 중인 계정을 직원·실무자·관리자 등으로 올리려면, 구독 인원을 늘리거나
-                    다른 직원을 먼저 권한 대기로 내린 뒤 시트를 확보해 주세요.
-                  </p>
+            {orgChart ? (
+              <div className="co-org-wrap">
+                {!canManageRoles ? (
+                  <p className="co-org-readonly-hint">조직도 편집·저장은 대표(Owner) 또는 관리자(Admin)만 가능합니다.</p>
                 ) : null}
+                <div
+                  ref={mindContainerRef}
+                  className={`co-org-mind${!canManageRoles ? ' co-org-mind--readonly' : ''}`}
+                />
+                <div className="co-ref-org-foot">
+                  <span>드래그하여 부서 간 상하 체계를 재배치할 수 있습니다.</span>
+                  <button
+                    type="button"
+                    className="co-org-save-btn"
+                    onClick={handleSaveMindOrgChart}
+                    disabled={!canManageRoles || orgSaving}
+                    title={canManageRoles ? undefined : '대표 또는 관리자만 저장할 수 있습니다.'}
+                  >
+                    <span className="material-symbols-outlined" aria-hidden>
+                      {orgSaving ? 'hourglass_empty' : 'save'}
+                    </span>
+                    {orgSaving ? '저장 중...' : '조직도 저장'}
+                  </button>
+                </div>
               </div>
             ) : (
-              <div className="company-subscription-hint-block">
-                <p className="company-subscription-hint">
-                  활성 구독이 없으면 시트 한도를 시스템이 알 수 없어, 위와 같은 인원 제한 안내가 적용되지 않을 수 있습니다.
-                  구독이 연동되면 <strong>대표·관리자·실무자·직원</strong> 역할을 가진 인원 수가 구독 이용 인원을 넘지 않도록 맞춰야 합니다.
-                </p>
-                <p className="company-subscription-hint company-subscription-hint-follow">
-                  역할별 권한은 위 &quot;역할별로 할 수 있는 일&quot; 안내를 참고하세요. Pending은 시트를 쓰지 않으며, 승인 후 직원으로
-                  시작하는 흐름이 일반적입니다.
-                </p>
-              </div>
+              <p className="company-overview-empty">조직도 데이터를 불러오는 중입니다.</p>
             )}
-          </section>
-        )}
+          </article>
+
+          <article className="co-ref-card co-ref-card--perms">
+            <div className="co-ref-card-head">
+              <div className="co-ref-card-title-wrap">
+                <span className="co-ref-card-icon tone-emerald" aria-hidden>
+                  <span className="material-symbols-outlined">verified_user</span>
+                </span>
+                <div>
+                  <h3 className="co-ref-card-title">역할별 CRM 권한 체계</h3>
+                  <p className="co-ref-card-sub">하위 등급의 권한을 상위 등급이 상속</p>
+                </div>
+              </div>
+            </div>
+            <SubscriptionRolePermissionGuide />
+            <div className="co-ref-perm-footnote">
+              <div className="co-ref-perm-footnote-title">
+                <span className="material-symbols-outlined" aria-hidden>info</span>
+                시트 배정 정책
+              </div>
+              구독 시트는 &apos;대표·관리자·실무자·직원&apos; 4개 역할을 배정받는 계정 수의 합입니다. 남은 시트 내에서 자유롭게 승급할 수 있으며 권한 대기로 강등 시 시트가 즉시 환원됩니다.
+            </div>
+          </article>
+        </section>
       </div>
+      
 
       {showDriveSettingsModal && (
         <CompanyDriveSettingsModal
@@ -1662,7 +1878,6 @@ export default function CompanyOverview() {
           }}
         />
       )}
-
       {memberEditOpen && memberEditForm ? (
         <div className="company-member-edit-overlay" role="dialog" aria-modal="true" aria-labelledby="company-member-edit-title">
           <div className="company-member-edit-modal" onClick={(e) => e.stopPropagation()}>

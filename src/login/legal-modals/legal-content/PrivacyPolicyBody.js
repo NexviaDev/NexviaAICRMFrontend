@@ -39,7 +39,6 @@ export default function PrivacyPolicyBody() {
       <ul>
         <li>연락처·조직 정보(Google Contacts 등 연동 시)</li>
         <li>캘린더 일정 정보(Google Calendar 연동 시)</li>
-        <li>할 일 정보(Google Tasks 연동 시)</li>
         <li>
           Google Drive 상의 파일·폴더에 관한 정보(이용자가 서비스에 공유·연결한 범위 내, 파일명·식별자·내용 등 기능에 따라
           상이)
@@ -54,7 +53,7 @@ export default function PrivacyPolicyBody() {
       <ul>
         <li>회원 식별, 로그인(이메일·일회용 인증번호, OAuth 등) 및 서비스 제공·유지·개선</li>
         <li>이메일을 통한 인증번호 발송, 회사명·사업자번호 등으로 로그인 아이디 확인 등 계정 지원</li>
-        <li>이용자가 연동을 선택한 경우에 한하여 Google API(Calendar, Drive, Contacts, Tasks 등) 기능 제공에 필요한 범위에서의 이용</li>
+        <li>이용자가 연동을 선택한 경우에 한하여 Google API(Calendar, Drive, Contacts 등) 기능 제공에 필요한 범위에서의 이용</li>
         <li>보안, 부정 이용 방지, 문의 응대, 법적 의무 이행</li>
       </ul>
 
@@ -168,12 +167,12 @@ export default function PrivacyPolicyBody() {
       <p>Google 사용자 데이터는 서비스 제공에 필요한 범위에서만 아래와 같이 공유·이전·공개될 수 있습니다.</p>
       <ul>
         <li>
-          <strong>Google LLC (미국)</strong>: OAuth 인증, Calendar·Drive·Contacts·Tasks 등 API 호출을 위해
+          <strong>Google LLC (미국)</strong>: OAuth 인증, Calendar·Drive·Contacts 등 API 호출을 위해
           Google과 데이터가 송수신됩니다. 이는 연동 기능 자체에 필요한 통신입니다.
         </li>
         <li>
           <strong>클라우드·인프라 수탁사(처리위탁)</strong>: 서비스 호스팅·DB 저장·백업을 위해 Google 사용자 데이터(토큰,
-          연동으로 가져온 일정·연락처·할 일 등)가 다음 수탁사의 시설에서 처리·보관될 수 있습니다. 수탁사는 계약 등으로
+          연동으로 가져온 일정·연락처 등)가 다음 수탁사의 시설에서 처리·보관될 수 있습니다. 수탁사는 계약 등으로
           기밀·보안 의무를 부담합니다.
           <ul>
             <li>MongoDB, Inc. — MongoDB Atlas (데이터베이스, 미국 등 해외 리전 가능)</li>

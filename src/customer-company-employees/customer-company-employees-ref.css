@@ -1,0 +1,789 @@
+/* customer-company-employees ref layout (sidebar excluded — app chrome provides it) */
+
+.customer-company-employees-page--ref {
+  --cce-bg: #f8fafc;
+  --cce-surface: #ffffff;
+  --cce-border: #e2e8f0;
+  --cce-border-strong: #cbd5e1;
+  --cce-text: #0f172a;
+  --cce-muted: #64748b;
+  --cce-subtle: #94a3b8;
+  --cce-brand: #2563eb;
+  --cce-brand-soft: #eff6ff;
+  background: var(--cce-bg);
+  min-height: 100%;
+}
+
+.customer-company-employees-page--ref .cce-ref-body.page-content {
+  padding: 1.25rem 1.5rem 2rem;
+  overflow: visible;
+}
+
+.customer-company-employees-page--ref .cce-ref-table-card > .panel.table-panel {
+  margin-bottom: 0;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  overflow: visible;
+}
+
+.customer-company-employees-page--ref .cce-ref-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.customer-company-employees-page--ref .cce-ref-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  min-height: 4rem;
+  padding: 0.75rem 1.5rem;
+  background: var(--cce-surface);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.customer-company-employees-page--ref .cce-ref-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex: 1 1 28rem;
+  min-width: 0;
+  max-width: 44rem;
+}
+
+.customer-company-employees-page--ref .cce-ref-title-block {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding-right: 1rem;
+  border-right: 1px solid var(--cce-border);
+  flex-shrink: 0;
+}
+
+.customer-company-employees-page--ref .cce-ref-title {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--cce-text);
+  white-space: nowrap;
+}
+
+.customer-company-employees-page--ref .cce-ref-count-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #475569;
+  background: #f1f5f9;
+  border: 1px solid var(--cce-border);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.customer-company-employees-page--ref .cce-ref-search {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.customer-company-employees-page--ref .cce-ref-search-form {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.customer-company-employees-page--ref .cce-ref-search-icon {
+  position: absolute;
+  left: 0.75rem;
+  font-size: 1.05rem;
+  color: var(--cce-subtle);
+  pointer-events: none;
+}
+
+.customer-company-employees-page--ref .cce-ref-search-submit {
+  position: absolute;
+  left: 0.35rem;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: none;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: var(--cce-subtle);
+  cursor: pointer;
+  padding: 0;
+}
+
+.customer-company-employees-page--ref .cce-ref-search-submit .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
+.customer-company-employees-page--ref .cce-ref-search-submit:hover {
+  color: var(--cce-brand);
+  background: var(--cce-brand-soft);
+}
+
+.customer-company-employees-page--ref .cce-ref-search-input {
+  width: 100%;
+  height: 2.15rem;
+  padding: 0.4rem 3.25rem 0.4rem 2.35rem;
+  border: 1px solid var(--cce-border);
+  border-radius: 0.5rem;
+  background: #f8fafc;
+  font-size: 0.8125rem;
+  color: var(--cce-text);
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+
+.customer-company-employees-page--ref .cce-ref-search-input::placeholder {
+  color: var(--cce-subtle);
+}
+
+.customer-company-employees-page--ref .cce-ref-search-input:focus {
+  outline: none;
+  background: #fff;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.customer-company-employees-page--ref .cce-ref-search-kbd {
+  position: absolute;
+  right: 0.55rem;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.625rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: var(--cce-subtle);
+  background: #fff;
+  border: 1px solid var(--cce-border);
+  border-radius: 0.25rem;
+  padding: 0.1rem 0.35rem;
+  box-shadow: 0 1px 1px rgba(15, 23, 42, 0.04);
+  pointer-events: none;
+}
+
+.customer-company-employees-page--ref .cce-ref-field-select {
+  flex-shrink: 0;
+  height: 2.15rem;
+  padding: 0 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #334155;
+  background: #f8fafc;
+  border: 1px solid var(--cce-border);
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.customer-company-employees-page--ref .cce-ref-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.customer-company-employees-page--ref .cce-ref-sync-pill {
+  display: none;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  background: #ecfdf5;
+  border: 1px solid #6ee7b7;
+  color: #065f46;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+@media (min-width: 1280px) {
+  .customer-company-employees-page--ref .cce-ref-sync-pill {
+    display: inline-flex;
+  }
+}
+
+.customer-company-employees-page--ref .cce-ref-sync-dot {
+  position: relative;
+  width: 0.5rem;
+  height: 0.5rem;
+  flex-shrink: 0;
+}
+
+.customer-company-employees-page--ref .cce-ref-sync-dot::before,
+.customer-company-employees-page--ref .cce-ref-sync-dot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: #10b981;
+}
+
+.customer-company-employees-page--ref .cce-ref-sync-dot::before {
+  animation: cce-ref-ping 1.4s cubic-bezier(0, 0, 0.2, 1) infinite;
+  opacity: 0.55;
+}
+
+@keyframes cce-ref-ping {
+  75%, 100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+.customer-company-employees-page--ref .cce-ref-topbar-divider {
+  width: 1px;
+  height: 1rem;
+  background: var(--cce-border);
+}
+
+.customer-company-employees-page--ref .cce-ref-body {
+  padding: 1.25rem 1.5rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  flex: 1;
+  min-height: 0;
+}
+
+.customer-company-employees-page--ref .cce-ref-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background: var(--cce-surface);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.customer-company-employees-page--ref .cce-ref-toolbar-left,
+.customer-company-employees-page--ref .cce-ref-toolbar-right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.customer-company-employees-page--ref .cce-ref-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 2.15rem;
+  padding: 0 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid transparent;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  line-height: 1.2;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, color 0.15s;
+}
+
+.customer-company-employees-page--ref .cce-ref-btn .material-symbols-outlined {
+  font-size: 1rem;
+}
+
+.customer-company-employees-page--ref .cce-ref-btn--indigo {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+  color: #4338ca;
+}
+
+.customer-company-employees-page--ref .cce-ref-btn--indigo:hover,
+.customer-company-employees-page--ref .cce-ref-btn--indigo.is-active {
+  background: #e0e7ff;
+}
+
+.customer-company-employees-page--ref .cce-ref-btn--emerald {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+  color: #065f46;
+}
+
+.customer-company-employees-page--ref .cce-ref-btn--emerald:hover:not(:disabled) {
+  background: #d1fae5;
+}
+
+.customer-company-employees-page--ref .cce-ref-btn--violet {
+  background: #faf5ff;
+  border-color: #e9d5ff;
+  color: #6b21a8;
+}
+
+.customer-company-employees-page--ref .cce-ref-btn--violet:hover {
+  background: #f3e8ff;
+}
+
+.customer-company-employees-page--ref .cce-ref-btn--ghost {
+  background: #fff;
+  border-color: var(--cce-border-strong);
+  color: #334155;
+}
+
+.customer-company-employees-page--ref .cce-ref-btn--ghost:hover:not(:disabled) {
+  background: #f8fafc;
+}
+
+.customer-company-employees-page--ref .cce-ref-btn--icon {
+  width: 2.15rem;
+  padding: 0;
+  justify-content: center;
+}
+
+.customer-company-employees-page--ref .cce-ref-btn--primary {
+  background: linear-gradient(90deg, #2563eb, #4f46e5);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.35);
+  font-weight: 700;
+}
+
+.customer-company-employees-page--ref .cce-ref-btn--primary:hover {
+  background: linear-gradient(90deg, #1d4ed8, #4338ca);
+  box-shadow: 0 4px 8px rgba(37, 99, 235, 0.28);
+}
+
+.customer-company-employees-page--ref .cce-ref-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.customer-company-employees-page--ref .cce-ref-toolbar-divider {
+  width: 1px;
+  height: 1.25rem;
+  background: var(--cce-border);
+  margin: 0 0.15rem;
+}
+
+.customer-company-employees-page--ref .cce-ref-table-card {
+  background: var(--cce-surface);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.customer-company-employees-page--ref .cce-ref-table-card .panel.table-panel,
+.customer-company-employees-page--ref .cce-ref-table-card .crm-list-table-stack,
+.customer-company-employees-page--ref .cce-ref-table-card .table-wrap {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  margin: 0;
+  border-radius: 0;
+}
+
+.customer-company-employees-page--ref .cce-ref-table-card .crm-list-sheet-scroll {
+  border: none;
+}
+
+.customer-company-employees-page--ref .cce-ref-table-card .data-table.crm-list-sheet thead th {
+  background: rgba(248, 250, 252, 0.92);
+  color: #64748b;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  border-bottom: 1px solid var(--cce-border-strong);
+  padding-top: 0.85rem;
+  padding-bottom: 0.85rem;
+  backdrop-filter: blur(4px);
+}
+
+.customer-company-employees-page--ref .cce-ref-table-card .data-table.crm-list-sheet tbody td {
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 0.8125rem;
+  color: #334155;
+  vertical-align: middle;
+}
+
+.customer-company-employees-page--ref .cce-ref-table-card .customer-company-employees-row-clickable:hover {
+  background: rgba(239, 246, 255, 0.55) !important;
+}
+
+.customer-company-employees-page--ref .cce-ref-table-card .crm-list-sheet-row--selected {
+  background: #eff6ff !important;
+}
+
+.customer-company-employees-page--ref .cce-ref-table-card .crm-list-sheet-row--stripe-a td,
+.customer-company-employees-page--ref .cce-ref-table-card .crm-list-sheet-row--stripe-b td {
+  background: #fff;
+}
+
+.customer-company-employees-page--ref .cce-ref-table-card .crm-list-sheet-fill-row {
+  display: none !important;
+}
+
+.customer-company-employees-page--ref .cce-company-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  font-weight: 700;
+  font-style: italic;
+  letter-spacing: -0.01em;
+  color: #2563eb;
+  background: rgba(239, 246, 255, 0.7);
+  border: 1px solid #dbeafe;
+  border-radius: 0.35rem;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.75rem;
+}
+
+.customer-company-employees-page--ref .cce-company-chip.is-plain {
+  font-style: normal;
+  font-weight: 600;
+  color: var(--cce-text);
+  background: transparent;
+  border-color: transparent;
+  padding: 0;
+}
+
+.customer-company-employees-page--ref .cce-company-unconfirmed {
+  opacity: 0.85;
+}
+
+.customer-company-employees-page--ref .cce-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.customer-company-employees-page--ref .cce-name-cell-avatar {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+}
+
+.customer-company-employees-page--ref .cce-name-cell-avatar--0 {
+  background: linear-gradient(135deg, #10b981, #059669);
+}
+.customer-company-employees-page--ref .cce-name-cell-avatar--1 {
+  background: linear-gradient(135deg, #9333ea, #7c3aed);
+}
+.customer-company-employees-page--ref .cce-name-cell-avatar--2 {
+  background: linear-gradient(135deg, #f59e0b, #ea580c);
+}
+.customer-company-employees-page--ref .cce-name-cell-avatar--3 {
+  background: linear-gradient(135deg, #2563eb, #4f46e5);
+}
+.customer-company-employees-page--ref .cce-name-cell-avatar--4 {
+  background: linear-gradient(135deg, #0d9488, #0891b2);
+}
+.customer-company-employees-page--ref .cce-name-cell-avatar--5 {
+  background: linear-gradient(135deg, #e11d48, #db2777);
+}
+
+.customer-company-employees-page--ref .cce-name-cell-text .font-semibold {
+  font-weight: 600;
+  color: var(--cce-text);
+}
+
+.customer-company-employees-page--ref .cce-contact-cell,
+.customer-company-employees-page--ref .cce-email-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.customer-company-employees-page--ref .cce-phone-text,
+.customer-company-employees-page--ref .cce-email-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #475569 !important;
+}
+
+.customer-company-employees-page--ref .cce-phone-action-btns {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  opacity: 0.65;
+  transition: opacity 0.15s;
+}
+
+.customer-company-employees-page--ref tr:hover .cce-phone-action-btns {
+  opacity: 1;
+}
+
+.customer-company-employees-page--ref .cce-phone-call-btn,
+.customer-company-employees-page--ref .cce-phone-sms-btn,
+.customer-company-employees-page--ref .cce-email-compose-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: none;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  text-decoration: none;
+  padding: 0;
+}
+
+.customer-company-employees-page--ref .cce-phone-call-btn .material-symbols-outlined,
+.customer-company-employees-page--ref .cce-phone-sms-btn .material-symbols-outlined,
+.customer-company-employees-page--ref .cce-email-compose-btn .material-symbols-outlined {
+  font-size: 0.95rem;
+}
+
+.customer-company-employees-page--ref .cce-phone-call-btn:hover {
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.customer-company-employees-page--ref .cce-phone-sms-btn:hover {
+  background: #eef2ff;
+  color: #4f46e5;
+}
+
+.customer-company-employees-page--ref .cce-email-compose-btn:hover {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.customer-company-employees-page--ref .cce-lead-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.customer-company-employees-page--ref .cce-lead-pill-dot {
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.customer-company-employees-page--ref .cce-lead-pill--violet {
+  background: #f5f3ff;
+  color: #6d28d9;
+  border-color: rgba(196, 181, 253, 0.8);
+}
+.customer-company-employees-page--ref .cce-lead-pill--violet .cce-lead-pill-dot { background: #8b5cf6; }
+
+.customer-company-employees-page--ref .cce-lead-pill--emerald {
+  background: #ecfdf5;
+  color: #047857;
+  border-color: rgba(167, 243, 208, 0.9);
+}
+.customer-company-employees-page--ref .cce-lead-pill--emerald .cce-lead-pill-dot { background: #10b981; }
+
+.customer-company-employees-page--ref .cce-lead-pill--blue {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+.customer-company-employees-page--ref .cce-lead-pill--blue .cce-lead-pill-dot { background: #3b82f6; }
+
+.customer-company-employees-page--ref .cce-lead-pill--rose {
+  background: #fff1f2;
+  color: #be123c;
+  border-color: #fecdd3;
+}
+.customer-company-employees-page--ref .cce-lead-pill--rose .cce-lead-pill-dot { background: #f43f5e; }
+
+.customer-company-employees-page--ref .cce-lead-pill--amber {
+  background: #fffbeb;
+  color: #b45309;
+  border-color: #fde68a;
+}
+.customer-company-employees-page--ref .cce-lead-pill--amber .cce-lead-pill-dot { background: #f59e0b; }
+
+.customer-company-employees-page--ref .cce-lead-pill--slate {
+  background: #f8fafc;
+  color: #475569;
+  border-color: #e2e8f0;
+}
+.customer-company-employees-page--ref .cce-lead-pill--slate .cce-lead-pill-dot { background: #94a3b8; }
+
+.customer-company-employees-page--ref .cce-assignee-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.45rem 0.15rem 0.2rem;
+  border-radius: 0.375rem;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 0.7rem;
+  font-weight: 500;
+  max-width: 100%;
+}
+
+.customer-company-employees-page--ref .cce-assignee-chip + .cce-assignee-chip {
+  margin-left: 0.25rem;
+}
+
+.customer-company-employees-page--ref .cce-assignee-avatar {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 999px;
+  object-fit: cover;
+  flex-shrink: 0;
+  background: #4f46e5;
+  color: #fff;
+  font-size: 0.55rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.customer-company-employees-page--ref .cce-assignee-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.customer-company-employees-page--ref .cce-assignee-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  align-items: center;
+}
+
+.customer-company-employees-page--ref .cce-favorite-btn.is-active {
+  color: #f59e0b;
+}
+
+.customer-company-employees-page--ref .cce-favorite-btn:not(.is-active) {
+  color: #cbd5e1;
+}
+
+.customer-company-employees-page--ref .cce-favorite-btn:hover {
+  transform: scale(1.12);
+}
+
+.customer-company-employees-page--ref .cce-ref-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1.25rem;
+  background: rgba(248, 250, 252, 0.85);
+  border-top: 1px solid var(--cce-border);
+  font-size: 0.75rem;
+  color: #475569;
+}
+
+.customer-company-employees-page--ref .cce-ref-pagination .pagination-info {
+  margin: 0;
+  color: #475569;
+}
+
+.customer-company-employees-page--ref .cce-ref-pagination .pagination-info strong {
+  color: var(--cce-text);
+  font-weight: 600;
+}
+
+.customer-company-employees-page--ref .cce-ref-pagination .crm-list-pagination-bar,
+.customer-company-employees-page--ref .cce-ref-pagination.pagination-bar {
+  border: none;
+  background: transparent;
+  margin: 0;
+  padding: 0.85rem 1.25rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.customer-company-employees-page--ref .cce-action-bar {
+  border-radius: 0.75rem;
+  border: 1px solid #bfdbfe;
+  background: linear-gradient(180deg, #eff6ff, #f8fafc);
+  box-shadow: 0 1px 2px rgba(37, 99, 235, 0.08);
+}
+
+.customer-company-employees-page--ref .status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.customer-company-employees-page--ref .status-badge.status-active {
+  background: #ecfdf5;
+  color: #047857;
+  border-color: #a7f3d0;
+}
+
+.customer-company-employees-page--ref .status-badge.status-pending {
+  background: #fffbeb;
+  color: #b45309;
+  border-color: #fde68a;
+}
+
+.customer-company-employees-page--ref .status-badge.status-lead {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+
+.customer-company-employees-page--ref .status-badge.status-inactive {
+  background: #f8fafc;
+  color: #64748b;
+  border-color: #e2e8f0;
+}
+
+@media (max-width: 900px) {
+  .customer-company-employees-page--ref .cce-ref-topbar {
+    padding: 0.75rem 1rem;
+  }
+
+  .customer-company-employees-page--ref .cce-ref-title-block {
+    border-right: none;
+    padding-right: 0;
+  }
+
+  .customer-company-employees-page--ref .cce-ref-topbar-left {
+    max-width: none;
+    flex: 1 1 100%;
+  }
+
+  .customer-company-employees-page--ref .cce-ref-body {
+    padding: 1rem;
+  }
+
+  .customer-company-employees-page--ref .cce-ref-search-kbd {
+    display: none;
+  }
+}

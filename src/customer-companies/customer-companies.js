@@ -22,6 +22,7 @@ import {
 } from './customer-companies-list-cells';
 import './customer-companies.css';
 import './customer-companies-responsive.css';
+import './customer-companies-ref.css';
 import '@/shared/crm-list-sheet-table.css';
 import {
   useCrmListColumnResize,
@@ -29,11 +30,9 @@ import {
   CrmListColumnResizeHandle
 } from '@/components/crm-list-column-resize/crm-list-column-resize';
 import {
-  useCrmListSheetFillerRowCount,
   crmListSheetColSpanWithFill,
   CrmListSheetFillHeaderCell,
-  CrmListSheetFillBodyCell,
-  CrmListSheetFillerRows
+  CrmListSheetFillBodyCell
 } from '@/components/crm-list-sheet-fill/crm-list-sheet-fill';
 import { LIST_COLUMN_FIXED_WIDTH_PX } from '@/lib/list-column-widths';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
@@ -92,6 +91,7 @@ export default function CustomerCompanies({
   const [lastCheckedIndex, setLastCheckedIndex] = useState(null);
   const headerSelectAllRef = useRef(null);
   const listSheetScrollRef = useRef(null);
+  const searchInputRef = useRef(null);
   /** 상세 삭제 등으로 페이지가 바뀔 때 다음 목록 요청만 로딩 표시 없이 */
   const listFetchSilentOnceRef = useRef(false);
   const me = useMemo(() => getStoredCrmUser(), []);
@@ -299,6 +299,20 @@ export default function CustomerCompanies({
   }, [isSearchModal, includeSimilarSearch, searchApplied]);
 
   useEffect(() => { fetchList(pagination.page); }, [pagination.page, fetchList]);
+  useEffect(() => {
+    if (isSearchModal) return undefined;
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && String(e.key || '').toLowerCase() === 'k') {
+        const tag = String(e.target?.tagName || '').toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return;
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select?.();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isSearchModal]);
   useEffect(() => {
     const onExcelImportDone = () => { fetchList(pagination.page); };
     window.addEventListener('cc-excel-import-completed', onExcelImportDone);
@@ -521,8 +535,6 @@ export default function CustomerCompanies({
     });
   }, [listItemsForDisplay, sortKey, sortDir, getSortValue]);
 
-  const listSheetBodyRowCount = loading || sortedItems.length === 0 ? 1 : sortedItems.length;
-  const listSheetFillRowCount = useCrmListSheetFillerRowCount(listSheetScrollRef, listSheetBodyRowCount);
   const listSheetTableColSpan = crmListSheetColSpanWithFill(colSpan + 1);
 
   const companiesForBulkSalesModal = useMemo(
@@ -836,32 +848,39 @@ export default function CustomerCompanies({
   }, []);
 
   return (
-    <div className={`page customer-companies-page${isSearchModal ? ' customer-companies-page--search-modal' : ''}`}>
-      <header className="page-header customer-companies-header">
-        {!isSearchModal ? (
-          <div className="customer-companies-header-main">
-            <h1 className="page-title">기업 리스트</h1>
+    <div className={`page customer-companies-page customer-companies-page--ref${isSearchModal ? ' customer-companies-page--search-modal' : ''}`}>
+      <div className="cc-ref-shell">
+      <header className="cc-ref-topbar">
+        <div className="cc-ref-topbar-left">
+          {!isSearchModal ? (
+            <div className="cc-ref-title-block">
+              <h1 className="cc-ref-title">기업 리스트</h1>
+              <span className="cc-ref-count-badge">총 {pagination.total || 0}곳</span>
+            </div>
+          ) : null}
+          <div className="cc-ref-search">
+            <form id="customer-companies-search-form" onSubmit={runSearch} className="cc-ref-search-form">
+              <button type="submit" className="cc-ref-search-submit" aria-label="검색">
+                <span className="material-symbols-outlined" aria-hidden>search</span>
+              </button>
+              <input
+                ref={searchInputRef}
+                type="text"
+                className="cc-ref-search-input"
+                placeholder={
+                  searchField
+                    ? `${searchFieldLabelByKey[searchField] || searchField} 검색...`
+                    : '모든 필드 검색 (기업명, 대표자, 주소, 메모 등)'
+                }
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                aria-label="고객사 검색"
+              />
+              {!isSearchModal ? <span className="cc-ref-search-kbd" aria-hidden>⌘K</span> : null}
+            </form>
           </div>
-        ) : null}
-        <div className="header-search">
-          <form id="customer-companies-search-form" onSubmit={runSearch} className="header-search-form">
-            <button type="submit" className="header-search-icon-btn" aria-label="검색">
-              <span className="material-symbols-outlined">search</span>
-            </button>
-            <input
-              type="text"
-              placeholder={
-                searchField
-                  ? `${searchFieldLabelByKey[searchField] || searchField} 검색...`
-                  : '모든 필드 검색 (기업명, 대표자, 주소, 메모, 사용자 정의 필드 등)...'
-              }
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              aria-label="고객사 검색"
-            />
-          </form>
           <select
-            className="cc-sort-column-select"
+            className="cc-ref-field-select"
             value={searchField}
             onChange={(e) => setSearchField(e.target.value)}
             aria-label="검색 필드"
@@ -886,12 +905,40 @@ export default function CustomerCompanies({
             ) : null}
           </select>
         </div>
-        <div className="customer-companies-header-tools">
+        <div className="cc-ref-topbar-right">
           {!isSearchModal ? (
             <>
+              <div className="cc-ref-sync-pill" title="고객사·담당자 기준으로 목록을 관리합니다">
+                <span className="cc-ref-sync-dot" aria-hidden />
+                <span>고객사 관리</span>
+              </div>
+              <span className="cc-ref-topbar-divider" aria-hidden />
+              <PageHeaderNotifyChat noWrapper buttonClassName="icon-btn" />
+            </>
+          ) : (
+            <button
+              type="button"
+              className="cc-ref-btn cc-ref-btn--ghost cc-ref-btn--icon"
+              aria-label="리스트 열 설정"
+              onClick={() => {
+                setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), customFieldColumns));
+                setSettingsOpen(true);
+              }}
+              title="리스트 열 설정"
+            >
+              <span className="material-symbols-outlined" aria-hidden>settings</span>
+            </button>
+          )}
+        </div>
+      </header>
+
+      <div className="cc-ref-body page-content">
+        {!isSearchModal ? (
+          <section className="cc-ref-toolbar" aria-label="기업 리스트 도구">
+            <div className="cc-ref-toolbar-left">
               <button
                 type="button"
-                className={`icon-btn cc-assignee-filter-btn ${assigneeMeOnly ? 'active' : ''}`}
+                className={`cc-ref-btn cc-ref-btn--indigo ${assigneeMeOnly ? 'is-active' : ''}`}
                 onClick={() => {
                   const next = !assigneeMeOnly;
                   setSelectedCompanyIds(new Set());
@@ -899,61 +946,70 @@ export default function CustomerCompanies({
                   setAssigneeMeOnly(next);
                   patchListTemplate(LIST_ID, { assigneeMeOnly: next }).catch((err) => {
                     alert(err?.message || '저장에 실패했습니다.');
-                    setAssigneeMeOnly(assigneeMeOnly);
+                    setAssigneeMeOnly(!next);
                   });
                 }}
                 title={assigneeMeOnly ? '전체 고객사 보기' : '내 담당 업체 보기'}
-                aria-label={assigneeMeOnly ? '전체 고객사 보기' : '내 담당 업체 보기'}
+                aria-pressed={assigneeMeOnly}
               >
-                <span className="material-symbols-outlined">person_pin_circle</span>
-                <span className="cc-filter-label">내 담당</span>
+                <span className="material-symbols-outlined" aria-hidden>person</span>
+                내 담당 업체
               </button>
+              <span className="cc-ref-toolbar-divider" aria-hidden />
               <button
                 type="button"
-                className="icon-btn cc-assignee-filter-btn"
+                className="cc-ref-btn cc-ref-btn--emerald"
                 onClick={openExcelImportModal}
                 title="엑셀 파일을 매핑하여 고객사 일괄 등록"
-                aria-label="엑셀 매핑 가져오기"
               >
-                <span className="material-symbols-outlined">upload_file</span>
-                <span className="cc-filter-label">엑셀 매핑</span>
+                <span className="material-symbols-outlined" aria-hidden>upload</span>
+                엑셀 가져오기
               </button>
               {canExportExcel ? (
                 <button
                   type="button"
-                  className="btn-outline"
+                  className="cc-ref-btn cc-ref-btn--emerald cc-ref-btn--icon"
                   onClick={handleExportSelectedCompanies}
                   disabled={exportExcelLoading}
-                  title="선택한 고객사만 엑셀(.xlsx)로보냅니다. (Owner / Admin 전용)"
+                  title="선택한 고객사만 엑셀(.xlsx)로 받습니다. (Owner / Admin 전용)"
+                  aria-label="엑셀 내보내기"
                 >
-                  <span className="material-symbols-outlined">file_download</span>
-                  {exportExcelLoading ? '' : `${selectedCompanyIds.size ? ` (${selectedCompanyIds.size})` : ''}`}
+                  <span className="material-symbols-outlined" aria-hidden>download</span>
                 </button>
               ) : null}
+              <button
+                type="button"
+                className="cc-ref-btn cc-ref-btn--violet"
+                onClick={() => {
+                  setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), customFieldColumns));
+                  setSettingsOpen(true);
+                }}
+                title="리스트 열 설정"
+              >
+                <span className="material-symbols-outlined" aria-hidden>tune</span>
+                필드 / 컬럼 관리
+              </button>
               {canManageCustomFieldDefinitions ? (
                 <button
                   type="button"
-                  className="btn-outline"
+                  className="cc-ref-btn cc-ref-btn--ghost"
                   onClick={() => setShowCustomFieldsManageModal(true)}
                   title="고객사에 쓸 사용자 정의 필드를 추가합니다"
                 >
-                  <span className="material-symbols-outlined">playlist_add</span>
-                  <span className="cc-header-btn-label">필드 추가</span>
+                  <span className="material-symbols-outlined" aria-hidden>playlist_add</span>
+                  필드 추가
                 </button>
               ) : null}
-              <button type="button" className="btn-primary cc-header-add-btn" onClick={openAddModal}>
-                <span className="material-symbols-outlined">add</span>
-                <span className="cc-header-btn-label">기업 추가</span>
+            </div>
+            <div className="cc-ref-toolbar-right">
+              <button type="button" className="cc-ref-btn cc-ref-btn--primary" onClick={openAddModal}>
+                <span className="material-symbols-outlined" aria-hidden>add</span>
+                새 기업 추가
               </button>
-            </>
-          ) : null}
-          <button type="button" className="icon-btn" aria-label="리스트 열 설정" onClick={() => { setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), customFieldColumns)); setSettingsOpen(true); }} title="리스트 열 설정">
-            <span className="material-symbols-outlined">settings</span>
-          </button>
-          {!isSearchModal ? <PageHeaderNotifyChat noWrapper buttonClassName="icon-btn" /> : null}
-        </div>
-      </header>
-      <div className="page-content">
+            </div>
+          </section>
+        ) : null}
+
         {!isSearchModal && selectedCompanyIds.size > 0 && (
           <div className="cc-selection-action-bar">
             <span className="cc-selection-action-bar-count">
@@ -1055,6 +1111,7 @@ export default function CustomerCompanies({
             </div>
           </div>
         ) : null}
+        <div className="cc-ref-table-card">
         <div className="panel table-panel">
           {/* 모바일 전용 카드 목록 (customerForMobile.html 구조) */}
           <div className="customer-companies-mobile-cards-wrap">
@@ -1283,10 +1340,16 @@ export default function CustomerCompanies({
                             </button>
                           );
                         } else if (col.key === 'name') {
+                          const avatarTone = (() => {
+                            const s = String(row._id || row.name || idx);
+                            let h = 0;
+                            for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+                            return h % 6;
+                          })();
                           content = (
                             <div className="cell-user cc-name-cell">
                               <div
-                                className={`cc-name-cell-avatar cc-name-cell-avatar--${idx % 3}`}
+                                className={`cc-name-cell-avatar cc-name-cell-avatar--${avatarTone}`}
                                 aria-hidden
                               >
                                 <span className="cc-name-cell-initials">{getNameInitials(row.name)}</span>
@@ -1332,20 +1395,15 @@ export default function CustomerCompanies({
                     </tr>
                   ))
                 )}
-                <CrmListSheetFillerRows
-                  count={listSheetFillRowCount}
-                  colSpan={listSheetTableColSpan}
-                  stripeStartIndex={listSheetBodyRowCount}
-                />
               </tbody>
             </table>
             </div>
             </div>
           </div>
           {!isSearchModal ? (
-          <div className="pagination-bar crm-list-pagination-bar">
+          <div className="pagination-bar crm-list-pagination-bar cc-ref-pagination">
             <p className="pagination-info">
-              <strong>{pagination.total}</strong>개 중 <strong>{items.length ? (pagination.page - 1) * pagination.limit + 1 : 0}</strong>–<strong>{(pagination.page - 1) * pagination.limit + items.length}</strong>건 표시
+              총 <strong>{pagination.total}</strong>건 중 <strong>{items.length ? (pagination.page - 1) * pagination.limit + 1 : 0}</strong>–<strong>{(pagination.page - 1) * pagination.limit + items.length}</strong>건 표시
             </p>
             <ListPaginationButtons
               page={pagination.page}
@@ -1356,6 +1414,8 @@ export default function CustomerCompanies({
           ) : null}
           </div>
         </div>
+        </div>
+      </div>
       </div>
       {settingsOpen && (
         <ListTemplateModal

@@ -13,6 +13,7 @@ const SalesPipelineExcelImportModal = lazy(() =>
 import './sales-pipeline.css';
 import './sales-pipeline-responsive.css';
 import './sales-pipeline-table-theme.css';
+import './sales-pipeline-ref.css';
 import '@/shared/crm-list-sheet-table.css';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import ListTemplateModal from '@/components/list-template-modal/list-template-modal';
@@ -349,6 +350,51 @@ function formatOppScheduleDateShort(raw) {
   const dt = raw instanceof Date ? raw : new Date(raw);
   if (Number.isNaN(dt.getTime())) return '';
   return `${String(dt.getFullYear() % 100).padStart(2, '0')}.${String(dt.getMonth() + 1).padStart(2, '0')}.${String(dt.getDate()).padStart(2, '0')}`;
+}
+
+/** 칸반 카드용 YYYY-MM-DD (레퍼런스 HTML과 동일) */
+function formatOppDateYmd(raw) {
+  if (raw == null || raw === '') return '';
+  if (typeof raw === 'string') {
+    const m = raw.trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  }
+  const dt = raw instanceof Date ? raw : new Date(raw);
+  if (Number.isNaN(dt.getTime())) return '';
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+}
+
+function isOppDateOverdue(raw) {
+  const ymd = formatOppDateYmd(raw);
+  if (!ymd) return false;
+  const today = new Date();
+  const t = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  return ymd < t;
+}
+
+function kanbanDealCardBadge(opp) {
+  if (isPersonalPurchaseOpp(opp)) return '개인 계약';
+  const src = opp?.leadSource != null ? String(opp.leadSource).trim() : '';
+  if (src) return src;
+  const product = opp?.productName != null ? String(opp.productName).trim() : '';
+  if (product) return product.length > 12 ? `${product.slice(0, 12)}…` : product;
+  return '영업기회';
+}
+
+function kanbanDealCardId(opp) {
+  const code = opp?.dealCode != null ? String(opp.dealCode).trim() : '';
+  if (code) return code.startsWith('#') ? code : `#${code}`;
+  const id = String(opp?._id || '');
+  if (id.length >= 4) return `#D-${id.slice(-4).toUpperCase()}`;
+  return '#—';
+}
+
+function kanbanDealCardTitle(opp) {
+  const title = opp?.title != null ? String(opp.title).trim() : '';
+  if (title) return title;
+  const products = formatProductNamesForDisplay(opp, 'list', { withQty: false });
+  if (products && products !== '—') return products.split('\n')[0];
+  return '영업기회';
 }
 
 const OPP_SCHEDULE_CARD_FIELDS = [
@@ -1058,7 +1104,9 @@ export default function SalesPipeline() {
   const activeStages = stageDefinitions.length > 0
     ? stageDefinitions.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((d) => d.key)
     : DEFAULT_ACTIVE_STAGES;
-  const boardStages = activeStages.filter((stage) => stage !== 'Won');
+  const boardStages = activeStages.filter(
+    (stage) => stage !== 'Won' && stage !== 'Lost' && stage !== 'Abandoned'
+  );
   const stageLabels = useMemo(
     () => buildStageLabelMapFromDefinitions(stageDefinitions),
     [stageDefinitions]
@@ -1109,6 +1157,26 @@ export default function SalesPipeline() {
     return out;
   }, [grouped, boardStages]);
 
+  const pipelineHealth = useMemo(() => {
+    if (!canViewAdminContent) return { inProgressTotal: null, weightedForecast: null };
+    let inProgressTotal = 0;
+    let weightedForecast = 0;
+    for (const stage of boardStages) {
+      if (stage === 'Lost' || stage === 'Abandoned') continue;
+      const items = grouped[stage] || [];
+      const fp = stageForecastPercent[stage];
+      for (const o of items) {
+        const v = toMoneyNumber(o?.value);
+        inProgressTotal += v;
+        if (Number.isFinite(fp)) weightedForecast += v * (fp / 100);
+      }
+    }
+    return {
+      inProgressTotal: Math.round(inProgressTotal),
+      weightedForecast: Math.round(weightedForecast)
+    };
+  }, [boardStages, canViewAdminContent, grouped, stageForecastPercent]);
+
   const pipelineListTemplate = useMemo(() => {
     const saved = getMergedSalesPipelineTemplate();
     const columnOrder = collectSalesPipelineTableColumnKeys(allOpportunities, {
@@ -1146,16 +1214,31 @@ export default function SalesPipeline() {
   );
 
   const renderDesktopKanbanLucidCard = (opp) => {
-    const fp = stageForecastPercent[opp.stage];
     const patching = String(stagePatchingId) === String(opp._id);
-    const colKeys = (isPersonalPurchaseOpp(opp)
-      ? kanbanDisplayColumnKeys.filter((k) => k !== 'contactName')
-      : kanbanDisplayColumnKeys);
     const accentTone = stageToneByKey[opp.stage] || 'tone-0';
+    const personal = isPersonalPurchaseOpp(opp);
+    const companyRaw = opp.customerCompanyName != null ? String(opp.customerCompanyName).trim() : '';
+    const contactRaw = opp.contactName != null ? String(opp.contactName).trim() : '';
+    const companyLabel = personal
+      ? kanbanPersonalPurchaseContactLabel(opp)
+      : companyRaw || '—';
+    const buyerLabel = personal
+      ? salesAssigneeDisplay(opp) || '—'
+      : contactRaw || '미배정';
+    const buyerFieldLabel = personal ? '영업 담당' : '구매 담당자';
+    const assignee = salesAssigneeDisplay(opp) || '—';
+    const startYmd = formatOppDateYmd(opp.startDate);
+    const saleYmd = formatOppDateYmd(opp.saleDate);
+    const productLines = formatProductNamesForDisplay(opp, 'list', { withQty: true })
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .filter((s) => s !== '—');
+
     return (
       <div
         key={opp._id}
-        className={`sp-card sp-card--lucid sp-card--lucid-accent-${accentTone}${patching ? ' sp-card--stage-patching' : ''}`}
+        className={`sp-card sp-deal-card sp-deal-card--${accentTone}${patching ? ' sp-card--stage-patching' : ''}`}
         draggable={!patching}
         onDragStart={(e) => handleDragStart(e, opp._id)}
         onDragEnd={handleDragEnd}
@@ -1175,150 +1258,142 @@ export default function SalesPipeline() {
             <span className="material-symbols-outlined">delete</span>
           </button>
         ) : null}
-        {(() => {
-          const [headKey, ...bodyKeys] = colKeys;
-          const renderField = (colKey, idx, keys, isHead) => {
-            const personalPurchase = isPersonalPurchaseOpp(opp);
-            const isPersonalCompanyCell = personalPurchase && colKey === 'customerCompanyName';
-            let text = pipelineKanbanOppCellText(
-              colKey,
-              opp,
-              fp,
-              stageLabels,
-              canViewAdminContent
-            );
-            if (isPersonalCompanyCell) text = kanbanPersonalPurchaseContactLabel(opp);
-            const spanFull =
-              isHead ||
-              shouldKanbanFieldSpanFullRow(colKey, text) ||
-              (keys.length % 2 === 1 && idx === keys.length - 1);
-            const kStyle = listColumnValueInlineStyle(pipelineListTemplate.columnCellStyles, colKey);
-            const isProductNameCol = colKey === 'productName';
-            const label = columnHeaderLabel(colKey, scheduleFieldLabelByKey, financeFieldLabelByKey);
-            const moneyInfo =
-              canViewAdminContent && PIPELINE_MONEY_DISPLAY_KEYS.has(colKey)
-                ? getPipelineMoneyForColumn(colKey, { opp, kind: 'summary' }, fp)
-                : null;
-            const valTitle = isPersonalCompanyCell
-              ? `${text} (개인 구매)`
-              : text === ''
-                ? undefined
-                : text;
-            return (
-              <div
-                key={colKey}
-                className={[
-                  'sp-kanban-card-field',
-                  isHead ? `sp-kanban-card-field--head ${kanbanCardHeadToneClass(opp._id)}` : 'sp-kanban-card-field--body',
-                  spanFull ? 'sp-kanban-card-field--full' : '',
-                  isProductNameCol ? 'sp-kanban-card-field--product-name' : '',
-                  isPersonalCompanyCell ? 'sp-kanban-card-field--personal-company' : '',
-                  isKanbanMoneyColumn(colKey) ? 'sp-kanban-card-field--money' : '',
-                  isKanbanDateColumn(colKey) ? 'sp-kanban-card-field--date' : '',
-                  spanFull ? 'sp-kanban-card-field--wrap' : ''
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-              >
-                <div className="sp-kanban-card-field-label">{label}</div>
-                <div
-                  className={`sp-kanban-card-field-val${isPersonalCompanyCell ? ' sp-kanban-card-field-val--personal' : ''}`}
-                  title={valTitle}
-                >
-                  {isPersonalCompanyCell ? (
-                    <>
-                      <span
-                        className={`sp-kanban-card-field-val-inner${spanFull ? ' sp-kanban-card-field-val-inner--wrap' : ''}`}
-                        style={kStyle || undefined}
-                      >
-                        {text === '—' ? '\u00A0' : text}
-                      </span>
-                      <span className="sp-kanban-card-personal-tag">개인 구매</span>
-                    </>
-                  ) : isProductNameCol && text ? (
-                    <ProductNameCellContent opp={opp} mode="list" withQty />
-                  ) : moneyInfo ? (
-                    <PriceWithKrwHint
-                      amount={moneyInfo.amount}
-                      currency={moneyInfo.currency}
-                      dealBasRMap={dealBasRMap}
-                    />
-                  ) : (
-                    <span
-                      className={`sp-kanban-card-field-val-inner${spanFull ? ' sp-kanban-card-field-val-inner--wrap' : ''}`}
-                      style={kStyle || undefined}
-                    >
-                      {text === '' ? '\u00A0' : text}
-                    </span>
-                  )}
-                </div>
+        <div className="sp-deal-card-top">
+          <span className="sp-deal-card-badge">{kanbanDealCardBadge(opp)}</span>
+          <span className="sp-deal-card-id">{kanbanDealCardId(opp)}</span>
+        </div>
+        <h4 className="sp-deal-card-title">{kanbanDealCardTitle(opp)}</h4>
+        <div className="sp-deal-card-meta-grid">
+          <div className="sp-deal-card-meta-cell">
+            <span className="sp-deal-card-meta-label">고객사</span>
+            <span className="sp-deal-card-meta-val" title={companyLabel}>
+              <span className="sp-deal-card-meta-val-text">{companyLabel}</span>
+              {personal ? <span className="sp-deal-card-personal-tag">개인 구매</span> : null}
+            </span>
+          </div>
+          <div className="sp-deal-card-meta-cell">
+            <span className="sp-deal-card-meta-label">{buyerFieldLabel}</span>
+            <span
+              className={`sp-deal-card-meta-val${!personal && !contactRaw ? ' is-muted' : ''}`}
+              title={buyerLabel}
+            >
+              {buyerLabel}
+            </span>
+          </div>
+        </div>
+        {!personal && productLines.length > 0 ? (
+          <div className="sp-deal-card-products">
+            {productLines.slice(0, 4).map((line) => (
+              <div key={`${opp._id}-${line}`} className="sp-deal-card-product-line">
+                • {line}
               </div>
-            );
-          };
-          return (
-            <>
-              {headKey ? renderField(headKey, 0, colKeys, true) : null}
-              {bodyKeys.length > 0 ? (
-                <div className="sp-kanban-card-body">
-                  <div className="sp-kanban-card-grid sp-kanban-card-grid--body">
-                    {bodyKeys.map((colKey, idx) => renderField(colKey, idx, bodyKeys, false))}
-                  </div>
-                </div>
-              ) : null}
-            </>
-          );
-        })()}
+            ))}
+            {productLines.length > 4 ? (
+              <div className="sp-deal-card-product-line is-more">+{productLines.length - 4}개</div>
+            ) : null}
+          </div>
+        ) : null}
+        <div className="sp-deal-card-finance">
+          <div className="sp-deal-card-finance-cell">
+            <span className="sp-deal-card-meta-label">금액</span>
+            <span className="sp-deal-card-amount">{renderOppValue(opp)}</span>
+          </div>
+          {personal ? (
+            <span className="sp-deal-card-stage-chip">{stageLabels[opp.stage] || opp.stage || '단계'}</span>
+          ) : (
+            <div className="sp-deal-card-finance-cell is-end">
+              <span className="sp-deal-card-meta-label">영업 담당</span>
+              <span className="sp-deal-card-assignee">{assignee}</span>
+            </div>
+          )}
+        </div>
+        {!personal ? (
+          <div className="sp-deal-card-dates">
+            <span>
+              시작일{' '}
+              <strong className={isOppDateOverdue(opp.startDate) ? 'is-overdue' : ''}>
+                {startYmd || '미정'}
+              </strong>
+            </span>
+            <span>계약일 {saleYmd || '미정'}</span>
+          </div>
+        ) : null}
       </div>
     );
   };
 
   return (
-    <div className={`sp-container${pipelineViewMode === 'table' ? ' sp-pipeline-page--table-view' : ''}`}>
-      {/* Header */}
+    <div
+      className={`sp-container sp-pipeline-page--ref${pipelineViewMode === 'table' ? ' sp-pipeline-page--table-view' : ''}`}
+    >
       <header className="sp-header">
-        <div className="sp-header-brand">
-          <div className="sp-header-brand-title-wrap">
-            <h2 className="sp-title">영업기회</h2>
-            <p className="sp-title-sub">세일즈 현황</p>
+        <div className="sp-ref-topbar">
+          <div className="sp-ref-topbar-left">
+            <div className="sp-ref-title-block">
+              <div className="sp-ref-title-row">
+                <h1 className="sp-ref-title">영업기회</h1>
+                <span className="sp-ref-live-badge">실시간 파이프라인</span>
+              </div>
+              <p className="sp-ref-subtitle">세일즈 현황 파이프라인 및 단계별 예측 매출 분석</p>
+            </div>
+            <div className="sp-ref-search">
+              <span className="material-symbols-outlined" aria-hidden>
+                search
+              </span>
+              <input
+                className="sp-ref-search-input"
+                type="text"
+                placeholder="영업기회, 고객사, 제품 검색... (⌘K)"
+                value={search}
+                onChange={onSearchInput}
+                aria-label="영업기회 검색"
+              />
+              <kbd className="sp-ref-search-kbd" aria-hidden>
+                ⌘K
+              </kbd>
+            </div>
           </div>
-          <div className="sp-search-wrap">
-            <span className="material-symbols-outlined sp-search-icon">search</span>
-            <input className="sp-search" type="text" placeholder="영업기회 검색..." value={search} onChange={onSearchInput} aria-label="영업기회 검색" />
-          </div>
-        </div>
-        <div className="sp-header-right">
-          <div className="sp-view-mode-toggle" role="group" aria-label="보기 방식">
+          <div className="sp-ref-topbar-right">
+            <div className="sp-ref-view-switch" role="group" aria-label="보기 방식">
+              <button
+                type="button"
+                className={`sp-ref-view-btn${pipelineViewMode === 'kanban' ? ' is-active' : ''}`}
+                onClick={() => persistPipelineViewMode('kanban')}
+                aria-pressed={pipelineViewMode === 'kanban'}
+              >
+                <span className="material-symbols-outlined" aria-hidden>
+                  view_kanban
+                </span>
+                <span>칸반 보드</span>
+              </button>
+              <button
+                type="button"
+                className={`sp-ref-view-btn${pipelineViewMode === 'table' ? ' is-active' : ''}`}
+                onClick={() => persistPipelineViewMode('table')}
+                aria-pressed={pipelineViewMode === 'table'}
+              >
+                <span className="material-symbols-outlined" aria-hidden>
+                  table_rows
+                </span>
+                <span>스프레드시트</span>
+              </button>
+            </div>
+            <span className="sp-ref-topbar-divider" aria-hidden />
             <button
               type="button"
-              className="sp-header-icon-btn sp-header-tool-btn is-active"
-              onClick={() => persistPipelineViewMode(pipelineViewMode === 'kanban' ? 'table' : 'kanban')}
-              title={pipelineViewMode === 'kanban' ? '표 보기로 전환' : '칸반 보기로 전환'}
-              aria-label={
-                pipelineViewMode === 'kanban'
-                  ? '현재 칸반 보기. 표 보기로 전환'
-                  : '현재 표 보기. 칸반 보기로 전환'
-              }
-            >
-              <span className="material-symbols-outlined">
-                {pipelineViewMode === 'kanban' ? 'view_kanban' : 'table_rows'}
-              </span>
-              <span className="sp-header-btn-label">
-                {pipelineViewMode === 'kanban' ? '표 보기' : '칸반 보기'}
-              </span>
-            </button>
-            <button
-              type="button"
-              className="sp-header-icon-btn sp-header-tool-btn"
+              className="sp-ref-tool-btn"
               onClick={() => setPipelineListSettingsOpen(true)}
               title="표·칸반 표시 항목 설정"
               aria-label="표·칸반 표시 항목 설정"
             >
-              <span className="material-symbols-outlined">settings</span>
-              <span className="sp-header-btn-label">표시 설정</span>
+              <span className="material-symbols-outlined" aria-hidden>
+                settings
+              </span>
+              표시 설정
             </button>
             <button
               type="button"
-              className="sp-header-icon-btn sp-header-tool-btn"
+              className="sp-ref-tool-btn"
               onClick={() => {
                 setDropZoneListStage(null);
                 setShowStagesModal(true);
@@ -1326,30 +1401,35 @@ export default function SalesPipeline() {
               title="파이프라인 단계 관리"
               aria-label="단계 관리"
             >
-              <span className="material-symbols-outlined">tune</span>
-              <span className="sp-header-btn-label">단계 관리</span>
+              <span className="material-symbols-outlined" aria-hidden>
+                tune
+              </span>
+              단계 관리
             </button>
+            <button
+              type="button"
+              className="sp-ref-tool-btn sp-ref-tool-btn--excel"
+              onClick={openExcelImportModal}
+              title="엑셀 파일을 매핑하여 영업기회 일괄 등록"
+              aria-label="엑셀 매핑 가져오기"
+            >
+              <span className="material-symbols-outlined" aria-hidden>
+                download
+              </span>
+              엑셀 가져오기
+            </button>
+            <button type="button" className="sp-ref-add-btn" onClick={() => openAddModal()}>
+              <span className="material-symbols-outlined" aria-hidden>
+                add
+              </span>
+              영업기회 추가
+            </button>
+            <PageHeaderNotifyChat buttonClassName="sp-header-icon-btn" wrapperClassName="sp-header-quick" />
           </div>
-          <button
-            type="button"
-            className="sp-header-icon-btn sp-header-tool-btn"
-            onClick={openExcelImportModal}
-            title="엑셀 파일을 매핑하여 영업기회 일괄 등록"
-            aria-label="엑셀 매핑 가져오기"
-          >
-            <span className="material-symbols-outlined">upload_file</span>
-            <span className="sp-header-btn-label">엑셀 가져오기</span>
-          </button>
-          <button type="button" className="sp-add-btn" onClick={() => openAddModal()}>
-            <span className="material-symbols-outlined">add</span>
-            영업기회 추가
-          </button>
-          <PageHeaderNotifyChat buttonClassName="sp-header-icon-btn" wrapperClassName="sp-header-quick" />
         </div>
-      </header>
 
-      <div className="sp-pipeline-body-filters" role="region" aria-label="목록 필터">
-        <div className="sp-header-filters">
+        <div className="sp-pipeline-body-filters" role="region" aria-label="목록 필터">
+          <div className="sp-header-filters">
           <label className="sp-filter-label">
             <span className="sp-filter-label-text">연도</span>
             <select
@@ -1472,8 +1552,33 @@ export default function SalesPipeline() {
               </div>
             </details>
           </label>
+          </div>
+          {canViewAdminContent ? (
+            <div className="sp-ref-health" aria-label="파이프라인 요약">
+              <div className="sp-ref-health-item">
+                <span>진행 중 총액:</span>
+                <strong>
+                  <PriceWithKrwHint
+                    amount={pipelineHealth.inProgressTotal}
+                    currency="KRW"
+                    dealBasRMap={dealBasRMap}
+                  />
+                </strong>
+              </div>
+              <div className="sp-ref-health-item sp-ref-health-item--forecast">
+                <span>가중 예측치:</span>
+                <strong>
+                  <PriceWithKrwHint
+                    amount={pipelineHealth.weightedForecast}
+                    currency="KRW"
+                    dealBasRMap={dealBasRMap}
+                  />
+                </strong>
+              </div>
+            </div>
+          ) : null}
         </div>
-      </div>
+      </header>
 
       {listMeta?.listCapped ? (
         <div className="sp-list-cap-notice" role="status">
@@ -1614,22 +1719,84 @@ export default function SalesPipeline() {
           ) : null}
 
           {pipelineViewMode === 'table' ? (
-            <div className="sp-pipeline-table-view-root sp-board--table-view">
-              <SalesPipelineTablePanel
-                allOpportunities={allOpportunities}
-                pipelineListTemplate={pipelineListTemplate}
-                displayColumnKeys={pipelineDisplayColumnKeys}
-                stageForecastPercent={stageForecastPercent}
-                stageLabels={stageLabels}
-                canViewAdminContent={canViewAdminContent}
-                dealBasRMap={dealBasRMap}
-                productDisplayMode="list"
-                onOpenEdit={openEditModal}
-                onDragStart={handleDragStart}
-                onDragEnd={handleDragEnd}
-                onSaveColumnOrder={savePipelineTableColumnOrder}
-                onPersistColumnWidths={savePipelineColumnWidths}
-              />
+            <div className="sp-board sp-board--table-mode">
+              <div className="sp-pipeline-table-view-root sp-board--table-view">
+                <SalesPipelineTablePanel
+                  allOpportunities={allOpportunities}
+                  pipelineListTemplate={pipelineListTemplate}
+                  displayColumnKeys={pipelineDisplayColumnKeys}
+                  stageForecastPercent={stageForecastPercent}
+                  stageLabels={stageLabels}
+                  stageToneByKey={stageToneByKey}
+                  canViewAdminContent={canViewAdminContent}
+                  dealBasRMap={dealBasRMap}
+                  productDisplayMode="list"
+                  onOpenEdit={openEditModal}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
+                  onSaveColumnOrder={savePipelineTableColumnOrder}
+                  onPersistColumnWidths={savePipelineColumnWidths}
+                  onOpenColumnSettings={() => setPipelineListSettingsOpen(true)}
+                />
+              </div>
+              <div className="sp-dropzones-section">
+                <div className="sp-dropzones">
+                  {Object.entries(DROP_ZONE_CONFIG).map(([stage, cfg]) => {
+                    const items = grouped[stage] || [];
+                    const dzFp = stageForecastPercent[stage];
+                    const dzForecastSum =
+                      canViewAdminContent && Number.isFinite(dzFp) ? sumForecastExpectedAmount(items, dzFp) : null;
+                    const dzCurrency = firstOppCurrency(items);
+                    return (
+                      <div key={stage} className="sp-dz-wrapper">
+                        <div
+                          className={`sp-dropzone ${cfg.colorClass}`}
+                          onDragOver={handleDragOver}
+                          onDragLeave={handleDragLeave}
+                          onDrop={(e) => handleDrop(e, stage)}
+                          onClick={() => items.length > 0 && setDropZoneListStage(stage)}
+                          style={{ cursor: items.length > 0 ? 'pointer' : 'default' }}
+                        >
+                          <span className="material-symbols-outlined sp-dz-icon sp-dz-icon--fill">{cfg.icon}</span>
+                          <span className="sp-dz-label-wrap">
+                            <span className="sp-dz-label">{cfg.label}</span>
+                            {Number.isFinite(stageForecastPercent[stage]) ? (
+                              <span className="sp-dz-forecast" title="Forecast (expected probability)">
+                                Forecast {stageForecastPercent[stage]}%
+                              </span>
+                            ) : null}
+                            {dzForecastSum != null ? (
+                              <span className="sp-dz-forecast-expected" title={`금액 합 × Forecast ${dzFp}%`}>
+                                예상{' '}
+                                <PriceWithKrwHint
+                                  amount={dzForecastSum}
+                                  currency={dzCurrency}
+                                  dealBasRMap={dealBasRMap}
+                                />
+                              </span>
+                            ) : null}
+                          </span>
+                          {items.length > 0 ? (
+                            <span className="sp-dz-count">
+                              {items.length}건
+                              <span className="material-symbols-outlined sp-dz-chevron" aria-hidden>
+                                chevron_right
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="sp-dz-count" aria-hidden>
+                              {stage === 'Lost' ? '상세 내역' : stage === 'Abandoned' ? '보류함' : '0건'}
+                              <span className="material-symbols-outlined sp-dz-chevron" aria-hidden>
+                                chevron_right
+                              </span>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           ) : (
           <div className="sp-board">
@@ -1746,9 +1913,16 @@ export default function SalesPipeline() {
                               </span>
                             ) : null}
                           </span>
-                          {items.length > 0 && (
+                          {items.length > 0 ? (
                             <span className="sp-dz-count">
                               {items.length}건
+                              <span className="material-symbols-outlined sp-dz-chevron" aria-hidden>
+                                chevron_right
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="sp-dz-count" aria-hidden>
+                              {stage === 'Lost' ? '상세 내역' : stage === 'Abandoned' ? '보류함' : '0건'}
                               <span className="material-symbols-outlined sp-dz-chevron" aria-hidden>
                                 chevron_right
                               </span>

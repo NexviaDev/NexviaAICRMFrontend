@@ -22,7 +22,6 @@ const Kpi = lazy(() => import('../kpi/kpi'));
 const AiVoice = lazy(() => import('../ai-voice/ai-voice'));
 const Email = lazy(() => import('../email/email'));
 const Map = lazy(() => import('../map/map'));
-const TodoList = lazy(() => import('../todo-list/todo-list'));
 const LeadCapture = lazy(() => import('../lead-capture/lead-capture'));
 const Subscription = lazy(() => import('../subscription/subscription'));
 const ExchangeRates = lazy(() => import('../exchange-rates/exchange-rates'));
@@ -96,7 +95,6 @@ export default function MainAppRoutes() {
       <Route path="messenger" element={<PendingRestrictedRoute><Messenger /></PendingRestrictedRoute>} />
       <Route path="business-registry" element={<PendingRestrictedRoute><BusinessRegistryPage /></PendingRestrictedRoute>} />
       <Route path="map" element={<PendingRestrictedRoute><Map /></PendingRestrictedRoute>} />
-      <Route path="todo-list" element={<PendingRestrictedRoute><TodoList /></PendingRestrictedRoute>} />
       <Route path="notification" element={<PendingRestrictedRoute><NotificationPage /></PendingRestrictedRoute>} />
       <Route path="reports/sales" element={<PendingRestrictedRoute><SalesReport /></PendingRestrictedRoute>} />
       <Route path="reports/performance" element={<PendingRestrictedRoute><EmployeePerformance /></PendingRestrictedRoute>} />

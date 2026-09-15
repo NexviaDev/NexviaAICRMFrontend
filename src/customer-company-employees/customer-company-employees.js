@@ -18,6 +18,7 @@ import { LIST_COLUMN_FIXED_WIDTH_PX } from '@/lib/list-column-widths';
 import { listColumnValueInlineStyle } from '@/lib/list-column-cell-styles';
 import './customer-company-employees.css';
 import './customer-company-employees-responsive.css';
+import './customer-company-employees-ref.css';
 import '@/shared/crm-list-sheet-table.css';
 import {
   useCrmListColumnResize,
@@ -25,11 +26,9 @@ import {
   CrmListColumnResizeHandle
 } from '@/components/crm-list-column-resize/crm-list-column-resize';
 import {
-  useCrmListSheetFillerRowCount,
   crmListSheetColSpanWithFill,
   CrmListSheetFillHeaderCell,
-  CrmListSheetFillBodyCell,
-  CrmListSheetFillerRows
+  CrmListSheetFillBodyCell
 } from '@/components/crm-list-sheet-fill/crm-list-sheet-fill';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import ListPaginationButtons from '@/components/list-pagination-buttons/list-pagination-buttons';
@@ -61,6 +60,25 @@ function getNameInitials(name) {
     return (parts[0][0] + parts[1][0]).toUpperCase().slice(0, 2);
   }
   return s.slice(0, 2).toUpperCase();
+}
+
+function avatarToneForKey(key) {
+  const s = String(key || '');
+  let h = 0;
+  for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h % 6;
+}
+
+/** 유입 경로 칩 톤 (ref 컬러 팔레트) */
+function leadSourceTone(raw) {
+  const s = String(raw || '').trim().toLowerCase();
+  if (!s) return 'slate';
+  if (/웹|website|인바운드|inbound|홈페이지/.test(s)) return 'violet';
+  if (/파트너|partner|소개|추천/.test(s)) return 'emerald';
+  if (/google|구글|광고|ads|ad\b/.test(s)) return 'blue';
+  if (/전시|박람|expo|exhibition/.test(s)) return 'rose';
+  if (/콜드|cold|메일|mail|email/.test(s)) return 'amber';
+  return 'slate';
 }
 
 /** 리스트에서 `tel:` 로 모바일 전화·데스크톱 기본 전화 앱 연결 */
@@ -140,6 +158,7 @@ export default function CustomerCompanyEmployees() {
   const lastClickedIdx = useRef(null);
   const headerSelectAllRef = useRef(null);
   const listSheetScrollRef = useRef(null);
+  const searchInputRef = useRef(null);
   /** 상세 삭제 등으로 페이지가 바뀔 때 다음 목록 요청만 로딩 표시 없이 */
   const listFetchSilentOnceRef = useRef(false);
 
@@ -190,6 +209,19 @@ export default function CustomerCompanyEmployees() {
     (companyEmployees || []).forEach((e) => {
       const id = e.id != null ? String(e.id) : (e._id ? String(e._id) : null);
       if (id) map[id] = e.name || e.email || id;
+    });
+    return map;
+  }, [companyEmployees]);
+
+  const assigneeIdToMeta = useMemo(() => {
+    const map = {};
+    (companyEmployees || []).forEach((e) => {
+      const id = e.id != null ? String(e.id) : (e._id ? String(e._id) : null);
+      if (!id) return;
+      map[id] = {
+        name: e.name || e.email || id,
+        avatar: String(e.avatar || '').trim()
+      };
     });
     return map;
   }, [companyEmployees]);
@@ -363,6 +395,20 @@ export default function CustomerCompanyEmployees() {
   );
 
   useEffect(() => { fetchContacts(pagination.page); }, [pagination.page, fetchContacts]);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && String(e.key || '').toLowerCase() === 'k') {
+        const tag = String(e.target?.tagName || '').toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return;
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select?.();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const loadContactCustomFieldColumns = useCallback(async () => {
     try {
@@ -585,8 +631,6 @@ export default function CustomerCompanyEmployees() {
     return base;
   }, [items, sortKey, sortDir, getSortValue]);
 
-  const listSheetBodyRowCount = loading || sortedItems.length === 0 ? 1 : sortedItems.length;
-  const listSheetFillRowCount = useCrmListSheetFillerRowCount(listSheetScrollRef, listSheetBodyRowCount);
   const listSheetTableColSpan = crmListSheetColSpanWithFill(colSpan);
 
   const contactsForBulkSalesModal = useMemo(
@@ -1044,27 +1088,33 @@ export default function CustomerCompanyEmployees() {
   };
 
   return (
-    <div className="page customer-company-employees-page">
-      <header className="page-header customer-company-employees-header">
-        <div className="customer-company-employees-header-main">
-          <h1 className="page-title">연락처</h1>
-
-        </div>
-        <div className="header-search">
-          <form id="customer-company-employees-search-form" onSubmit={onSearch} className="header-search-form">
-            <button type="submit" className="header-search-icon-btn" aria-label="검색">
-              <span className="material-symbols-outlined">search</span>
-            </button>
-            <input
-              type="text"
-              placeholder={searchFieldDraft ? `${SEARCH_FIELD_OPTIONS.find((o) => o.key === searchFieldDraft)?.label || searchFieldDraft} 검색...` : '모든 필드 검색 (이름, 회사, 이메일, 전화, 직책, 유입 경로, 메모, 커스텀 필드 등)...'}
-              value={searchDraft}
-              onChange={(e) => setSearchDraft(e.target.value)}
-              aria-label="연락처 검색"
-            />
-          </form>
+    <div className="page customer-company-employees-page customer-company-employees-page--ref">
+      <div className="cce-ref-shell">
+      <header className="cce-ref-topbar">
+        <div className="cce-ref-topbar-left">
+          <div className="cce-ref-title-block">
+            <h1 className="cce-ref-title">연락처</h1>
+            <span className="cce-ref-count-badge">총 {pagination.total || 0}명</span>
+          </div>
+          <div className="cce-ref-search">
+            <form id="customer-company-employees-search-form" onSubmit={onSearch} className="cce-ref-search-form">
+              <button type="submit" className="cce-ref-search-submit" aria-label="검색">
+                <span className="material-symbols-outlined" aria-hidden>search</span>
+              </button>
+              <input
+                ref={searchInputRef}
+                type="text"
+                className="cce-ref-search-input"
+                placeholder={searchFieldDraft ? `${SEARCH_FIELD_OPTIONS.find((o) => o.key === searchFieldDraft)?.label || searchFieldDraft} 검색...` : '모든 필드 검색 (이름, 회사, 이메일, 전화번호, 메모 등)'}
+                value={searchDraft}
+                onChange={(e) => setSearchDraft(e.target.value)}
+                aria-label="연락처 검색"
+              />
+              <span className="cce-ref-search-kbd" aria-hidden>⌘K</span>
+            </form>
+          </div>
           <select
-            className="cce-sort-column-select"
+            className="cce-ref-field-select"
             value={searchFieldDraft}
             onChange={(e) => setSearchFieldDraft(e.target.value)}
             aria-label="검색 필드"
@@ -1075,80 +1125,93 @@ export default function CustomerCompanyEmployees() {
             ))}
           </select>
         </div>
-        <div className="customer-company-employees-header-tools">
-          <button
-            type="button"
-            className={`icon-btn cce-assignee-filter-btn ${assigneeMeOnly ? 'active' : ''}`}
-            onClick={() => {
-              const next = !assigneeMeOnly;
-              clearSelection();
-              setAssigneeMeOnly(next);
-              setMobileChipFilter(next ? 'assignee' : 'all');
-              patchListTemplate(LIST_ID, { assigneeMeOnly: next }).catch((err) => {
-                alert(err?.message || '저장에 실패했습니다.');
-                setAssigneeMeOnly(!next);
-                setMobileChipFilter(!next ? 'assignee' : 'all');
-              });
-            }}
-            title={assigneeMeOnly ? '전체 연락처 보기' : '내가 담당인 연락처만 보기'}
-            aria-label={assigneeMeOnly ? '전체 연락처 보기' : '내 담당 연락처 보기'}
-          >
-            <span className="material-symbols-outlined">person_pin_circle</span>
-            <span className="cce-filter-label">내 담당</span>
-          </button>
-          <button
-            type="button"
-            className="icon-btn cce-assignee-filter-btn"
-            onClick={openExcelImportModal}
-            title="엑셀 파일을 매핑하여 연락처 일괄 등록"
-            aria-label="엑셀 매핑 가져오기"
-          >
-            <span className="material-symbols-outlined">upload_file</span>
-            <span className="cce-filter-label">엑셀 가져오기</span>
-          </button>
-          {canExportExcel ? (
-            <button
-              type="button"
-              className="btn-outline"
-              onClick={() => void handleDownloadExcel()}
-              disabled={exportExcelLoading}
-              title="현재 검색·내 담당 조건에 맞는 연락처 전체를 엑셀(.xlsx)로 받습니다. (Owner / Admin 전용)"
-            >
-              <span className="material-symbols-outlined">file_download</span>
-              {exportExcelLoading ? '' : ''}
-            </button>
-          ) : null}
-          {canManageCustomFieldDefinitions ? (
-            <button
-              type="button"
-              className="btn-outline"
-              onClick={() => setShowCustomFieldsManageModal(true)}
-              title="연락처에 쓸 사용자 정의 필드를 추가합니다"
-            >
-              <span className="material-symbols-outlined">playlist_add</span>
-              <span className="cce-header-btn-label">필드 추가</span>
-            </button>
-          ) : null}
-          <button type="button" className="btn-primary cce-header-add-btn" onClick={openAddModal}>
-            <span className="material-symbols-outlined">add</span>
-            <span className="cce-header-btn-label">새 연락처</span>
-          </button>
-          <button
-            type="button"
-            className="icon-btn"
-            aria-label="리스트 열 설정"
-            onClick={() => {
-              setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), customFieldColumns));
-              setSettingsOpen(true);
-            }}
-            title="리스트 열 설정"
-          >
-            <span className="material-symbols-outlined">settings</span>
-          </button>
+        <div className="cce-ref-topbar-right">
+          <div className="cce-ref-sync-pill" title="선택한 연락처를 Google 주소록에 저장할 수 있습니다">
+            <span className="cce-ref-sync-dot" aria-hidden />
+            <span>Google 주소록 연동</span>
+          </div>
+          <span className="cce-ref-topbar-divider" aria-hidden />
           <PageHeaderNotifyChat noWrapper buttonClassName="icon-btn" />
         </div>
       </header>
-      <div className="page-content">
+
+      <div className="cce-ref-body page-content">
+        <section className="cce-ref-toolbar" aria-label="연락처 도구">
+          <div className="cce-ref-toolbar-left">
+            <button
+              type="button"
+              className={`cce-ref-btn cce-ref-btn--indigo ${assigneeMeOnly ? 'is-active' : ''}`}
+              onClick={() => {
+                const next = !assigneeMeOnly;
+                clearSelection();
+                setAssigneeMeOnly(next);
+                setMobileChipFilter(next ? 'assignee' : 'all');
+                patchListTemplate(LIST_ID, { assigneeMeOnly: next }).catch((err) => {
+                  alert(err?.message || '저장에 실패했습니다.');
+                  setAssigneeMeOnly(!next);
+                  setMobileChipFilter(!next ? 'assignee' : 'all');
+                });
+              }}
+              title={assigneeMeOnly ? '전체 연락처 보기' : '내가 담당인 연락처만 보기'}
+              aria-pressed={assigneeMeOnly}
+            >
+              <span className="material-symbols-outlined" aria-hidden>person</span>
+              내 담당 연락처
+            </button>
+            <span className="cce-ref-toolbar-divider" aria-hidden />
+            <button
+              type="button"
+              className="cce-ref-btn cce-ref-btn--emerald"
+              onClick={openExcelImportModal}
+              title="엑셀 파일을 매핑하여 연락처 일괄 등록"
+            >
+              <span className="material-symbols-outlined" aria-hidden>upload</span>
+              엑셀 가져오기
+            </button>
+            {canExportExcel ? (
+              <button
+                type="button"
+                className="cce-ref-btn cce-ref-btn--emerald cce-ref-btn--icon"
+                onClick={() => void handleDownloadExcel()}
+                disabled={exportExcelLoading}
+                title="현재 검색·내 담당 조건에 맞는 연락처 전체를 엑셀(.xlsx)로 받습니다. (Owner / Admin 전용)"
+                aria-label="엑셀 내보내기"
+              >
+                <span className="material-symbols-outlined" aria-hidden>download</span>
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="cce-ref-btn cce-ref-btn--violet"
+              onClick={() => {
+                setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), customFieldColumns));
+                setSettingsOpen(true);
+              }}
+              title="리스트 열 설정"
+            >
+              <span className="material-symbols-outlined" aria-hidden>tune</span>
+              필드 / 컬럼 관리
+            </button>
+            {canManageCustomFieldDefinitions ? (
+              <button
+                type="button"
+                className="cce-ref-btn cce-ref-btn--ghost"
+                onClick={() => setShowCustomFieldsManageModal(true)}
+                title="연락처에 쓸 사용자 정의 필드를 추가합니다"
+              >
+                <span className="material-symbols-outlined" aria-hidden>playlist_add</span>
+                필드 추가
+              </button>
+            ) : null}
+          </div>
+          <div className="cce-ref-toolbar-right">
+            <button type="button" className="cce-ref-btn cce-ref-btn--primary" onClick={openAddModal}>
+              <span className="material-symbols-outlined" aria-hidden>add</span>
+              새 연락처 추가
+            </button>
+          </div>
+        </section>
+
         {/* 선택 액션 바 */}
         {selected.size > 0 && (
           <div className="cce-action-bar">
@@ -1221,6 +1284,7 @@ export default function CustomerCompanyEmployees() {
           </div>
         )}
 
+        <div className="cce-ref-table-card">
         <div className="panel table-panel">
           {/* 모바일 전용 카드 목록 (customerForMobile.html 구조) */}
           <div className="cce-mobile-cards-wrap">
@@ -1398,14 +1462,18 @@ export default function CustomerCompanyEmployees() {
                             {col.key === 'company' && (() => {
                               const hasConfirmedCompany = row.customerCompanyId && String(row.customerCompanyId.businessNumber || '').trim();
                               const unconfirmed = row.company && !hasConfirmedCompany;
+                              const label = row.company || '—';
+                              const isBrandish = /nexvia/i.test(String(row.company || ''));
                               return (
-                                <span className={unconfirmed ? 'cce-company-unconfirmed' : undefined}>
-                                  {row.company || '—'}
+                                <span
+                                  className={`cce-company-chip ${isBrandish ? '' : 'is-plain'} ${unconfirmed ? 'cce-company-unconfirmed' : ''}`}
+                                >
+                                  {label}
                                 </span>
                               );
                             })()}
                             {col.key === 'name' && (() => {
-                              const avatarTone = idx % 3;
+                              const avatarTone = avatarToneForKey(row._id || row.name || idx);
                               return (
                                 <div className="cell-user cce-name-cell">
                                   <div
@@ -1490,16 +1558,53 @@ export default function CustomerCompanyEmployees() {
                                 </div>
                               );
                             })()}
-                            {col.key === 'leadSource' && (row.leadSource ? String(row.leadSource) : '—')}
+                            {col.key === 'leadSource' && (() => {
+                              const raw = row.leadSource ? String(row.leadSource).trim() : '';
+                              if (!raw) return '—';
+                              const tone = leadSourceTone(raw);
+                              return (
+                                <span className={`cce-lead-pill cce-lead-pill--${tone}`}>
+                                  <span className="cce-lead-pill-dot" aria-hidden />
+                                  {raw}
+                                </span>
+                              );
+                            })()}
                             {col.key === 'status' && (
                               <span className={`status-badge ${statusClass[row.status] || ''}`}>{statusLabel[row.status] || row.status || '—'}</span>
                             )}
                             {col.key === 'assigneeUserIds' && (() => {
                               const ids = Array.isArray(row.assigneeUserIds) ? row.assigneeUserIds : [];
-                              const names = ids.map((id) => assigneeIdToName[String(id)] || '').filter(Boolean);
-                              if (names.length) return names.join(', ');
-                              if (ids.length === 0) return '—';
-                              return companyEmployeesLoaded ? '—' : '담당자 불러오는 중...';
+                              if (ids.length === 0) {
+                                return companyEmployeesLoaded ? '—' : '담당자 불러오는 중...';
+                              }
+                              const metas = ids.map((id) => {
+                                const key = String(id);
+                                const meta = assigneeIdToMeta[key];
+                                return {
+                                  id: key,
+                                  name: meta?.name || assigneeIdToName[key] || '',
+                                  avatar: meta?.avatar || ''
+                                };
+                              }).filter((m) => m.name);
+                              if (!metas.length) {
+                                return companyEmployeesLoaded ? '—' : '담당자 불러오는 중...';
+                              }
+                              return (
+                                <div className="cce-assignee-wrap">
+                                  {metas.map((m) => (
+                                    <span key={m.id} className="cce-assignee-chip" title={m.name}>
+                                      {m.avatar ? (
+                                        <img src={m.avatar} alt="" className="cce-assignee-avatar" />
+                                      ) : (
+                                        <span className="cce-assignee-avatar" aria-hidden>
+                                          {getNameInitials(m.name).slice(0, 1)}
+                                        </span>
+                                      )}
+                                      <span className="cce-assignee-name">{m.name}</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              );
                             })()}
                             {col.key === 'lastSupportedAt' && (row.lastSupportedAt ? formatDate(row.lastSupportedAt) : '—')}
                             {col.key.startsWith(CUSTOM_FIELDS_PREFIX) && (() => {
@@ -1517,19 +1622,14 @@ export default function CustomerCompanyEmployees() {
                     );
                   })
                 )}
-                <CrmListSheetFillerRows
-                  count={listSheetFillRowCount}
-                  colSpan={listSheetTableColSpan}
-                  stripeStartIndex={listSheetBodyRowCount}
-                />
               </tbody>
             </table>
             </div>
             </div>
           </div>
-          <div className="pagination-bar crm-list-pagination-bar">
+          <div className="pagination-bar crm-list-pagination-bar cce-ref-pagination">
             <p className="pagination-info">
-              <strong>{pagination.total}</strong>건 중 <strong>{items.length ? (pagination.page - 1) * pagination.limit + 1 : 0}</strong>–<strong>{(pagination.page - 1) * pagination.limit + items.length}</strong>건 표시
+              총 <strong>{pagination.total}</strong>건 중 <strong>{items.length ? (pagination.page - 1) * pagination.limit + 1 : 0}</strong>–<strong>{(pagination.page - 1) * pagination.limit + items.length}</strong>건 표시
             </p>
             <ListPaginationButtons
               page={pagination.page}
@@ -1539,6 +1639,8 @@ export default function CustomerCompanyEmployees() {
           </div>
           </div>
         </div>
+        </div>
+      </div>
       </div>
       <button type="button" className="cce-mobile-fab" onClick={openAddModal} aria-label="새 연락처 추가">
         <span className="material-symbols-outlined">add</span>

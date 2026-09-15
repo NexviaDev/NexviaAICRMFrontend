@@ -3,6 +3,7 @@ import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSes
 import { Routes, Route, Navigate } from 'react-router-dom';
 import MainAppRoutes, { PendingRestrictedRoute } from './layout/main-app-routes';
 import { useGuestOnlyRedirect } from './lib/use-crm-token';
+import NativeNavigateBridge from './lib/native-navigate-bridge';
 
 const Layout = lazy(() => import('./layout/layout'));
 const Dashboard = lazy(() => import('./dashboard/dashboard'));
@@ -65,6 +66,7 @@ function RouteChunkFallback() {
 function App() {
   return (
     <Suspense fallback={<RouteChunkFallback />}>
+      <NativeNavigateBridge />
       <Routes>
         <Route path="/home" element={<Navigate to="/" replace />} />
         <Route path="/landing" element={<Navigate to="/" replace />} />

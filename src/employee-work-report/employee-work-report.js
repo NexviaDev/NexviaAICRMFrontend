@@ -7,7 +7,6 @@ import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-head
 import { API_BASE } from '@/config';
 
 const PAGE_SIZE = 10;
-const STATUS_COMPLETED = 'completed';
 
 /** 페이지네이션에 표시할 번호 목록 (현재 페이지 주변 + 첫/끝, 생략은 '...') */
 function getPageNumbers(current, total) {
@@ -57,7 +56,6 @@ export default function EmployeeWorkReport() {
   const [organizationChart, setOrganizationChart] = useState(null);
   const [currentUserId, setCurrentUserId] = useState('');
   const [selectedUserId, setSelectedUserId] = useState('');
-  const [todoItems, setTodoItems] = useState([]);
   const [calendarItems, setCalendarItems] = useState([]);
   const [salesItems, setSalesItems] = useState([]);
   const [workHistoryItems, setWorkHistoryItems] = useState([]);
@@ -130,33 +128,9 @@ export default function EmployeeWorkReport() {
       } catch (_) {
         if (!cancelled) setWorkHistoryItems([]);
       }
-
-      if (selectedUserId !== currentUserId) {
-        if (!cancelled) setTodoItems([]);
-      } else {
-        try {
-          const listsRes = await fetch(`${API_BASE}/google-tasks/lists`, { headers, credentials: 'include' });
-          const listsJson = await listsRes.json().catch(() => ({}));
-          const lists = Array.isArray(listsJson?.items) ? listsJson.items : [];
-          const taskRows = [];
-          await Promise.all(
-            lists.map(async (list) => {
-              const listId = list?.id;
-              if (!listId) return;
-              const taskRes = await fetch(`${API_BASE}/google-tasks/lists/${encodeURIComponent(listId)}/tasks`, { headers, credentials: 'include' });
-              const taskJson = await taskRes.json().catch(() => ({}));
-              const items = Array.isArray(taskJson?.items) ? taskJson.items : [];
-              items.forEach((t) => taskRows.push({ ...t, _taskListTitle: list.title || '' }));
-            })
-          );
-          if (!cancelled) setTodoItems(taskRows);
-        } catch (_) {
-          if (!cancelled) setTodoItems([]);
-        }
-      }
     })();
     return () => { cancelled = true; };
-  }, [selectedUserId, currentUserId]);
+  }, [selectedUserId]);
 
   const selectedUser = useMemo(() => {
     return companyUsers.find((u) => String(u.id || u._id || '') === String(selectedUserId)) || null;
@@ -176,22 +150,6 @@ export default function EmployeeWorkReport() {
     if (!selectedId) return [];
     const nowMs = Date.now();
     const rows = [];
-
-    if (selectedId === String(currentUserId || '')) {
-      todoItems.forEach((t) => {
-        const due = t?.due ? new Date(t.due) : null;
-        const ts = due && !Number.isNaN(due.getTime()) ? due : new Date(t?.updated || t?.completed || t?.created || Date.now());
-        rows.push({
-          id: `todo:${t.id || Math.random()}`,
-          createdAt: ts,
-          date: ts.toLocaleDateString('ko-KR').replace(/\s/g, ''),
-          time: ts.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }),
-          title: `[할 일] ${t.title || '(제목 없음)'}`,
-          sub: t._taskListTitle ? `목록: ${t._taskListTitle}` : '개인 할 일',
-          status: t.status === STATUS_COMPLETED ? 'Completed' : 'Pending'
-        });
-      });
-    }
 
     calendarItems
       .filter((ev) => String(ev.userId || '') === selectedId)
@@ -243,7 +201,7 @@ export default function EmployeeWorkReport() {
     });
 
     return rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  }, [selectedUserId, currentUserId, todoItems, calendarItems, salesItems, workHistoryItems]);
+  }, [selectedUserId, calendarItems, salesItems, workHistoryItems]);
 
   const tasksDone = timelineActivities.filter((a) => a.status === 'Completed').length;
   const completionRate = timelineActivities.length > 0 ? Math.round((tasksDone / timelineActivities.length) * 100) : 0;
@@ -298,10 +256,6 @@ export default function EmployeeWorkReport() {
     }
     if (String(a.title || '').startsWith('[영업]')) {
       navigate('/sales-pipeline');
-      return;
-    }
-    if (String(a.title || '').startsWith('[할 일]')) {
-      navigate('/todo-list');
     }
   };
 

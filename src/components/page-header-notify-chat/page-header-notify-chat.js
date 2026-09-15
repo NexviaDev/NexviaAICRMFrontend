@@ -7,7 +7,7 @@ import { NOTIFICATION_BADGE_POLL_MS } from '@/lib/polling-intervals';
 import './page-header-notify-chat.css';
 
 /**
- * 상단 우측: 공지(/notification) · 캘린더(/calendar) · 할 일(/todo-list) — 사이드바와 동일 이동.
+ * 상단 우측: 공지(/notification) · 캘린더(/calendar) — 사이드바와 동일 이동.
  * 공지는 API 목록과 로컬 읽음 시각을 비교해 미읽음이면 빨간 점 표시.
  */
 export default function PageHeaderNotifyChat({
@@ -15,14 +15,11 @@ export default function PageHeaderNotifyChat({
   buttonClassName = 'icon-btn',
   notificationTitle = '공지사항',
   calendarTitle = '캘린더',
-  todoTitle = '할 일',
-  showTodo = true,
   noWrapper = false
 }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const calendarActive = pathname === '/calendar';
-  const todoActive = pathname === '/todo-list';
   const [notifyUnread, setNotifyUnread] = useState(false);
 
   const checkUnread = useCallback(async () => {
@@ -79,17 +76,6 @@ export default function PageHeaderNotifyChat({
       >
         <span className="material-symbols-outlined">calendar_month</span>
       </button>
-      {showTodo ? (
-        <button
-          type="button"
-          className={`${buttonClassName} page-header-todo-btn${todoActive ? ' page-header-todo-btn--active' : ''}`.trim()}
-          aria-label={todoTitle}
-          title={todoTitle}
-          onClick={() => navigate('/todo-list')}
-        >
-          <span className="material-symbols-outlined">checklist</span>
-        </button>
-      ) : null}
     </>
   );
   if (noWrapper) return buttons;
