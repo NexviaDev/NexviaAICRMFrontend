@@ -666,6 +666,64 @@
   }
 }
 
+/**
+ * 스마트폰 스크롤 복구
+ * layout 의 app-main-content--fullheight 가 overflow:hidden 이라
+ * ref 본문(overflow:visible)만으로는 카드 목록이 잘리고 스크롤이 안 됨.
+ * → topbar 고정 + body 세로 스크롤.
+ */
+@media (max-width: 768px) {
+  .customer-companies-page.customer-companies-page--ref {
+    height: 100%;
+    max-height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .customer-companies-page--ref .cc-ref-shell {
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .customer-companies-page--ref .cc-ref-topbar {
+    flex-shrink: 0;
+    position: relative;
+    top: auto;
+    z-index: 5;
+  }
+
+  .customer-companies-page--ref .cc-ref-body.page-content {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+    touch-action: pan-y;
+    padding: 1rem 1rem 5.5rem;
+  }
+
+  .customer-companies-page--ref .cc-ref-table-card {
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .customer-companies-page--ref .cc-ref-table-card .panel.table-panel,
+  .customer-companies-page--ref .cc-ref-table-card .crm-list-table-stack {
+    flex: none !important;
+    min-height: auto !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+}
+
 
 /* search-modal: compact chrome */
 .customer-companies-page--ref.customer-companies-page--search-modal .cc-ref-topbar {

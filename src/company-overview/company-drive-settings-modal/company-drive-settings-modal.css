@@ -19,7 +19,9 @@
   transform: translate(-50%, -50%);
   z-index: 101;
   width: 100%;
-  max-width: 28rem;
+  max-width: 32rem;
+  max-height: min(90vh, 40rem);
+  overflow: auto;
   background: var(--card);
   border-radius: 0.75rem;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
@@ -143,3 +145,31 @@
   font-size: 0.8125rem;
   color: var(--success, #2d7a3e);
 }
+
+.company-drive-settings-section-title {
+  margin: 0 0 0.65rem;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.company-drive-settings-section-title--gap {
+  margin-top: 1.35rem;
+}
+
+.company-drive-settings-check {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0.65rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.company-drive-settings-actions {
+  margin-top: 1.15rem;
+  display: flex;
+  justify-content: flex-end;
+}
+

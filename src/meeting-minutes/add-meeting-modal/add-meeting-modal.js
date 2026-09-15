@@ -26,17 +26,23 @@ export default function AddMeetingModal({ meeting, onClose, onSaved }) {
   const [showCategoryManageModal, setShowCategoryManageModal] = useState(false);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [categoryInput, setCategoryInput] = useState('');
-  const [form, setForm] = useState({
-    title: '',
+  const [form, setForm] = useState(() => ({
+    title: meeting?.title ?? '',
     categories: Array.isArray(meeting?.categories) && meeting.categories.length > 0
       ? meeting.categories
       : (meeting?.category ? [meeting.category] : [DEFAULT_MEETING_CATEGORIES[0]]),
     meetingDate: toDatetimeLocal(meeting?.meetingDate || new Date()),
-    location: '',
-    agenda: '',
-    discussionPoints: '',
-    attendees: []
-  });
+    location: meeting?.location ?? '',
+    agenda: meeting?.agenda ?? '',
+    discussionPoints: meeting?.discussionPoints ?? '',
+    attendees: Array.isArray(meeting?.attendees)
+      ? meeting.attendees.map((a) => ({
+          userId: a.userId,
+          name: a.name ?? '',
+          role: a.role ?? ''
+        }))
+      : []
+  }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [showParticipantModal, setShowParticipantModal] = useState(false);

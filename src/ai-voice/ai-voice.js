@@ -480,23 +480,34 @@ export default function AiVoice() {
   };
 
   /** 기록일지 보내기 시 전달 내용: AI 요약만 */
-  const getPayloadForSend = () => (selectedDetail?.summary || '').trim();
+  const getPayloadForSend = () => String(selectedDetail?.summary || '').trim();
 
   const handleSendToCompany = async (company) => {
-    if (!company?._id || !selectedDetail?.summary) return;
+    const companyId = company?._id || company?.id;
+    const content = getPayloadForSend();
+    if (!companyId) {
+      setSendToMessage('고객사를 선택해 주세요.');
+      return;
+    }
+    if (!content) {
+      setSendToMessage('보낼 요약 내용이 없습니다. 요약이 생성된 뒤 다시 시도해 주세요.');
+      return;
+    }
     setSendToMessage('');
     setSendToLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/customer-companies/${company._id}`, crmFetchInit());
+      // 고객사 「업무 일지」(WorkHistory)로 등록 — memo 필드가 아님
+      const res = await fetch(
+        `${API_BASE}/customer-companies/${companyId}/history`,
+        crmFetchInit({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content })
+        })
+      );
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(getUserVisibleApiError(data, '고객사 조회 실패'));
-      const existingMemo = data.memo != null ? String(data.memo).trim() : '';
-      const newMemo = existingMemo ? `${existingMemo}\n\n${getPayloadForSend()}` : getPayloadForSend();
-      const patchRes = await fetch(`${API_BASE}/customer-companies/${company._id}`, crmFetchInit({ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ memo: newMemo  })
-      }));
-      const patchData = await patchRes.json().catch(() => ({}));
-      if (!patchRes.ok) throw new Error(getUserVisibleApiError(patchData, '고객사 메모 저장 실패'));
-      setSendToMessage(`"${company.name || '고객사'}" 메모에 추가했습니다.`);
+      if (!res.ok) throw new Error(getUserVisibleApiError(data, '고객사 일지 저장 실패'));
+      setSendToMessage(`"${company.name || '고객사'}" 일지에 추가했습니다.`);
       setShowSendToCompany(false);
     } catch (e) {
       setSendToMessage(e.message || '저장 실패');
@@ -506,14 +517,29 @@ export default function AiVoice() {
   };
 
   const handleSendToContact = async (contact) => {
-    if (!contact?._id || !selectedDetail?.summary) return;
+    const contactId = contact?._id || contact?.id;
+    const content = getPayloadForSend();
+    if (!contactId) {
+      setSendToMessage('연락처를 선택해 주세요.');
+      return;
+    }
+    if (!content) {
+      setSendToMessage('보낼 요약 내용이 없습니다. 요약이 생성된 뒤 다시 시도해 주세요.');
+      return;
+    }
     setSendToMessage('');
     setSendToLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/customer-company-employees/${contact._id}/history`, crmFetchInit({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: getPayloadForSend()  })
-      }));
+      const res = await fetch(
+        `${API_BASE}/customer-company-employees/${contactId}/history`,
+        crmFetchInit({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content })
+        })
+      );
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || '일지 저장 실패');
+      if (!res.ok) throw new Error(getUserVisibleApiError(data, '연락처 일지 저장 실패'));
       setSendToMessage(`"${contact.name || '연락처'}" 일지에 추가했습니다.`);
       setShowSendToContact(false);
     } catch (e) {
@@ -524,14 +550,22 @@ export default function AiVoice() {
   };
 
   const handleSendToMeeting = () => {
-    if (!selectedDetail?.summary) return;
-    navigate('/meeting-minutes?modal=add', {
-      state: {
-        fromAiVoice: true,
-        title: selectedDetail?.title || '음성 기록 요약',
-        discussionPoints: getPayloadForSend()
-      }
-    });
+    const content = getPayloadForSend();
+    if (!content) {
+      setSendToMessage('보낼 요약 내용이 없습니다. 요약이 생성된 뒤 다시 시도해 주세요.');
+      return;
+    }
+    const draft = {
+      fromAiVoice: true,
+      title: selectedDetail?.title || '음성 기록 요약',
+      discussionPoints: content
+    };
+    try {
+      sessionStorage.setItem('nexvia-ai-voice-meeting-draft', JSON.stringify(draft));
+    } catch (_) {
+      /* ignore */
+    }
+    navigate('/meeting-minutes?modal=add', { state: draft });
   };
 
   const selected = items.find((r) => r._id === selectedId);
@@ -849,14 +883,22 @@ export default function AiVoice() {
 
       {showSendToCompany && (
         <CustomerCompanySearchModal
-          onClose={() => setShowSendToCompany(false)}
-          onSelect={(company) => handleSendToCompany(company)}
+          onClose={() => {
+            if (!sendToLoading) setShowSendToCompany(false);
+          }}
+          onSelect={(company) => {
+            void handleSendToCompany(company);
+          }}
         />
       )}
       {showSendToContact && (
         <CustomerCompanyEmployeesSearchModal
-          onClose={() => setShowSendToContact(false)}
-          onSelect={(contact) => handleSendToContact(contact)}
+          onClose={() => {
+            if (!sendToLoading) setShowSendToContact(false);
+          }}
+          onSelect={(contact) => {
+            void handleSendToContact(contact);
+          }}
         />
       )}
     </div>

@@ -3507,6 +3507,16 @@ export default function Dashboard() {
     data?.insightLeaderFilters
   ]);
 
+  const wonLeaderboardPeriodLabel = useMemo(() => {
+    const labelMap = {
+      month: '월간',
+      quarter: '분기',
+      half: '반기',
+      year: '연간'
+    };
+    return labelMap[kpiPeriod] || '월간';
+  }, [kpiPeriod]);
+
   const homeKpiCards = useMemo(() => {
     const kpi = stats.kpiSummary;
     const cur = DASHBOARD_DISPLAY_CURRENCY;
@@ -3542,7 +3552,7 @@ export default function Dashboard() {
     return [
       {
         key: 'rev',
-        title: '연간 총 매출액 (수주 완료)',
+        title: `${wonLeaderboardPeriodLabel} 총 매출액 (수주 완료)`,
         hint: revHint,
         value: formatCurrency(revTotal, cur),
         icon: 'payments',
@@ -3630,7 +3640,7 @@ export default function Dashboard() {
         periodMode: 'deltaPct'
       }
     ];
-  }, [stats.kpiSummary, stats.taskCompletionMeta, krwInsightKpi, goalCollectedKrw, dealBasRMap, homeProjectCounts, isCompanyWideInsight]);
+  }, [stats.kpiSummary, stats.taskCompletionMeta, krwInsightKpi, goalCollectedKrw, dealBasRMap, homeProjectCounts, isCompanyWideInsight, wonLeaderboardPeriodLabel]);
 
   const pipelineColumns = useMemo(() => {
     const byStage = pipelineSummary?.byStage && typeof pipelineSummary.byStage === 'object'
@@ -3665,16 +3675,6 @@ export default function Dashboard() {
       };
     });
   }, [data?.assigneeProfitLeaderboard]);
-
-  const wonLeaderboardPeriodLabel = useMemo(() => {
-    const labelMap = {
-      month: '월간',
-      quarter: '분기',
-      half: '반기',
-      year: '연간'
-    };
-    return labelMap[kpiPeriod] || '월간';
-  }, [kpiPeriod]);
 
   const [dashboardExporting, setDashboardExporting] = useState(false);
   const handleDashboardExport = async () => {
@@ -4604,7 +4604,7 @@ export default function Dashboard() {
             marginLineCurrent={cur}
             marginLinePrev={prev}
             currency={selectedGraphCurrency}
-            title={isMargin ? '순마진' : '연간별 매출액'}
+            title={isMargin ? '순마진' : consumerChartTitle}
             dealBasRMap={dealBasRMap}
             strokeCurrent={isMargin ? MARGIN_LINE_CURRENT : CONSUMER_LINE_COLOR}
             strokePrev={isMargin ? MARGIN_LINE_PREV : CONSUMER_LINE_PREV}
@@ -4672,12 +4672,12 @@ export default function Dashboard() {
       <div className="home-ref-trend-bundles" data-purpose="chart-bundles">
         <section
           className={`panel home-chart-panel home-ref-trend-card home-ref-trend-card--bundle${prefersReducedMotion ? ' home-chart-panel--motion-reduced' : ''}`}
-          aria-label="연간별 매출액 및 순마진"
+          aria-label={`${consumerChartTitle} 및 순마진`}
         >
           <div className="home-ref-trend-head">
             <div className="home-ref-trend-head-text">
               <h2 className="home-ref-trend-title">
-                <span>연간별 매출 · 순마진</span>
+                <span>{`${wonLeaderboardPeriodLabel}별 매출 · 순마진`}</span>
                 <span className="home-ref-trend-badge">{yearBadge}</span>
               </h2>
               <p className="home-ref-trend-sub">수주 성공 건의 소비자가·순마진 추이</p>
@@ -4685,7 +4685,7 @@ export default function Dashboard() {
           </div>
           <div className="home-ref-trend-bundle-stack">
             <div className="home-ref-trend-bundle-item">
-              <h3 className="home-ref-trend-bundle-item-title">연간별 매출액</h3>
+              <h3 className="home-ref-trend-bundle-item-title">{consumerChartTitle}</h3>
               <div className="home-ref-trend-body home-chart-body">{renderLineBlock('revenue')}</div>
               {renderMiniFooter(false)}
             </div>
@@ -6164,7 +6164,6 @@ export default function Dashboard() {
         />
       ) : null}
 
-    
     </div>
   );
 }

@@ -107,18 +107,31 @@ export default function MeetingMinutes() {
     return () => { cancelled = true; };
   }, [detailId, items, modalMode]);
 
-  const initialFromAiVoice = location.state?.fromAiVoice
-    ? {
-        title: location.state.title ?? '',
-        discussionPoints: location.state.discussionPoints ?? '',
-        meetingDate: new Date(),
-        location: '',
-        agenda: '',
-        status: 'Draft',
-        actionItems: [],
-        attendees: []
+  const initialFromAiVoice = useMemo(() => {
+    let draft = location.state?.fromAiVoice ? location.state : null;
+    if (!draft) {
+      try {
+        const raw = sessionStorage.getItem('nexvia-ai-voice-meeting-draft');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed?.fromAiVoice) draft = parsed;
+        }
+      } catch (_) {
+        draft = null;
       }
-    : null;
+    }
+    if (!draft?.fromAiVoice) return null;
+    return {
+      title: draft.title ?? '',
+      discussionPoints: draft.discussionPoints ?? '',
+      meetingDate: new Date(),
+      location: '',
+      agenda: '',
+      status: 'Draft',
+      actionItems: [],
+      attendees: []
+    };
+  }, [location.state]);
 
   const fetchList = useCallback(async (page = 1) => {
     setLoading(true);
@@ -166,6 +179,11 @@ export default function MeetingMinutes() {
     const next = new URLSearchParams(searchParams);
     next.delete(MODAL_PARAM);
     setSearchParams(next, { replace: true });
+    try {
+      sessionStorage.removeItem('nexvia-ai-voice-meeting-draft');
+    } catch (_) {
+      /* ignore */
+    }
     if (location.state?.fromAiVoice) navigate(location.pathname, { replace: true, state: {} });
   };
 
