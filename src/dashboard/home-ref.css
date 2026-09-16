@@ -517,11 +517,20 @@
   padding-right: 0.25rem;
 }
 
+.home-page.home-page--ref .home-contribution-panel--donut .home-contribution-head-actions {
+  display: inline-flex !important;
+  flex: 0 0 auto !important;
+  align-items: center !important;
+  gap: 0.35rem !important;
+  margin-left: auto !important;
+  position: relative;
+  z-index: 3;
+}
+
 .home-page.home-page--ref .home-contribution-panel--donut .home-contribution-calc-detail-btn {
   flex: 0 0 auto !important;
-  align-self: flex-start;
+  align-self: center;
   margin: 0 !important;
-  margin-left: auto !important;
   padding: 0.2rem 0.45rem !important;
   border: none !important;
   border-radius: 0.375rem !important;
@@ -540,14 +549,23 @@
   text-decoration: underline;
 }
 
+.home-page.home-page--ref .home-ref-donut-stack > .home-contribution-panel--donut {
+  position: relative;
+  z-index: 1;
+}
+
+.home-page.home-page--ref .home-ref-donut-stack > .home-contribution-panel--donut:has(.home-product-legend-menu-btn.is-open) {
+  z-index: 80;
+}
+
 .home-page.home-page--ref .home-contribution-panel--donut .home-donut-chart {
   flex: 1 1 auto;
   min-height: 0 !important;
   justify-content: center;
-  gap: 0.45rem !important;
+  gap: 0 !important;
   overflow: visible;
   position: relative;
-  z-index: 2;
+  z-index: 0;
 }
 
 .home-page.home-page--ref .home-contribution-panel--donut .home-donut-chart-visual {
@@ -561,11 +579,21 @@
   z-index: 6;
 }
 
+.home-page.home-page--ref .home-contribution-panel--donut .home-product-legend-menu-btn {
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.home-page.home-page--ref .home-contribution-panel--donut .home-product-legend-menu-btn .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
 .home-page.home-page--ref .home-contribution-panel--donut .home-product-legend-menu-panel {
-  left: 50%;
-  right: auto;
-  transform: translateX(-50%);
+  left: auto;
+  right: 0;
+  transform: none;
   width: min(16.5rem, 78vw);
+  z-index: 90;
 }
 
 .home-page.home-page--ref .home-contribution-panel--donut .home-donut-center {

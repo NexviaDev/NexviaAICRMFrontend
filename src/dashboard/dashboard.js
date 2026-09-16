@@ -296,20 +296,13 @@ function HomeContributionDonutChart({
   segments,
   centerPrimary = '—',
   centerSecondary = '',
-  ariaLabel = '원형 비중 차트',
-  legendTitle = '구성 목록'
+  ariaLabel = '원형 비중 차트'
 }) {
   const rows = buildHomeDonutLegendItems(segments).map((seg) => ({
     id: seg.key,
     label: seg.label,
     pct: seg.pct,
     amount: seg.amount,
-    color: seg.color
-  }));
-  const legendItems = rows.map((seg) => ({
-    key: seg.id,
-    label: seg.label,
-    pct: seg.pct,
     color: seg.color
   }));
   const size = 180;
@@ -361,11 +354,6 @@ function HomeContributionDonutChart({
           {centerSecondary ? <span>{centerSecondary}</span> : null}
         </div>
       </div>
-      <HomeProductLegendMenu
-        items={legendItems}
-        title={legendTitle}
-        ariaLabel={`${legendTitle} 보기`}
-      />
     </div>
   );
 }
@@ -5577,18 +5565,31 @@ export default function Dashboard() {
                           >
                             <div className="home-contribution-head home-contribution-head--row">
                               <h3 id="home-achievement-title">{homeTargetContributionBar.title}</h3>
-                              <button
-                                type="button"
-                                className="home-contribution-calc-detail-btn"
-                                onClick={() =>
-                                  setHomeContributionCalcModal({
-                                    kind: 'target',
-                                    mode: homeTargetContributionBar.mode === 'user' ? 'user' : 'team'
-                                  })
-                                }
-                              >
-                                자세히 보기
-                              </button>
+                              <div className="home-contribution-head-actions">
+                                <HomeProductLegendMenu
+                                  items={buildHomeDonutLegendItems(targetSegs)}
+                                  title={
+                                    homeTargetContributionBar.mode === 'team' ? '팀 목록' : '구성 목록'
+                                  }
+                                  ariaLabel={
+                                    homeTargetContributionBar.mode === 'team'
+                                      ? '팀 목록 보기'
+                                      : '구성 목록 보기'
+                                  }
+                                />
+                                <button
+                                  type="button"
+                                  className="home-contribution-calc-detail-btn"
+                                  onClick={() =>
+                                    setHomeContributionCalcModal({
+                                      kind: 'target',
+                                      mode: homeTargetContributionBar.mode === 'user' ? 'user' : 'team'
+                                    })
+                                  }
+                                >
+                                  자세히 보기
+                                </button>
+                              </div>
                             </div>
                             <p className="home-contribution-single-caption">
                               {`목표액 ${formatRevenueCompact(targetTotalTarget)} · 순마진 ${formatRevenueCompact(targetTotalAmount)} · 달성률 ${
@@ -5602,9 +5603,6 @@ export default function Dashboard() {
                               }
                               centerSecondary="달성률"
                               ariaLabel={homeTargetContributionBar.title}
-                              legendTitle={
-                                homeTargetContributionBar.mode === 'team' ? '팀 목록' : '구성 목록'
-                              }
                             />
                           </section>
                         ) : null}
@@ -5615,18 +5613,31 @@ export default function Dashboard() {
                           >
                             <div className="home-contribution-head home-contribution-head--row">
                               <h3 id="home-contribution-title">{homeContributionBarKrw.title}</h3>
-                              <button
-                                type="button"
-                                className="home-contribution-calc-detail-btn"
-                                onClick={() =>
-                                  setHomeContributionCalcModal({
-                                    kind: 'share',
-                                    mode: homeContributionBarKrw.mode === 'user' ? 'user' : 'team'
-                                  })
-                                }
-                              >
-                                자세히 보기
-                              </button>
+                              <div className="home-contribution-head-actions">
+                                <HomeProductLegendMenu
+                                  items={buildHomeDonutLegendItems(shareSegs)}
+                                  title={
+                                    homeContributionBarKrw.mode === 'team' ? '팀 목록' : '구성 목록'
+                                  }
+                                  ariaLabel={
+                                    homeContributionBarKrw.mode === 'team'
+                                      ? '팀 목록 보기'
+                                      : '구성 목록 보기'
+                                  }
+                                />
+                                <button
+                                  type="button"
+                                  className="home-contribution-calc-detail-btn"
+                                  onClick={() =>
+                                    setHomeContributionCalcModal({
+                                      kind: 'share',
+                                      mode: homeContributionBarKrw.mode === 'user' ? 'user' : 'team'
+                                    })
+                                  }
+                                >
+                                  자세히 보기
+                                </button>
+                              </div>
                             </div>
                             <p className="home-contribution-single-caption">
                               {`순마진 합계 ${formatRevenueCompact(shareTotal)}`}
@@ -5636,9 +5647,6 @@ export default function Dashboard() {
                               centerPrimary={formatRevenueCompact(shareTotal)}
                               centerSecondary="순마진"
                               ariaLabel={homeContributionBarKrw.title}
-                              legendTitle={
-                                homeContributionBarKrw.mode === 'team' ? '팀 목록' : '구성 목록'
-                              }
                             />
                           </section>
                         ) : null}
