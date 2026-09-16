@@ -274,47 +274,44 @@ function HomeTargetAchievementSegHoverCard({
   );
 }
 
-/** 달성률·순마진 비중 막대 아래 색상 범례 */
-function HomeContributionColorLegend({ segments, ariaLabel = '구간 색상 범례' }) {
-  const rows = Array.isArray(segments) ? segments : [];
-  if (rows.length === 0) return null;
-  return (
-    <div className="home-contribution-legend" role="list" aria-label={ariaLabel}>
-      {rows.map((seg, idx) => (
-        <span key={String(seg.id || seg.label || idx)} className="home-contribution-legend-item" role="listitem">
-          <span
-            className="home-contribution-legend-dot"
-            style={{ backgroundColor: seg.color || chartColorAt(idx) }}
-            aria-hidden
-          />
-          <span className="home-contribution-legend-label">
-            {seg.label}
-            {seg.pct != null ? ` ${seg.pct}%` : ''}
-          </span>
-        </span>
-      ))}
-    </div>
-  );
-}
-
 /** 원형(도넛) 기여도·비중 차트 */
 const HOME_DONUT_COLORS = ['#facc15', '#9f1239', '#ea580c', '#14b8a6', '#2563eb', '#22c55e'];
+
+/** 달성률·순마진 비중 — 제품군 목록과 동일하게 클릭 시 범례 팝오버 */
+function buildHomeDonutLegendItems(segments) {
+  const rowsRaw = (Array.isArray(segments) ? segments : []).map((seg, idx) => ({
+    key: seg.id ?? `donut-${idx}`,
+    label: seg.label || '구간',
+    pct: Math.max(0, Number(seg.pct) || 0),
+    amount: Math.max(0, Number(seg.amount) || 0),
+    color: HOME_DONUT_COLORS[idx % HOME_DONUT_COLORS.length]
+  }));
+  const hasPositive = rowsRaw.some((seg) => seg.pct > 0 || seg.amount > 0);
+  return hasPositive
+    ? rowsRaw.filter((seg) => seg.pct > 0 || seg.amount > 0)
+    : rowsRaw;
+}
 
 function HomeContributionDonutChart({
   segments,
   centerPrimary = '—',
   centerSecondary = '',
-  ariaLabel = '원형 비중 차트'
+  ariaLabel = '원형 비중 차트',
+  legendTitle = '구성 목록'
 }) {
-  const rows = (Array.isArray(segments) ? segments : [])
-    .map((seg, idx) => ({
-      id: seg.id ?? `donut-${idx}`,
-      label: seg.label || '구간',
-      pct: Math.max(0, Number(seg.pct) || 0),
-      amount: Math.max(0, Number(seg.amount) || 0),
-      color: HOME_DONUT_COLORS[idx % HOME_DONUT_COLORS.length]
-    }))
-    .filter((seg) => seg.pct > 0 || seg.amount > 0);
+  const rows = buildHomeDonutLegendItems(segments).map((seg) => ({
+    id: seg.key,
+    label: seg.label,
+    pct: seg.pct,
+    amount: seg.amount,
+    color: seg.color
+  }));
+  const legendItems = rows.map((seg) => ({
+    key: seg.id,
+    label: seg.label,
+    pct: seg.pct,
+    color: seg.color
+  }));
   const size = 180;
   const cx = size / 2;
   const cy = size / 2;
@@ -326,8 +323,8 @@ function HomeContributionDonutChart({
   let offset = 0;
 
   return (
-    <div className="home-donut-chart" role="img" aria-label={ariaLabel}>
-      <div className="home-donut-chart-visual">
+    <div className="home-donut-chart">
+      <div className="home-donut-chart-visual" role="img" aria-label={ariaLabel}>
         <svg className="home-donut-svg" viewBox={`0 0 ${size} ${size}`} aria-hidden>
           <circle
             cx={cx}
@@ -364,7 +361,11 @@ function HomeContributionDonutChart({
           {centerSecondary ? <span>{centerSecondary}</span> : null}
         </div>
       </div>
-      <HomeContributionColorLegend segments={rows} ariaLabel={`${ariaLabel} 범례`} />
+      <HomeProductLegendMenu
+        items={legendItems}
+        title={legendTitle}
+        ariaLabel={`${legendTitle} 보기`}
+      />
     </div>
   );
 }
@@ -2062,8 +2063,13 @@ function homeDashboardPayloadDiffPatch(prev, next) {
   for (const k of DASHBOARD_RESPONSE_META_KEYS) {
     if (Object.prototype.hasOwnProperty.call(next, k)) meta[k] = next[k];
   }
-  if (Object.keys(patch).length === 0) return { ...prev, ...meta };
-  return { ...prev, ...patch, ...meta };
+  const merged = Object.keys(patch).length === 0 ? { ...prev, ...meta } : { ...prev, ...patch, ...meta };
+  // next에 없는 키는 이전 필터 잔존값으로 남지 않게 제거
+  for (const key of Object.keys(merged)) {
+    if (DASHBOARD_RESPONSE_META_KEYS.has(key)) continue;
+    if (!Object.prototype.hasOwnProperty.call(next, key)) delete merged[key];
+  }
+  return merged;
 }
 
 export default function Dashboard() {
@@ -2307,6 +2313,8 @@ export default function Dashboard() {
 
   /** 틱이 막 올랐을 때만 스테일 1단계 생략(틱>0 고정이면 필터 변경 시에도 스테일이 막히는 문제 방지) */
   const lastHandledDashboardRefreshTickRef = useRef(0);
+  /** 필터 전환 레이스 — 이전 요청 응답이 새 필터 UI를 덮지 않게 */
+  const dashboardFetchGenRef = useRef(0);
   const [homeForecastActiveFilters, setHomeForecastActiveFilters] = useState({
     product: '',
     probability: '',
@@ -2647,10 +2655,14 @@ export default function Dashboard() {
     if (!insightAccess.checked || !homeInsightToolbarTemplateReady) return undefined;
     const ac = new AbortController();
     let cancelled = false;
+    const fetchGen = ++dashboardFetchGenRef.current;
+    const isCurrentFetch = () => !cancelled && fetchGen === dashboardFetchGenRef.current;
     const fetchData = async () => {
-      let isRefetch = dataRef.current != null;
-      if (!cancelled) {
-        if (isRefetch) setDashboardDataBusy(true);
+      const hadData = dataRef.current != null;
+      /** 필터·기간 전환: 이전 스코프 숫자를 붙잡지 말고 정밀 조회를 끝까지 받음 */
+      const isScopeRefetch = hadData;
+      if (isCurrentFetch()) {
+        if (isScopeRefetch) setDashboardDataBusy(true);
         else setLoading(true);
       }
       const q = new URLSearchParams();
@@ -2671,19 +2683,26 @@ export default function Dashboard() {
       const skipStaleFirst = dashboardRefreshTick > lastHandledDashboardRefreshTickRef.current;
       const dashboardQueryString = q.toString();
       const localCacheKey = buildHomeDashboardLocalCacheKey(dashboardQueryString);
-      if (!skipStaleFirst && !isRefetch) {
+      let usedLocalSnapshot = false;
+      // 필터 전환 시에도 해당 쿼리 로컬 스냅샷이 있으면 즉시 표시(이전 스코프 잔상 제거)
+      if (!skipStaleFirst) {
         const localCached = readHomeDashboardLocalCache(localCacheKey);
         if (localCached) {
           dataRef.current = localCached;
-          setData(localCached);
-          setLoading(false);
-          setDashboardDataBusy(true);
-          isRefetch = true;
+          if (isCurrentFetch()) {
+            setData(localCached);
+            if (!isScopeRefetch) setLoading(false);
+            setDashboardDataBusy(true);
+          }
+          usedLocalSnapshot = true;
         }
       }
       let appliedStale = false;
       let freshAppliedOk = false;
       const cancelFreshIfStaleDone = new AbortController();
+      /** 첫 진입 + 완전 캐시일 때만 정밀 취소. 필터 전환·강제갱신에서는 항상 정밀 조회 유지 */
+      const allowCancelFreshOnCompleteStale =
+        !isScopeRefetch && !skipStaleFirst && !usedLocalSnapshot;
       const freshSignal =
         typeof AbortSignal !== 'undefined' && typeof AbortSignal.any === 'function'
           ? AbortSignal.any([ac.signal, cancelFreshIfStaleDone.signal])
@@ -2698,28 +2717,29 @@ export default function Dashboard() {
       };
 
       const applyStalePayload = (j1) => {
-        if (cancelled || freshAppliedOk || !j1 || typeof j1 !== 'object') return;
+        if (!isCurrentFetch() || freshAppliedOk || !j1 || typeof j1 !== 'object') return;
         setData(j1);
         appliedStale = true;
-        if (!isRefetch) setLoading(false);
-        if (isHomeStaleDashboardPayloadComplete(j1)) {
-          if (!cancelled) setDashboardDataBusy(false);
+        if (!isScopeRefetch && !usedLocalSnapshot) setLoading(false);
+        if (allowCancelFreshOnCompleteStale && isHomeStaleDashboardPayloadComplete(j1)) {
+          setDashboardDataBusy(false);
           tryCancelFreshOnly();
         }
       };
 
       const applyFreshPayload = (j2) => {
-        if (cancelled || !j2 || typeof j2 !== 'object') return;
+        if (!isCurrentFetch() || !j2 || typeof j2 !== 'object') return;
         freshAppliedOk = true;
         writeHomeDashboardLocalCache(localCacheKey, j2);
         setData((prev) => {
-          if (skipStaleFirst || !appliedStale) return j2;
+          // 필터 전환·강제 새로고침·스테일 미적용: 전체 교체(이전 스코프 잔존 키 방지)
+          if (skipStaleFirst || isScopeRefetch || !appliedStale) return j2;
           const prevKey = prev && typeof prev === 'object' ? String(prev.dashboardCacheKey || '') : '';
           const nextKey = String(j2.dashboardCacheKey || '');
           if (prevKey && nextKey && prevKey !== nextKey) return j2;
           return homeDashboardPayloadDiffPatch(prev, j2);
         });
-        if (!isRefetch) setLoading(false);
+        if (!isScopeRefetch) setLoading(false);
       };
 
       try {
@@ -2730,10 +2750,9 @@ export default function Dashboard() {
           const qs = new URLSearchParams(q);
           qs.set('allowStaleCache', '1');
           tasks.push(
-            fetch(`${API_BASE}/reports/dashboard?${qs}`, { ...crmFetchInit(), signal: ac.signal
-             })
+            fetch(`${API_BASE}/reports/dashboard?${qs}`, { ...crmFetchInit(), signal: ac.signal })
               .then(async (r1) => {
-                if (cancelled) return;
+                if (!isCurrentFetch()) return;
                 if (r1.status === 204) {
                   /* 회사 캐시 없음 — 정밀만 */
                   return;
@@ -2749,9 +2768,9 @@ export default function Dashboard() {
         }
 
         tasks.push(
-          fetch(freshUrl, { ...crmFetchInit(), signal: freshSignal  })
+          fetch(freshUrl, { ...crmFetchInit(), signal: freshSignal })
             .then(async (r2) => {
-              if (cancelled) return;
+              if (!isCurrentFetch()) return;
               if (!r2.ok) return;
               const j2 = await r2.json().catch(() => null);
               applyFreshPayload(j2);
@@ -2762,7 +2781,7 @@ export default function Dashboard() {
         );
 
         await Promise.allSettled(tasks);
-        if (!cancelled && !appliedStale && !freshAppliedOk) {
+        if (isCurrentFetch() && !appliedStale && !freshAppliedOk && !usedLocalSnapshot) {
           setData({
             wonRevenue: { KRW: 0, USD: 0 },
             salesGraphs: {
@@ -2799,7 +2818,7 @@ export default function Dashboard() {
         }
       } catch (err) {
         if (err?.name === 'AbortError') return;
-        if (!cancelled) {
+        if (isCurrentFetch() && !usedLocalSnapshot && !appliedStale && !freshAppliedOk) {
           setData({
             wonRevenue: { KRW: 0, USD: 0 },
             salesGraphs: {
@@ -2835,7 +2854,7 @@ export default function Dashboard() {
           });
         }
       } finally {
-        if (!cancelled) {
+        if (isCurrentFetch()) {
           lastHandledDashboardRefreshTickRef.current = dashboardRefreshTick;
           setLoading(false);
           setDashboardDataBusy(false);
@@ -2904,13 +2923,32 @@ export default function Dashboard() {
             })
           );
           if (cancelled) return;
+          const isPersonalSelf =
+            baseBar.personalSelf === true ||
+            (baseBar.mode !== 'team' &&
+              Array.isArray(resolved) &&
+              resolved.length === 1 &&
+              leaderInsightViewKind === 'personal');
+          const isTeamMembers =
+            !isPersonalSelf &&
+            baseBar.mode !== 'team' &&
+            leaderInsightViewKind === 'team';
           setHomeTargetContributionBar({
             mode: baseBar.mode === 'team' ? 'team' : 'user',
-            title: baseBar.mode === 'team' ? '팀별 목표대비 달성률' : '개인별 목표대비 달성률',
-            sublabel:
-              baseBar.mode === 'team'
+            title: isPersonalSelf
+              ? '본인 목표대비 달성률'
+              : baseBar.mode === 'team'
+                ? '팀별 목표대비 달성률'
+                : isTeamMembers
+                  ? '팀원별 목표대비 달성률'
+                  : '개인별 목표대비 달성률',
+            sublabel: isPersonalSelf
+              ? `${period.periodLabel} 본인 달성 현황`
+              : baseBar.mode === 'team'
                 ? `${period.periodLabel} 팀별 달성 현황`
-                : `${period.periodLabel} 개인별 달성 현황`,
+                : isTeamMembers
+                  ? `${period.periodLabel} 팀원별 달성 현황`
+                  : `${period.periodLabel} 개인별 달성 현황`,
             segments: resolved.map((seg, idx) => ({
               ...seg,
               color: seg.color || chartColorAt(idx)
@@ -5564,6 +5602,9 @@ export default function Dashboard() {
                               }
                               centerSecondary="달성률"
                               ariaLabel={homeTargetContributionBar.title}
+                              legendTitle={
+                                homeTargetContributionBar.mode === 'team' ? '팀 목록' : '구성 목록'
+                              }
                             />
                           </section>
                         ) : null}
@@ -5595,6 +5636,9 @@ export default function Dashboard() {
                               centerPrimary={formatRevenueCompact(shareTotal)}
                               centerSecondary="순마진"
                               ariaLabel={homeContributionBarKrw.title}
+                              legendTitle={
+                                homeContributionBarKrw.mode === 'team' ? '팀 목록' : '구성 목록'
+                              }
                             />
                           </section>
                         ) : null}

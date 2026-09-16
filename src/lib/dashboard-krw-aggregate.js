@@ -203,6 +203,7 @@ function contributionBarColorAt(index) {
 /** 기여도 막대 — segment.netMarginByCurrency 가 있으면 원화 합산 */
 export function rebuildContributionBarKrw(bar, dealBasRMap) {
   if (!bar || !Array.isArray(bar.segments) || !bar.segments.length) return bar;
+  const allowZero = bar.personalSelf === true || bar.allowZero === true;
   const segments = bar.segments
     .map((seg) => {
       const byCur = seg.netMarginByCurrency;
@@ -212,16 +213,22 @@ export function rebuildContributionBarKrw(bar, dealBasRMap) {
           : toKrwAmount(seg.amount, bar.currency || 'KRW', dealBasRMap);
       return { ...seg, amount: Math.round(amount) };
     })
-    .filter((seg) => seg.amount > 0);
+    .filter((seg) => allowZero || seg.amount > 0);
   const total = segments.reduce((s, seg) => s + seg.amount, 0);
-  if (total <= 0) return null;
+  if (total <= 0 && !allowZero) return null;
+  if (segments.length === 0) return null;
   return {
     ...bar,
     currency: DASHBOARD_DISPLAY_CURRENCY,
     segments: segments
       .map((seg) => ({
         ...seg,
-        pct: total > 0 ? Number(((seg.amount / total) * 100).toFixed(1)) : 0
+        pct:
+          total > 0
+            ? Number(((seg.amount / total) * 100).toFixed(1))
+            : allowZero && segments.length === 1
+              ? 100
+              : 0
       }))
       .sort((a, b) => b.amount - a.amount)
       .map((seg, idx) => ({

@@ -489,9 +489,9 @@
   gap: 0.4rem !important;
   padding: 0.85rem 1rem 0.75rem !important;
   flex: 1 1 0 !important;
-  min-height: 16rem !important;
+  min-height: 14.5rem !important;
   height: auto !important;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .home-page.home-page--ref .home-contribution-panel--donut .home-contribution-head,
@@ -544,14 +544,28 @@
   flex: 1 1 auto;
   min-height: 0 !important;
   justify-content: center;
-  gap: 0.4rem !important;
+  gap: 0.45rem !important;
   overflow: visible;
+  position: relative;
+  z-index: 2;
 }
 
 .home-page.home-page--ref .home-contribution-panel--donut .home-donut-chart-visual {
   width: 6.75rem !important;
   height: 6.75rem !important;
   flex-shrink: 0;
+}
+
+.home-page.home-page--ref .home-contribution-panel--donut .home-product-legend-menu {
+  align-self: center;
+  z-index: 6;
+}
+
+.home-page.home-page--ref .home-contribution-panel--donut .home-product-legend-menu-panel {
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  width: min(16.5rem, 78vw);
 }
 
 .home-page.home-page--ref .home-contribution-panel--donut .home-donut-center {
@@ -569,19 +583,12 @@
   line-height: 1.2 !important;
 }
 
-.home-page.home-page--ref .home-contribution-panel--donut .home-contribution-legend {
-  flex-shrink: 0 !important;
-  margin-top: 0.1rem !important;
-  width: 100%;
-  max-width: 100%;
-  justify-content: center;
-  gap: 0.35rem 0.65rem !important;
+.home-page.home-page--ref .home-ref-donut-stack {
+  overflow: visible;
 }
 
-.home-page.home-page--ref .home-contribution-panel--donut .home-contribution-legend-label {
-  font-size: 0.6875rem !important;
-  line-height: 1.25 !important;
-  white-space: nowrap;
+.home-page.home-page--ref .home-ref-donut-trend {
+  overflow: visible;
 }
 
 .home-page.home-page--ref .home-ref-donut-trend-main {
@@ -636,28 +643,40 @@
 .home-page.home-page--ref .home-ref-trend-bundle-stack {
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
+  gap: 1rem;
   padding: 0 1rem 0.85rem;
   flex: 1 1 auto;
-  min-height: 22rem;
+  min-height: 28rem;
   overflow: visible;
 }
 
 .home-page.home-page--ref .home-ref-trend-bundle-item {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
-  min-height: 11rem;
-  flex: 1 1 0;
+  gap: 0.35rem;
+  min-height: 13.75rem;
+  flex: 1 1 auto;
   overflow: visible;
+  position: relative;
+  z-index: 0;
+}
+
+.home-page.home-page--ref .home-ref-trend-bundle-item + .home-ref-trend-bundle-item {
+  padding-top: 0.55rem;
+  border-top: 1px solid #f1f5f9;
 }
 
 .home-page.home-page--ref .home-ref-trend-bundle-item-title {
   margin: 0;
+  padding: 0.1rem 0;
   font-size: 0.75rem;
   font-weight: 700;
   color: var(--home-slate-700);
   flex-shrink: 0;
+  position: relative;
+  z-index: 2;
+  background: #fff;
+  line-height: 1.35;
 }
 
 .home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-body {
@@ -737,13 +756,14 @@
   flex-direction: column !important;
   flex: 1 1 auto !important;
   min-height: 9.5rem !important;
-  height: 9.5rem !important;
+  height: auto !important;
+  max-height: none !important;
   min-width: 0;
   overflow: visible;
 }
 
 .home-page.home-page--ref .home-ref-trend-plot--compact .home-line-chart-chart-block {
-  flex: 1 1 auto !important;
+  flex: 0 0 auto !important;
   min-height: 7rem !important;
   height: 7.25rem !important;
   overflow: visible;
@@ -832,10 +852,13 @@
 }
 
 .home-page.home-page--ref .home-ref-trend-footer--compact {
-  margin-top: 0.15rem;
-  padding: 0.25rem 0 0 !important;
+  margin-top: 0.4rem !important;
+  padding: 0.4rem 0 0.1rem !important;
   border-top: 1px solid var(--home-slate-100);
   flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+  background: #fff;
 }
 
 .home-page.home-page--ref .home-ref-donut-trend-main .home-ref-trend-bundles,
@@ -2360,29 +2383,30 @@
 
   .home-page.home-page--ref .home-ref-trend-bundle-stack {
     flex: none !important;
-    min-height: 22rem !important;
+    min-height: 28rem !important;
+    gap: 1rem !important;
   }
 
   .home-page.home-page--ref .home-ref-trend-bundle-item {
     flex: none !important;
-    min-height: 11rem !important;
+    min-height: 13.75rem !important;
   }
 
   .home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-body {
     flex: none !important;
-    min-height: 11rem !important;
+    min-height: 10rem !important;
     overflow: visible !important;
   }
 
   .home-page.home-page--ref .home-ref-trend-plot--compact {
-    min-height: 11rem !important;
-    height: 11rem !important;
+    min-height: 10rem !important;
+    height: auto !important;
   }
 
   .home-page.home-page--ref .home-ref-trend-plot--compact .home-line-chart-chart-block {
     flex: none !important;
-    height: calc(11rem - 1.75rem) !important;
-    min-height: calc(11rem - 1.75rem) !important;
+    height: 7.5rem !important;
+    min-height: 7.5rem !important;
   }
 
   .home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-embed-body {
@@ -2458,17 +2482,17 @@
   }
 
   .home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-body {
-    min-height: 12rem !important;
+    min-height: 11rem !important;
   }
 
   .home-page.home-page--ref .home-ref-trend-plot--compact {
-    min-height: 12rem !important;
-    height: 12rem !important;
+    min-height: 11rem !important;
+    height: auto !important;
   }
 
   .home-page.home-page--ref .home-ref-trend-plot--compact .home-line-chart-chart-block {
-    height: calc(12rem - 1.75rem) !important;
-    min-height: calc(12rem - 1.75rem) !important;
+    height: 7.5rem !important;
+    min-height: 7.5rem !important;
   }
 
   .home-page.home-page--ref .home-ref-trend-card--bundle .home-ref-trend-embed-body {
