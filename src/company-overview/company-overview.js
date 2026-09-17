@@ -20,6 +20,7 @@ import {
 } from '@/lib/org-chart-mind-shared';
 import { GoogleWorkspaceChatPolicyHint } from '@/lib/google-workspace-chat-hint';
 import { LIST_IDS, getSavedTemplate, patchListTemplate } from '@/lib/list-templates';
+import { openCompanyChatPanel } from '@/company-chat/company-chat-events';
 
 /** 조직도 노드 → 직원 부서 선택 라벨 */
 function formatOrgDeptPickerLabel(node) {
@@ -295,6 +296,11 @@ export default function CompanyOverview() {
   const [memberQuickSearch, setMemberQuickSearch] = useState('');
   const [memberDeptFilter, setMemberDeptFilter] = useState('');
   const [memberRoleFilter, setMemberRoleFilter] = useState('');
+  const [chatInviteOpen, setChatInviteOpen] = useState(false);
+  const [chatInviteTitle, setChatInviteTitle] = useState('');
+  const [chatInviteSelectedIds, setChatInviteSelectedIds] = useState([]);
+  const [chatInviteBusy, setChatInviteBusy] = useState(false);
+  const [chatInviteError, setChatInviteError] = useState('');
   const [employeeColumnOrder, setEmployeeColumnOrder] = useState(() => {
     const saved = getSavedTemplate(COMPANY_OVERVIEW_EMPLOYEE_LIST_ID);
     return normalizeEmployeeColumnOrder(saved?.columnOrder, COMPANY_OVERVIEW_EMPLOYEE_COLUMN_KEYS);
@@ -810,6 +816,60 @@ export default function CompanyOverview() {
   const canSeeSubscriptionSection = ['owner', 'admin', 'senior'].includes(me.role);
   const canEditRole = (emp) => canManageRoles && String(emp.id) !== String(me.id) && emp.role !== 'owner';
   const canEditMemberMeta = (emp) => canManageRoles && !!String(emp?.id || '').trim();
+
+  const chatInviteableEmployees = useMemo(
+    () =>
+      (Array.isArray(employees) ? employees : []).filter((emp) => {
+        const role = String(emp?.role || '').trim().toLowerCase();
+        if (role === 'pending') return false;
+        if (String(emp.id) === String(me.id)) return false;
+        return true;
+      }),
+    [employees, me.id]
+  );
+
+  const openChatInviteModal = useCallback(() => {
+    if (isPendingUser) return;
+    setChatInviteTitle('');
+    setChatInviteSelectedIds([]);
+    setChatInviteError('');
+    setChatInviteOpen(true);
+  }, [isPendingUser]);
+
+  const toggleChatInviteMember = useCallback((id) => {
+    const uid = String(id);
+    setChatInviteSelectedIds((prev) =>
+      prev.includes(uid) ? prev.filter((x) => x !== uid) : [...prev, uid]
+    );
+  }, []);
+
+  const submitChatInviteRoom = useCallback(async () => {
+    const title = String(chatInviteTitle || '').trim();
+    if (!title) {
+      setChatInviteError('채팅방 이름을 입력해 주세요.');
+      return;
+    }
+    setChatInviteBusy(true);
+    setChatInviteError('');
+    try {
+      const res = await fetch(`${API_BASE}/company-chat/rooms`, {
+        ...crmFetchInit(),
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(crmFetchInit().headers || {}) },
+        body: JSON.stringify({ title, memberIds: chatInviteSelectedIds })
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || '채팅방 생성에 실패했습니다.');
+      const roomId = String(json?.room?.id || '');
+      setChatInviteOpen(false);
+      if (roomId) openCompanyChatPanel({ roomId });
+      else openCompanyChatPanel({});
+    } catch (e) {
+      setChatInviteError(e.message || '채팅방 생성에 실패했습니다.');
+    } finally {
+      setChatInviteBusy(false);
+    }
+  }, [chatInviteSelectedIds, chatInviteTitle]);
 
   const openMemberEditModal = useCallback((emp) => {
     if (!canEditMemberMeta(emp)) return;
@@ -1611,6 +1671,18 @@ export default function CompanyOverview() {
               </div>
             </div>
             <div className="co-ref-members-filters">
+              {!isPendingUser ? (
+                <button
+                  type="button"
+                  className="co-ref-chat-invite-btn"
+                  onClick={openChatInviteModal}
+                >
+                  <span className="material-symbols-outlined" aria-hidden>
+                    forum
+                  </span>
+                  사내 채팅방 만들기
+                </button>
+              ) : null}
               <input
                 className="co-ref-input"
                 type="search"
@@ -1969,6 +2041,95 @@ export default function CompanyOverview() {
               >
                 <span className="material-symbols-outlined">save</span>
                 {(savingMemberId || savingDeptLeader) ? '저장 중…' : '저장'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {chatInviteOpen && !isPendingUser ? (
+        <div
+          className="company-member-edit-overlay"
+          role="presentation"
+          onClick={() => {
+            if (!chatInviteBusy) setChatInviteOpen(false);
+          }}
+        >
+          <div
+            className="company-member-edit-modal co-ref-chat-invite-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="co-chat-invite-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="company-member-edit-head">
+              <h3 id="co-chat-invite-title">사내 채팅방 만들기</h3>
+              <button
+                type="button"
+                className="company-member-edit-close"
+                aria-label="닫기"
+                disabled={chatInviteBusy}
+                onClick={() => setChatInviteOpen(false)}
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            <p className="co-ref-chat-invite-hint">
+              권한 대기(pending) 직원은 초대할 수 없으며, 이후 pending이 되거나 소속 회사에서 빠지면 해당 채팅은 열람할 수 없습니다.
+            </p>
+            <label className="co-ref-chat-invite-label">
+              채팅방 이름
+              <input
+                type="text"
+                className="co-ref-input"
+                value={chatInviteTitle}
+                onChange={(e) => setChatInviteTitle(e.target.value)}
+                placeholder="예: 영업팀 공지"
+                maxLength={120}
+                disabled={chatInviteBusy}
+              />
+            </label>
+            <div className="co-ref-chat-invite-list" role="group" aria-label="초대할 직원">
+              {chatInviteableEmployees.length === 0 ? (
+                <p className="company-overview-empty">초대 가능한 직원이 없습니다.</p>
+              ) : (
+                chatInviteableEmployees.map((emp) => {
+                  const checked = chatInviteSelectedIds.includes(String(emp.id));
+                  return (
+                    <label key={emp.id} className="co-ref-chat-invite-row">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={chatInviteBusy}
+                        onChange={() => toggleChatInviteMember(emp.id)}
+                      />
+                      <span>
+                        <strong>{emp.name || emp.email}</strong>
+                        <em>{emp.email}</em>
+                      </span>
+                    </label>
+                  );
+                })
+              )}
+            </div>
+            {chatInviteError ? <p className="co-ref-chat-invite-error">{chatInviteError}</p> : null}
+            <div className="company-member-edit-actions">
+              <button
+                type="button"
+                className="company-member-edit-btn"
+                disabled={chatInviteBusy}
+                onClick={() => setChatInviteOpen(false)}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                className="company-member-edit-btn company-member-edit-btn-save"
+                disabled={chatInviteBusy}
+                onClick={() => void submitChatInviteRoom()}
+              >
+                <span className="material-symbols-outlined">forum</span>
+                {chatInviteBusy ? '만드는 중…' : '채팅방 만들기'}
               </button>
             </div>
           </div>

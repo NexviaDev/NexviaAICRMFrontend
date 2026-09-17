@@ -14,7 +14,7 @@ import {
 } from '@/lib/push-notifications';
 import Sidebar from './sidebar';
 import { ensureUserSidebarDefaultTemplate } from '@/lib/list-templates';
-import HomeSupportChatbot from '@/dashboard/home-support-chatbot';
+import HomeCompanyChat from '@/company-chat/home-company-chat';
 import './layout.css';
 
 /** 사이드바 상단과 동일 로고 (sidebar.js NEXVIA_LOGO_CDN_URL) */
@@ -297,7 +297,7 @@ export default function Layout({ embeddedContent = null }) {
           </div>
         </div>
       </main>
-      <HomeSupportChatbot />
+      <HomeCompanyChat />
     </div>
   );
 }

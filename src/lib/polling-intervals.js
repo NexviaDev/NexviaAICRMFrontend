@@ -20,6 +20,9 @@ export const MESSENGER_MESSAGE_POLL_MS = parseIntervalMs(
   5000
 );
 
+/** 사내 채팅방 메시지·목록 폴링 (기본 8초) */
+export const COMPANY_CHAT_POLL_MS = parseIntervalMs('VITE_COMPANY_CHAT_POLL_MS', 8000, 4000);
+
 /** 레이아웃: 엑셀 import job 상태 확인 (기본 12초) */
 export const LAYOUT_EXCEL_IMPORT_POLL_MS = parseIntervalMs(
   'VITE_LAYOUT_EXCEL_IMPORT_POLL_MS',
