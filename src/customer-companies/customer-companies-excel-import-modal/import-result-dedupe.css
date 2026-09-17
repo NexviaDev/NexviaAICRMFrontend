@@ -1,0 +1,154 @@
+/* 고객사 가져오기 결과 — 사업자번호 충돌·합치기·번호 확인 섹션 */
+
+/* 확인 버튼이 막혀 있어도 눌리는 것처럼 보이던 문제 (lead-capture 공용 스타일에 disabled 표현이 없음) */
+.lc-crm-result-confirm:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.ird-section {
+  text-align: left;
+}
+
+.ird-hint {
+  margin: 0.2rem 0 0.5rem;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: #64748b;
+}
+
+.ird-scroll {
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
+/* 충돌 카드 */
+
+.ird-conflicts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 20rem;
+  overflow-y: auto;
+}
+
+.ird-conflict {
+  padding: 0.6rem 0.65rem;
+  background: #fffdf8;
+  border: 1px solid rgba(154, 106, 28, 0.25);
+  border-left: 3px solid #d8a24a;
+  border-radius: 8px;
+}
+
+.ird-conflict.is-resolved {
+  background: #fff;
+  border-color: var(--xi-line, #e3ebf3);
+  border-left-color: var(--xi-ok-fg, #2d7a5f);
+}
+
+.ird-conflict-head {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  font-size: 0.74rem;
+  color: #64748b;
+}
+
+.ird-conflict-head .material-symbols-outlined {
+  font-size: 1rem;
+  color: #c48a2c;
+}
+
+.ird-conflict.is-resolved .ird-conflict-head .material-symbols-outlined {
+  color: var(--xi-ok-fg, #2d7a5f);
+}
+
+.ird-conflict-head strong {
+  font-size: 0.8rem;
+  color: #334155;
+  font-variant-numeric: tabular-nums;
+}
+
+.ird-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-top: 0.45rem;
+}
+
+.ird-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.05rem;
+  width: 100%;
+  padding: 0.4rem 0.55rem;
+  font-family: inherit;
+  text-align: left;
+  background: #fff;
+  border: 1px solid var(--xi-line-strong, #d2dfec);
+  border-radius: 7px;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.ird-option:hover:not(:disabled) {
+  border-color: var(--xi-accent, #5b7c99);
+  background: #f8fbfe;
+}
+
+.ird-option.is-selected {
+  border-color: var(--xi-accent-strong, #3d5a73);
+  background: var(--xi-accent-soft, #eaf1f8);
+  box-shadow: inset 3px 0 0 var(--xi-accent-strong, #3d5a73);
+}
+
+.ird-option:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ird-option-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #334155;
+}
+
+.ird-option-meta {
+  font-size: 0.68rem;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+/* 합치기 목록 */
+
+.ird-merge {
+  flex-direction: column;
+  align-items: stretch !important;
+  gap: 0.2rem;
+  background: #f6faf8;
+}
+
+.ird-merge-main {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ird-diffs {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 0.2rem;
+  font-size: 0.68rem;
+  color: #64748b;
+}
+
+.ird-diffs strong {
+  color: #334155;
+  font-weight: 700;
+}

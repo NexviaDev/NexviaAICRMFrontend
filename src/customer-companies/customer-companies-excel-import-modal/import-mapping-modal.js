@@ -1,6 +1,6 @@
 import AssigneePickerModal from '../../company-overview/assignee-picker-modal/assignee-picker-modal';
-import { previewExcelMappedValue } from './excel-import-mapping-utils';
-import { rowStatus } from '../../lead-capture/lead-capture-crm-mapping/lead-capture-crm-mapping-utils';
+import ExcelSheetPreview from '../../shared/excel-sheet-preview';
+import ExcelMappingExtras from '../../shared/excel-mapping-extras';
 import '../../sales-pipeline/opportunity-modal/opportunity-modal.css';
 import '../../shared/excel-import-mapping-modal.css';
 
@@ -17,20 +17,21 @@ export default function ImportMappingModal({
   setDragOver,
   onDrop,
   excelFileName,
+  excelHeaders,
+  mappingByHeader,
+  onMapHeader,
   targetOptions,
   assigneeInputValue,
   onAssigneeInputChange,
   onOpenAssigneePicker,
   showMeBadge,
   rows,
-  sampleRow,
-  registerTarget,
-  sourceOptions,
   effectiveTargetOptions,
+  /** [{ key, label }] 필수(또는 하나 이상 필요) 대상 필드 */
+  requiredTargets = [],
   updateRow,
   removeRow,
   addConstantRow,
-  summary,
   saveMsg,
   showAssigneePicker,
   assigneeUserIds,
@@ -126,13 +127,33 @@ export default function ImportMappingModal({
                 ) : null}
               </div>
 
+              <ExcelSheetPreview
+                headers={excelHeaders}
+                rows={excelRows}
+                mappingByHeader={mappingByHeader}
+                targetOptions={effectiveTargetOptions}
+                onMapHeader={onMapHeader}
+                disabled={disabled}
+                emptyHint="엑셀 파일을 올리면 열 구성과 내용이 여기에 표시됩니다."
+              />
+
+              <ExcelMappingExtras
+                rows={rows}
+                headers={excelHeaders}
+                targetOptions={effectiveTargetOptions}
+                requiredTargets={requiredTargets}
+                requiredMode="all"
+                updateRow={updateRow}
+                removeRow={removeRow}
+                addConstantRow={addConstantRow}
+                disabled={disabled}
+                note="사업자번호가 이미 등록돼 있거나 파일 안에서 겹치는 행은 건너뜁니다. 사업자번호가 없는 행은 기업명이 같아도 등록됩니다."
+              />
+
               <p className="excel-import-map-desc">
-                미리보기는 <strong>첫 데이터 행</strong> 기준입니다. <strong>가져오기</strong> 후 행별 미리보기가
-                끝나면 결과 화면이 뜹니다. 보류는 「이 그룹 적용」을 눌러 즉시 처리 예정 목록으로 옮기고, 마지막{' '}
-                <strong>확인</strong>을 눌렀을 때만 MongoDB 등록이 시작됩니다.
-              </p>
-              <p className="excel-import-map-desc excel-import-map-desc--tight">
-                필수 매핑: <strong>사업자 번호, 기업명, 대표자명, 주소</strong>
+                열 헤더에서 바로 대상 필드를 바꿀 수 있고, 쓰지 않을 열은{' '}
+                <strong>가져오지 않음</strong>으로 두면 됩니다. <strong>가져오기</strong>를 누르면 행별 확인을 거쳐
+                결과 화면이 뜨고, 마지막 <strong>확인</strong>을 눌렀을 때만 실제 등록이 시작됩니다.
               </p>
               {targetOptions.length === 0 ? (
                 <p className="excel-import-map-warn-meta">대상 필드 API 응답이 비어 기본 필드 목록으로 표시 중입니다.</p>
@@ -166,180 +187,6 @@ export default function ImportMappingModal({
                   담당자를 선택하지 않으면 로그인한 사용자 본인으로 등록됩니다.
                 </p>
               </label>
-
-              <div className="excel-import-map-table-head">
-                <div>소스 필드 (엑셀 열)</div>
-                <div />
-                <div>대상 필드 (기업 CRM)</div>
-                <div>미리보기</div>
-                <div style={{ textAlign: 'right' }}>상태</div>
-              </div>
-
-              <div className="excel-import-map-rows">
-                {rows.map((row) => {
-                  const preview = previewExcelMappedValue(sampleRow, row);
-                  const status = rowStatus(row, preview, registerTarget);
-                  const isConst = row.sourceType === 'constant';
-                  return (
-                    <div key={row.id} className={`excel-import-map-row ${isConst ? 'is-constant' : ''}`}>
-                      <div className="excel-import-map-source-cell">
-                        <div className="excel-import-map-icon-box">
-                          <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>
-                            {isConst ? 'add_circle' : 'input'}
-                          </span>
-                        </div>
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <div
-                            className="excel-import-map-source-mode-toggle"
-                            role="group"
-                            aria-label="소스: 엑셀 열 또는 고정값"
-                          >
-                            <button
-                              type="button"
-                              className={!isConst ? 'is-active' : ''}
-                              onClick={() => updateRow(row.id, { sourceType: 'field' })}
-                              disabled={disabled}
-                            >
-                              엑셀 열
-                            </button>
-                            <button
-                              type="button"
-                              className={isConst ? 'is-active' : ''}
-                              onClick={() => updateRow(row.id, { sourceType: 'constant' })}
-                              disabled={disabled}
-                            >
-                              고정값
-                            </button>
-                          </div>
-                          {isConst ? (
-                            <input
-                              className="opp-input excel-import-map-input"
-                              placeholder="값 입력…"
-                              value={row.constantValue}
-                              onChange={(e) => updateRow(row.id, { constantValue: e.target.value })}
-                              disabled={disabled}
-                            />
-                          ) : (
-                            <>
-                              <select
-                                className="opp-select excel-import-map-select"
-                                value={row.sourceKey}
-                                onChange={(e) => updateRow(row.id, { sourceKey: e.target.value })}
-                                disabled={disabled}
-                              >
-                                <option value="">소스 선택…</option>
-                                {sourceOptions.map((source) => (
-                                  <option key={source.key} value={source.key}>
-                                    {source.label}
-                                  </option>
-                                ))}
-                              </select>
-                              <p className="excel-import-map-source-meta">
-                                {sourceOptions.find((item) => item.key === row.sourceKey)?.meta || ''}
-                              </p>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      <div className="excel-import-map-connector-wrap">
-                        <div className="excel-import-map-connector" />
-                      </div>
-                      <div>
-                        <select
-                          className="opp-select excel-import-map-select"
-                          value={row.targetKey}
-                          onChange={(e) => updateRow(row.id, { targetKey: e.target.value })}
-                          disabled={disabled}
-                        >
-                          <option value="">대상 선택…</option>
-                          {effectiveTargetOptions.map((target) => (
-                            <option key={target.value} value={target.value}>
-                              {target.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="excel-import-map-preview">
-                        <span className="material-symbols-outlined">visibility</span>
-                        <span>{preview || '—'}</span>
-                      </div>
-                      <div className="excel-import-map-status">
-                        <span
-                          className={`excel-import-map-badge ${status.type === 'ok' ? 'ok' : status.type === 'warn' ? 'warn' : status.type === 'err' ? 'err' : 'muted'}`}
-                        >
-                          {status.type === 'ok' && <span className="material-symbols-outlined">check_circle</span>}
-                          {status.type === 'warn' && <span className="material-symbols-outlined">priority_high</span>}
-                          {status.type === 'err' && <span className="material-symbols-outlined">error</span>}
-                          {status.label}
-                        </span>
-                        {rows.length > 1 && (
-                          <button
-                            type="button"
-                            className="excel-import-map-row-delete"
-                            onClick={() => removeRow(row.id)}
-                            aria-label="행 삭제"
-                            disabled={disabled}
-                          >
-                            <span className="material-symbols-outlined">delete</span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="excel-import-map-footer-card">
-                <div className="excel-import-map-footer-hint">
-                  <div className="excel-import-map-footer-icon">
-                    <span className="material-symbols-outlined">lightbulb</span>
-                  </div>
-                  <div>
-                    <p>동적 필드 · 소스 전환</p>
-                    <span>
-                      기업 스키마·커스텀 필드 정의는 API에서 가져옵니다. 각 매핑 행에서 <strong>엑셀 열</strong>과{' '}
-                      <strong>고정값</strong>을 전환할 수 있어, 같은 행에서 엑셀 소스 선택과 수기 입력을 골라 쓸 수
-                      있습니다.
-                    </span>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="excel-import-map-btn-add"
-                  onClick={addConstantRow}
-                  disabled={disabled}
-                  title="기본은 고정값이며, 각 행에서 엑셀 열로 바꿀 수 있습니다."
-                >
-                  <span className="material-symbols-outlined" style={{ fontSize: '1.15rem' }}>
-                    add
-                  </span>
-                  매핑 행 추가
-                </button>
-              </div>
-
-              <div className="excel-import-map-summary">
-                <div className="excel-import-map-summary-card">
-                  <p>매핑된 대상</p>
-                  <p className="num">
-                    {summary.mapped} / {rows.length}
-                  </p>
-                  <div className="excel-import-map-bar">
-                    <div style={{ width: `${rows.length ? Math.min(100, (summary.mapped / rows.length) * 100) : 0}%` }} />
-                  </div>
-                </div>
-                <div className="excel-import-map-summary-card">
-                  <p>주의</p>
-                  <p className="num rose">{summary.err}</p>
-                  <p className="sub">미리보기 = 첫 데이터 행</p>
-                </div>
-                <div className="excel-import-map-summary-card">
-                  <p>등록</p>
-                  <p className="num" style={{ fontSize: '1rem' }}>
-                    기업만
-                  </p>
-                  <p className="sub">DB와 상호·사업자번호가 같아도 신규 등록</p>
-                </div>
-              </div>
 
               {saveMsg ? (
                 <p className={`excel-import-map-save-msg ${saveMsgIsError ? 'err' : ''}`}>{saveMsg}</p>

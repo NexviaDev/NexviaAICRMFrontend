@@ -73,7 +73,6 @@ export default function CustomerCompanies({
   const [similarSearchItems, setSimilarSearchItems] = useState([]);
   const [searchInput, setSearchInput] = useState('');
   const [searchApplied, setSearchApplied] = useState('');
-  const [assigneeMeOnly, setAssigneeMeOnly] = useState(() => getSavedTemplate(LIST_ID)?.assigneeMeOnly === true);
   const [loading, setLoading] = useState(true);
   const [customFieldColumns, setCustomFieldColumns] = useState([]);
   const [template, setTemplate] = useState(() => getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID)));
@@ -133,6 +132,27 @@ export default function CustomerCompanies({
     });
     return map;
   }, [companyEmployees]);
+
+  /**
+   * 엑셀 내보내기용 담당자 이름.
+   * 퇴사·삭제 등으로 현재 회사 사용자 목록에 없는 담당자는 내부 ID 대신 "알 수 없는 사용자"로 적습니다.
+   * (예전에는 ID가 그대로 파일에 들어갔고, 목록 화면은 같은 경우를 "—"로 보여 줘 서로 달랐습니다.)
+   */
+  const assigneeNamesForExport = useCallback(
+    (ids) => {
+      const list = Array.isArray(ids) ? ids : [];
+      const names = [];
+      let unknown = 0;
+      list.forEach((id) => {
+        const name = assigneeIdToName[String(id)];
+        if (name) names.push(name);
+        else unknown += 1;
+      });
+      if (unknown > 0) names.push(unknown === 1 ? '알 수 없는 사용자' : `알 수 없는 사용자 ${unknown}명`);
+      return names.join(', ');
+    },
+    [assigneeIdToName]
+  );
   const sortDir = sort.dir;
   /** URL로 연 상세 모달용: 목록에 없을 때 id로 따로 조회한 회사 (새로고침 시 items 비어 있을 수 있음) */
   const [detailCompanyById, setDetailCompanyById] = useState(null);
@@ -195,7 +215,6 @@ export default function CustomerCompanies({
         params.set('search', searchApplied);
         if (searchField) params.set('searchField', searchField);
       }
-      if (assigneeMeOnly) params.set('assigneeMe', '1');
       const url = `${API_BASE}/customer-companies?${params.toString()}`;
       const res = await fetch(url, crmFetchInit());
       if (res.ok) {
@@ -212,21 +231,13 @@ export default function CustomerCompanies({
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [searchApplied, searchField, assigneeMeOnly, listPageLimit]);
+  }, [searchApplied, searchField, listPageLimit]);
 
   const handleAddCompanySaved = useCallback(
     (company) => {
       if (!company || !company._id) {
         fetchList(pagination.page, { silent: true });
         return;
-      }
-      const meId = String(me?._id || me?.id || '');
-      if (assigneeMeOnly && meId) {
-        const ids = Array.isArray(company.assigneeUserIds) ? company.assigneeUserIds.map(String) : [];
-        if (!ids.includes(meId)) {
-          fetchList(pagination.page, { silent: true });
-          return;
-        }
       }
       if (String(searchApplied || '').trim()) {
         fetchList(pagination.page, { silent: true });
@@ -245,7 +256,7 @@ export default function CustomerCompanies({
         return { ...p, total, totalPages: Math.max(1, Math.ceil(total / (p.limit || listPageLimit))) };
       });
     },
-    [fetchList, pagination.page, searchApplied, assigneeMeOnly, me, listPageLimit]
+    [fetchList, pagination.page, searchApplied, listPageLimit]
   );
 
   /** 검색·필터와 동일 조건 — 전체 선택용 API 1회 */
@@ -255,7 +266,6 @@ export default function CustomerCompanies({
       params.set('search', searchApplied);
       if (searchField) params.set('searchField', searchField);
     }
-    if (assigneeMeOnly) params.set('assigneeMe', '1');
     const res = await fetch(`${API_BASE}/customer-companies/for-selection?${params.toString()}`, crmFetchInit());
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -263,7 +273,7 @@ export default function CustomerCompanies({
     }
     const data = await res.json();
     return data.items || [];
-  }, [searchApplied, searchField, assigneeMeOnly]);
+  }, [searchApplied, searchField]);
 
   useEffect(() => {
     if (!isSearchModal) return;
@@ -318,7 +328,7 @@ export default function CustomerCompanies({
     window.addEventListener('cc-excel-import-completed', onExcelImportDone);
     return () => window.removeEventListener('cc-excel-import-completed', onExcelImportDone);
   }, [fetchList, pagination.page]);
-  useEffect(() => { setPagination((p) => ({ ...p, page: 1 })); }, [searchApplied, searchField, assigneeMeOnly]);
+  useEffect(() => { setPagination((p) => ({ ...p, page: 1 })); }, [searchApplied, searchField]);
 
   /** 삭제된 커스텀 필드 등으로 선택값이 목록에 없으면 전체 필드로 되돌림 */
   useEffect(() => {
@@ -758,6 +768,11 @@ export default function CustomerCompanies({
       alert('내보낼 고객사를 먼저 선택해 주세요.');
       return;
     }
+    if (!companyEmployeesLoaded) {
+      // 사용자 목록을 받기 전에 내보내면 담당자가 전부 "알 수 없는 사용자"로 찍힙니다.
+      alert('담당자 정보를 불러오는 중입니다. 잠시 후 다시 시도해 주세요.');
+      return;
+    }
     const includeEmployees = window.confirm('선택 고객사의 직원 목록도 함께 내보낼까요?\n확인: 예 / 취소: 아니오');
     setExportExcelLoading(true);
     try {
@@ -776,8 +791,7 @@ export default function CustomerCompanies({
       });
       const sortedCustomKeys = [...customKeys].sort();
       const companyRows = selectedRows.map((row) => {
-        const ids = Array.isArray(row.assigneeUserIds) ? row.assigneeUserIds : [];
-        const assignees = ids.map((id) => assigneeIdToName[String(id)] || String(id)).filter(Boolean).join(', ');
+        const assignees = assigneeNamesForExport(row.assigneeUserIds);
         const out = {
           기업명: row.name || '',
           대표자: row.representativeName || '',
@@ -806,10 +820,7 @@ export default function CustomerCompanies({
         for (const row of selectedRows) {
           const employees = await fetchAllEmployeesForCompany(row._id);
           employees.forEach((emp) => {
-            const empAssignees = (Array.isArray(emp.assigneeUserIds) ? emp.assigneeUserIds : [])
-              .map((id) => assigneeIdToName[String(id)] || String(id))
-              .filter(Boolean)
-              .join(', ');
+            const empAssignees = assigneeNamesForExport(emp.assigneeUserIds);
             employeeRows.push({
               기업명: row.name || '',
               이름: emp.name || '',
@@ -835,7 +846,7 @@ export default function CustomerCompanies({
     } finally {
       setExportExcelLoading(false);
     }
-  }, [canExportExcel, selectedCompanyIds, selectedCompanyMap, assigneeIdToName, customFieldColumns, fetchAllEmployeesForCompany]);
+  }, [canExportExcel, companyEmployeesLoaded, selectedCompanyIds, selectedCompanyMap, assigneeNamesForExport, customFieldColumns, fetchAllEmployeesForCompany]);
 
   const handleSortColumn = useCallback((key) => {
     if (key === '_favorite') return;
@@ -936,26 +947,6 @@ export default function CustomerCompanies({
         {!isSearchModal ? (
           <section className="cc-ref-toolbar" aria-label="기업 리스트 도구">
             <div className="cc-ref-toolbar-left">
-              <button
-                type="button"
-                className={`cc-ref-btn cc-ref-btn--indigo ${assigneeMeOnly ? 'is-active' : ''}`}
-                onClick={() => {
-                  const next = !assigneeMeOnly;
-                  setSelectedCompanyIds(new Set());
-                  setSelectedCompanyMap({});
-                  setAssigneeMeOnly(next);
-                  patchListTemplate(LIST_ID, { assigneeMeOnly: next }).catch((err) => {
-                    alert(err?.message || '저장에 실패했습니다.');
-                    setAssigneeMeOnly(!next);
-                  });
-                }}
-                title={assigneeMeOnly ? '전체 고객사 보기' : '내 담당 업체 보기'}
-                aria-pressed={assigneeMeOnly}
-              >
-                <span className="material-symbols-outlined" aria-hidden>person</span>
-                내 담당 업체
-              </button>
-              <span className="cc-ref-toolbar-divider" aria-hidden />
               <button
                 type="button"
                 className="cc-ref-btn cc-ref-btn--emerald"
@@ -1121,48 +1112,6 @@ export default function CustomerCompanies({
               <p className="customer-companies-mobile-cards-message">등록된 고객사가 없습니다.</p>
             ) : (
               <>
-                {!isSearchModal ? (
-                  <div className="cc-mobile-filter-chips" role="tablist" aria-label="목록 필터">
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={!assigneeMeOnly}
-                      className={`cc-mobile-chip ${!assigneeMeOnly ? 'is-active' : ''}`}
-                      onClick={() => {
-                        if (assigneeMeOnly) {
-                          setSelectedCompanyIds(new Set());
-                          setSelectedCompanyMap({});
-                          setAssigneeMeOnly(false);
-                          patchListTemplate(LIST_ID, { assigneeMeOnly: false }).catch((err) => {
-                            alert(err?.message || '저장에 실패했습니다.');
-                            setAssigneeMeOnly(true);
-                          });
-                        }
-                      }}
-                    >
-                      전체
-                    </button>
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={assigneeMeOnly}
-                      className={`cc-mobile-chip ${assigneeMeOnly ? 'is-active' : ''}`}
-                      onClick={() => {
-                        if (!assigneeMeOnly) {
-                          setSelectedCompanyIds(new Set());
-                          setSelectedCompanyMap({});
-                          setAssigneeMeOnly(true);
-                          patchListTemplate(LIST_ID, { assigneeMeOnly: true }).catch((err) => {
-                            alert(err?.message || '저장에 실패했습니다.');
-                            setAssigneeMeOnly(false);
-                          });
-                        }
-                      }}
-                    >
-                      내 담당
-                    </button>
-                  </div>
-                ) : null}
                 <div className="customer-companies-mobile-cards-list">
                 {sortedItems.map((row, idx) => (
                   <div
@@ -1259,7 +1208,7 @@ export default function CustomerCompanies({
                       title={
                         selectAllLoading
                           ? '목록을 불러오는 중…'
-                          : '현재 검색·내 담당 필터에 맞는 고객사 전부를 선택합니다. 다시 누르면 전체 해제합니다.'
+                          : '현재 검색 조건에 맞는 고객사 전부를 선택합니다. 다시 누르면 전체 해제합니다.'
                       }
                     />
                   </th>

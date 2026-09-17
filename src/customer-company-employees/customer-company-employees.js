@@ -149,7 +149,6 @@ export default function CustomerCompanyEmployees() {
   /** 입력 중인 검색어·필드(제출 전) — API는 applied* 만 사용 */
   const [searchDraft, setSearchDraft] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
-  const [assigneeMeOnly, setAssigneeMeOnly] = useState(() => getSavedTemplate(LIST_ID)?.assigneeMeOnly === true);
   const [loading, setLoading] = useState(true);
 
   const [selected, setSelected] = useState(new Set());
@@ -339,7 +338,6 @@ export default function CustomerCompanyEmployees() {
       }
       const st = overrideStatus !== undefined ? overrideStatus : '';
       if (st) params.set('status', st);
-      if (assigneeMeOnly) params.set('assigneeMe', '1');
       const res = await fetch(`${API_BASE}/customer-company-employees?${params}`, crmFetchInit());
       if (res.ok) {
         const data = await res.json();
@@ -355,21 +353,13 @@ export default function CustomerCompanyEmployees() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [appliedSearch, appliedSearchField, assigneeMeOnly]);
+  }, [appliedSearch, appliedSearchField]);
 
   const handleAddContactSaved = useCallback(
     (contact) => {
       if (!contact || !contact._id) {
         fetchContacts(pagination.page, { silent: true });
         return;
-      }
-      const meId = String(me?._id || me?.id || '');
-      if (assigneeMeOnly && meId) {
-        const ids = Array.isArray(contact.assigneeUserIds) ? contact.assigneeUserIds.map(String) : [];
-        if (!ids.includes(meId)) {
-          fetchContacts(pagination.page, { silent: true });
-          return;
-        }
       }
       if (String(appliedSearch || '').trim()) {
         fetchContacts(pagination.page, { silent: true });
@@ -391,7 +381,7 @@ export default function CustomerCompanyEmployees() {
         return { ...p, total, totalPages: Math.max(1, Math.ceil(total / (p.limit || LIMIT))) };
       });
     },
-    [fetchContacts, pagination.page, appliedSearch, assigneeMeOnly, me, LIMIT]
+    [fetchContacts, pagination.page, appliedSearch, LIMIT]
   );
 
   useEffect(() => { fetchContacts(pagination.page); }, [pagination.page, fetchContacts]);
@@ -496,10 +486,8 @@ export default function CustomerCompanyEmployees() {
     return date.toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' });
   };
 
-  /** 모바일 Ethereal 스타일: 전체 / 즐겨찾기 / 내 담당 칩 */
-  const [mobileChipFilter, setMobileChipFilter] = useState(() =>
-    getSavedTemplate(LIST_ID)?.assigneeMeOnly === true ? 'assignee' : 'all'
-  );
+  /** 모바일 목록 필터: 전체 / 즐겨찾기 */
+  const [mobileChipFilter] = useState('all');
 
   const handleBulkSmsOpened = useCallback((payload) => {
     saveBulkSmsAfterSend(payload);
@@ -777,7 +765,6 @@ export default function CustomerCompanyEmployees() {
       params.set('search', appliedSearch.trim());
       if (appliedSearchField) params.set('searchField', appliedSearchField);
     }
-    if (assigneeMeOnly) params.set('assigneeMe', '1');
     const res = await fetch(`${API_BASE}/customer-company-employees/for-selection?${params}`, crmFetchInit());
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -785,7 +772,7 @@ export default function CustomerCompanyEmployees() {
     }
     const data = await res.json();
     return data.items || [];
-  }, [appliedSearch, appliedSearchField, assigneeMeOnly]);
+  }, [appliedSearch, appliedSearchField]);
 
   const fetchAllContactsForExport = useCallback(async () => {
     let page = 1;
@@ -797,7 +784,6 @@ export default function CustomerCompanyEmployees() {
         params.set('search', appliedSearch.trim());
         if (appliedSearchField) params.set('searchField', appliedSearchField);
       }
-      if (assigneeMeOnly) params.set('assigneeMe', '1');
       const res = await fetch(`${API_BASE}/customer-company-employees?${params}`, crmFetchInit());
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -810,7 +796,7 @@ export default function CustomerCompanyEmployees() {
       page += 1;
     } while (page <= totalPages);
     return all;
-  }, [appliedSearch, appliedSearchField, assigneeMeOnly]);
+  }, [appliedSearch, appliedSearchField]);
 
   /** 검색·필터 결과 전체가 선택됐는지 (헤더 체크박스) */
   const allChecked =
@@ -1140,27 +1126,6 @@ export default function CustomerCompanyEmployees() {
           <div className="cce-ref-toolbar-left">
             <button
               type="button"
-              className={`cce-ref-btn cce-ref-btn--indigo ${assigneeMeOnly ? 'is-active' : ''}`}
-              onClick={() => {
-                const next = !assigneeMeOnly;
-                clearSelection();
-                setAssigneeMeOnly(next);
-                setMobileChipFilter(next ? 'assignee' : 'all');
-                patchListTemplate(LIST_ID, { assigneeMeOnly: next }).catch((err) => {
-                  alert(err?.message || '저장에 실패했습니다.');
-                  setAssigneeMeOnly(!next);
-                  setMobileChipFilter(!next ? 'assignee' : 'all');
-                });
-              }}
-              title={assigneeMeOnly ? '전체 연락처 보기' : '내가 담당인 연락처만 보기'}
-              aria-pressed={assigneeMeOnly}
-            >
-              <span className="material-symbols-outlined" aria-hidden>person</span>
-              내 담당 연락처
-            </button>
-            <span className="cce-ref-toolbar-divider" aria-hidden />
-            <button
-              type="button"
               className="cce-ref-btn cce-ref-btn--emerald"
               onClick={openExcelImportModal}
               title="엑셀 파일을 매핑하여 연락처 일괄 등록"
@@ -1174,7 +1139,7 @@ export default function CustomerCompanyEmployees() {
                 className="cce-ref-btn cce-ref-btn--emerald cce-ref-btn--icon"
                 onClick={() => void handleDownloadExcel()}
                 disabled={exportExcelLoading}
-                title="현재 검색·내 담당 조건에 맞는 연락처 전체를 엑셀(.xlsx)로 받습니다. (Owner / Admin 전용)"
+                title="현재 검색 조건에 맞는 연락처 전체를 엑셀(.xlsx)로 받습니다. (Owner / Admin 전용)"
                 aria-label="엑셀 내보내기"
               >
                 <span className="material-symbols-outlined" aria-hidden>download</span>
@@ -1374,7 +1339,7 @@ export default function CustomerCompanyEmployees() {
                           title={
                             selectAllLoading
                               ? '목록을 불러오는 중…'
-                              : '현재 검색·내 담당 필터에 맞는 연락처 전부를 선택합니다. 다시 누르면 전체 해제합니다.'
+                              : '현재 검색 조건에 맞는 연락처 전부를 선택합니다. 다시 누르면 전체 해제합니다.'
                           }
                         />
                       ) : col.key === '_favorite' ? (

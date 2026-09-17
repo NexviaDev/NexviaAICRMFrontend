@@ -19,12 +19,19 @@ import './customer-companies-excel-import-modal.css';
 import {
   buildTargetOptionsForTarget,
   toApiMappings,
-  rowStatus,
   ensureCompanyMappingRowsComplete,
   appendMissingCompanyCustomFieldRows,
   rowsFromSavedMappings
 } from '../../lead-capture/lead-capture-crm-mapping/lead-capture-crm-mapping-utils';
-import { buildExcelSourceOptions, previewExcelMappedValue } from './excel-import-mapping-utils';
+import {
+  autoFillSourceKeys,
+  buildMappingByHeader,
+  assignHeaderToTarget,
+  isTargetConnected,
+  COMPANY_HEADER_RULES
+} from '../../shared/excel-header-match';
+import { COMPANY_EXCEL_IMPORT_MAX_ROWS, getRowCountOverflow } from '../../shared/excel-import-limits';
+import ExcelRowLimitModal from '../../shared/excel-row-limit-modal';
 import { mapWithConcurrency } from '@/lib/map-with-concurrency';
 
 function newRowId() {
@@ -188,11 +195,40 @@ function mapPreviewResultsToUiResults(previewResults) {
     const i = pr.rowIndex;
     const name = (pr.companyName || '').trim();
     if (pr.kind === 'create') {
-      results.push({ rowIndex: i, ok: true, companyName: name, previewPending: true });
+      results.push({
+        rowIndex: i,
+        ok: true,
+        companyName: name,
+        previewPending: true,
+        businessNumber: pr.businessNumber || '',
+        /** 같은 사업자번호·기업명으로 이 행에 합쳐질 행 수 */
+        mergedRowCount: pr.mergedRowCount || 0,
+        /** 합칠 때 값이 서로 달라 첫 값을 쓰는 칸 */
+        fieldDiffs: Array.isArray(pr.fieldDiffs) ? pr.fieldDiffs : [],
+        businessNumberInvalid: !!pr.businessNumberInvalid,
+        businessNumberCleared: !!pr.businessNumberCleared
+      });
+    } else if (pr.kind === 'merge') {
+      results.push({ rowIndex: i, ok: true, skipped: 'merged', companyName: name, mergeIntoRowIndex: pr.mergeIntoRowIndex });
+    } else if (pr.kind === 'conflict') {
+      // 사업자번호는 같은데 기업명이 다름 — 사용자 선택 전까지 등록 불가 (예전 hold 흐름과 섞이지 않게 별도 플래그)
+      results.push({ rowIndex: i, ok: true, bnConflict: true, conflictKey: pr.conflictKey, companyName: name, businessNumber: pr.businessNumber || '' });
+    } else if (pr.kind === 'conflict_skipped') {
+      results.push({ rowIndex: i, ok: true, skipped: 'bn_conflict', conflictKey: pr.conflictKey, companyName: name });
     } else if (pr.kind === 'error') {
       results.push({ rowIndex: i, ok: false, error: pr.error, companyName: name });
     } else if (pr.kind === 'empty') {
       results.push({ rowIndex: i, ok: true, skipped: 'empty_row', companyName: '' });
+    } else if (pr.kind === 'duplicate') {
+      // 사업자번호가 DB 또는 같은 파일 앞 행과 같아 건너뛸 행 (서버 job 결과와 같은 모양)
+      results.push({
+        rowIndex: i,
+        ok: true,
+        skipped: 'duplicate_company',
+        companyName: name,
+        businessNumber: pr.businessNumber || '',
+        duplicateOf: pr.duplicateOf || null
+      });
     } else {
       results.push({ rowIndex: i, ok: false, error: '잘못된 행', companyName: name });
     }
@@ -202,12 +238,22 @@ function mapPreviewResultsToUiResults(previewResults) {
 
 function buildPreviewSummary(previewResults) {
   let created = 0;
+  let merged = 0;
   let skippedDuplicateCompany = 0;
+  let conflictRows = 0;
+  let conflictSkipped = 0;
+  let invalidBusinessNumber = 0;
   let onHold = 0;
   let failed = 0;
   let emptySkipped = 0;
   for (const p of previewResults) {
-    if (p.kind === 'create') created += 1;
+    if (p.kind === 'create') {
+      created += 1;
+      if (p.businessNumberInvalid) invalidBusinessNumber += 1;
+    } else if (p.kind === 'merge') merged += 1;
+    else if (p.kind === 'duplicate') skippedDuplicateCompany += 1;
+    else if (p.kind === 'conflict') conflictRows += 1;
+    else if (p.kind === 'conflict_skipped') conflictSkipped += 1;
     else if (p.kind === 'error') failed += 1;
     else if (p.kind === 'empty') emptySkipped += 1;
     else failed += 1;
@@ -215,7 +261,11 @@ function buildPreviewSummary(previewResults) {
   return {
     total: previewResults.length,
     created,
+    merged,
     skippedDuplicateCompany,
+    conflictRows,
+    conflictSkipped,
+    invalidBusinessNumber,
     onHold,
     failed,
     emptySkipped,
@@ -235,7 +285,13 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
   /** 가져오기 클릭 후 서버 미리보기 API 대기 중 — 이 동안만 별도 모달 표시 */
   const [previewChecking, setPreviewChecking] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null);
+  /** 행 수 상한 초과 안내 모달 ({ rowCount, maxRows, fileName, unitLabel } | null) */
+  const [rowLimitNotice, setRowLimitNotice] = useState(null);
   const [importResult, setImportResult] = useState(null);
+  /** 사업자번호 충돌 선택 { [번호]: { mode: 'keep', nameKey } | { mode: 'all' } } */
+  const [bnConflictResolutions, setBnConflictResolutions] = useState({});
+  /** 충돌 선택을 반영해 미리보기를 다시 계산하는 중 */
+  const [resolvingConflict, setResolvingConflict] = useState(false);
   const [inProgressJob, setInProgressJob] = useState(null);
   const [resolvedHoldActions, setResolvedHoldActions] = useState([]);
   const [appliedHoldGroupKeys, setAppliedHoldGroupKeys] = useState({});
@@ -247,6 +303,8 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
     return id ? [id] : [];
   });
   const previewRawSessionRef = useRef(null);
+  /** 자동 매핑 행 추가를 파일당 한 번만 수행하기 위한 서명 */
+  const autoExpandSignatureRef = useRef('');
   /** 사용자가 확인을 눌러 실제 저장을 시작한 현재 작업만 폴링 결과로 반영 */
   const activeImportJobRef = useRef(null);
 
@@ -258,15 +316,6 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
     return keys.filter((k) => k !== '__rowNum__');
   }, [excelRows]);
 
-  const sampleRow = useMemo(() => {
-    for (const r of excelRows) {
-      if (r && typeof r === 'object' && Object.values(r).some((v) => v != null && String(v).trim() !== '')) {
-        return r;
-      }
-    }
-    return excelRows[0] || {};
-  }, [excelRows]);
-
   const targetOptions = useMemo(
     () => buildTargetOptionsForTarget(registerTarget, companySchemaFields, companyCustomDefs),
     [companySchemaFields, companyCustomDefs]
@@ -276,7 +325,35 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
     [targetOptions]
   );
 
-  const sourceOptions = useMemo(() => buildExcelSourceOptions(excelHeaders), [excelHeaders]);
+
+  /**
+   * 파일을 올리거나 바꿀 때 엑셀 헤더를 보고 대상 필드에 열을 자동 연결합니다.
+   * 기본 매핑 행의 sourceKey 는 리드 캡처 폼 키(customFields.company 등)라
+   * 엑셀 파일에는 존재하지 않습니다 — 자동 매칭이 없으면 필수 4개를 전부 손으로 골라야 합니다.
+   */
+  useEffect(() => {
+    if (!open || !excelHeaders.length) return;
+    // 대응 필드가 있는데 기본 매핑 행이 없는 열(업종 등)은 행을 새로 만들어 연결합니다.
+    // 단 파일·대상옵션이 그대로인 동안에는 한 번만 — 사용자가 뺀 열이 되살아나면 안 됩니다.
+    const signature = `${JSON.stringify(excelHeaders)}|${effectiveTargetOptions.length}`;
+    const alreadyExpanded = autoExpandSignatureRef.current === signature;
+    autoExpandSignatureRef.current = signature;
+    setRows((prev) =>
+      autoFillSourceKeys(prev, excelHeaders, COMPANY_HEADER_RULES, {
+        customFieldDefs: companyCustomDefs,
+        availableTargetKeys: alreadyExpanded ? undefined : effectiveTargetOptions.map((o) => o.value),
+        makeRowId: newRowId
+      })
+    );
+  }, [open, excelHeaders, companyCustomDefs, effectiveTargetOptions]);
+
+  /** 시트 미리보기 열 헤더에 "이 열 → 어떤 필드" 상태를 보여 주기 위한 역방향 맵 */
+  const mappingByHeader = useMemo(() => buildMappingByHeader(rows), [rows]);
+
+  const handleMapHeader = useCallback((header, targetKey) => {
+    setRows((prev) => assignHeaderToTarget(prev, header, targetKey, newRowId));
+  }, []);
+
   const currentUserId = useMemo(() => getCurrentUserId(), []);
   const assigneeIdToName = useMemo(() => {
     const map = {};
@@ -320,7 +397,10 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
     return () => { cancelled = true; };
   }, [open]);
 
+  // 이 모달은 고객사 목록에 항상 마운트돼 있습니다(open 으로만 표시 제어).
+  // open 가드가 없으면 모달을 열지 않아도 목록 진입 때마다 이 요청이 나갑니다.
   useEffect(() => {
+    if (!open) return undefined;
     let cancelled = false;
     fetch(`${API_BASE}/companies/overview`, crmFetchInit())
       .then((r) => r.json().catch(() => ({})))
@@ -329,10 +409,13 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
       })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, []);
+  }, [open]);
 
   useEffect(() => {
     if (!open) {
+      setRowLimitNotice(null);
+      setBnConflictResolutions({});
+      setResolvingConflict(false);
       setExcelRows([]);
       setExcelFileName('');
       setDragOver(false);
@@ -349,6 +432,7 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
     setResolvedHoldActions([]);
     setAppliedHoldGroupKeys({});
     activeImportJobRef.current = null;
+    autoExpandSignatureRef.current = '';
     setRows(ensureCompanyMappingRowsComplete(rowsFromSavedMappings(null, registerTarget)));
     const id = getCurrentUserId();
     setAssigneeUserIds(id ? [id] : []);
@@ -404,6 +488,17 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
         setExcelFileName(file.name);
         return;
       }
+      // 상한 초과는 올린 직후에 알려 줍니다.
+      // (예전에는 매핑·미리보기를 다 끝낸 뒤 서버에서 거절당했습니다.)
+      const overLimit = getRowCountOverflow(parsed.length, COMPANY_EXCEL_IMPORT_MAX_ROWS, { fileName: file.name });
+      if (overLimit) {
+        // 인라인 문구 대신 모달로 안내합니다 (눈에 띄지 않아 놓치기 쉬웠음).
+        setSaveMsg(null);
+        setRowLimitNotice(overLimit);
+        setExcelRows([]);
+        setExcelFileName('');
+        return;
+      }
       setExcelRows(parsed);
       setExcelFileName(file.name);
     } catch (e) {
@@ -437,8 +532,9 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
       setSaveMsg('대상은 고객사 필드만 선택할 수 있습니다.');
       return;
     }
-    const mappedTargetKeys = new Set(mappings.map((m) => m.targetKey));
-    const missingRequired = REQUIRED_TARGETS.filter((target) => !mappedTargetKeys.has(target.key));
+    // 매핑 행이 있는지가 아니라 실제로 열(또는 고정값)이 연결됐는지로 판단합니다.
+    // 기본 매핑 행은 파일에 맞는 열이 없어도 항상 있어서, 예전 검사는 늘 통과했습니다.
+    const missingRequired = REQUIRED_TARGETS.filter((target) => !isTargetConnected(rows, excelHeaders, target.key));
     if (missingRequired.length > 0) {
       const missingLabels = missingRequired.map((item) => item.label).join(', ');
       setSaveMsg(`필수 매핑 누락: ${missingLabels}`);
@@ -451,32 +547,57 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
     setImportResult(null);
     setResolvedHoldActions([]);
     setAppliedHoldGroupKeys({});
+    setBnConflictResolutions({});
     activeImportJobRef.current = null;
     try {
-      const previewRes = await fetch(`${API_BASE}/customer-companies/import-excel/preview`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-        credentials: 'include',
-        body: JSON.stringify({
-          mappings,
-          rows: excelRows,
-          assigneeUserIds: Array.isArray(assigneeUserIds) && assigneeUserIds.length > 0 ? assigneeUserIds : undefined
-        })
-      });
-      const previewData = await previewRes.json().catch(() => ({}));
-      if (!previewRes.ok) throw new Error(previewData.error || '미리보기에 실패했습니다.');
-
-      const list = Array.isArray(previewData.results) ? previewData.results : [];
-      setImportResult({
-        phase: 'preview',
-        rawPreviewResults: list,
-        summary: buildPreviewSummary(list),
-        results: mapPreviewResultsToUiResults(list)
-      });
+      setImportResult(await requestPreview({}));
     } catch (e) {
       setSaveMsg(e.message || '실패');
     } finally {
       setPreviewChecking(false);
+    }
+  };
+
+  /** 미리보기 요청 — 사업자번호 충돌 선택이 바뀌면 같은 파일로 다시 계산합니다(서버가 판정 기준). */
+  const requestPreview = async (resolutions) => {
+    const previewRes = await fetch(`${API_BASE}/customer-companies/import-excel/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      credentials: 'include',
+      body: JSON.stringify({
+        mappings: toApiMappings(rows),
+        rows: excelRows,
+        assigneeUserIds: Array.isArray(assigneeUserIds) && assigneeUserIds.length > 0 ? assigneeUserIds : undefined,
+        businessNumberConflictResolutions: resolutions
+      })
+    });
+    const previewData = await previewRes.json().catch(() => ({}));
+    if (!previewRes.ok) throw new Error(previewData.error || '미리보기에 실패했습니다.');
+    const list = Array.isArray(previewData.results) ? previewData.results : [];
+    return {
+      phase: 'preview',
+      rawPreviewResults: list,
+      conflicts: previewData.conflicts && typeof previewData.conflicts === 'object' ? previewData.conflicts : {},
+      summary: buildPreviewSummary(list),
+      results: mapPreviewResultsToUiResults(list)
+    };
+  };
+
+  const handleResolveConflict = async (bnKey, resolution) => {
+    const prev = bnConflictResolutions;
+    const next = { ...prev, [bnKey]: resolution };
+    setBnConflictResolutions(next);
+    setResolvingConflict(true);
+    setSaveMsg(null);
+    try {
+      setImportResult(await requestPreview(next));
+    } catch (e) {
+      // 재계산에 실패하면 화면의 선택과 미리보기 숫자가 어긋나므로 선택을 되돌립니다.
+      setBnConflictResolutions(prev);
+      // 결과 화면은 문구에 "실패"가 있어야 오류 색으로 보여 줍니다.
+      setSaveMsg(`충돌 선택 반영에 실패했습니다. 다시 선택해 주세요. (${e.message || '알 수 없는 오류'})`);
+    } finally {
+      setResolvingConflict(false);
     }
   };
 
@@ -609,7 +730,9 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
             mappings,
             rows: importRows,
             assigneeUserIds: Array.isArray(assigneeUserIds) && assigneeUserIds.length > 0 ? assigneeUserIds : undefined,
-            holdResolutions: Array.isArray(stagedActions) ? stagedActions : []
+            holdResolutions: Array.isArray(stagedActions) ? stagedActions : [],
+            // 서버 job 이 미리보기와 같은 선택으로 판정하도록 함께 보냅니다.
+            businessNumberConflictResolutions: bnConflictResolutions
           })
         });
         const data = await res.json().catch(() => ({}));
@@ -639,18 +762,8 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
         setSaving(false);
       }
     },
-    [rows, excelRows, assigneeUserIds, importResult]
+    [rows, excelRows, assigneeUserIds, importResult, bnConflictResolutions]
   );
-
-  const summary = useMemo(() => {
-    let err = 0;
-    rows.forEach((row) => {
-      const prev = previewExcelMappedValue(sampleRow, row);
-      const st = rowStatus(row, prev, registerTarget);
-      if (st.type === 'err') err += 1;
-    });
-    return { mapped: rows.filter((r) => r.targetKey).length, err, totalOpt: targetOptions.length };
-  }, [rows, sampleRow, targetOptions.length]);
 
   const handleResultConfirm = useCallback(async () => {
     if (importResult?.phase === 'preview') {
@@ -831,10 +944,20 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
       .filter((group) => appliedHoldGroupKeys[group.key])
       .flatMap((group) => group.items || []);
     const previewReadyCount = previewNewPlanned + stagedResolvedItems.length;
-    const canConfirmPreview = isPreviewPhase && onHoldRemaining === 0;
+    // 사업자번호 충돌은 선택해야 확정할 수 있습니다.
+    const conflictList = isPreviewPhase ? Object.values(importResult.conflicts || {}) : [];
+    const unresolvedConflictCount = conflictList.filter((c) => !bnConflictResolutions[c.bnKey]).length;
+    const canConfirmPreview = isPreviewPhase && onHoldRemaining === 0 && unresolvedConflictCount === 0 && !resolvingConflict;
     const successItems = isPreviewPhase
       ? results.filter((r) => r.ok && r.previewPending)
       : results.filter((r) => r.ok && !r.skipped && !r.hold);
+    // 많이 합쳐지는 묶음부터 보여 줍니다.
+    const mergeGroups = isPreviewPhase
+      ? results.filter((r) => r.previewPending && r.mergedRowCount > 0).sort((a, b) => b.mergedRowCount - a.mergedRowCount)
+      : [];
+    const invalidBnItems = isPreviewPhase
+      ? results.filter((r) => r.previewPending && r.businessNumberInvalid)
+      : results.filter((r) => r.code === 'business_number_invalid');
 
     return (
       <ImportResultModal
@@ -847,6 +970,15 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
         onHold={onHold}
         failedItems={failedItems}
         skippedDup={skippedDup}
+        duplicateItems={results.filter((r) => r && r.skipped === 'duplicate_company')}
+        mergedCount={s.merged ?? 0}
+        mergeGroups={mergeGroups}
+        conflicts={conflictList}
+        conflictResolutions={bnConflictResolutions}
+        onResolveConflict={handleResolveConflict}
+        resolvingConflict={resolvingConflict}
+        conflictSkipped={s.conflictSkipped ?? 0}
+        invalidBnItems={invalidBnItems}
         emptySk={emptySk}
         successItems={successItems}
         stagedResolvedItems={stagedResolvedItems}
@@ -859,44 +991,47 @@ export default function CustomerCompaniesExcelImportModal({ open, onClose, onImp
   }
 
   return (
-    <ImportMappingModal
-      onClose={onClose}
-      saving={saving}
-      previewChecking={previewChecking}
-      inProgressJob={inProgressJob}
-      onImport={handleImport}
-      excelRows={excelRows}
-      fileInputRef={fileInputRef}
-      ingestFile={ingestFile}
-      dragOver={dragOver}
-      setDragOver={setDragOver}
-      onDrop={onDrop}
-      excelFileName={excelFileName}
-      targetOptions={targetOptions}
-      assigneeInputValue={assigneeInputValue}
-      onAssigneeInputChange={setAssigneeDisplayText}
-      onOpenAssigneePicker={() => setShowAssigneePicker(true)}
-      showMeBadge={showMeBadge}
-      rows={rows}
-      sampleRow={sampleRow}
-      registerTarget={registerTarget}
-      sourceOptions={sourceOptions}
-      effectiveTargetOptions={effectiveTargetOptions}
-      updateRow={updateRow}
-      removeRow={removeRow}
-      addConstantRow={addConstantRow}
-      summary={summary}
-      saveMsg={saveMsg}
-      showAssigneePicker={showAssigneePicker}
-      assigneeUserIds={assigneeUserIds}
-      assigneeIdToName={assigneeIdToName}
-      onCloseAssigneePicker={() => setShowAssigneePicker(false)}
-      onConfirmAssigneePicker={(ids) => {
-        setAssigneeUserIds(ids || []);
-        const names = (ids || []).map((id) => assigneeIdToName[String(id)] || id).join(', ');
-        setAssigneeDisplayText(names);
-        setShowAssigneePicker(false);
-      }}
-    />
+    <>
+      <ImportMappingModal
+        onClose={onClose}
+        saving={saving}
+        previewChecking={previewChecking}
+        inProgressJob={inProgressJob}
+        onImport={handleImport}
+        excelRows={excelRows}
+        fileInputRef={fileInputRef}
+        ingestFile={ingestFile}
+        dragOver={dragOver}
+        setDragOver={setDragOver}
+        onDrop={onDrop}
+        excelFileName={excelFileName}
+        excelHeaders={excelHeaders}
+        mappingByHeader={mappingByHeader}
+        onMapHeader={handleMapHeader}
+        targetOptions={targetOptions}
+        assigneeInputValue={assigneeInputValue}
+        onAssigneeInputChange={setAssigneeDisplayText}
+        onOpenAssigneePicker={() => setShowAssigneePicker(true)}
+        showMeBadge={showMeBadge}
+        rows={rows}
+        effectiveTargetOptions={effectiveTargetOptions}
+        requiredTargets={REQUIRED_TARGETS}
+        updateRow={updateRow}
+        removeRow={removeRow}
+        addConstantRow={addConstantRow}
+        saveMsg={saveMsg}
+        showAssigneePicker={showAssigneePicker}
+        assigneeUserIds={assigneeUserIds}
+        assigneeIdToName={assigneeIdToName}
+        onCloseAssigneePicker={() => setShowAssigneePicker(false)}
+        onConfirmAssigneePicker={(ids) => {
+          setAssigneeUserIds(ids || []);
+          const names = (ids || []).map((id) => assigneeIdToName[String(id)] || id).join(', ');
+          setAssigneeDisplayText(names);
+          setShowAssigneePicker(false);
+        }}
+      />
+      <ExcelRowLimitModal notice={rowLimitNotice} onClose={() => setRowLimitNotice(null)} />
+    </>
   );
 }

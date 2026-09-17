@@ -1,17 +1,23 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { hasCrmSession, getCrmToken, getCrmAuthHeaders, crmFetchInit, markCrmSessionActive, clearCrmSessionLocal, logoutCrmSession } from '@/lib/crm-auth';
-import '../../customer-companies/add-company-modal/add-company-modal.css';
-import '../../customer-companies/customer-companies.css';
-import '../../customer-companies/customer-companies-responsive.css';
-import './contact-import-preview-modal.css';
-
+/**
+ * 연락처 대량 등록 미리보기 (엑셀 가져오기 · 구글 주소록 · TXT 추출 공용).
+ *
+ * 회사 연결은 행 단위가 아니라 "회사 묶음" 단위로 합니다.
+ *  - 같은 회사명(공백·㈜·주식회사 등 무시)은 한 묶음 — 서버의 대량 등록 묶음 규칙과 같습니다.
+ *  - 묶음마다 기존 고객사 후보를 한 번에 조회해, 표기만 다른 같은 회사가 1곳뿐이면 자동 연결합니다.
+ *    (서버는 이름이 "정확히" 같을 때만 기존 고객사를 재사용하므로, 연결하지 않으면
+ *     "(주)넥스비아" / "넥스비아 주식회사" 같은 표기 차이로 고객사가 중복 생성됩니다.)
+ *  - 후보가 여러 곳이면 사용자가 고르게 합니다.
+ *
+ * 이전 화면은 고객사 목록 템플릿의 대표자명·업종·사업자번호·상태·커스텀 필드 열을 편집하게 했지만,
+ * 대량 등록 요청에는 그 값들이 실리지 않아 저장되지 않았습니다. 실제로 저장되는 필드만 보여 줍니다.
+ */
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { crmFetchInit } from '@/lib/crm-auth';
 import { API_BASE } from '@/config';
 import CustomerCompanySearchModal from '../../customer-companies/customer-company-search-modal/customer-company-search-modal';
-import { LIST_IDS, getEffectiveTemplate, getSavedTemplate } from '@/lib/list-templates';
-import { listColumnValueInlineStyle } from '@/lib/list-column-cell-styles';
-import { CUSTOM_FIELDS_PREFIX } from '@/lib/customer-company-search-fields';
-import { cellValue, getNameInitials, COMPANY_STATUS_LABEL } from '../../customer-companies/customer-companies-list-cells';
 import { normalizeBulkImportCompanyGroupKey } from '@/lib/bulk-import-company-group-key';
+import '../../shared/excel-import-mapping-modal.css';
+import './contact-import-preview-modal.css';
 
 /** add-customer-company-employees-modal.js 의 formatPhoneInput 과 동일 */
 function formatPhoneInput(value) {
@@ -33,723 +39,890 @@ function formatPhoneInput(value) {
   return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
 }
 
-const LIST_ID = LIST_IDS.CUSTOMER_COMPANIES;
-const COLUMN_HEADER_MAX_CHARS = 20;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const SIMILAR_BATCH_SIZE = 500;
+const SIMILAR_DEBOUNCE_MS = 350;
+const EDITABLE_FIELDS = new Set(['name', 'email', 'phone', 'position', 'companyName', 'address', 'memo', 'birthDate']);
 
-const GROUP_ROW_BG = [
-  'rgba(232, 240, 254, 0.55)',
-  'rgba(237, 247, 237, 0.55)',
-  'rgba(255, 243, 224, 0.55)',
-  'rgba(252, 228, 236, 0.55)',
-  'rgba(237, 231, 246, 0.55)',
-  'rgba(224, 242, 241, 0.55)',
-  'rgba(255, 248, 225, 0.55)',
-  'rgba(227, 242, 253, 0.55)'
-];
+let rowSeq = 0;
+const nextRowKey = () => `cip-${Date.now().toString(36)}-${(rowSeq += 1)}`;
 
-function rowAffiliationKey(row) {
-  const cid = (row.customerCompanyId || '').trim();
-  if (cid) return `id:${cid}`;
-  const cn = (row.companyName || '').trim();
-  const ad = (row.address || '').trim();
-  if (!cn && !ad) return 'individual';
-  return `new:${normalizeBulkImportCompanyGroupKey(cn)}@@${normalizeBulkImportCompanyGroupKey(ad)}`;
-}
+const str = (v) => (v == null ? '' : String(v));
 
-function truncateColumnLabel(label, max = COLUMN_HEADER_MAX_CHARS) {
-  const chars = Array.from(String(label || ''));
-  if (chars.length <= max) return chars.join('');
-  return `${chars.slice(0, max).join('')}...`;
-}
-
-function toCompanyLikeRow(row) {
-  if (row.linkedCompany && row.customerCompanyId) return { ...row.linkedCompany };
-  const cf = row.companyCustomFields && typeof row.companyCustomFields === 'object' ? { ...row.companyCustomFields } : {};
-  return {
-    _id: '',
-    name: row.companyName || '',
-    representativeName: row.representativeName || '',
-    industry: row.industry || '',
-    businessNumber: row.businessNumber || '',
-    address: row.address || '',
-    status: row.companyStatus || 'active',
-    assigneeUserIds: [],
-    customFields: cf
-  };
-}
-
+/** 엑셀·구글·TXT 에서 키 이름이 달라도 한 모양으로 통일 */
 function normalizeIncomingRow(r) {
+  const src = r && typeof r === 'object' ? r : {};
   return {
-    ...r,
-    customerCompanyId: r.customerCompanyId || null,
-    linkedCompany: r.linkedCompany || null,
-    companyStatus: r.companyStatus || 'active',
-    companyCustomFields: r.companyCustomFields || {}
+    ...src,
+    _key: nextRowKey(),
+    name: str(src.name ?? src.contactName ?? src.employeeName),
+    email: str(src.email ?? src.workEmail),
+    phone: str(src.phone ?? src.mobile ?? src.tel),
+    position: str(src.position ?? src.title ?? src.jobTitle),
+    companyName: str(src.companyName ?? src.linkedCompany?.name),
+    address: str(src.address),
+    memo: str(src.memo),
+    birthDate: str(src.birthDate),
+    customerCompanyId: src.customerCompanyId ? String(src.customerCompanyId) : null,
+    linkedCompany: src.linkedCompany || null,
+    error: str(src.error)
   };
 }
 
-/** 엑셀·다른 소스에서 키가 달라 올 때 미리보기 표용으로 통일 */
-function normalizeContactPreviewItem(r) {
-  if (!r || typeof r !== 'object') return {};
-  const name = r.name ?? r.contactName ?? r.employeeName ?? '';
-  const email = r.email ?? r.workEmail ?? '';
-  const phone = r.phone ?? r.mobile ?? r.tel ?? '';
-  const position = r.position ?? r.title ?? r.jobTitle ?? '';
+/** 회사 묶음 키 — 연결된 행은 고객사 id, 아니면 정규화한 회사명(서버 대량 등록 규칙과 동일) */
+function companyGroupKeyOf(row) {
+  if (row.customerCompanyId) return `id:${row.customerCompanyId}`;
+  const k = normalizeBulkImportCompanyGroupKey(row.companyName);
+  return k ? `name:${k}` : '';
+}
+
+function linkRowToCompany(row, company) {
   return {
-    ...r,
-    name: name != null ? String(name) : '',
-    email: email != null ? String(email) : '',
-    phone: phone != null ? String(phone) : '',
-    position: position != null ? String(position) : ''
+    ...row,
+    // 연결 해제 시 되돌릴 이름 (이미 연결돼 있던 행이면 처음 이름 유지)
+    _preLinkCompanyName: row.customerCompanyId ? row._preLinkCompanyName ?? row.companyName : row.companyName,
+    customerCompanyId: String(company._id),
+    linkedCompany: company,
+    companyName: company.name || row.companyName
   };
 }
 
-function linkedNameSynced(row) {
-  if (!row.customerCompanyId || !row.linkedCompany) return false;
-  const a = String(row.companyName || '').trim();
-  const b = String(row.linkedCompany.name || '').trim();
-  return a === b && a.length > 0;
+function unlinkRow(row) {
+  const restored = row._preLinkCompanyName ?? row.companyName;
+  return { ...row, customerCompanyId: null, linkedCompany: null, companyName: restored, _preLinkCompanyName: undefined };
 }
 
-function rangeRows(a, b) {
-  const start = Math.min(a, b);
-  const end = Math.max(a, b);
-  if (start < 0 || end < 0) return [];
-  const rows = [];
-  for (let i = start; i <= end; i += 1) rows.push(i);
-  return rows;
+/** 행 검사: error = 등록 불가(체크 해제), warn = 확인 권장 */
+function inspectRow(row, dupOfRowNo) {
+  const errors = [];
+  const warns = [];
+  if (row.error) errors.push(row.error);
+  const hasId = row.name.replace(/\s/g, '') || row.email.trim() || row.phone.trim();
+  if (!hasId) errors.push('이름·이메일·전화 중 하나는 있어야 합니다');
+  if (row.email.trim() && !EMAIL_RE.test(row.email.trim())) warns.push('이메일 형식을 확인해 주세요');
+  const pd = row.phone.replace(/\D/g, '');
+  if (pd && (pd.length < 9 || pd.length > 11)) warns.push('전화번호 자릿수를 확인해 주세요');
+  if (dupOfRowNo) warns.push(`${dupOfRowNo}행과 이름·전화가 같습니다`);
+  if (errors.length) return { level: 'error', text: errors.concat(warns).join(' · ') };
+  if (warns.length) return { level: 'warn', text: warns.join(' · ') };
+  return { level: '', text: '' };
 }
 
-function allRowIndices(count) {
-  return new Set(Array.from({ length: count }, (_, i) => i));
+/* ------------------------------------------------------------------ */
+/*  행                                                                  */
+/* ------------------------------------------------------------------ */
+
+const PreviewRow = memo(function PreviewRow({
+  row,
+  rowNo,
+  checked,
+  issueLevel,
+  issueText,
+  companyState,
+  groupKey,
+  showCompany,
+  showBirthDate,
+  disabled,
+  onToggle,
+  onPatch,
+  onUnlinkRow,
+  onFocusGroup
+}) {
+  const k = row._key;
+  const field = (name, props = {}) => (
+    <input
+      className={`cipv-input${props.invalid ? ' is-invalid' : ''}`}
+      value={row[name]}
+      onChange={(e) => onPatch(k, name, e.target.value)}
+      disabled={disabled}
+      aria-label={`${rowNo}행 ${props.label}`}
+      placeholder={props.placeholder || props.label}
+      type={props.type || 'text'}
+      inputMode={props.inputMode}
+      autoComplete="off"
+    />
+  );
+
+  return (
+    <tr className={`cipv-row${checked ? '' : ' is-excluded'}${issueLevel ? ` has-${issueLevel}` : ''}`}>
+      <td className="cipv-td-check">
+        <input
+          type="checkbox"
+          className="cipv-check"
+          checked={checked}
+          disabled={disabled}
+          onChange={() => {}}
+          onClick={(e) => onToggle(k, e.shiftKey)}
+          aria-label={`${rowNo}행 등록 포함`}
+        />
+      </td>
+      <td className="cipv-td-no">{rowNo}</td>
+      <td className="cipv-td-issue">
+        {issueLevel ? (
+          <span className={`cipv-issue is-${issueLevel}`} title={issueText} aria-label={issueText}>
+            <span className="material-symbols-outlined">{issueLevel === 'error' ? 'error' : 'warning'}</span>
+          </span>
+        ) : null}
+      </td>
+      <td>{field('name', { label: '이름' })}</td>
+      <td>{field('phone', { label: '전화', type: 'tel', inputMode: 'numeric' })}</td>
+      <td>{field('email', { label: '이메일', type: 'email', invalid: issueText.includes('이메일') })}</td>
+      {showCompany ? (
+        <td className="cipv-td-company">
+          {row.customerCompanyId ? (
+            <span className={`cipv-company-chip${companyState === 'auto' ? ' is-auto' : ''}`}>
+              <span className="material-symbols-outlined" aria-hidden>
+                link
+              </span>
+              <button type="button" className="cipv-company-chip-name" onClick={() => onFocusGroup(groupKey)} title="회사 묶음 보기">
+                {row.companyName || row.linkedCompany?.name || '연결된 고객사'}
+              </button>
+              <button
+                type="button"
+                className="cipv-company-chip-x"
+                onClick={() => onUnlinkRow(k)}
+                disabled={disabled}
+                title="이 행만 연결 해제"
+                aria-label={`${rowNo}행 고객사 연결 해제`}
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </span>
+          ) : (
+            <div className="cipv-company-edit">
+              {field('companyName', { label: '회사', placeholder: '회사 없음(개인)' })}
+              {companyState ? (
+                <button
+                  type="button"
+                  className={`cipv-company-state is-${companyState}`}
+                  onClick={() => onFocusGroup(groupKey)}
+                  title="회사 묶음 보기"
+                >
+                  {companyState === 'check' ? '확인' : companyState === 'loading' ? '…' : '신규'}
+                </button>
+              ) : null}
+            </div>
+          )}
+        </td>
+      ) : null}
+      <td>{field('position', { label: '직책' })}</td>
+      <td>{field('address', { label: '주소' })}</td>
+      <td>{field('memo', { label: '메모' })}</td>
+      {showBirthDate ? <td>{field('birthDate', { label: '생년월일' })}</td> : null}
+    </tr>
+  );
+});
+
+/* ------------------------------------------------------------------ */
+/*  회사 묶음 카드                                                        */
+/* ------------------------------------------------------------------ */
+
+function CompanyGroupCard({ group, state, similar, active, disabled, onFocus, onLink, onUnlink, onDismiss, onUndismiss, onSearch }) {
+  const candidates = similar?.candidates || [];
+  const count = group.rowKeys.length;
+
+  const stateLabel = {
+    linked: '기존 고객사에 연결',
+    auto: '표기만 다른 기존 고객사에 자동 연결',
+    check: `비슷한 고객사 ${candidates.length}곳 — 확인 필요`,
+    loading: '기존 고객사 확인 중…',
+    error: '기존 고객사 확인 실패',
+    new: '신규 고객사로 생성'
+  }[state];
+
+  return (
+    <li className={`cipv-group is-${state}${active ? ' is-active' : ''}`}>
+      <button type="button" className="cipv-group-head" onClick={() => onFocus(group.key)} aria-pressed={active}>
+        <span className="material-symbols-outlined cipv-group-icon" aria-hidden>
+          {state === 'linked' || state === 'auto' ? 'link' : state === 'check' ? 'help' : state === 'error' ? 'cloud_off' : 'add_business'}
+        </span>
+        <span className="cipv-group-name" title={group.displayName}>
+          {group.displayName}
+        </span>
+        <span className="cipv-group-count">
+          {group.checkedCount !== count ? `${group.checkedCount}/` : ''}
+          {count}명
+        </span>
+      </button>
+      <p className="cipv-group-state">{stateLabel}</p>
+
+      {state === 'check' ? (
+        <ul className="cipv-cands">
+          {candidates.slice(0, 3).map((c) => (
+            <li key={String(c._id)} className="cipv-cand">
+              <div className="cipv-cand-main">
+                <strong>{c.name}</strong>
+                <span>{[c.businessNumber, c.address].filter(Boolean).join(' · ') || '추가 정보 없음'}</span>
+              </div>
+              <button type="button" className="cipv-btn cipv-btn--primary" onClick={() => onLink(group.key, c)} disabled={disabled}>
+                연결
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      <div className="cipv-group-actions">
+        {state === 'auto' || state === 'linked' ? (
+          <button type="button" className="cipv-btn" onClick={() => onUnlink(group.key)} disabled={disabled}>
+            {state === 'auto' ? '되돌리기' : '연결 해제'}
+          </button>
+        ) : null}
+        {state === 'check' ? (
+          <button type="button" className="cipv-btn" onClick={() => onDismiss(group.nameKey)} disabled={disabled}>
+            신규로 등록
+          </button>
+        ) : null}
+        {state === 'new' && similar?.status === 'done' && candidates.length > 0 ? (
+          <button type="button" className="cipv-btn cipv-btn--ghost" onClick={() => onUndismiss(group.nameKey)} disabled={disabled}>
+            비슷한 고객사 {candidates.length}곳 다시 보기
+          </button>
+        ) : null}
+        {state !== 'linked' && state !== 'auto' ? (
+          <button type="button" className="cipv-btn cipv-btn--ghost" onClick={() => onSearch(group)} disabled={disabled}>
+            <span className="material-symbols-outlined" aria-hidden>
+              search
+            </span>
+            직접 찾기
+          </button>
+        ) : null}
+      </div>
+    </li>
+  );
 }
 
-function applyCheckStateToIndices(prevSet, indices, checked) {
-  const next = new Set(prevSet);
-  for (const i of indices) {
-    if (!Number.isInteger(i) || i < 0) continue;
-    if (checked) next.add(i);
-    else next.delete(i);
-  }
-  return next;
-}
+/* ------------------------------------------------------------------ */
+/*  본체                                                                */
+/* ------------------------------------------------------------------ */
 
 /**
- * @param {(rows: object[]) => void} [props.onConfirm]
+ * @param {object} props
+ * @param {boolean} props.open
+ * @param {object[]} props.items
+ * @param {boolean} props.bulkSaving
+ * @param {boolean} props.fixedCompany  true 면 모든 연락처가 호출부의 고정 고객사로 등록됨 (회사 열·묶음 숨김)
+ * @param {() => void} props.onClose
+ * @param {(rows: object[]) => void} props.onConfirm
  */
 export default function ContactImportPreviewModal({ open, items, bulkSaving, fixedCompany, onClose, onConfirm }) {
   const [draft, setDraft] = useState([]);
-  const [template, setTemplate] = useState(() => getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), []));
-  const [companyEmployees, setCompanyEmployees] = useState([]);
-  const [companyEmployeesLoaded, setCompanyEmployeesLoaded] = useState(false);
-  const [companySearchCtx, setCompanySearchCtx] = useState(null);
-  /** 같은 소속 행 묶음 호버 — `rowAffiliationKey` 원문과 비교 */
-  const [hoveredAffiliationKey, setHoveredAffiliationKey] = useState(null);
-  /** 등록 포함 여부(체크) — 기본 전체 선택 */
-  const [checkedRows, setCheckedRows] = useState(() => new Set());
+  const [checked, setChecked] = useState(() => new Set());
+  const [filter, setFilter] = useState('all');
+  const [groupFilter, setGroupFilter] = useState(null);
+  /** nameKey → { status: 'loading'|'done'|'error', candidates, exactMatchCount } */
+  const [similar, setSimilar] = useState({});
+  /** "신규로 등록"을 고른 회사명 키 — 자동 연결·확인 요청 대상에서 뺌 */
+  const [dismissed, setDismissed] = useState(() => new Set());
+  /** 자동 연결로 연결된 고객사 id */
+  const [autoLinked, setAutoLinked] = useState({});
+  const [searchCtx, setSearchCtx] = useState(null);
 
-  /** 체크박스 Shift 범위 기준 행 */
-  const checkAnchorRef = useRef(0);
-  const draftRef = useRef([]);
+  const openRef = useRef(open);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const similarRef = useRef(similar);
+  const visibleKeysRef = useRef([]);
+  const checkedRef = useRef(checked);
+  const anchorRef = useRef(null);
   const panelRef = useRef(null);
-
-  const assigneeIdToName = useMemo(() => {
-    const map = {};
-    (companyEmployees || []).forEach((e) => {
-      const id = e.id != null ? String(e.id) : (e._id ? String(e._id) : null);
-      if (id) map[id] = e.name || e.email || id;
-    });
-    return map;
-  }, [companyEmployees]);
-
-  const loadCustomFieldColumns = useCallback(async () => {
-    try {
-      const res = await fetch(`${API_BASE}/custom-field-definitions?entityType=customerCompany`, crmFetchInit());
-      const data = await res.json().catch(() => ({}));
-      const defs = Array.isArray(data?.items) ? data.items : [];
-      const extra = defs.map((d) => ({ key: `${CUSTOM_FIELDS_PREFIX}${d.key}`, label: d.label || d.key || '' }));
-      setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), extra));
-    } catch {
-      setTemplate(getEffectiveTemplate(LIST_ID, getSavedTemplate(LIST_ID), []));
-    }
-  }, []);
+  const disabled = !!bulkSaving;
+  const showCompany = !fixedCompany;
 
   useEffect(() => {
-    if (!open) return;
-    void loadCustomFieldColumns();
-  }, [open, loadCustomFieldColumns]);
-
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    setCompanyEmployeesLoaded(false);
-    fetch(`${API_BASE}/companies/overview`, crmFetchInit())
-      .then((r) => r.json().catch(() => ({})))
-      .then((data) => {
-        if (!cancelled && Array.isArray(data?.employees)) setCompanyEmployees(data.employees);
-      })
-      .catch(() => {
-        if (!cancelled) setCompanyEmployees([]);
-      })
-      .finally(() => {
-        if (!cancelled) setCompanyEmployeesLoaded(true);
-      });
-    return () => {
-      cancelled = true;
-    };
+    openRef.current = open;
   }, [open]);
-
   useEffect(() => {
-    draftRef.current = draft;
-  }, [draft]);
+    similarRef.current = similar;
+  }, [similar]);
+  useEffect(() => {
+    checkedRef.current = checked;
+  }, [checked]);
 
+  // 열릴 때 초기화 — 등록할 수 없는 행(식별 정보 없음·추출 오류)은 처음부터 제외
   useEffect(() => {
     if (!open) return;
-    const nextDraft = (items || []).map((r) => normalizeIncomingRow(normalizeContactPreviewItem({ ...r })));
-    setDraft(nextDraft);
-    setCheckedRows(allRowIndices(nextDraft.length));
-    setCompanySearchCtx(null);
-    setHoveredAffiliationKey(null);
-    checkAnchorRef.current = 0;
+    const next = (items || []).map(normalizeIncomingRow);
+    setDraft(next);
+    setChecked(new Set(next.filter((r) => inspectRow(r, 0).level !== 'error').map((r) => r._key)));
+    setFilter('all');
+    setGroupFilter(null);
+    setSimilar({});
+    setDismissed(new Set());
+    setAutoLinked({});
+    setSearchCtx(null);
+    anchorRef.current = null;
   }, [open, items]);
 
-  const displayColumns = useMemo(
-    () => template.columns.filter((c) => template.visible[c.key] && c.key !== '_favorite'),
-    [template]
-  );
-
-  const headerStats = useMemo(() => {
-    const total = draft.length;
-    let checkedCount = 0;
-    for (let i = 0; i < total; i += 1) {
-      if (checkedRows.has(i)) checkedCount += 1;
-    }
-    const newKeys = new Set();
-    for (let i = 0; i < draft.length; i += 1) {
-      if (!checkedRows.has(i)) continue;
-      const row = draft[i];
-      if (row.customerCompanyId) continue;
-      const cn = (row.companyName || '').trim();
-      const ad = (row.address || '').trim();
-      if (!cn && !ad) continue;
-      newKeys.add(rowAffiliationKey(row));
-    }
-    return { total, checkedCount, newCompanyCount: newKeys.size };
-  }, [draft, checkedRows]);
-
-  const allRowsChecked = draft.length > 0 && checkedRows.size === draft.length;
-  const someRowsChecked = checkedRows.size > 0 && !allRowsChecked;
-
-  /** 같은 소속(고객사 id 또는 신규 묶음 키)은 떨어져 있어도 같은 색으로 표시 */
-  const rowBackgrounds = useMemo(() => {
-    const out = [];
-    const colorByAff = new Map();
-    let prevColor = null;
-    let band = -1;
-    for (let i = 0; i < draft.length; i += 1) {
-      const aff = rowAffiliationKey(draft[i]);
-      if (aff === 'individual') {
-        out.push(undefined);
-        prevColor = null;
-        continue;
-      }
-      if (!colorByAff.has(aff)) {
-        let nextColor = GROUP_ROW_BG[(band + 1) % GROUP_ROW_BG.length];
-        if (nextColor === prevColor && GROUP_ROW_BG.length > 1) {
-          band += 1;
-          nextColor = GROUP_ROW_BG[(band + 1) % GROUP_ROW_BG.length];
-        }
-        band += 1;
-        colorByAff.set(aff, nextColor);
-      }
-      const color = colorByAff.get(aff);
-      out.push(color);
-      prevColor = color;
-    }
-    return out;
-  }, [draft]);
-
-  const affiliationAttr = useCallback((aff) => (aff === 'individual' ? '' : encodeURIComponent(aff)), []);
-
-  const handleAffRowMouseEnter = useCallback((aff) => {
-    if (aff !== 'individual') setHoveredAffiliationKey(aff);
-  }, []);
-
-  const handleAffRowMouseLeave = useCallback(
-    (e, aff) => {
-      if (aff === 'individual') return;
-      const rt = e.relatedTarget;
-      const trLeft = e.currentTarget;
-      if (rt instanceof Element) {
-        const tbody = trLeft.parentElement;
-        if (tbody?.contains(rt)) {
-          const nextRow = rt.closest('tr.contact-import-preview-body-row');
-          if (nextRow && nextRow === trLeft) return;
-          const enc = affiliationAttr(aff);
-          if (nextRow && nextRow !== trLeft && nextRow.getAttribute('data-cip-affiliation') === enc) return;
-        }
-      }
-      setHoveredAffiliationKey(null);
-    },
-    [affiliationAttr]
-  );
-
-  const patchCompanyField = useCallback((rowIdx, colKey, value) => {
-    setDraft((prev) =>
-      prev.map((row, i) => {
-        if (i !== rowIdx) return row;
-        const v = value != null ? String(value) : '';
-
-        if (colKey === 'name') {
-          if (fixedCompany) return row;
-          const trimmed = v.trim();
-          const linkedNm = (row.linkedCompany?.name || '').trim();
-          if (row.linkedCompany && linkedNm) {
-            if (trimmed === linkedNm) {
-              const lid = row.linkedCompany._id != null ? String(row.linkedCompany._id) : '';
-              return {
-                ...row,
-                companyName: v,
-                customerCompanyId: lid || row.customerCompanyId || null
-              };
-            }
-            return { ...row, companyName: v, customerCompanyId: null };
-          }
-          return { ...row, companyName: v };
-        }
-
-        if (row.customerCompanyId && !fixedCompany) return row;
-
-        if (colKey === 'address') return { ...row, address: v };
-        if (colKey === 'representativeName') return { ...row, representativeName: v };
-        if (colKey === 'industry') return { ...row, industry: v };
-        if (colKey === 'businessNumber') return { ...row, businessNumber: v.replace(/\D/g, '') };
-        if (colKey === 'status') return { ...row, companyStatus: v };
-        if (colKey.startsWith(CUSTOM_FIELDS_PREFIX)) {
-          const fk = colKey.slice(CUSTOM_FIELDS_PREFIX.length);
-          return {
-            ...row,
-            companyCustomFields: { ...(row.companyCustomFields || {}), [fk]: v }
-          };
-        }
-        return row;
-      })
-    );
-  }, [fixedCompany]);
-
-  const patchContactField = useCallback((rowIdx, field, value) => {
-    if (bulkSaving) return;
-    const v = value != null ? String(value) : '';
-    if (!['name', 'email', 'phone', 'position'].includes(field)) return;
-    setDraft((prev) =>
-      prev.map((row, i) => {
-        if (i !== rowIdx) return row;
-        if (field === 'phone') return { ...row, phone: formatPhoneInput(v) };
-        return { ...row, [field]: v };
-      })
-    );
-  }, [bulkSaving]);
-
   useEffect(() => {
-    if (!open) return;
+    if (!open) return undefined;
     const t = window.setTimeout(() => panelRef.current?.focus(), 0);
     return () => window.clearTimeout(t);
   }, [open]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) return undefined;
     const onKeyDown = (e) => {
-      if (e.key !== 'Escape') return;
-      if (bulkSaving) return;
+      if (e.key !== 'Escape' || bulkSaving) return;
       e.preventDefault();
-      if (companySearchCtx != null) {
-        setCompanySearchCtx(null);
-        return;
-      }
-      onClose?.();
+      if (searchCtx) setSearchCtx(null);
+      else onClose?.();
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [open, bulkSaving, onClose, companySearchCtx]);
+  }, [open, bulkSaving, onClose, searchCtx]);
 
-  const handleConfirmClick = () => {
-    const rows = draft.filter((_, idx) => checkedRows.has(idx));
-    if (!rows.length) {
-      window.alert('등록할 연락처를 하나 이상 선택(체크)해 주세요.');
+  /* ---------- 행 검사 ---------- */
+
+  const issues = useMemo(() => {
+    const firstByContact = new Map();
+    const out = new Map();
+    draft.forEach((row, i) => {
+      const nameKey = row.name.replace(/\s/g, '');
+      const pd = row.phone.replace(/\D/g, '');
+      let dupOf = 0;
+      if (nameKey && pd) {
+        const key = `${nameKey}|${pd}`;
+        if (firstByContact.has(key)) dupOf = firstByContact.get(key) + 1;
+        else firstByContact.set(key, i);
+      }
+      out.set(row._key, inspectRow(row, dupOf));
+    });
+    return out;
+  }, [draft]);
+
+  /* ---------- 회사 묶음 ---------- */
+
+  const groups = useMemo(() => {
+    if (!showCompany) return [];
+    const map = new Map();
+    for (const row of draft) {
+      const key = companyGroupKeyOf(row);
+      if (!key) continue;
+      let g = map.get(key);
+      if (!g) {
+        g = {
+          key,
+          nameKey: key.startsWith('name:') ? key.slice(5) : '',
+          companyId: row.customerCompanyId || '',
+          displayName: (row.customerCompanyId ? row.linkedCompany?.name || row.companyName : row.companyName).trim(),
+          rowKeys: [],
+          checkedCount: 0
+        };
+        map.set(key, g);
+      }
+      g.rowKeys.push(row._key);
+      if (checked.has(row._key)) g.checkedCount += 1;
+    }
+    return Array.from(map.values());
+  }, [draft, checked, showCompany]);
+
+  const groupState = useCallback(
+    (g) => {
+      if (g.companyId) return autoLinked[g.companyId] ? 'auto' : 'linked';
+      const s = similar[g.nameKey];
+      if (!s || s.status === 'loading') return 'loading';
+      if (s.status === 'error') return 'error';
+      if (s.candidates.length > 0 && !dismissed.has(g.nameKey)) return 'check';
+      return 'new';
+    },
+    [similar, dismissed, autoLinked]
+  );
+
+  // 회사명 묶음마다 기존 고객사 후보를 한 번에 조회 (회사명을 고치는 동안은 잠시 기다림)
+  const newGroupNames = useMemo(
+    () => groups.filter((g) => !g.companyId).map((g) => [g.nameKey, g.displayName]),
+    [groups]
+  );
+  const newGroupSig = useMemo(() => newGroupNames.map(([k]) => k).sort().join('|'), [newGroupNames]);
+  const newGroupNamesRef = useRef(newGroupNames);
+  newGroupNamesRef.current = newGroupNames;
+
+  useEffect(() => {
+    if (!open || !showCompany || !newGroupSig) return undefined;
+    const timer = window.setTimeout(async () => {
+      const todo = newGroupNamesRef.current.filter(([k]) => !similarRef.current[k]);
+      if (!todo.length) return;
+      setSimilar((prev) => {
+        const n = { ...prev };
+        todo.forEach(([k]) => {
+          if (!n[k]) n[k] = { status: 'loading', candidates: [], exactMatchCount: 0 };
+        });
+        return n;
+      });
+      for (let i = 0; i < todo.length; i += SIMILAR_BATCH_SIZE) {
+        const chunk = todo.slice(i, i + SIMILAR_BATCH_SIZE);
+        let results = null;
+        try {
+          const res = await fetch(
+            `${API_BASE}/customer-companies/similar-name-candidates/batch`,
+            crmFetchInit({
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ names: chunk.map(([, name]) => name) })
+            })
+          );
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && data && typeof data.results === 'object') results = data.results;
+        } catch (_) {
+          results = null;
+        }
+        // 결과는 회사명 키 기준이라 그사이 표가 바뀌어도 유효합니다. 모달이 닫혔을 때만 버립니다.
+        if (!openRef.current) return;
+        setSimilar((prev) => {
+          const n = { ...prev };
+          chunk.forEach(([k, name]) => {
+            const r = results ? results[name] : null;
+            n[k] = r
+              ? { status: 'done', candidates: Array.isArray(r.candidates) ? r.candidates : [], exactMatchCount: Number(r.exactMatchCount) || 0 }
+              : { status: 'error', candidates: [], exactMatchCount: 0 };
+          });
+          return n;
+        });
+      }
+    }, SIMILAR_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [open, showCompany, newGroupSig]);
+
+  // 표기만 다른 기존 고객사가 정확히 1곳이면 자동 연결
+  useEffect(() => {
+    if (!showCompany) return;
+    const toLink = new Map();
+    for (const g of groups) {
+      if (g.companyId || dismissed.has(g.nameKey)) continue;
+      const s = similar[g.nameKey];
+      if (!s || s.status !== 'done' || s.exactMatchCount !== 1) continue;
+      const exact = s.candidates.find((c) => c.exactKeyMatch);
+      if (exact) toLink.set(g.key, exact);
+    }
+    if (!toLink.size) return;
+    setDraft((prev) =>
+      prev.map((r) => {
+        const c = toLink.get(companyGroupKeyOf(r));
+        return c ? linkRowToCompany(r, c) : r;
+      })
+    );
+    setAutoLinked((prev) => {
+      const n = { ...prev };
+      toLink.forEach((c) => {
+        n[String(c._id)] = true;
+      });
+      return n;
+    });
+  }, [groups, similar, dismissed, showCompany]);
+
+  /* ---------- 편집·연결 동작 ---------- */
+
+  const patchRow = useCallback((rowKey, fieldName, value) => {
+    if (!EDITABLE_FIELDS.has(fieldName)) return;
+    const v = fieldName === 'phone' ? formatPhoneInput(value) : str(value);
+    setDraft((prev) => prev.map((r) => (r._key === rowKey ? { ...r, [fieldName]: v } : r)));
+  }, []);
+
+  const linkGroup = useCallback((groupKey, company) => {
+    setDraft((prev) => prev.map((r) => (companyGroupKeyOf(r) === groupKey ? linkRowToCompany(r, company) : r)));
+    // 사용자가 직접 연결한 경우에는 "자동" 표시를 붙이지 않습니다.
+    setAutoLinked((prev) => {
+      const id = String(company._id);
+      if (!prev[id]) return prev;
+      const n = { ...prev };
+      delete n[id];
+      return n;
+    });
+  }, []);
+
+  /**
+   * 연결을 풀면 원래 회사명으로 돌리고, 그 이름은 자동 연결 대상에서 뺍니다(바로 다시 연결되지 않게).
+   * 풀린 이름 키를 setDraft 업데이터 안에서 모으면 업데이터가 다음 렌더에 실행돼 순서가 보장되지 않으므로,
+   * 최신 draft(ref)로 미리 계산한 뒤 두 상태를 같은 이벤트에서 함께 반영합니다.
+   */
+  const unlinkWhere = useCallback((predicate) => {
+    const restoredKeys = [];
+    const next = draftRef.current.map((r) => {
+      if (!r.customerCompanyId || !predicate(r)) return r;
+      const restored = unlinkRow(r);
+      const k = normalizeBulkImportCompanyGroupKey(restored.companyName);
+      if (k) restoredKeys.push(k);
+      return restored;
+    });
+    setDraft(next);
+    if (restoredKeys.length) {
+      setDismissed((prev) => {
+        const n = new Set(prev);
+        restoredKeys.forEach((k) => n.add(k));
+        return n;
+      });
+    }
+  }, []);
+
+  const unlinkGroup = useCallback((groupKey) => unlinkWhere((r) => companyGroupKeyOf(r) === groupKey), [unlinkWhere]);
+  const unlinkSingleRow = useCallback((rowKey) => unlinkWhere((r) => r._key === rowKey), [unlinkWhere]);
+
+  const dismissName = useCallback((nameKey) => {
+    setDismissed((prev) => new Set(prev).add(nameKey));
+  }, []);
+  const undismissName = useCallback((nameKey) => {
+    setDismissed((prev) => {
+      const n = new Set(prev);
+      n.delete(nameKey);
+      return n;
+    });
+  }, []);
+
+  const focusGroup = useCallback((groupKey) => {
+    setGroupFilter((prev) => (prev === groupKey ? null : groupKey));
+  }, []);
+
+  /* ---------- 체크 ---------- */
+
+  /** Shift+클릭: 기준 행과 같은 상태를 보이는 범위에 적용 · 그냥 클릭: 한 행 토글 */
+  const toggleRow = useCallback((rowKey, shiftKey) => {
+    const keys = visibleKeysRef.current;
+    const current = checkedRef.current;
+    if (shiftKey && anchorRef.current && keys.includes(anchorRef.current)) {
+      const a = keys.indexOf(anchorRef.current);
+      const b = keys.indexOf(rowKey);
+      const [s, e] = a < b ? [a, b] : [b, a];
+      const target = current.has(anchorRef.current);
+      setChecked((prev) => {
+        const n = new Set(prev);
+        for (let i = s; i <= e; i += 1) {
+          if (target) n.add(keys[i]);
+          else n.delete(keys[i]);
+        }
+        return n;
+      });
       return;
     }
-    onConfirm?.(rows);
-  };
+    anchorRef.current = rowKey;
+    setChecked((prev) => {
+      const n = new Set(prev);
+      if (n.has(rowKey)) n.delete(rowKey);
+      else n.add(rowKey);
+      return n;
+    });
+  }, []);
 
-  const handleHeaderCheckChange = () => {
-    if (bulkSaving) return;
-    if (allRowsChecked) {
-      setCheckedRows(new Set());
-      return;
+  /* ---------- 보이는 행 · 통계 ---------- */
+
+  const groupFilterObj = useMemo(() => groups.find((g) => g.key === groupFilter) || null, [groups, groupFilter]);
+
+  const visibleRows = useMemo(() => {
+    let list = draft;
+    if (groupFilterObj) {
+      const set = new Set(groupFilterObj.rowKeys);
+      list = list.filter((r) => set.has(r._key));
     }
-    setCheckedRows(allRowIndices(draft.length));
-  };
+    if (filter === 'issues') list = list.filter((r) => issues.get(r._key)?.level);
+    if (filter === 'excluded') list = list.filter((r) => !checked.has(r._key));
+    return list;
+  }, [draft, groupFilterObj, filter, issues, checked]);
 
-  /** Shift: 기준(anchor) 행과 같은 체크 상태를 범위에 일괄 적용 · 단일 클릭: 해당 행만 토글 */
-  const handleRegisterCheckClick = (e, idx) => {
-    if (bulkSaving) return;
-    e.preventDefault();
-    e.stopPropagation();
+  visibleKeysRef.current = visibleRows.map((r) => r._key);
 
-    if (e.shiftKey) {
-      const indices = rangeRows(checkAnchorRef.current, idx);
-      const anchorChecked = checkedRows.has(checkAnchorRef.current);
-      setCheckedRows((prev) => applyCheckStateToIndices(prev, indices, anchorChecked));
-      return;
+  const rowNoByKey = useMemo(() => new Map(draft.map((r, i) => [r._key, i + 1])), [draft]);
+  const showBirthDate = useMemo(() => draft.some((r) => r.birthDate.trim()), [draft]);
+
+  const stats = useMemo(() => {
+    let checkedCount = 0;
+    let checkedErrors = 0;
+    let issueCount = 0;
+    for (const r of draft) {
+      const lv = issues.get(r._key)?.level;
+      if (lv) issueCount += 1;
+      if (checked.has(r._key)) {
+        checkedCount += 1;
+        if (lv === 'error') checkedErrors += 1;
+      }
     }
+    const counts = { linked: 0, auto: 0, check: 0, loading: 0, error: 0, new: 0 };
+    for (const g of groups) {
+      if (g.checkedCount === 0) continue;
+      counts[groupState(g)] += 1;
+    }
+    const individuals = showCompany
+      ? draft.filter((r) => checked.has(r._key) && !companyGroupKeyOf(r)).length
+      : 0;
+    return {
+      total: draft.length,
+      checkedCount,
+      checkedErrors,
+      toRegister: checkedCount - checkedErrors,
+      excluded: draft.length - checkedCount,
+      issueCount,
+      linkedGroups: counts.linked + counts.auto,
+      newGroups: counts.new + counts.error,
+      checkGroups: counts.check,
+      loadingGroups: counts.loading,
+      individuals
+    };
+  }, [draft, checked, issues, groups, groupState, showCompany]);
 
-    checkAnchorRef.current = idx;
-    setCheckedRows((prev) => {
-      const next = new Set(prev);
-      if (next.has(idx)) next.delete(idx);
-      else next.add(idx);
-      return next;
+  const sortedGroups = useMemo(() => {
+    const order = { check: 0, loading: 1, error: 2, new: 3, auto: 4, linked: 5 };
+    return groups
+      .map((g) => ({ g, state: groupState(g) }))
+      .sort((a, b) => order[a.state] - order[b.state] || b.g.rowKeys.length - a.g.rowKeys.length);
+  }, [groups, groupState]);
+
+  /** 행마다 묶음을 찾지 않도록 묶음 키 → 상태 맵 (500행 × 수백 묶음 선형 탐색 방지) */
+  const stateByGroupKey = useMemo(() => new Map(sortedGroups.map(({ g, state }) => [g.key, state])), [sortedGroups]);
+
+  const visibleAllChecked = visibleRows.length > 0 && visibleRows.every((r) => checked.has(r._key));
+  const visibleSomeChecked = !visibleAllChecked && visibleRows.some((r) => checked.has(r._key));
+
+  const toggleVisibleAll = () => {
+    const keys = visibleRows.map((r) => r._key);
+    setChecked((prev) => {
+      const n = new Set(prev);
+      keys.forEach((k) => (visibleAllChecked ? n.delete(k) : n.add(k)));
+      return n;
     });
   };
 
-  const renderCompanyCell = (row, rowIdx, col, companyLike) => {
-    const valStyle = listColumnValueInlineStyle(template.columnCellStyles, col.key);
-    const locked = !!fixedCompany || (!!row.customerCompanyId && col.key !== 'name');
-
-    if (col.key === 'name') {
-      const synced = linkedNameSynced(row);
-      const linkedLocked = !!row.customerCompanyId && !!row.linkedCompany;
-      const showMini = !!row.linkedCompany;
-      const miniLabel = row.linkedCompany?.name || row.companyName || '';
-      const inp = (
-        <div className={`cip-name-field-shell ${synced ? 'cip-name-field-shell--linked-sync' : ''}`}>
-          {showMini ? (
-            <div className={`cip-name-avatar-mini cip-name-avatar-mini--${rowIdx % 3}`} aria-hidden title={miniLabel}>
-              <span className="cip-name-avatar-mini-initials">{getNameInitials(miniLabel)}</span>
-            </div>
-          ) : null}
-          <input
-            type="text"
-            data-cip-name-row={rowIdx}
-            className="cip-name-field-input"
-            value={row.companyName ?? ''}
-            onChange={(e) => patchCompanyField(rowIdx, 'name', e.target.value)}
-            placeholder="고객사명"
-            disabled={!!fixedCompany || linkedLocked}
-          />
-          {!fixedCompany ? (
-            <button
-              type="button"
-              className={`cip-name-search-btn ${linkedLocked ? 'cip-name-search-btn--unlink' : ''}`}
-              aria-label={linkedLocked ? '고객사 연결 해제' : '고객사 찾기'}
-              title={linkedLocked ? '고객사 연결 해제' : '고객사 찾기'}
-              disabled={bulkSaving}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (linkedLocked) {
-                  setDraft((prev) =>
-                    prev.map((r, i) =>
-                      i === rowIdx
-                        ? {
-                            ...r,
-                            customerCompanyId: null,
-                            linkedCompany: null
-                          }
-                        : r
-                    )
-                  );
-                  return;
-                }
-                setCompanySearchCtx({
-                  rowIdx,
-                  initialQuery: String(row.companyName || '').trim()
-                });
-              }}
-            >
-              <span className="material-symbols-outlined" aria-hidden>
-                {linkedLocked ? 'close' : 'search'}
-              </span>
-            </button>
-          ) : null}
-        </div>
-      );
-      return (
-        <td key={col.key} className={`cip-td-company cip-td-excel-name${locked ? '' : ''}`}>
-          {valStyle ? <span className="list-col-value-style" style={valStyle}>{inp}</span> : inp}
-        </td>
-      );
-    }
-
-    if (col.key === 'status') {
-      const content = locked ? (
-        <span className={`status-badge status-${(companyLike.status || 'active').toLowerCase()}`}>
-          {COMPANY_STATUS_LABEL[(companyLike.status || 'active').toLowerCase()] || companyLike.status || '—'}
-        </span>
-      ) : (
-        <select
-          className="add-contact-import-company-input add-contact-import-company-input--in-table"
-          value={(row.companyStatus || companyLike.status || 'active').toLowerCase()}
-          onChange={(e) => patchCompanyField(rowIdx, 'status', e.target.value)}
-        >
-          <option value="active">활성</option>
-          <option value="inactive">비활성</option>
-          <option value="lead">리드</option>
-        </select>
-      );
-      return (
-        <td key={col.key} className="cip-td-company text-muted">
-          {valStyle ? <span className="list-col-value-style" style={valStyle}>{content}</span> : content}
-        </td>
-      );
-    }
-
-    if (!locked && ['address', 'representativeName', 'industry', 'businessNumber'].includes(col.key)) {
-      const raw =
-        col.key === 'address'
-          ? row.address
-          : col.key === 'representativeName'
-            ? row.representativeName
-            : col.key === 'industry'
-              ? row.industry
-              : row.businessNumber;
-      const inp = (
-        <input
-          type="text"
-          className="add-contact-import-company-input add-contact-import-company-input--in-table"
-          value={raw ?? ''}
-          onChange={(e) => patchCompanyField(rowIdx, col.key, e.target.value)}
-        />
-      );
-      return (
-        <td key={col.key} className="cip-td-company text-muted">
-          {valStyle ? <span className="list-col-value-style" style={valStyle}>{inp}</span> : inp}
-        </td>
-      );
-    }
-
-    if (!locked && col.key.startsWith(CUSTOM_FIELDS_PREFIX)) {
-      const fk = col.key.slice(CUSTOM_FIELDS_PREFIX.length);
-      const raw = row.companyCustomFields?.[fk] ?? '';
-      const inp = (
-        <input
-          type="text"
-          className="add-contact-import-company-input add-contact-import-company-input--in-table"
-          value={raw}
-          onChange={(e) => patchCompanyField(rowIdx, col.key, e.target.value)}
-        />
-      );
-      return (
-        <td key={col.key} className="cip-td-company text-muted">
-          {valStyle ? <span className="list-col-value-style" style={valStyle}>{inp}</span> : inp}
-        </td>
-      );
-    }
-
-    const text = cellValue(companyLike, col.key, assigneeIdToName, companyEmployeesLoaded);
-    const content = <span className={col.key === 'name' ? '' : 'text-muted'}>{text}</span>;
-    return (
-      <td key={col.key} className={`cip-td-company${col.key === 'name' ? ' cip-td-excel-name' : ' text-muted'}`}>
-        {valStyle ? <span className="list-col-value-style" style={valStyle}>{content}</span> : content}
-      </td>
-    );
+  const handleConfirm = () => {
+    const rows = draft
+      .filter((r) => checked.has(r._key) && issues.get(r._key)?.level !== 'error')
+      .map(({ _key, _preLinkCompanyName, ...rest }) => rest);
+    if (!rows.length) return;
+    onConfirm?.(rows);
   };
 
   if (!open) return null;
 
+  const hasGroups = showCompany && groups.length > 0;
+
   return (
-    <div
-      className="add-company-import-preview-overlay contact-import-preview-overlay contact-import-preview-overlay--fullscreen"
-      onClick={() => !bulkSaving && onClose?.()}
-      role="dialog"
-      aria-modal="true"
-      aria-label="연락처 등록 예정"
-    >
-      <div
-        ref={panelRef}
-        className="add-company-import-preview-panel add-contact-import-preview-panel contact-import-preview-panel contact-import-preview-panel--fullscreen"
-        onClick={(e) => e.stopPropagation()}
-        tabIndex={-1}
-      >
-        <header className="contact-import-preview-header">
-          <h3 className="add-company-section-title contact-import-preview-title">연락처 등록 예정</h3>
-          <p className="contact-import-preview-header-stats">
-            <span>
-              <strong>{headerStats.checkedCount}</strong> / {headerStats.total}명 등록 예정
+    <div className="cipv-overlay" role="dialog" aria-modal="true" aria-labelledby="cipv-title">
+      <div className="cipv-panel" ref={panelRef} tabIndex={-1}>
+        {/* ---------- 헤더 ---------- */}
+        <header className="cipv-header">
+          <div className="cipv-header-main">
+            <h3 id="cipv-title" className="cipv-title">
+              연락처 등록 미리보기
+            </h3>
+            <p className="cipv-subtitle">
+              값을 바로 고칠 수 있습니다. 체크한 행만 등록되며, 회사는 오른쪽 묶음에서 기존 고객사와 연결합니다.
+            </p>
+          </div>
+          <div className="cipv-stats" aria-live="polite">
+            <span className="cipv-stat is-primary">
+              <strong>{stats.toRegister.toLocaleString()}</strong>명 등록
             </span>
-            <span className="contact-import-preview-header-sep">·</span>
-            <span>
-              신규 고객사(배치 내 신규 묶음) <strong>{headerStats.newCompanyCount}</strong>개
-            </span>
-          </p>
+            {hasGroups ? (
+              <>
+                <span className="cipv-stat is-linked">
+                  <span className="material-symbols-outlined" aria-hidden>
+                    link
+                  </span>
+                  기존 고객사 <strong>{stats.linkedGroups}</strong>
+                </span>
+                <span className="cipv-stat is-new">
+                  <span className="material-symbols-outlined" aria-hidden>
+                    add_business
+                  </span>
+                  신규 고객사 <strong>{stats.newGroups}</strong>
+                </span>
+                {stats.checkGroups > 0 ? (
+                  <span className="cipv-stat is-check">
+                    <span className="material-symbols-outlined" aria-hidden>
+                      help
+                    </span>
+                    확인 필요 <strong>{stats.checkGroups}</strong>
+                  </span>
+                ) : null}
+              </>
+            ) : null}
+          </div>
+          <button type="button" className="cipv-close" onClick={() => onClose?.()} disabled={disabled} aria-label="닫기">
+            <span className="material-symbols-outlined">close</span>
+          </button>
         </header>
 
-        <div className="contact-import-preview-scroll">
-          <div className="contact-import-preview-table-outer">
-            <table className="data-table contact-import-preview-main-table">
+        {/* ---------- 도구 줄 ---------- */}
+        <div className="cipv-toolbar">
+          <div className="cipv-tabs" role="tablist" aria-label="행 필터">
+            {[
+              ['all', '전체', stats.total],
+              ['issues', '확인 필요', stats.issueCount],
+              ['excluded', '제외됨', stats.excluded]
+            ].map(([key, label, n]) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                aria-selected={filter === key}
+                className={`cipv-tab${filter === key ? ' is-active' : ''}${key === 'issues' && n > 0 ? ' has-issues' : ''}`}
+                onClick={() => setFilter(key)}
+              >
+                {label}
+                <span className="cipv-tab-count">{n.toLocaleString()}</span>
+              </button>
+            ))}
+          </div>
+          {groupFilterObj ? (
+            <button type="button" className="cipv-filter-chip" onClick={() => setGroupFilter(null)}>
+              <span className="material-symbols-outlined" aria-hidden>
+                business
+              </span>
+              {groupFilterObj.displayName}
+              <span className="material-symbols-outlined" aria-hidden>
+                close
+              </span>
+            </button>
+          ) : null}
+          {fixedCompany ? (
+            <span className="cipv-fixed-note">
+              <span className="material-symbols-outlined" aria-hidden>
+                lock
+              </span>
+              모든 연락처가 현재 고객사에 등록됩니다
+            </span>
+          ) : null}
+          <span className="cipv-toolbar-hint">Shift+클릭으로 여러 행을 한 번에 체크</span>
+        </div>
+
+        {/* ---------- 본문 ---------- */}
+        <div className={`cipv-body${hasGroups ? ' has-aside' : ''}`}>
+          <div className="cipv-table-wrap">
+            <table className="cipv-table">
               <thead>
                 <tr>
-                  <th className="cip-th-check" title="등록 포함">
+                  <th className="cipv-th-check">
                     <input
                       type="checkbox"
-                      className="cip-register-check"
-                      checked={allRowsChecked}
+                      className="cipv-check"
+                      checked={visibleAllChecked}
                       ref={(el) => {
-                        if (el) el.indeterminate = someRowsChecked;
+                        if (el) el.indeterminate = visibleSomeChecked;
                       }}
-                      disabled={bulkSaving || draft.length === 0}
-                      onChange={handleHeaderCheckChange}
-                      aria-label="전체 선택"
+                      disabled={disabled || visibleRows.length === 0}
+                      onChange={toggleVisibleAll}
+                      aria-label="보이는 행 전체 선택"
                     />
                   </th>
-                  <th className="cip-th-index">#</th>
-                  <th className="cip-th-contact cip-th-contact-name">이름</th>
-                  <th className="cip-th-contact cip-th-contact-email">이메일</th>
-                  <th className="cip-th-contact cip-th-contact-phone">전화</th>
-                  <th className="cip-th-contact cip-th-contact-position">직책</th>
-                  {displayColumns.map((col) => (
-                    <th key={col.key} className="list-template-th-sortable cip-th-company" title={col.label}>
-                      <span className="list-template-th-content">{truncateColumnLabel(col.label)}</span>
-                    </th>
-                  ))}
+                  <th className="cipv-th-no">#</th>
+                  <th className="cipv-th-issue" aria-label="상태" />
+                  <th>이름</th>
+                  <th>전화</th>
+                  <th>이메일</th>
+                  {showCompany ? <th>회사</th> : null}
+                  <th>직책</th>
+                  <th>주소</th>
+                  <th>메모</th>
+                  {showBirthDate ? <th>생년월일</th> : null}
                 </tr>
               </thead>
               <tbody>
-                {draft.map((row, idx) => {
-                  const bg = rowBackgrounds[idx];
-                  const aff = rowAffiliationKey(row);
-                  const affHover = aff !== 'individual' && hoveredAffiliationKey === aff;
-                  const companyLike = toCompanyLikeRow(row);
-                  const rowChecked = checkedRows.has(idx);
+                {visibleRows.map((row) => {
+                  const issue = issues.get(row._key) || { level: '', text: '' };
+                  const gk = showCompany ? companyGroupKeyOf(row) : '';
                   return (
-                    <tr
-                      key={idx}
-                      className={`contact-import-preview-body-row${affHover ? ' contact-import-preview-body-row--aff-hover' : ''}${rowChecked ? '' : ' contact-import-preview-body-row--unchecked'}`}
-                      style={bg ? { background: bg } : undefined}
-                      data-cip-affiliation={affiliationAttr(aff)}
-                      onMouseEnter={() => handleAffRowMouseEnter(aff)}
-                      onMouseLeave={(e) => handleAffRowMouseLeave(e, aff)}
-                    >
-                      <td
-                        className="cip-td-check"
-                        data-cip-check-row={idx}
-                        onMouseDown={(e) => handleRegisterCheckClick(e, idx)}
-                      >
-                        <input
-                          type="checkbox"
-                          className="cip-register-check"
-                          checked={rowChecked}
-                          disabled={bulkSaving}
-                          readOnly
-                          onMouseDown={(e) => handleRegisterCheckClick(e, idx)}
-                          aria-label={`${idx + 1}행 등록 포함`}
-                        />
-                      </td>
-                      <td className="cip-td-index text-muted">{idx + 1}</td>
-                      <td className="cip-td-contact">
-                        <input
-                          type="text"
-                          className="add-contact-import-company-input add-contact-import-company-input--in-table cip-contact-field-input"
-                          value={row.name ?? ''}
-                          onChange={(e) => patchContactField(idx, 'name', e.target.value)}
-                          placeholder="이름"
-                          disabled={bulkSaving}
-                          aria-label={`${idx + 1}행 이름`}
-                        />
-                      </td>
-                      <td className="cip-td-contact">
-                        <input
-                          type="email"
-                          className="add-contact-import-company-input add-contact-import-company-input--in-table cip-contact-field-input"
-                          value={row.email ?? ''}
-                          onChange={(e) => patchContactField(idx, 'email', e.target.value)}
-                          placeholder="이메일"
-                          disabled={bulkSaving}
-                          autoComplete="off"
-                          aria-label={`${idx + 1}행 이메일`}
-                        />
-                      </td>
-                      <td className="cip-td-contact">
-                        <input
-                          type="tel"
-                          inputMode="numeric"
-                          className="add-contact-import-company-input add-contact-import-company-input--in-table cip-contact-field-input"
-                          value={row.phone ?? ''}
-                          onChange={(e) => patchContactField(idx, 'phone', e.target.value)}
-                          placeholder="전화"
-                          disabled={bulkSaving}
-                          aria-label={`${idx + 1}행 전화`}
-                        />
-                      </td>
-                      <td className="cip-td-contact">
-                        <input
-                          type="text"
-                          className="add-contact-import-company-input add-contact-import-company-input--in-table cip-contact-field-input"
-                          value={row.position ?? ''}
-                          onChange={(e) => patchContactField(idx, 'position', e.target.value)}
-                          placeholder="직책"
-                          disabled={bulkSaving}
-                          aria-label={`${idx + 1}행 직책`}
-                        />
-                      </td>
-                      {displayColumns.map((col) => renderCompanyCell(row, idx, col, companyLike))}
-                    </tr>
+                    <PreviewRow
+                      key={row._key}
+                      row={row}
+                      rowNo={rowNoByKey.get(row._key)}
+                      checked={checked.has(row._key)}
+                      issueLevel={issue.level}
+                      issueText={issue.text}
+                      companyState={gk ? stateByGroupKey.get(gk) || '' : ''}
+                      groupKey={gk}
+                      showCompany={showCompany}
+                      showBirthDate={showBirthDate}
+                      disabled={disabled}
+                      onToggle={toggleRow}
+                      onPatch={patchRow}
+                      onUnlinkRow={unlinkSingleRow}
+                      onFocusGroup={focusGroup}
+                    />
                   );
                 })}
               </tbody>
             </table>
+            {visibleRows.length === 0 ? (
+              <p className="cipv-empty">
+                {filter === 'issues' ? '확인이 필요한 행이 없습니다.' : filter === 'excluded' ? '제외한 행이 없습니다.' : '표시할 행이 없습니다.'}
+              </p>
+            ) : null}
           </div>
+
+          {hasGroups ? (
+            <aside className="cipv-aside" aria-label="회사 묶음">
+              <div className="cipv-aside-head">
+                <h4>회사 묶음</h4>
+                <span>
+                  {groups.length}곳
+                  {stats.loadingGroups > 0 ? ` · ${stats.loadingGroups}곳 확인 중` : ''}
+                  {stats.individuals > 0 ? ` · 회사 없음 ${stats.individuals}명` : ''}
+                </span>
+              </div>
+              <p className="cipv-aside-hint">
+                같은 회사명(띄어쓰기·㈜·주식회사 차이 무시)은 한 묶음으로 처리됩니다. 묶음을 누르면 해당 행만 보여 줍니다.
+              </p>
+              <ul className="cipv-groups">
+                {sortedGroups.map(({ g, state }) => (
+                  <CompanyGroupCard
+                    key={g.key}
+                    group={g}
+                    state={state}
+                    similar={g.nameKey ? similar[g.nameKey] : null}
+                    active={groupFilter === g.key}
+                    disabled={disabled}
+                    onFocus={focusGroup}
+                    onLink={linkGroup}
+                    onUnlink={unlinkGroup}
+                    onDismiss={dismissName}
+                    onUndismiss={undismissName}
+                    onSearch={(grp) => setSearchCtx({ groupKey: grp.key, initialQuery: grp.displayName })}
+                  />
+                ))}
+              </ul>
+            </aside>
+          ) : null}
         </div>
 
-        <footer className="contact-import-preview-footer">
-          <div className="add-company-import-preview-actions contact-import-preview-footer-actions">
-            <button
-              type="button"
-              className="add-company-btn-cancel add-contact-import-btn-outline"
-              disabled={bulkSaving}
-              onClick={() => onClose?.()}
-            >
+        {/* ---------- 푸터 ---------- */}
+        <footer className="cipv-footer">
+          <p className="cipv-footer-note">
+            {stats.checkedErrors > 0 ? (
+              <span className="is-error">등록할 수 없는 {stats.checkedErrors}행은 제외하고 등록합니다. </span>
+            ) : null}
+            {stats.checkGroups > 0 ? (
+              <span className="is-check">
+                확인하지 않은 회사 {stats.checkGroups}곳은 신규 고객사로 만들어집니다.
+              </span>
+            ) : null}
+          </p>
+          <div className="cipv-footer-actions">
+            <button type="button" className="cipv-btn cipv-btn--lg" onClick={() => onClose?.()} disabled={disabled}>
               취소
             </button>
             <button
               type="button"
-              className="btn-primary add-contact-import-btn-confirm"
-              disabled={bulkSaving || checkedRows.size === 0}
-              onClick={handleConfirmClick}
+              className="cipv-btn cipv-btn--lg cipv-btn--primary"
+              onClick={handleConfirm}
+              disabled={disabled || stats.toRegister === 0}
             >
               <span className="material-symbols-outlined" aria-hidden>
                 {bulkSaving ? 'hourglass_empty' : 'check_circle'}
               </span>
-              {bulkSaving ? '등록 중…' : `확인 후 등록 (${headerStats.checkedCount}명)`}
+              {bulkSaving ? '등록 중…' : `${stats.toRegister.toLocaleString()}명 등록`}
             </button>
           </div>
         </footer>
       </div>
 
-      {companySearchCtx != null && (
+      {searchCtx ? (
         <CustomerCompanySearchModal
-          key={`cip-company-search-${companySearchCtx.rowIdx}-${companySearchCtx.initialQuery}`}
-          initialSearchQuery={companySearchCtx.initialQuery}
+          key={`cipv-search-${searchCtx.groupKey}`}
+          initialSearchQuery={searchCtx.initialQuery}
           includeSimilarSearch
-          onClose={() => setCompanySearchCtx(null)}
+          onClose={() => setSearchCtx(null)}
           onSelect={(company) => {
-            const targetRow = companySearchCtx.rowIdx;
-            setDraft((prev) =>
-              prev.map((r, i) =>
-                i === targetRow
-                  ? {
-                      ...r,
-                      customerCompanyId: String(company._id),
-                      linkedCompany: company,
-                      companyName: company.name || '',
-                      address: company.address != null ? String(company.address) : r.address
-                    }
-                  : r
-              )
-            );
-            setCompanySearchCtx(null);
+            linkGroup(searchCtx.groupKey, company);
+            setSearchCtx(null);
           }}
         />
-      )}
+      ) : null}
     </div>
   );
 }

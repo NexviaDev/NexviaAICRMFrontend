@@ -1,388 +1,850 @@
-/* 연락처 대량 미리보기 — 전체 화면·엑셀형·고정 헤더/푸터 */
-.contact-import-preview-overlay {
+/*
+ * 연락처 대량 등록 미리보기 — 전체 화면 · 표 + 회사 묶음 패널.
+ * 색은 shared/excel-import-mapping-modal.css 의 --xi-* 토큰(=global --primary 계열)을 씁니다.
+ * 중복 확인(2500)·고객사 검색(2400) 모달이 이 화면(2100) 위에 뜹니다.
+ */
+
+.cipv-overlay {
+  position: fixed;
+  inset: 0;
   z-index: 2100;
-}
-
-.contact-import-preview-overlay--fullscreen {
-  padding: 0 !important;
-  align-items: stretch !important;
-  justify-content: stretch !important;
-}
-
-.contact-import-preview-panel {
   display: flex;
-  flex-direction: column;
-  width: min(99vw, 92rem);
-  max-width: min(99vw, 92rem) !important;
-  max-height: 96vh;
-  padding: 0 !important;
-  overflow: hidden;
+  background: rgba(23, 34, 48, 0.42);
 }
 
-.contact-import-preview-panel--fullscreen {
-  width: 100vw !important;
-  height: 100vh !important;
-  max-width: 100vw !important;
-  max-height: 100vh !important;
-  border-radius: 0 !important;
-  border: none !important;
-  box-shadow: none !important;
+.cipv-panel {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  width: 100%;
+  height: 100%;
+  background: var(--xi-surface-sunken, #f5f8fc);
+  outline: none;
 }
 
-.add-contact-import-preview-panel.contact-import-preview-panel {
-  max-width: min(99vw, 92rem) !important;
+/* ---------- 헤더 ---------- */
+
+.cipv-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.85rem 1.25rem;
+  padding-top: calc(0.85rem + env(safe-area-inset-top, 0px));
+  background: var(--xi-surface, #fff);
+  border-bottom: 1px solid var(--xi-line, #e3ebf3);
 }
 
-.add-contact-import-preview-panel.contact-import-preview-panel--fullscreen {
-  max-width: 100vw !important;
-}
-
-.contact-import-preview-header {
-  flex-shrink: 0;
-  position: sticky;
-  top: 0;
-  z-index: 4;
-  padding: 0.85rem 1.15rem 0.65rem;
-  background: #f6f2fa;
-  border-bottom: 1px solid #e4dcef;
-}
-
-.contact-import-preview-title {
-  margin: 0 0 0.35rem;
-}
-
-.contact-import-preview-header-stats {
-  margin: 0;
-  font-size: 0.88rem;
-  color: #4a3f55;
-}
-
-.contact-import-preview-header-sep {
-  margin: 0 0.35rem;
-  color: #b8a8c8;
-}
-
-/* 헤더·푸터 사이 본문만 스크롤 — 세로·가로 한 곳(푸터 바로 위에 가로 스크롤바) */
-.contact-import-preview-scroll {
-  flex: 1;
-  min-height: 0;
+.cipv-header-main {
   min-width: 0;
+  flex: 1 1 20rem;
+}
+
+.cipv-title {
+  margin: 0;
+  font-size: 1.08rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--xi-text, #334155);
+}
+
+.cipv-subtitle {
+  margin: 0.2rem 0 0;
+  font-size: 0.76rem;
+  color: var(--xi-text-muted, #64748b);
+}
+
+.cipv-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+/* gap 을 쓰면 "<strong>8</strong>명" 사이도 벌어지므로 아이콘에만 여백을 줍니다 */
+.cipv-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--xi-text-soft, #526175);
+  background: var(--xi-surface-sunken, #f5f8fc);
+  border: 1px solid var(--xi-line, #e3ebf3);
+  border-radius: 999px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.cipv-stat strong {
+  font-weight: 800;
+  color: var(--xi-text, #334155);
+}
+
+.cipv-stat .material-symbols-outlined {
+  font-size: 0.95rem;
+  margin-right: 0.25rem;
+}
+
+/* flex 안에서는 "기존 고객사 " 끝 공백이 사라지므로, 숫자가 뒤에 오는 칩은 여백으로 띄웁니다 */
+.cipv-stat:not(.is-primary) strong {
+  margin-left: 0.3rem;
+}
+
+.cipv-stat.is-primary {
+  color: #fff;
+  background: var(--xi-accent-strong, #3d5a73);
+  border-color: var(--xi-accent-strong, #3d5a73);
+}
+
+.cipv-stat.is-primary strong {
+  color: #fff;
+}
+
+.cipv-stat.is-linked .material-symbols-outlined {
+  color: var(--xi-ok-fg, #2d7a5f);
+}
+
+.cipv-stat.is-new .material-symbols-outlined {
+  color: var(--xi-accent, #5b7c99);
+}
+
+.cipv-stat.is-check {
+  color: var(--xi-warn-fg, #9a6a1c);
+  background: var(--xi-warn-bg, #fbf0dc);
+  border-color: rgba(154, 106, 28, 0.25);
+}
+
+.cipv-stat.is-check strong {
+  color: var(--xi-warn-fg, #9a6a1c);
+}
+
+.cipv-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  color: var(--xi-text-muted, #64748b);
+  background: none;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.cipv-close:hover:not(:disabled) {
+  background: var(--xi-surface-sunken, #f5f8fc);
+  color: var(--xi-text, #334155);
+}
+
+/* ---------- 도구 줄 ---------- */
+
+.cipv-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0.55rem 1.25rem;
+  background: var(--xi-surface, #fff);
+  border-bottom: 1px solid var(--xi-line, #e3ebf3);
+}
+
+.cipv-tabs {
+  display: inline-flex;
+  padding: 0.2rem;
+  gap: 0.15rem;
+  background: var(--xi-surface-sunken, #f5f8fc);
+  border: 1px solid var(--xi-line, #e3ebf3);
+  border-radius: 9px;
+}
+
+.cipv-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.7rem;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--xi-text-muted, #64748b);
+  background: none;
+  border: none;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.cipv-tab:hover {
+  color: var(--xi-text, #334155);
+}
+
+.cipv-tab.is-active {
+  color: var(--xi-text, #334155);
+  background: var(--xi-surface, #fff);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.cipv-tab-count {
+  min-width: 1.4rem;
+  padding: 0 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.35rem;
+  text-align: center;
+  color: var(--xi-text-muted, #64748b);
+  background: #e8eef5;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cipv-tab.has-issues .cipv-tab-count {
+  color: var(--xi-warn-fg, #9a6a1c);
+  background: var(--xi-warn-bg, #fbf0dc);
+}
+
+.cipv-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.4rem 0.3rem 0.55rem;
+  font-family: inherit;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--xi-accent-strong, #3d5a73);
+  background: var(--xi-accent-soft, #eaf1f8);
+  border: 1px solid var(--xi-accent-line, #cddceb);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.cipv-filter-chip .material-symbols-outlined {
+  font-size: 0.95rem;
+}
+
+.cipv-fixed-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--xi-text-soft, #526175);
+}
+
+.cipv-fixed-note .material-symbols-outlined {
+  font-size: 1rem;
+}
+
+.cipv-toolbar-hint {
+  margin-left: auto;
+  font-size: 0.7rem;
+  color: var(--xi-text-faint, #94a3b8);
+}
+
+/* ---------- 본문: 표 + 회사 묶음 ---------- */
+
+.cipv-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.85rem;
+  min-height: 0;
+  padding: 0.85rem 1.25rem;
+}
+
+.cipv-body.has-aside {
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 22rem);
+}
+
+.cipv-table-wrap {
+  min-height: 0;
   overflow: auto;
-  padding: 0.5rem 1rem 0.5rem;
+  background: var(--xi-surface, #fff);
+  border: 1px solid var(--xi-line, #e3ebf3);
+  border-radius: var(--xi-radius, 10px);
+  box-shadow: var(--xi-shadow-sm, 0 1px 2px rgba(15, 23, 42, 0.05));
+  scrollbar-width: thin;
+  scrollbar-color: #c3d2e0 transparent;
 }
 
-.contact-import-preview-table-outer {
-  margin: 0 0 0.5rem;
-  border: 1px solid #e8e0f0;
-  border-radius: 0.5rem;
-  overflow: visible;
-  background: #fdfcfe;
-}
-
-.contact-import-preview-main-table {
-  font-size: 0.8125rem;
-  table-layout: auto;
+.cipv-table {
   width: max-content;
   min-width: 100%;
-}
-
-.contact-import-preview-main-table.data-table th,
-.contact-import-preview-main-table.data-table td {
-  padding: 0.45rem 0.55rem;
-}
-
-.contact-import-preview-header-hint {
-  color: #7a6f88;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 0.8rem;
+  color: var(--xi-text, #334155);
 }
 
-.contact-import-preview-main-table thead th.cip-th-check,
-.contact-import-preview-main-table tbody td.cip-td-check {
-  width: 2.75rem;
-  min-width: 2.75rem;
-  max-width: 2.75rem;
-  text-align: center;
+.cipv-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 0.55rem 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: left;
+  white-space: nowrap;
+  color: var(--xi-text-muted, #64748b);
+  background: #f4f8fc;
+  border-bottom: 1px solid var(--xi-line-strong, #d2dfec);
+}
+
+.cipv-table tbody td {
+  padding: 0.3rem 0.4rem;
+  border-bottom: 1px solid var(--xi-line, #e3ebf3);
   vertical-align: middle;
-  padding-left: 0.35rem;
-  padding-right: 0.35rem;
-  box-sizing: border-box;
 }
 
-.cip-register-check {
+.cipv-th-check,
+.cipv-td-check {
+  width: 2.4rem;
+  text-align: center !important;
+}
+
+.cipv-th-no,
+.cipv-td-no {
+  width: 2.6rem;
+  text-align: right !important;
+  color: var(--xi-text-faint, #94a3b8);
+  font-size: 0.7rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.cipv-th-issue,
+.cipv-td-issue {
+  width: 1.8rem;
+  text-align: center !important;
+}
+
+.cipv-check {
   width: 1rem;
   height: 1rem;
   margin: 0;
   cursor: pointer;
-  accent-color: #5c6bc0;
+  accent-color: var(--xi-accent-strong, #3d5a73);
 }
 
-.contact-import-preview-body-row--unchecked {
-  opacity: 0.55;
+.cipv-row:hover td {
+  background: #f8fbfe;
 }
 
-.contact-import-preview-body-row--unchecked .cip-contact-field-input:not(:disabled) {
-  background: #f8f6fa;
+.cipv-row.is-excluded td {
+  background: #fafbfc;
 }
 
-.contact-import-preview-main-table thead th.cip-th-index,
-.contact-import-preview-main-table tbody td.cip-td-index {
-  width: 2.75rem;
-  min-width: 2.75rem;
-  max-width: 3rem;
-  box-sizing: border-box;
+.cipv-row.is-excluded .cipv-input,
+.cipv-row.is-excluded .cipv-company-chip {
+  opacity: 0.45;
 }
 
-/* 이름·이메일·전화·직책: 최소 너비 확보 + 내용에 맞게 넓어짐 */
-.contact-import-preview-main-table thead th.cip-th-contact,
-.contact-import-preview-main-table tbody td.cip-td-contact {
-  box-sizing: border-box;
-  padding-left: 0.65rem;
-  padding-right: 0.65rem;
+.cipv-row.has-error .cipv-td-check {
+  box-shadow: inset 3px 0 0 var(--xi-err-fg, #a93b3b);
 }
 
-.contact-import-preview-main-table thead th:nth-child(3),
-.contact-import-preview-main-table tbody td:nth-child(3) {
-  min-width: 11rem;
+.cipv-row.has-warn .cipv-td-check {
+  box-shadow: inset 3px 0 0 #d8a24a;
 }
 
-.contact-import-preview-main-table thead th:nth-child(4),
-.contact-import-preview-main-table tbody td:nth-child(4) {
-  min-width: 14rem;
-}
-
-.contact-import-preview-main-table thead th:nth-child(5),
-.contact-import-preview-main-table tbody td:nth-child(5) {
-  min-width: 11rem;
-}
-
-.contact-import-preview-main-table thead th:nth-child(6),
-.contact-import-preview-main-table tbody td:nth-child(6) {
-  min-width: 10rem;
-}
-
-.contact-import-preview-main-table .cip-th-contact {
-  white-space: nowrap;
-}
-
-/* 같은 소속(동일 묶음) 행: 행/셀 테두리가 아니라 기업명 값에만 밑줄 */
-.contact-import-preview-main-table tbody tr.contact-import-preview-body-row .cip-name-field-input {
-  transition: text-decoration-color 0.12s ease, text-underline-offset 0.12s ease;
-}
-
-.contact-import-preview-main-table tbody tr.contact-import-preview-body-row.contact-import-preview-body-row--aff-hover .cip-name-field-input {
-  text-decoration-line: underline;
-  text-decoration-thickness: 2px;
-  text-decoration-color: #5c4b78;
-  text-underline-offset: 0.22rem;
-}
-
-.contact-import-preview-main-table .cip-readonly {
-  color: #3d3545;
-  white-space: nowrap;
-  max-width: 10rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.cip-th-index,
-.cip-td-index {
-  text-align: center;
-  color: #8b7fa3;
-  font-weight: 600;
-}
-
-.cip-th-company {
-  width: 13.5rem;
-  min-width: 13.5rem;
-  white-space: nowrap;
-}
-
-.cip-th-company .list-template-th-content {
-  display: block;
-  max-width: 20ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cip-td-company {
-  vertical-align: middle;
-  min-width: 13.5rem;
-}
-
-.cip-td-contact {
-  vertical-align: middle;
-  min-width: 10rem;
-}
-
-.contact-import-preview-main-table .cip-contact-field-input {
-  border: 1px solid #ddd6ee;
-  border-radius: 0.3rem;
-  background: #fff;
-  color: #3d3545;
-  box-sizing: border-box;
-  min-width: 10rem;
-  width: auto;
-  max-width: min(36rem, 85vw);
-  field-sizing: content;
-}
-
-.contact-import-preview-main-table .cip-contact-field-input:disabled {
-  opacity: 0.65;
-  cursor: not-allowed;
-}
-
-/* 기업명 열: 엑셀 셀 선택 — 입력칸 안에서는 텍스트 선택 가능 */
-.cip-td-company.cip-td-excel-name {
-  cursor: cell;
-  position: relative;
-}
-
-.cip-name-field-shell,
-.cip-name-field-input {
-  user-select: text;
-  -webkit-user-select: text;
-}
-
-.cip-td-company.cip-td-excel-name.cip-name-cell--selected {
-  outline: 2px solid #8b7cb8;
-  outline-offset: -2px;
-  background: rgba(139, 124, 184, 0.12);
-}
-
-/* 기업명: 한 칸 안에 미니 아바타 + 입력 + 돋보기 */
-.cip-name-field-shell {
-  display: flex;
-  align-items: center;
-  gap: 0.2rem;
-  min-width: 0;
-  flex: 1;
-  border: 1px solid #ddd6ee;
-  border-radius: 0.35rem;
-  background: #fff;
-  padding: 0.08rem 0.12rem 0.08rem 0.18rem;
-}
-
-.cip-name-field-shell--linked-sync {
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
-}
-
-.cip-name-field-shell--linked-sync .cip-name-field-input {
-  font-weight: 700;
-  color: #2a2438;
-}
-
-.cip-name-field-input {
-  flex: 1;
-  min-width: 0;
-  border: none;
-  background: transparent;
-  font-size: 0.78rem;
-  padding: 0.2rem 0.15rem;
-  outline: none;
-}
-
-.cip-name-field-input:disabled {
-  color: #2a2438;
-  opacity: 1;
-  cursor: not-allowed;
-}
-
-.cip-name-avatar-mini {
-  width: 1.28rem;
-  height: 1.28rem;
-  border-radius: 50%;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-
-.cip-name-avatar-mini-initials {
-  font-size: 0.52rem;
-  font-weight: 700;
-  color: #fff;
-  line-height: 1;
-}
-
-.cip-name-avatar-mini--0 {
-  background: #8b9dc9;
-}
-
-.cip-name-avatar-mini--1 {
-  background: #a395c9;
-}
-
-.cip-name-avatar-mini--2 {
-  background: #7ba8c4;
-}
-
-.cip-name-search-btn {
-  flex-shrink: 0;
+.cipv-issue {
   display: inline-flex;
+  cursor: help;
+}
+
+.cipv-issue .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
+.cipv-issue.is-error {
+  color: var(--xi-err-fg, #a93b3b);
+}
+
+.cipv-issue.is-warn {
+  color: #c48a2c;
+}
+
+/* 셀 입력 — 평소엔 표처럼, 올리거나 포커스하면 입력칸처럼 */
+.cipv-input {
+  width: 100%;
+  min-width: 8.5rem;
+  box-sizing: border-box;
+  padding: 0.32rem 0.45rem;
+  font-family: inherit;
+  font-size: 0.8rem;
+  color: var(--xi-text, #334155);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  transition: border-color 0.12s ease, background 0.12s ease, box-shadow 0.12s ease;
+}
+
+.cipv-input::placeholder {
+  color: #c3cdd8;
+}
+
+.cipv-row:hover .cipv-input:not(:disabled) {
+  border-color: var(--xi-line, #e3ebf3);
+  background: #fff;
+}
+
+.cipv-input:focus {
+  outline: none;
+  border-color: var(--xi-accent, #5b7c99);
+  background: #fff;
+  box-shadow: var(--xi-ring, 0 0 0 3px rgba(91, 124, 153, 0.18));
+}
+
+.cipv-input.is-invalid {
+  color: var(--xi-err-fg, #a93b3b);
+  text-decoration: underline wavy rgba(169, 59, 59, 0.45);
+  text-underline-offset: 3px;
+}
+
+.cipv-input:disabled {
+  cursor: not-allowed;
+}
+
+/* 회사 셀 */
+
+.cipv-td-company {
+  min-width: 12rem;
+}
+
+.cipv-company-edit {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  width: 1.72rem;
-  height: 1.72rem;
-  padding: 0;
-  border: none;
-  border-radius: 0.3rem;
-  background: #ede6f7;
-  color: #5c4d72;
+  gap: 0.25rem;
+}
+
+.cipv-company-state {
+  flex-shrink: 0;
+  padding: 0.1rem 0.4rem;
+  font-family: inherit;
+  font-size: 0.64rem;
+  font-weight: 700;
+  line-height: 1.5;
+  border: 1px solid transparent;
+  border-radius: 999px;
   cursor: pointer;
 }
 
-.cip-name-search-btn:hover:not(:disabled) {
-  background: #e2d8f2;
+.cipv-company-state.is-new,
+.cipv-company-state.is-error {
+  color: var(--xi-accent-strong, #3d5a73);
+  background: var(--xi-accent-soft, #eaf1f8);
+  border-color: var(--xi-accent-line, #cddceb);
 }
 
-.cip-name-search-btn--unlink {
-  background: #f6e7ea;
-  color: #8a3f4b;
+.cipv-company-state.is-check {
+  color: var(--xi-warn-fg, #9a6a1c);
+  background: var(--xi-warn-bg, #fbf0dc);
+  border-color: rgba(154, 106, 28, 0.25);
 }
 
-.cip-name-search-btn--unlink:hover:not(:disabled) {
-  background: #efd8dd;
+.cipv-company-state.is-loading {
+  color: var(--xi-text-faint, #94a3b8);
+  background: #f1f5f9;
 }
 
-.cip-name-search-btn:disabled {
+.cipv-company-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  max-width: 16rem;
+  padding: 0.15rem 0.15rem 0.15rem 0.45rem;
+  color: var(--xi-ok-fg, #2d7a5f);
+  background: var(--xi-ok-bg, #e4f3ec);
+  border: 1px solid rgba(45, 122, 95, 0.2);
+  border-radius: 999px;
+}
+
+.cipv-company-chip.is-auto {
+  border-style: dashed;
+}
+
+.cipv-company-chip > .material-symbols-outlined {
+  font-size: 0.9rem;
+}
+
+.cipv-company-chip-name {
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.cipv-company-chip-x {
+  display: inline-flex;
+  padding: 0.1rem;
+  color: inherit;
+  background: none;
+  border: none;
+  border-radius: 999px;
   opacity: 0.55;
+  cursor: pointer;
+}
+
+.cipv-company-chip-x .material-symbols-outlined {
+  font-size: 0.85rem;
+}
+
+.cipv-company-chip-x:hover:not(:disabled) {
+  opacity: 1;
+  background: rgba(45, 122, 95, 0.14);
+}
+
+.cipv-empty {
+  margin: 0;
+  padding: 2rem 1rem;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--xi-text-faint, #94a3b8);
+}
+
+/* ---------- 회사 묶음 패널 ---------- */
+
+.cipv-aside {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--xi-surface, #fff);
+  border: 1px solid var(--xi-line, #e3ebf3);
+  border-radius: var(--xi-radius, 10px);
+  box-shadow: var(--xi-shadow-sm, 0 1px 2px rgba(15, 23, 42, 0.05));
+}
+
+.cipv-aside-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.75rem 0.9rem 0;
+}
+
+.cipv-aside-head h4 {
+  margin: 0;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--xi-text, #334155);
+}
+
+.cipv-aside-head span {
+  font-size: 0.72rem;
+  color: var(--xi-text-muted, #64748b);
+}
+
+.cipv-aside-hint {
+  margin: 0.3rem 0 0;
+  padding: 0 0.9rem 0.6rem;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--xi-text-faint, #94a3b8);
+  border-bottom: 1px solid var(--xi-line, #e3ebf3);
+}
+
+.cipv-groups {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: 0.55rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  scrollbar-width: thin;
+  scrollbar-color: #c3d2e0 transparent;
+}
+
+.cipv-group {
+  padding: 0.55rem 0.65rem 0.6rem;
+  background: #fff;
+  border: 1px solid var(--xi-line, #e3ebf3);
+  border-left: 3px solid var(--xi-accent-line, #cddceb);
+  border-radius: 8px;
+}
+
+.cipv-group.is-linked,
+.cipv-group.is-auto {
+  border-left-color: var(--xi-ok-fg, #2d7a5f);
+}
+
+.cipv-group.is-check {
+  border-left-color: #d8a24a;
+  background: #fffdf8;
+}
+
+.cipv-group.is-error {
+  border-left-color: var(--xi-text-faint, #94a3b8);
+}
+
+.cipv-group.is-active {
+  border-color: var(--xi-accent, #5b7c99);
+  box-shadow: var(--xi-ring, 0 0 0 3px rgba(91, 124, 153, 0.18));
+}
+
+.cipv-group-head {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  padding: 0;
+  font-family: inherit;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.cipv-group-icon {
+  font-size: 1rem;
+  color: var(--xi-accent, #5b7c99);
+}
+
+.cipv-group.is-linked .cipv-group-icon,
+.cipv-group.is-auto .cipv-group-icon {
+  color: var(--xi-ok-fg, #2d7a5f);
+}
+
+.cipv-group.is-check .cipv-group-icon {
+  color: #c48a2c;
+}
+
+.cipv-group-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--xi-text, #334155);
+}
+
+.cipv-group-count {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--xi-text-muted, #64748b);
+  font-variant-numeric: tabular-nums;
+}
+
+.cipv-group-state {
+  margin: 0.15rem 0 0 1.35rem;
+  font-size: 0.7rem;
+  color: var(--xi-text-muted, #64748b);
+}
+
+.cipv-group.is-check .cipv-group-state {
+  color: var(--xi-warn-fg, #9a6a1c);
+  font-weight: 600;
+}
+
+.cipv-cands {
+  list-style: none;
+  margin: 0.45rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.cipv-cand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.45rem;
+  background: #fff;
+  border: 1px solid var(--xi-line, #e3ebf3);
+  border-radius: 7px;
+}
+
+.cipv-cand-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.cipv-cand-main strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.76rem;
+  color: var(--xi-text, #334155);
+}
+
+.cipv-cand-main span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.66rem;
+  color: var(--xi-text-faint, #94a3b8);
+}
+
+.cipv-group-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin: 0.45rem 0 0 1.35rem;
+}
+
+.cipv-group-actions:empty {
+  display: none;
+}
+
+/* ---------- 버튼 ---------- */
+
+.cipv-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.6rem;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--xi-text-soft, #526175);
+  background: #fff;
+  border: 1px solid var(--xi-line-strong, #d2dfec);
+  border-radius: 7px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.cipv-btn .material-symbols-outlined {
+  font-size: 0.95rem;
+}
+
+.cipv-btn:hover:not(:disabled) {
+  background: var(--xi-surface-sunken, #f5f8fc);
+  border-color: var(--xi-accent-line, #cddceb);
+}
+
+.cipv-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--xi-ring, 0 0 0 3px rgba(91, 124, 153, 0.18));
+}
+
+.cipv-btn:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
-.cip-name-search-btn .material-symbols-outlined {
-  font-size: 1.12rem;
+.cipv-btn--primary {
+  color: #fff;
+  background: var(--xi-accent-strong, #3d5a73);
+  border-color: var(--xi-accent-strong, #3d5a73);
 }
 
-.contact-import-preview-footer {
-  flex-shrink: 0;
-  position: sticky;
-  bottom: 0;
-  z-index: 4;
-  padding: 0.65rem 1rem 0.85rem;
-  background: #f6f2fa;
-  border-top: 1px solid #e4dcef;
+.cipv-btn--primary:hover:not(:disabled) {
+  background: var(--xi-accent, #5b7c99);
+  border-color: var(--xi-accent, #5b7c99);
 }
 
-.contact-import-preview-footer-actions {
+.cipv-btn--ghost {
+  color: var(--xi-accent-strong, #3d5a73);
+  background: none;
+  border-color: transparent;
+}
+
+.cipv-btn--ghost:hover:not(:disabled) {
+  background: var(--xi-accent-soft, #eaf1f8);
+  border-color: transparent;
+}
+
+.cipv-btn--lg {
+  padding: 0.55rem 1.1rem;
+  font-size: 0.86rem;
+  border-radius: 9px;
+}
+
+.cipv-btn--lg .material-symbols-outlined {
+  font-size: 1.1rem;
+}
+
+/* ---------- 푸터 ---------- */
+
+.cipv-footer {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.7rem 1.25rem;
+  padding-bottom: calc(0.7rem + env(safe-area-inset-bottom, 0px));
+  background: var(--xi-surface, #fff);
+  border-top: 1px solid var(--xi-line, #e3ebf3);
+}
+
+.cipv-footer-note {
+  flex: 1 1 16rem;
   margin: 0;
-  justify-content: flex-end;
+  font-size: 0.76rem;
+  color: var(--xi-text-muted, #64748b);
 }
 
-.add-contact-import-company-input--in-table {
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  font-size: 0.78rem;
-  padding: 0.22rem 0.35rem;
+.cipv-footer-note .is-error {
+  color: var(--xi-err-fg, #a93b3b);
+  font-weight: 600;
 }
 
-.contact-import-preview-main-table .add-contact-import-company-input--in-table.cip-contact-field-input {
-  width: auto;
-  min-width: 10rem;
-  max-width: min(36rem, 85vw);
-  field-sizing: content;
+.cipv-footer-note .is-check {
+  color: var(--xi-warn-fg, #9a6a1c);
+  font-weight: 600;
+}
+
+.cipv-footer-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+/* ---------- 좁은 화면: 패널을 표 위로 ---------- */
+
+@media (max-width: 1100px) {
+  .cipv-body.has-aside {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .cipv-aside {
+    order: -1;
+    max-height: 16rem;
+  }
+
+  .cipv-toolbar-hint {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .cipv-header,
+  .cipv-toolbar,
+  .cipv-body,
+  .cipv-footer {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  .cipv-footer-actions {
+    width: 100%;
+  }
+
+  .cipv-footer-actions .cipv-btn {
+    flex: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cipv-input,
+  .cipv-btn {
+    transition: none;
+  }
 }

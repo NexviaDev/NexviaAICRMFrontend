@@ -1,7 +1,46 @@
 /*
- * 엑셀 → CRM 매핑 모달 — opp-modal 토큰 + 중앙 떠 있는 대화상자(전체화면 아님)
- * (기업·연락처·제품 일괄 가져오기 매핑 화면 공통)
+ * 엑셀 → CRM 매핑 모달 — 고객사·연락처·상품·영업기회 가져오기 공통.
+ *
+ * 클래스 이름은 네 화면이 함께 쓰므로 그대로 두고 비주얼만 정리했습니다.
+ * 이전에는 #2c7bb6 / #4e79a7 / #c8dff0 / tailwind 계열 초록·노랑이 섞여 있어
+ * 화면마다 파랑이 달라 보였습니다 — global.css 의 --primary(#5b7c99) 한 갈래로 통일합니다.
  */
+
+/*
+ * 토큰은 :root 에 둡니다.
+ * 상품·영업기회의 원본 미리보기 모달은 .excel-import-map-overlay 래퍼 없이
+ * badge·save-msg·source-meta 만 빌려 쓰기 때문에, 오버레이에 토큰을 두면
+ * 그 화면들에서 색이 전부 깨집니다.
+ */
+:root {
+  --xi-accent: var(--primary, #5b7c99);
+  --xi-accent-strong: var(--primary-dark, #3d5a73);
+  --xi-accent-soft: #eaf1f8;
+  --xi-accent-line: #cddceb;
+
+  --xi-surface: #ffffff;
+  --xi-surface-sunken: #f5f8fc;
+  --xi-line: #e3ebf3;
+  --xi-line-strong: #d2dfec;
+
+  --xi-text: var(--text, #334155);
+  --xi-text-soft: #526175;
+  --xi-text-muted: var(--text-muted, #64748b);
+  --xi-text-faint: #94a3b8;
+
+  --xi-ok-bg: #e4f3ec;
+  --xi-ok-fg: #2d7a5f;
+  --xi-warn-bg: #fbf0dc;
+  --xi-warn-fg: #9a6a1c;
+  --xi-err-bg: #fbe6e6;
+  --xi-err-fg: #a93b3b;
+
+  --xi-radius: 10px;
+  --xi-radius-lg: 14px;
+  --xi-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --xi-shadow-md: 0 1px 3px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.05);
+  --xi-ring: 0 0 0 3px rgba(91, 124, 153, 0.18);
+}
 
 /* opportunity-modal.css 는 전체화면 — 여기서 매핑 전용 중앙 모달로 재정의 */
 .excel-import-map-overlay.opp-modal-overlay {
@@ -13,6 +52,8 @@
   min-height: 0;
   overflow-y: auto;
   box-sizing: border-box;
+  background: rgba(23, 34, 48, 0.42);
+  backdrop-filter: blur(2px);
 }
 
 .excel-import-map-modal.opp-modal {
@@ -24,26 +65,43 @@
   flex: 0 1 auto;
   min-height: 0;
   margin: auto;
-  border-radius: 12px;
-  border: 1px solid var(--card-border, #dce6f2);
+  border-radius: var(--xi-radius-lg);
+  border: 1px solid var(--xi-line-strong);
+  background: var(--xi-surface);
   box-shadow:
-    0 2px 6px rgba(15, 23, 42, 0.07),
-    0 8px 32px rgba(15, 23, 42, 0.1);
+    0 2px 8px rgba(15, 23, 42, 0.08),
+    0 16px 48px rgba(15, 23, 42, 0.14);
 }
 
 .excel-import-map-modal.opp-modal .opp-modal-header {
-  border-radius: 12px 12px 0 0;
+  border-radius: var(--xi-radius-lg) var(--xi-radius-lg) 0 0;
+  border-bottom: 1px solid var(--xi-line);
 }
 
 .excel-import-map-modal.opp-modal .opp-modal-footer {
-  border-radius: 0 0 12px 12px;
+  border-radius: 0 0 var(--xi-radius-lg) var(--xi-radius-lg);
+  border-top: 1px solid var(--xi-line);
+  background: var(--xi-surface-sunken);
 }
 
 .excel-import-map-form.opp-modal-form {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  padding: 14px 0 16px;
+  padding: 16px 0 18px;
+  background: var(--xi-surface-sunken);
+  scrollbar-width: thin;
+  scrollbar-color: #c3d2e0 transparent;
+}
+
+.excel-import-map-form.opp-modal-form::-webkit-scrollbar {
+  width: 10px;
+}
+
+.excel-import-map-form.opp-modal-form::-webkit-scrollbar-thumb {
+  background: #cbd8e5;
+  border-radius: 999px;
+  border: 3px solid var(--xi-surface-sunken);
 }
 
 .excel-import-map-form-layout.opp-modal-form-layout {
@@ -64,7 +122,7 @@
   .excel-import-map-modal.opp-modal {
     max-width: 100%;
     max-height: min(96vh, calc(100dvh - 1.25rem));
-    border-radius: 10px;
+    border-radius: var(--xi-radius);
   }
 
   .excel-import-map-form-layout.opp-modal-form-layout {
@@ -77,12 +135,13 @@
   width: 100%;
 }
 
-/* 헤더 배지 */
+/* ---------- 헤더 배지 ---------- */
+
 .excel-import-map-badge {
   display: inline-flex;
   align-items: center;
   padding: 0.2rem 0.55rem;
-  border-radius: 0.35rem;
+  border-radius: 999px;
   font-size: 0.65rem;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -90,106 +149,140 @@
 }
 
 .excel-import-map-badge--tag {
-  background: #e8eef6;
-  color: #64748b;
+  background: #eef2f7;
+  color: var(--xi-text-muted);
+  border: 1px solid var(--xi-line);
   text-transform: uppercase;
 }
 
 .excel-import-map-badge--count {
-  background: #d9eef9;
-  color: #0369a1;
-  border: 1px solid rgba(44, 123, 182, 0.22);
+  background: var(--xi-accent-soft);
+  color: var(--xi-accent-strong);
+  border: 1px solid var(--xi-accent-line);
   font-size: 0.7rem;
+  letter-spacing: 0;
+  text-transform: none;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 상품·영업기회 원본 미리보기에서 쓰이는데 지금까지 규칙이 없던 변형 */
+.excel-import-map-badge--muted {
+  background: #eef2f7;
+  color: var(--xi-text-muted);
+  border: 1px solid var(--xi-line);
   letter-spacing: 0;
   text-transform: none;
 }
 
-/* 소개 */
+/* ---------- 소개 ---------- */
+
 .excel-import-map-intro {
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.1rem;
 }
 
 .excel-import-map-intro-title {
   margin: 0 0 0.35rem;
-  font-size: 1.125rem;
+  font-size: 1.1rem;
   font-weight: 700;
-  color: var(--text, #1d283a);
+  letter-spacing: -0.01em;
+  color: var(--xi-text);
 }
 
 .excel-import-map-intro-desc {
   margin: 0;
   font-size: var(--opp-f-sm, 0.8125rem);
-  color: #64748b;
-  line-height: 1.5;
-  max-width: 42rem;
+  color: var(--xi-text-muted);
+  line-height: 1.55;
+  max-width: 44rem;
 }
 
 .excel-import-map-intro-desc strong {
-  color: #475569;
+  color: var(--xi-text-soft);
   font-weight: 700;
 }
 
 .excel-import-map-intro-note {
   margin: 0.45rem 0 0;
-  padding: 0.45rem 0.55rem;
+  padding: 0.5rem 0.65rem;
   font-size: 0.75rem;
   font-weight: 500;
-  color: #4a6278;
+  color: var(--xi-text-soft);
   line-height: 1.45;
-  background: #f0f6fb;
-  border: 1px solid #d5e3ef;
-  border-radius: 0.35rem;
-  max-width: 42rem;
+  background: var(--xi-accent-soft);
+  border: 1px solid var(--xi-accent-line);
+  border-radius: 8px;
+  max-width: 44rem;
 }
 
 .excel-import-map-intro-note strong {
-  color: #3d5a73;
+  color: var(--xi-accent-strong);
   font-weight: 700;
 }
 
-/* 엑셀 드롭존 — opp 파스텔 톤, 그라데이션 없음 */
+/* ---------- 드롭존 ---------- */
+
 .excel-import-map-dropzone {
-  border: 2px dashed var(--card-border, #dce6f2);
-  border-radius: 10px;
+  position: relative;
+  border: 2px dashed var(--xi-line-strong);
+  border-radius: var(--xi-radius);
   padding: 1.5rem 1.25rem;
   text-align: center;
-  background: var(--opp-panel-bg, #f9fbfd);
-  margin-bottom: 1rem;
+  background: var(--xi-surface);
+  margin-bottom: 0.25rem;
   cursor: pointer;
-  transition: border-color 0.2s, background 0.2s;
+  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
   box-sizing: border-box;
 }
 
-.excel-import-map-dropzone:hover,
-.excel-import-map-dropzone:focus {
+.excel-import-map-dropzone:hover {
+  border-color: var(--xi-accent);
+  background: #fbfdff;
+  box-shadow: var(--xi-shadow-sm);
+}
+
+.excel-import-map-dropzone:focus-visible {
   outline: none;
-  border-color: rgba(44, 123, 182, 0.45);
-  background: var(--opp-tableau-stripe, #eef4fa);
+  border-color: var(--xi-accent);
+  box-shadow: var(--xi-ring);
 }
 
 .excel-import-map-dropzone.is-dragover {
-  border-color: var(--primary, #2c7bb6);
-  background: #e8f4fc;
+  border-color: var(--xi-accent);
+  border-style: solid;
+  background: var(--xi-accent-soft);
+  box-shadow: var(--xi-ring);
 }
 
 .excel-import-map-dropzone-icon {
-  font-size: 2rem;
-  color: var(--opp-tableau-header, #4e79a7);
-  display: block;
-  margin-bottom: 0.5rem;
+  font-size: 1.6rem;
+  color: var(--xi-accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  margin-bottom: 0.6rem;
+  border-radius: 999px;
+  background: var(--xi-accent-soft);
+  transition: transform 0.18s ease;
+}
+
+.excel-import-map-dropzone:hover .excel-import-map-dropzone-icon,
+.excel-import-map-dropzone.is-dragover .excel-import-map-dropzone-icon {
+  transform: translateY(-2px);
 }
 
 .excel-import-map-dropzone-title {
-  margin: 0 0 0.35rem;
-  font-size: 0.95rem;
+  margin: 0 0 0.3rem;
+  font-size: 0.9rem;
   font-weight: 700;
-  color: #1d283a;
+  color: var(--xi-text);
 }
 
 .excel-import-map-dropzone-hint {
   margin: 0;
-  font-size: 0.8rem;
-  color: #64748b;
+  font-size: 0.78rem;
+  color: var(--xi-text-muted);
   line-height: 1.5;
 }
 
@@ -198,52 +291,59 @@
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.35rem 0.65rem;
-  background: #d1fae5;
-  color: #047857;
+  padding: 0.35rem 0.7rem;
+  background: var(--xi-ok-bg);
+  color: var(--xi-ok-fg);
   font-size: 0.75rem;
-  font-weight: 600;
-  border-radius: 0.35rem;
-  border: 1px solid #a7f3d0;
+  font-weight: 700;
+  border-radius: 999px;
+  border: 1px solid rgba(45, 122, 95, 0.22);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* 안내 문구 */
+/* ---------- 안내 문구 ---------- */
+
 .excel-import-map-desc {
-  margin: 0 0 0.65rem;
-  padding: 0.65rem 0.85rem;
-  background: rgba(200, 220, 240, 0.35);
-  border: 1px solid var(--card-border, #dce6f2);
+  margin: 0 0 0.6rem;
+  padding: 0.6rem 0.8rem;
+  background: var(--xi-surface);
+  border: 1px solid var(--xi-line);
+  border-left: 3px solid var(--xi-accent-line);
   border-radius: 8px;
   font-size: var(--opp-f-sm, 0.8125rem);
-  color: #475569;
-  line-height: 1.45;
+  color: var(--xi-text-muted);
+  line-height: 1.5;
 }
 
 .excel-import-map-desc strong {
-  color: #334155;
+  color: var(--xi-text-soft);
   font-weight: 700;
 }
 
 .excel-import-map-desc--tight {
-  margin-top: -0.35rem;
+  margin-top: -0.3rem;
 }
 
 .excel-import-map-warn-meta {
-  margin: -0.35rem 0 0.85rem;
-  font-size: 0.625rem;
-  color: #b45309;
-  line-height: 1.35;
+  margin: -0.25rem 0 0.75rem;
+  font-size: 0.7rem;
+  color: var(--xi-warn-fg);
+  line-height: 1.4;
 }
 
-/* 담당자 */
+/* ---------- 담당자 ---------- */
+
 .excel-import-map-assignee.opp-label {
-  margin-bottom: 1rem;
+  margin-bottom: 0.85rem;
 }
 
 .excel-import-map-assignee.opp-label > span {
   font-size: var(--opp-f-sm, 0.8125rem);
   font-weight: 700;
-  color: #475569;
+  color: var(--xi-text-soft);
 }
 
 .excel-import-map-assignee-row {
@@ -251,6 +351,12 @@
   align-items: stretch;
   gap: 0;
   max-width: 28rem;
+  border-radius: 8px;
+  transition: box-shadow 0.15s ease;
+}
+
+.excel-import-map-assignee-row:focus-within {
+  box-shadow: var(--xi-ring);
 }
 
 .excel-import-map-assignee-row .opp-input {
@@ -261,23 +367,27 @@
   border-right: none;
 }
 
+.excel-import-map-assignee-row .opp-input:focus {
+  outline: none;
+}
+
 .excel-import-map-assignee-search {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 2.5rem;
   padding: 0;
-  border: 1px solid var(--card-border, #b0c0d4);
+  border: 1px solid var(--xi-line-strong);
   border-left: none;
   border-radius: 0 8px 8px 0;
-  background: #e8f4fc;
-  color: #2c6485;
+  background: var(--xi-accent-soft);
+  color: var(--xi-accent-strong);
   cursor: pointer;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.07);
+  transition: background 0.15s ease;
 }
 
 .excel-import-map-assignee-search:hover:not(:disabled) {
-  opacity: 0.92;
+  background: var(--xi-accent-line);
 }
 
 .excel-import-map-assignee-search:disabled {
@@ -288,27 +398,32 @@
 .excel-import-map-me-badge {
   display: inline-flex;
   align-items: center;
+  /* .opp-label 이 세로 flex 라 stretch 되면 배지가 전체 폭으로 늘어납니다. */
+  align-self: flex-start;
+  width: fit-content;
   gap: 0.25rem;
   margin-top: 0.45rem;
   padding: 0.2rem 0.6rem;
   border-radius: 999px;
-  background: #c8dff0;
-  color: #1e3a5f;
-  font-size: 0.75rem;
+  background: var(--xi-accent-soft);
+  border: 1px solid var(--xi-accent-line);
+  color: var(--xi-accent-strong);
+  font-size: 0.72rem;
   font-weight: 700;
 }
 
-/* 매핑 테이블 */
+/* ---------- 매핑 테이블 ---------- */
+
 .excel-import-map-table-head {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) 2.5rem minmax(0, 1fr) minmax(0, 1fr) minmax(0, 5.5rem);
   gap: 0.75rem;
-  padding: 0.5rem 1rem 0.75rem;
-  font-size: 0.65rem;
+  padding: 0.35rem 1rem 0.5rem;
+  font-size: 0.64rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--opp-tableau-header, #4e79a7);
+  letter-spacing: 0.07em;
+  color: var(--xi-text-faint);
 }
 
 @media (max-width: 900px) {
@@ -320,7 +435,7 @@
 .excel-import-map-rows {
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
+  gap: 0.5rem;
 }
 
 .excel-import-map-row {
@@ -328,11 +443,22 @@
   grid-template-columns: minmax(0, 1.1fr) 2.5rem minmax(0, 1fr) minmax(0, 1fr) minmax(0, 5.5rem);
   gap: 0.75rem;
   align-items: center;
-  padding: 0.85rem 1rem;
-  background: #fff;
-  border: 1px solid var(--card-border, #dce6f2);
-  border-radius: 10px;
-  box-shadow: var(--opp-shade-sm, 0 1px 2px rgba(15, 23, 42, 0.06));
+  padding: 0.8rem 1rem;
+  background: var(--xi-surface);
+  border: 1px solid var(--xi-line);
+  border-radius: var(--xi-radius);
+  box-shadow: var(--xi-shadow-sm);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.excel-import-map-row:hover {
+  border-color: var(--xi-line-strong);
+  box-shadow: var(--xi-shadow-md);
+}
+
+.excel-import-map-row:focus-within {
+  border-color: var(--xi-accent);
+  box-shadow: var(--xi-ring);
 }
 
 @media (max-width: 900px) {
@@ -342,9 +468,9 @@
 }
 
 .excel-import-map-row.is-constant {
-  background: var(--opp-tableau-stripe, #eef4fa);
+  background: linear-gradient(0deg, var(--xi-accent-soft) 0%, #fbfdff 100%);
   border-style: dashed;
-  border-color: rgba(78, 121, 167, 0.35);
+  border-color: var(--xi-accent-line);
 }
 
 .excel-import-map-source-cell {
@@ -358,17 +484,17 @@
   width: 2rem;
   height: 2rem;
   border-radius: 8px;
-  background: #f1f5f9;
+  background: #eef2f7;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #94a3b8;
+  color: var(--xi-text-faint);
   flex-shrink: 0;
 }
 
 .excel-import-map-row.is-constant .excel-import-map-icon-box {
-  background: rgba(44, 123, 182, 0.12);
-  color: var(--primary, #2c7bb6);
+  background: var(--xi-accent-line);
+  color: var(--xi-accent-strong);
 }
 
 .excel-import-map-source-mode-toggle {
@@ -377,32 +503,38 @@
   max-width: 100%;
   border-radius: 8px;
   overflow: hidden;
-  border: 1px solid var(--card-border, #dce6f2);
-  background: #f8fafc;
+  border: 1px solid var(--xi-line-strong);
+  background: var(--xi-surface-sunken);
   margin-bottom: 0.35rem;
 }
 
 .excel-import-map-source-mode-toggle button {
   flex: 1;
-  padding: 0.4rem 0.5rem;
-  font-size: 0.75rem;
-  font-weight: 600;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 700;
   border: none;
   background: transparent;
-  color: #64748b;
+  color: var(--xi-text-muted);
   cursor: pointer;
-  line-height: 1.2;
+  line-height: 1.25;
   font-family: inherit;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .excel-import-map-source-mode-toggle button.is-active {
-  background: #c8dff0;
-  color: #1e3a5f;
+  background: var(--xi-accent);
+  color: #fff;
 }
 
 .excel-import-map-source-mode-toggle button:not(:disabled):not(.is-active):hover {
-  background: #eef4fa;
-  color: #475569;
+  background: var(--xi-accent-soft);
+  color: var(--xi-accent-strong);
+}
+
+.excel-import-map-source-mode-toggle button:focus-visible {
+  outline: 2px solid var(--xi-accent);
+  outline-offset: -2px;
 }
 
 .excel-import-map-source-mode-toggle button:disabled {
@@ -416,26 +548,54 @@
   box-sizing: border-box;
   padding: 8px 10px;
   font-size: var(--opp-f-sm, 0.8125rem);
+  border-radius: 8px;
+}
+
+.excel-import-map-select:focus-visible,
+.excel-import-map-input:focus-visible {
+  outline: none;
+  border-color: var(--xi-accent);
+  box-shadow: var(--xi-ring);
 }
 
 .excel-import-map-source-meta {
   margin: 0.2rem 0 0;
-  font-size: 0.625rem;
+  font-size: 0.64rem;
   font-weight: 400;
-  color: #94a3b8;
+  color: var(--xi-text-faint);
   line-height: 1.35;
 }
+
+/* 소스 → 대상 연결선 */
 
 .excel-import-map-connector-wrap {
   display: flex;
   align-items: center;
+  justify-content: center;
 }
 
 .excel-import-map-connector {
   height: 2px;
   width: 100%;
-  background-color: #cbd5e1;
-  opacity: 0.5;
+  background: linear-gradient(90deg, var(--xi-line-strong) 0%, var(--xi-accent-line) 100%);
+  border-radius: 999px;
+  position: relative;
+}
+
+.excel-import-map-connector::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--xi-accent);
+  transform: translateY(-50%);
+}
+
+.excel-import-map-row:hover .excel-import-map-connector {
+  background: linear-gradient(90deg, var(--xi-accent-line) 0%, var(--xi-accent) 100%);
 }
 
 @media (max-width: 900px) {
@@ -444,25 +604,29 @@
   }
 }
 
+/* 행별 미리보기 셀 */
+
 .excel-import-map-preview {
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.35rem 0.65rem;
-  background: var(--opp-tableau-stripe, #eef4fa);
+  padding: 0.35rem 0.6rem;
+  background: var(--xi-surface-sunken);
   border-radius: 8px;
-  font-size: 0.75rem;
-  color: #475569;
+  font-size: 0.74rem;
+  color: var(--xi-text-soft);
   min-height: 2rem;
   word-break: break-all;
-  border: 1px solid rgba(78, 121, 167, 0.12);
+  border: 1px solid var(--xi-line);
 }
 
 .excel-import-map-preview .material-symbols-outlined {
-  font-size: 1rem;
-  color: var(--opp-tableau-header, #4e79a7);
+  font-size: 0.95rem;
+  color: var(--xi-text-faint);
   flex-shrink: 0;
 }
+
+/* 상태 배지 */
 
 .excel-import-map-status {
   display: flex;
@@ -472,51 +636,60 @@
   flex-wrap: wrap;
 }
 
-.excel-import-map-badge {
-  display: inline-flex;
-  align-items: center;
+.excel-import-map-status .excel-import-map-badge {
   gap: 0.25rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: 9999px;
-  font-size: 0.65rem;
-  font-weight: 700;
+  padding: 0.22rem 0.5rem;
+  border: 1px solid transparent;
+  letter-spacing: 0;
 }
 
 .excel-import-map-badge.ok {
-  background: #d1fae5;
-  color: #047857;
+  background: var(--xi-ok-bg);
+  color: var(--xi-ok-fg);
+  border-color: rgba(45, 122, 95, 0.2);
 }
 
 .excel-import-map-badge.warn {
-  background: #fef3c7;
-  color: #b45309;
+  background: var(--xi-warn-bg);
+  color: var(--xi-warn-fg);
+  border-color: rgba(154, 106, 28, 0.2);
 }
 
 .excel-import-map-badge.err {
-  background: #fee2e2;
-  color: #b91c1c;
+  background: var(--xi-err-bg);
+  color: var(--xi-err-fg);
+  border-color: rgba(169, 59, 59, 0.2);
 }
 
 .excel-import-map-badge.muted {
-  background: #f1f5f9;
-  color: #64748b;
+  background: #eef2f7;
+  color: var(--xi-text-muted);
+  border-color: var(--xi-line);
 }
 
 .excel-import-map-badge .material-symbols-outlined {
-  font-size: 0.875rem;
+  font-size: 0.85rem;
 }
 
 .excel-import-map-row-delete {
   background: none;
   border: none;
-  color: #cbd5e1;
+  color: #c3cfdc;
   cursor: pointer;
-  padding: 0.25rem;
-  border-radius: 0.25rem;
+  padding: 0.2rem;
+  border-radius: 6px;
+  display: inline-flex;
+  transition: color 0.15s ease, background 0.15s ease;
 }
 
 .excel-import-map-row-delete:hover:not(:disabled) {
-  color: #9a4545;
+  color: var(--xi-err-fg);
+  background: var(--xi-err-bg);
+}
+
+.excel-import-map-row-delete:focus-visible {
+  outline: 2px solid var(--xi-accent);
+  outline-offset: 1px;
 }
 
 .excel-import-map-row-delete:disabled {
@@ -524,14 +697,15 @@
   cursor: not-allowed;
 }
 
-/* 하단 안내 + 행 추가 */
+/* ---------- 하단 안내 + 행 추가 ---------- */
+
 .excel-import-map-footer-card {
-  margin-top: 1.25rem;
-  padding: 1rem 1.15rem;
-  background: #fff;
-  border: 1px solid var(--card-border, #dce6f2);
-  border-radius: 10px;
-  box-shadow: var(--opp-shade-sm);
+  margin-top: 1rem;
+  padding: 0.9rem 1.05rem;
+  background: var(--xi-surface);
+  border: 1px solid var(--xi-line);
+  border-radius: var(--xi-radius);
+  box-shadow: var(--xi-shadow-sm);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -542,19 +716,19 @@
 .excel-import-map-footer-hint {
   display: flex;
   align-items: flex-start;
-  gap: 0.85rem;
+  gap: 0.8rem;
   max-width: 40rem;
 }
 
 .excel-import-map-footer-icon {
-  width: 2.25rem;
-  height: 2.25rem;
-  border-radius: 9999px;
-  background: rgba(44, 123, 182, 0.1);
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 999px;
+  background: var(--xi-accent-soft);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--primary, #2c7bb6);
+  color: var(--xi-accent);
   flex-shrink: 0;
 }
 
@@ -562,7 +736,7 @@
   margin: 0;
   font-size: var(--opp-f-body, 0.875rem);
   font-weight: 700;
-  color: #334155;
+  color: var(--xi-text);
 }
 
 .excel-import-map-footer-hint span {
@@ -570,12 +744,12 @@
   margin-top: 0.25rem;
   font-size: 0.75rem;
   font-weight: 400;
-  color: #64748b;
-  line-height: 1.45;
+  color: var(--xi-text-muted);
+  line-height: 1.5;
 }
 
 .excel-import-map-footer-hint span strong {
-  color: #475569;
+  color: var(--xi-text-soft);
   font-weight: 700;
 }
 
@@ -586,18 +760,23 @@
   padding: 0.5rem 1rem;
   font-size: 0.8125rem;
   font-weight: 700;
-  color: #2c6485;
-  background: #c8dff0;
-  border: none;
+  color: var(--xi-accent-strong);
+  background: var(--xi-accent-soft);
+  border: 1px solid var(--xi-accent-line);
   border-radius: 8px;
   cursor: pointer;
   font-family: inherit;
-  box-shadow: 0 1px 2px rgba(44, 100, 133, 0.15);
-  transition: opacity 0.15s;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .excel-import-map-btn-add:hover:not(:disabled) {
-  opacity: 0.92;
+  background: var(--xi-accent-line);
+  border-color: var(--xi-accent);
+}
+
+.excel-import-map-btn-add:focus-visible {
+  outline: none;
+  box-shadow: var(--xi-ring);
 }
 
 .excel-import-map-btn-add:disabled {
@@ -605,82 +784,97 @@
   cursor: not-allowed;
 }
 
-/* 요약 카드 */
+/* ---------- 요약 카드 ---------- */
+
 .excel-import-map-summary {
-  margin-top: 1.25rem;
+  margin-top: 1rem;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
-  gap: 1rem;
+  gap: 0.75rem;
 }
 
 .excel-import-map-summary-card {
-  background: #fff;
-  border: 1px solid var(--card-border, #dce6f2);
-  border-radius: 10px;
-  padding: 1rem;
-  box-shadow: var(--opp-shade-sm);
+  background: var(--xi-surface);
+  border: 1px solid var(--xi-line);
+  border-radius: var(--xi-radius);
+  padding: 0.85rem 0.95rem;
+  box-shadow: var(--xi-shadow-sm);
 }
 
 .excel-import-map-summary-card p:first-child {
   margin: 0;
-  font-size: 0.65rem;
+  font-size: 0.64rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--opp-tableau-header, #4e79a7);
+  letter-spacing: 0.07em;
+  color: var(--xi-text-faint);
 }
 
 .excel-import-map-summary-card p.num {
-  margin: 0.35rem 0 0;
-  font-size: 1.5rem;
+  margin: 0.3rem 0 0;
+  font-size: 1.45rem;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--xi-text);
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
 }
 
 .excel-import-map-summary-card p.num.rose {
-  color: #e11d48;
+  color: var(--xi-err-fg);
 }
 
 .excel-import-map-summary-card p.sub {
-  margin: 0.35rem 0 0;
-  font-size: 0.65rem;
-  color: #64748b;
+  margin: 0.3rem 0 0;
+  font-size: 0.66rem;
+  color: var(--xi-text-muted);
+  line-height: 1.4;
 }
 
 .excel-import-map-bar {
-  margin-top: 0.65rem;
-  height: 6px;
-  background: #e2e8f0;
-  border-radius: 9999px;
+  margin-top: 0.6rem;
+  height: 5px;
+  background: var(--xi-line);
+  border-radius: 999px;
   overflow: hidden;
 }
 
 .excel-import-map-bar > div {
   height: 100%;
-  background: var(--primary, #2c7bb6);
-  border-radius: 9999px;
+  background: var(--xi-accent);
+  border-radius: 999px;
+  transition: width 0.25s ease;
 }
 
+/* ---------- 저장 메시지 ---------- */
+
 .excel-import-map-save-msg {
-  margin-top: 0.75rem;
+  margin-top: 0.7rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 8px;
   font-size: 0.8125rem;
-  color: #047857;
+  font-weight: 600;
+  color: var(--xi-ok-fg);
+  background: var(--xi-ok-bg);
+  border: 1px solid rgba(45, 122, 95, 0.2);
 }
 
 .excel-import-map-save-msg.err {
-  color: #b91c1c;
+  color: var(--xi-err-fg);
+  background: var(--xi-err-bg);
+  border-color: rgba(169, 59, 59, 0.2);
 }
 
 .excel-import-map-source-type-label {
   margin: 0;
   font-size: 0.8125rem;
   font-weight: 600;
-  color: #475569;
+  color: var(--xi-text-soft);
   flex-shrink: 0;
   align-self: center;
 }
 
-/* 가져오기 실행 중 — 모달 위 스피너만 표시 */
+/* ---------- 가져오기 실행 중 오버레이 ---------- */
+
 .excel-import-map-modal.is-importing {
   position: relative;
 }
@@ -692,17 +886,18 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.8);
   border-radius: inherit;
   pointer-events: all;
+  backdrop-filter: blur(1px);
 }
 
 .excel-import-map-spinner {
   width: 2.75rem;
   height: 2.75rem;
   box-sizing: border-box;
-  border: 3px solid #e2e8f0;
-  border-top-color: #4e79a7;
+  border: 3px solid var(--xi-line);
+  border-top-color: var(--xi-accent);
   border-radius: 50%;
   animation: excel-import-map-spin 0.75s linear infinite;
 }
@@ -710,5 +905,18 @@
 @keyframes excel-import-map-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .excel-import-map-spinner {
+    animation-duration: 2s;
+  }
+
+  .excel-import-map-dropzone,
+  .excel-import-map-dropzone-icon,
+  .excel-import-map-row,
+  .excel-import-map-bar > div {
+    transition: none;
   }
 }

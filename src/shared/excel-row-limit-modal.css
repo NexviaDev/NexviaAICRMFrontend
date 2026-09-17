@@ -1,0 +1,184 @@
+/* 엑셀 행 수 초과 안내 — 매핑 모달(1400/1401) 위 */
+
+.xrl-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(23, 34, 48, 0.45);
+  backdrop-filter: blur(2px);
+  animation: xrl-fade 0.15s ease-out;
+}
+
+.xrl-dialog {
+  width: 100%;
+  max-width: 24rem;
+  box-sizing: border-box;
+  padding: 1.6rem 1.5rem 1.25rem;
+  text-align: center;
+  background: #fff;
+  border: 1px solid var(--xi-line-strong, #d2dfec);
+  border-radius: 14px;
+  box-shadow:
+    0 2px 8px rgba(15, 23, 42, 0.08),
+    0 16px 48px rgba(15, 23, 42, 0.18);
+  animation: xrl-pop 0.18s ease-out;
+}
+
+.xrl-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  margin-bottom: 0.75rem;
+  border-radius: 999px;
+  background: var(--xi-err-bg, #fbe6e6);
+  color: var(--xi-err-fg, #a93b3b);
+}
+
+.xrl-icon .material-symbols-outlined {
+  font-size: 1.6rem;
+}
+
+.xrl-title {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text, #334155);
+}
+
+.xrl-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: 100%;
+  margin: 0.55rem 0 0;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted, #64748b);
+  background: #f1f5f9;
+  border-radius: 999px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.xrl-file .material-symbols-outlined {
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.xrl-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin: 1.05rem 0 0.7rem;
+}
+
+.xrl-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.55rem 0.3rem;
+  background: var(--xi-surface-sunken, #f5f8fc);
+  border: 1px solid var(--xi-line, #e3ebf3);
+  border-radius: 10px;
+}
+
+.xrl-stat-label {
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--xi-text-faint, #94a3b8);
+}
+
+.xrl-stat-num {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text, #334155);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.xrl-stat-num small {
+  margin-left: 0.1rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--xi-text-muted, #64748b);
+}
+
+.xrl-stat-num.is-over {
+  color: var(--xi-err-fg, #a93b3b);
+}
+
+.xrl-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--xi-err-bg, #fbe6e6);
+  overflow: hidden;
+}
+
+/* 채워진 부분 = 올릴 수 있는 양, 나머지(붉은 바탕) = 초과분 */
+.xrl-bar-fill {
+  height: 100%;
+  background: var(--primary, #5b7c99);
+  border-radius: 999px;
+}
+
+.xrl-desc {
+  margin: 0.9rem 0 1.1rem;
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: var(--text-muted, #64748b);
+}
+
+.xrl-desc strong {
+  color: var(--text, #334155);
+  font-weight: 700;
+}
+
+.xrl-confirm {
+  width: 100%;
+  padding: 0.65rem 1rem;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #fff;
+  background: var(--primary-dark, #3d5a73);
+  border: none;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.xrl-confirm:hover {
+  background: var(--primary, #5b7c99);
+}
+
+.xrl-confirm:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(91, 124, 153, 0.3);
+}
+
+@keyframes xrl-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes xrl-pop {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .xrl-overlay,
+  .xrl-dialog {
+    animation: none;
+  }
+}

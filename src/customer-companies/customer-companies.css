@@ -497,13 +497,6 @@
   color: var(--text-muted);
 }
 
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--pastel-lavender);
-  color: var(--primary);
-}
-
 .company-avatar .material-symbols-outlined {
   font-size: 1.25rem;
 }

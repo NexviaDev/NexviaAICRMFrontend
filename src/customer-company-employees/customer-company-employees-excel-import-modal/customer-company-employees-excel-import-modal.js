@@ -10,25 +10,31 @@ import ContactImportPreviewModal from '../add-customer-company-employees-modal/c
 import BulkContactDuplicateReviewModal from '../add-customer-company-employees-modal/bulk-contact-duplicate-review-modal';
 import {
   buildBulkImportRequestItems,
-  postBulkContactImportFromPreview
+  postBulkContactImportInChunks,
+  postContactSavePreflightInChunks
 } from '../add-customer-company-employees-modal/bulk-contact-import-api';
-import ImportResultModal from '../../customer-companies/customer-companies-excel-import-modal/import-result-modal';
 import '../../lead-capture/lead-capture-crm-mapping/lead-capture-crm-mapping-modal.css';
 import '../../customer-companies/customer-companies-excel-import-modal/customer-companies-excel-import-modal.css';
 import {
   buildTargetOptionsForTarget,
   toApiMappings,
-  rowStatus,
   ensureContactMappingRowsComplete,
   appendMissingContactCustomFieldRows,
   rowsFromSavedMappings,
   BUSINESS_CARD_AUTO_TARGET
 } from '../../lead-capture/lead-capture-crm-mapping/lead-capture-crm-mapping-utils';
 import {
-  buildExcelSourceOptions,
-  previewExcelMappedValue,
   readExcelMappedCell
 } from '../../customer-companies/customer-companies-excel-import-modal/excel-import-mapping-utils';
+import {
+  autoFillSourceKeys,
+  buildMappingByHeader,
+  assignHeaderToTarget,
+  isTargetConnected,
+  CONTACT_HEADER_RULES
+} from '../../shared/excel-header-match';
+import { CONTACT_EXCEL_IMPORT_MAX_ROWS, getRowCountOverflow } from '../../shared/excel-import-limits';
+import ExcelRowLimitModal from '../../shared/excel-row-limit-modal';
 
 function newRowId() {
   return `row-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -62,6 +68,13 @@ function formatPhoneInput(value) {
   return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
 }
 
+/** 이름·이메일·전화 중 하나 이상이 연결돼야 등록할 수 있습니다. */
+const CONTACT_IDENTIFIER_TARGETS = [
+  { key: 'contact.name', label: '이름' },
+  { key: 'contact.email', label: '이메일' },
+  { key: 'contact.phone', label: '전화' }
+];
+
 const FALLBACK_TARGET_OPTIONS = [
   { value: 'contact.name', label: '연락처 · 이름' },
   { value: 'contact.email', label: '연락처 · 이메일' },
@@ -73,59 +86,6 @@ const FALLBACK_TARGET_OPTIONS = [
   { value: 'contact.status', label: '연락처 · 상태' },
   { value: 'contact.memo', label: '연락처 · 메모' }
 ];
-
-/** 엑셀 헤더(한글 등)와 기본 매핑(sourceKey=name 등) 불일치 시 대상 필드별로 열 추정 */
-function guessContactExcelSourceKey(targetKey, headers) {
-  if (!targetKey || !Array.isArray(headers) || !headers.length) return '';
-  const rules = [
-    {
-      target: 'contact.name',
-      test: (s) =>
-        /이름|성명|고객명|담당자\s*명|연락처\s*명|고객\s*이름/i.test(s) || /^name$/i.test(s)
-    },
-    {
-      target: 'contact.email',
-      test: (s) => /이메일|e[-_]?mail|메일|메일주소|전자\s*우편/i.test(s) || /^email$/i.test(s)
-    },
-    {
-      target: 'contact.phone',
-      test: (s) =>
-        /전화|휴대|핸드폰|휴대폰|연락처|모바일|mobile|tel|phone|hp/i.test(s)
-    },
-    {
-      target: 'contact.companyName',
-      test: (s) => /회사|기업|업체|법인|고객사|업체명|회사명|company/i.test(s)
-    },
-    {
-      target: 'contact.position',
-      test: (s) => /직책|직위|직급|부서|직명|title|position|role|rank|job\s*title/i.test(s)
-    },
-    {
-      target: 'contact.address',
-      test: (s) => /주소|소재지|location|address/i.test(s)
-    },
-    {
-      target: 'contact.birthDate',
-      test: (s) => /생년월일|생일|birth/i.test(s)
-    },
-    {
-      target: 'contact.status',
-      test: (s) => /상태|status|스테이터스/i.test(s)
-    },
-    {
-      target: 'contact.memo',
-      test: (s) => /메모|비고|note|memo|remarks/i.test(s)
-    }
-  ];
-  const rule = rules.find((r) => r.target === targetKey);
-  if (!rule) return '';
-  for (const h of headers) {
-    const s = String(h || '').trim();
-    if (!s) continue;
-    if (rule.test(s)) return h;
-  }
-  return '';
-}
 
 function stripContactMappingRows(rows) {
   return (rows || []).filter(
@@ -228,161 +188,6 @@ async function parseExcelToRows(file) {
   return readSpreadsheetFileToRows(file);
 }
 
-function digitsOnly(value) {
-  if (value == null) return '';
-  return String(value).replace(/\D/g, '');
-}
-
-function holdContactGroupKey(item, fallbackIndex) {
-  const phoneDigits = digitsOnly(item?.contactPayload?.phone);
-  if (phoneDigits) return `phone_${phoneDigits}`;
-  const email = String(item?.contactPayload?.email || '').trim().toLowerCase();
-  if (email) return `email_${email}`;
-  const ri = item?.rowIndex;
-  if (ri != null && ri !== '') return `row_${String(ri)}`;
-  return `row_${fallbackIndex}`;
-}
-
-function buildHoldGroups(holdItems) {
-  const map = new Map();
-  holdItems.forEach((item, idx) => {
-    const key = String(holdContactGroupKey(item, idx));
-    if (!map.has(key)) {
-      map.set(key, {
-        key,
-        businessNumber: key.replace(/^phone_/, '').replace(/^email_/, ''),
-        items: []
-      });
-    }
-    map.get(key).items.push(item);
-  });
-  return Array.from(map.values());
-}
-
-function buildResolveActionsForGroup(group, selected) {
-  if (!group?.items?.length) return [];
-  const picked = selected || { type: 'hold', key: String(group.items[0].rowIndex) };
-  const actions = [];
-  group.items.forEach((item) => {
-    const ri = Number(item.rowIndex);
-    if (!Number.isFinite(ri)) return;
-    if (picked.type === 'existing') {
-      actions.push({
-        rowIndex: ri,
-        action: 'merge',
-        targetEmployeeId: String(picked.key || ''),
-        targetHoldRowIndex: ''
-      });
-    } else {
-      const isPickedHold = String(item.rowIndex) === String(picked.key || '');
-      actions.push({
-        rowIndex: ri,
-        action: isPickedHold ? 'add' : 'merge',
-        targetEmployeeId: '',
-        targetHoldRowIndex: isPickedHold ? '' : String(picked.key || '')
-      });
-    }
-  });
-  return actions;
-}
-
-function applyResolvedActionsToPreviewResults(results, actions) {
-  const list = Array.isArray(results) ? results : [];
-  const actionList = Array.isArray(actions) ? actions : [];
-  const actionByRowIndex = new Map(
-    actionList
-      .map((action) => [Number(action?.rowIndex), action])
-      .filter(([rowIndex]) => Number.isFinite(rowIndex))
-  );
-
-  return list.map((item) => {
-    const rowIndex = Number(item?.rowIndex);
-    const action = actionByRowIndex.get(rowIndex);
-    if (!action) return item;
-    return {
-      ...item,
-      hold: false,
-      previewPending: true,
-      previewResolved: true,
-      previewResolvedAction: String(action.action || ''),
-      previewResolvedTargetEmployeeId: String(action.targetEmployeeId || ''),
-      previewResolvedTargetHoldRowIndex: String(action.targetHoldRowIndex || ''),
-      reason: '',
-      code: action.action === 'add' ? 'hold_resolved_add_preview' : 'hold_resolved_merge_preview'
-    };
-  });
-}
-
-/** POST /import-excel/preview 응답 → 결과 모달용 results (아직 MongoDB 반영 전) */
-function mapPreviewResultsToUiResults(previewResults) {
-  const results = [];
-  for (const pr of previewResults) {
-    const i = pr.rowIndex;
-    const name = (pr.contactName || '').trim();
-    if (pr.kind === 'create') {
-      results.push({ rowIndex: i, ok: true, contactName: name, previewPending: true });
-    } else if (pr.kind === 'duplicate_exact') {
-      results.push({ rowIndex: i, ok: true, skipped: true, employeeId: pr.employeeId, contactName: name });
-    } else if (pr.kind === 'hold') {
-      results.push({
-        rowIndex: i,
-        ok: true,
-        hold: true,
-        contactName: name,
-        reason: '동일 전화번호 또는 파일 내 중복으로 확인이 필요합니다.',
-        contactPayload: pr.contactPayload,
-        conflictCandidates: pr.conflictCandidates || [],
-        code: pr.code
-      });
-    } else if (pr.kind === 'error') {
-      results.push({ rowIndex: i, ok: false, error: pr.error, contactName: name });
-    } else if (pr.kind === 'empty') {
-      results.push({ rowIndex: i, ok: true, skipped: 'empty_row', contactName: '' });
-    } else {
-      results.push({ rowIndex: i, ok: false, error: '잘못된 행', contactName: name });
-    }
-  }
-  return results;
-}
-
-function buildPreviewSummary(previewResults) {
-  let created = 0;
-  let skippedDuplicateContact = 0;
-  let onHold = 0;
-  let failed = 0;
-  let emptySkipped = 0;
-  for (const p of previewResults) {
-    if (p.kind === 'create') created += 1;
-    else if (p.kind === 'duplicate_exact') skippedDuplicateContact += 1;
-    else if (p.kind === 'hold') onHold += 1;
-    else if (p.kind === 'error') failed += 1;
-    else if (p.kind === 'empty') emptySkipped += 1;
-    else failed += 1;
-  }
-  return {
-    total: previewResults.length,
-    created,
-    skippedDuplicateContact,
-    onHold,
-    failed,
-    emptySkipped,
-    registerTarget: 'contact'
-  };
-}
-
-function buildExistingCandidatesForContactGroup(group) {
-  const map = new Map();
-  (group?.items || []).forEach((item) => {
-    const list = Array.isArray(item?.conflictCandidates) ? item.conflictCandidates : [];
-    list.forEach((candidate) => {
-      const id = String(candidate?.employeeId || '').trim();
-      if (!id || map.has(id)) return;
-      map.set(id, { employeeId: id });
-    });
-  });
-  return Array.from(map.values());
-}
-
 export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose, onImported }) {
   const fileInputRef = useRef(null);
   const [contactSchemaFields, setContactSchemaFields] = useState([]);
@@ -392,14 +197,12 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
   const [excelFileName, setExcelFileName] = useState('');
   const [dragOver, setDragOver] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [previewChecking, setPreviewChecking] = useState(false);
   const [saveMsg, setSaveMsg] = useState(null);
-  const [importResult, setImportResult] = useState(null);
+  /** 행 수 상한 초과 안내 모달 ({ rowCount, maxRows, fileName, unitLabel } | null) */
+  const [rowLimitNotice, setRowLimitNotice] = useState(null);
   const [contactPreviewOpen, setContactPreviewOpen] = useState(false);
   const [contactPreviewItems, setContactPreviewItems] = useState([]);
   const [contactPreviewPreReview, setContactPreviewPreReview] = useState(null);
-  const [resolvedHoldActions, setResolvedHoldActions] = useState([]);
-  const [appliedHoldGroupKeys, setAppliedHoldGroupKeys] = useState({});
   const [showAssigneePicker, setShowAssigneePicker] = useState(false);
   const [companyEmployeesForDisplay, setCompanyEmployeesForDisplay] = useState([]);
   const [assigneeDisplayText, setAssigneeDisplayText] = useState(undefined);
@@ -407,7 +210,8 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
     const id = getCurrentUserId();
     return id ? [id] : [];
   });
-  const previewRawSessionRef = useRef(null);
+  /** 자동 매핑 행 추가를 파일당 한 번만 수행하기 위한 서명 */
+  const autoExpandSignatureRef = useRef('');
 
   const registerTarget = 'contact';
 
@@ -416,32 +220,6 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
     const keys = Object.keys(excelRows[0] || {});
     return keys.filter((k) => k !== '__rowNum__');
   }, [excelRows]);
-
-  const sampleRow = useMemo(() => {
-    for (const r of excelRows) {
-      if (r && typeof r === 'object' && Object.values(r).some((v) => v != null && String(v).trim() !== '')) {
-        return r;
-      }
-    }
-    return excelRows[0] || {};
-  }, [excelRows]);
-
-  /** 엑셀 첫 행 키(헤더)가 바뀔 때: 기본 소스키(name·email 등)가 파일에 없으면 패턴으로 열 자동 연결 */
-  useEffect(() => {
-    if (!open || !excelHeaders.length) return;
-    setRows((prev) =>
-      prev.map((row) => {
-        if (row.sourceType !== 'field' || !row.targetKey || !String(row.targetKey).startsWith('contact.')) {
-          return row;
-        }
-        if (row.sourceKey && excelHeaders.includes(row.sourceKey)) return row;
-        const guessed = guessContactExcelSourceKey(row.targetKey, excelHeaders);
-        if (guessed) return { ...row, sourceKey: guessed };
-        if (row.sourceKey && !excelHeaders.includes(row.sourceKey)) return { ...row, sourceKey: '' };
-        return row;
-      })
-    );
-  }, [open, excelHeaders]);
 
   const targetOptions = useMemo(
     () =>
@@ -456,7 +234,33 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
     [targetOptions]
   );
 
-  const sourceOptions = useMemo(() => buildExcelSourceOptions(excelHeaders), [excelHeaders]);
+
+  /**
+   * 엑셀 헤더가 바뀔 때 공용 매처로 열을 자동 연결합니다.
+   * 대응 필드가 있는데 기본 매핑 행이 없는 열(직책·메모 등)은 행을 새로 만들어 줍니다.
+   * 단 파일·대상옵션이 그대로인 동안에는 한 번만 — 사용자가 뺀 열이 되살아나면 안 됩니다.
+   */
+  useEffect(() => {
+    if (!open || !excelHeaders.length) return;
+    const signature = `${JSON.stringify(excelHeaders)}|${effectiveTargetOptions.length}`;
+    const alreadyExpanded = autoExpandSignatureRef.current === signature;
+    autoExpandSignatureRef.current = signature;
+    setRows((prev) =>
+      autoFillSourceKeys(prev, excelHeaders, CONTACT_HEADER_RULES, {
+        customFieldDefs: contactCustomDefs,
+        availableTargetKeys: alreadyExpanded ? undefined : effectiveTargetOptions.map((o) => o.value),
+        makeRowId: newRowId
+      })
+    );
+  }, [open, excelHeaders, contactCustomDefs, effectiveTargetOptions]);
+
+  /** 시트 미리보기 열 헤더에 "이 열 → 어떤 필드" 상태를 보여 주기 위한 역방향 맵 */
+  const mappingByHeader = useMemo(() => buildMappingByHeader(rows), [rows]);
+
+  const handleMapHeader = useCallback((header, targetKey) => {
+    setRows((prev) => assignHeaderToTarget(prev, header, targetKey, newRowId));
+  }, []);
+
   const currentUserId = useMemo(() => getCurrentUserId(), []);
   const assigneeIdToName = useMemo(() => {
     const map = {};
@@ -515,26 +319,22 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
 
   useEffect(() => {
     if (!open) {
+      setRowLimitNotice(null);
       setExcelRows([]);
       setExcelFileName('');
       setDragOver(false);
       setSaveMsg(null);
-      setImportResult(null);
       setContactPreviewOpen(false);
       setContactPreviewItems([]);
       setContactPreviewPreReview(null);
-      setResolvedHoldActions([]);
-      setAppliedHoldGroupKeys({});
       setShowAssigneePicker(false);
       return;
     }
     setSaveMsg(null);
-    setImportResult(null);
     setContactPreviewOpen(false);
     setContactPreviewItems([]);
     setContactPreviewPreReview(null);
-    setResolvedHoldActions([]);
-    setAppliedHoldGroupKeys({});
+    autoExpandSignatureRef.current = '';
     const initial = stripContactMappingRows(
       ensureContactMappingRowsComplete(rowsFromSavedMappings(null, registerTarget))
     );
@@ -593,6 +393,17 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
         setExcelFileName(file.name);
         return;
       }
+      // 파일 상한(500건)은 올린 직후에 확인합니다. 서버에는 200건씩 나눠 보냅니다.
+      // 여기서 막지 않으면 매핑·미리보기·중복검토를 다 끝낸 뒤 저장에서 실패합니다.
+      const overLimit = getRowCountOverflow(parsed.length, CONTACT_EXCEL_IMPORT_MAX_ROWS, { fileName: file.name, unitLabel: '건' });
+      if (overLimit) {
+        // 인라인 문구 대신 모달로 안내합니다 (눈에 띄지 않아 놓치기 쉬웠음).
+        setSaveMsg(null);
+        setRowLimitNotice(overLimit);
+        setExcelRows([]);
+        setExcelFileName('');
+        return;
+      }
       setExcelRows(parsed);
       setExcelFileName(file.name);
     } catch (e) {
@@ -635,20 +446,17 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
       setSaveMsg('대상은 연락처 필드만 선택할 수 있습니다.');
       return;
     }
-    const mappedTargets = new Set(mappings.map((m) => m.targetKey));
-    const hasIdentifier = ['contact.name', 'contact.email', 'contact.phone'].some((k) => mappedTargets.has(k));
+    // 매핑 행이 있는지가 아니라 실제로 열(또는 고정값)이 연결됐는지로 판단합니다.
+    const hasIdentifier = CONTACT_IDENTIFIER_TARGETS.some((t) => isTargetConnected(rows, excelHeaders, t.key));
     if (!hasIdentifier) {
       setSaveMsg('이름·이메일·전화 중 최소 하나는 엑셀 열과 연결해 주세요.');
       return;
     }
 
     setSaveMsg(null);
-    setImportResult(null);
     setContactPreviewOpen(false);
     setContactPreviewItems([]);
     setContactPreviewPreReview(null);
-    setResolvedHoldActions([]);
-    setAppliedHoldGroupKeys({});
 
     try {
       const items = excelRows
@@ -677,10 +485,14 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
           rowNeedsHold: rowNeedsContactDuplicateHold,
           formatPhoneInput
         });
-        const { success, merged, fail, skipped, total, created } = await postBulkContactImportFromPreview({
+        // 서버 한 요청당 상한(200건)을 넘으면 나눠 보냅니다. 회사 묶음 정보는 요청 사이에 이어집니다.
+        const { success, merged, fail, skipped, total, created } = await postBulkContactImportInChunks({
           items,
           assigneeUserIds: resolveAssigneeUserIds(),
-          getAuthHeader
+          getAuthHeader,
+          onProgress: ({ chunkCount, sentItems, totalItems }) => {
+            if (chunkCount > 1) setSaveMsg(`등록 중… ${sentItems} / ${totalItems}건`);
+          }
         });
 
         setContactPreviewOpen(false);
@@ -698,7 +510,29 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
           setSaveMsg(`등록에 실패했습니다. (${fail}건${skipped ? `, 제외 ${skipped}건` : ''})`);
         }
       } catch (e) {
-        setSaveMsg(e.message || '등록 중 오류가 났습니다.');
+        const partial = e && e.partial;
+        if (partial && partial.processedItems > 0) {
+          // 앞 묶음은 이미 저장됐습니다. 창을 열어 두면 다시 눌렀을 때 앞부분이 한 번 더 등록되므로
+          // 목록을 새로 불러오고 닫은 뒤, 남은 행만 다시 올리도록 안내합니다.
+          setContactPreviewOpen(false);
+          setContactPreviewItems([]);
+          window.alert(
+            `${e.message}\n\n목록을 새로 불러옵니다. 같은 파일을 다시 올리면 이미 등록된 연락처는 ` +
+              `중복 확인 화면(이름·전화 기준)에 표시되니, 제외하고 진행해 주세요.`
+          );
+          onImported?.({
+            summary: {
+              total: partial.processedItems,
+              created: partial.success,
+              merged: partial.merged,
+              skipped: partial.skipped,
+              failed: partial.fail
+            }
+          });
+          onClose?.();
+        } else {
+          setSaveMsg(e.message || '등록 중 오류가 났습니다.');
+        }
       } finally {
         setSaving(false);
       }
@@ -721,15 +555,8 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
       setContactPreviewPreReview(null);
       try {
         const entries = rowsToImport.map((row) => buildPreflightEntryFromPreviewRow(row));
-        const preRes = await fetch(`${API_BASE}/customer-company-employees/save-preflight`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-          credentials: 'include',
-          body: JSON.stringify({ entries })
-        });
-        const preData = await preRes.json().catch(() => ({}));
-        if (!preRes.ok) throw new Error(preData.error || '대량 등록을 미리 확인하는 데 실패했습니다.');
-        const preResults = Array.isArray(preData.results) ? preData.results : [];
+        // 중복 사전확인도 요청당 200건 상한이라 나눠 보내고, index 는 전체 기준으로 맞춰 받습니다.
+        const preResults = await postContactSavePreflightInChunks({ entries, getAuthHeader });
         const hasDuplicateContacts = preResults.some((pr) => rowNeedsContactDuplicateHold(pr));
         if (hasDuplicateContacts) {
           setContactPreviewPreReview({
@@ -760,113 +587,7 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
     [contactPreviewPreReview, runContactPreviewRowsImport]
   );
 
-  const summary = useMemo(() => {
-    let err = 0;
-    rows.forEach((row) => {
-      const prev = previewExcelMappedValue(sampleRow, row);
-      const st = rowStatus(row, prev, registerTarget);
-      if (st.type === 'err') err += 1;
-    });
-    return { mapped: rows.filter((r) => r.targetKey).length, err, totalOpt: targetOptions.length };
-  }, [rows, sampleRow, targetOptions.length]);
-
   if (!open) return null;
-
-  const commitExcelImport = useCallback(
-    async ({ stagedActions = [] } = {}) => {
-      const previewRows = Array.isArray(importResult?.rawPreviewResults) ? importResult.rawPreviewResults : [];
-      if (previewRows.length === 0) {
-        setSaveMsg('미리보기 데이터가 없습니다. 다시 가져오기를 눌러 주세요.');
-        return;
-      }
-      const mappings = toApiMappings(rows);
-      setSaving(true);
-      setSaveMsg('서버에 등록 중입니다…');
-      try {
-        const res = await fetch(`${API_BASE}/customer-company-employees/import-excel`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
-          credentials: 'include',
-          body: JSON.stringify({
-            mappings,
-            rows: excelRows,
-            assigneeUserIds: resolveAssigneeUserIds(),
-            holdResolutions: Array.isArray(stagedActions) ? stagedActions : []
-          })
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || '가져오기 실패');
-        setSaveMsg(null);
-        setImportResult(data);
-      } catch (e) {
-        setSaveMsg(e.message || '실패');
-      } finally {
-        setSaving(false);
-      }
-    },
-    [rows, excelRows, importResult, resolveAssigneeUserIds]
-  );
-
-  const handleResultConfirm = useCallback(async () => {
-    if (importResult?.phase === 'preview') {
-      const results = Array.isArray(importResult.results) ? importResult.results : [];
-      const stagedActions = Array.isArray(resolvedHoldActions) ? resolvedHoldActions : [];
-      await commitExcelImport({ stagedActions });
-      return;
-    }
-
-    if (importResult) onImported?.(importResult);
-    setImportResult(null);
-    setResolvedHoldActions([]);
-    setAppliedHoldGroupKeys({});
-    onClose?.();
-  }, [importResult, onClose, onImported, resolvedHoldActions, commitExcelImport]);
-
-  useEffect(() => {
-    if (!importResult) {
-      previewRawSessionRef.current = null;
-      return;
-    }
-    const raw = importResult.rawPreviewResults;
-    const isPreview = importResult.phase === 'preview';
-    if (!isPreview || !Array.isArray(raw)) {
-      if (!isPreview) previewRawSessionRef.current = null;
-      return;
-    }
-    if (previewRawSessionRef.current === raw) return;
-    previewRawSessionRef.current = raw;
-
-    const results = Array.isArray(importResult.results) ? importResult.results : [];
-    const holdItems = results.filter((r) => r && r.hold);
-    const groups = buildHoldGroups(holdItems);
-
-    let allActions = [];
-    const appliedKeys = {};
-    groups.forEach((g) => {
-      const existing = buildExistingCandidatesForContactGroup(g);
-      const selected =
-        existing.length > 0
-          ? { type: 'existing', key: String(existing[0].employeeId) }
-          : { type: 'hold', key: String(g.items[0].rowIndex) };
-      const actions = buildResolveActionsForGroup(g, selected);
-      allActions = allActions.concat(actions);
-      appliedKeys[g.key] = true;
-    });
-    setResolvedHoldActions(allActions);
-    setAppliedHoldGroupKeys(appliedKeys);
-    if (allActions.length > 0) {
-      setImportResult((prev) => {
-        if (!prev || prev.phase !== 'preview') return prev;
-        return {
-          ...prev,
-          results: applyResolvedActionsToPreviewResults(prev.results, allActions)
-        };
-      });
-    } else {
-      setResolvedHoldActions([]);
-      setAppliedHoldGroupKeys({});
-    }
-  }, [importResult]);
 
   if (contactPreviewOpen) {
     return (
@@ -892,111 +613,46 @@ export default function CustomerCompanyEmployeesExcelImportModal({ open, onClose
     );
   }
 
-  if (previewChecking) {
-    return (
-      <div className="lc-crm-map-overlay cc-excel-import-modal" role="dialog" aria-modal="true">
-        <div className="lc-crm-result-panel" onClick={(e) => e.stopPropagation()}>
-          <div className="lc-crm-result-icon-wrap">
-            <span className="material-symbols-outlined lc-crm-result-icon" style={{ color: '#3d5a80' }}>
-              sync
-            </span>
-          </div>
-          <h2 className="lc-crm-result-title">매칭 처리 중입니다</h2>
-          <p className="lc-crm-result-sub">중복 검사를 실행하고 있습니다. 잠시만 기다려 주세요…</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (importResult) {
-    const isPreviewPhase = importResult.phase === 'preview';
-    const s = importResult.summary || {};
-    const results = Array.isArray(importResult.results) ? importResult.results : [];
-    const created = s.created ?? 0;
-    const completedResolved = (s.holdResolvedAdd ?? 0) + (s.holdResolvedMerge ?? 0);
-    const stagedCompleted = Array.isArray(resolvedHoldActions) ? resolvedHoldActions.length : 0;
-    const previewNewPlanned = s.created ?? 0;
-    const completedTotal = created + completedResolved + stagedCompleted;
-    const skippedDup = s.skippedDuplicateContact ?? 0;
-    const emptySk = s.emptySkipped ?? 0;
-    const skipped = skippedDup + emptySk;
-    const failed = s.failed ?? 0;
-    const total = s.total ?? results.length;
-    const failedItems = results.filter((r) => !r.ok);
-    const holdItems = results.filter((r) => r && r.hold);
-    const allHoldGroups = buildHoldGroups(holdItems);
-    const visibleHoldGroups = allHoldGroups.filter((group) => !appliedHoldGroupKeys[group.key]);
-    const onHoldRemaining = visibleHoldGroups.reduce((acc, g) => acc + g.items.length, 0);
-    const onHold = isPreviewPhase ? onHoldRemaining : (s.onHold ?? holdItems.length);
-    const stagedResolvedItems = allHoldGroups
-      .filter((group) => appliedHoldGroupKeys[group.key])
-      .flatMap((group) => group.items || []);
-    const previewReadyCount = previewNewPlanned + stagedResolvedItems.length;
-    const canConfirmPreview = isPreviewPhase && onHoldRemaining === 0;
-    const successItems = isPreviewPhase
-      ? results.filter((r) => r.ok && r.previewPending)
-      : results.filter((r) => r.ok && !r.skipped && !r.hold);
-
-    return (
-      <ImportResultModal
-        variant="contact"
-        isPreviewPhase={isPreviewPhase}
-        failed={failed}
-        total={total}
-        previewReadyCount={previewReadyCount}
-        completedTotal={completedTotal}
-        skipped={skipped}
-        onHold={onHold}
-        failedItems={failedItems}
-        skippedDup={skippedDup}
-        emptySk={emptySk}
-        successItems={successItems}
-        stagedResolvedItems={stagedResolvedItems}
-        saving={saving}
-        canConfirmPreview={canConfirmPreview}
-        onConfirm={handleResultConfirm}
-        saveMsg={saveMsg}
-      />
-    );
-  }
-
   return (
-    <ContactExcelImportMappingModal
-      onClose={onClose}
-      saving={saving}
-      onImport={handleImport}
-      excelRows={excelRows}
-      fileInputRef={fileInputRef}
-      ingestFile={ingestFile}
-      dragOver={dragOver}
-      setDragOver={setDragOver}
-      onDrop={onDrop}
-      excelFileName={excelFileName}
-      targetOptions={targetOptions}
-      assigneeInputValue={assigneeInputValue}
-      onAssigneeInputChange={setAssigneeDisplayText}
-      onOpenAssigneePicker={() => setShowAssigneePicker(true)}
-      showMeBadge={showMeBadge}
-      rows={rows}
-      sampleRow={sampleRow}
-      registerTarget={registerTarget}
-      sourceOptions={sourceOptions}
-      effectiveTargetOptions={effectiveTargetOptions}
-      updateRow={updateRow}
-      removeRow={removeRow}
-      addConstantRow={addConstantRow}
-      summary={summary}
-      saveMsg={saveMsg}
-      showAssigneePicker={showAssigneePicker}
-      assigneeUserIds={assigneeUserIds}
-      assigneeIdToName={assigneeIdToName}
-      onCloseAssigneePicker={() => setShowAssigneePicker(false)}
-      onConfirmAssigneePicker={(ids) => {
-        setAssigneeUserIds(ids || []);
-        const names = (ids || []).map((id) => assigneeIdToName[String(id)] || id).join(', ');
-        setAssigneeDisplayText(names);
-        setShowAssigneePicker(false);
-      }}
-    />
+    <>
+      <ContactExcelImportMappingModal
+        onClose={onClose}
+        saving={saving}
+        onImport={handleImport}
+        excelRows={excelRows}
+        fileInputRef={fileInputRef}
+        ingestFile={ingestFile}
+        dragOver={dragOver}
+        setDragOver={setDragOver}
+        onDrop={onDrop}
+        excelFileName={excelFileName}
+        excelHeaders={excelHeaders}
+        mappingByHeader={mappingByHeader}
+        onMapHeader={handleMapHeader}
+        targetOptions={targetOptions}
+        assigneeInputValue={assigneeInputValue}
+        onAssigneeInputChange={setAssigneeDisplayText}
+        onOpenAssigneePicker={() => setShowAssigneePicker(true)}
+        showMeBadge={showMeBadge}
+        rows={rows}
+        effectiveTargetOptions={effectiveTargetOptions}
+        requiredTargets={CONTACT_IDENTIFIER_TARGETS}
+        updateRow={updateRow}
+        removeRow={removeRow}
+        addConstantRow={addConstantRow}
+        saveMsg={saveMsg}
+        showAssigneePicker={showAssigneePicker}
+        assigneeUserIds={assigneeUserIds}
+        assigneeIdToName={assigneeIdToName}
+        onCloseAssigneePicker={() => setShowAssigneePicker(false)}
+        onConfirmAssigneePicker={(ids) => {
+          setAssigneeUserIds(ids || []);
+          const names = (ids || []).map((id) => assigneeIdToName[String(id)] || id).join(', ');
+          setAssigneeDisplayText(names);
+          setShowAssigneePicker(false);
+        }}
+      />
+      <ExcelRowLimitModal notice={rowLimitNotice} onClose={() => setRowLimitNotice(null)} />
+    </>
   );
 }

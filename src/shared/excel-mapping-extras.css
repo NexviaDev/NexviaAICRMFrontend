@@ -1,0 +1,231 @@
+/* 필수 연결 상태 + 고정값 — 매핑 행 목록을 대신하는 작은 패널 */
+
+.xme {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.xme-block {
+  padding: 0.7rem 0.85rem;
+  background: var(--xi-surface, #fff);
+  border: 1px solid var(--xi-line, #e3ebf3);
+  border-radius: var(--xi-radius, 10px);
+  box-shadow: var(--xi-shadow-sm, 0 1px 2px rgba(15, 23, 42, 0.05));
+}
+
+.xme-block.is-ok {
+  border-left: 3px solid var(--xi-ok-fg, #2d7a5f);
+}
+
+.xme-block.is-missing {
+  border-left: 3px solid var(--xi-warn-fg, #9a6a1c);
+  background: #fffdf8;
+}
+
+.xme-block-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.xme-block-icon {
+  font-size: 1.1rem;
+}
+
+.xme-block.is-ok .xme-block-icon {
+  color: var(--xi-ok-fg, #2d7a5f);
+}
+
+.xme-block.is-missing .xme-block-icon {
+  color: var(--xi-warn-fg, #9a6a1c);
+}
+
+.xme-block-icon.is-muted {
+  color: var(--xi-text-faint, #94a3b8);
+}
+
+.xme-block-title {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--xi-text, #334155);
+}
+
+.xme-block-meta {
+  font-size: 0.72rem;
+  color: var(--xi-text-muted, #64748b);
+}
+
+.xme-add {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.25rem 0.6rem 0.25rem 0.45rem;
+  font-family: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--xi-accent-strong, #3d5a73);
+  background: var(--xi-accent-soft, #eaf1f8);
+  border: 1px solid var(--xi-accent-line, #cddceb);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.xme-add .material-symbols-outlined {
+  font-size: 0.95rem;
+}
+
+.xme-add:hover:not(:disabled) {
+  background: var(--xi-accent-line, #cddceb);
+}
+
+.xme-add:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* 필수 필드 칩 */
+
+.xme-chips {
+  list-style: none;
+  margin: 0.55rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.xme-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: 100%;
+  padding: 0.25rem 0.6rem 0.25rem 0.4rem;
+  font-size: 0.72rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.xme-chip .material-symbols-outlined {
+  font-size: 0.9rem;
+}
+
+.xme-chip strong {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.xme-chip-detail {
+  opacity: 0.85;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.xme-chip.is-ok {
+  background: var(--xi-ok-bg, #e4f3ec);
+  border-color: rgba(45, 122, 95, 0.2);
+  color: var(--xi-ok-fg, #2d7a5f);
+}
+
+.xme-chip.is-missing {
+  background: var(--xi-warn-bg, #fbf0dc);
+  border-color: rgba(154, 106, 28, 0.25);
+  color: var(--xi-warn-fg, #9a6a1c);
+}
+
+.xme-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--xi-warn-fg, #9a6a1c);
+}
+
+/* 고정값 */
+
+.xme-empty {
+  margin: 0.45rem 0 0;
+  font-size: 0.72rem;
+  color: var(--xi-text-faint, #94a3b8);
+}
+
+.xme-constants {
+  list-style: none;
+  margin: 0.55rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.xme-constant {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.xme-constant-target,
+.xme-constant-value {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 9px;
+  font-size: 0.78rem;
+  border-radius: 8px;
+}
+
+.xme-constant-target:focus-visible,
+.xme-constant-value:focus-visible {
+  outline: none;
+  border-color: var(--xi-accent, #5b7c99);
+  box-shadow: var(--xi-ring, 0 0 0 3px rgba(91, 124, 153, 0.18));
+}
+
+.xme-constant-eq {
+  font-weight: 700;
+  color: var(--xi-text-faint, #94a3b8);
+}
+
+.xme-remove {
+  display: inline-flex;
+  padding: 0.2rem;
+  color: #b6c3d1;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.xme-remove .material-symbols-outlined {
+  font-size: 1.05rem;
+}
+
+.xme-remove:hover:not(:disabled) {
+  color: var(--xi-err-fg, #a93b3b);
+  background: var(--xi-err-bg, #fbe6e6);
+}
+
+.xme-remove:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.xme-note {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--xi-text-muted, #64748b);
+}
+
+@media (max-width: 600px) {
+  .xme-constant {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  }
+
+  .xme-constant-eq {
+    display: none;
+  }
+}
