@@ -15,6 +15,8 @@ import './sales-pipeline-responsive.css';
 import './sales-pipeline-table-theme.css';
 import './sales-pipeline-ref.css';
 import '@/shared/crm-list-sheet-table.css';
+// 모바일 보정은 위 규칙들을 덮어야 해서 마지막에 불러옵니다.
+import './sales-pipeline-mobile.css';
 import PageHeaderNotifyChat from '@/components/page-header-notify-chat/page-header-notify-chat';
 import ListTemplateModal from '@/components/list-template-modal/list-template-modal';
 import {
@@ -482,8 +484,21 @@ export default function SalesPipeline() {
     const myId = getPipelineViewerUserId();
     return meOnly && myId ? [myId] : [];
   });
+  /** 모바일에서 필터 줄을 접어 목록이 먼저 보이게 (기본 접힘) */
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [productFilterOptions, setProductFilterOptions] = useState([]);
   const [assigneeFilterOptions, setAssigneeFilterOptions] = useState([]);
+
+  /** 모바일 필터 버튼에 표시할 적용된 필터 수 */
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (filterYear) count += 1;
+    if (filterMonth) count += 1;
+    if (filterScheduleField && filterScheduleField !== PIPELINE_SCHEDULE_FIELD_FILTER_DEFAULT) count += 1;
+    if (filterProductIds.length > 0) count += 1;
+    if (filterAssigneeIds.length > 0) count += 1;
+    return count;
+  }, [filterYear, filterMonth, filterScheduleField, filterProductIds, filterAssigneeIds]);
   productFilterOptionsRef.current = productFilterOptions;
   assigneeFilterOptionsRef.current = assigneeFilterOptions;
   /** listTemplates.salesPipeline.viewMode — 칸반 / 표 */
@@ -1428,7 +1443,29 @@ export default function SalesPipeline() {
           </div>
         </div>
 
-        <div className="sp-pipeline-body-filters" role="region" aria-label="목록 필터">
+        <button
+          type="button"
+          className="sp-mobile-filter-toggle sp-mobile-only"
+          onClick={() => setMobileFiltersOpen((v) => !v)}
+          aria-expanded={mobileFiltersOpen}
+          aria-controls="sp-pipeline-filters"
+        >
+          <span className="material-symbols-outlined" aria-hidden>
+            filter_list
+          </span>
+          필터
+          {activeFilterCount > 0 ? <span className="sp-mobile-filter-toggle-count">{activeFilterCount}</span> : null}
+          <span className="material-symbols-outlined sp-mobile-filter-toggle-caret" aria-hidden>
+            {mobileFiltersOpen ? 'expand_less' : 'expand_more'}
+          </span>
+        </button>
+
+        <div
+          id="sp-pipeline-filters"
+          className={`sp-pipeline-body-filters${mobileFiltersOpen ? ' is-mobile-open' : ''}`}
+          role="region"
+          aria-label="목록 필터"
+        >
           <div className="sp-header-filters">
           <label className="sp-filter-label">
             <span className="sp-filter-label-text">연도</span>
@@ -1643,9 +1680,7 @@ export default function SalesPipeline() {
                   <p className="sp-mobile-empty">이 단계에 표시할 기회가 없습니다.</p>
                 ) : (
                   <div className="sp-mobile-deals-list sp-mobile-deals-list--table">
-                    {mobileStageItems.map((opp, i) => {
-                      const pillClass = `sp-mobile-deal-pill--${i % 3}`;
-                      const pillText = (opp.productName && String(opp.productName).trim()) || '기회';
+                    {mobileStageItems.map((opp) => {
                       const primary = dealTitlePrimaryLabel(opp);
                       const isPersonalNoCompany =
                         !(opp.customerCompanyName && String(opp.customerCompanyName).trim()) &&
@@ -1673,7 +1708,6 @@ export default function SalesPipeline() {
                               </h3>
                               <p className="sp-mobile-deal-sub">{sub}</p>
                             </div>
-                            <span className={`sp-mobile-deal-pill ${pillClass}`}>{pillText}</span>
                           </div>
                           {renderOppScheduleDatesChips(opp)}
                           <div className="sp-mobile-deal-bottom">
@@ -1937,19 +1971,6 @@ export default function SalesPipeline() {
           </div>
           )}
         </>
-      )}
-
-      {!loading && (
-        <button
-          type="button"
-          className="sp-mobile-fab"
-          aria-label="영업기회 추가"
-          onClick={() =>
-            openAddModal(pipelineViewMode === 'kanban' ? activeMobileStage || undefined : undefined)
-          }
-        >
-          <span className="material-symbols-outlined">add</span>
-        </button>
       )}
 
       {excelImportOpen ? (

@@ -4,6 +4,8 @@ import { createPortal } from 'react-dom';
 import { Link, useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 import './dashboard.css';
 import './home-ref.css';
+// 모바일 보정은 home-ref.css 의 !important 를 덮어야 해서 마지막에 불러옵니다.
+import './home-mobile.css';
 import { HomeContributionCalcModal } from './home-contribution-calc-modal';
 import HomeKpiExplainModal, { makeHomeKpiExplainSpec } from './home-kpi-explain-modal';
 
@@ -5014,7 +5016,10 @@ export default function Dashboard() {
                             className="home-insight-lead-badge-label"
                             title="리드 캡처·웹폼 등으로 들어온 미처리 건수입니다. 아래 KPI 카드「신규 리드 건수」(세일즈 파이프라인 신규 단계)와는 다른 지표입니다."
                           >
-                            새로운 수신 리드 <strong className="home-insight-lead-badge-count">{pendingLeadCount.toLocaleString('ko-KR')}건</strong> 유입
+                            {/* 모바일에서는 앞뒤 수식어를 숨겨 "리드 N건"으로 줄입니다 (home-mobile.css) */}
+                            <span className="home-insight-lead-badge-word">새로운 수신 </span>리드{' '}
+                            <strong className="home-insight-lead-badge-count">{pendingLeadCount.toLocaleString('ko-KR')}건</strong>
+                            <span className="home-insight-lead-badge-word"> 유입</span>
                           </span>
                         </button>
                         {data?.insightScope?.leaderSubtree ? (

@@ -1,0 +1,275 @@
+/*
+ * 세일즈 파이프라인 — 모바일(≤768px) 보정.
+ * sales-pipeline-ref.css 다음에 불러옵니다. ref 쪽 규칙이 더 구체적이거나 !important 라
+ * 여기서도 같은 선택자 깊이(.sp-pipeline-page--ref …)와 !important 를 씁니다.
+ *
+ * 390px 실측에서 나온 문제만 다룹니다.
+ *  1) 필터 5개가 각각 한 줄을 차지해 173px 사용
+ *  2) 상단 도구 막대(폭 691px)가 잘려 「단계 관리」 버튼을 누를 수 없음
+ *  3) 선택상자 높이 16px 등 누르기 어려운 컨트롤
+ *  4) 표 위 설명문·여백이 첫 행을 아래로 밀어냄
+ */
+
+@media (max-width: 768px) {
+  /* ---------- 0) 필터는 접어 두고 「필터」 버튼으로 펼칩니다 ---------- */
+
+  .sp-pipeline-page--ref .sp-mobile-filter-toggle {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 0.3rem;
+    margin: 0.4rem 0.75rem 0.1rem;
+    padding: 0.35rem 0.7rem;
+    min-height: 36px;
+    font-family: inherit;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: #334155;
+    background: #fff;
+    border: 1px solid var(--sp-ref-border, #e2e8f0);
+    border-radius: 0.5rem;
+    cursor: pointer;
+  }
+
+  .sp-pipeline-page--ref .sp-mobile-filter-toggle .material-symbols-outlined {
+    font-size: 1.05rem;
+  }
+
+  .sp-pipeline-page--ref .sp-mobile-filter-toggle-count {
+    min-width: 1.15rem;
+    padding: 0 0.3rem;
+    font-size: 0.68rem;
+    line-height: 1.15rem;
+    text-align: center;
+    color: #005d47;
+    background: #8ff6d0;
+    border-radius: 999px;
+  }
+
+  .sp-pipeline-page--ref .sp-mobile-filter-toggle-caret {
+    margin-left: auto;
+  }
+
+  /*
+   * 펼치기 전에는 필터 컨트롤만 숨깁니다.
+   * 같은 상자 안에 있는 「진행 중 총액 · 가중 예측치」 요약은 계속 보여야 합니다.
+   */
+  .sp-pipeline-page--ref .sp-pipeline-body-filters:not(.is-mobile-open) .sp-header-filters {
+    display: none !important;
+  }
+
+  .sp-pipeline-page--ref .sp-pipeline-body-filters:not(.is-mobile-open) {
+    padding-top: 0.15rem !important;
+    padding-bottom: 0.3rem !important;
+  }
+
+  /* ---------- 1) 펼쳤을 때: 한 줄에 2개 ---------- */
+
+  .sp-pipeline-page--ref .sp-pipeline-body-filters {
+    flex-wrap: wrap !important;
+    gap: 0.3rem !important;
+    padding: 0.35rem 0.75rem !important;
+    overflow-x: hidden;
+  }
+
+  .sp-pipeline-page--ref .sp-filter-label {
+    flex: 1 1 calc(50% - 0.3rem);
+    min-width: 0;
+    box-sizing: border-box;
+    padding: 0.15rem 0.5rem;
+  }
+
+  /* 제품·담당 같은 다중 선택도 반 칸 안에 들어가게 */
+  .sp-pipeline-page--ref .sp-filter-multi {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .sp-pipeline-page--ref .sp-filter-label-text {
+    flex: 0 0 auto;
+  }
+
+  /* 선택상자: 눌러서 고를 수 있는 크기 + iOS 확대 방지(16px) */
+  .sp-pipeline-page--ref .sp-filter-select,
+  .sp-pipeline-page--ref .sp-filter-multi-summary {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+    min-height: 32px !important;
+    font-size: 16px !important;
+    padding: 0 0.9rem 0 0 !important;
+  }
+
+  /* ---------- 2) 상단 도구 막대: 줄바꿈해서 전부 보이게 ---------- */
+
+  .sp-pipeline-page--ref .sp-ref-topbar {
+    flex-wrap: wrap !important;
+    width: 100%;
+    min-width: 0;
+    padding: 0.4rem 0.75rem !important;
+  }
+
+  .sp-pipeline-page--ref .sp-ref-topbar-left,
+  .sp-pipeline-page--ref .sp-ref-topbar-right {
+    flex: 1 1 100%;
+    min-width: 0;
+    flex-wrap: wrap !important;
+    justify-content: flex-start;
+  }
+
+  /* 보기 전환은 한 줄을 반씩 나눠 쓰고, 그 줄 오른쪽에 도구 버튼이 붙습니다 */
+  .sp-pipeline-page--ref .sp-ref-view-switch {
+    display: flex;
+    flex: 1 1 11rem;
+    min-width: 0;
+  }
+
+  .sp-pipeline-page--ref .sp-ref-view-btn {
+    flex: 1 1 0;
+    justify-content: center;
+    min-height: 36px;
+  }
+
+  .sp-pipeline-page--ref .sp-ref-topbar-divider {
+    display: none;
+  }
+
+  /*
+   * 도구 버튼(표시 설정·단계 관리·엑셀 가져오기)은 아이콘만 남겨 한 줄에 넣습니다.
+   * 글자를 지우지 않고 font-size: 0 으로 숨겨, aria-label 과 함께 읽기 도구에는 그대로 남습니다.
+   */
+  .sp-pipeline-page--ref .sp-ref-tool-btn {
+    flex: 0 0 auto;
+    justify-content: center;
+    width: 2.25rem;
+    min-height: 36px;
+    padding: 0.3rem !important;
+    gap: 0 !important;
+    font-size: 0 !important;
+  }
+
+  .sp-pipeline-page--ref .sp-ref-tool-btn .material-symbols-outlined {
+    font-size: 1.15rem !important;
+  }
+
+  /* 주 버튼(영업기회 추가)은 글자를 그대로 두고 남는 폭을 채웁니다 */
+  .sp-pipeline-page--ref .sp-ref-add-btn {
+    flex: 1 1 8rem;
+    justify-content: center;
+    min-height: 36px;
+  }
+
+  /* ---------- 3) 그 밖의 작은 컨트롤 ---------- */
+
+  .sp-pipeline-page--ref .sp-header-icon-btn {
+    width: 2.25rem !important;
+    height: 2.25rem !important;
+  }
+
+  .sp-pipeline-page--ref .sp-ref-search-input {
+    min-height: 36px;
+    font-size: 16px !important;
+  }
+
+  /* ---------- 4) 칸반(모바일 카드) ---------- */
+
+  /* 음수 여백(-0.25rem) 때문에 칩 줄이 화면보다 8px 넓어져 잘렸습니다 */
+  .sp-pipeline-page--ref .sp-mobile-chips-wrap {
+    margin-left: 0;
+    margin-right: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding-bottom: 0.45rem;
+    position: relative;
+    z-index: auto;
+  }
+
+  /*
+   * sticky + z-index 30 은 사이드바(--sidebar-z: 30) 드로어를 가림
+   * (customer-companies-responsive 와 동일)
+   */
+  .sp-pipeline-page--ref .sp-header {
+    position: relative !important;
+    top: auto !important;
+    z-index: 1;
+  }
+
+  .sp-pipeline-page--ref .sp-mobile-chips {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+    overscroll-behavior-x: contain;
+  }
+
+  /* 카드 여백·글자를 줄여 한 화면에 더 많이 보이게 */
+  .sp-pipeline-page--ref .sp-mobile-deals-list {
+    gap: 0.5rem;
+  }
+
+  .sp-pipeline-page--ref .sp-mobile-deal-card {
+    padding: 0.75rem 2rem 0.75rem 0.85rem;
+  }
+
+  .sp-pipeline-page--ref .sp-mobile-deal-title {
+    font-size: 0.95rem;
+  }
+
+  .sp-pipeline-page--ref .sp-mobile-deal-bottom {
+    margin-top: 0.55rem;
+    padding-top: 0.5rem;
+  }
+
+  /* ---------- 5) 표(스프레드시트) 화면 ---------- */
+
+  /* Won/Lost/On Hold 드롭존은 표 영역을 가리므로 스마트폰 스프레드시트 모드에서 숨김 */
+  .sp-pipeline-page--ref.sp-pipeline-page--table-view .sp-board--table-mode > .sp-dropzones-section {
+    display: none !important;
+  }
+
+  /* 제목·레코드 수·열 선택 툴바 / 안내문 — 모바일에서는 숨김 (표만 보이게) */
+  .sp-pipeline-page--ref.sp-pipeline-page--table-view .sp-pipeline-table-toolbar,
+  .sp-pipeline-page--ref.sp-pipeline-page--table-view .sp-pipeline-table-toolbar-hint {
+    display: none !important;
+  }
+
+  /* 드롭존·툴바를 숨긴 만큼 표 패널이 세로 공간을 채우게 */
+  .sp-pipeline-page--ref.sp-pipeline-page--table-view .sp-board--table-mode {
+    flex: 1 1 auto;
+    min-height: 0;
+    gap: 0;
+    margin: 0;
+    padding: 0;
+  }
+
+  .sp-pipeline-page--ref.sp-pipeline-page--table-view .sp-pipeline-table-view-root {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border-radius: 0;
+  }
+
+  .sp-pipeline-page--ref.sp-pipeline-page--table-view .sp-pipeline-table-section,
+  .sp-pipeline-page--ref.sp-pipeline-page--table-view .sp-pipeline-table-panel,
+  .sp-pipeline-page--ref.sp-pipeline-page--table-view .panel.table-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    border-left: none !important;
+    border-right: none !important;
+    box-shadow: none !important;
+  }
+
+  .sp-pipeline-page--ref.sp-pipeline-page--table-view .crm-list-table-stack,
+  .sp-pipeline-page--ref.sp-pipeline-page--table-view .table-wrap,
+  .sp-pipeline-page--ref.sp-pipeline-page--table-view .crm-list-sheet-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  /* 가로 스크롤을 손가락으로 부드럽게 */
+  .sp-pipeline-page--ref .crm-list-sheet-scroll {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+}

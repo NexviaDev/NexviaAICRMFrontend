@@ -1,0 +1,141 @@
+/*
+ * 홈 대시보드 — 모바일(≤768px) 보정.
+ * dashboard.css / home-ref.css 다음에 불러옵니다. home-ref.css 가 !important 로 값을 고정해 두어
+ * 여기서도 같은 방식으로 덮어써야 적용됩니다.
+ *
+ * 390px 실측에서 나온 문제만 다룹니다.
+ *  1) 탭·배지·링크·선택상자의 터치 영역이 15~32px (권장 40px 이상)
+ *  2) 조회 범위 탭과 기간 탭이 서로 다른 줄에서 좌/우로 갈려 빈 공간이 생김
+ *  3) 선택상자 글자가 16px 미만이라 iOS 에서 누르면 화면이 확대됨
+ *  4) 가로 스크롤 영역에 관성 스크롤·스크롤 가둠이 없음
+ */
+
+@media (max-width: 768px) {
+  /*
+   * ---------- 1) 필터 영역: 3줄 → 2줄, 여백 축소 ----------
+   * 1줄: 조회 범위 탭 + 리드 배지 / 2줄: 기간 탭
+   * (좁아서 한 줄에 안 들어가면 자동으로 줄바꿈됩니다)
+   */
+
+  .home-page .home-insight-toolbar {
+    padding: 0.55rem !important;
+  }
+
+  .home-page .home-insight-toolbar-rows,
+  .home-page .home-insight-toolbar-primary-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.35rem !important;
+  }
+
+  .home-page .home-insight-toolbar-scope,
+  .home-page .home-insight-toolbar-scope-cluster {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .home-page .home-insight-toolbar-scope-cluster {
+    gap: 0.35rem !important;
+    padding: 0 !important;
+    /* 범위 탭과 리드 배지를 한 줄에 유지 (배지는 좁으면 말줄임) */
+    flex-wrap: nowrap !important;
+  }
+
+  .home-page .home-insight-toolbar-primary-row .home-kpi-period-toolbar {
+    margin-left: 0;
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .home-page .home-insight-mode-switch,
+  .home-page .home-kpi-period-switch {
+    display: flex !important;
+    padding: 0.15rem !important;
+  }
+
+  /* 범위 탭은 글자가 잘리지 않게 내용 크기 유지, 남는 폭은 배지가 씁니다 */
+  .home-page .home-insight-toolbar-scope-cluster .home-insight-mode-switch {
+    flex: 0 0 auto;
+  }
+
+  .home-page .home-kpi-period-switch {
+    width: 100%;
+  }
+
+  .home-page .home-insight-mode-switch button,
+  .home-page .home-kpi-period-switch button {
+    flex: 1 1 0 !important;
+    min-height: 36px !important;
+    padding: 0.35rem 0.3rem !important;
+    font-size: 0.75rem !important;
+  }
+
+  /* ---------- 2) 리드 배지: 같은 줄에 들어가도록 작게 ---------- */
+
+  .home-page .home-insight-lead-badge {
+    flex: 1 1 auto;
+    min-width: 0;
+    justify-content: flex-start;
+    min-height: 36px !important;
+    padding: 0.3rem 0.55rem !important;
+    gap: 0.3rem !important;
+    overflow: hidden;
+  }
+
+  .home-page .home-insight-lead-badge-label {
+    font-size: 0.7rem !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* "새로운 수신 리드 21건 유입" → "리드 21건" (건수가 잘리지 않게) */
+  .home-page .home-insight-lead-badge-word {
+    display: none !important;
+  }
+
+  /* ---------- 3) 딜 허브(예측 표) 도구 ---------- */
+
+  .home-page .home-forecast-hub-tabs {
+    display: flex;
+    width: 100%;
+  }
+
+  .home-page .home-forecast-hub-tab {
+    flex: 1 1 0 !important;
+    min-height: 40px !important;
+    justify-content: center;
+  }
+
+  .home-page .home-forecast-add-opp-btn,
+  .home-page .home-forecast-hub-more-link {
+    min-height: 40px !important;
+    padding-top: 0.45rem !important;
+    padding-bottom: 0.45rem !important;
+  }
+
+  /* 선택상자는 16px 미만이면 iOS 가 화면을 확대합니다 */
+  .home-page select,
+  .home-page .home-forecast-filter-select {
+    min-height: 40px !important;
+    font-size: 16px !important;
+  }
+
+  /* ---------- 4) 텍스트 링크도 누를 수 있는 크기로 ---------- */
+
+  .home-page .home-pipeline-link,
+  .home-page .home-ref-action-cal-link {
+    display: inline-flex !important;
+    align-items: center;
+    min-height: 40px !important;
+    padding: 0.35rem 0.15rem !important;
+  }
+
+  /* ---------- 5) 가로 스크롤 영역 ---------- */
+
+  .home-page .pipeline-steps,
+  .home-page .home-forecast-hub-table-scroll,
+  .home-page .home-forecast-table-wrap {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+}

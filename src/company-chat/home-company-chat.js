@@ -5,6 +5,7 @@ import { crmFetchInit } from '@/lib/crm-auth';
 import { COMPANY_CHAT_POLL_MS } from '@/lib/polling-intervals';
 import { COMPANY_CHAT_OPEN_EVENT } from '@/company-chat/company-chat-events';
 import { answerWithBrowserOllama } from '@/lib/browser-ollama';
+import { isAllowedVoiceAudioFile } from '@/lib/voice-recording-upload';
 import './home-company-chat.css';
 
 const PANEL_SIZE_STORAGE_KEY = 'nexvia-company-chat-panel-size-v1';
@@ -608,10 +609,19 @@ export default function HomeCompanyChat() {
   const [pendingImages, setPendingImages] = useState([]);
   const [previewImage, setPreviewImage] = useState(null);
   const [composerDropActive, setComposerDropActive] = useState(false);
+  const [sttListening, setSttListening] = useState(false);
+  const [sttSupported, setSttSupported] = useState(false);
+  const [voiceBusy, setVoiceBusy] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState('');
 
   const listRef = useRef(null);
   const inputRef = useRef(null);
+  const audioInputRef = useRef(null);
   const pendingImagesRef = useRef([]);
+  const speechRecognitionRef = useRef(null);
+  const voiceAbortRef = useRef(null);
+  const draftBaseForSttRef = useRef('');
+  const sendTextBodyRef = useRef(null);
 
   useEffect(() => {
     pendingImagesRef.current = pendingImages;
@@ -626,6 +636,20 @@ export default function HomeCompanyChat() {
           /* ignore */
         }
       });
+    };
+  }, []);
+
+  useEffect(() => {
+    const SR = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition);
+    setSttSupported(Boolean(SR));
+    return () => {
+      try {
+        speechRecognitionRef.current?.stop?.();
+      } catch (_) {
+        /* ignore */
+      }
+      speechRecognitionRef.current = null;
+      voiceAbortRef.current?.abort?.();
     };
   }, []);
   const panelSizeRef = useRef(panelSize);
@@ -1301,12 +1325,12 @@ export default function HomeCompanyChat() {
     [activeRoomId, confirmingActionId, loadRooms]
   );
 
-  const sendMessage = async (e) => {
+  const sendMessage = async (e, overrideBody) => {
     e?.preventDefault?.();
-    const body = String(draft || '').trim();
-    const images = pendingImages.slice();
+    const body = String(overrideBody != null ? overrideBody : draft || '').trim();
+    const images = overrideBody != null ? [] : pendingImages.slice();
     if ((!body && !images.length) || !activeRoomId || sendingRef.current) return;
-    if (filteredMentions.length > 0) return;
+    if (overrideBody == null && filteredMentions.length > 0) return;
 
     const roomId = activeRoomId;
 
@@ -1561,6 +1585,134 @@ export default function HomeCompanyChat() {
       }
     }
   };
+
+  sendTextBodyRef.current = (text) => sendMessage(null, text);
+
+  const stopStt = useCallback(() => {
+    try {
+      speechRecognitionRef.current?.stop?.();
+    } catch (_) {
+      /* ignore */
+    }
+    speechRecognitionRef.current = null;
+    setSttListening(false);
+  }, []);
+
+  const toggleStt = useCallback(() => {
+    if (voiceBusy || uploadingCard || sendingRef.current) return;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      setMessagesError('이 브라우저는 음성 인식(STT)을 지원하지 않습니다. Chrome·Edge를 이용해 주세요.');
+      return;
+    }
+    if (sttListening) {
+      stopStt();
+      return;
+    }
+    setMessagesError('');
+    draftBaseForSttRef.current = String(draft || '').trim();
+    const recognition = new SR();
+    recognition.lang = 'ko-KR';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.onresult = (event) => {
+      let finalChunk = '';
+      let interim = '';
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const piece = event.results[i]?.[0]?.transcript || '';
+        if (event.results[i].isFinal) finalChunk += piece;
+        else interim += piece;
+      }
+      if (finalChunk) {
+        const base = draftBaseForSttRef.current;
+        const next = `${base}${base ? ' ' : ''}${finalChunk}`.trim();
+        draftBaseForSttRef.current = next;
+        setDraft(next.slice(0, 4000));
+      } else if (interim) {
+        const base = draftBaseForSttRef.current;
+        const next = `${base}${base ? ' ' : ''}${interim}`.trim();
+        setDraft(next.slice(0, 4000));
+      }
+    };
+    recognition.onerror = (ev) => {
+      const code = ev?.error || '';
+      if (code && code !== 'aborted' && code !== 'no-speech') {
+        setMessagesError(
+          code === 'not-allowed'
+            ? '마이크 권한이 필요합니다. 브라우저 설정에서 허용해 주세요.'
+            : `음성 인식 오류: ${code}`
+        );
+      }
+      stopStt();
+    };
+    recognition.onend = () => {
+      setSttListening(false);
+      speechRecognitionRef.current = null;
+    };
+    speechRecognitionRef.current = recognition;
+    try {
+      recognition.start();
+      setSttListening(true);
+    } catch (err) {
+      setMessagesError(err.message || '음성 인식을 시작하지 못했습니다.');
+      stopStt();
+    }
+  }, [draft, sttListening, stopStt, uploadingCard, voiceBusy]);
+
+  const processVoiceAudioFile = useCallback(
+    async (file) => {
+      if (!file || !activeRoomId || voiceBusy || sendingRef.current) return;
+      if (!isAllowedVoiceAudioFile(file)) {
+        setMessagesError('MP3, WAV, M4A, WebM 파일만 올릴 수 있습니다.');
+        return;
+      }
+      stopStt();
+      setMessagesError('');
+      setVoiceBusy(true);
+      setVoiceStatus('Gemini로 요약 중… (AssemblyAI 미사용)');
+      try {
+        const form = new FormData();
+        form.append('audio', file, file.name || 'recording.webm');
+        const init = crmFetchInit();
+        const headers = { ...(init.headers || {}) };
+        delete headers['Content-Type'];
+        const res = await fetch(
+          `${API_BASE}/company-chat/rooms/${encodeURIComponent(activeRoomId)}/voice-summary`,
+          {
+            ...init,
+            method: 'POST',
+            headers,
+            body: form
+          }
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || '음성 요약에 실패했습니다.');
+        const clipped = String(data.summary || '').trim().slice(0, 3600);
+        if (!clipped) throw new Error('요약이 비어 있습니다.');
+        const prefix = isAiRoom
+          ? '음성 녹음 요약입니다. 전체 전사 대신 이 요약만 보고 핵심을 정리·도와주세요.'
+          : '@AI 음성 녹음 요약입니다. 전체 전사 대신 이 요약만 보고 핵심을 정리·도와주세요.';
+        const body = `${prefix}\n\n${clipped}`.slice(0, 4000);
+        setVoiceStatus('AI에게 요약 전달 중…');
+        await sendTextBodyRef.current?.(body);
+      } catch (err) {
+        setMessagesError(err.message || '음성 처리에 실패했습니다.');
+      } finally {
+        setVoiceBusy(false);
+        setVoiceStatus('');
+      }
+    },
+    [activeRoomId, isAiRoom, stopStt, voiceBusy]
+  );
+
+  const onVoiceAudioPicked = useCallback(
+    (e) => {
+      const file = e.target?.files?.[0];
+      e.target.value = '';
+      if (file) void processVoiceAudioFile(file);
+    },
+    [processVoiceAudioFile]
+  );
 
   if (!eligible) return null;
 
@@ -1863,9 +2015,22 @@ export default function HomeCompanyChat() {
                     e.preventDefault();
                     e.stopPropagation();
                     setComposerDropActive(false);
-                    addPendingImages(e.dataTransfer?.files);
+                    const files = Array.from(e.dataTransfer?.files || []);
+                    const audios = files.filter((f) => isAllowedVoiceAudioFile(f));
+                    const images = files.filter((f) => /^image\//i.test(f.type || ''));
+                    // 오디오 드롭은 PC만 (스마트폰은 파일 버튼으로)
+                    if (audios.length && !isMobileSupportClient()) {
+                      void processVoiceAudioFile(audios[0]);
+                      return;
+                    }
+                    if (images.length) addPendingImages(images);
                   }}
                 >
+                  {voiceBusy && voiceStatus ? (
+                    <p className="home-company-chat-voice-status" role="status">
+                      {voiceStatus}
+                    </p>
+                  ) : null}
                   {pendingImages.length > 0 ? (
                     <ul className="home-company-chat-attach-thumbs">
                       {pendingImages.map((img) => (
@@ -1893,6 +2058,15 @@ export default function HomeCompanyChat() {
                     </ul>
                   ) : null}
                   <form className="home-company-chat-composer" onSubmit={sendMessage}>
+                    <input
+                      ref={audioInputRef}
+                      type="file"
+                      accept="audio/*,.mp3,.wav,.m4a,.webm"
+                      className="home-company-chat-audio-input"
+                      tabIndex={-1}
+                      aria-hidden
+                      onChange={onVoiceAudioPicked}
+                    />
                     {!isAiRoom ? (
                       <button
                         type="button"
@@ -1900,10 +2074,42 @@ export default function HomeCompanyChat() {
                         title="@ 멘션"
                         aria-label="@ 멘션 열기"
                         onClick={openMentionPicker}
+                        disabled={voiceBusy}
                       >
                         @
                       </button>
                     ) : null}
+                    <button
+                      type="button"
+                      className={`home-company-chat-tool-btn${sttListening ? ' is-active' : ''}`}
+                      title={
+                        sttSupported
+                          ? sttListening
+                            ? '음성 인식 중지'
+                            : '말하기 → 글자로 (STT)'
+                          : '이 브라우저는 STT를 지원하지 않습니다'
+                      }
+                      aria-label={sttListening ? '음성 인식 중지' : '음성 인식 시작'}
+                      aria-pressed={sttListening}
+                      disabled={!sttSupported || voiceBusy || uploadingCard}
+                      onClick={toggleStt}
+                    >
+                      <span className="material-symbols-outlined" aria-hidden>
+                        {sttListening ? 'mic' : 'mic_none'}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="home-company-chat-tool-btn"
+                      title="녹음 파일 → Gemini 요약 후 AI에게 전달 (AssemblyAI 아님, ~20MB)"
+                      aria-label="녹음 파일 업로드"
+                      disabled={voiceBusy || uploadingCard || sending}
+                      onClick={() => audioInputRef.current?.click()}
+                    >
+                      <span className="material-symbols-outlined" aria-hidden>
+                        {voiceBusy ? 'sync' : 'graphic_eq'}
+                      </span>
+                    </button>
                     <input
                       ref={inputRef}
                       type="text"
@@ -1937,18 +2143,27 @@ export default function HomeCompanyChat() {
                         }
                       }}
                       placeholder={
-                        isAiRoom
-                          ? '질문 입력 · 이미지 붙여넣기/드롭 (내용 / 연락처·업체 등록)'
-                          : '메시지 · @멘션 · 이미지 붙여넣기/드롭'
+                        sttListening
+                          ? '듣고 있어요… 말하면 글자로 입력됩니다'
+                          : voiceBusy
+                            ? voiceStatus || '음성 처리 중…'
+                            : isAiRoom
+                              ? '질문 · 이미지 · 마이크(STT) · 녹음파일(Gemini 요약)'
+                              : '메시지 · @멘션 · 마이크 · 녹음파일'
                       }
                       maxLength={4000}
-                      disabled={uploadingCard}
+                      disabled={uploadingCard || voiceBusy}
                     />
                     <button
                       type="submit"
-                      disabled={sending || uploadingCard || (!draft.trim() && !pendingImages.length)}
+                      disabled={
+                        sending ||
+                        uploadingCard ||
+                        voiceBusy ||
+                        (!draft.trim() && !pendingImages.length)
+                      }
                     >
-                      {uploadingCard ? '인식 중…' : '전송'}
+                      {uploadingCard ? '인식 중…' : voiceBusy ? '처리 중…' : '전송'}
                     </button>
                   </form>
                 </div>

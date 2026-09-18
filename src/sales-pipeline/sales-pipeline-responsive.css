@@ -5,10 +5,6 @@
   display: none;
 }
 
-.sp-mobile-fab {
-  display: none;
-}
-
 @media (max-width: 768px) {
   .sp-mobile-only {
     display: block;
@@ -27,7 +23,17 @@
     overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
     background: #f8fafa;
-    padding-bottom: 5rem;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+
+  /* 스프레드시트: 스크롤은 표 안에서만 — 하단 빈 여백 방지 */
+  .sp-container.sp-pipeline-page--table-view {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    padding-bottom: 0;
   }
 
   .sp-header {
@@ -39,6 +45,10 @@
     border-bottom: none;
     flex-wrap: wrap;
     gap: 0.5rem;
+    /* sticky면 사이드바 드로어(z-index 30)를 가림 → 스크롤과 함께 이동 */
+    position: relative;
+    top: auto;
+    z-index: 1;
   }
 
   .sp-title {
@@ -260,15 +270,15 @@
     color: #4f5161;
   }
 
-  /* 스테이지 칩 (sticky) */
+  /* 스테이지 칩 — sticky 제거 (헤더와 top:0 충돌로 칸반/스프레드시트 토글 위를 덮음) */
   .sp-mobile-chips-wrap {
-    position: sticky;
-    top: 0;
-    z-index: 20;
+    position: relative;
+    top: auto;
+    z-index: auto;
     padding: 0.5rem 0 0.75rem;
     margin: 0 -0.25rem;
-    background: linear-gradient(180deg, rgba(248, 250, 250, 0.96) 0%, rgba(248, 250, 250, 0.88) 100%);
-    backdrop-filter: blur(8px);
+    background: transparent;
+    backdrop-filter: none;
   }
 
   .sp-mobile-chips {
@@ -380,34 +390,6 @@
     margin: 0.25rem 0 0;
     font-size: 0.8125rem;
     color: #596061;
-  }
-
-  .sp-mobile-deal-pill {
-    flex-shrink: 0;
-    padding: 0.35rem 0.65rem;
-    border-radius: 9999px;
-    font-size: 0.625rem;
-    font-weight: 800;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    max-width: 42%;
-    text-align: center;
-    line-height: 1.2;
-  }
-
-  .sp-mobile-deal-pill--0 {
-    background: #fed9b8;
-    color: #644b32;
-  }
-
-  .sp-mobile-deal-pill--1 {
-    background: #e1e1f5;
-    color: #4f5161;
-  }
-
-  .sp-mobile-deal-pill--2 {
-    background: #8ff6d0;
-    color: #005d47;
   }
 
   .sp-mobile-deal-bottom {
@@ -570,36 +552,6 @@
 
   .sp-dz-label {
     font-size: 0.72rem;
-  }
-
-  /* FAB */
-  .sp-mobile-fab {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: fixed;
-    right: 1.25rem;
-    bottom: calc(1.25rem + env(safe-area-inset-bottom, 0));
-    z-index: 35;
-    width: 3.5rem;
-    height: 3.5rem;
-    padding: 0;
-    border: none;
-    border-radius: 0.75rem;
-    background: #006c53;
-    color: #e5fff2;
-    cursor: pointer;
-    box-shadow: 0 8px 28px rgba(44, 52, 53, 0.16);
-    transition: transform 0.15s ease, filter 0.15s ease;
-  }
-
-  .sp-mobile-fab:active {
-    transform: scale(0.96);
-  }
-
-  .sp-mobile-fab .material-symbols-outlined {
-    font-size: 1.65rem;
-    font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
   }
 }
 
